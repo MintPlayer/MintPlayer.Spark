@@ -11,9 +11,9 @@ Where the PRD's §2 and §7 disagree, §7 wins.
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
   While fixing, run only the affected class (`--filter "FullyQualifiedName~Issue467"` etc.).
 - **Spike tests are intentionally red** until their milestone lands:
-  `tests/MintPlayer.Spark.Tests/Spikes/Issue467/` (12 red and 4 green when written; M5 added the custom-action S4 half, the execute S7 half and an S8 retry). Each test names its spike and decision. None has been run since M0 — that is the M9 sweep.
+  `tests/MintPlayer.Spark.Tests/Spikes/Issue467/` (moved in M9 to `Endpoints/PersistentObject/Selection/`; 12 red and 4 green when written; M5 added the custom-action S4 half, the execute S7 half and an S8 retry). Each test names its spike and decision. None has been run since M0 — that is the M9 sweep.
   When a milestone turns them green, move them next to the related tests (e.g. `Endpoints/PersistentObject/`)
-  and drop the `Spikes` folder before the PR. **Do not push the branch while they are red** (CI costs money;
+  and drop the `Spikes` folder before the PR. **Do not push the branch while they are red** (superseded 2026-10-04: the owner stopped the local sweep and asked for the PR, with CI as the sweep; CI costs money;
   pushing would only show the known reds).
 - Write logs raw to the scratchpad (`cmd > x.log 2>&1; echo "EXIT: $?"`), then grep them.
 - Never start `ng serve` next to a running host; `dotnet run` is the whole command.
@@ -28,8 +28,8 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [x] Branch `feat/467-query-selection`; PRD and plan committed (`e00fd8a5`).
 - [x] Spikes S1 (upstream part), S2, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13 (results in PRD §7).
 - [x] Deferred spikes written: S1 remainder (M4 spec), the custom-action halves of S4/S7 and S8's 449 retry (M5). S3 (cost of the D18 message) is measured in M9.
-- [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`, M6 `58f86b07`, M7 `fc84efc6`, M7b `3f7e2c24` (+ `7ac925fa`), M8. Next: M9.
-- [x] Found during M6: the D1 override gap (base `OnSaveAsync`/`OnDeleteAsync` own the persistence, so an override can skip guarantees). Filed as #482. Owner decisions 2026-10-03: first "not in this PR", then **reversed — #482 and the durable hooks (D17) land in this PR too** (M7, M7b; the PR closes #467 and #482). Design refined to DI-registered per-phase hooks (D31). The bug the investigation found is fixed here: the OIDC application/scope uniqueness check ran only after the commit, so a duplicate was refused with a 400 yet stayed stored — now also checked before the write.
+- [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`, M6 `58f86b07`, M7 `fc84efc6`, M7b `3f7e2c24` (+ `7ac925fa`), M8 `3b176794`. M9 in progress (see below).
+- [x] Found during M6: the D1 override gap (base `OnSaveAsync`/`OnDeleteAsync` own the persistence, so an override can skip guarantees). Filed as #482. Owner decisions 2026-10-03: first "not in this PR", then **reversed — #482 and the durable interceptors (D17) land in this PR too** (M7, M7b; the PR closes #467 and #482). Design refined to DI-registered per-phase interceptors (D31). The bug the investigation found is fixed here: the OIDC application/scope uniqueness check ran only after the commit, so a duplicate was refused with a 400 yet stayed stored — now also checked before the write.
 - [x] D29c confirmed by the owner (2026-10-03): the D20 reason stays server-side only; no framework prompt — an app prompts with `manager.Retry.Action` itself.
 
 ---
@@ -149,66 +149,66 @@ Where the PRD's §2 and §7 disagree, §7 wins.
       `ConcurrentWriteRaceTests.Internal_save_without_etag_still_protects_the_load_to_write_window`; added
       `ConcurrentWriteRaceTests.Hard_delete_refuses_a_write_that_raced_past_the_etag_check`.
 
-### M7 — The framework owns persistence; DI-registered per-phase hooks (#482, D31)
-Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision, 2026-10-03), so the PR closes #467 and #482.
+### M7 — The framework owns persistence; DI-registered per-phase interceptors (#482, D31)
+Design: issue #482, section "Interceptor interfaces". Lands in this PR (owner decision, 2026-10-03), so the PR closes #467 and #482.
 - [x] Persister in the framework, called from `DatabaseAccess`. It runs, in this order:
-      load/construct → after-materialize → `MapAsync` → `IDeleteReplacement` (deletes only) → before-hooks (`Default`, then
+      load/construct → after-materialize → `MapAsync` → `IDeleteReplacement` (deletes only) → before-interceptors (`Default`, then
       `Finalize`) → WITH CHECK → store or delete with the expected change vector → **one commit owned by `DatabaseAccess`** →
-      after-hooks (each isolated; replication is one of them, D33e) → durable enqueue (M7b).
+      after-interceptors (each isolated; replication is one of them, D33e) → durable enqueue (M7b).
       `ISparkWriteBatch.IsDeferring`, `AnnounceBeforeSaveBypass`, the `savedEarly` warning, the Mark/Consume handshake and
       `InvokeBeforeDeleteHookAsync` are removed.
-- [x] Hook interfaces in Abstractions:
+- [x] Interceptor interfaces in Abstractions:
       - `IBeforeSave`, `IAfterSave`, `IBeforeDelete`, `IAfterDelete`, `IAfterMaterialize`, `IAfterLoad`, `INaturalIdCollision`;
       - typed `IXxx<T>` sugar;
       - `IDeleteReplacement`;
-      - `HookStage { Default, Finalize }`.
+      - `InterceptorStage { Default, Finalize }`.
 
-      `IPersistentObjectInterceptor` is deleted. `spark.AddHook<T>()` registers a hook, and a `HookRegistrationGenerator`
-      emits `AddHooks`, which `AddSparkFull` calls.
-- [x] `SparkCancelException`: write nothing, evict, no after-hooks. Answers: delete/delete-many 204, update 200 (as stored),
-      create 204. One cancel cancels a whole bulk delete. A `Retry.Action` from a hook during a bulk delete is refused.
+      `IPersistentObjectInterceptor` is deleted. `spark.AddInterceptor<T>()` registers an interceptor, and a `InterceptorRegistrationGenerator`
+      emits `AddInterceptors`, which `AddSparkFull` calls.
+- [x] `SparkCancelException`: write nothing, evict, no after-interceptors. Answers: delete/delete-many 204, update 200 (as stored),
+      create 204. One cancel cancels a whole bulk delete. A `Retry.Action` from an interceptor during a bulk delete is refused.
 - [x] The Actions class loses `OnSaveAsync`, `OnDeleteAsync`, `OnBeforeSaveAsync`, `OnAfterSaveAsync` and `OnBeforeDeleteAsync`;
       `IPersistentObjectActions<T>` loses them too. `MapAsync(obj, existing?)` is new.
-- [x] Migrate SoftDelete, History, Moderation, Contributions, Replication (`ReplicationHook`, an after-hook reading `IsReplaced`; D33e), the QnA
+- [x] Migrate SoftDelete, History, Moderation, Contributions, Replication (`ReplicationInterceptor`, an after-interceptor reading `IsReplaced`; D33e), the QnA
       interceptors, and every app override (CodeCoverage ApiToken/GitHubProject/Repository, DemoApp Person/Company,
       Fleet Car (prompt in `IBeforeDelete<Car>`, cancel by throwing; toast in `IAfterSave<Car>`), QnA Question, OIDC).
       ApiToken's shown-once secret stays a **sync** `IAfterSave` and must never be durable.
-- [x] D32: no `StoreAsync` seam; nested value objects are written only with their parent. Replication becomes hooks. Load/query hooks stay out of scope.
+- [x] D32: no `StoreAsync` seam; nested value objects are written only with their parent. Replication becomes interceptors. Load/query interceptors stay out of scope.
 - [x] D32(2) spike, then the guard: does RavenDB raise `OnBeforeDelete` for `session.Delete(id)` on an untracked document? Then a document-store listener refuses a raw hard delete of an `ISoftDeletable` document that the persister did not issue, unless inside `SparkRawWrites.Allow()`. Test: raw delete refused, purge allowed, opt-out allowed.
 - [x] Tests: existing ordering tests (`InterceptorOrderTests` → stages/replacement), S4 (an override cannot defeat a replacement:
       now structural), F6 (refusal evicts side documents), F7/D14 (expected change vector), `RetryFromEveryHookTests`,
-      isolated after-hooks, cancel, generator snapshot tests. Docs: `guide-row-security`, the SoftDelete README,
-      `guide-manager-retry-actions`, the Spark README/AGENTS.md, and a new hooks guide.
+      isolated after-interceptors, cancel, generator snapshot tests. Docs: `guide-row-security`, the SoftDelete README,
+      `guide-manager-retry-actions`, the Spark README/AGENTS.md, and a new interceptors guide.
 
-### M7b — Durable after-commit hooks (D17), per S6/S13 (D34)
+### M7b — Durable after-commit interceptors (D17), per S6/S13 (D34)
 - [x] `IAfterSaveCommitted` / `IAfterDeleteCommitted` (typed `<T>` forms) take a `SparkCommittedChange`, never the live entity:
       entity type name, id, operation, `IsNew`/`IsReplaced`/`IsPurge`, actor id + system flag, time, previous change vector,
-      and `Facts` that before-hooks fill (`SparkHookContext.Facts`; `SparkFacts.Reason`, `SparkFacts.ChangedAttributes`).
+      and `Facts` that before-interceptors fill (`SparkInterceptorContext.Facts`; `SparkFacts.Reason`, `SparkFacts.ChangedAttributes`).
 - [x] Messaging: `IMessageOutbox.EnqueueAsync(IAsyncDocumentSession, msg, options)`, store only, fresh id, a deduplication key
       refused. `ISparkAfterCommitOutbox` (the seam) and `ISparkAfterCommitDispatcher` in Abstractions. The persister enqueues one
-      `SparkAfterCommitWork` per row and hook after the last before-hook, in the data change's own `SaveChanges`; a refusal
+      `SparkAfterCommitWork` per row and interceptor after the last before-interceptor, in the data change's own `SaveChanges`; a refusal
       evicts it with everything else (F6). The recipient (`IRecipient<SparkAfterCommitWork>`, registered by `AddMessaging`)
-      calls the framework's dispatcher, which resolves the hook by name among registered hooks and the model's Actions classes;
-      a missing hook is a `NonRetryableException`. #369 retries and dead-lettering apply.
-- [x] **Decided (owner, 2026-10-03):** a durable hook registered without Messaging is a **startup error** (`UseSpark`); an
+      calls the framework's dispatcher, which resolves the interceptor by name among registered interceptors and the model's Actions classes;
+      a missing interceptor is a `NonRetryableException`. #369 retries and dead-lettering apply.
+- [x] **Decided (owner, 2026-10-03):** a durable interceptor registered without Messaging is a **startup error** (`UseSpark`); an
       Actions class implementing one without Messaging fails at its first write. Moderation references Messaging.
 - [x] D32(4): `ISoftDeleteObserver` and `ISparkRevisionObserver` are removed (and `AddSoftDeleteObserver`, `AddRevisionObserver`,
-      `SoftDeleteEvent`, `SparkRevisionEvent`). Their tests move to durable hooks. No new change vector in the payload.
-- [x] Moved to the durable phase: Moderation vote reversal (`ModerationVoteReversal`, decided in the before-delete hook via a fact),
+      `SoftDeleteEvent`, `SparkRevisionEvent`). Their tests move to durable interceptors. No new change vector in the payload.
+- [x] Moved to the durable phase: Moderation vote reversal (`ModerationVoteReversal`, decided in the before-delete interceptor via a fact),
       DemoApp broadcasts (`PersonActions`, `CompanyActions`). This also fixes the side bug: DemoApp
       `PersonActions.OnBeforeDeleteAsync` broadcast before the commit (moved to an in-request `IAfterDelete` in M7; durable now).
-- [x] Tests: `DurableAfterCommitHookTests` (payload and facts, previous change vector, refused / stale / cancelled writes commit
+- [x] Tests: `DurableAfterCommitInterceptorTests` (payload and facts, previous change vector, refused / stale / cancelled writes commit
       no work, a bulk delete refused on a later row takes back the earlier rows' work, startup error), `MessageBusTests`
       (`EnqueueAsync` commits with the caller's save, never before; dedupe refused). `TestAfterCommitOutbox` stores exactly as
       Messaging does and drains through the real dispatcher. SoftDelete, History and Moderation tests drain before asserting.
       Regression guards added after review: a moderator **purge** reverses votes (`ModerationToolsTests`; the first draft
       skipped purges); `ISparkSoftDelete.DeleteAsync`'s reason reaches the payload (`SoftDeleteTests`); an Actions class as its
-      type's durable hook runs without registration, and fails at the write (nothing committed) without Messaging; a
-      server-assigned id is refused; the dispatcher answers false for a removed hook and the recipient dead-letters it
+      type's durable interceptor runs without registration, and fails at the write (nothing committed) without Messaging; a
+      server-assigned id is refused; the dispatcher answers false for a removed interceptor and the recipient dead-letters it
       (`MessageBusTests`); the payload survives Newtonsoft; and `DurableAfterCommitMessagingTests` runs one save end to end
       through the real Messaging (outbox registration, allow-list, recipient, completed message) and checks a refused save
       publishes nothing.
-      Docs: `guide-hooks.md` §5a, the SoftDelete, History, Moderation and Messaging READMEs.
+      Docs: `guide-interceptors.md` §5a, the SoftDelete, History, Moderation and Messaging READMEs.
 
 ### M8 — Demo, E2E, docs
 - [x] DemoApp / Fleet: an editor sees Edit + Delete in the strip; a read-only role sees no checkboxes.
@@ -228,11 +228,15 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
 ### M9 — Full verification and PR
 - [ ] Test call sites made stale by D12 (selections and delete-many without `queryId`): `ExecuteCustomActionTests` (fallback-path unit tests), `DisableActionsTests`, `ModerationToolsTests`, `SoftDeleteTests`, `SubQueryActionsTests`; and fixtures embedding pre-#467 shapes (see M2 note).
 - [ ] Test call sites made stale by D14/D16 (M6): raw posts to `/po/delete`, `/po/delete-many` (`ids` → `items`), `/po/purge` and `/po/update` without an etag — `DenyAllEndpointMirrorTests`, `DisableActionsTests`, `RetryFromEveryHookTests`, `SubQueryActionsTests`, `XsrfSurfaceTests`, `HistoryTests`, `ModerationToolsTests`, `SoftDeleteTests`, E2E `QnAContributionsTests`, `RetryActionDeleteTests`; any HTTP test asserting 404 for an update of a hidden row now gets 409 `deleted` (D30c); natural-id collision tests now get 409 `exists` (D30d). The typed client call sites already compile (they load first: `DeleteAsLoadedAsync` / `AsListedAsync` test helpers).
-- [ ] Expectations changed by M7 (#482, D33): after-hooks run in registration order (not reverse) and are isolated; an Actions class's own hooks run after the registered ones; a `Retry.Action` in a bulk delete refuses the row (`Issue467` S8, `I467PromptActions`); Fleet's plate mismatch is a 400 (E2E `RetryActionDeleteTests`); a raw `session.Delete` of an `ISoftDeletable` in a fixture now needs `SparkRawWrites.Allow()`; tests asserting `OnDeleteCalls` (now: committed hard deletes only).
-- [ ] Expectations changed by M7b (#482, D34): the vote reversal, the SoftDelete/History notifications (now durable hooks) and the DemoApp broadcasts happen after delivery, not in the request — an E2E test asserting a reversal right after a moderator delete must wait for it (QnA runs Messaging); every host registering Moderation needs `AddMessaging()` or `AddTestAfterCommitOutbox()`.
+- [ ] Expectations changed by M7 (#482, D33): after-interceptors run in registration order (not reverse) and are isolated; an Actions class's own interceptors run after the registered ones; a `Retry.Action` in a bulk delete refuses the row (`Issue467` S8, `I467PromptActions`); Fleet's plate mismatch is a 400 (E2E `RetryActionDeleteTests`); a raw `session.Delete` of an `ISoftDeletable` in a fixture now needs `SparkRawWrites.Allow()`; tests asserting `OnDeleteCalls` (now: committed hard deletes only).
+- [ ] Expectations changed by M7b (#482, D34): the vote reversal, the SoftDelete/History notifications (now durable interceptors) and the DemoApp broadcasts happen after delivery, not in the request — an E2E test asserting a reversal right after a moderator delete must wait for it (QnA runs Messaging); every host registering Moderation needs `AddMessaging()` or `AddTestAfterCommitOutbox()`.
 - [ ] S3: measure the D18 refusal message for a 200-row batch (breadcrumbs resolve in one batched call; confirm the cost).
-- [ ] The `Spikes/Issue467` tests are all green and moved; the `Spikes` folder is gone.
-- [ ] Full local sweep (`npm run test:affected`, Developer licence), all five test projects green.
-- [ ] Versions: NuGet minor (11.x), ng-spark minor (22.x), ng-bootstrap 22.21.0. Check the diff — CI
-      publishes on merge.
+- [x] The `Spikes/Issue467` tests moved to `Endpoints/PersistentObject/Selection/` (namespace and seed path follow); the `Spikes` folder is gone. Green: CI decides.
+- [ ] Full sweep. First local run (2026-10-04): 9 source-generator failures, all stale fixtures (`customActions.json`, `culture.json` as an object), fixed in `37f22792`; nx then skipped the other suites. The owner stopped the second local run and asked for the PR, so **CI is the sweep**; fix what it reports, re-running single classes locally.
+- [x] Versions: every `MintPlayer.Spark*` package `11.0.0-preview.93` → `11.0.0-preview.94` (33 csproj; `MintPlayer.Dotnet.SocketExtensions` unchanged);
+      `@mintplayer/ng-spark` 22.26.0 → 22.27.0, `@mintplayer/ng-spark-auth` 22.16.0 → 22.17.0 (its ng-bootstrap peer moved to
+      ^22.21.0); both need `@mintplayer/ng-bootstrap` 22.21.0 (published). Majors unchanged. Release notes aligned.
+- [x] Rename (owner, 2026-10-04; PRD D33(a)): every #482 name says *interceptor* (`ISparkInterceptor`, `InterceptorStage`,
+      `SparkInterceptorContext`, `AddInterceptor<T>()`, `AddInterceptors()`, `SparkInterceptorPipeline`,
+      `InterceptorRegistrationGenerator`, `guide-interceptors.md`).
 - [ ] Update the #467 and #482 descriptions, then open the PR closing #467 and #482.

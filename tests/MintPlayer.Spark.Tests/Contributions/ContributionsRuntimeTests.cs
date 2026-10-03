@@ -73,11 +73,11 @@ public class ContributionsRuntimeTests : SparkTestDriver
             configureSpark: spark =>
             {
                 spark.AddSoftDelete();
-                // Hooks of a phase run in registration order (#482): the probes bracket Contributions' materialize.
-                spark.AddHook<CoProbeBefore>();
+                // Interceptors of a phase run in registration order (#482): the probes bracket Contributions' materialize.
+                spark.AddInterceptor<CoProbeBefore>();
                 spark.AddContributions(typeof(CoSong).Assembly);
-                spark.AddHook<CoProbeAfter>();
-                spark.AddHook<CoRaceInterceptor>();
+                spark.AddInterceptor<CoProbeAfter>();
+                spark.AddInterceptor<CoRaceInterceptor>();
             });
         factories.Add(factory);
         var client = new SparkClient(factory.CreateClient(), ownsClient: true);

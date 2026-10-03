@@ -45,7 +45,7 @@ public static class SparkContributionsExtensions
         builder.Services.TryAddSingleton<ContributionCatalog>();
         builder.Services.TryAddScoped<IContributions, SparkContributions>();
         builder.Services.TryAddScoped<ContributionRequestState>();
-        builder.AddHook<ContributionsInterceptor>();
+        builder.AddInterceptor<ContributionsInterceptor>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ContributionShapeCheck>());
 
         // The generated contribution types' actions, which serve the generated contributions query

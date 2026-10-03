@@ -13,7 +13,7 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Moderation.Services;
 
 /// <summary>
-/// Moderation's hooks on the write pipeline (#482, run by the framework, so nothing can
+/// Moderation's interceptors on the write pipeline (#482, run by the framework, so nothing can
 /// skip them):
 /// <list type="bullet">
 /// <item>a suspended account cannot write anything (immediate, read from the suspension document);</item>

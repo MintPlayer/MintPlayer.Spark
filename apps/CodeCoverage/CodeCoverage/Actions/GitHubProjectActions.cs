@@ -96,7 +96,7 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
     /// Derived here rather than in the entity's constructor or a property setter because the event
     /// type is not known until the client has filled the row in: the mapper materializes a rule
     /// from posted attribute values, so the earliest point at which an id can be correct is after
-    /// mapping and before the write. That is exactly this hook.
+    /// mapping and before the write. That is exactly this interceptor.
     /// </para>
     /// <para>
     /// The duplicate check is part of the same fix, not a separate feature. Deriving the id from

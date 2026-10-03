@@ -172,7 +172,7 @@ public sealed class MoHost : IAsyncDisposable
     public MoClock Clock { get; }
     public IDocumentStore Store => Factory.GetService<IDocumentStore>();
 
-    /// <summary>Runs the durable after-commit hooks of every committed write so far (#482, D17).</summary>
+    /// <summary>Runs the durable after-commit interceptors of every committed write so far (#482, D17).</summary>
     public Task<int> DrainAsync() => Factory.GetService<TestAfterCommitOutbox>().DrainAsync(Factory.GetService<IServiceProvider>());
 
     public static async Task<MoHost> StartAsync(
@@ -194,7 +194,7 @@ public sealed class MoHost : IAsyncDisposable
                 services.AddScoped<MoPostActions>();
                 services.AddSingleton(TestActions.LoaderWithCustom("MoTouch"));
                 services.AddScoped<ICustomActionResolver, MoActionResolver>();
-                // Moderation's vote reversal is a durable after-commit hook (#482, D17); DrainAsync delivers it.
+                // Moderation's vote reversal is a durable after-commit interceptor (#482, D17); DrainAsync delivers it.
                 services.AddTestAfterCommitOutbox();
             },
             configureSpark: spark =>

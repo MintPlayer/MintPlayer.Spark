@@ -13,11 +13,11 @@ using Raven.Client.Documents.Linq;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// #482, D17 — durable after-commit hooks: one unit of work per row and hook, stored in the write's own
+/// #482, D17 — durable after-commit interceptors: one unit of work per row and interceptor, stored in the write's own
 /// commit, delivered later with the payload (never the entity). A refused or cancelled write commits
 /// none. Delivery here is <see cref="TestAfterCommitOutbox"/>, which stores exactly as Messaging does.
 /// </summary>
-public class DurableAfterCommitHookTests : SparkTestDriver
+public class DurableAfterCommitInterceptorTests : SparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46a1c7e0-4600-4600-4600-46a1c7e04682");
 
@@ -38,8 +38,8 @@ public class DurableAfterCommitHookTests : SparkTestDriver
                 services.AddTestAfterCommitOutbox();
             },
             configureSpark: spark => spark
-                .AddHook<FactRecordingHook>()
-                .AddHook<RecordingCommittedHook>());
+                .AddInterceptor<FactRecordingInterceptor>()
+                .AddInterceptor<RecordingCommittedInterceptor>());
     }
 
     public override async Task DisposeAsync()
@@ -62,12 +62,12 @@ public class DurableAfterCommitHookTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_committed_save_runs_its_durable_hook_only_when_delivered_with_the_payload_and_facts()
+    public async Task A_committed_save_runs_its_durable_interceptor_only_when_delivered_with_the_payload_and_facts()
     {
         var saved = await SaveAsync("one");
 
         committed.Changes.Should().BeEmpty("nothing runs in the request");
-        (await DrainAsync()).Should().Be(1, "one row, one durable hook");
+        (await DrainAsync()).Should().Be(1, "one row, one durable interceptor");
 
         var change = committed.Changes.Should().ContainSingle().Which;
         change.Operation.Should().Be(PersistentObjectOperation.New);
@@ -75,7 +75,7 @@ public class DurableAfterCommitHookTests : SparkTestDriver
         change.Id.Should().Be(saved.Id);
         change.EntityType.Should().Be(typeof(InterceptedNote).FullName);
         change.PreviousChangeVector.Should().BeNull("a create has no previous version");
-        change.Facts["Title"].Should().Be("one", "a before-hook's facts travel with the payload");
+        change.Facts["Title"].Should().Be("one", "a before-interceptor's facts travel with the payload");
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class DurableAfterCommitHookTests : SparkTestDriver
         var act = () => SaveAsync("refuse");
         await act.Should().ThrowAsync<SparkValidationException>();
 
-        Outbox.Enqueued.Should().BeEmpty("the hook refused before the framework enqueued");
+        Outbox.Enqueued.Should().BeEmpty("the interceptor refused before the framework enqueued");
         (await DrainAsync()).Should().Be(0);
         committed.Changes.Should().BeEmpty();
     }
@@ -160,7 +160,7 @@ public class DurableAfterCommitHookTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_delete_runs_the_durable_delete_hook_with_the_reason_and_the_previous_version()
+    public async Task A_delete_runs_the_durable_delete_interceptor_with_the_reason_and_the_previous_version()
     {
         var created = await SaveAsync("one");
         await DrainAsync();
@@ -181,7 +181,7 @@ public class DurableAfterCommitHookTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_durable_hook_without_an_outbox_is_a_startup_error()
+    public async Task A_durable_interceptor_without_an_outbox_is_a_startup_error()
     {
         var act = async () =>
         {
@@ -189,17 +189,17 @@ public class DurableAfterCommitHookTests : SparkTestDriver
                 Store,
                 [InterceptedNoteModel.For(NoteTypeId), DurableNoteModel()],
                 configureServices: services => services.AddSingleton(log).AddSingleton(committed),
-                configureSpark: spark => spark.AddHook<RecordingCommittedHook>());
+                configureSpark: spark => spark.AddInterceptor<RecordingCommittedInterceptor>());
             using var _ = bare.CreateScope();
         };
 
         (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("spark.AddMessaging()");
     }
 
-    // ---- an Actions class as its own type's durable hook (DemoApp's Person/Company) ------------------
+    // ---- an Actions class as its own type's durable interceptor (DemoApp's Person/Company) ------------------
 
     [Fact]
-    public async Task An_actions_class_implementing_a_durable_hook_is_run_without_registration()
+    public async Task An_actions_class_implementing_a_durable_interceptor_is_run_without_registration()
     {
         using (var scope = factory.CreateScope())
         {
@@ -213,9 +213,9 @@ public class DurableAfterCommitHookTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task An_actions_class_durable_hook_without_an_outbox_fails_at_the_write_not_silently()
+    public async Task An_actions_class_durable_interceptor_without_an_outbox_fails_at_the_write_not_silently()
     {
-        // The startup check sees registered hooks only; an Actions class is found per type, at the write.
+        // The startup check sees registered interceptors only; an Actions class is found per type, at the write.
         await using var bare = new SparkEndpointFactory<DurableContext>(
             Store,
             [InterceptedNoteModel.For(NoteTypeId), DurableNoteModel()],
@@ -237,7 +237,7 @@ public class DurableAfterCommitHookTests : SparkTestDriver
     public async Task A_server_assigned_id_cannot_carry_durable_work()
     {
         using var scope = factory.CreateScope();
-        var hooks = scope.ServiceProvider.GetRequiredService<ISparkHookPipeline>();
+        var interceptors = scope.ServiceProvider.GetRequiredService<ISparkInterceptorPipeline>();
         var context = new SaveContext
         {
             EntityType = typeof(InterceptedNote),
@@ -247,20 +247,20 @@ public class DurableAfterCommitHookTests : SparkTestDriver
             Session = scope.ServiceProvider.GetRequiredService<Raven.Client.Documents.Session.IAsyncDocumentSession>(),
         };
 
-        var act = () => hooks.EnqueueCommittedAsync(context, "InterceptedNotes|", PersistentObjectOperation.New, isDelete: false, isReplaced: false, previousChangeVector: null);
+        var act = () => interceptors.EnqueueCommittedAsync(context, "InterceptedNotes|", PersistentObjectOperation.New, isDelete: false, isReplaced: false, previousChangeVector: null);
 
         (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("server-assigned");
         Outbox.Enqueued.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task The_dispatcher_answers_false_for_a_hook_the_app_no_longer_has()
+    public async Task The_dispatcher_answers_false_for_an_interceptor_the_app_no_longer_has()
     {
         using var scope = factory.CreateScope();
         var dispatcher = scope.ServiceProvider.GetRequiredService<ISparkAfterCommitDispatcher>();
         var work = new SparkAfterCommitWork
         {
-            HookType = "Removed.Since.TheWrite",
+            InterceptorType = "Removed.Since.TheWrite",
             IsDelete = false,
             Change = new SparkCommittedChange
             {
@@ -272,7 +272,7 @@ public class DurableAfterCommitHookTests : SparkTestDriver
         };
 
         (await dispatcher.DispatchAsync(work, CancellationToken.None)).Should().BeFalse(
-            "neither a registered hook nor the model type's Actions class has that name");
+            "neither a registered interceptor nor the model type's Actions class has that name");
     }
 
     internal static readonly Guid DurableNoteTypeId = Guid.Parse("46a1c7e0-4600-4600-4600-46a1c7e04683");
@@ -301,7 +301,7 @@ public class DurableNote
     public string Title { get; set; } = string.Empty;
 }
 
-/// <summary>An Actions class that is its type's durable hook, the way DemoApp's PersonActions is.</summary>
+/// <summary>An Actions class that is its type's durable interceptor, the way DemoApp's PersonActions is.</summary>
 public class DurableNoteActions(IEntityMapper entityMapper, CommittedLog log)
     : DefaultPersistentObjectActions<DurableNote>(entityMapper), IBeforeSave<DurableNote>, IAfterSaveCommitted<DurableNote>
 {
@@ -323,8 +323,8 @@ public sealed class CommittedLog
     public List<SparkCommittedChange> Changes { get; } = [];
 }
 
-/// <summary>Records a fact for the durable hook, refuses a save titled "refuse" and a delete of a row titled "keep".</summary>
-public sealed class FactRecordingHook : IBeforeSave<InterceptedNote>, IBeforeDelete<InterceptedNote>
+/// <summary>Records a fact for the durable interceptor, refuses a save titled "refuse" and a delete of a row titled "keep".</summary>
+public sealed class FactRecordingInterceptor : IBeforeSave<InterceptedNote>, IBeforeDelete<InterceptedNote>
 {
     public ValueTask OnBeforeDeleteAsync(InterceptedNote entity, DeleteContext context)
         => entity.Title == "keep" ? throw new SparkValidationException("kept") : ValueTask.CompletedTask;
@@ -338,7 +338,7 @@ public sealed class FactRecordingHook : IBeforeSave<InterceptedNote>, IBeforeDel
     }
 }
 
-public sealed class RecordingCommittedHook(CommittedLog log) : IAfterSaveCommitted<InterceptedNote>, IAfterDeleteCommitted<InterceptedNote>
+public sealed class RecordingCommittedInterceptor(CommittedLog log) : IAfterSaveCommitted<InterceptedNote>, IAfterDeleteCommitted<InterceptedNote>
 {
     public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
     {

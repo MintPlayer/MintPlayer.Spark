@@ -6,7 +6,7 @@ using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
-namespace MintPlayer.Spark.IdentityProvider.Hooks;
+namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 
 /// <summary>
 /// Validation for the OIDC client admin screen.
@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.IdentityProvider.Hooks;
 /// the answer.
 /// </para>
 /// </summary>
-public sealed partial class OidcApplicationHooks : IBeforeSave<OidcApplication>, IAfterSave<OidcApplication>
+public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplication>, IAfterSave<OidcApplication>
 {
     private static readonly string[] SupportedGrantTypes =
         ["authorization_code", "refresh_token", "client_credentials"];
@@ -46,7 +46,7 @@ public sealed partial class OidcApplicationHooks : IBeforeSave<OidcApplication>,
         // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused with
         // a 400 while staying stored. A pre-commit read still races two concurrent saves — both find
         // nothing and both proceed; true uniqueness needs a compare-exchange reservation.
-        // Not a session only when the hook is called by hand (unit tests of the rules above).
+        // Not a session only when the interceptor is called by hand (unit tests of the rules above).
         if (context.Session is IAsyncDocumentSession session)
             await EnsureClientIdUniqueAsync(session, entity);
     }

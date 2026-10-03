@@ -61,7 +61,7 @@ public class MaterializeInterceptorTests : SparkTestDriver
             configureSpark: spark =>
             {
                 spark.AddHistory();
-                spark.AddHook<MzHydratingInterceptor>();
+                spark.AddInterceptor<MzHydratingInterceptor>();
             },
             security: security ?? SparkTestSecurity.Permissive);
         factories.Add(factory);

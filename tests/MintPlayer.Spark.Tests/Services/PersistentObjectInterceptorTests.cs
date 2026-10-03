@@ -10,9 +10,9 @@ using Raven.Client.Documents.Linq;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// #460 item 1 and #482 — persistence hooks (formerly interceptors) run by <c>DatabaseAccess</c>,
+/// #460 item 1 and #482 — persistence interceptors run by <c>DatabaseAccess</c>,
 /// including spike S4: a delete replacement nothing can defeat (now structural: the Actions class has
-/// no delete method), surfaced to every after-delete hook so replication forwards a save rather than a
+/// no delete method), surfaced to every after-delete interceptor so replication forwards a save rather than a
 /// hard delete.
 /// </summary>
 public class PersistentObjectInterceptorTests : SparkTestDriver
@@ -35,10 +35,10 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
                 services.AddSingleton(sync);
             },
             configureSpark: spark => spark
-                .AddHook<ReplacingDeleteInterceptor>()
-                .AddHook<StampingInterceptor>()
-                .AddHook<StampingInterceptor>()     // twice: a no-op
-                .AddHook<RecordingReplicationHook>());
+                .AddInterceptor<ReplacingDeleteInterceptor>()
+                .AddInterceptor<StampingInterceptor>()
+                .AddInterceptor<StampingInterceptor>()     // twice: a no-op
+                .AddInterceptor<RecordingReplicationInterceptor>());
     }
 
     public override async Task DisposeAsync()
@@ -101,7 +101,7 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Save_hooks_run_in_registration_order_with_the_actions_hook_last()
+    public async Task Save_interceptors_run_in_registration_order_with_the_actions_interceptor_last()
     {
         using (var scope = factory.CreateScope())
         {
@@ -121,11 +121,11 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
 
         using var verify = Store.OpenAsyncSession();
         var stored = await verify.Query<InterceptedNote>().Customize(c => c.WaitForNonStaleResults()).SingleAsync();
-        stored.Stamp.Should().Be("stamped", "a before-save hook's mutation is what gets written");
+        stored.Stamp.Should().Be("stamped", "a before-save interceptor's mutation is what gets written");
     }
 
     [Fact]
-    public async Task A_failing_after_hook_neither_fails_the_committed_save_nor_skips_the_others()
+    public async Task A_failing_after_interceptor_neither_fails_the_committed_save_nor_skips_the_others()
     {
         log.FailAfterSave = true;
         using (var scope = factory.CreateScope())
@@ -137,13 +137,13 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
             saved.Id.Should().NotBeNullOrEmpty();
         }
 
-        log.Entries.Should().Contain("stamp.OnAfterSaveAsync", "the hook after the failing one still ran");
+        log.Entries.Should().Contain("stamp.OnAfterSaveAsync", "the interceptor after the failing one still ran");
         using var verify = Store.OpenAsyncSession();
         (await verify.Query<InterceptedNote>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(1);
     }
 
     [Fact]
-    public async Task A_cancel_writes_nothing_and_runs_no_after_hook()
+    public async Task A_cancel_writes_nothing_and_runs_no_after_interceptor()
     {
         await SeedAsync();
         log.CancelDelete = true;
@@ -164,7 +164,7 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task After_load_hooks_can_decorate_the_loaded_object()
+    public async Task After_load_interceptors_can_decorate_the_loaded_object()
     {
         await SeedAsync();
         using var scope = factory.CreateScope();
@@ -185,7 +185,7 @@ public class InterceptedNote
     public string? Stamp { get; set; }
 }
 
-/// <summary>An Actions class that is also its type's hook — run without registration, after the registered hooks.</summary>
+/// <summary>An Actions class that is also its type's interceptor — run without registration, after the registered interceptors.</summary>
 public class InterceptedNoteActions : DefaultPersistentObjectActions<InterceptedNote>,
     IBeforeSave<InterceptedNote>, IBeforeDelete<InterceptedNote>
 {
@@ -236,7 +236,7 @@ public sealed class ReplacingDeleteInterceptor(InterceptionLog log) : IDeleteRep
     {
         log.Entries.Add("replace.OnAfterSaveAsync");
         if (log.FailAfterSave)
-            throw new InvalidOperationException("after-hook failure");
+            throw new InvalidOperationException("after-interceptor failure");
         return ValueTask.CompletedTask;
     }
 
@@ -295,8 +295,8 @@ public sealed class ReplicationLog
     public List<string> Deletes { get; } = [];
 }
 
-/// <summary>What the Replication package's hook forwards, recorded: a replaced delete as a save.</summary>
-public sealed class RecordingReplicationHook(ReplicationLog sync) : IAfterSave, IAfterDelete
+/// <summary>What the Replication package's interceptor forwards, recorded: a replaced delete as a save.</summary>
+public sealed class RecordingReplicationInterceptor(ReplicationLog sync) : IAfterSave, IAfterDelete
 {
     public bool AppliesTo(Type entityType) => entityType == typeof(InterceptedNote);
 

@@ -63,7 +63,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
             {
                 spark.AddSoftDelete();
                 spark.AddHistory(history);
-                spark.AddHook<HiObserver>();
+                spark.AddInterceptor<HiObserver>();
                 spark.AddHistoryUserNameResolver<HiNames>();
             },
             security: security ?? SparkTestSecurity.Permissive);
@@ -409,10 +409,10 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         revisionWithoutRight.Should().Be(HttpStatusCode.NotFound);
     }
 
-    // ---- durable after-commit hooks (formerly revision observers; #482, D32(4)) -------------------------
+    // ---- durable after-commit interceptors (formerly revision observers; #482, D32(4)) -------------------------
 
     [Fact]
-    public async Task Durable_hooks_hear_every_write_with_its_kind_changed_attributes_and_previous_change_vector()
+    public async Task Durable_interceptors_hear_every_write_with_its_kind_changed_attributes_and_previous_change_vector()
     {
         var host = await StartAsync();
         var (_, created) = await host.SendAsync("/spark/po/create", CreateBody(("Title", "one")));
@@ -570,7 +570,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
     {
         public HiRecorder Recorder => Factory.GetService<HiRecorder>();
 
-        /// <summary>Runs the durable after-commit hooks of every committed write so far (#482, D17).</summary>
+        /// <summary>Runs the durable after-commit interceptors of every committed write so far (#482, D17).</summary>
         public Task<int> DrainAsync() => Factory.GetService<TestAfterCommitOutbox>().DrainAsync(Factory.GetService<IServiceProvider>());
 
         public async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload)
@@ -622,7 +622,7 @@ public sealed class HiRecorder
     public ConcurrentQueue<SparkCommittedChange> Events { get; } = new();
 }
 
-/// <summary>What replaced <c>ISparkRevisionObserver</c> (#482, D32(4)): durable after-commit hooks.</summary>
+/// <summary>What replaced <c>ISparkRevisionObserver</c> (#482, D32(4)): durable after-commit interceptors.</summary>
 public sealed class HiObserver(HiRecorder recorder) : IAfterSaveCommitted<HiNote>, IAfterDeleteCommitted<HiNote>
 {
     public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)

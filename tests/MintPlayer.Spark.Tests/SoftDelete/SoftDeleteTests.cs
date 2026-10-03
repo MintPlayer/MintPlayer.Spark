@@ -58,14 +58,14 @@ public class SoftDeleteTests : SparkTestDriver
                 s.AddSingleton<SdRecorder>();
                 s.AddScoped<SdNoteActions>();
                 s.AddTestAfterCommitOutbox();
-                s.AddSparkHook<SdObserver>();
+                s.AddSparkInterceptor<SdObserver>();
                 services?.Invoke(s);
             },
             configureSpark: spark =>
             {
                 spark.AddSoftDelete();
                 // Registered after SoftDelete, so it refuses AFTER the soft-delete mark was set.
-                spark.Services.AddSparkHook<SdVetoInterceptor>();
+                spark.Services.AddSparkInterceptor<SdVetoInterceptor>();
             },
             security: security ?? SparkTestSecurity.Permissive);
         factories.Add(factory);
@@ -216,7 +216,7 @@ public class SoftDeleteTests : SparkTestDriver
 
         (await LoadAsync<SdNote>(note.Id!))!.DeleteReason.Should().Be("spam");
 
-        // The durable hooks see the reason too (#482, D34b): SoftDelete records it as a fact, since the
+        // The durable interceptors see the reason too (#482, D34b): SoftDelete records it as a fact, since the
         // framework only knows a reason the caller passed to a bulk delete.
         await host.DrainAsync();
         host.Recorder.Reasons.Should().Equal("spam");
@@ -834,7 +834,7 @@ public class SoftDeleteTests : SparkTestDriver
     {
         public SdRecorder Recorder => Factory.GetService<SdRecorder>();
 
-        /// <summary>Runs the durable after-commit hooks of every committed write so far (#482, D17).</summary>
+        /// <summary>Runs the durable after-commit interceptors of every committed write so far (#482, D17).</summary>
         public Task<int> DrainAsync() => Factory.GetService<TestAfterCommitOutbox>().DrainAsync(Factory.GetService<IServiceProvider>());
 
         public async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload)
@@ -990,7 +990,7 @@ internal sealed class SdActionResolver(string name, ICustomAction action) : ICus
     public IReadOnlyList<string> GetRegisteredActionNames() => [name];
 }
 
-/// <summary>What replaced <c>ISoftDeleteObserver</c> (#482, D32(4)): durable after-commit hooks.</summary>
+/// <summary>What replaced <c>ISoftDeleteObserver</c> (#482, D32(4)): durable after-commit interceptors.</summary>
 public sealed class SdObserver(SdRecorder recorder) : IAfterDeleteCommitted<SdNote>, IAfterSaveCommitted<SdNote>
 {
     public Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)

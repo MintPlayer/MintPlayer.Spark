@@ -33,7 +33,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISp
         entity.FirstName = entity.FirstName?.Trim() ?? string.Empty;
         entity.LastName = entity.LastName?.Trim() ?? string.Empty;
 
-        // The durable hook below gets a payload, not the entity: what it announces is recorded here.
+        // The durable interceptor below gets a payload, not the entity: what it announces is recorded here.
         context.Facts[NameFact] = $"{entity.FirstName} {entity.LastName}";
         return ValueTask.CompletedTask;
     }

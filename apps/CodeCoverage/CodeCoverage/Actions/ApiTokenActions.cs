@@ -135,7 +135,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// plain save of client-supplied fields.
     /// <para>
     /// Ownership is stamped here rather than trusted from the payload. WITH CHECK
-    /// runs immediately after this hook and re-applies the row filter to the result, so a create
+    /// runs immediately after this interceptor and re-applies the row filter to the result, so a create
     /// must produce a row its own caller could see — stamping a login the caller does not manage is
     /// refused rather than saved.
     /// </para>

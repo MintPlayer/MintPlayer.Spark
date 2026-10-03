@@ -14,18 +14,18 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.SoftDelete;
 
 /// <summary>
-/// The SoftDelete hooks (#482; "interceptor" is the older name): turns a delete of an
+/// The SoftDelete interceptors (#482; "interceptor" is the older name): turns a delete of an
 /// <see cref="ISoftDeletable"/> into setting its fields, owns those fields on every other write,
 /// refuses references to deleted rows, and finishes a purge by deleting the row's revisions.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The replacement is an <see cref="IDeleteReplacement"/>, decided by the framework before any
-/// before-delete hook runs, so nothing — no Actions class, no other hook — can turn it back into a
+/// before-delete interceptor runs, so nothing — no Actions class, no other interceptor — can turn it back into a
 /// hard delete; only a purge deletes.
 /// </para>
 /// <para>
-/// A <c>Sync</c> (a write replicated from the owner module) never reaches these hooks: the owner
+/// A <c>Sync</c> (a write replicated from the owner module) never reaches these interceptors: the owner
 /// already decided, and its soft delete arrives here as a save.
 /// </para>
 /// </remarks>
@@ -51,13 +51,13 @@ internal sealed partial class SoftDeleteInterceptor
         if (context.Operation != PersistentObjectOperation.Delete || context.Entity is not ISoftDeletable entity)
             return ValueTask.FromResult(false);
 
-        // Marked on the request session's tracked entity; if a hook refuses the delete, the framework
+        // Marked on the request session's tracked entity; if an interceptor refuses the delete, the framework
         // evicts the entity, so the mark is never written by a later save (M7 fix).
         entity.IsDeleted = true;
         entity.DeletedAt = Now;
         entity.DeletedBy = currentUser.Id;
         entity.DeleteReason = context.Reason ?? state.PendingReason;
-        // For the durable after-commit hooks, which see a payload, not the entity.
+        // For the durable after-commit interceptors, which see a payload, not the entity.
         if (entity.DeleteReason is { } reason)
             context.Facts[SparkFacts.Reason] = reason;
         return ValueTask.FromResult(true);

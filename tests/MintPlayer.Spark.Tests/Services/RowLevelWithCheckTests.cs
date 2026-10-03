@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// checked edits only against the <b>pre</b>-update state — nothing stopped an authenticated
 /// caller creating a document stamped with someone else's owner, or editing a row <em>into</em>
 /// someone else's scope. The rule is now judged against the entity's resulting state, after
-/// mapping and the before-save hooks (so ownership stamping has happened), by the framework write (#482). The system context
+/// mapping and the before-save interceptors (so ownership stamping has happened), by the framework write (#482). The system context
 /// (module sync, background work) is exempt — row rules scope viewers, and infrastructure has
 /// none (D3).
 /// </para>
@@ -117,7 +117,7 @@ public class RowLevelWithCheckTests : SparkTestDriver
         saved.Id.Should().NotBeNullOrEmpty();
         using var verify = Store.OpenAsyncSession();
         (await verify.LoadAsync<WcNote>(saved.Id)).Owner.Should().Be("alice",
-            "the check runs after the before-save hooks, so the stamped result is what gets judged");
+            "the check runs after the before-save interceptors, so the stamped result is what gets judged");
     }
 
     [Fact]
@@ -177,7 +177,7 @@ public class RowLevelWithCheckTests : SparkTestDriver
 
     private static readonly Guid WcNoteTypeId = Guid.Parse("d8d8d8d8-8888-8888-8888-d8d8d8d8d8d9");
 
-    /// <summary>A host whose WcNote rows belong to alice, stamped by the type's own before-save hook.</summary>
+    /// <summary>A host whose WcNote rows belong to alice, stamped by the type's own before-save interceptor.</summary>
     private SparkEndpointFactory<WcContext> Host() => new(Store, [new EntityTypeFile
     {
         PersistentObject = new EntityTypeDefinition
@@ -229,7 +229,7 @@ public class WcNote
     public string Owner { get; set; } = string.Empty;
 }
 
-/// <summary>Rows belong to alice; the type's own hook stamps her on a create that names no owner (the Fleet pattern).</summary>
+/// <summary>Rows belong to alice; the type's own interceptor stamps her on a create that names no owner (the Fleet pattern).</summary>
 public class WcNoteActions(IEntityMapper entityMapper) : DefaultPersistentObjectActions<WcNote>(entityMapper), IBeforeSave<WcNote>
 {
     public override Task<System.Linq.Expressions.Expression<Func<WcNote, bool>>?> GetRowFilterAsync(string action)

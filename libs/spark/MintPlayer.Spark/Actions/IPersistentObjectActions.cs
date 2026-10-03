@@ -34,10 +34,10 @@ public interface IPersistentObjectActions<T> where T : class
     /// </summary>
     /// <remarks>
     /// The only save seam on an Actions class (#482). The framework loads, calls this, runs the
-    /// before-save hooks (<c>IBeforeSave</c>), checks the row (WITH CHECK), writes with the expected
+    /// before-save interceptors (<c>IBeforeSave</c>), checks the row (WITH CHECK), writes with the expected
     /// change vector and commits; none of that can be skipped here. Validation, defaults, prompts and
-    /// follow-ups belong in hooks — <c>IBeforeSave&lt;T&gt;</c>, <c>IAfterSave&lt;T&gt;</c>,
-    /// <c>IBeforeDelete&lt;T&gt;</c>, <c>IAfterDelete&lt;T&gt;</c> — registered with <c>spark.AddHook</c>.
+    /// follow-ups belong in interceptors — <c>IBeforeSave&lt;T&gt;</c>, <c>IAfterSave&lt;T&gt;</c>,
+    /// <c>IBeforeDelete&lt;T&gt;</c>, <c>IAfterDelete&lt;T&gt;</c> — registered with <c>spark.AddInterceptor</c>.
     /// </remarks>
     /// <param name="obj">The posted object, minus every attribute the caller may not write.</param>
     /// <param name="existing">The stored entity for an edit; null for a creation.</param>
@@ -96,7 +96,7 @@ public interface IPersistentObjectActions<T> where T : class
     /// <para>
     /// ⚠️ <b>Removal is not deletion.</b> Nothing is written here either. The row leaves the
     /// database only when the parent is saved, so a hook that needs to record something records it
-    /// from a before-save hook (<c>IBeforeSave</c>) of the parent.
+    /// from a before-save interceptor (<c>IBeforeSave</c>) of the parent.
     /// </para>
     /// <para>
     /// ⚠️ <b>A refusal here is an affordance, not enforcement.</b> It stops a cooperating client; it
@@ -109,7 +109,7 @@ public interface IPersistentObjectActions<T> where T : class
     /// A default implementation, for the same reason as <see cref="OnNewAsync"/>.
     /// <para>
     /// Named <c>OnDeleteRowAsync</c>, not <c>OnDeleteAsync</c>, deliberately: a row removal is not a
-    /// document delete. Deleting documents is the framework's (#482); a hook for it is an
+    /// document delete. Deleting documents is the framework's (#482); an interceptor for it is an
     /// <c>IBeforeDelete</c>/<c>IAfterDelete</c>, which a removed AsDetail row never reaches.
     /// </para>
     /// </remarks>

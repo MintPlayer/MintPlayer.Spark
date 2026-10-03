@@ -13,11 +13,11 @@ namespace MintPlayer.Spark.History;
 /// <summary>
 /// Stamps <see cref="IAuditable"/> entities, makes a revert exact, and records which attributes a
 /// write to a type with revisions changed (<see cref="SparkFacts.ChangedAttributes"/>), for the
-/// durable after-commit hooks.
+/// durable after-commit interceptors.
 /// </summary>
 /// <remarks>
-/// Persistence hooks (#482; "interceptor" is the older name), run by the framework on every write. The
-/// before-save hook runs in <see cref="HookStage.Finalize"/>, after every hook that trims or stamps
+/// Persistence interceptors (#482; "interceptor" is the older name), run by the framework on every write. The
+/// before-save interceptor runs in <see cref="InterceptorStage.Finalize"/>, after every interceptor that trims or stamps
 /// fields, so "did this edit change anything?" judges the entity as it will be written. It also runs
 /// for a module sync, to observe it; it stamps nothing there.
 /// </remarks>
@@ -34,8 +34,8 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
     /// <summary>A module sync is observed (its changed attributes are recorded); it is not stamped.</summary>
     public bool HandlesSync => true;
 
-    /// <summary>After every hook that changes fields, so the no-change check sees the final entity.</summary>
-    HookStage IBeforeSave.Stage => HookStage.Finalize;
+    /// <summary>After every interceptor that changes fields, so the no-change check sees the final entity.</summary>
+    InterceptorStage IBeforeSave.Stage => InterceptorStage.Finalize;
 
     public bool AppliesTo(Type entityType)
         => typeof(IAuditable).IsAssignableFrom(entityType) || RevisionsEnabled(entityType);
@@ -44,7 +44,7 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
     {
         Stamp(context);
 
-        // For the durable after-commit hooks (#482, D17), which get a payload, not the entity. Last, so
+        // For the durable after-commit interceptors (#482, D17), which get a payload, not the entity. Last, so
         // the stamp counts; only for a type that keeps revisions, as the revision observer it replaces.
         if (RevisionsEnabled(context.EntityType))
             context.Facts[SparkFacts.ChangedAttributes] = string.Join(',', ChangedAttributes(context.EntityType, context.Before, context.Entity));

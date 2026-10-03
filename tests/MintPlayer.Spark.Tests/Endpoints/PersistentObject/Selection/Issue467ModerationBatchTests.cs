@@ -2,7 +2,7 @@ using System.Net;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests.Moderation;
 
-namespace MintPlayer.Spark.Tests.Spikes.Issue467;
+namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 
 /// <summary>
 /// #467 spike S8 — a Moderation-locked row inside a delete-many batch (PRD D18): the response, that

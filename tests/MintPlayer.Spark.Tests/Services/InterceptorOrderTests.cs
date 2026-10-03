@@ -8,15 +8,15 @@ namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
 /// #482 replaced the numeric interceptor order (contributions F5) with two structural rules: a
-/// <see cref="HookStage.Finalize"/> before-hook runs after every <see cref="HookStage.Default"/> one,
-/// and at most one <see cref="IDeleteReplacement"/> decides a type's deletes. Within a stage, hooks
+/// <see cref="InterceptorStage.Finalize"/> before-interceptor runs after every <see cref="InterceptorStage.Default"/> one,
+/// and at most one <see cref="IDeleteReplacement"/> decides a type's deletes. Within a stage, interceptors
 /// keep registration order (not a contract).
 /// </summary>
-public class HookOrderTests(SparkSharedDatabase database)
+public class InterceptorOrderTests(SparkSharedDatabase database)
     : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     [Fact]
-    public async Task Finalize_hooks_run_after_every_default_hook_whatever_the_registration_order()
+    public async Task Finalize_interceptors_run_after_every_default_interceptor_whatever_the_registration_order()
     {
         await using var factory = new SparkEndpointFactory<InterceptedContext>(
             Store,
@@ -24,12 +24,12 @@ public class HookOrderTests(SparkSharedDatabase database)
             configureServices: services => services.AddSingleton(new InterceptionLog()),
             configureSpark: spark => spark
                 // Deliberately backwards: the finalizer first.
-                .AddHook<OrdFinalize>()
-                .AddHook<OrdDefaultA>()
-                .AddHook<OrdDefaultB>());
+                .AddInterceptor<OrdFinalize>()
+                .AddInterceptor<OrdDefaultA>()
+                .AddInterceptor<OrdDefaultB>());
 
         using var scope = factory.CreateScope();
-        var pipeline = scope.ServiceProvider.GetRequiredService<ISparkHookPipeline>();
+        var pipeline = scope.ServiceProvider.GetRequiredService<ISparkInterceptorPipeline>();
 
         pipeline.For<IBeforeSave>(typeof(InterceptedNote)).Select(h => h.GetType().Name).Should().Equal(
             nameof(OrdDefaultA), nameof(OrdDefaultB), nameof(OrdFinalize));
@@ -42,26 +42,26 @@ public class HookOrderTests(SparkSharedDatabase database)
             Store,
             [InterceptedNoteModel.For(Guid.Parse("0f5e0000-0000-4000-8000-0f5e00000002"))],
             configureServices: services => services.AddSingleton(new InterceptionLog()),
-            configureSpark: spark => spark.AddHook<OrdReplacementA>().AddHook<OrdReplacementB>());
+            configureSpark: spark => spark.AddInterceptor<OrdReplacementA>().AddInterceptor<OrdReplacementB>());
 
         using var scope = factory.CreateScope();
-        var pipeline = scope.ServiceProvider.GetRequiredService<ISparkHookPipeline>();
+        var pipeline = scope.ServiceProvider.GetRequiredService<ISparkInterceptorPipeline>();
 
         var act = () => pipeline.For<IDeleteReplacement>(typeof(InterceptedNote));
         act.Should().Throw<InvalidOperationException>().WithMessage("*More than one IDeleteReplacement*");
     }
 
-    /// <summary>History's "did this edit change anything?" must judge the entity after every hook that stamps or trims it.</summary>
+    /// <summary>History's "did this edit change anything?" must judge the entity after every interceptor that stamps or trims it.</summary>
     [Fact]
     public void History_stamps_in_the_finalize_stage()
     {
         var type = Type.GetType("MintPlayer.Spark.History.HistoryInterceptor, MintPlayer.Spark.History", throwOnError: true)!;
         var instance = (IBeforeSave)RuntimeHelpers.GetUninitializedObject(type);
 
-        instance.Stage.Should().Be(HookStage.Finalize);
+        instance.Stage.Should().Be(InterceptorStage.Finalize);
     }
 
-    /// <summary>SoftDelete decides the replacement, so every before-delete hook sees it final (contributions keep a soft-deleted row's rows).</summary>
+    /// <summary>SoftDelete decides the replacement, so every before-delete interceptor sees it final (contributions keep a soft-deleted row's rows).</summary>
     [Fact]
     public void SoftDelete_is_the_delete_replacement()
     {
@@ -77,7 +77,7 @@ public abstract class OrdBase : IBeforeSave
     public ValueTask OnBeforeSaveAsync(SaveContext context) => ValueTask.CompletedTask;
 }
 
-public sealed class OrdFinalize : OrdBase, IBeforeSave { public HookStage Stage => HookStage.Finalize; }
+public sealed class OrdFinalize : OrdBase, IBeforeSave { public InterceptorStage Stage => InterceptorStage.Finalize; }
 public sealed class OrdDefaultA : OrdBase;
 public sealed class OrdDefaultB : OrdBase;
 

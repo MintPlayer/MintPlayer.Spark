@@ -5,7 +5,7 @@ using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Linq;
 using Xunit.Abstractions;
 
-namespace MintPlayer.Spark.Tests.Spikes.Issue467;
+namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 
 /// <summary>
 /// #467 spike S5 — (a) the stale-grid hard-delete race (PRD D14) and (b) which change vector RavenDB

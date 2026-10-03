@@ -35,7 +35,7 @@ public static class SparkSoftDeleteExtensions
         });
 
         builder.Services.AddSparkRowPolicy<SoftDeleteRowPolicy>();
-        builder.Services.AddSparkHook<SoftDeleteInterceptor>();
+        builder.Services.AddSparkInterceptor<SoftDeleteInterceptor>();
         builder.Services.TryAddScoped<SoftDeleteRequestState>();
         builder.Services.TryAddScoped<ISparkSoftDelete, SparkSoftDelete>();
         builder.Services.TryAddSingleton<ISoftDeleteRevisions, RavenSoftDeleteRevisions>();

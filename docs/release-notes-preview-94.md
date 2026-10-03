@@ -1,21 +1,21 @@
 # Spark 11.0.0-preview.94 — query checkboxes, list Edit/Delete, and framework-owned persistence (#467, #482)
 
 **Packages:** every changed `MintPlayer.Spark*` NuGet package → `11.0.0-preview.94`. npm:
-`@mintplayer/ng-spark` → `22.27.0`, which requires `@mintplayer/ng-bootstrap` `22.21.0`. The majors do
-not move: the packages still target .NET 11 and Angular 22, and breaking changes ship as a minor.
-*(The exact numbers are set when the versions are bumped; check the PR diff.)*
+`@mintplayer/ng-spark` → `22.27.0` and `@mintplayer/ng-spark-auth` → `22.17.0`; both require
+`@mintplayer/ng-bootstrap` `22.21.0`. The majors do not move: the packages still target .NET 11 and
+Angular 22, and breaking changes ship as a minor.
 
 Two themes:
 
 - **A list is a selection surface** (#467). An editor's lists show checkboxes and an action strip
   with the built-in Edit and Delete. Every bulk write re-reads its rows through the query they were
   ticked in, and every update or delete names the version it changes.
-- **The framework owns persistence** (#482). Save and delete hooks are DI-registered per-phase
+- **The framework owns persistence** (#482). Save and delete interceptors are DI-registered per-phase
   interfaces instead of overridable Actions methods, so no override can skip a guarantee. After-commit
   work that must not be lost goes through a Messaging outbox, in the same transaction as the write.
 
 The authoritative record, with every decision and its evidence, is
-`docs/issue_467_query_selection_PRD.md` (§7, D1–D34).
+`docs/issue_467_query_selection_PRD.md` (§7, D1–D35).
 
 ---
 
@@ -92,39 +92,39 @@ See `docs/guide-custom-actions.md`.
 
 See `docs/guide-concurrency.md`.
 
-### 6. Hooks replace interceptors and the Actions save/delete methods (#482, D31–D33)
+### 6. Per-phase interceptors replace `IPersistentObjectInterceptor` and the Actions save/delete methods (#482, D31–D33)
 
 - `IPersistentObjectInterceptor` is deleted. Implement the per-phase interfaces instead:
   `IBeforeSave`, `IAfterSave`, `IBeforeDelete`, `IAfterDelete`, `IAfterMaterialize`, `IAfterLoad`,
   `INaturalIdCollision` (each with a typed `<T>` form), plus `IDeleteReplacement` and
-  `HookStage { Default, Finalize }`. Register with `spark.AddHook<T>()`, or let the hook generator
-  find it (`AddSparkFull` calls `AddHooks`).
+  `InterceptorStage { Default, Finalize }`. Register with `spark.AddInterceptor<T>()`, or let the interceptor
+  generator find it (`AddSparkFull` calls `AddInterceptors`).
 - The Actions class loses `OnSaveAsync`, `OnDeleteAsync`, `OnBeforeSaveAsync`, `OnAfterSaveAsync` and
-  `OnBeforeDeleteAsync`; `MapAsync(obj, existing?)` is new. An Actions class may implement the hook
+  `OnBeforeDeleteAsync`; `MapAsync(obj, existing?)` is new. An Actions class may implement the interceptor
   interfaces for its own type without registering them.
-- The framework owns the single commit: hooks never call `SaveChanges`. WITH CHECK exists only in
+- The framework owns the single commit: interceptors never call `SaveChanges`. WITH CHECK exists only in
   the framework write.
-- After-hooks run in registration order, isolated: a throwing after-hook is logged and never fails a
-  committed change. A hook that wants to cancel throws `SparkCancelException` (delete answers 204,
-  update 200 as stored, create 204); a `Retry.Action` from a hook during a bulk delete refuses its row.
-- App hooks skip `Sync` unless they opt in (`HandlesSync`).
+- After-interceptors run in registration order, isolated: a throwing after-interceptor is logged and never
+  fails a committed change. An interceptor that wants to cancel throws `SparkCancelException` (delete answers 204,
+  update 200 as stored, create 204); a `Retry.Action` from an interceptor during a bulk delete refuses its row.
+- App interceptors skip `Sync` unless they opt in (`HandlesSync`).
 - A raw `session.Delete` of an `ISoftDeletable` document is refused outside `SparkRawWrites.Allow()`.
 
-See `docs/guide-hooks.md`.
+See `docs/guide-interceptors.md`.
 
-### 7. Durable after-commit hooks; observers removed (#482, D17, D34)
+### 7. Durable after-commit interceptors; observers removed (#482, D17, D34)
 
 - New: `IAfterSaveCommitted` / `IAfterDeleteCommitted` (typed forms) receive a
   `SparkCommittedChange` (type, id, operation, user, previous change vector, **facts**) after the
-  commit, delivered by Messaging from an outbox message written in the same transaction. Before-hooks
-  hand details over through `SparkHookContext.Facts`; never put a secret in one.
-- **A durable hook requires `spark.AddMessaging()`**; without it `UseSpark` throws. Tests can use
+  commit, delivered by Messaging from an outbox message written in the same transaction. Before-interceptors
+  hand details over through `SparkInterceptorContext.Facts`; never put a secret in one.
+- **A durable interceptor requires `spark.AddMessaging()`**; without it `UseSpark` throws. Tests can use
   `AddTestAfterCommitOutbox()`.
 - Removed: `ISoftDeleteObserver`, `SoftDeleteEvent`, `AddSoftDeleteObserver`,
-  `ISparkRevisionObserver`, `SparkRevisionEvent`, `AddRevisionObserver`. Implement a durable hook
+  `ISparkRevisionObserver`, `SparkRevisionEvent`, `AddRevisionObserver`. Implement a durable interceptor
   instead; the soft-delete reason is `change.Reason` and History's changed attributes are
   `change.Facts[SparkFacts.ChangedAttributes]`.
-- **Moderation now requires Messaging:** the vote reversal after a moderator delete is a durable hook,
+- **Moderation now requires Messaging:** the vote reversal after a moderator delete is a durable interceptor,
   so it happens on delivery, not in the request.
 - New public API: `IMessageOutbox.EnqueueAsync(session, message, options)` stores a message in the
   caller's session, committed with the caller's `SaveChanges`.
@@ -137,7 +137,7 @@ See `docs/guide-hooks.md`.
   strip; Fleet managers get Edit; Viewers get no checkboxes. Cancel on the "stolen" prompt now cancels
   the save, and a plate mismatch on delete is a 400 (was 500).
 - **DemoApp:** anonymous visitors hold full CRUD and therefore get checkboxes, by design. The Person and
-  Company broadcasts are durable hooks, and a refused delete no longer broadcasts.
+  Company broadcasts are durable interceptors, and a refused delete no longer broadcasts.
 - **CodeCoverage:** `Revoke` moved to the ApiToken card's action strip as a query action on the
   selected tokens (`>0`, with confirmation); every signed-in user gets checkboxes and Edit on the
   public lists, with row security deciding what they may change.

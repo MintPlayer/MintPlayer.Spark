@@ -49,9 +49,9 @@ public static class SparkIdentityProviderExtensions
         });
         builder.Services.AddSingleton<OidcTokenGenerator>();
 
-        // Validation of the OIDC admin screens (#482: hooks, not Actions-class overrides).
-        builder.AddHook<Hooks.OidcApplicationHooks>();
-        builder.AddHook<Hooks.OidcScopeHooks>();
+        // Validation of the OIDC admin screens (#482: interceptors, not Actions-class overrides).
+        builder.AddInterceptor<Interceptors.OidcApplicationInterceptors>();
+        builder.AddInterceptor<Interceptors.OidcScopeInterceptors>();
         builder.Services.AddHostedService<OidcTokenCleanupService>();
 
         // Constructed rather than resolved, because the CORS policy's predicate below has no service

@@ -120,10 +120,10 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
         var loaded = await MaterializeAsync(requested);
 
-        // Materialize hooks (contributions F1) fill satellite properties before any gate or
+        // Materialize interceptors (contributions F1) fill satellite properties before any gate or
         // the mapper reads the entities. Here rather than inside the virtual MaterializeAsync, so an
         // override of how entities are found cannot skip them.
-        if (services.GetService<ISparkHookPipeline>() is { } pipeline)
+        if (services.GetService<ISparkInterceptorPipeline>() is { } pipeline)
             await pipeline.RunAfterMaterializeAsync(typeof(T), session, loaded.Values.Where(e => e is not null).Cast<object>(), Abstractions.Interceptors.MaterializeReason.Load);
 
         var collectionGuard = services.GetRequiredService<ICollectionGuard>();
@@ -256,7 +256,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// <remarks>
     /// The default merges the posted values onto <paramref name="existing"/>, so fields absent from
     /// the object (server-managed metadata, untouched TranslatedString languages) survive; a creation
-    /// builds a fresh instance. Override to shape the mapping; the framework still runs every hook,
+    /// builds a fresh instance. Override to shape the mapping; the framework still runs every interceptor,
     /// check and the write around it.
     /// </remarks>
     public virtual async Task<T> MapAsync(PersistentObject obj, T? existing)

@@ -9,7 +9,7 @@ using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents.Linq;
 
-namespace MintPlayer.Spark.Tests.Spikes.Issue467;
+namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 
 // Fixture names start with I467: ActionsResolver matches actions classes by simple name across the
 // whole assembly, and these must not meet another fixture's.
@@ -88,7 +88,7 @@ internal sealed class I467ActionResolver(I467TouchAction touch) : ICustomActionR
     public IReadOnlyList<string> GetRegisteredActionNames() => [I467TouchAction.Name];
 }
 
-/// <summary>S8 (retry half): a soft-free row whose before-delete hook asks once, inside a bulk delete.</summary>
+/// <summary>S8 (retry half): a soft-free row whose before-delete interceptor asks once, inside a bulk delete.</summary>
 public class I467Prompt
 {
     public string? Id { get; set; }

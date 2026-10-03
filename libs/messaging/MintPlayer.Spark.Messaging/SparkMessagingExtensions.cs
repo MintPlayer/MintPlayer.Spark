@@ -22,7 +22,7 @@ internal static class SparkMessagingExtensions
         services.AddScoped<IMessageBus>(sp => sp.GetRequiredService<MessageBus>());
         services.AddScoped<IMessageOutbox>(sp => sp.GetRequiredService<MessageBus>());
 
-        // Durable after-commit hooks (#482, D17): the framework writes through this seam, and the
+        // Durable after-commit interceptors (#482, D17): the framework writes through this seam, and the
         // recipient runs them. In the default single-subscription mode the extra message type costs nothing.
         services.AddScoped<MintPlayer.Spark.Abstractions.Interceptors.ISparkAfterCommitOutbox, SparkAfterCommitOutbox>();
         services.AddScoped<IRecipient<MintPlayer.Spark.Abstractions.Interceptors.SparkAfterCommitWork>, SparkAfterCommitRecipient>();

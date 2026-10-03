@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.Actions;
 /// <para>
 /// Construction is not persistence. Nothing here is written; the object is handed back to the
 /// client to render, and for an <c>AsDetail</c> row the parent still owns the save. A hook that
-/// wants to write should do it in a before-save hook (<c>IBeforeSave</c>).
+/// wants to write should do it in a before-save interceptor (<c>IBeforeSave</c>).
 /// </para>
 /// </summary>
 /// <typeparam name="T">The entity type the actions class serves.</typeparam>

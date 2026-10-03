@@ -111,7 +111,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
         }
         catch (SparkCancelException)
         {
-            // A hook cancelled the create (#482): nothing was created, and nothing went wrong.
+            // An interceptor cancelled the create (#482): nothing was created, and nothing went wrong.
             return ClientResult.Envelope(clientAccessor, null, 204);
         }
         catch (SparkConcurrencyException ex)

@@ -223,7 +223,7 @@ Entities that don't implement the interface are unaffected and keep the generate
 
 ### Actions Classes
 
-Customization hooks for entity-specific business logic. Inherit from `DefaultPersistentObjectActions<T>`; for save and delete logic, implement the persistence hook interfaces on the same class (or on a separate hook class — see [the hooks guide](../../../docs/guide-hooks.md)):
+Customization interceptors for entity-specific business logic. Inherit from `DefaultPersistentObjectActions<T>`; for save and delete logic, implement the persistence interceptor interfaces on the same class (or on a separate interceptor class — see [the interceptors guide](../../../docs/guide-interceptors.md)):
 
 ```csharp
 public class PersonActions : DefaultPersistentObjectActions<Person>, IBeforeSave<Person>, IAfterSave<Person>
@@ -243,7 +243,7 @@ public class PersonActions : DefaultPersistentObjectActions<Person>, IBeforeSave
 }
 ```
 
-The framework owns every write (#482): it loads, maps, runs the hooks, checks the row (WITH CHECK), writes with the expected change vector and commits once. Nothing on the Actions class can skip that.
+The framework owns every write (#482): it loads, maps, runs the interceptors, checks the row (WITH CHECK), writes with the expected change vector and commits once. Nothing on the Actions class can skip that.
 
 Available hooks:
 - `OnLoadAsync` - Customize single entity loading

@@ -71,7 +71,7 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint
         }
         catch (SparkCancelException)
         {
-            // A hook cancelled the restore (#482): nothing was written; answered with the row as stored.
+            // An interceptor cancelled the restore (#482): nothing was written; answered with the row as stored.
             return SparkAddOnEndpoints.Envelope(clientAccessor,
                 await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id), StatusCodes.Status200OK);
         }
@@ -129,7 +129,7 @@ internal sealed partial class PurgePersistentObject : IPostEndpoint
         }
         catch (SparkCancelException)
         {
-            // A hook cancelled the purge (#482): nothing was purged, and nothing went wrong.
+            // An interceptor cancelled the purge (#482): nothing was purged, and nothing went wrong.
             return SparkAddOnEndpoints.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
         }
         catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))

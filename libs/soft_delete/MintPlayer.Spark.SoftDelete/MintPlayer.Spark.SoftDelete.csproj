@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.SoftDelete</PackageId>
-		<Version>11.0.0-preview.93</Version>
+		<Version>11.0.0-preview.94</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Soft deletion for MintPlayer.Spark: entities implementing ISoftDeletable are marked deleted instead of removed, hidden from every read path by a row policy, restorable (Restore/T) and purgeable with their revisions (Purge/T). Adds POST /spark/po/restore and /spark/po/purge.</Description>

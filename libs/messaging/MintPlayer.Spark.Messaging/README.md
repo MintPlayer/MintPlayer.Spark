@@ -134,7 +134,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>, IAf
 {
     [Inject] private readonly IMessageBus messageBus;
 
-    // After the commit (persistence hooks, #482): never announce a write that may still be refused.
+    // After the commit (persistence interceptors, #482): never announce a write that may still be refused.
     public async ValueTask OnAfterSaveAsync(Person entity, SaveContext context)
     {
         // Immediate: processed as soon as possible
@@ -236,10 +236,10 @@ It only stores, under a fresh id, and leaves the session's settings alone. Every
 `DeduplicationKey`, which is refused: deduplication needs optimistic concurrency on the whole session,
 and a duplicate would then roll back your own write.
 
-Spark's durable after-commit hooks (`IAfterSaveCommitted` / `IAfterDeleteCommitted`, see the
-[hooks guide](../../../docs/guide-hooks.md#5a-durable-after-commit-hooks)) are built on it:
+Spark's durable after-commit interceptors (`IAfterSaveCommitted` / `IAfterDeleteCommitted`, see the
+[interceptors guide](../../../docs/guide-interceptors.md#5a-durable-after-commit-interceptors)) are built on it:
 `AddMessaging()` registers the outbox the framework writes them through, and the recipient that runs
-them. A durable hook registered without `AddMessaging()` is a startup error.
+them. A durable interceptor registered without `AddMessaging()` is a startup error.
 
 ## How It Works
 

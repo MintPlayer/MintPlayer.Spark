@@ -4,7 +4,7 @@ using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
-namespace MintPlayer.Spark.IdentityProvider.Hooks;
+namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 
 /// <summary>
 /// Validation for the OIDC scope admin screen.
@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.IdentityProvider.Hooks;
 /// error anywhere in the flow — the authorization simply grants less than the screens showed.
 /// </para>
 /// </summary>
-public sealed class OidcScopeHooks : IBeforeSave<OidcScope>
+public sealed class OidcScopeInterceptors : IBeforeSave<OidcScope>
 {
     public async ValueTask OnBeforeSaveAsync(OidcScope entity, SaveContext context)
     {
@@ -36,7 +36,7 @@ public sealed class OidcScopeHooks : IBeforeSave<OidcScope>
 
         // Before the commit (#482): a pre-commit read still races two concurrent saves; true
         // uniqueness needs a compare-exchange reservation.
-        // Not a session only when the hook is called by hand (unit tests of the rules above).
+        // Not a session only when the interceptor is called by hand (unit tests of the rules above).
         if (context.Session is IAsyncDocumentSession session)
             await EnsureNameUniqueAsync(session, entity);
     }

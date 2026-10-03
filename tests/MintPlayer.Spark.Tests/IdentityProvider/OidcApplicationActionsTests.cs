@@ -1,7 +1,7 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Abstractions.Interceptors;
-using MintPlayer.Spark.IdentityProvider.Hooks;
+using MintPlayer.Spark.IdentityProvider.Interceptors;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using NSubstitute;
@@ -16,8 +16,8 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </summary>
 public class OidcApplicationActionsTests
 {
-    // No session: the before-write uniqueness query is skipped, as for any hook called by hand.
-    private static OidcApplicationHooks Hooks() => new(corsOrigins: new OidcCorsOrigins());
+    // No session: the before-write uniqueness query is skipped, as for any interceptor called by hand.
+    private static OidcApplicationInterceptors Interceptors() => new(corsOrigins: new OidcCorsOrigins());
 
     /// <summary>A save context with no session: the rules are judged, the uniqueness query is skipped.</summary>
     internal static SaveContext Context(Type entityType, object entity) => new()
@@ -43,7 +43,7 @@ public class OidcApplicationActionsTests
     {
         try
         {
-            await Hooks().OnBeforeSaveAsync(app, Context(typeof(OidcApplication), app));
+            await Interceptors().OnBeforeSaveAsync(app, Context(typeof(OidcApplication), app));
             return null;
         }
         catch (Exception ex)
@@ -269,13 +269,13 @@ public class OidcApplicationActionsTests
 /// <summary>Validation for the scope screen — the half that decides what a token carries.</summary>
 public class OidcScopeActionsTests
 {
-    private static OidcScopeHooks Hooks() => new();
+    private static OidcScopeInterceptors Interceptors() => new();
 
     private static async Task<Exception?> SaveAsync(OidcScope scope)
     {
         try
         {
-            await Hooks().OnBeforeSaveAsync(scope, OidcApplicationActionsTests.Context(typeof(OidcScope), scope));
+            await Interceptors().OnBeforeSaveAsync(scope, OidcApplicationActionsTests.Context(typeof(OidcScope), scope));
             return null;
         }
         catch (Exception ex)

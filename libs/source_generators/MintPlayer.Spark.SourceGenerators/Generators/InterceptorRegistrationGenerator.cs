@@ -6,19 +6,19 @@ using MintPlayer.SourceGenerators.Tools;
 namespace MintPlayer.Spark.SourceGenerators.Generators;
 
 /// <summary>
-/// Emits <c>AddHooks(this ISparkBuilder)</c>, registering every concrete persistence hook (#482) —
-/// a class implementing <c>ISparkHook</c> — declared in the project. <c>AddSparkFull</c> calls it.
+/// Emits <c>AddInterceptors(this ISparkBuilder)</c>, registering every concrete persistence interceptor (#482) —
+/// a class implementing <c>ISparkInterceptor</c> — declared in the project. <c>AddSparkFull</c> calls it.
 /// </summary>
 [Generator(LanguageNames.CSharp)]
-public class HookRegistrationGenerator : IncrementalGenerator
+public class InterceptorRegistrationGenerator : IncrementalGenerator
 {
-    private const string SparkHook = "MintPlayer.Spark.Abstractions.Interceptors.ISparkHook";
+    private const string SparkInterceptor = "MintPlayer.Spark.Abstractions.Interceptors.ISparkInterceptor";
 
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
         IncrementalValueProvider<Settings> settingsProvider)
     {
-        var hookClassesProvider = context.SyntaxProvider
+        var interceptorClassesProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (node, ct) => node is ClassDeclarationSyntax classDecl &&
                     classDecl.BaseList != null &&
@@ -34,17 +34,17 @@ public class HookRegistrationGenerator : IncrementalGenerator
                         || classSymbol.DeclaredAccessibility == Accessibility.Private)
                         return default;
 
-                    // An Actions class implementing hooks needs no registration: the framework runs it as its type's hook.
+                    // An Actions class implementing interceptors needs no registration: the framework runs it as its type's interceptor.
                     if (classSymbol.AllInterfaces.Any(i => i.OriginalDefinition.ToDisplayString() == "MintPlayer.Spark.Actions.IPersistentObjectActions<T>"))
                         return default;
 
                     foreach (var iface in classSymbol.AllInterfaces)
                     {
-                        if (iface.ToDisplayString() == SparkHook)
+                        if (iface.ToDisplayString() == SparkInterceptor)
                         {
-                            return new HookClassInfo
+                            return new InterceptorClassInfo
                             {
-                                HookTypeName = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                                InterceptorTypeName = classSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
                             };
                         }
                     }
@@ -54,23 +54,23 @@ public class HookRegistrationGenerator : IncrementalGenerator
             .Where(static x => x != null)
             .Collect();
 
-        // Only emit when the project can call AddHook, i.e. references MintPlayer.Spark.Abstractions.
-        var knowsHooksProvider = context.CompilationProvider
+        // Only emit when the project can call AddInterceptor, i.e. references MintPlayer.Spark.Abstractions.
+        var knowsInterceptorsProvider = context.CompilationProvider
             .Select((compilation, ct) =>
-                compilation.GetTypeByMetadataName("MintPlayer.Spark.Abstractions.Interceptors.SparkBuilderHookExtensions") != null);
+                compilation.GetTypeByMetadataName("MintPlayer.Spark.Abstractions.Interceptors.SparkBuilderInterceptorExtensions") != null);
 
-        var sourceProvider = hookClassesProvider
-            .Combine(knowsHooksProvider)
+        var sourceProvider = interceptorClassesProvider
+            .Combine(knowsInterceptorsProvider)
             .Combine(settingsProvider)
             .Select(static (providers, ct) =>
             {
-                var hookClasses = providers.Left.Left;
-                var knowsHooks = providers.Left.Right;
+                var interceptorClasses = providers.Left.Left;
+                var knowsInterceptors = providers.Left.Right;
                 var settings = providers.Right;
 
-                return (Producer)new HookRegistrationProducer(
-                    hookClasses.Where(x => x != null).Cast<HookClassInfo>(),
-                    knowsHooks,
+                return (Producer)new InterceptorRegistrationProducer(
+                    interceptorClasses.Where(x => x != null).Cast<InterceptorClassInfo>(),
+                    knowsInterceptors,
                     settings.RootNamespace ?? "GeneratedCode");
             });
 

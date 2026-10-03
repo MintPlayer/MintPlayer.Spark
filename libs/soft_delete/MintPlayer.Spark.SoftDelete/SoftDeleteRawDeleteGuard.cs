@@ -6,7 +6,7 @@ namespace MintPlayer.Spark.SoftDelete;
 /// <summary>
 /// Refuses a hard delete of an <see cref="ISoftDeletable"/> document that did not come through the
 /// framework (#467, D32): a raw <c>session.Delete</c> would skip the replacement, the purge's revision
-/// wipe and every hook. The framework's own deletes (a purge, a type's hard delete) are allowed, and
+/// wipe and every interceptor. The framework's own deletes (a purge, a type's hard delete) are allowed, and
 /// so is code inside <see cref="SparkRawWrites.Allow"/> (a migration, a test fixture).
 /// </summary>
 /// <remarks>

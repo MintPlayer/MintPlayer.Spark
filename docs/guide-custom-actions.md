@@ -339,13 +339,13 @@ One request runs every row through the ordinary delete pipeline, in this order:
 4. The `Delete/T` right, the collection guard and the `Delete` row rule.
 5. `OnDisableActionsAsync` is asked about the query target (with the parent) and about every row, in
    one batched call. **One row that withholds `Delete` refuses the whole request with 403.**
-6. The delete replacement and the before-delete hooks run for each row, so a soft-deletable type is
+6. The delete replacement and the before-delete interceptors run for each row, so a soft-deletable type is
    soft-deleted, with the request's one `reason` on every row (#467, D20).
 7. Every write is committed by **one `SaveChanges`**, each row at the version its etag names: all
    rows or none (a stale row is the 409 above).
 
 **One refusal names every row that failed (#467, D18).** A row the `Delete` rule refuses, a row whose
-hook withholds `Delete`, and a row a before-delete hook refuses (a Moderation lock) are listed by breadcrumb
+interceptor withholds `Delete`, and a row a before-delete interceptor refuses (a Moderation lock) are listed by breadcrumb
 — with the reason, when there is one — so the user knows what to untick: "These items cannot be
 deleted: Re: pricing (This post is locked)." Every row named passed the Read gate, so naming it
 discloses nothing; a row that is missing or unreadable is never named. The server never deletes 198
@@ -354,8 +354,8 @@ of 200 and says nothing.
 A custom action on a selection follows the same rules: with ids and no parent it needs `queryId`
 (400 otherwise), and its rows come through that query and must be readable.
 
-No hook and no Actions class can commit a row early (#482): the framework owns the single commit. A
-before-delete hook that prompts with `Retry.Action` refuses its row instead (a per-row prompt across a
+No interceptor and no Actions class can commit a row early (#482): the framework owns the single commit. A
+before-delete interceptor that prompts with `Retry.Action` refuses its row instead (a per-row prompt across a
 selection is unworkable), and one that throws `SparkCancelException` cancels the whole batch.
 
 There is no bulk Purge. A purge deletes revisions with an admin operation that cannot join the

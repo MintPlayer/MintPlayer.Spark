@@ -9,7 +9,7 @@ Two packages:
 | Package | Reference it from | Contains |
 |---|---|---|
 | `MintPlayer.Spark.SoftDelete.Abstractions` | Domain / Library projects | `ISoftDeletable`, `ISparkSoftDelete`, `SoftDeleteRights` |
-| `MintPlayer.Spark.SoftDelete` | the host | the row policy, the hooks (formerly "the interceptor"), the endpoints, `AddSoftDelete()` |
+| `MintPlayer.Spark.SoftDelete` | the host | the row policy, the interceptors, the endpoints, `AddSoftDelete()` |
 
 ## Setup
 
@@ -30,7 +30,7 @@ builder.Services.AddSpark(spark =>
 {
     spark.UseContext<AppContext>();
     spark.AddSoftDelete();                       // binds Spark:SoftDelete, code wins
-    spark.AddHook<OrderAudit>();                 // optional, durable: needs spark.AddMessaging()
+    spark.AddInterceptor<OrderAudit>();                 // optional, durable: needs spark.AddMessaging()
 });
 ```
 
@@ -51,8 +51,8 @@ None implies another: `Edit` does not grant `Restore`, `Delete` does not grant `
 `IsDeleted = true`, `DeletedAt`, `DeletedBy` (the user **id**) and, through
 `ISparkSoftDelete.DeleteAsync(typeId, id, reason)`, `DeleteReason`. The document stays. Replication
 forwards a save, not a delete. The replacement is an `IDeleteReplacement` (#482): the framework
-decides it before any before-delete hook runs, so nothing can turn it back into a hard delete, and
-every `IBeforeDelete` hook still runs (and sees `context.IsReplaced`).
+decides it before any before-delete interceptor runs, so nothing can turn it back into a hard delete, and
+every `IBeforeDelete` interceptor still runs (and sees `context.IsReplaced`).
 
 **Hidden everywhere** a row policy applies — lists, detail, custom queries, sub-queries, distinct
 values, streams, breadcrumbs, reference pickers, edit/delete gates, custom-action selections. The
@@ -98,12 +98,12 @@ nothing but the four fields changes. Refused with 403 when the Actions class's
 `OnDisableActionsAsync` withholds `Restore`, `Edit` or `Save` on the row.
 
 **Purge** — `POST /spark/po/purge { objectTypeId, id }` → 204. Needs `Purge/T`; the row must already
-be deleted. The document is deleted (the before-delete hooks run, with `IsPurge` set),
+be deleted. The document is deleted (the before-delete interceptors run, with `IsPurge` set),
 then every revision of it, force-created ones included. Refused with 403 when the hook withholds
 `Purge` or `Delete`. Cannot be undone. See [Purge needs database-admin](#purge-needs-database-admin).
 
 **A refused delete leaves nothing behind.** The mark is set on the request session's copy of the
-row; if a before-delete hook (a lock, say) refuses the delete, `IDatabaseAccess` evicts that copy, so
+row; if a before-delete interceptor (a lock, say) refuses the delete, `IDatabaseAccess` evicts that copy, so
 no later save in the same request writes the half-made delete.
 
 Every refusal — no right, a live row, a missing id, an id of another collection, a type that is not
@@ -161,9 +161,9 @@ only adds the controls. The server stays the gate, and a widening from a non-hol
 
 ## Reacting to deletes, restores and purges
 
-`ISoftDeleteObserver` is gone (#482): use the framework's durable after-commit hooks, which run once
+`ISoftDeleteObserver` is gone (#482): use the framework's durable after-commit interceptors, which run once
 the write committed, even across a crash, with Messaging's retries
-([guide](../../../docs/guide-hooks.md#5a-durable-after-commit-hooks)).
+([guide](../../../docs/guide-interceptors.md#5a-durable-after-commit-interceptors)).
 
 ```csharp
 public sealed class OrderAudit : IAfterDeleteCommitted<Order>, IAfterSaveCommitted<Order>
@@ -208,7 +208,7 @@ operation (deleting a document is not). On a secured server the client certifica
 with must therefore have **Admin** access to that database (the certificate's per-database access
 level), or no purge can finish.
 
-A purge **fails safe** without it: before the document is deleted, the before-delete hook runs the same
+A purge **fails safe** without it: before the document is deleted, the before-delete interceptor runs the same
 operation on an id that names nothing (no effect, same authorization). If that is refused, the purge
 is refused — the caller gets a 500, the log says why, and the document and its revisions are
 untouched. A success is remembered for the process, so the probe costs one request per process.

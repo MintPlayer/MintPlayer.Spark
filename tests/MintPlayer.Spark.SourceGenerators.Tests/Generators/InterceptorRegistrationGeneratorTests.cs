@@ -4,13 +4,13 @@ using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
 
-/// <summary>#482: <c>AddHooks</c> registers every concrete persistence hook the project declares.</summary>
-public class HookRegistrationGeneratorTests
+/// <summary>#482: <c>AddInterceptors</c> registers every concrete persistence interceptor the project declares.</summary>
+public class InterceptorRegistrationGeneratorTests
 {
-    private const string GeneratorName = "HookRegistrationGenerator";
+    private const string GeneratorName = "InterceptorRegistrationGenerator";
 
     [Fact]
-    public void Hooks_are_registered_and_Actions_classes_are_not()
+    public void Interceptors_are_registered_and_Actions_classes_are_not()
     {
         var source = """
             using System;
@@ -34,14 +34,14 @@ public class HookRegistrationGeneratorTests
                 public ValueTask OnBeforeSaveAsync(SaveContext context) => ValueTask.CompletedTask;
             }
 
-            // Run as its type's hook without registration: never in AddHooks.
+            // Run as its type's interceptor without registration: never in AddInterceptors.
             public class CarActions : DefaultPersistentObjectActions<Car>, IBeforeDelete<Car>
             {
                 public CarActions(IEntityMapper mapper) : base(mapper) { }
                 public ValueTask OnBeforeDeleteAsync(Car entity, DeleteContext context) => ValueTask.CompletedTask;
             }
 
-            public abstract class AbstractHook : IAfterLoad
+            public abstract class AbstractInterceptor : IAfterLoad
             {
                 public bool AppliesTo(Type entityType) => true;
                 public ValueTask OnAfterLoadAsync(LoadContext context) => ValueTask.CompletedTask;
@@ -51,21 +51,21 @@ public class HookRegistrationGeneratorTests
         var result = GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(ISparkHook), typeof(DefaultPersistentObjectActions<>)],
+            referenceTypes: [typeof(ISparkInterceptor), typeof(DefaultPersistentObjectActions<>)],
             rootNamespace: "TestApp");
 
         result.GeneratedSources.Should().ContainSingle();
         var generated = result.GeneratedSources[0].Source;
 
-        generated.Should().Contain("internal static global::MintPlayer.Spark.Abstractions.Builder.ISparkBuilder AddHooks(");
-        generated.Should().Contain("SparkBuilderHookExtensions.AddHook<global::TestApp.CarAudit>(builder);");
-        generated.Should().Contain("SparkBuilderHookExtensions.AddHook<global::TestApp.Stamping>(builder);");
+        generated.Should().Contain("internal static global::MintPlayer.Spark.Abstractions.Builder.ISparkBuilder AddInterceptors(");
+        generated.Should().Contain("SparkBuilderInterceptorExtensions.AddInterceptor<global::TestApp.CarAudit>(builder);");
+        generated.Should().Contain("SparkBuilderInterceptorExtensions.AddInterceptor<global::TestApp.Stamping>(builder);");
         generated.Should().NotContain("CarActions");
-        generated.Should().NotContain("AbstractHook");
+        generated.Should().NotContain("AbstractInterceptor");
     }
 
     [Fact]
-    public void No_source_without_hooks()
+    public void No_source_without_interceptors()
     {
         var source = """
             namespace TestApp;
@@ -75,7 +75,7 @@ public class HookRegistrationGeneratorTests
         var result = GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(ISparkHook)],
+            referenceTypes: [typeof(ISparkInterceptor)],
             rootNamespace: "TestApp");
 
         result.GeneratedSources.Should().BeEmpty();

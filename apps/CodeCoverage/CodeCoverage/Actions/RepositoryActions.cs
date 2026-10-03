@@ -72,7 +72,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// These moved here verbatim from <c>RepoSettingsController.PutGate</c>, which this work
     /// deleted along with the hand-written panel that called it. They must live on Repository and
     /// not on <c>GateSettingsActions</c>: a gate is embedded in its Repository's document, so it has
-    /// no save of its own and a hook there would never run.
+    /// no save of its own and an interceptor there would never run.
     /// </para>
     /// <para>
     /// ⚠️ <c>GateSettingsActions.OnRefreshAsync</c> makes <c>ProjectTarget</c> required in fixed

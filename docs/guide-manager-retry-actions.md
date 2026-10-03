@@ -42,7 +42,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
 
 ## Step 2: Add Retry Actions
 
-Call `manager.Retry.Action()` in any before-hook ([persistence hooks](guide-hooks.md): `IBeforeSave<T>`, `IBeforeDelete<T>` — on a hook class or on the Actions class itself) to prompt the user:
+Call `manager.Retry.Action()` in any before-interceptor ([persistence interceptors](guide-interceptors.md): `IBeforeSave<T>`, `IBeforeDelete<T>` — on an interceptor class or on the Actions class itself) to prompt the user:
 
 ```csharp
 public partial class CarActions : DefaultPersistentObjectActions<Car>, IBeforeDelete<Car>
@@ -66,7 +66,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>, IBeforeDe
 }
 ```
 
-`return` would not stop anything: the framework, not the hook, does the delete. `SparkCancelException` tells it to write nothing, keep nothing the hooks stored, and run no after-hook. A prompt during a **bulk** delete is refused (that row is named in the refusal): a per-row prompt across a selection is unworkable.
+`return` would not stop anything: the framework, not the interceptor, does the delete. `SparkCancelException` tells it to write nothing, keep nothing the interceptors stored, and run no after-interceptor. A prompt during a **bulk** delete is refused (that row is named in the refusal): a per-row prompt across a selection is unworkable.
 
 ### How It Works
 
@@ -144,7 +144,7 @@ The user sees two sequential modals. The flow:
 
 ### The Cancel Option
 
-When the user dismisses the modal (clicking the X button or pressing Escape), the frontend sends `"Cancel"` as the option. You do not need to include "Cancel" in your `options` array -- it is always available as a dismiss action. Check for it in your code to abort the operation. In a save or delete hook, abort with `SparkCancelException` — the framework then writes nothing (a `return` would let the write go ahead); in a custom action, a plain `return` is enough, since the action itself is the work:
+When the user dismisses the modal (clicking the X button or pressing Escape), the frontend sends `"Cancel"` as the option. You do not need to include "Cancel" in your `options` array -- it is always available as a dismiss action. Check for it in your code to abort the operation. In a save or delete interceptor, abort with `SparkCancelException` — the framework then writes nothing (a `return` would let the write go ahead); in a custom action, a plain `return` is enough, since the action itself is the work:
 
 ```csharp
 if (manager.Retry.Result!.Option == "Cancel")

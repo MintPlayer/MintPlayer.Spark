@@ -32,7 +32,7 @@ public class RefusedWriteEvictionTests : SparkTestDriver
             Store,
             [NoteModel()],
             configureServices: services => services.AddScoped<EvNoteActions>(),
-            configureSpark: spark => spark.AddHook<EvSideWritingInterceptor>());
+            configureSpark: spark => spark.AddInterceptor<EvSideWritingInterceptor>());
     }
 
     public override async Task DisposeAsync()

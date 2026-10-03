@@ -88,7 +88,7 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             }
             catch (SparkCancelException)
             {
-                // A hook cancelled the save (#482): nothing was written, so the answer is the object as
+                // An interceptor cancelled the save (#482): nothing was written, so the answer is the object as
                 // stored — a 200, never an error.
                 result = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id) ?? existingObj;
             }

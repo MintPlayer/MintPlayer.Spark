@@ -30,7 +30,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<QnAContext>();
     spark.AddActions();
-    spark.AddHooks();
+    spark.AddInterceptors();
     spark.AddCustomActions();
 
     // Password accounts, and every account must confirm its email before it can sign in (D6). The
@@ -62,14 +62,14 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // Translator names come from QnAUserNames through AddHistoryUserNameResolver above.
     spark.AddContributions();
 
-    // M2: QnA's own rules through the core seams — a row policy and three hooks (AddHooks above
+    // M2: QnA's own rules through the core seams — a row policy and three interceptors (AddInterceptors above
     // registers them too; listed here so the setup reads in one place).
     spark.AddSparkRowPolicy<DraftQuestionPolicy>();
-    spark.AddHook<QuestionTagsInterceptor>();
-    spark.AddHook<ClosedQuestionInterceptor>();
+    spark.AddInterceptor<QuestionTagsInterceptor>();
+    spark.AddInterceptor<ClosedQuestionInterceptor>();
     // A translator who is not the question's author sees its own attributes read-only (a UI hint;
     // QuestionActions.GetProtectedAttributesAsync is the enforcement).
-    spark.AddHook<QuestionTranslatorFormInterceptor>();
+    spark.AddInterceptor<QuestionTranslatorFormInterceptor>();
 });
 
 builder.Services.AddScoped<QnAAccess>();

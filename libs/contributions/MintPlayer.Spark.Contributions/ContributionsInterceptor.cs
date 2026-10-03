@@ -7,10 +7,10 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Contributions;
 
 /// <summary>
-/// The contributions runtime as persistence hooks (PRD T6; #482, "interceptor" is the older name).
-/// SoftDelete's replacement is decided before any before-delete hook (<see cref="DeleteContext.IsReplaced"/>
-/// is final here), and a refusal by any other hook — Moderation's suspension or lock — evicts what
-/// these hooks wrote, so their relative order does not matter.
+/// The contributions runtime as persistence interceptors (PRD T6; #482, "interceptor" is the older name).
+/// SoftDelete's replacement is decided before any before-delete interceptor (<see cref="DeleteContext.IsReplaced"/>
+/// is final here), and a refusal by any other interceptor — Moderation's suspension or lock — evicts what
+/// these interceptors wrote, so their relative order does not matter.
 /// </summary>
 /// <remarks>
 /// Applies to every target type that declares a <see cref="ContributionAttribute"/> property and to

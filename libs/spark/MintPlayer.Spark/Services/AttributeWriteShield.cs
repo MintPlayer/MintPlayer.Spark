@@ -24,7 +24,7 @@ namespace MintPlayer.Spark.Services;
 /// </para>
 /// <para>
 /// Applied here rather than as a skip inside the mapper so that nothing downstream ever sees the
-/// tampered value: <c>MapAsync</c> and every before-save hook (their
+/// tampered value: <c>MapAsync</c> and every before-save interceptor (their
 /// <see cref="Abstractions.Interceptors.SaveContext.PersistentObject"/> is this object) read the
 /// shielded object.
 /// </para>

@@ -242,8 +242,8 @@ public class ModerationToolsTests : SparkTestDriver
     [Fact]
     public async Task A_moderator_purging_someone_elses_post_reverses_its_votes()
     {
-        // Guards a regression caught in M7b review: the reversal moved to a durable hook decided in the
-        // before-delete hook, and its first draft skipped purges. The author deletes (no reversal), then a
+        // Guards a regression caught in M7b review: the reversal moved to a durable interceptor decided in the
+        // before-delete interceptor, and its first draft skipped purges. The author deletes (no reversal), then a
         // moderator purges: that purge must reverse what the post earned.
         await using var host = await StartAsync(o => o.Fraud.CreditDelayHours = 0);
         var post = await host.SeedPostAsync(Alice, "purged");

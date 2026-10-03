@@ -60,7 +60,7 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
         }
         catch (SparkCancelException)
         {
-            // A hook cancelled the delete (#482): nothing was deleted, and nothing went wrong.
+            // An interceptor cancelled the delete (#482): nothing was deleted, and nothing went wrong.
             return ClientResult.Envelope(clientAccessor, null, 204);
         }
         catch (SparkConcurrencyException ex)
@@ -92,7 +92,7 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
         }
         catch (SparkThrottledException ex)
         {
-            // A business quota from a hook (#460, M12), answered as delete-many answers it (#467, D21).
+            // A business quota from an interceptor (#460, M12), answered as delete-many answers it (#467, D21).
             return ClientResult.Throttled(clientAccessor, httpContext, ex);
         }
     }

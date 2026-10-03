@@ -240,7 +240,7 @@ second tab of the **same** user is a real conflict; another user's change to a s
 
 ## 6. Moderation
 
-Contributions are not persistent-object saves, so Moderation's own persistence hooks never see them.
+Contributions are not persistent-object saves, so Moderation's own persistence interceptors never see them.
 Instead, before writing or withdrawing a contribution the runtime asks every registered
 `ISatelliteWriteGuard` (a Spark core contract). Moderation registers one that refuses a **suspended
 account** and a **locked** contribution.

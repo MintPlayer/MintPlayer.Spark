@@ -42,7 +42,7 @@ and `DeletePersistentObjectAsync(type, id, operation, etag)` /
 The check happens twice, for different reasons:
 
 - **Early, in `DatabaseAccess`.** A posted etag that differs from the stored change vector answers
-  409 before any hook or business rule runs.
+  409 before any interceptor or business rule runs.
 - **At the write, which the framework owns (#482).** The early check reads in a separate session and
   cannot see a write that lands after it, so the framework writes with the expected change vector:
 
@@ -62,8 +62,8 @@ silently overwrite a write that landed between the check and the save (`Concurre
 
 **Deletes work the same way.** `DatabaseAccess` compares the etag after every gate, then deletes (or
 stores the soft-delete replacement) with it (`session.Delete(id, expectedChangeVector)`), so an edit
-landing after the check is a 409 as well. No hook and no Actions class can skip that: deleting is the
-framework's, and a hook that asks for confirmation first (Fleet's `CarActions`) runs before it.
+landing after the check is a 409 as well. No interceptor and no Actions class can skip that: deleting is the
+framework's, and an interceptor that asks for confirmation first (Fleet's `CarActions`) runs before it.
 
 **An internal save without an etag is protected too:** it is checked against the version it loaded.
 The consequence is that a replication sync or a restore that races another write gets a 409 where it
@@ -86,7 +86,7 @@ it may have no business knowing, so they stay in the inner exception, for logs o
 not need them: it re-fetches the object (section 3), or, for a `deleted` 409, says so and keeps the
 form as typed.
 
-A refused save leaves nothing behind. The entity, and every document a hook stored, changed
+A refused save leaves nothing behind. The entity, and every document an interceptor stored, changed
 or deleted during that save (a contribution, an audit row), is evicted from the request session, so a
 later `SaveChangesAsync` in the same request cannot commit half of it (`RefusedWriteEvictionTests`).
 

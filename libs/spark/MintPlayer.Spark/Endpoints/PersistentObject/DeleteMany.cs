@@ -158,7 +158,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
         }
         catch (SparkCancelException)
         {
-            // A hook cancelled one row's delete (#482), which cancels the batch: nothing was deleted.
+            // An interceptor cancelled one row's delete (#482), which cancels the batch: nothing was deleted.
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
         }
         catch (SparkConcurrencyException ex)

@@ -1,7 +1,7 @@
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents.Session;
 
-namespace MintPlayer.Spark.Tests.Spikes.Issue467;
+namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 
 /// <summary>
 /// D32(2) spike: which raw session deletes raise <c>OnBeforeDelete</c>? The soft-delete guard can only

@@ -3,32 +3,32 @@ using System.Security.Claims;
 namespace MintPlayer.Spark.Abstractions.Interceptors;
 
 /// <summary>
-/// What every persistence hook is (#482): a DI-registered service that governs the entity types it
-/// claims. A hook implements one or more phase interfaces — <see cref="IBeforeSave"/>,
+/// What every persistence interceptor is (#482): a DI-registered service that governs the entity types it
+/// claims. An interceptor implements one or more phase interfaces — <see cref="IBeforeSave"/>,
 /// <see cref="IAfterSave"/>, <see cref="IBeforeDelete"/>, <see cref="IAfterDelete"/>,
 /// <see cref="IDeleteReplacement"/>, <see cref="IAfterMaterialize"/>, <see cref="IAfterLoad"/>,
 /// <see cref="INaturalIdCollision"/>, and the durable <see cref="IAfterSaveCommitted"/> /
-/// <see cref="IAfterDeleteCommitted"/> — and is registered once with <c>spark.AddHook&lt;T&gt;()</c>
-/// (scoped), or found by the hook registration generator. Before #482 these were called
-/// <em>interceptors</em> (<c>IPersistentObjectInterceptor</c>); the namespace keeps that name.
+/// <see cref="IAfterDeleteCommitted"/> — and is registered once with <c>spark.AddInterceptor&lt;T&gt;()</c>
+/// (scoped), or found by the interceptor registration generator. Before #482 an interceptor
+/// implemented one interface for every phase (<c>IPersistentObjectInterceptor</c>).
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>An Actions class may implement hooks for its own type</b> (<c>CarActions : …,
+/// <b>An Actions class may implement interceptors for its own type</b> (<c>CarActions : …,
 /// IBeforeDelete&lt;Car&gt;</c>). It needs no registration: the framework resolves the type's Actions
-/// class once per request and runs it as a hook, after the registered hooks of the same stage.
+/// class once per request and runs it as an interceptor, after the registered interceptors of the same stage.
 /// </para>
 /// <para>
 /// <b>The framework owns persistence.</b> It loads, maps (<c>MapAsync</c> on the Actions class), runs
-/// the hooks, checks the row (WITH CHECK), writes with the expected change vector and commits once.
-/// A hook cannot skip any of that, and neither can an Actions class.
+/// the interceptors, checks the row (WITH CHECK), writes with the expected change vector and commits once.
+/// An interceptor cannot skip any of that, and neither can an Actions class.
 /// </para>
 /// <para>
-/// <b>Order:</b> there is no numeric order. Within a phase hooks run in registration order, which
+/// <b>Order:</b> there is no numeric order. Within a phase interceptors run in registration order, which
 /// is not a contract. Two structural rules replace it: <see cref="IDeleteReplacement"/> decides
-/// before any <see cref="IBeforeDelete"/> runs, and <see cref="HookStage.Finalize"/> before-hooks
-/// run after every <see cref="HookStage.Default"/> one. A refusal is safe in any order: everything a
-/// hook wrote to the request session is taken back.
+/// before any <see cref="IBeforeDelete"/> runs, and <see cref="InterceptorStage.Finalize"/> before-interceptors
+/// run after every <see cref="InterceptorStage.Default"/> one. A refusal is safe in any order: everything an
+/// interceptor wrote to the request session is taken back.
 /// </para>
 /// <para>
 /// <b>Refusing:</b> throw. <c>SparkValidationException</c> is a 400, <c>SparkRowLevelAccessDeniedException</c>
@@ -36,53 +36,53 @@ namespace MintPlayer.Spark.Abstractions.Interceptors;
 /// (refused in a bulk delete).
 /// </para>
 /// </remarks>
-public interface ISparkHook
+public interface ISparkInterceptor
 {
     /// <summary>
-    /// Whether this hook governs <paramref name="entityType"/>. Must depend on the type alone; the
-    /// answer is cached process-wide per (hook type, entity type).
+    /// Whether this interceptor governs <paramref name="entityType"/>. Must depend on the type alone; the
+    /// answer is cached process-wide per (interceptor type, entity type).
     /// </summary>
     bool AppliesTo(Type entityType);
 
     /// <summary>
-    /// Whether this hook also runs for <see cref="PersistentObjectOperation.Sync"/>, a write replicated
-    /// from the owner module. False by default: the owner already ran its own hooks.
+    /// Whether this interceptor also runs for <see cref="PersistentObjectOperation.Sync"/>, a write replicated
+    /// from the owner module. False by default: the owner already ran its own interceptors.
     /// </summary>
     bool HandlesSync => false;
 }
 
-/// <summary>A hook for <typeparamref name="T"/> and every type assignable to it.</summary>
-public interface ISparkHook<T> : ISparkHook where T : class
+/// <summary>An interceptor for <typeparamref name="T"/> and every type assignable to it.</summary>
+public interface ISparkInterceptor<T> : ISparkInterceptor where T : class
 {
-    bool ISparkHook.AppliesTo(Type entityType) => typeof(T).IsAssignableFrom(entityType);
+    bool ISparkInterceptor.AppliesTo(Type entityType) => typeof(T).IsAssignableFrom(entityType);
 }
 
-/// <summary>When a before-hook runs among the others.</summary>
-public enum HookStage
+/// <summary>When a before-interceptor runs among the others.</summary>
+public enum InterceptorStage
 {
-    /// <summary>With every other hook that states no stage.</summary>
+    /// <summary>With every other interceptor that states no stage.</summary>
     Default,
 
-    /// <summary>After every <see cref="Default"/> hook, so it sees the entity as they left it (History's "did anything change?").</summary>
+    /// <summary>After every <see cref="Default"/> interceptor, so it sees the entity as they left it (History's "did anything change?").</summary>
     Finalize,
 }
 
 /// <summary>
 /// Before a save is checked and written: after mapping, before WITH CHECK. May validate, mutate
 /// <see cref="SaveContext.Entity"/> (what it stamps is what WITH CHECK judges and what is written),
-/// store side documents in <see cref="SparkHookContext.Session"/> (committed with the save, taken back
+/// store side documents in <see cref="SparkInterceptorContext.Session"/> (committed with the save, taken back
 /// on refusal), prompt with <c>Retry.Action</c> (be idempotent up to the prompt), or throw.
 /// </summary>
-public interface IBeforeSave : ISparkHook
+public interface IBeforeSave : ISparkInterceptor
 {
-    /// <summary>When this hook runs among the before-save hooks.</summary>
-    HookStage Stage => HookStage.Default;
+    /// <summary>When this interceptor runs among the before-save interceptors.</summary>
+    InterceptorStage Stage => InterceptorStage.Default;
 
     ValueTask OnBeforeSaveAsync(SaveContext context);
 }
 
 /// <summary>The typed form of <see cref="IBeforeSave"/>.</summary>
-public interface IBeforeSave<T> : IBeforeSave, ISparkHook<T> where T : class
+public interface IBeforeSave<T> : IBeforeSave, ISparkInterceptor<T> where T : class
 {
     ValueTask OnBeforeSaveAsync(T entity, SaveContext context);
 
@@ -90,17 +90,17 @@ public interface IBeforeSave<T> : IBeforeSave, ISparkHook<T> where T : class
 }
 
 /// <summary>
-/// After a save was committed. Each after-hook is isolated: a failure is logged and never turns the
-/// committed write into an error, nor skips another hook. For in-request follow-ups (a toast, a
-/// shown-once secret); work that must eventually happen belongs in a durable hook.
+/// After a save was committed. Each after-interceptor is isolated: a failure is logged and never turns the
+/// committed write into an error, nor skips another interceptor. For in-request follow-ups (a toast, a
+/// shown-once secret); work that must eventually happen belongs in a durable interceptor.
 /// </summary>
-public interface IAfterSave : ISparkHook
+public interface IAfterSave : ISparkInterceptor
 {
     ValueTask OnAfterSaveAsync(SaveContext context);
 }
 
 /// <summary>The typed form of <see cref="IAfterSave"/>.</summary>
-public interface IAfterSave<T> : IAfterSave, ISparkHook<T> where T : class
+public interface IAfterSave<T> : IAfterSave, ISparkInterceptor<T> where T : class
 {
     ValueTask OnAfterSaveAsync(T entity, SaveContext context);
 
@@ -109,29 +109,29 @@ public interface IAfterSave<T> : IAfterSave, ISparkHook<T> where T : class
 
 /// <summary>
 /// Decides whether a delete is replaced by a save of the entity (SoftDelete), before any
-/// <see cref="IBeforeDelete"/> runs, so every before-delete hook sees the final
+/// <see cref="IBeforeDelete"/> runs, so every before-delete interceptor sees the final
 /// <see cref="DeleteContext.IsReplaced"/>. At most one may govern a type.
 /// </summary>
-public interface IDeleteReplacement : ISparkHook
+public interface IDeleteReplacement : ISparkInterceptor
 {
     /// <summary>
     /// Returns true to replace the hard delete with a save of <see cref="DeleteContext.Entity"/> as the
-    /// hooks leave it; mutate the entity here (mark it deleted). Never called for a purge.
+    /// interceptors leave it; mutate the entity here (mark it deleted). Never called for a purge.
     /// </summary>
     ValueTask<bool> ReplaceAsync(DeleteContext context);
 }
 
 /// <summary>Before a delete (or its replacement) is written. Same powers as <see cref="IBeforeSave"/>.</summary>
-public interface IBeforeDelete : ISparkHook
+public interface IBeforeDelete : ISparkInterceptor
 {
-    /// <summary>When this hook runs among the before-delete hooks.</summary>
-    HookStage Stage => HookStage.Default;
+    /// <summary>When this interceptor runs among the before-delete interceptors.</summary>
+    InterceptorStage Stage => InterceptorStage.Default;
 
     ValueTask OnBeforeDeleteAsync(DeleteContext context);
 }
 
 /// <summary>The typed form of <see cref="IBeforeDelete"/>.</summary>
-public interface IBeforeDelete<T> : IBeforeDelete, ISparkHook<T> where T : class
+public interface IBeforeDelete<T> : IBeforeDelete, ISparkInterceptor<T> where T : class
 {
     ValueTask OnBeforeDeleteAsync(T entity, DeleteContext context);
 
@@ -139,13 +139,13 @@ public interface IBeforeDelete<T> : IBeforeDelete, ISparkHook<T> where T : class
 }
 
 /// <summary>After a delete (or its replacement) was committed. Isolated like <see cref="IAfterSave"/>.</summary>
-public interface IAfterDelete : ISparkHook
+public interface IAfterDelete : ISparkInterceptor
 {
     ValueTask OnAfterDeleteAsync(DeleteContext context);
 }
 
 /// <summary>The typed form of <see cref="IAfterDelete"/>.</summary>
-public interface IAfterDelete<T> : IAfterDelete, ISparkHook<T> where T : class
+public interface IAfterDelete<T> : IAfterDelete, ISparkInterceptor<T> where T : class
 {
     ValueTask OnAfterDeleteAsync(T entity, DeleteContext context);
 
@@ -164,20 +164,20 @@ public interface IAfterDelete<T> : IAfterDelete, ISparkHook<T> where T : class
 /// Update endpoint pre-reads in the session the save reloads from, so the save gets the tracked,
 /// already-hydrated instance back and is not called again for it.
 /// </remarks>
-public interface IAfterMaterialize : ISparkHook
+public interface IAfterMaterialize : ISparkInterceptor
 {
     ValueTask OnAfterMaterializeAsync(MaterializeContext context);
 }
 
 /// <summary>After an entity-backed persistent object was loaded through the row-gated read path; may decorate it.</summary>
-public interface IAfterLoad : ISparkHook
+public interface IAfterLoad : ISparkInterceptor
 {
     ValueTask OnAfterLoadAsync(LoadContext context);
 }
 
 /// <summary>
 /// A creation of an <c>IHasNaturalId</c> type derived an id that an existing document already holds,
-/// and the row gate refused the caller that document. The framework answers 404 unless a hook throws
+/// and the row gate refused the caller that document. The framework answers 404 unless an interceptor throws
 /// its own exception to say why (a <c>SparkValidationException</c>: "a deleted row holds this key —
 /// restore it instead").
 /// </summary>
@@ -185,13 +185,13 @@ public interface IAfterLoad : ISparkHook
 /// ⚠️ Whatever is thrown here tells the caller something about a row it may not see. Explain only to a
 /// caller entitled to know; otherwise return and let the 404 stand.
 /// </remarks>
-public interface INaturalIdCollision : ISparkHook
+public interface INaturalIdCollision : ISparkInterceptor
 {
     ValueTask OnNaturalIdCollisionAsync(NaturalIdCollisionContext context);
 }
 
 /// <summary>A refused natural-id collision (see <see cref="INaturalIdCollision"/>).</summary>
-public sealed class NaturalIdCollisionContext : SparkHookContext
+public sealed class NaturalIdCollisionContext : SparkInterceptorContext
 {
     /// <summary>The derived id, held by <see cref="Existing"/>.</summary>
     public required string Id { get; init; }
@@ -228,8 +228,8 @@ public enum PersistentObjectOperation
     Sync,
 }
 
-/// <summary>What every hook context carries.</summary>
-public abstract class SparkHookContext
+/// <summary>What every interceptor context carries.</summary>
+public abstract class SparkInterceptorContext
 {
     /// <summary>The CLR entity type.</summary>
     public required Type EntityType { get; init; }
@@ -242,31 +242,31 @@ public abstract class SparkHookContext
 
     /// <summary>
     /// The RavenDB <c>IAsyncDocumentSession</c> the write commits through (for a materialize, the
-    /// session the entity was loaded in). Documents a before-hook stores here commit with the write and
+    /// session the entity was loaded in). Documents a before-interceptor stores here commit with the write and
     /// are taken back when it is refused. Typed <see cref="object"/> because Abstractions carries no
     /// RavenDB dependency; <c>GetSession()</c> in <c>MintPlayer.Spark</c> returns it typed.
     /// </summary>
     public required object Session { get; init; }
 
     /// <summary>
-    /// Small facts a before-hook records for the durable after-commit hooks (#482, D17): they get a
+    /// Small facts a before-interceptor records for the durable after-commit interceptors (#482, D17): they get a
     /// payload, never the live entity, so what they need to know about the entity is copied here — a
     /// delete reason, the attributes an edit changed, the author of a deleted post. Captured after the
-    /// last before-hook and stored with the write. Keep it small, and never put a secret in it: it
+    /// last before-interceptor and stored with the write. Keep it small, and never put a secret in it: it
     /// lands in an outbox document.
     /// </summary>
     public IDictionary<string, string> Facts { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
 /// <summary>A save through <c>IDatabaseAccess.SavePersistentObjectAsync</c>.</summary>
-public sealed class SaveContext : SparkHookContext
+public sealed class SaveContext : SparkInterceptorContext
 {
     /// <summary><see cref="PersistentObjectOperation.Save"/>, <see cref="PersistentObjectOperation.New"/>, or the explicit kind the caller passed (Revert, Restore, Sync).</summary>
     public required PersistentObjectOperation Operation { get; init; }
 
     /// <summary>
     /// The object as the client submitted it, minus every attribute the caller may not write
-    /// (contributions M2c-2b): those were dropped before any hook runs, so an absent attribute keeps
+    /// (contributions M2c-2b): those were dropped before any interceptor runs, so an absent attribute keeps
     /// its stored value (its default on a create).
     /// </summary>
     public required PersistentObject PersistentObject { get; init; }
@@ -282,15 +282,15 @@ public sealed class SaveContext : SparkHookContext
     public object? Before { get; init; }
 
     /// <summary>
-    /// The entity being saved: the tracked instance in a before-hook (mutations are written), the
-    /// saved instance in an after-hook. A hook mutates it; it cannot swap it for another instance,
+    /// The entity being saved: the tracked instance in a before-interceptor (mutations are written), the
+    /// saved instance in an after-interceptor. An interceptor mutates it; it cannot swap it for another instance,
     /// since the instance WITH CHECK judges is the one written.
     /// </summary>
     public required object Entity { get; init; }
 
     /// <summary>
-    /// The document id. Null in a before-hook of a creation: the id (a natural id included) is
-    /// assigned when the entity is stored, after the before-hooks. Always set in an after-hook.
+    /// The document id. Null in a before-interceptor of a creation: the id (a natural id included) is
+    /// assigned when the entity is stored, after the before-interceptors. Always set in an after-interceptor.
     /// </summary>
     public string? Id { get; internal set; }
 
@@ -299,7 +299,7 @@ public sealed class SaveContext : SparkHookContext
 }
 
 /// <summary>A delete through <c>IDatabaseAccess.DeletePersistentObjectAsync</c> or a bulk delete.</summary>
-public sealed class DeleteContext : SparkHookContext
+public sealed class DeleteContext : SparkInterceptorContext
 {
     /// <summary><see cref="PersistentObjectOperation.Delete"/>, <see cref="PersistentObjectOperation.Purge"/> or <see cref="PersistentObjectOperation.Sync"/>.</summary>
     public required PersistentObjectOperation Operation { get; init; }
@@ -337,7 +337,7 @@ public enum MaterializeReason
 }
 
 /// <summary>An entity just loaded from RavenDB (see <see cref="IAfterMaterialize"/>).</summary>
-public sealed class MaterializeContext : SparkHookContext
+public sealed class MaterializeContext : SparkInterceptorContext
 {
     /// <summary>The loaded entity; fill its satellite properties here.</summary>
     public required object Entity { get; init; }
@@ -347,8 +347,8 @@ public sealed class MaterializeContext : SparkHookContext
 }
 
 /// <summary>A load through <c>IDatabaseAccess.GetPersistentObjectAsync</c> / <c>GetPersistentObjectsByIdAsync</c>.</summary>
-public sealed class LoadContext : SparkHookContext
+public sealed class LoadContext : SparkInterceptorContext
 {
-    /// <summary>The object as it will be returned; hooks may decorate it.</summary>
+    /// <summary>The object as it will be returned; interceptors may decorate it.</summary>
     public required PersistentObject PersistentObject { get; init; }
 }

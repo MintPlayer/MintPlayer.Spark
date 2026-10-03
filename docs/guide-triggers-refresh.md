@@ -266,5 +266,5 @@ answered with a row scaffolded from the model.
 validating a save — which is what makes an imposed rule real for a client that never calls
 `/refresh` — but that re-derivation covers the **root** type and does not descend into AsDetail
 rows. If a rule inside a nested type has to hold whatever a client posts, enforce it in the owning
-type's before-save hook (`IBeforeSave<T>`), on the object that actually saves. `RepositoryActions` does exactly this
+type's before-save interceptor (`IBeforeSave<T>`), on the object that actually saves. `RepositoryActions` does exactly this
 for the coverage gate.

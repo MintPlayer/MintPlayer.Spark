@@ -107,25 +107,25 @@ builder.Services.AddSpark(builder.Configuration, spark => spark.AddSparkRowPolic
 
 ⚠️ **Known gap (D1, documented, not fixed):** an Actions class that overrides `OnLoadAsync` without calling the base takes over the read gate for its type — policies included. The write side has no such gap since #482: the framework owns every write, and `WITH CHECK` cannot be skipped. References are not row-checked on save.
 
-## Persistence hooks (formerly interceptors; #460, #482)
+## Persistence interceptors (#460, #482)
 
-Cross-cutting write behaviour — stamping, soft deletion, locks — is a persistence hook: a DI service implementing one interface per phase, registered with `spark.AddHook<T>()` (or found by the generated `AddHooks()`). The framework runs hooks only after every gate passed. See the [hooks guide](guide-hooks.md) for the whole sequence; in short:
+Cross-cutting write behaviour — stamping, soft deletion, locks — is a persistence interceptor: a DI service implementing one interface per phase, registered with `spark.AddInterceptor<T>()` (or found by the generated `AddInterceptors()`). The framework runs interceptors only after every gate passed. See the [interceptors guide](guide-interceptors.md) for the whole sequence; in short:
 
 | Hook | When |
 |---|---|
-| `IBeforeSave` | after mapping, **before** `WITH CHECK` and the write — mutate `context.Entity` to stamp it; `HookStage.Finalize` runs after every `Default` hook |
+| `IBeforeSave` | after mapping, **before** `WITH CHECK` and the write — mutate `context.Entity` to stamp it; `InterceptorStage.Finalize` runs after every `Default` interceptor |
 | `IAfterSave` | after the commit, each isolated |
-| `IDeleteReplacement` | before any before-delete hook; returns whether the delete becomes a save of the entity (one per type) |
+| `IDeleteReplacement` | before any before-delete interceptor; returns whether the delete becomes a save of the entity (one per type) |
 | `IBeforeDelete` | before the delete or its replacement is written; `context.IsReplaced` is final |
 | `IAfterDelete` | after the delete, or the replacement, was committed |
 | `IAfterLoad` | after an entity-backed object was loaded through the row-gated read path |
 
 - **Order:** no numeric order. Within a phase, registration order (not a contract); the two structural rules are the replacement first and the `Finalize` stage last.
-- **Replacing a delete** is decided by the framework before any hook, so nothing can defeat it: the tracked entity (as the hooks left it) is saved, and replication forwards a **save** rather than a hard delete (#460 spike S4). A purge (`DeletePersistentObjectAsync(typeId, id, PersistentObjectOperation.Purge)`) is never replaced.
-- **Context:** `Operation` (`Save`, `New`, `Delete`, `Revert`, `Restore`, `Purge`, `Sync` — the explicit kinds come from the `IDatabaseAccess` overloads that take a `PersistentObjectOperation`; module sync passes `Sync`, which reaches only hooks with `HandlesSync`), the submitted `PersistentObject`, `Before` (the stored entity, from a separate session), `Entity`, `Id`, `User`, `IsSystemContext`, `Session`.
+- **Replacing a delete** is decided by the framework before any interceptor, so nothing can defeat it: the tracked entity (as the interceptors left it) is saved, and replication forwards a **save** rather than a hard delete (#460 spike S4). A purge (`DeletePersistentObjectAsync(typeId, id, PersistentObjectOperation.Purge)`) is never replaced.
+- **Context:** `Operation` (`Save`, `New`, `Delete`, `Revert`, `Restore`, `Purge`, `Sync` — the explicit kinds come from the `IDatabaseAccess` overloads that take a `PersistentObjectOperation`; module sync passes `Sync`, which reaches only interceptors with `HandlesSync`), the submitted `PersistentObject`, `Before` (the stored entity, from a separate session), `Entity`, `Id`, `User`, `IsSystemContext`, `Session`.
 - **Refusing:** throw — `SparkRowLevelAccessDeniedException` is a 404, `SparkValidationException` a 400, `SparkCancelException` a silent no-op.
 
-- **`INaturalIdCollision`** — a create of an `IHasNaturalId` type derived an id an existing row holds, and the row gate refused the caller that row. Core answers 404; a hook may throw its own exception first to explain (SoftDelete: "restore it instead"). Whatever it throws tells the caller about a row it may not see — explain only to callers entitled to know.
+- **`INaturalIdCollision`** — a create of an `IHasNaturalId` type derived an id an existing row holds, and the row gate refused the caller that row. Core answers 404; an interceptor may throw its own exception first to explain (SoftDelete: "restore it instead"). Whatever it throws tells the caller about a row it may not see — explain only to callers entitled to know.
 
 ### Restore and purge are gated under their own names
 
@@ -141,11 +141,11 @@ A restore or revert never creates: an id that names nothing is a 404. The `WITH 
 
 **The Actions class sees the base verb.** Row *policies* get the real name (`RowPolicyContext.Action` is `"Restore"`, `"Purge"`, `"Revert"`) — that is how SoftDelete confines a restore to a deleted row. An Actions class's own `GetRowFilterAsync` / `IsAllowedAsync` is asked about the base verb instead: `"Edit"` for a restore or revert, `"Delete"` for a purge. So a rule written for the built-in verbs ("only the owner may edit") governs them too, instead of an unfamiliar name falling through to "unrestricted" (#460, M7). The packages that use all this are [`MintPlayer.Spark.SoftDelete`](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) and [`MintPlayer.Spark.History`](../libs/history/MintPlayer.Spark.History/README.md) — use them rather than a hand-written soft-delete policy or revert.
 
-If a hook refuses a delete after the replacement changed the entity (SoftDelete marked it, a lock said no), `IDatabaseAccess` evicts the entity from the request session, so no later save in the request writes the half-made change.
+If an interceptor refuses a delete after the replacement changed the entity (SoftDelete marked it, a lock said no), `IDatabaseAccess` evicts the entity from the request session, so no later save in the request writes the half-made change.
 
 ## Write-side enforcement (`WITH CHECK`)
 
-The row rule also guards writes, judged against the entity's **resulting** state (after mapping and the before-save hooks, so any ownership stamping has happened):
+The row rule also guards writes, judged against the entity's **resulting** state (after mapping and the before-save interceptors, so any ownership stamping has happened):
 
 - **create** → the new row must satisfy the rule (you can't create a document stamped with someone else's owner);
 - **edit** → the *post-update* state must satisfy the rule, in addition to the pre-update check (you can't edit a row *into* someone else's scope).

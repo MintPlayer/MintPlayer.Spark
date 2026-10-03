@@ -146,7 +146,7 @@ attribute right when the rule does not depend on the row.
 
 A save never refuses because of an attribute right — a refusal would tell the caller which attributes
 exist and which they may not write. Instead the server **drops** every posted attribute the caller may
-not write, before anything maps or hooks the object (`MapAsync` and every before-save hook see the
+not write, before anything maps or intercepts the object (`MapAsync` and every before-save interceptor see the
 shielded object):
 
 | Save | Dropped | What the entity keeps |

@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 namespace MintPlayer.Spark;
 
 /// <summary>
-/// Which hard deletes bypass the persistence hooks knowingly (#467, D32). A library whose rows must
+/// Which hard deletes bypass the persistence interceptors knowingly (#467, D32). A library whose rows must
 /// never be hard-deleted behind its back (SoftDelete) refuses a raw session delete unless the framework
 /// issued it or the code opted out with <see cref="Allow"/>.
 /// </summary>

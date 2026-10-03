@@ -11,10 +11,10 @@ using Raven.Client.Documents.Linq;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// #482, D17 — the durable after-commit hooks delivered by the real Spark Messaging, end to end: the
+/// #482, D17 — the durable after-commit interceptors delivered by the real Spark Messaging, end to end: the
 /// outbox <c>AddMessaging</c> registers, the message written in the save's commit, the type allow-list,
 /// the recipient, the framework's dispatcher, and the payload surviving serialization. Every other test
-/// of durable hooks uses <c>TestAfterCommitOutbox</c>, which cannot catch a wiring break here.
+/// of durable interceptors uses <c>TestAfterCommitOutbox</c>, which cannot catch a wiring break here.
 /// </summary>
 public class DurableAfterCommitMessagingTests : SparkTestDriver
 {
@@ -24,16 +24,16 @@ public class DurableAfterCommitMessagingTests : SparkTestDriver
     private readonly CommittedLog committed = new();
 
     [Fact]
-    public async Task A_committed_save_reaches_its_durable_hook_through_Messaging_with_its_facts()
+    public async Task A_committed_save_reaches_its_durable_interceptor_through_Messaging_with_its_facts()
     {
         await using var factory = new SparkEndpointFactory<DurableContext>(
             Store,
-            [InterceptedNoteModel.For(NoteTypeId), DurableAfterCommitHookTests.DurableNoteModel()],
+            [InterceptedNoteModel.For(NoteTypeId), DurableAfterCommitInterceptorTests.DurableNoteModel()],
             configureServices: services => services.AddSingleton(log).AddSingleton(committed),
             configureSpark: spark => spark
                 .AddMessaging(o => o.FallbackPollInterval = TimeSpan.FromSeconds(1))
-                .AddHook<FactRecordingHook>()
-                .AddHook<RecordingCommittedHook>());
+                .AddInterceptor<FactRecordingInterceptor>()
+                .AddInterceptor<RecordingCommittedInterceptor>());
 
         string? id;
         using (var scope = factory.CreateScope())
@@ -43,7 +43,7 @@ public class DurableAfterCommitMessagingTests : SparkTestDriver
             id = (await scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().SavePersistentObjectAsync(po)).Id;
         }
 
-        await AsyncWait.UntilAsync(() => committed.Changes.Count > 0, "the durable hook to run through Messaging", TimeSpan.FromSeconds(30));
+        await AsyncWait.UntilAsync(() => committed.Changes.Count > 0, "the durable interceptor to run through Messaging", TimeSpan.FromSeconds(30));
 
         var change = committed.Changes.Should().ContainSingle().Which;
         change.Id.Should().Be(id);
@@ -70,12 +70,12 @@ public class DurableAfterCommitMessagingTests : SparkTestDriver
     {
         await using var factory = new SparkEndpointFactory<DurableContext>(
             Store,
-            [InterceptedNoteModel.For(NoteTypeId), DurableAfterCommitHookTests.DurableNoteModel()],
+            [InterceptedNoteModel.For(NoteTypeId), DurableAfterCommitInterceptorTests.DurableNoteModel()],
             configureServices: services => services.AddSingleton(log).AddSingleton(committed),
             configureSpark: spark => spark
                 .AddMessaging(o => o.FallbackPollInterval = TimeSpan.FromSeconds(1))
-                .AddHook<FactRecordingHook>()
-                .AddHook<RecordingCommittedHook>());
+                .AddInterceptor<FactRecordingInterceptor>()
+                .AddInterceptor<RecordingCommittedInterceptor>());
 
         using (var scope = factory.CreateScope())
         {

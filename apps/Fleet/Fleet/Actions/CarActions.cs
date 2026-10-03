@@ -124,7 +124,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
 
     /// <summary>
     /// Asks the user to retype the plate before a car is deleted. Runs before every delete the
-    /// framework makes of a car — a soft-deleting hook cannot skip it — and, being a before-hook,
+    /// framework makes of a car — a soft-deleting interceptor cannot skip it — and, being a before-interceptor,
     /// before anything is written.
     /// </summary>
     public ValueTask OnBeforeDeleteAsync(Car entity, DeleteContext context)

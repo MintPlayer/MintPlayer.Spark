@@ -131,7 +131,7 @@ The hooks worth knowing:
 |---|---|
 | `OnLoadAsync` | what a detail page loads for an id |
 | `MapAsync(obj, existing)` | how the posted object maps onto the entity a save writes |
-| `IBeforeSave<T>` / `IAfterSave<T>` / `IBeforeDelete<T>` / `IAfterDelete<T>` | save/delete hooks — implement them on the Actions class (no registration) or a hook class (`spark.AddHook<T>()`); see `docs/guide-hooks.md` |
+| `IBeforeSave<T>` / `IAfterSave<T>` / `IBeforeDelete<T>` / `IAfterDelete<T>` | save/delete interceptors — implement them on the Actions class (no registration) or an interceptor class (`spark.AddInterceptor<T>()`); see `docs/guide-interceptors.md` |
 | `GetDefaultIncludes` | eager-load references in one round trip |
 | `IsAllowedAsync(action, entity)` | **per-row** authorization |
 | `GetRowFilterAsync(action)` | row filter pushed **into the query** |
@@ -166,12 +166,12 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
   down, ANDed with `GetRowFilterAsync`) or `RowCheckPolicy<T>` (per row — switches DB paging off).
   Write absent-field-safe predicates: `x.IsDeleted != true`, **never** `!x.IsDeleted` (measured: a
   document without the field does not match `!x`).
-- Persistence hooks (formerly interceptors, #482): `spark.AddHook<T>()` with `IBeforeSave`,
+- Persistence interceptors (#482): `spark.AddInterceptor<T>()` with `IBeforeSave`,
   `IAfterSave`, `IBeforeDelete`, `IAfterDelete`, `IDeleteReplacement` (one per type; replaces the hard
-  delete before any before-delete hook runs), `IAfterMaterialize`, `IAfterLoad`,
-  `INaturalIdCollision`. The framework owns the write: no hook or Actions class can skip WITH CHECK,
+  delete before any before-delete interceptor runs), `IAfterMaterialize`, `IAfterLoad`,
+  `INaturalIdCollision`. The framework owns the write: no interceptor or Actions class can skip WITH CHECK,
   the expected change vector or the single commit. Cancel with `throw new SparkCancelException()`.
-  No numeric order: registration order, plus `HookStage.Finalize` for hooks that must run last.
+  No numeric order: registration order, plus `InterceptorStage.Finalize` for interceptors that must run last.
 - ⚠️ An `OnLoadAsync` override that skips the base also skips the read gate for its type — policies
   included.
 - **Soft deletion is a package, not hand-written** — `MintPlayer.Spark.SoftDelete`: entity implements

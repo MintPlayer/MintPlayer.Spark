@@ -102,7 +102,7 @@ public interface IDatabaseAccess
     /// </summary>
     /// <param name="etag">
     /// The version the caller saw (#467, D14). When given, a row changed since is refused with a 409
-    /// before any hook, and the delete is written with it, so a change landing after that check is a
+    /// before any interceptor, and the delete is written with it, so a change landing after that check is a
     /// 409 too. Null deletes whatever is stored: the internal overwrite, for callers that never showed
     /// the row to anyone (a job, a sync). Every HTTP delete requires one.
     /// </param>
@@ -114,13 +114,13 @@ public interface IDatabaseAccess
     /// Every row goes through the single-row delete pipeline — <c>Delete/T</c>, the collection guard,
     /// the row gate, the disabled-action hook (asked about the query target, with its parent, and every
     /// row; one refused row refuses the lot), the delete replacement (so a soft-deletable type is
-    /// soft-deleted) and the before-delete hooks — but every gate runs before the first write, and the
-    /// framework commits every row with one <c>SaveChanges</c> (#482: no hook or Actions class can
+    /// soft-deleted) and the before-delete interceptors — but every gate runs before the first write, and the
+    /// framework commits every row with one <c>SaveChanges</c> (#482: no interceptor or Actions class can
     /// commit early). A missing, foreign-collection or row-denied id refuses the whole request with
     /// <see cref="Authorization.SparkRowLevelAccessDeniedException"/>, never a silently shorter delete.
     /// </para>
     /// <para>
-    /// A hook that refuses a row names it in the refusal; a <c>Retry.Action</c> prompt from a hook is
+    /// An interceptor that refuses a row names it in the refusal; a <c>Retry.Action</c> prompt from an interceptor is
     /// refused the same way (a per-row prompt in a bulk delete is unworkable), and a
     /// <see cref="SparkCancelException"/> cancels the whole batch.
     /// </para>

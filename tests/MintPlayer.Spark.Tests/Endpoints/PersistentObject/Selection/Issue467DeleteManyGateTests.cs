@@ -1,7 +1,7 @@
 using System.Net;
 using MintPlayer.Spark.Testing;
 
-namespace MintPlayer.Spark.Tests.Spikes.Issue467;
+namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 
 /// <summary>
 /// #467 spikes S4 (Read gate on delete-many, PRD D11) and S7 (query-level <c>OnDisableActionsAsync</c>
@@ -37,7 +37,7 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
     /// Alice's readable note, bob's note (hidden by the Read rule, allowed by the wider Delete rule)
     /// and bob's "frozen" note (also withholds Delete), from <c>Data/notes.json</c>.
     /// </summary>
-    private Task SeedNotesAsync() => SeedFromJsonAsync("Spikes/Issue467/Data/notes.json");
+    private Task SeedNotesAsync() => SeedFromJsonAsync("Endpoints/PersistentObject/Selection/Data/notes.json");
 
     /// <summary>
     /// The rows as a list showed them (D14): each id with its stored change vector, or an etag naming
@@ -89,7 +89,7 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
         status.Should().Be(HttpStatusCode.NotFound, $"D11: an unreadable row counts as missing (M-3); body: {body}");
     }
 
-    // S4 / D11 + M-3: the existence oracle. An unreadable row whose object-level hook withholds Delete
+    // S4 / D11 + M-3: the existence oracle. An unreadable row whose object-level interceptor withholds Delete
     // answers 403 today (the disabled-action gate runs on rows the caller cannot read), while a missing
     // id answers 404 — so the status tells the caller the hidden row exists.
     [Fact]
@@ -160,7 +160,7 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
     // S8: a retry raised by OnBeforeDeleteAsync inside a batch is a 449 that writes nothing; answered,
     // the same request deletes every row.
     [Fact]
-    public async Task S8_a_retry_from_a_before_delete_hook_inside_a_batch_asks_once_then_deletes_all()
+    public async Task S8_a_retry_from_a_before_delete_interceptor_inside_a_batch_asks_once_then_deletes_all()
     {
         await SeedPromptsAsync();
         var items = await ListedAsync("I467Prompts/1", "I467Prompts/2");
@@ -173,7 +173,7 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
 
         var (asked, askedBody) = await _host.SendAsync("/spark/po/delete-many", Body(null));
         ((int)asked).Should().Be(449, askedBody);
-        (await ExistsAsync<I467Prompt>("I467Prompts/1")).Should().BeTrue("nothing is written while the hook asks");
+        (await ExistsAsync<I467Prompt>("I467Prompts/1")).Should().BeTrue("nothing is written while the interceptor asks");
         (await ExistsAsync<I467Prompt>("I467Prompts/2")).Should().BeTrue();
 
         var (answered, answeredBody) = await _host.SendAsync("/spark/po/delete-many", Body(new[] { new { step = 0, option = "Yes" } }));

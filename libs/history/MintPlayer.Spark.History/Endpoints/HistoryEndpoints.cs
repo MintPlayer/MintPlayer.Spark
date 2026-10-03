@@ -160,7 +160,7 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint
         }
         catch (SparkCancelException)
         {
-            // A hook cancelled the revert (#482): nothing was written; answered with the row as stored.
+            // An interceptor cancelled the revert (#482): nothing was written; answered with the row as stored.
             return SparkAddOnEndpoints.Envelope(clientAccessor,
                 await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id), StatusCodes.Status200OK);
         }

@@ -242,7 +242,7 @@ export class SparkService {
    * `newObject` was given. The server resolves and authorizes it again and hands it to the save hooks
    * as `PersistentObject.Parent`.
    *
-   * Resolves to `null` when a server hook cancelled the create (#482: the user answered a prompt with
+   * Resolves to `null` when a server interceptor cancelled the create (#482: the user answered a prompt with
    * Cancel) — the server answers 204 and nothing was created.
    */
   async create(

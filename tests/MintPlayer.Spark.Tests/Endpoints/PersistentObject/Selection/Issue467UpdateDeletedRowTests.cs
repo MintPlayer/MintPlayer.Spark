@@ -11,7 +11,7 @@ using MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
 using PO = MintPlayer.Spark.Abstractions.PersistentObject;
 
-namespace MintPlayer.Spark.Tests.Spikes.Issue467;
+namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 
 /// <summary>
 /// #467 spike S11 — an Update of an object that was deleted after it was loaded (PRD D15), and an
@@ -38,7 +38,7 @@ public class Issue467UpdateDeletedRowTests : SparkTestDriver
             Store,
             [TestModels.Person(PersonTypeId)],
             configureServices: services => services.AddSingleton(_race),
-            configureSpark: spark => spark.AddHook<DeleteAfterPreReadInterceptor>());
+            configureSpark: spark => spark.AddInterceptor<DeleteAfterPreReadInterceptor>());
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 

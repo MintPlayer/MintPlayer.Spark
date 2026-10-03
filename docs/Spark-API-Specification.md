@@ -152,7 +152,7 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 - **Request body**: `{ objectTypeId, id, etag, retryResults? }`. `etag` is required (#467, D14): the loaded object's `etag`, the version being deleted.
 - **Response shapes**:
   - `204 No Content` — empty body
-  - `400 Bad Request` — `{ "errors": [...] }` when a hook refuses for a business reason; `{ "error" }` without an `etag`
+  - `400 Bad Request` — `{ "errors": [...] }` when an interceptor refuses for a business reason; `{ "error" }` without an `etag`
   - `404 Not Found` — object or type not found, or denied
   - `409 Conflict` — `{ "error": "Concurrency conflict", "reason": "changed" }`: the object changed since it was loaded
   - `449` on retry
@@ -172,7 +172,7 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 - **Response shapes**:
   - `204 No Content`: every row was deleted, by one `SaveChanges`.
   - `400 Bad Request`: an item without an `etag`, no `queryId`, more than 200 items, or the `Delete`
-    entry's selection rule refuses the count (default `>0`); or a hook refused with
+    entry's selection rule refuses the count (default `>0`); or an interceptor refused with
     `{ "errors": [...] }` naming every refused row (D18).
   - `403 Forbidden` `{ error, action: "Delete" }`: the Delete row rule, or `OnDisableActionsAsync`
     withholding Delete on the query target or on rows; the message names the rows (D18).

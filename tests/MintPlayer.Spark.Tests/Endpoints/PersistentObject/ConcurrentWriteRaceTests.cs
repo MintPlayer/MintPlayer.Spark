@@ -52,7 +52,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
             Store,
             [TestModels.Person(PersonTypeId)],
             configureServices: services => services.AddSingleton(_race),
-            configureSpark: spark => spark.AddHook<ConcurrentWriterInterceptor>());
+            configureSpark: spark => spark.AddInterceptor<ConcurrentWriterInterceptor>());
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
@@ -137,7 +137,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
     public async Task Hard_delete_refuses_a_write_that_raced_past_the_etag_check()
     {
         // #467, D14: the delete is written with the etag the caller sent, so a write landing after the
-        // etag check — here, from a before-delete hook — still refuses it.
+        // etag check — here, from a before-delete interceptor — still refuses it.
         var po = await SeedAndLoadAsync();
 
         _race.ArmDeleteRace();

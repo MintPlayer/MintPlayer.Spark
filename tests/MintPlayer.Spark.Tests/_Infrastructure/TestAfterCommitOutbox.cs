@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// The durable after-commit outbox (#482, D17) without the Messaging runtime: each unit of work is
 /// stored as a document in the write's own session, exactly as Messaging stores its message, and
 /// <see cref="DrainAsync"/> runs the committed ones through the framework's dispatcher. A refused or
-/// cancelled write commits no document, so its hooks never run — the property under test.
+/// cancelled write commits no document, so its interceptors never run — the property under test.
 /// </summary>
 /// <remarks>Register with <see cref="AddTestAfterCommitOutbox"/>; singleton state, scoped outbox.</remarks>
 public sealed class TestAfterCommitOutbox
@@ -41,7 +41,7 @@ public sealed class TestAfterCommitOutbox
             using var scope = services.CreateScope();
             var dispatched = await scope.ServiceProvider.GetRequiredService<ISparkAfterCommitDispatcher>().DispatchAsync(work, CancellationToken.None);
             if (!dispatched)
-                throw new InvalidOperationException($"After-commit hook '{work.HookType}' was not found.");
+                throw new InvalidOperationException($"After-commit interceptor '{work.InterceptorType}' was not found.");
             ran++;
         }
         return ran;

@@ -3,7 +3,7 @@
 Revision history for [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark): RavenDB
 revisions configured from the model, audit stamping, revision reads through Spark's row security and
 redaction, revert through the normal save pipeline, and the changed attributes of every write for
-durable after-commit hooks.
+durable after-commit interceptors.
 
 - `IAuditable` — `CreatedBy`, `CreatedAt`, `ModifiedBy`, `ModifiedAt`, stamped on every write with
   **user ids** (never names).
@@ -19,7 +19,7 @@ builder.Services.AddSpark(spark =>
 {
     spark.UseContext<AppContext>();
     spark.AddHistory();
-    spark.AddHook<AuditTrail>();                      // optional, durable: needs spark.AddMessaging()
+    spark.AddInterceptor<AuditTrail>();                      // optional, durable: needs spark.AddMessaging()
     spark.AddHistoryUserNameResolver<UserNames>();    // optional: names in revision lists
 });
 ```
@@ -155,8 +155,8 @@ same pipeline as an edit:
   rules see `"Edit"`); `WITH CHECK`; protected attributes keep their stored values;
 - the disabled-action hook refuses it (403 naming the action) when it withholds `Revert`, `Edit` or
   `Save`;
-- every persistence hook runs with operation `Revert` — stamping, soft deletion, locks;
-- a concurrent edit between load and save is a 409; a hook's refusal a 400.
+- every persistence interceptor runs with operation `Revert` — stamping, soft deletion, locks;
+- a concurrent edit between load and save is a 409; an interceptor's refusal a 400.
 
 What reverts: every **model attribute** (measured, spike H3: strings, a `TranslatedString` — made
 exact, so a language added after the revision is removed — a `DateTimeOffset` with its offset,
@@ -168,8 +168,8 @@ identity across saves beyond their position (the known AsDetail row-identity cav
 
 ## Reacting to writes
 
-`ISparkRevisionObserver` is gone (#482): use the framework's durable after-commit hooks
-([guide](../../../docs/guide-hooks.md#5a-durable-after-commit-hooks)), which run once the write
+`ISparkRevisionObserver` is gone (#482): use the framework's durable after-commit interceptors
+([guide](../../../docs/guide-interceptors.md#5a-durable-after-commit-interceptors)), which run once the write
 committed, even across a crash, with Messaging's retries.
 
 ```csharp
@@ -190,8 +190,8 @@ public sealed class AuditTrail : IAfterSaveCommitted<Order>, IAfterDeleteCommitt
 For a type whose model has `"revisions": { "enabled": true }`, History records the top-level
 attributes each write changed as `SparkFacts.ChangedAttributes` (comma-separated). The payload has no
 new change vector — the message is written in the same commit, before the database assigns it — so
-a hook that needs the revision loads the row. Writes outside `IDatabaseAccess` (a raw session, a
-patch, ETL) still create revisions, but no hook hears of them.
+an interceptor that needs the revision loads the row. Writes outside `IDatabaseAccess` (a raw session, a
+patch, ETL) still create revisions, but no interceptor hears of them.
 
 ## Permissions endpoint
 
@@ -224,7 +224,7 @@ Outside the routed pages, use `<spark-po-history [type] [id] [entityType] [curre
 
 ## Limits
 
-- History's before-save hook runs in `HookStage.Finalize` (#482), after every hook that stamps or
+- History's before-save interceptor runs in `InterceptorStage.Finalize` (#482), after every interceptor that stamps or
   trims fields, so its "did this edit change anything?" judges the row as it is written. Nothing can skip it.
 - `ChangedAttributes` compares the stored and the saved value of each top-level model attribute as
   JSON; `AsDetail` changes are reported as the whole attribute.

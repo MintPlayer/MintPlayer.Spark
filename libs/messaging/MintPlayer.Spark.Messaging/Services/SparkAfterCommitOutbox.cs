@@ -6,8 +6,8 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Messaging.Services;
 
 /// <summary>
-/// The framework's durable after-commit hooks (#482, D17), delivered by Messaging: one message per
-/// committed row and hook, stored in the write's own session, handled with Messaging's retries and
+/// The framework's durable after-commit interceptors (#482, D17), delivered by Messaging: one message per
+/// committed row and interceptor, stored in the write's own session, handled with Messaging's retries and
 /// dead-lettering.
 /// </summary>
 internal sealed partial class SparkAfterCommitOutbox : ISparkAfterCommitOutbox
@@ -18,7 +18,7 @@ internal sealed partial class SparkAfterCommitOutbox : ISparkAfterCommitOutbox
         => outbox.EnqueueAsync((IAsyncDocumentSession)session, work, cancellationToken: cancellationToken);
 }
 
-/// <summary>Runs the durable hook a <see cref="SparkAfterCommitWork"/> message names; a throw is retried.</summary>
+/// <summary>Runs the durable interceptor a <see cref="SparkAfterCommitWork"/> message names; a throw is retried.</summary>
 internal sealed partial class SparkAfterCommitRecipient : IRecipient<SparkAfterCommitWork>
 {
     [Inject] private readonly ISparkAfterCommitDispatcher dispatcher;
@@ -27,7 +27,7 @@ internal sealed partial class SparkAfterCommitRecipient : IRecipient<SparkAfterC
     {
         if (!await dispatcher.DispatchAsync(message, cancellationToken))
             throw new NonRetryableException(
-                $"The after-commit hook '{message.HookType}' is not registered in this app (removed since the write?); " +
+                $"The after-commit interceptor '{message.InterceptorType}' is not registered in this app (removed since the write?); " +
                 $"{message.Change.EntityType} '{message.Change.Id}' was committed without it.");
     }
 }
