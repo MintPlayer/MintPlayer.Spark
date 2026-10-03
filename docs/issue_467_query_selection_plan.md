@@ -1,11 +1,11 @@
 # Plan — Issue #467 (one pull request)
 
-Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D29 settled during implementation) and spike results live in
+Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D33 settled during implementation and follow-up grilling) and spike results live in
 [issue_467_query_selection_PRD.md](issue_467_query_selection_PRD.md) §7. This file is the order of work.
 Where the PRD's §2 and §7 disagree, §7 wins.
 
 **Rules for executing this plan**
-- One branch, one PR: `feat/467-query-selection`. Every decision D1–D32 lands in this PR; the PR also closes #482.
+- One branch, one PR: `feat/467-query-selection`. Every decision D1–D33 lands in this PR; the PR also closes #482.
 - Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
   One full sweep at the end (M9):
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
@@ -154,7 +154,7 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
 - [x] Persister in the framework, called from `DatabaseAccess`. It runs, in this order:
       load/construct → after-materialize → `MapAsync` → `IDeleteReplacement` (deletes only) → before-hooks (`Default`, then
       `Finalize`) → WITH CHECK → store or delete with the expected change vector → **one commit owned by `DatabaseAccess`** →
-      replication → after-hooks (each isolated) → durable enqueue (M7b).
+      after-hooks (each isolated; replication is one of them, D33e) → durable enqueue (M7b).
       `ISparkWriteBatch.IsDeferring`, `AnnounceBeforeSaveBypass`, the `savedEarly` warning, the Mark/Consume handshake and
       `InvokeBeforeDeleteHookAsync` are removed.
 - [x] Hook interfaces in Abstractions:
@@ -169,7 +169,7 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
       create 204. One cancel cancels a whole bulk delete. A `Retry.Action` from a hook during a bulk delete is refused.
 - [x] The Actions class loses `OnSaveAsync`, `OnDeleteAsync`, `OnBeforeSaveAsync`, `OnAfterSaveAsync` and `OnBeforeDeleteAsync`;
       `IPersistentObjectActions<T>` loses them too. `MapAsync(obj, existing?)` is new.
-- [x] Migrate SoftDelete, History, Moderation, Contributions, Replication (`ISyncActionInterceptor` reads `WasReplaced`), the QnA
+- [x] Migrate SoftDelete, History, Moderation, Contributions, Replication (`ReplicationHook`, an after-hook reading `IsReplaced`; D33e), the QnA
       interceptors, and every app override (CodeCoverage ApiToken/GitHubProject/Repository, DemoApp Person/Company,
       Fleet Car (prompt in `IBeforeDelete<Car>`, cancel by throwing; toast in `IAfterSave<Car>`), QnA Question, OIDC).
       ApiToken's shown-once secret stays a **sync** `IAfterSave` and must never be durable.
@@ -182,7 +182,7 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
 
 ### M7b — Durable after-commit hooks (D17), per S6/S13
 - [ ] `IAfterSaveCommitted` / `IAfterDeleteCommitted` take a payload, never the live entity: type name, id, operation,
-      `WasReplaced`/`IsPurge`, actor id + system flag, time, previous change vector, and `Facts` filled by before-hooks.
+      `IsReplaced`/`IsPurge`, actor id + system flag, time, previous change vector, and `Facts` filled by before-hooks.
 - [ ] Messaging: `EnqueueAsync(IAsyncDocumentSession, msg, options)`, store only, unique id, never the dedupe path. An
       `ISparkAfterCommitOutbox` seam in Abstractions. The persister enqueues one message per row and hook in the data change's
       own `SaveChanges`. A recipient runs the durable hooks, with #369 retries and dead-lettering.
@@ -191,7 +191,7 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
 - [ ] Hooks move to the durable phase: SoftDelete observers, History observer notification (relax `SparkRevisionEvent.ChangeVector`
 - [ ] D32(4): `ISoftDeleteObserver` and `ISparkRevisionObserver` are removed; their users (libraries, tests) move to `IAfterDeleteCommitted`/`IAfterSaveCommitted` (payload: operation, id, actor, reason, changed attributes; no new change vector).
       for deferred observers), Moderation vote reversal, DemoApp broadcasts. This fixes the side bug: DemoApp
-      `PersonActions.OnBeforeDeleteAsync` broadcasts before the commit.
+      `PersonActions.OnBeforeDeleteAsync` broadcast before the commit (already moved to an in-request `IAfterDelete` in M7; M7b makes it durable).
 
 ### M8 — Demo, E2E, docs
 - [ ] DemoApp / Fleet: an editor sees Edit + Delete in the strip; a read-only role sees no checkboxes.
