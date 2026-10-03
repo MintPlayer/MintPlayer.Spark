@@ -7,7 +7,7 @@ Spark lets you define server-side actions that users can trigger from entity det
 A custom action has three parts:
 
 1. **C# implementation** -- a class that implements `ICustomAction` (or extends `SparkCustomAction`)
-2. **JSON configuration** -- an entry in `App_Data/customActions.json` defining display metadata
+2. **JSON configuration** -- an entry in `App_Data/actions.json` (icon, where it shows, selection rule), with its texts in `translations.json`
 3. **Authorization** (optional) -- entries in `App_Data/security.json` controlling who can execute the action
 
 ## Step 1: Create the Action Class
@@ -122,36 +122,81 @@ every read path — return a purpose-built shape.
 
 You can either extend `SparkCustomAction` (convenience base class) or implement `ICustomAction` directly. Both approaches work identically. The base class currently provides the same abstract method, but in a future phase it will add helper methods for navigation and notifications (same mechanism as PersistentObject Actions classes).
 
-## Step 2: Configure customActions.json
+## Step 2: Configure actions.json
 
-Create `App_Data/customActions.json` in your application. Each key is the action name (must match the C# class name minus the `Action` suffix).
+Add the action to `App_Data/actions.json` in your application. Each key is the action name (must match the C# class name minus the `Action` suffix).
 
 ```json
 {
   "CarCopy": {
-    "displayName": { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
     "icon": "Copy",
-    "description": "Creates a copy of the selected car",
     "showedOn": "both",
     "selectionRule": "=1",
-    "refreshOnCompleted": true,
-    "confirmationMessageKey": "AreYouSure"
+    "refreshOnCompleted": true
   }
 }
 ```
 
+The file holds no translated text (#467, D1). The label, the description and the confirmation live in
+`translations.json`, under conventional keys:
+
+```json
+{
+  "actions": {
+    "CarCopy": {
+      "label":        { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
+      "description":  { "en": "Creates a copy of the selected car" },
+      "confirmation": { "en": "Copy {count} car(s)?" }
+    }
+  }
+}
+```
+
+An untranslated label shows the humanized name (`CarCopy` → `Car Copy`). The confirmation is asked
+only when `actions.{Name}.confirmation` is translated, or when the file names a `confirmation` key;
+`{count}` is replaced with the number of rows the action is about to act on. The file refuses
+embedded text, and the pre-#467 `displayName` and `confirmationMessageKey` properties, with a
+message naming the key to use.
+
 ### Configuration Properties
 
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `displayName` | TranslatedString | Yes | The button/menu label shown to the user |
-| `icon` | string | No | Icon name (displayed next to the action label) |
-| `description` | string | No | Human-readable description (for documentation/tooltips) |
-| `showedOn` | string | No | Where the action appears: `"detail"`, `"query"`, or `"both"` (default: `"both"`) |
-| `selectionRule` | string | No | For query views: how many items must be selected. See below. |
-| `refreshOnCompleted` | boolean | No | Whether the UI should refresh after successful execution |
-| `confirmationMessageKey` | string | No | Translation key for a confirmation dialog shown before execution |
-| `offset` | number | No | Display order (lower values appear first). Default: `0` |
+| Property | Type | Description |
+|---|---|---|
+| `label` | string | An explicit translation key for the label, instead of `actions.{Name}.label` |
+| `description` | string | An explicit translation key for the description, instead of `actions.{Name}.description` |
+| `confirmation` | string or `false` | An explicit translation key for the confirmation, instead of `actions.{Name}.confirmation`; `false` never asks |
+| `icon` | string | Icon name (displayed next to the action label) |
+| `showedOn` | string | Where the action appears: `"detail"`, `"query"`, or `"both"` (default: `"both"`) |
+| `selectionRule` | string | For query views: how many items must be selected. See below. |
+| `refreshOnCompleted` | boolean | Whether the UI should refresh after successful execution |
+| `variant` | string | `"primary"`, `"secondary"`, `"danger"`, `"warning"`: presentation only |
+| `offset` | number | Display order (lower values appear first). Default: `0` |
+
+### Layers: the libraries' actions.json and yours (#467, D7)
+
+`actions.json` is composed in layers. The core library ships the first one, with the built-in New,
+Edit and Delete; any library may ship its own; your application's file composes on top **per
+property**:
+
+- A property your file states replaces the inherited one; one it leaves out keeps it.
+- A property set to `null` resets it to the default.
+- `"Edit": null` removes the inherited action from every page. Removal is presentation: rights still
+  decide who may run what.
+- A name no library declares adds an action.
+
+Two libraries that state the same property of the same action differently get warning SPARK036 at
+build time and a warning in the log at startup; the later library by assembly name wins, and your
+file decides by stating the property. Run the application with `--spark-print-effective-actions`
+to print the composed catalogue, with the layer each property came from.
+
+A library ships its layer by marking the file for the source generator, which compiles it into the
+assembly:
+
+```xml
+<AdditionalFiles Include="App_Data\actions.json" SparkActionsLayer="library" />
+<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SparkActionsLayer" />
+<Content Remove="App_Data\actions.json" />
+```
 
 ### Selection Rules
 
@@ -164,7 +209,7 @@ is `1<X<5`), and a number-first term is mirrored (`0<X` means `>0`).
 
 | Rule | Meaning |
 |---|---|
-| omitted / `""` | No requirement |
+| omitted / `null` | No requirement |
 | `"=0"` | Exactly zero — the action is **disabled once anything is selected** |
 | `"=1"` | Exactly one |
 | `">0"` / `">=1"` | One or more |
@@ -175,8 +220,8 @@ is `1<X<5`), and a number-first term is mirrored (`0<X` means `>0`).
 Operators are `<=`, `>=`, `<`, `>`, `!=`, `=`.
 
 **A malformed rule is refused when the configuration loads, not silently permitted.** `"1-5"`,
-`"*"` and `"=abc"` are all rejected, and every offender in the file is named at once. The load is
-lazy, so this surfaces the first time custom actions are read rather than at process start. (Vidyano, where this syntax comes from, treats anything
+`"*"` and `"=abc"` are all rejected, and every offender in the catalogue is named at once. The
+catalogue is composed at startup, so this refuses to start rather than failing on a click. (Vidyano, where this syntax comes from, treats anything
 unparseable as "always true" — safe for a greyed-out button, wrong for a server-side gate, where it
 would let any selection through.)
 
@@ -190,7 +235,7 @@ caller can always POST directly.
 
 ### File Watching
 
-The `customActions.json` file is cached in memory and watched for changes using `FileSystemWatcher`. When the file is modified, the cache is automatically invalidated. No restart is needed to pick up configuration changes.
+Your `actions.json` is cached in memory and watched with `FileSystemWatcher` (written, created, renamed or deleted). A change invalidates the cache; no restart is needed. The library layers are compiled in and change only with a rebuild.
 
 ## Step 3: Authorization (Optional)
 
@@ -199,8 +244,8 @@ If your application uses Spark Authorization, add entries to `App_Data/security.
 ```json
 {
   "groups": {
-    "a1b2c3d4-0000-0000-0000-000000000001": {"en": "Administrators"},
-    "a1b2c3d4-0000-0000-0000-000000000002": {"en": "Fleet managers"}
+    "a1b2c3d4-0000-0000-0000-000000000001": "Administrators",
+    "a1b2c3d4-0000-0000-0000-000000000002": "FleetManagers"
   },
   "rights": [
     {
@@ -237,30 +282,36 @@ top-level list or a sub-query on a parent's detail page. That is the Vidyano mod
 parts that were missing: the built-in `New` and `Delete` as catalogue entries, a declared selection
 mode, and a toolbar and row menu shared by both grids.
 
-### New and Delete are catalogue entries (D18)
+### New, Edit and Delete are catalogue entries (#460 D18, #467 D7)
 
-`/spark/actions/list` now also returns the framework's two built-in actions. Each is marked
-`"isDefault": true` and appears only when the caller holds the ordinary right, `New/T` or `Delete/T`:
+`/spark/actions/list` also returns the framework's three built-in actions, which the core library's
+`actions.json` declares. Each is marked `"isDefault": true` and appears only when the caller holds
+the ordinary right, `New/T`, `Edit/T` or `Delete/T`:
 
 | Name | `showedOn` | `selectionRule` | Runs through |
 |---|---|---|---|
-| `New` | `both` | none | the create page → `POST /spark/po/new` → `POST /spark/po/create` |
-| `Delete` | `both` | `>0` | `POST /spark/po/delete-many` |
+| `New` | `query` | none | the create page → `POST /spark/po/new` → `POST /spark/po/create` |
+| `Edit` | `both` | `=1` | the edit page → `POST /spark/po/update` |
+| `Delete` | `both` | `>0` | `POST /spark/po/delete-many` (a query), `POST /spark/po/delete` (the detail page) |
 
-**To override either one**, add an entry with the same name to `customActions.json`. It needs no C#
-class, and it may leave `displayName` out; a custom action may not.
-- A field the entry states replaces the default. A field it leaves out keeps the default.
-- `showedOn` and `offset` always come from the entry. Their file defaults equal the built-in ones.
-- To drop Delete's rule, write `"selectionRule": ""`.
+The detail page's Edit and Delete buttons are these entries (D8): an app that removes `Edit` or
+moves it to `"showedOn": "query"` removes the detail page's button too. The row's own `can.edit` /
+`can.delete` (row security) must also allow it, and the selection rule does not apply there.
+
+**To override one**, state the properties to change in your `actions.json`; it needs no C# class.
+The texts are `actions.New.label`, `actions.Edit.label`, `actions.Delete.label` and
+`actions.Delete.confirmation` (with `{count}`), which your `translations.json` may override per
+language.
 
 ```json
 {
-  "Delete": { "selectionRule": "=1", "confirmationMessageKey": "DeleteOneAnswer" }
+  "Delete": { "selectionRule": "=1" },
+  "Edit": null
 }
 ```
 
-An `ICustomAction` class named `New` or `Delete` is never executed: `/spark/actions/execute` answers
-404 for both names.
+An `ICustomAction` class named `New`, `Edit` or `Delete` is never executed: `/spark/actions/execute`
+answers 404 for those names.
 
 ### The bulk Delete
 
@@ -408,13 +459,13 @@ Returns the list of custom actions available for the given entity type. Only act
 [
   {
     "name": "CarCopy",
-    "displayName": { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
+    "label": { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
     "icon": "Copy",
-    "description": "Creates a copy of the selected car",
+    "description": { "en": "Creates a copy of the selected car" },
     "showedOn": "both",
     "selectionRule": "=1",
     "refreshOnCompleted": true,
-    "confirmationMessageKey": "AreYouSure",
+    "confirmation": { "en": "Are you sure?", "fr": "Êtes-vous sûr ?", "nl": "Weet u het zeker?" },
     "offset": 0
   }
 ]
@@ -473,7 +524,7 @@ The resolved name may not be a reserved verb (`Edit`, `Delete`, `Restore`, `Reve
 the action would share that verb's right. SPARK023 refuses it at build time and `UseSpark()` at
 startup; see [reserved verbs](guide-authorization.md#reserved-verbs).
 
-The JSON key in `customActions.json` must match this resolved name. Only actions that have both a C# implementation **and** a JSON configuration entry are returned by the list endpoint.
+The key in `actions.json` must match this resolved name. A custom action is listed only when it has both a C# implementation **and** a catalogue entry.
 
 ## Angular Integration
 
@@ -482,25 +533,28 @@ On the Angular side, the `CustomActionDefinition` model represents an action:
 ```typescript
 export interface CustomActionDefinition {
   name: string;
-  displayName: TranslatedString;
+  label: TranslatedString;
   icon?: string;
-  description?: string;
+  description?: TranslatedString;
   showedOn: string;
   selectionRule?: string;
   refreshOnCompleted: boolean;
-  confirmationMessageKey?: string;
+  confirmation?: TranslatedString;
+  variant?: string;
   offset: number;
+  isDefault?: boolean;
 }
 ```
 
-The frontend fetches available actions via `POST /spark/actions/list`, renders buttons or menu items based on `showedOn`, evaluates `selectionRule` against the current selection, shows a confirmation dialog if `confirmationMessageKey` is set, and executes via `POST /spark/actions/execute`. Both name the type — and the second also the action — in the request body: every Spark path is literal, with no route variables at all.
+The frontend fetches available actions via `POST /spark/actions/list`, renders buttons or menu items based on `showedOn`, evaluates `selectionRule` against the current selection, shows the `confirmation` (with `{count}` substituted) when there is one, and executes via `POST /spark/actions/execute`. Both name the type — and the second also the action — in the request body: every Spark path is literal, with no route variables at all.
 
 ## Complete Example
 
 See the Fleet demo app for a working example:
-- `Demo/Fleet/Fleet/CustomActions/CarCopyAction.cs` -- C# implementation
-- `Demo/Fleet/Fleet/App_Data/customActions.json` -- action metadata
-- `Demo/Fleet/Fleet/App_Data/security.json` -- authorization entries
+- `apps/Fleet/Fleet/CustomActions/CarCopyAction.cs` -- C# implementation
+- `apps/Fleet/Fleet/App_Data/actions.json` -- action metadata
+- `apps/Fleet/Fleet/App_Data/translations.json` -- the `actions.CarCopy.*` texts
+- `apps/Fleet/Fleet/App_Data/security.json` -- authorization entries
 - `MintPlayer.Spark.Abstractions/Actions/ICustomAction.cs` -- interface definition
 - `MintPlayer.Spark/Actions/SparkCustomAction.cs` -- base class
 - `MintPlayer.Spark/Models/CustomActionDefinition.cs` -- metadata model

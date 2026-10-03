@@ -58,6 +58,15 @@
 		compiled into [assembly: SparkTranslations(...)] attributes and read at runtime.
 		-->
 		<Content Remove="App_Data\translations.json" />
+
+		<!--
+		The core layer of the action catalogue (New, Edit, Delete; #467 D7). SparkActionsLayer="library"
+		tells the generator to compile it into [assembly: SparkActions(...)]; an application's own
+		actions.json carries no such metadata, and is read from disk so it reloads while running.
+		-->
+		<AdditionalFiles Include="App_Data\actions.json" SparkActionsLayer="library" />
+		<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SparkActionsLayer" />
+		<Content Remove="App_Data\actions.json" />
 	</ItemGroup>
 
 	<ItemGroup>

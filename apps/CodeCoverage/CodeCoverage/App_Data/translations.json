@@ -1990,5 +1990,40 @@
         }
       }
     }
+  },
+  "actions": {
+    "Resync": {
+      "label": {
+        "en": "Resync",
+        "fr": "Resynchroniser",
+        "nl": "Hersynchroniseren"
+      }
+    },
+    "DeleteData": {
+      "label": {
+        "en": "Delete data",
+        "fr": "Supprimer les données",
+        "nl": "Gegevens verwijderen"
+      }
+    },
+    "SyncColumns": {
+      "label": {
+        "en": "Sync columns",
+        "fr": "Synchroniser les colonnes",
+        "nl": "Kolommen synchroniseren"
+      }
+    },
+    "Revoke": {
+      "label": {
+        "en": "Revoke",
+        "fr": "Révoquer",
+        "nl": "Intrekken"
+      },
+      "confirmation": {
+        "en": "Revoke {count} token(s)? A revoked token stops working for uploads and cannot be restored.",
+        "fr": "Révoquer {count} jeton(s) ? Un jeton révoqué ne fonctionne plus pour les envois et ne peut pas être rétabli.",
+        "nl": "{count} token(s) intrekken? Een ingetrokken token werkt niet meer voor uploads en kan niet worden hersteld."
+      }
+    }
   }
 }

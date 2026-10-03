@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -110,7 +111,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
                 services.AddScoped<VmItemActions>();
                 services.AddScoped<VmSongActions>();
                 services.AddScoped<VmLyricActions>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(new StubCustomActions(Ping));
+                services.AddSingleton(TestActions.LoaderWithCustom(Ping));
                 services.AddScoped<ICustomActionResolver>(sp => new StubActionResolver(Ping, sp.GetRequiredService<VmPingAction>()));
             },
             security: SparkTestSecurity.FromJson(Security(rules)));
@@ -380,16 +381,6 @@ public class AttributeVerbMatrixTests : SparkTestDriver
             ],
         },
     };
-
-    private sealed class StubCustomActions(string name) : ICustomActionsConfigurationLoader
-    {
-        public CustomActionsConfiguration GetConfiguration() => new()
-        {
-            [name] = new CustomActionDefinition { DisplayName = TranslatedString.Create(name), ShowedOn = "both" },
-        };
-
-        public void InvalidateCache() { }
-    }
 
     private sealed class StubActionResolver(string name, ICustomAction action) : ICustomActionResolver
     {

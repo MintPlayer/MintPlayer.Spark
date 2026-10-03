@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
@@ -169,7 +170,7 @@ public class AttributeWriteEnforcementTests : SparkTestDriver
                 services.AddScoped<WrSpecActions>();
                 services.AddScoped<WrNestedActions>();
                 services.AddScoped<WrPromptAction>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(new StubCustomActions(Prompt));
+                services.AddSingleton(TestActions.LoaderWithCustom(Prompt));
                 services.AddScoped<ICustomActionResolver>(sp => new StubActionResolver(Prompt, sp.GetRequiredService<WrPromptAction>()));
             },
             security: security);
@@ -561,16 +562,6 @@ public class AttributeWriteEnforcementTests : SparkTestDriver
             Attributes = [new() { Id = Guid.NewGuid(), Name = "Name", DataType = "string" }],
         },
     };
-
-    private sealed class StubCustomActions(string name) : ICustomActionsConfigurationLoader
-    {
-        public CustomActionsConfiguration GetConfiguration() => new()
-        {
-            [name] = new CustomActionDefinition { DisplayName = TranslatedString.Create(name), ShowedOn = "both" },
-        };
-
-        public void InvalidateCache() { }
-    }
 
     private sealed class StubActionResolver(string name, ICustomAction action) : ICustomActionResolver
     {

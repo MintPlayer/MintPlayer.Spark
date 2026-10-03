@@ -44,7 +44,7 @@ A **right** is `{action}/{target}`.
 | `Query` | list rows in a grid |
 | `Read` | open one row's detail page |
 | `New`, `Edit`, `Delete` | the obvious three |
-| *any custom action name* | from `customActions.json`, e.g. `SyncColumns/GitHubProject` |
+| *any custom action name* | from `actions.json`, e.g. `SyncColumns/GitHubProject` |
 
 | Combined | expands to |
 |---|---|

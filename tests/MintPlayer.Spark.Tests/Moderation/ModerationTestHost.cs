@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -188,7 +189,7 @@ public sealed class MoHost : IAsyncDisposable
                 services.AddSingleton<TimeProvider>(clock);
                 services.AddScoped<MoTouchAction>();
                 services.AddScoped<MoPostActions>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(new MoCustomActions());
+                services.AddSingleton(TestActions.LoaderWithCustom("MoTouch"));
                 services.AddScoped<ICustomActionResolver, MoActionResolver>();
             },
             configureSpark: spark =>
@@ -454,16 +455,6 @@ public sealed class MoTouchAction(IDatabaseAccess databaseAccess) : ICustomActio
         po!["Title"].SetValue("touched");
         await databaseAccess.SavePersistentObjectAsync(po);
     }
-}
-
-internal sealed class MoCustomActions : ICustomActionsConfigurationLoader
-{
-    public CustomActionsConfiguration GetConfiguration() => new()
-    {
-        ["MoTouch"] = new CustomActionDefinition { DisplayName = TranslatedString.Create("Touch"), ShowedOn = "both" },
-    };
-
-    public void InvalidateCache() { }
 }
 
 internal sealed class MoActionResolver(MoTouchAction touch) : ICustomActionResolver

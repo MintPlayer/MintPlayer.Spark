@@ -238,8 +238,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
                 // an implementation. Both come from files/assembly scanning in production; here they
                 // are stubbed so the fixture owns no App_Data.
                 services.AddScoped<RetryProbeConfirmAction>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(
-                    new StubCustomActions("RetryProbeConfirm"));
+                services.AddSingleton(TestActions.LoaderWithCustom("RetryProbeConfirm"));
                 services.AddScoped<ICustomActionResolver>(sp =>
                     new StubActionResolver("RetryProbeConfirm", sp.GetRequiredService<RetryProbeConfirmAction>()));
             },
@@ -506,19 +505,6 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
     private static readonly Guid ReadQueryId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000004");
 
     /// <summary>Stands in for <c>App_Data/customActions.json</c>, declaring exactly one action.</summary>
-    private sealed class StubCustomActions(string actionName) : ICustomActionsConfigurationLoader
-    {
-        public CustomActionsConfiguration GetConfiguration() => new()
-        {
-            [actionName] = new CustomActionDefinition
-            {
-                DisplayName = TranslatedString.Create(actionName),
-                ShowedOn = "both",
-            },
-        };
-
-        public void InvalidateCache() { }
-    }
 
     /// <summary>Stands in for the assembly scan, resolving exactly one action.</summary>
     private sealed class StubActionResolver(string actionName, MintPlayer.Spark.Abstractions.Actions.ICustomAction action)

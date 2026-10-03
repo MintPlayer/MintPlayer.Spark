@@ -157,11 +157,35 @@ function migrateApp(appDir) {
     }
   }
 
+  // customActions.json → actions.json (M3, D7). displayName moves to actions.{Name}.label;
+  // confirmationMessageKey becomes the explicit `confirmation` key. A description that is user-facing
+  // text moves to actions.{Name}.description; one that explains the configuration to a developer
+  // (it talks about showedOn / selectionRule) is dropped, since the action's C# class documents it.
+  const oldActionsFile = path.join(appData, 'customActions.json');
+  if (fs.existsSync(oldActionsFile)) {
+    const json = readJson(oldActionsFile);
+    for (const [name, definition] of Object.entries(json.data)) {
+      if (!definition || typeof definition !== 'object') continue;
+      const migrated = {};
+      for (const [property, value] of Object.entries(definition)) {
+        if (property === 'displayName') put(t, `actions.${name}.label`, value, { skipIfHumanized: name });
+        else if (property === 'confirmationMessageKey') migrated.confirmation = value;
+        else if (property === 'description') {
+          if (typeof value === 'string' && !/showedOn|selectionRule/.test(value)) put(t, `actions.${name}.description`, { en: value });
+        }
+        else migrated[property] = value;
+      }
+      json.data[name] = migrated;
+    }
+    writeJson(path.join(appData, 'actions.json'), json);
+    fs.unlinkSync(oldActionsFile);
+  }
+
   writeJson(translationsFile, translations);
 
-  // Report anything translated that is still embedded (customActions.json is migrated with actions.json, M3).
+  // Report anything translated that is still embedded.
   for (const file of walk(appData)) {
-    if (/translations\.json$|customActions\.json$|actions\.json$/i.test(file)) continue;
+    if (/translations\.json$/i.test(file)) continue;
     const left = (fs.readFileSync(file, 'utf8').match(/"en"\s*:/g) ?? []).length;
     if (left) console.log(`  still embedded: ${left} "en" in ${path.relative(appDir, file)}`);
   }

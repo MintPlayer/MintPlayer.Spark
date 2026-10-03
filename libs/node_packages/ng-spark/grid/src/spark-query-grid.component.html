@@ -167,7 +167,7 @@
                 @for (action of rowActions(); track action.name) {
                   <li bsDropdownItem class="spark-row-action" [attr.data-action]="action.name"
                       (click)="chooseRowAction(action, row)">
-                    {{ action.definition.displayName | resolveTranslation }}
+                    {{ action.definition.label | resolveTranslation }}
                   </li>
                 }
               </bs-dropdown-menu>

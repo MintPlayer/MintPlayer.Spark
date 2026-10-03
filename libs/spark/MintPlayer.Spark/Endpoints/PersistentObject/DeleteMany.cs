@@ -43,7 +43,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IQueryLoader queryLoader;
-    [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
+    [Inject] private readonly IActionsCatalogueLoader catalogueLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<DeleteManyPersistentObjects> logger;
@@ -65,8 +65,10 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
                 StatusCodes.Status400BadRequest);
         }
 
-        var definition = SparkDefaultActions.Resolve(SparkDefaultActions.Delete, configLoader.GetConfiguration());
-        if (!SparkDefaultActions.IsShowedOnQuery(definition.ShowedOn))
+        // The composed Delete (#467, D7): removed ("Delete": null) or not on queries, bulk delete is
+        // not offered, so it is not accepted either.
+        var definition = catalogueLoader.GetCatalogue().Find(SparkDefaultActions.Delete);
+        if (definition is not { IsShowedOnQuery: true })
         {
             return ClientResult.Envelope(clientAccessor,
                 new { error = "Delete is not offered on queries of this application." },

@@ -23,7 +23,7 @@ internal sealed partial class ListCustomActions : IPostEndpoint
     }
 
     [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
+    [Inject] private readonly IActionsCatalogueLoader catalogueLoader;
     [Inject] private readonly ICustomActionResolver actionResolver;
     [Inject] private readonly IPermissionService permissionService;
 
@@ -44,47 +44,32 @@ internal sealed partial class ListCustomActions : IPostEndpoint
             return Results.Json(Array.Empty<object>());
         }
 
-        var config = configLoader.GetConfiguration();
+        var catalogue = catalogueLoader.GetCatalogue();
         var registeredActions = actionResolver.GetRegisteredActionNames();
 
         // The type as rights name it: the definition's Name, as everywhere else (a nested class's CLR
         // name ends "Outer+Inner", which names no right).
         var typeName = entityType.Name;
 
-        var result = new List<object>();
-
-        // The built-in actions first (#460, D18), as catalogue entries with the same shape, so a grid
-        // enables New and Delete from the selection exactly as it enables a custom action. Governed
-        // by the ordinary New/T and Delete/T rights, not by an action right of their own.
-        foreach (var defaultName in new[] { SparkDefaultActions.New, SparkDefaultActions.Delete })
+        var result = new List<ActionDescription>();
+        foreach (var action in catalogue.Actions)
         {
-            if (!await permissionService.IsAllowedAsync(defaultName, typeName))
+            // A custom action needs a C# implementation; New, Edit and Delete are the framework's own
+            // (#460 D18, #467 D7) and are governed by the ordinary New/T, Edit/T and Delete/T rights.
+            if (!action.IsBuiltIn && !registeredActions.Contains(action.Name, StringComparer.OrdinalIgnoreCase))
                 continue;
 
-            result.Add(Describe(defaultName, SparkDefaultActions.Resolve(defaultName, config), isDefault: true));
+            // Resource = "{ActionName}/{EntityTypeName}".
+            if (!await permissionService.IsAllowedAsync(action.Name, typeName))
+                continue;
+
+            result.Add(Describe(action));
         }
 
-        foreach (var (actionName, definition) in config)
-        {
-            // An entry named New or Delete overrides the default above; it is not a custom action.
-            if (SparkDefaultActions.IsDefault(actionName))
-                continue;
-
-            // Only include actions that have a C# implementation
-            if (!registeredActions.Contains(actionName, StringComparer.OrdinalIgnoreCase))
-                continue;
-
-            // Check authorization: resource = "{ActionName}/{EntityTypeName}"
-            if (!await permissionService.IsAllowedAsync(actionName, typeName))
-                continue;
-
-            result.Add(Describe(actionName, definition, isDefault: false));
-        }
-
-        // By offset; stable, so equal offsets keep New and Delete ahead of the custom actions.
+        // By offset; stable, so equal offsets keep the catalogue's order (core first).
         var sorted = result
             .Select((item, index) => (item, index))
-            .OrderBy(x => ((ActionDescription)x.item).offset)
+            .OrderBy(x => x.item.offset)
             .ThenBy(x => x.index)
             .Select(x => x.item)
             .ToList();
@@ -92,33 +77,34 @@ internal sealed partial class ListCustomActions : IPostEndpoint
         return Results.Json(sorted);
     }
 
-    private static ActionDescription Describe(string name, Models.CustomActionDefinition definition, bool isDefault) => new(
-        name,
-        definition.DisplayName,
+    private static ActionDescription Describe(Models.ActionDefinition definition) => new(
+        definition.Name,
+        definition.Label,
         definition.Icon,
         definition.Description,
         definition.ShowedOn,
         definition.SelectionRule,
         definition.RefreshOnCompleted,
-        definition.ConfirmationMessageKey,
+        definition.Confirmation,
         definition.Variant,
         definition.Offset,
-        isDefault ? true : null);
+        definition.IsBuiltIn ? true : null);
 
     /// <summary>
-    /// One listed action. Lower-case members because this is the wire shape, serialized as-is.
-    /// <c>isDefault</c> is <c>true</c> for New and Delete and omitted for a custom action.
+    /// One listed action. Lower-case members because this is the wire shape, serialized as-is. Text is
+    /// resolved on the server (#467, D26). <c>isDefault</c> is <c>true</c> for New, Edit and Delete and
+    /// omitted for a custom action.
     /// </summary>
 #pragma warning disable IDE1006 // wire names
     private sealed record ActionDescription(
         string name,
-        Abstractions.TranslatedString displayName,
+        Abstractions.TranslatedString label,
         string? icon,
-        string? description,
+        Abstractions.TranslatedString? description,
         string showedOn,
         string? selectionRule,
         bool refreshOnCompleted,
-        string? confirmationMessageKey,
+        Abstractions.TranslatedString? confirmation,
         string? variant,
         int offset,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]

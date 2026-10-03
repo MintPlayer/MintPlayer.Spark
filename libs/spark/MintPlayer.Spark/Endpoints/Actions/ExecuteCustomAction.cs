@@ -46,7 +46,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
     // The request-scoped session — the same instance IDatabaseAccess uses, so an IgnoreMaxRequests
     // scope opened here covers the row-gated loads below.
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
-    [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
+    [Inject] private readonly IActionsCatalogueLoader catalogueLoader;
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
@@ -83,19 +83,16 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
 
         // Security sweep M3: execution must agree with the listing. The action resolver scans every
         // ICustomAction in the AppDomain, so an action shipped by a referenced library — or one
-        // retired by removing it from customActions.json (the documented way) — was still callable
-        // by name. Gate on the configuration, exactly as ListCustomActions does: absent → 404.
-        var configuration = configLoader.GetConfiguration();
-        // New and Delete are the framework's own (#460, D18): an entry of that name overrides the
-        // default's presentation and rule, and they run through /po/new and /po/delete-many — never
-        // here, whatever ICustomAction class happens to share the name.
-        if (SparkDefaultActions.IsDefault(actionName)
-            || !configuration.Keys.Contains(actionName, StringComparer.OrdinalIgnoreCase))
+        // retired by removing it from actions.json (the documented way) — was still callable
+        // by name. Gate on the catalogue, exactly as ListCustomActions does: absent → 404.
+        // New, Edit and Delete are the framework's own (#460 D18, #467 D7): they run through
+        // /po/new, the edit page and /po/delete-many — never here, whatever ICustomAction class
+        // happens to share the name.
+        var definition = SparkDefaultActions.IsDefault(actionName) ? null : catalogueLoader.GetCatalogue().Find(actionName);
+        if (definition is null)
         {
             return ClientResult.Envelope(clientAccessor, new { error = $"Custom action '{actionName}' not found" }, StatusCodes.Status404NotFound);
         }
-
-        var definition = configuration.First(kv => kv.Key.Equals(actionName, StringComparison.OrdinalIgnoreCase)).Value;
 
         var action = actionResolver.Resolve(actionName);
         if (action is null)

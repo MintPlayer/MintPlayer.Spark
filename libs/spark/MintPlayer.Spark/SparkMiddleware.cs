@@ -440,6 +440,11 @@ public static class SparkExtensions
 
         VerifySparkReservedActions();
 
+        // Compose the action catalogue now (#467, D7): an invalid actions.json layer refuses startup
+        // in its own words, and a conflict between two libraries is logged, instead of either
+        // surfacing on the first request that lists actions.
+        app.ApplicationServices.GetRequiredService<IActionsCatalogueLoader>().GetCatalogue();
+
         ReportSecurityPosture(app);
 
         // Run module-specific middleware/startup tasks

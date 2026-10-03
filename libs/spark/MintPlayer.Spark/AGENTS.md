@@ -283,20 +283,27 @@ important right overrides it; it cannot be granted around by adding a group, so 
 
 **Groups.** `wellKnown` names the group playing each of two roles: `anonymous` (has *not* signed in)
 and `authenticated`. **`anonymous` is not "everyone"** — a right both should have is two grants.
-Neither role is assertable from a claim. Every *other* group is matched by **name** against the
-caller's group claims, in any translation, so display names are load-bearing.
+Neither role is assertable from a claim. Every *other* group is matched by its **untranslated
+name** (`"<guid>": "Administrators"`) against the caller's group claims, case-insensitively, never
+by a translation (#467, D24). Its display label is `security.groups.{name}.label`.
 
-**Custom actions** live in `App_Data/customActions.json`, keyed by action name, with `showedOn` of
-`"detail"`, `"query"` or `"both"`. The right is `{ActionName}/{Type}`. `customActions.json` is a flat
-map evaluated against every type, so granting an action on a type that should not offer it renders a
-stray button.
+**Actions** live in `App_Data/actions.json`, keyed by action name, with `showedOn` of `"detail"`,
+`"query"` or `"both"`. The right is `{ActionName}/{Type}`. The file is a flat map evaluated against
+every type, so granting an action on a type that should not offer it renders a stray button. It holds
+no text: labels, descriptions and confirmations are `actions.{Name}.label|description|confirmation`
+in `translations.json` (`{count}` in a confirmation is the row count).
 
-**New and Delete are catalogue entries too** (#460 M15, D18). `/spark/actions/list` returns them as
-`isDefault` entries for holders of `New/T` / `Delete/T`. The defaults are: New has no rule, and
-Delete is `>0`.
-- Override their `showedOn`, rule, label or confirmation with an entry named `New` or `Delete` in
-  `customActions.json`, without a C# class.
-- Never write an `ICustomAction` with either name: it is never executed.
+**`actions.json` is layered** (#467, D7): the core library ships New, Edit and Delete, any library may
+ship a layer, and the app's file composes on top per property. `"Edit": null` removes an inherited
+action; a property set to `null` resets it. `--spark-print-effective-actions` prints the composed
+catalogue with each property's source layer.
+
+**New, Edit and Delete are catalogue entries** (#460 D18, #467 D7). `/spark/actions/list` returns
+them as `isDefault` entries for holders of `New/T` / `Edit/T` / `Delete/T`. The defaults are: New
+(query, no rule), Edit (`=1`, query and detail), Delete (`>0`, query and detail, confirmation). The
+detail page's Edit and Delete buttons are these entries (D8).
+- Override their `showedOn`, rule or icon in the app's `actions.json`, without a C# class.
+- Never write an `ICustomAction` with one of these names: it is never executed.
 - Delete on a selection is `POST /spark/po/delete-many`. It is all or nothing, uses one
   `SaveChanges`, and SoftDelete applies to it. ⚠️ Put per-row delete logic in
   `OnBeforeDeleteAsync`: an `OnDeleteAsync` override that saves on its own breaks the batch's

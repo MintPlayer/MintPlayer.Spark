@@ -80,7 +80,7 @@ public static class SparkSecurityInitExtensions
             "",
             "A RIGHT is '{action}/{target}', for example 'QueryRead/Person'.",
               "actions:  Query (list rows), Read (open one), Edit, New, Delete,",
-              "          plus any custom action name from customActions.json.",
+              "          plus any action name from actions.json.",
               "combined: QueryRead, ReadEdit, EditNew, NewDelete, EditNewDelete, ReadEditNew,",
               "          ReadEditNewDelete, QueryReadEdit, QueryReadEditNew, QueryReadEditNewDelete.",
               "          These expand, on denials exactly as on grants.",

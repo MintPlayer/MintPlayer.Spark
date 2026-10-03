@@ -32,19 +32,16 @@ public class ExecuteCustomActionTests
     private readonly ICustomActionResolver _actionResolver = Substitute.For<ICustomActionResolver>();
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
     private readonly IDatabaseAccess _databaseAccess = Substitute.For<IDatabaseAccess>();
-    private readonly ICustomActionsConfigurationLoader _configLoader = Substitute.For<ICustomActionsConfigurationLoader>();
+    private readonly IActionsCatalogueLoader _catalogueLoader = Substitute.For<IActionsCatalogueLoader>();
     private readonly ClientAccessor _sharedClientAccessor = new();
     private readonly RetryAccessor _retryAccessor;
 
     public ExecuteCustomActionTests()
     {
         _retryAccessor = new RetryAccessor(_sharedClientAccessor);
-        // Default: the action is declared in customActions.json (the M3 config gate). Tests that
+        // Default: the action is declared in actions.json (the M3 config gate). Tests that
         // probe the gate itself override this.
-        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration
-        {
-            ["Archive"] = new() { DisplayName = new TranslatedString { Translations = new() { ["en"] = "Archive" } } },
-        });
+        _catalogueLoader.GetCatalogue().Returns(TestActions.WithCustom("Archive"));
 
         // These two used to be left unstubbed, and that was doing more than it looked like. An
         // unresolved clrType did not merely make row security permissive — it made the endpoint skip
@@ -129,17 +126,59 @@ public class ExecuteCustomActionTests
     }
 
     [Fact]
-    public async Task An_action_absent_from_customActions_json_is_404_even_if_a_class_exists()
+    public async Task An_action_absent_from_actions_json_is_404_even_if_a_class_exists()
     {
         // Security sweep M3: an ICustomAction present in a loaded assembly but not declared in
-        // customActions.json must not be executable — execution agrees with the listing.
+        // actions.json must not be executable — execution agrees with the listing.
         var action = Substitute.For<ICustomAction>();
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
         _actionResolver.Resolve("Archive").Returns(action);
-        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration()); // empty config
+        _catalogueLoader.GetCatalogue().Returns(TestActions.Catalogue()); // no app layer
 
         var endpoint = NewEndpoint();
         var context = NewContext(CarType.Id.ToString(), "Archive", body: new CustomActionRequest());
+
+        var result = await endpoint.HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+        await action.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
+    }
+
+    /// <summary>
+    /// R4: a custom action's composed selection rule is enforced on a query invocation, before any
+    /// database work and before the action runs.
+    /// </summary>
+    [Fact]
+    public async Task A_selection_the_composed_rule_refuses_is_a_400_and_the_action_never_runs()
+    {
+        var action = Substitute.For<ICustomAction>();
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+        _catalogueLoader.GetCatalogue().Returns(TestActions.Catalogue("""{ "Archive": { "selectionRule": "=1" } }"""));
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItemIds = ["cars/1", "cars/2"] }, authenticated: true);
+
+        var result = await endpoint.HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.BadRequest);
+        await action.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
+    }
+
+    /// <summary>New, Edit and Delete belong to the framework: a class of that name never runs here.</summary>
+    [Theory]
+    [InlineData("New")]
+    [InlineData("Edit")]
+    [InlineData("Delete")]
+    public async Task A_reserved_name_is_404_even_with_a_class_of_that_name(string name)
+    {
+        var action = Substitute.For<ICustomAction>();
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve(name).Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(CarType.Id.ToString(), name, body: new CustomActionRequest(), authenticated: true);
 
         var result = await endpoint.HandleAsync(context);
 
@@ -624,7 +663,7 @@ public class ExecuteCustomActionTests
     private readonly IQueryExecutor _queryExecutor = Substitute.For<IQueryExecutor>();
 
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader, _queryLoader, _queryExecutor, new NothingDisabled());
+        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _catalogueLoader, _queryLoader, _queryExecutor, new NothingDisabled());
 
     /// <summary>
     /// These tests exercise dispatch, not the D13 gate (#460), which has its own tests against the

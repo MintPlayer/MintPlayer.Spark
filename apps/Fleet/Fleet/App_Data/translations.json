@@ -526,5 +526,27 @@
         }
       }
     }
+  },
+  "actions": {
+    "CarCopy": {
+      "label": {
+        "en": "Copy Car",
+        "fr": "Copier la voiture",
+        "nl": "Auto kopiëren"
+      },
+      "description": {
+        "en": "Creates a copy of the selected car"
+      }
+    },
+    "ScatterRegistrationOffsets": {
+      "label": {
+        "en": "Scatter registration offsets",
+        "fr": "Disperser les décalages horaires",
+        "nl": "Tijdzones verspreiden"
+      },
+      "description": {
+        "en": "Stamps every car with a random registration timestamp carrying a different, non-zero, mixed-sign timezone offset — so the Registered column shows offsets that could not have survived by accident."
+      }
+    }
   }
 }

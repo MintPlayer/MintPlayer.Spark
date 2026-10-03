@@ -8,6 +8,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Endpoints.Actions;
 using MintPlayer.Spark.Models;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Tests._Infrastructure;
 using NSubstitute;
 
 namespace MintPlayer.Spark.Tests.Endpoints.Actions;
@@ -15,7 +16,7 @@ namespace MintPlayer.Spark.Tests.Endpoints.Actions;
 public class ListCustomActionsTests
 {
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
-    private readonly ICustomActionsConfigurationLoader _configLoader = Substitute.For<ICustomActionsConfigurationLoader>();
+    private readonly IActionsCatalogueLoader _catalogueLoader = Substitute.For<IActionsCatalogueLoader>();
     private readonly ICustomActionResolver _actionResolver = Substitute.For<ICustomActionResolver>();
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
 
@@ -47,21 +48,12 @@ public class ListCustomActionsTests
     public async Task Filters_out_definitions_whose_class_is_not_registered()
     {
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
-        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration
-        {
-            ["Archive"] = NewDefinition("Archive", offset: 1),
-            ["Unimplemented"] = NewDefinition("Unimplemented", offset: 2),
-        });
+        UseCatalogue("""{ "Archive": { "offset": 1 }, "Unimplemented": { "offset": 2 } }""");
         _actionResolver.GetRegisteredActionNames().Returns(["Archive"]);
         _permissions.IsAllowedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
-        var endpoint = NewEndpoint();
-        var context = HttpContextWithRouteValues(("objectTypeId", CarType.Id.ToString()));
+        using var doc = await ListAsync();
 
-        var result = await endpoint.HandleAsync(context);
-        var body = await ExecuteBodyAsync(result, context);
-
-        using var doc = JsonDocument.Parse(body);
         CustomActionNames(doc).Should().BeEquivalentTo(["Archive"]);
     }
 
@@ -69,22 +61,13 @@ public class ListCustomActionsTests
     public async Task Filters_out_actions_the_caller_is_not_permitted_to_execute()
     {
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
-        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration
-        {
-            ["Allowed"] = NewDefinition("Allowed", offset: 1),
-            ["Denied"] = NewDefinition("Denied", offset: 2),
-        });
+        UseCatalogue("""{ "Allowed": { "offset": 1 }, "Denied": { "offset": 2 } }""");
         _actionResolver.GetRegisteredActionNames().Returns(["Allowed", "Denied"]);
         _permissions.IsAllowedAsync("Allowed", "Car", Arg.Any<CancellationToken>()).Returns(true);
         _permissions.IsAllowedAsync("Denied", "Car", Arg.Any<CancellationToken>()).Returns(false);
 
-        var endpoint = NewEndpoint();
-        var context = HttpContextWithRouteValues(("objectTypeId", CarType.Id.ToString()));
+        using var doc = await ListAsync();
 
-        var result = await endpoint.HandleAsync(context);
-        var body = await ExecuteBodyAsync(result, context);
-
-        using var doc = JsonDocument.Parse(body);
         CustomActionNames(doc).Should().BeEquivalentTo(["Allowed"]);
     }
 
@@ -92,65 +75,103 @@ public class ListCustomActionsTests
     public async Task Sorts_returned_actions_by_offset_ascending()
     {
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
-        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration
-        {
-            ["Third"] = NewDefinition("Third", offset: 30),
-            ["First"] = NewDefinition("First", offset: 10),
-            ["Second"] = NewDefinition("Second", offset: 20),
-        });
+        UseCatalogue("""{ "Third": { "offset": 30 }, "First": { "offset": 10 }, "Second": { "offset": 20 } }""");
         _actionResolver.GetRegisteredActionNames().Returns(["First", "Second", "Third"]);
         _permissions.IsAllowedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
-        var endpoint = NewEndpoint();
-        var context = HttpContextWithRouteValues(("objectTypeId", CarType.Id.ToString()));
+        using var doc = await ListAsync();
 
-        var result = await endpoint.HandleAsync(context);
-        var body = await ExecuteBodyAsync(result, context);
-
-        using var doc = JsonDocument.Parse(body);
         CustomActionNames(doc).Should().Equal("First", "Second", "Third");
     }
 
+    /// <summary>
+    /// The wire carries resolved text (#467, D26). This project compiles no app translations, so the
+    /// label falls back to the humanized name and an explicit, untranslated confirmation key to the
+    /// generic prompt; the description has no fallback and is absent.
+    /// </summary>
     [Fact]
-    public async Task Returned_shape_exposes_display_icon_description_and_flags()
+    public async Task Returned_shape_exposes_label_icon_flags_and_resolved_confirmation()
     {
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
-        var def = new CustomActionDefinition
-        {
-            DisplayName = TranslatedString.Create("Archive this car"),
-            Icon = "archive",
-            Description = "Move to archive",
-            ShowedOn = "detail",
-            SelectionRule = "=1",
-            RefreshOnCompleted = true,
-            ConfirmationMessageKey = "confirmArchive",
-            Offset = 42,
-        };
-        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration { ["Archive"] = def });
-        _actionResolver.GetRegisteredActionNames().Returns(["Archive"]);
+        UseCatalogue("""
+            { "ArchiveCar": { "icon": "archive", "showedOn": "detail", "selectionRule": "=1",
+              "refreshOnCompleted": true, "confirmation": "confirmArchive", "variant": "warning", "offset": 42 } }
+            """);
+        _actionResolver.GetRegisteredActionNames().Returns(["ArchiveCar"]);
         _permissions.IsAllowedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
-        var endpoint = NewEndpoint();
-        var context = HttpContextWithRouteValues(("objectTypeId", CarType.Id.ToString()));
+        using var doc = await ListAsync();
 
-        var result = await endpoint.HandleAsync(context);
-        var body = await ExecuteBodyAsync(result, context);
-
-        using var doc = JsonDocument.Parse(body);
         var first = doc.RootElement.EnumerateArray().Single(e => !IsDefault(e));
-        first.GetProperty("name").GetString().Should().Be("Archive");
+        first.GetProperty("name").GetString().Should().Be("ArchiveCar");
         first.TryGetProperty("isDefault", out _).Should().BeFalse();
+        first.GetProperty("label").GetProperty("en").GetString().Should().Be("Archive Car");
         first.GetProperty("icon").GetString().Should().Be("archive");
-        first.GetProperty("description").GetString().Should().Be("Move to archive");
+        (first.TryGetProperty("description", out var description) ? description.ValueKind : JsonValueKind.Null)
+            .Should().Be(JsonValueKind.Null);
         first.GetProperty("showedOn").GetString().Should().Be("detail");
         first.GetProperty("selectionRule").GetString().Should().Be("=1");
         first.GetProperty("refreshOnCompleted").GetBoolean().Should().BeTrue();
-        first.GetProperty("confirmationMessageKey").GetString().Should().Be("confirmArchive");
+        first.GetProperty("confirmation").GetProperty("en").GetString().Should().NotBeNullOrEmpty();
+        first.GetProperty("variant").GetString().Should().Be("warning");
         first.GetProperty("offset").GetInt32().Should().Be(42);
     }
 
+    // ── #467 D7: New, Edit and Delete come from the core layer, each under its own right ─────────
+
+    [Fact]
+    public async Task Edit_is_listed_for_a_caller_holding_Edit_on_the_type_and_only_then()
+    {
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        UseCatalogue(null);
+        _actionResolver.GetRegisteredActionNames().Returns([]);
+        _permissions.IsAllowedAsync("Edit", "Car", Arg.Any<CancellationToken>()).Returns(true);
+
+        using var allowed = await ListAsync();
+        DefaultActionNames(allowed).Should().Equal("Edit");
+        var edit = allowed.RootElement.EnumerateArray().Single();
+        edit.GetProperty("selectionRule").GetString().Should().Be("=1");
+        edit.GetProperty("showedOn").GetString().Should().Be("both");
+        edit.GetProperty("icon").GetString().Should().Be("pencil");
+
+        _permissions.IsAllowedAsync("Edit", "Car", Arg.Any<CancellationToken>()).Returns(false);
+        using var denied = await ListAsync();
+        DefaultActionNames(denied).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task An_app_layer_removes_a_built_in_with_null_and_overrides_another_per_property()
+    {
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        UseCatalogue("""{ "Edit": null, "Delete": { "selectionRule": "=1" } }""");
+        _actionResolver.GetRegisteredActionNames().Returns([]);
+        _permissions.IsAllowedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        using var doc = await ListAsync();
+
+        DefaultActionNames(doc).Should().Equal("New", "Delete");
+        var delete = doc.RootElement.EnumerateArray().Single(e => e.GetProperty("name").GetString() == "Delete");
+        delete.GetProperty("selectionRule").GetString().Should().Be("=1");
+        // Not stated by the app, so inherited from the core layer.
+        delete.GetProperty("variant").GetString().Should().Be("danger");
+        delete.GetProperty("icon").GetString().Should().Be("trash");
+    }
+
+    private void UseCatalogue(string? appJson) => _catalogueLoader.GetCatalogue().Returns(TestActions.Catalogue(appJson));
+
+    private async Task<JsonDocument> ListAsync()
+    {
+        var endpoint = NewEndpoint();
+        var context = HttpContextWithRouteValues(("objectTypeId", CarType.Id.ToString()));
+        var result = await endpoint.HandleAsync(context);
+        return JsonDocument.Parse(await ExecuteBodyAsync(result, context));
+    }
+
+    private static string?[] DefaultActionNames(JsonDocument doc) =>
+        [.. doc.RootElement.EnumerateArray().Where(IsDefault).Select(e => e.GetProperty("name").GetString())];
+
     /// <summary>
-    /// The listed custom actions, in wire order. Since #460 D18 the list also carries New and Delete
+    /// The listed custom actions, in wire order. Since #460 D18 / #467 D7 the list also carries New, Edit and Delete
     /// (<c>isDefault: true</c>) for a caller holding those rights, which the permissive substitute
     /// above grants; the defaults are covered by <c>SubQueryActionsTests</c>, these cases by the
     /// custom-action catalogue.
@@ -162,13 +183,7 @@ public class ListCustomActionsTests
         action.TryGetProperty("isDefault", out var flag) && flag.ValueKind == JsonValueKind.True;
 
     private ListCustomActions NewEndpoint() =>
-        new(_modelLoader, _configLoader, _actionResolver, _permissions);
-
-    private static CustomActionDefinition NewDefinition(string name, int offset) => new()
-    {
-        DisplayName = TranslatedString.Create(name),
-        Offset = offset,
-    };
+        new(_modelLoader, _catalogueLoader, _actionResolver, _permissions);
 
     /// <summary>
     /// A request naming <paramref name="objectTypeId"/> in its body, as the literal route table takes

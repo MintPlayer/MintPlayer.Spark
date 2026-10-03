@@ -40,7 +40,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     internal static readonly DiagnosticDescriptor UnknownActionRule = new(
         id: "SPARK011",
         title: "Security right names an action Spark never asks for",
-        messageFormat: "'{0}' names the action '{1}', which is not a built-in ({2}), a combined name, or a declared custom action. Spark never asks for it, so this right can never match — check the spelling against customActions.json",
+        messageFormat: "'{0}' names the action '{1}', which is not a built-in ({2}), a combined name, or a declared custom action. Spark never asks for it, so this right can never match — check the spelling against actions.json",
         category: "Security",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
@@ -159,7 +159,11 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             if (rights.Count == 0) return;
 
             var groupIds = SecurityJsonReader.ReadGroupIds(content);
-            var customActions = ReadNames(end.Options.AdditionalFiles, "customActions.json", TopLevelKeys);
+            var customActions = ReadNames(end.Options.AdditionalFiles, "actions.json", TopLevelKeys);
+            // Library layers (#467, S12): an action a referenced library ships is one Spark asks for.
+            foreach (var layer in LibraryActionsReader.Read(end.Compilation))
+                foreach (var name in LibraryActionsReader.Names(layer.Json))
+                    customActions.Add(name);
             var model = ReadModel(end.Options.AdditionalFiles);
             var knownTargets = model.Targets;
             var combinedVerbs = reserved.Where(r => r.IsCombined).Select(r => r.Verb).ToArray();

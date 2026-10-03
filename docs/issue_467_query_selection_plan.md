@@ -71,27 +71,27 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [ ] (M9 sweep) `--spark-verify-model` and the CI-only gates (`reference_ci_only_gates_spark`) pass.
 
 ### M3 — `actions.json` composition, built-in Edit, Revoke (D7, D8, D22, R2)
-- [ ] Per S12: a library `App_Data/actions.json` is an AdditionalFile, and a new generator emits
+- [x] Per S12: a library `App_Data/actions.json` is an AdditionalFile, and a new generator emits
       `[assembly: SparkActions("<raw json>")]` (raw text; MiniJson rejects numbers and booleans). Runtime
       discovery by reflection, core first and then by assembly name, **not** a host-generated registry
       (`MintPlayer.Spark.Tests` runs no generator). Analyzers (SPARK011, the D7 conflict warning) read the
       attribute.
-- [ ] Rename `customActions.json` → `actions.json`: loader, `spark.targets:176`,
+- [x] Rename `customActions.json` → `actions.json`: loader, `spark.targets:176`,
       `SecurityConfigurationAnalyzer:162`, `ConfigFileShape`, docs, all apps. App layer stays on disk with
       hot reload; extend the watcher to Created/Renamed.
-- [ ] Composition on raw JSON objects *before* binding (names case-insensitive). `"Name": null` removes the
+- [x] Composition on raw JSON objects *before* binding (names case-insensitive). `"Name": null` removes the
       action; a property set to `null` resets it to the default, replacing the `""` convention
       (`SparkDefaultActions.cs:17-19`). The source layer is recorded per property. The composed result is
       validated. The model hash covers the composed `showedOn`/`selectionRule`.
-- [ ] Core `actions.json`: New (no rule), Edit (`=1`, query + detail, pencil), Delete (`>0`, danger,
+- [x] Core `actions.json`: New (no rule), Edit (`=1`, query + detail, pencil), Delete (`>0`, danger,
       confirmation with a count placeholder). `SparkDefaultActions.cs` keeps only the reserved names.
-- [ ] `--spark-print-effective-actions`.
-- [ ] `ListCustomActions`: Edit under `Edit/T`; `ExecuteCustomAction` 404 for reserved names.
-- [ ] Detail page: Edit/Delete from the catalogue ∩ `can.edit/can.delete`; the hard-coded buttons go (D8).
-- [ ] D22: CodeCoverage `Revoke` becomes a query action on the ApiToken sub-query card (`>0`, confirmation),
+- [x] `--spark-print-effective-actions`.
+- [x] `ListCustomActions`: Edit under `Edit/T`; `ExecuteCustomAction` 404 for reserved names.
+- [x] Detail page: Edit/Delete from the catalogue ∩ `can.edit/can.delete`; the hard-coded buttons go (D8).
+- [x] D22: CodeCoverage `Revoke` becomes a query action on the ApiToken sub-query card (`>0`, confirmation),
       acting on the selected tokens; `RevokeTokenAction` checks per token that the caller manages the account.
-- [ ] Fix the stale rule doc comments (`CustomActionDefinition.cs:25`, `SparkCustomAction.cs:27-29`).
-- [ ] Tests: Edit listed by right; override/removal/null-reset; reserved-name `ICustomAction` never runs;
+- [x] Fix the stale rule doc comments (`CustomActionDefinition.cs:25`, `SparkCustomAction.cs:27-29`).
+- [x] Tests (written; run in the M9 sweep): Edit listed by right; override/removal/null-reset; reserved-name `ICustomAction` never runs;
       custom action rule violation → 400 (R4); print switch; Revoke on the card.
 
 ### M4 — Selection and action strip (R1, R3, D9, D10, D19) — needs the M0 bump

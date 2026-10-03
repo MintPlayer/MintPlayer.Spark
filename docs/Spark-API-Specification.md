@@ -307,18 +307,19 @@ two are deliberately indistinguishable — the difference is a fact about the ca
   [
     {
       "name": "CarCopy",
-      "displayName": "Copy",
+      "label": { "en": "Copy Car", "nl": "Auto kopiëren" },
       "icon": "Copy",
-      "description": "Creates a copy of the selected car",
+      "description": { "en": "Creates a copy of the selected car" },
       "showedOn": "query",
       "selectionRule": "=1",
       "refreshOnCompleted": true,
-      "confirmationMessageKey": "AreYouSure",
+      "confirmation": { "en": "Are you sure?" },
       "offset": 0
     }
   ]
   ```
-- **Filtering**: only actions whose security-json resource `{ActionName}/{EntityTypeName}` is authorized AND whose C# implementation is registered via the source generator.
+  Texts are resolved on the server from `translations.json` (`actions.{Name}.label|description|confirmation`). `isDefault: true` marks the built-in New, Edit and Delete.
+- **Filtering**: the composed `actions.json` catalogue, narrowed to actions whose security-json resource `{ActionName}/{EntityTypeName}` is authorized AND — for a custom action — whose C# implementation is registered via the source generator.
 - **Sort**: by `offset` (ascending).
 
 #### Execute Custom Action

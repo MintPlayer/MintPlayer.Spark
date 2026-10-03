@@ -684,5 +684,37 @@
         }
       }
     }
+  },
+  "actions": {
+    "CloseQuestion": {
+      "label": {
+        "en": "Close",
+        "fr": "Fermer",
+        "nl": "Sluiten"
+      },
+      "description": {
+        "en": "Closes the question: it takes no new answers. Offered to its author and to moderators."
+      }
+    },
+    "ReopenQuestion": {
+      "label": {
+        "en": "Reopen",
+        "fr": "Rouvrir",
+        "nl": "Heropenen"
+      },
+      "description": {
+        "en": "Reopens a closed question, so it takes answers again."
+      }
+    },
+    "DuplicateAnswer": {
+      "label": {
+        "en": "Duplicate",
+        "fr": "Dupliquer",
+        "nl": "Dupliceren"
+      },
+      "description": {
+        "en": "Copies one answer under the same question. Needs exactly one answer selected; also in each row's menu."
+      }
+    }
   }
 }

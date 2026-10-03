@@ -1,0 +1,15 @@
+{
+  "CarCopy": {
+    "icon": "Copy",
+    "showedOn": "both",
+    "selectionRule": "=1",
+    "refreshOnCompleted": true,
+    "confirmation": "AreYouSure"
+  },
+  "ScatterRegistrationOffsets": {
+    "icon": "Clock",
+    "showedOn": "query",
+    "selectionRule": "=0",
+    "refreshOnCompleted": true
+  }
+}

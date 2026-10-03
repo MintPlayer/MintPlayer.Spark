@@ -35,6 +35,7 @@ import {
   SparkQuery,
   EntityPermissions,
   SparkDeletedFilter,
+  confirmationText,
   filterQueryActions,
   defaultQueryActions,
   type SparkSelectionModeSetting,
@@ -430,7 +431,7 @@ export class SparkQueryGridComponent {
         actions.push({
           kind: 'addon', name: addon.id, addon, priority,
           // The menu renders a definition's display name; an add-on has only a translation key.
-          definition: { name: addon.id, displayName: { en: this.lang.t(addon.labelKey) }, showedOn: 'query', refreshOnCompleted: true, offset: priority },
+          definition: { name: addon.id, label: { en: this.lang.t(addon.labelKey) }, showedOn: 'query', refreshOnCompleted: true, offset: priority },
         });
       }
     }
@@ -577,17 +578,14 @@ export class SparkQueryGridComponent {
 
   /**
    * The default Delete on `ids`: one request, all rows or none (#460, D18). Asks first — with the
-   * entry's `confirmationMessageKey` — then clears the selection and refreshes.
+   * entry's `confirmation` (`{count}` substituted) — then clears the selection and refreshes.
    */
   async deleteRows(ids: string[], definition?: CustomActionDefinition): Promise<void> {
     const type = this.entityType();
     if (!type || !ids.length) return;
 
-    const key = definition?.confirmationMessageKey;
-    const message = ids.length === 1
-      ? this.lang.t('common.confirmDelete')
-      : (key ? this.lang.t(key) : '') || this.lang.t('common.confirmDeleteSelected');
-    if (!confirm(`${message || 'Are you sure?'}${ids.length > 1 ? ` (${ids.length})` : ''}`)) return;
+    const message = confirmationText(definition, ids.length, this.lang.language());
+    if (message && !confirm(message)) return;
 
     const parentId = this.parentId();
     const parentType = this.parentType();
@@ -913,10 +911,8 @@ export class SparkQueryGridComponent {
    * the checkbox selection untouched.
    */
   async onCustomAction(action: CustomActionDefinition, rowIds?: string[]): Promise<void> {
-    if (action.confirmationMessageKey) {
-      const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
-      if (!confirm(message)) return;
-    }
+    const message = confirmationText(action, rowIds?.length ?? this.selection().length, this.lang.language());
+    if (message && !confirm(message)) return;
     try {
       // The sub-query's container travels with the action (#327). Without it an action invoked
       // from a company's Cars tab could not tell it was on a company's page at all — the grid knew

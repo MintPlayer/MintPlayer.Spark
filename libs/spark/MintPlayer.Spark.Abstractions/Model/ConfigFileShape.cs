@@ -4,44 +4,53 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using MintPlayer.Spark.Abstractions.Actions;
 
 namespace MintPlayer.Spark.Abstractions.Model;
 
 /// <summary>
 /// Structural fingerprints for the two <c>App_Data</c> files that had no integrity gate at all:
-/// <c>customActions.json</c> and <c>programUnits.json</c>.
+/// <c>actions.json</c> and <c>programUnits.json</c>.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The model hash globs <c>App_Data/Model/*.json</c> and stops there. <c>security.json</c> has its
 /// own mechanism — a committed posture baseline — but these two were covered by nothing, while both
-/// carry decisions the runtime enforces: a custom action must be present in <c>customActions.json</c>
+/// carry decisions the runtime enforces: a custom action must be present in the action catalogue
 /// to run at all, and its <c>selectionRule</c> bounds how many rows an action may be handed.
 /// </para>
 /// <para>
-/// <b>Structural, not byte-level</b>, following <see cref="ModelFileShape"/>. These files mix
-/// security-relevant fields with presentational ones — an action carries a per-language
-/// <c>displayName</c> alongside its <c>selectionRule</c> — and a byte hash would fail the gate every
-/// time somebody fixed a Dutch label. What is included is what changes behaviour; what is excluded is
-/// what changes appearance.
+/// <b>Structural, not byte-level</b>, following <see cref="ModelFileShape"/>. What is included is
+/// what changes behaviour; what is excluded is what changes appearance.
+/// </para>
+/// <para>
+/// <c>actions.json</c> is hashed <b>composed</b> (#467, S12): the libraries' layers with the
+/// application's file on top, so a library that changes Delete's rule shows up in verify even though
+/// no file of the application changed.
 /// </para>
 /// </remarks>
 public static class ConfigFileShape
 {
-    /// <summary>Fields of a custom action that change what it may do, rather than how it looks.</summary>
+    /// <summary>Fields of an action that change what it may do, rather than how it looks.</summary>
     private static readonly string[] StructuralActionFields = ["showedOn", "selectionRule"];
 
     /// <summary>Fields of a program unit that decide where it points.</summary>
     private static readonly string[] StructuralUnitFields = ["type", "queryId", "persistentObjectId", "url"];
 
+    /// <summary>The action catalogue's file name, relative to <c>App_Data</c>.</summary>
+    public const string ActionsFileName = "actions.json";
+
     /// <summary>The files this covers, relative to <c>App_Data</c>.</summary>
-    public static readonly string[] FileNames = ["customActions.json", "programUnits.json"];
+    public static readonly string[] FileNames = [ActionsFileName, "programUnits.json"];
 
     /// <summary>
-    /// One structural hash per covered file that exists, keyed by file name. A file that is absent is
-    /// simply not in the result — an application need not have either.
+    /// One structural hash per covered file, keyed by file name. <c>programUnits.json</c> is in the
+    /// result only when it exists; <c>actions.json</c> whenever the composed catalogue has an action,
+    /// since the libraries ship actions whether or not the application has a file.
     /// </summary>
-    public static SortedDictionary<string, string> ComputeFileHashes(string appDataPath)
+    /// <param name="libraries">The library layers; <see cref="SparkActionLayers.Libraries"/> when omitted.</param>
+    public static SortedDictionary<string, string> ComputeFileHashes(
+        string appDataPath, IReadOnlyList<SparkActionsLayer>? libraries = null)
     {
         var results = new SortedDictionary<string, string>(StringComparer.Ordinal);
         if (!Directory.Exists(appDataPath))
@@ -50,11 +59,15 @@ public static class ConfigFileShape
         foreach (var fileName in FileNames)
         {
             var path = Path.Combine(appDataPath, fileName);
-            if (!File.Exists(path))
+            var exists = File.Exists(path);
+            var isActions = string.Equals(fileName, ActionsFileName, StringComparison.OrdinalIgnoreCase);
+            if (!exists && !isActions)
                 continue;
 
-            var describe = Describe(File.ReadAllText(path), fileName);
-            if (describe is not null)
+            var describe = isActions
+                ? DescribeActions(exists ? File.ReadAllText(path) : null, libraries ?? SparkActionLayers.Libraries)
+                : Describe(File.ReadAllText(path), fileName);
+            if (!string.IsNullOrEmpty(describe))
                 results[fileName] = Sha256Hex(describe);
         }
 
@@ -88,15 +101,47 @@ public static class ConfigFileShape
 
         using (document)
         {
-            var fields = string.Equals(fileName, "customActions.json", StringComparison.OrdinalIgnoreCase)
-                ? StructuralActionFields
-                : StructuralUnitFields;
-
             var builder = new StringBuilder();
-            AppendEntries(builder, document.RootElement, fields);
+            AppendEntries(builder, document.RootElement, StructuralUnitFields);
             return builder.ToString();
         }
     }
+
+    /// <summary>
+    /// The composed action catalogue's structural rendering: each action's name and the structural
+    /// properties it ends up with, sorted. <see langword="null"/> when a layer cannot be composed,
+    /// for the same reason <see cref="Describe"/> yields null.
+    /// </summary>
+    internal static string? DescribeActions(string? appJson, IReadOnlyList<SparkActionsLayer> libraries)
+    {
+        SparkActionsComposition composition;
+        try
+        {
+            var layers = appJson is null
+                ? libraries
+                : [.. libraries, new SparkActionsLayer(SparkActionLayers.AppLayerName, appJson, IsLibrary: false)];
+            composition = SparkActionLayers.Compose(layers);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+
+        var builder = new StringBuilder();
+        foreach (var action in composition.Actions.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            builder.Append(action.Name).Append('\n');
+            foreach (var field in StructuralActionFields)
+            {
+                if (action.Properties.TryGetValue(field, out var property))
+                    builder.Append("  ").Append(field).Append('=').Append(Render(property.Value)).Append('\n');
+            }
+        }
+        return builder.ToString();
+    }
+
+    private static string Render(System.Text.Json.Nodes.JsonNode value)
+        => value.GetValueKind() == JsonValueKind.String ? value.GetValue<string>() : value.ToJsonString();
 
     /// <summary>
     /// Walks the entries — an object keyed by name for custom actions, or an array of units — and

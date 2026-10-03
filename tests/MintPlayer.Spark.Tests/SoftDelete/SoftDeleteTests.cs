@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
@@ -456,7 +457,7 @@ public class SoftDeleteTests : SparkTestDriver
         var host = await StartAsync(services: s =>
         {
             s.AddScoped<SdTouchAction>();
-            s.AddSingleton<ICustomActionsConfigurationLoader>(new SdCustomActions(SdTouchAction.Name));
+            s.AddSingleton(TestActions.LoaderWithCustom(SdTouchAction.Name));
             s.AddScoped<ICustomActionResolver>(sp => new SdActionResolver(SdTouchAction.Name, sp.GetRequiredService<SdTouchAction>()));
         });
         var live = await SeedNoteAsync("live");
@@ -582,7 +583,7 @@ public class SoftDeleteTests : SparkTestDriver
         var host = await StartAsync(services: s =>
         {
             s.AddScoped<SdTouchAction>();
-            s.AddSingleton<ICustomActionsConfigurationLoader>(new SdCustomActions(SdTouchAction.Name));
+            s.AddSingleton(TestActions.LoaderWithCustom(SdTouchAction.Name));
             s.AddScoped<ICustomActionResolver>(sp => new SdActionResolver(SdTouchAction.Name, sp.GetRequiredService<SdTouchAction>()));
         });
         var (author, live, _) = await SeedDeletedAuthorAsync();
@@ -908,19 +909,6 @@ public sealed class SdTouchAction(SdRecorder recorder) : ICustomAction
             recorder.Events.Enqueue($"Touched:{item.Id}");
         return Task.CompletedTask;
     }
-}
-
-internal sealed class SdCustomActions(params string[] names) : ICustomActionsConfigurationLoader
-{
-    public CustomActionsConfiguration GetConfiguration()
-    {
-        var configuration = new CustomActionsConfiguration();
-        foreach (var name in names)
-            configuration[name] = new CustomActionDefinition { DisplayName = TranslatedString.Create(name), ShowedOn = "both" };
-        return configuration;
-    }
-
-    public void InvalidateCache() { }
 }
 
 internal sealed class SdActionResolver(string name, ICustomAction action) : ICustomActionResolver

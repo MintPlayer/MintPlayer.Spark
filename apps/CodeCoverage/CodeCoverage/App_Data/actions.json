@@ -1,0 +1,29 @@
+{
+  "Resync": {
+    "icon": "ArrowRepeat",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "refreshOnCompleted": false
+  },
+  "DeleteData": {
+    "icon": "Trash",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "confirmation": "repository.deleteDataConfirmation",
+    "variant": "danger",
+    "refreshOnCompleted": false
+  },
+  "SyncColumns": {
+    "icon": "ArrowRepeat",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "refreshOnCompleted": false
+  },
+  "Revoke": {
+    "icon": "Trash",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger",
+    "refreshOnCompleted": false
+  }
+}

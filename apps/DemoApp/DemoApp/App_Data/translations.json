@@ -601,5 +601,17 @@
         }
       }
     }
+  },
+  "actions": {
+    "CopyCarsToCompany": {
+      "label": {
+        "en": "Copy to this company",
+        "fr": "Copier vers cette entreprise",
+        "nl": "Kopiëren naar dit bedrijf"
+      },
+      "description": {
+        "en": "Duplicates the selected cars. Invoked from a company's Cars tab, the copies are assigned to that company."
+      }
+    }
   }
 }

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
@@ -174,7 +175,7 @@ public class DisableActionsTests : SparkTestDriver
                 services.AddScoped<DisProbeRunAction>();
                 services.AddScoped<DisProbeExportAction>();
                 services.AddScoped<DisProbeTouchAction>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(new StubCustomActions(Run, Export, Touch));
+                services.AddSingleton(TestActions.LoaderWithCustom(Run, Export, Touch));
                 services.AddScoped<ICustomActionResolver>(sp => new StubActionResolver(new Dictionary<string, ICustomAction>
                 {
                     [Run] = sp.GetRequiredService<DisProbeRunAction>(),
@@ -598,25 +599,6 @@ public class DisableActionsTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         return await Raven.Client.Documents.LinqExtensions.CountAsync(
             session.Query<DisProbe>().Customize(c => c.WaitForNonStaleResults()));
-    }
-
-    private sealed class StubCustomActions(params string[] names) : ICustomActionsConfigurationLoader
-    {
-        public CustomActionsConfiguration GetConfiguration()
-        {
-            var configuration = new CustomActionsConfiguration();
-            foreach (var name in names)
-            {
-                configuration[name] = new CustomActionDefinition
-                {
-                    DisplayName = TranslatedString.Create(name),
-                    ShowedOn = "both",
-                };
-            }
-            return configuration;
-        }
-
-        public void InvalidateCache() { }
     }
 
     private sealed class StubActionResolver(IReadOnlyDictionary<string, ICustomAction> actions) : ICustomActionResolver

@@ -74,7 +74,7 @@ public class SubQueryActionsTests : SparkTestDriver
     // ---- D18: default actions in the catalogue ---------------------------------------------------
 
     [Fact]
-    public async Task The_list_offers_New_and_Delete_as_default_entries_with_their_rules()
+    public async Task The_list_offers_New_Edit_and_Delete_as_default_entries_with_their_rules()
     {
         var host = await StartAsync();
 
@@ -83,10 +83,15 @@ public class SubQueryActionsTests : SparkTestDriver
         status.Should().Be(HttpStatusCode.OK);
         var actions = body.EnumerateArray().ToList();
         var newAction = actions.Single(a => a.GetProperty("name").GetString() == "New");
+        var editAction = actions.Single(a => a.GetProperty("name").GetString() == "Edit");
         var deleteAction = actions.Single(a => a.GetProperty("name").GetString() == "Delete");
         newAction.GetProperty("isDefault").GetBoolean().Should().BeTrue();
         newAction.TryGetProperty("selectionRule", out var newRule).Should().BeTrue();
         newRule.ValueKind.Should().Be(JsonValueKind.Null, "New acts on the query, not on rows");
+        newAction.GetProperty("showedOn").GetString().Should().Be("query");
+        editAction.GetProperty("isDefault").GetBoolean().Should().BeTrue();
+        editAction.GetProperty("selectionRule").GetString().Should().Be("=1");
+        editAction.GetProperty("showedOn").GetString().Should().Be("both");
         deleteAction.GetProperty("isDefault").GetBoolean().Should().BeTrue();
         deleteAction.GetProperty("selectionRule").GetString().Should().Be(">0");
         deleteAction.GetProperty("showedOn").GetString().Should().Be("both");
@@ -104,16 +109,19 @@ public class SubQueryActionsTests : SparkTestDriver
         names.Should().NotContain("Delete");
     }
 
-    [Fact]
-    public async Task Execute_refuses_a_default_action_name()
+    [Theory]
+    [InlineData("New")]
+    [InlineData("Edit")]
+    [InlineData("Delete")]
+    public async Task Execute_refuses_a_default_action_name(string name)
     {
         var host = await StartAsync();
         await SeedChildrenAsync("a");
 
         var (status, _) = await host.SendAsync("/spark/actions/execute",
-            Wire.Action(ChildTypeId, "Delete", new { selectedItemIds = new[] { "BqChildren/a" } }));
+            Wire.Action(ChildTypeId, name, new { selectedItemIds = new[] { "BqChildren/a" } }));
 
-        status.Should().Be(HttpStatusCode.NotFound, "New and Delete run through /po/new and /po/delete-many only");
+        status.Should().Be(HttpStatusCode.NotFound, "New, Edit and Delete run through their own endpoints only");
         (await ExistsAsync<BqChild>("BqChildren/a")).Should().BeTrue();
     }
 
@@ -147,8 +155,10 @@ public class SubQueryActionsTests : SparkTestDriver
         var host = await StartAsync();
         await SeedChildrenAsync("a", "b");
         var root = host.Factory.GetService<IHostEnvironment>().ContentRootPath;
-        await File.WriteAllTextAsync(Path.Combine(root, "App_Data", "customActions.json"),
+        await File.WriteAllTextAsync(Path.Combine(root, "App_Data", "actions.json"),
             """{ "Delete": { "selectionRule": "=1" } }""");
+        // The catalogue is composed at startup; the watcher would pick the file up a moment later.
+        host.Factory.GetService<IActionsCatalogueLoader>().InvalidateCache();
 
         var (two, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany("BqChildren/a", "BqChildren/b"));
         two.Should().Be(HttpStatusCode.BadRequest, "the override narrowed Delete to exactly one row");
