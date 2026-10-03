@@ -2,13 +2,13 @@
   "programUnitGroups": [
     {
       "id": "4e13b000-0000-4000-8000-000000000000",
-      "name": { "en": "Questions & answers", "fr": "Questions et réponses", "nl": "Vragen en antwoorden" },
+      "name": "programUnits.groups.questionsAnswers",
       "icon": "bi-chat-square-text",
       "order": 1,
       "programUnits": [
         {
           "id": "4e13b000-0000-4000-8000-000000000001",
-          "name": { "en": "Questions", "fr": "Questions", "nl": "Vragen" },
+          "name": "programUnits.questions",
           "icon": "bi-question-circle",
           "type": "query",
           "queryId": "e893707a-c3a0-4cf8-8099-87a337f1f666",
@@ -17,7 +17,7 @@
         },
         {
           "id": "4e13b000-0000-4000-8000-000000000002",
-          "name": { "en": "Answers", "fr": "Réponses", "nl": "Antwoorden" },
+          "name": "programUnits.answers",
           "icon": "bi-reply",
           "type": "query",
           "queryId": "e4a0db0c-7ce3-4344-b273-cadccf285b10",

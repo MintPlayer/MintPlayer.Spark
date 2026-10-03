@@ -15,5 +15,591 @@
       "fr": "Sélectionnez un élément du menu latéral pour commencer.",
       "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
     }
+  },
+  "model": {
+    "Address": {
+      "label": {
+        "en": "Address",
+        "fr": "Adresse",
+        "nl": "Adres"
+      },
+      "attributes": {
+        "City": {
+          "label": {
+            "en": "City",
+            "fr": "Ville",
+            "nl": "Stad"
+          },
+          "description": {
+            "en": "City or town the address is located in.",
+            "fr": "Ville ou commune où se situe l'adresse.",
+            "nl": "Stad of gemeente waar het adres ligt."
+          },
+          "rules": {
+            "minLength": {
+              "en": "City must be at least 2 characters.",
+              "fr": "La ville doit contenir au moins 2 caractères.",
+              "nl": "Stad moet minstens 2 tekens bevatten."
+            }
+          }
+        },
+        "State": {
+          "label": {
+            "en": "State",
+            "fr": "État",
+            "nl": "Staat"
+          },
+          "description": {
+            "en": "State, province or region the city belongs to.",
+            "fr": "État, province ou région dont dépend la ville.",
+            "nl": "Staat, provincie of regio waartoe de stad behoort."
+          },
+          "rules": {
+            "minLength": {
+              "en": "State must be at least 2 characters.",
+              "fr": "L'état doit contenir au moins 2 caractères.",
+              "nl": "Staat moet minstens 2 tekens bevatten."
+            }
+          }
+        },
+        "Street": {
+          "label": {
+            "en": "Street",
+            "fr": "Rue",
+            "nl": "Straat"
+          },
+          "description": {
+            "en": "Street name and house number, for example Main Street 12.",
+            "fr": "Nom de rue et numéro de maison, par exemple Main Street 12.",
+            "nl": "Straatnaam en huisnummer, bijvoorbeeld Main Street 12."
+          },
+          "rules": {
+            "minLength": {
+              "en": "Street must be at least 3 characters.",
+              "fr": "La rue doit contenir au moins 3 caractères.",
+              "nl": "Straat moet minstens 3 tekens bevatten."
+            }
+          }
+        }
+      }
+    },
+    "Car": {
+      "label": {
+        "en": "Car",
+        "fr": "Voiture",
+        "nl": "Auto"
+      },
+      "attributes": {
+        "Brand": {
+          "label": {
+            "en": "Brand",
+            "fr": "Marque",
+            "nl": "Merk"
+          },
+          "description": {
+            "en": "Manufacturer of the car, picked from the list of known brands.",
+            "fr": "Constructeur de la voiture, choisi dans la liste des marques connues.",
+            "nl": "Fabrikant van de wagen, gekozen uit de lijst met bekende merken."
+          }
+        },
+        "Color": {
+          "label": {
+            "en": "Color",
+            "fr": "Couleur",
+            "nl": "Kleur"
+          },
+          "description": {
+            "en": "Exterior paint colour of the car.",
+            "fr": "Couleur de la peinture extérieure de la voiture.",
+            "nl": "Kleur van de buitenlak van de wagen."
+          }
+        },
+        "LicensePlate": {
+          "label": {
+            "en": "License Plate",
+            "fr": "Plaque d'immatriculation",
+            "nl": "Nummerplaat"
+          },
+          "description": {
+            "en": "Registration number shown on the car's licence plate.",
+            "fr": "Numéro d'immatriculation figurant sur la plaque de la voiture.",
+            "nl": "Inschrijvingsnummer dat op de nummerplaat van de wagen staat."
+          },
+          "rules": {
+            "minLength": {
+              "en": "License Plate must be at least 2 characters.",
+              "fr": "La plaque d'immatriculation doit contenir au moins 2 caractères.",
+              "nl": "Nummerplaat moet minstens 2 tekens bevatten."
+            },
+            "regex": {
+              "en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.",
+              "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.",
+              "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten."
+            }
+          }
+        },
+        "Model": {
+          "label": {
+            "en": "Model",
+            "fr": "Modèle",
+            "nl": "Model"
+          },
+          "description": {
+            "en": "Model name of the car, for example Golf or Model 3.",
+            "fr": "Nom du modèle de la voiture, par exemple Golf ou Model 3.",
+            "nl": "Modelnaam van de wagen, bijvoorbeeld Golf of Model 3."
+          },
+          "rules": {
+            "minLength": {
+              "en": "Model must be at least 2 characters.",
+              "fr": "Le modèle doit contenir au moins 2 caractères.",
+              "nl": "Model moet minstens 2 tekens bevatten."
+            }
+          }
+        },
+        "Owner": {
+          "label": {
+            "en": "Owner",
+            "fr": "Propriétaire",
+            "nl": "Eigenaar"
+          },
+          "description": {
+            "en": "Company that owns this car, picked from the companies list.",
+            "fr": "Entreprise propriétaire de cette voiture, choisie dans la liste des entreprises.",
+            "nl": "Bedrijf dat eigenaar is van deze wagen, gekozen uit de lijst met bedrijven."
+          }
+        },
+        "OwnerFullName": {
+          "label": {
+            "en": "Owner Full Name",
+            "fr": "Nom complet du propriétaire",
+            "nl": "Volledige naam eigenaar"
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          },
+          "description": {
+            "en": "Current state of the car: in use, on the parking lot, in maintenance or stolen.",
+            "fr": "État actuel de la voiture : en service, au parking, en entretien ou volée.",
+            "nl": "Huidige staat van de wagen: in gebruik, op de parking, in onderhoud of gestolen."
+          }
+        },
+        "Year": {
+          "label": {
+            "en": "Year",
+            "fr": "Année",
+            "nl": "Jaar"
+          },
+          "description": {
+            "en": "Model year in which the car was built.",
+            "fr": "Millésime de construction de la voiture.",
+            "nl": "Modeljaar waarin de wagen gebouwd is."
+          }
+        }
+      }
+    },
+    "Company": {
+      "label": {
+        "en": "Company",
+        "fr": "Entreprise",
+        "nl": "Bedrijf"
+      },
+      "attributes": {
+        "EmployeeCount": {
+          "label": {
+            "en": "Number of Employees",
+            "fr": "Nombre d'employés",
+            "nl": "Aantal werknemers"
+          },
+          "description": {
+            "en": "Approximate number of people employed by the company; leave empty if unknown.",
+            "fr": "Nombre approximatif de personnes employées par l'entreprise ; laissez vide si inconnu.",
+            "nl": "Bij benadering het aantal mensen dat het bedrijf tewerkstelt; laat leeg indien onbekend."
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Company Name",
+            "fr": "Nom de l'entreprise",
+            "nl": "Bedrijfsnaam"
+          },
+          "description": {
+            "en": "Official name of the company as it should appear in lists and on people's records.",
+            "fr": "Nom officiel de l'entreprise tel qu'il doit apparaître dans les listes et sur les fiches des personnes.",
+            "nl": "Officiële naam van het bedrijf zoals die in lijsten en op persoonsfiches moet verschijnen."
+          },
+          "rules": {
+            "minLength": {
+              "en": "Company Name must be at least 2 characters.",
+              "fr": "Le nom de l'entreprise doit contenir au moins 2 caractères.",
+              "nl": "Bedrijfsnaam moet minstens 2 tekens bevatten."
+            }
+          }
+        },
+        "Website": {
+          "label": {
+            "en": "Website",
+            "fr": "Site web",
+            "nl": "Website"
+          },
+          "description": {
+            "en": "Public website address of the company, including https://.",
+            "fr": "Adresse du site web public de l'entreprise, y compris https://.",
+            "nl": "Adres van de publieke website van het bedrijf, inclusief https://."
+          }
+        }
+      }
+    },
+    "Person": {
+      "label": {
+        "en": "Person",
+        "fr": "Personne",
+        "nl": "Persoon"
+      },
+      "attributes": {
+        "Address": {
+          "label": {
+            "en": "Address",
+            "fr": "Adresse",
+            "nl": "Adres"
+          },
+          "description": {
+            "en": "Home or postal address of the person, with street, city and state.",
+            "fr": "Adresse du domicile ou adresse postale de la personne, avec rue, ville et région.",
+            "nl": "Thuis- of postadres van de persoon, met straat, stad en provincie."
+          }
+        },
+        "Company": {
+          "label": {
+            "en": "Company",
+            "fr": "Entreprise",
+            "nl": "Bedrijf"
+          },
+          "description": {
+            "en": "The Company this person works for. Pick from the companies list; leave empty for freelancers.",
+            "fr": "L'entreprise pour laquelle cette personne travaille. Choisissez dans la liste des entreprises ; laissez vide pour les indépendants.",
+            "nl": "Het bedrijf waarvoor deze persoon werkt. Kies uit de bedrijvenlijst; laat leeg voor freelancers."
+          }
+        },
+        "DateOfBirth": {
+          "label": {
+            "en": "Date of Birth",
+            "fr": "Date de naissance",
+            "nl": "Geboortedatum"
+          },
+          "description": {
+            "en": "Date on which the person was born; leave empty if unknown.",
+            "fr": "Date de naissance de la personne ; laissez vide si inconnue.",
+            "nl": "Geboortedatum van de persoon; laat leeg indien onbekend."
+          }
+        },
+        "Email": {
+          "label": {
+            "en": "Email Address",
+            "fr": "Adresse e-mail",
+            "nl": "E-mailadres"
+          },
+          "description": {
+            "en": "Email address used to contact the person.",
+            "fr": "Adresse e-mail utilisée pour contacter la personne.",
+            "nl": "E-mailadres waarop de persoon gecontacteerd wordt."
+          }
+        },
+        "FirstName": {
+          "label": {
+            "en": "First Name",
+            "fr": "Prénom",
+            "nl": "Voornaam"
+          },
+          "description": {
+            "en": "Given name, as it should appear on badges and in greetings.",
+            "fr": "Prénom, tel qu'il doit figurer sur les badges et dans les salutations.",
+            "nl": "Voornaam, zoals die op badges en in begroetingen moet verschijnen."
+          },
+          "rules": {
+            "minLength": {
+              "en": "First Name must be at least 2 characters.",
+              "fr": "Le prénom doit contenir au moins 2 caractères.",
+              "nl": "Voornaam moet minstens 2 tekens bevatten."
+            }
+          }
+        },
+        "FullName": {
+          "label": {
+            "en": "Full Name",
+            "fr": "Nom complet",
+            "nl": "Volledige naam"
+          }
+        },
+        "IsActive": {
+          "label": {
+            "en": "Is Active",
+            "fr": "Actif",
+            "nl": "Actief"
+          },
+          "description": {
+            "en": "Whether this person can sign in and appears in the default people lists.",
+            "fr": "Indique si cette personne peut se connecter et apparaît dans les listes de personnes par défaut.",
+            "nl": "Of deze persoon zich kan aanmelden en in de standaardpersonenlijsten verschijnt."
+          }
+        },
+        "LastName": {
+          "label": {
+            "en": "Last Name",
+            "fr": "Nom de famille",
+            "nl": "Achternaam"
+          },
+          "description": {
+            "en": "Family name or surname of the person.",
+            "fr": "Nom de famille ou patronyme de la personne.",
+            "nl": "Familienaam of achternaam van de persoon."
+          },
+          "rules": {
+            "minLength": {
+              "en": "Last Name must be at least 2 characters.",
+              "fr": "Le nom de famille doit contenir au moins 2 caractères.",
+              "nl": "Achternaam moet minstens 2 tekens bevatten."
+            }
+          }
+        }
+      }
+    },
+    "StartPage": {
+      "label": {
+        "en": "Composed landing page: the Start program unit opens this type with a fixed objectId, and StartPageActions.OnComposeAsync fills the values — no document backs it.",
+        "fr": "Page d'accueil composée par StartPageActions.OnComposeAsync — aucun document.",
+        "nl": "Samengestelde startpagina via StartPageActions.OnComposeAsync — geen document."
+      },
+      "attributes": {
+        "Welcome": {
+          "label": {
+            "en": "Welcome",
+            "fr": "Bienvenue",
+            "nl": "Welkom"
+          }
+        },
+        "PeopleCount": {
+          "label": {
+            "en": "People",
+            "fr": "Personnes",
+            "nl": "Personen"
+          }
+        },
+        "CompanyCount": {
+          "label": {
+            "en": "Companies",
+            "fr": "Entreprises",
+            "nl": "Bedrijven"
+          }
+        },
+        "CarCount": {
+          "label": {
+            "en": "Cars",
+            "fr": "Voitures",
+            "nl": "Auto's"
+          }
+        },
+        "Collection": {
+          "label": {
+            "en": "Collection",
+            "fr": "Collection",
+            "nl": "Collectie"
+          }
+        },
+        "Records": {
+          "label": {
+            "en": "Records",
+            "fr": "Enregistrements",
+            "nl": "Records"
+          }
+        }
+      }
+    },
+    "Stock": {
+      "label": {
+        "en": "Stock",
+        "fr": "Action",
+        "nl": "Aandeel"
+      },
+      "attributes": {
+        "Change": {
+          "label": {
+            "en": "Change",
+            "fr": "Variation",
+            "nl": "Wijziging"
+          },
+          "description": {
+            "en": "Difference between the current price and the base price, in currency units; negative when the price dropped.",
+            "fr": "Différence entre le cours actuel et le cours de base, en unités monétaires ; négative lorsque le cours a baissé.",
+            "nl": "Verschil tussen de huidige koers en de basiskoers, in munteenheden; negatief wanneer de koers gedaald is."
+          }
+        },
+        "ChangePercent": {
+          "label": {
+            "en": "Change %",
+            "fr": "Variation %",
+            "nl": "Wijziging %"
+          },
+          "description": {
+            "en": "Price change relative to the base price, expressed as a percentage.",
+            "fr": "Variation du cours par rapport au cours de base, exprimée en pourcentage.",
+            "nl": "Koerswijziging ten opzichte van de basiskoers, uitgedrukt in procent."
+          }
+        },
+        "CompanyName": {
+          "label": {
+            "en": "Company",
+            "fr": "Entreprise",
+            "nl": "Bedrijf"
+          },
+          "description": {
+            "en": "Name of the company whose shares this stock represents.",
+            "fr": "Nom de l'entreprise dont cette action représente les titres.",
+            "nl": "Naam van het bedrijf waarvan dit aandeel de effecten vertegenwoordigt."
+          }
+        },
+        "CurrentPrice": {
+          "label": {
+            "en": "Price",
+            "fr": "Prix",
+            "nl": "Prijs"
+          },
+          "description": {
+            "en": "Latest known price of one share.",
+            "fr": "Dernier cours connu d'une action.",
+            "nl": "Laatst bekende koers van één aandeel."
+          }
+        },
+        "Symbol": {
+          "label": {
+            "en": "Symbol",
+            "fr": "Symbole",
+            "nl": "Symbool"
+          },
+          "description": {
+            "en": "Ticker symbol under which the stock trades, for example MSFT.",
+            "fr": "Symbole boursier sous lequel l'action se négocie, par exemple MSFT.",
+            "nl": "Tickersymbool waaronder het aandeel verhandeld wordt, bijvoorbeeld MSFT."
+          }
+        }
+      }
+    }
+  },
+  "queries": {
+    "Company_Cars": {
+      "label": {
+        "en": "Cars owned by this company. A sub-query: rendered on the Company detail page, filtered by that company through the Company_Cars index.",
+        "fr": "Voitures de cette entreprise.",
+        "nl": "Auto's van dit bedrijf."
+      }
+    },
+    "GetCars": {
+      "label": {
+        "en": "Cars",
+        "fr": "Voitures",
+        "nl": "Auto's"
+      }
+    },
+    "GetCompanies": {
+      "label": {
+        "en": "Companies",
+        "fr": "Entreprises",
+        "nl": "Bedrijven"
+      }
+    },
+    "Company_People": {
+      "label": {
+        "en": "People in Company",
+        "fr": "Personnes dans l'entreprise",
+        "nl": "Personen in bedrijf"
+      }
+    },
+    "GetPeople": {
+      "label": {
+        "en": "People",
+        "fr": "Personnes",
+        "nl": "Personen"
+      }
+    },
+    "StartPageCollections": {
+      "label": {
+        "en": "A composed query: one row per collection with its live count. No documents back these rows -- StartPageActions.GetCollections computes them.",
+        "fr": "Requete composee : une ligne par collection.",
+        "nl": "Samengestelde query: een rij per collectie."
+      }
+    },
+    "StreamStocks": {
+      "label": {
+        "en": "Stock Market (Live)",
+        "fr": "Bourse (En direct)",
+        "nl": "Beurs (Live)"
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "gettingStarted": {
+        "en": "Getting started",
+        "fr": "Premiers pas",
+        "nl": "Aan de slag"
+      },
+      "masterData": {
+        "en": "Master Data",
+        "fr": "Données de base",
+        "nl": "Stamgegevens"
+      }
+    },
+    "startpage": {
+      "en": "Start",
+      "fr": "Accueil",
+      "nl": "Start"
+    },
+    "sparkOnGitHub": {
+      "en": "Spark on GitHub",
+      "fr": "Spark sur GitHub",
+      "nl": "Spark op GitHub"
+    },
+    "people": {
+      "en": "People",
+      "fr": "Personnes",
+      "nl": "Personen"
+    },
+    "companies": {
+      "en": "Companies",
+      "fr": "Entreprises",
+      "nl": "Bedrijven"
+    },
+    "cars": {
+      "en": "Cars",
+      "fr": "Voitures",
+      "nl": "Auto's"
+    },
+    "stocks": {
+      "en": "Stock Market",
+      "fr": "Bourse",
+      "nl": "Beurs"
+    }
+  },
+  "security": {
+    "groups": {
+      "Anonymous visitors": {
+        "label": {
+          "en": "Anonymous visitors",
+          "fr": "Visiteurs anonymes",
+          "nl": "Anonieme bezoekers"
+        }
+      },
+      "Signed-in users": {
+        "label": {
+          "en": "Signed-in users",
+          "fr": "Utilisateurs connectés",
+          "nl": "Aangemelde gebruikers"
+        }
+      }
+    }
   }
 }

@@ -2,13 +2,13 @@
   "programUnitGroups": [
     {
       "id": "b10e8400-e29b-41d4-a716-446655440000",
-      "name": { "en": "HR", "fr": "RH", "nl": "HR" },
+      "name": "programUnits.groups.hr",
       "icon": "bi-people-fill",
       "order": 1,
       "programUnits": [
         {
           "id": "b10e8400-e29b-41d4-a716-446655440001",
-          "name": { "en": "People", "fr": "Personnes", "nl": "Personen" },
+          "name": "programUnits.people",
           "icon": "bi-people",
           "type": "query",
           "queryId": "b20e8400-e29b-41d4-a716-446655440001",
@@ -17,7 +17,7 @@
         },
         {
           "id": "b10e8400-e29b-41d4-a716-446655440002",
-          "name": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
+          "name": "programUnits.companies",
           "icon": "bi-building",
           "type": "query",
           "queryId": "b20e8400-e29b-41d4-a716-446655440002",
@@ -26,7 +26,7 @@
         },
         {
           "id": "b10e8400-e29b-41d4-a716-446655440003",
-          "name": { "en": "Cars", "fr": "Voitures", "nl": "Auto's" },
+          "name": "programUnits.cars",
           "icon": "bi-car-front-fill",
           "type": "query",
           "queryId": "b20e8400-e29b-41d4-a716-446655440003",
@@ -35,7 +35,7 @@
         },
         {
           "id": "b10e8400-e29b-41d4-a716-446655440004",
-          "name": { "en": "Professions", "fr": "Professions", "nl": "Beroepen" },
+          "name": "programUnits.professions",
           "icon": "bi-briefcase",
           "type": "query",
           "queryId": "e2f7a15d-e68a-4f13-9ad6-1c3dbe679c44",

@@ -85,16 +85,16 @@ public static class MoSecurity
                 [SparkWellKnownGroups.Anonymous] = SparkTestSecurity.AnonymousGroupId.ToString(),
                 [SparkWellKnownGroups.Authenticated] = SparkTestSecurity.AuthenticatedGroupId.ToString(),
             },
-            Groups = new Dictionary<string, TranslatedString>
+            Groups = new Dictionary<string, string>
             {
-                [SparkTestSecurity.AnonymousGroupId.ToString()] = TranslatedString.Create("Anonymous visitors"),
-                [SparkTestSecurity.AuthenticatedGroupId.ToString()] = TranslatedString.Create("Signed-in users"),
-                [Voters.ToString()] = TranslatedString.Create("MoVoters"),
-                [Downvoters.ToString()] = TranslatedString.Create("MoDownvoters"),
-                [Flaggers.ToString()] = TranslatedString.Create("MoFlaggers"),
-                [Reviewers.ToString()] = TranslatedString.Create("MoReviewers"),
-                [Moderators.ToString()] = TranslatedString.Create(ModeratorsName),
-                [Editors.ToString()] = TranslatedString.Create("MoEditors"),
+                [SparkTestSecurity.AnonymousGroupId.ToString()] = "Anonymous visitors",
+                [SparkTestSecurity.AuthenticatedGroupId.ToString()] = "Signed-in users",
+                [Voters.ToString()] = "MoVoters",
+                [Downvoters.ToString()] = "MoDownvoters",
+                [Flaggers.ToString()] = "MoFlaggers",
+                [Reviewers.ToString()] = "MoReviewers",
+                [Moderators.ToString()] = ModeratorsName,
+                [Editors.ToString()] = "MoEditors",
             },
             Rights = rights.Select((r, i) => new Right
             {

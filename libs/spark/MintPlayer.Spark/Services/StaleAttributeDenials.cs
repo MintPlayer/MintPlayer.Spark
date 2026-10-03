@@ -109,7 +109,7 @@ internal static class StaleAttributeDenials
         foreach (var (key, name) in config.Groups)
         {
             if (Guid.TryParse(key, out var id) && id == groupId)
-                return name.GetDefaultValue();
+                return name;
         }
 
         return groupId.ToString();

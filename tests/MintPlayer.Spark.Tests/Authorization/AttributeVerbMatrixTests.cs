@@ -322,10 +322,10 @@ public class AttributeVerbMatrixTests : SparkTestDriver
                 [SparkWellKnownGroups.Anonymous] = SparkTestSecurity.AnonymousGroupId.ToString(),
                 [SparkWellKnownGroups.Authenticated] = SparkTestSecurity.AuthenticatedGroupId.ToString(),
             },
-            Groups = new Dictionary<string, TranslatedString>
+            Groups = new Dictionary<string, string>
             {
-                [SparkTestSecurity.AnonymousGroupId.ToString()] = TranslatedString.Create("Anonymous visitors"),
-                [SparkTestSecurity.AuthenticatedGroupId.ToString()] = TranslatedString.Create("Signed-in users"),
+                [SparkTestSecurity.AnonymousGroupId.ToString()] = "Anonymous visitors",
+                [SparkTestSecurity.AuthenticatedGroupId.ToString()] = "Signed-in users",
             },
             Rights = rights,
         });

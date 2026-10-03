@@ -10,16 +10,6 @@
       {
         "id": "9299aff7-47c4-4fd9-9ea1-7ceabca0f1e9",
         "name": "ContractEnd",
-        "label": {
-          "en": "Contract End",
-          "fr": "Fin du contrat",
-          "nl": "Contracteinde"
-        },
-        "description": {
-          "en": "Date on which the contract ended; leave empty while the job is ongoing.",
-          "fr": "Date de fin du contrat ; laissez vide tant que l'emploi est en cours.",
-          "nl": "Datum waarop het contract eindigde; laat leeg zolang de job loopt."
-        },
         "dataType": "date",
         "isRequired": false,
         "isVisible": true,
@@ -32,16 +22,6 @@
       {
         "id": "e2e2fcd5-09b6-4693-b9c1-dc28e8126236",
         "name": "ContractStart",
-        "label": {
-          "en": "Contract Start",
-          "fr": "Début du contrat",
-          "nl": "Contractstart"
-        },
-        "description": {
-          "en": "Date on which the contract for this job started.",
-          "fr": "Date de début du contrat pour cet emploi.",
-          "nl": "Datum waarop het contract voor deze job begon."
-        },
         "dataType": "date",
         "isRequired": true,
         "isVisible": true,
@@ -54,16 +34,6 @@
       {
         "id": "1fd5ef3b-11f0-4d33-837f-59d805bdbce8",
         "name": "ProfessionId",
-        "label": {
-          "en": "Profession",
-          "fr": "Profession",
-          "nl": "Beroep"
-        },
-        "description": {
-          "en": "The profession held during this career step.",
-          "fr": "La profession exercée durant cette étape de carrière.",
-          "nl": "Het beroep dat tijdens deze loopbaanstap uitgeoefend werd."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,

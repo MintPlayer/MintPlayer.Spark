@@ -66,7 +66,7 @@ public class SparkAuthorizeAttributeTests
     {
         public SecurityConfiguration GetConfiguration() => new()
         {
-            Groups = { [groupId] = TranslatedString.Create(displayName) },
+            Groups = { [groupId] = displayName },
             WellKnown = new Dictionary<string, string> { [SparkWellKnownGroups.Authenticated] = groupId },
         };
 
@@ -236,7 +236,7 @@ public class SparkAuthorizeAttributeTests
     {
         public SecurityConfiguration GetConfiguration() => new()
         {
-            Groups = { [groupId.ToString()] = TranslatedString.Create(displayName) },
+            Groups = { [groupId.ToString()] = displayName },
         };
 
         public RightsDecision GetResolvedRights(IReadOnlySet<Guid> groupIds) => RightsDecision.None;

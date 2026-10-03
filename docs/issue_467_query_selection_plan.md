@@ -52,23 +52,23 @@ Where the PRD's §2 and §7 disagree, §7 wins.
       blank a value; two libraries clash and warn; the app over a library raises no diagnostic.
 
 ### M2 — All localized text out of `App_Data` JSON (D1, D4, D5, D6)
-- [ ] Key convention: `model.{Entity}.label`, `model.{Entity}.attributes.{Attr}.label|description`,
+- [x] Key convention: `model.{Entity}.label`, `model.{Entity}.attributes.{Attr}.label|description`,
       `queries.{Query}.label`, `programUnits.{…}`, `security.groups.{…}`, `culture.{…}`, plus an optional
       explicit key. Keys use `.label`/`.description` *siblings*, never a child under a leaf
       (`SPARK_TRANS_002`, S10). The resolver falls back to the humanized name.
-- [ ] Model shape: `label`/`description` become an optional key string; the entity-level `description`
+- [x] Model shape: `label`/`description` become an optional key string; the entity-level `description`
       becomes `model.{Entity}.label` (D6). Server, `SparkModelShape`, ng-spark models, every
       `resolveTranslation` call site.
-- [ ] `ModelSynchronizer` stops writing inline labels (`:941`). Description seed (D5) per S10: `JsonNode`
+- [x] `ModelSynchronizer` stops writing inline labels (`:941`). Description seed (D5) per S10: `JsonNode`
       + relaxed encoder, keeping the file's line endings and trailing newline. A canonical file only gets
       insertions; a non-canonical one is reformatted once with a notice (verify fails). Paths are matched
       dotted and nested. "Defined by no layer" = compiled translations + the app file on disk. Verify fails
       exactly when sync would write.
-- [ ] Info diagnostic / sync report: missing keys per language that `culture.json` declares (D4).
-- [ ] `programUnits.json`, `security.json` group names, `culture.json` names → keys.
-- [ ] Migrate all apps and the libraries' own files (814 inline strings). **Back up before the bulk edit.**
+- [x] Info diagnostic / sync report: missing keys per language that `culture.json` declares (D4).
+- [x] `programUnits.json`, `security.json` group names, `culture.json` names → keys.
+- [x] Migrate all apps and the libraries' own files (814 inline strings). **Back up before the bulk edit.** Done by `tools/migrate-467-translations.mjs` (D25); `customActions.json` text moves with M3. Test fixtures that embed the old shapes are fixed in the M9 sweep.
       The core library's hand-aligned `translations.json` is never written by sync, so it keeps its layout.
-- [ ] `--spark-verify-model` and the CI-only gates (`reference_ci_only_gates_spark`) pass.
+- [ ] (M9 sweep) `--spark-verify-model` and the CI-only gates (`reference_ci_only_gates_spark`) pass.
 
 ### M3 — `actions.json` composition, built-in Edit, Revoke (D7, D8, D22, R2)
 - [ ] Per S12: a library `App_Data/actions.json` is an AdditionalFile, and a new generator emits

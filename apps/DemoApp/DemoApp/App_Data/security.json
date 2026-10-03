@@ -14,8 +14,8 @@
     "authenticated": "d1b2c3d4-0000-0000-0000-00000000000f"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors", "fr": "Visiteurs anonymes", "nl": "Anonieme bezoekers" },
-    "d1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users", "fr": "Utilisateurs connectés", "nl": "Aangemelde gebruikers" }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "d1b2c3d4-0000-0000-0000-00000000000f": "Signed-in users"
   },
   "rights": [
     { "id": "d0000001-0000-0000-0000-000000000001", "resource": "QueryReadEditNewDelete/Person",  "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },

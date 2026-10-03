@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "name": "Person",
-    "description": {
-      "en": "Person",
-      "fr": "Personne",
-      "nl": "Persoon"
-    },
     "clrType": "DemoApp.Library.Entities.Person",
     "queryType": "DemoApp.Indexes.VPerson",
     "indexName": "People_Overview",
@@ -18,16 +13,6 @@
       {
         "id": "b537cf07-67e0-416d-9949-bf833c19133c",
         "name": "Address",
-        "label": {
-          "en": "Address",
-          "fr": "Adresse",
-          "nl": "Adres"
-        },
-        "description": {
-          "en": "Home or postal address of the person, with street, city and state.",
-          "fr": "Adresse du domicile ou adresse postale de la personne, avec rue, ville et région.",
-          "nl": "Thuis- of postadres van de persoon, met straat, stad en provincie."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -43,16 +28,6 @@
       {
         "id": "550e8400-e29b-41d4-a716-446655440005",
         "name": "Company",
-        "label": {
-          "en": "Company",
-          "fr": "Entreprise",
-          "nl": "Bedrijf"
-        },
-        "description": {
-          "en": "The Company this person works for. Pick from the companies list; leave empty for freelancers.",
-          "fr": "L'entreprise pour laquelle cette personne travaille. Choisissez dans la liste des entreprises ; laissez vide pour les indépendants.",
-          "nl": "Het bedrijf waarvoor deze persoon werkt. Kies uit de bedrijvenlijst; laat leeg voor freelancers."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -67,16 +42,6 @@
       {
         "id": "550e8400-e29b-41d4-a716-446655440004",
         "name": "DateOfBirth",
-        "label": {
-          "en": "Date of Birth",
-          "fr": "Date de naissance",
-          "nl": "Geboortedatum"
-        },
-        "description": {
-          "en": "Date on which the person was born; leave empty if unknown.",
-          "fr": "Date de naissance de la personne ; laissez vide si inconnue.",
-          "nl": "Geboortedatum van de persoon; laat leeg indien onbekend."
-        },
         "dataType": "date",
         "isRequired": false,
         "isVisible": true,
@@ -90,16 +55,6 @@
       {
         "id": "550e8400-e29b-41d4-a716-446655440003",
         "name": "Email",
-        "label": {
-          "en": "Email Address",
-          "fr": "Adresse e-mail",
-          "nl": "E-mailadres"
-        },
-        "description": {
-          "en": "Email address used to contact the person.",
-          "fr": "Adresse e-mail utilisée pour contacter la personne.",
-          "nl": "E-mailadres waarop de persoon gecontacteerd wordt."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -120,16 +75,6 @@
       {
         "id": "550e8400-e29b-41d4-a716-446655440001",
         "name": "FirstName",
-        "label": {
-          "en": "First Name",
-          "fr": "Prénom",
-          "nl": "Voornaam"
-        },
-        "description": {
-          "en": "Given name, as it should appear on badges and in greetings.",
-          "fr": "Prénom, tel qu'il doit figurer sur les badges et dans les salutations.",
-          "nl": "Voornaam, zoals die op badges en in begroetingen moet verschijnen."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -142,11 +87,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "First Name must be at least 2 characters.",
-              "fr": "Le prénom doit contenir au moins 2 caractères.",
-              "nl": "Voornaam moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Person.attributes.FirstName.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -157,11 +98,6 @@
       {
         "id": "566e4dad-f60c-464d-b2f6-18fb9a5e0ac4",
         "name": "FullName",
-        "label": {
-          "en": "Full Name",
-          "fr": "Nom complet",
-          "nl": "Volledige naam"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -175,16 +111,6 @@
       {
         "id": "65cf3b91-01bd-4b10-a5e9-a81b549bc69e",
         "name": "IsActive",
-        "label": {
-          "en": "Is Active",
-          "fr": "Actif",
-          "nl": "Actief"
-        },
-        "description": {
-          "en": "Whether this person can sign in and appears in the default people lists.",
-          "fr": "Indique si cette personne peut se connecter et apparaît dans les listes de personnes par défaut.",
-          "nl": "Of deze persoon zich kan aanmelden en in de standaardpersonenlijsten verschijnt."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -197,16 +123,6 @@
       {
         "id": "550e8400-e29b-41d4-a716-446655440002",
         "name": "LastName",
-        "label": {
-          "en": "Last Name",
-          "fr": "Nom de famille",
-          "nl": "Achternaam"
-        },
-        "description": {
-          "en": "Family name or surname of the person.",
-          "fr": "Nom de famille ou patronyme de la personne.",
-          "nl": "Familienaam of achternaam van de persoon."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -219,11 +135,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "Last Name must be at least 2 characters.",
-              "fr": "Le nom de famille doit contenir au moins 2 caractères.",
-              "nl": "Achternaam moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Person.attributes.LastName.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -238,11 +150,6 @@
     {
       "id": "d40f9500-f39c-52e5-b827-557766551002",
       "name": "Company_People",
-      "description": {
-        "en": "People in Company",
-        "fr": "Personnes dans l'entreprise",
-        "nl": "Personen in bedrijf"
-      },
       "source": "Custom.Company_People",
       "alias": "company-people",
       "sortColumns": [
@@ -258,11 +165,6 @@
     {
       "id": "880e8400-e29b-41d4-a716-446655440000",
       "name": "GetPeople",
-      "description": {
-        "en": "People",
-        "fr": "Personnes",
-        "nl": "Personen"
-      },
       "source": "Database.People",
       "sortColumns": [
         {

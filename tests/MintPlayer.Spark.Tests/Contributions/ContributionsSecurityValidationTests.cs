@@ -18,7 +18,7 @@ public class ContributionsSecurityValidationTests
 
     private static SecurityConfiguration Config(string resource) => new()
     {
-        Groups = { [Moderators.ToString()] = TranslatedString.Create("Moderators") },
+        Groups = { [Moderators.ToString()] = "Moderators" },
         Rights = [new Right { Id = Guid.NewGuid(), GroupId = Moderators, Resource = resource }],
     };
 

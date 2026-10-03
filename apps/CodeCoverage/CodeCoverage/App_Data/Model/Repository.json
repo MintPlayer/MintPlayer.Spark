@@ -12,16 +12,6 @@
       {
         "id": "a33211c6-5059-477e-bcae-ab482fcc3584",
         "name": "Account",
-        "label": {
-          "en": "Account",
-          "fr": "Compte",
-          "nl": "Account"
-        },
-        "description": {
-          "en": "The GitHub user or organization that owns this repository.",
-          "fr": "L'utilisateur ou l'organisation GitHub propriétaire de ce dépôt.",
-          "nl": "De GitHub-gebruiker of -organisatie die eigenaar is van deze repository."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -36,16 +26,6 @@
       {
         "id": "ae617697-7cdc-4618-98b8-5676a1cfdf0e",
         "name": "Archived",
-        "label": {
-          "en": "Archived",
-          "fr": "Archivé",
-          "nl": "Gearchiveerd"
-        },
-        "description": {
-          "en": "Whether the repository has been archived on GitHub.",
-          "fr": "Vrai lorsque le dépôt a été archivé sur GitHub et ne reçoit plus d'envois.",
-          "nl": "True wanneer de repository op GitHub gearchiveerd is en geen uploads meer ontvangt."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -58,16 +38,6 @@
       {
         "id": "b676851e-f8de-4297-8408-6fe1f4287b42",
         "name": "BadgeToken",
-        "label": {
-          "en": "Badge Token",
-          "fr": "Jeton de badge",
-          "nl": "Badgetoken"
-        },
-        "description": {
-          "en": "Grants access to the rendered badge SVG only — never report data.",
-          "fr": "Donne accès au badge SVG rendu uniquement — jamais aux données du rapport.",
-          "nl": "Geeft enkel toegang tot de gerenderde badge-SVG — nooit tot rapportgegevens."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -81,16 +51,6 @@
       {
         "id": "02e8d12f-edc2-47e3-b018-1d551dd75e5e",
         "name": "Connection",
-        "label": {
-          "en": "Connection",
-          "fr": "Connexion",
-          "nl": "Verbinding"
-        },
-        "description": {
-          "en": "Whether the GitHub App can still see this repository.",
-          "fr": "Si l'application GitHub voit encore ce dépôt.",
-          "nl": "Of de GitHub App deze repository nog kan zien."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -103,16 +63,6 @@
       {
         "id": "88534f91-2542-4520-8773-00390de2cf10",
         "name": "DefaultBranch",
-        "label": {
-          "en": "Default Branch",
-          "fr": "Branche par défaut",
-          "nl": "Standaardbranch"
-        },
-        "description": {
-          "en": "The repository's default branch on GitHub.",
-          "fr": "La branche par défaut du dépôt sur GitHub.",
-          "nl": "De standaardbranch van de repository op GitHub."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -125,16 +75,6 @@
       {
         "id": "012ef5d6-bd40-41f0-b159-d749e1cbb44f",
         "name": "DeleteBranchOnPrClose",
-        "label": {
-          "en": "Delete Branch On Merge",
-          "fr": "Supprimer la branche à la fusion",
-          "nl": "Branch verwijderen bij mergen"
-        },
-        "description": {
-          "en": "Whether a merged pull request's head branch is deleted — or whether that is left to the owning Account.",
-          "fr": "Supprimer la branche source d'une pull request lorsque celle-ci est fusionnée.",
-          "nl": "De bronbranch van een pull request verwijderen wanneer die gemerged wordt."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -148,16 +88,6 @@
       {
         "id": "f478a083-eb0b-4468-af19-cddbdb07fcc1",
         "name": "DisconnectedAtUtc",
-        "label": {
-          "en": "Disconnected",
-          "fr": "Déconnecté",
-          "nl": "Losgekoppeld"
-        },
-        "description": {
-          "en": "When the repository was last disconnected (UTC); null while connected.",
-          "fr": "Moment de la dernière déconnexion du dépôt (UTC) ; null tant qu'il est connecté.",
-          "nl": "Wanneer de repository het laatst losgekoppeld is (UTC); null zolang ze verbonden is."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -170,16 +100,6 @@
       {
         "id": "e2b5b521-5214-4ce0-8dcf-e5b5866d10ef",
         "name": "DisconnectedReason",
-        "label": {
-          "en": "Disconnected Reason",
-          "fr": "Motif de déconnexion",
-          "nl": "Reden van loskoppeling"
-        },
-        "description": {
-          "en": "Why the repository is disconnected, from DisconnectedReasons; null while connected.",
-          "fr": "Pourquoi le dépôt est déconnecté, d'après DisconnectedReasons ; null tant qu'il est connecté.",
-          "nl": "Waarom de repository losgekoppeld is, uit DisconnectedReasons; null zolang ze verbonden is."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -192,12 +112,6 @@
       {
         "id": "c473d639-0ae7-4483-a12e-3f82ab49c71f",
         "name": "ForkUploads",
-        "label": {
-          "en": "Fork Uploads"
-        },
-        "description": {
-          "en": "How many fork-contributed uploads this repository has accepted in the current window."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -211,16 +125,6 @@
       {
         "id": "a6ac6d37-7d03-4094-8d19-8c86a4fefa7f",
         "name": "FullName",
-        "label": {
-          "en": "Trend",
-          "fr": "Tendance",
-          "nl": "Trend"
-        },
-        "description": {
-          "en": "owner/name",
-          "fr": "propriétaire/nom",
-          "nl": "eigenaar/naam"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -234,16 +138,6 @@
       {
         "id": "e2447502-d8a1-48d5-ad44-c28cd7308a7e",
         "name": "Gate",
-        "label": {
-          "en": "Coverage gate",
-          "fr": "Seuil de couverture",
-          "nl": "Coverage gate"
-        },
-        "description": {
-          "en": "Gate policy; empty means every default (informational, auto-ratchet).",
-          "fr": "Politique de seuil ; vide signifie toutes les valeurs par défaut (informatif, cliquet automatique).",
-          "nl": "Poortbeleid; leeg betekent alle standaardwaarden (informatief, automatische ratel)."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -258,16 +152,6 @@
       {
         "id": "2eeb1e3b-9a67-40f3-8ed7-052961f44df0",
         "name": "GitHubId",
-        "label": {
-          "en": "GitHub Id",
-          "fr": "Id GitHub",
-          "nl": "GitHub-id"
-        },
-        "description": {
-          "en": "GitHub's numeric id for this repository.",
-          "fr": "Id numérique GitHub de ce dépôt ; stable malgré les renommages et les transferts.",
-          "nl": "GitHub's numerieke id voor deze repository; stabiel bij hernoemingen en overdrachten."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": false,
@@ -280,16 +164,6 @@
       {
         "id": "dfb8fc92-bdce-42c0-9439-5469de78c911",
         "name": "IsPrivate",
-        "label": {
-          "en": "Private",
-          "fr": "Privé",
-          "nl": "Privé"
-        },
-        "description": {
-          "en": "Whether the repository is private on GitHub.",
-          "fr": "Si le dépôt est privé sur GitHub.",
-          "nl": "Of de repository privé is op GitHub."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": false,
@@ -302,16 +176,6 @@
       {
         "id": "a5dab619-07dd-4a7a-ba95-d7966cee3f30",
         "name": "LatestCoverage",
-        "label": {
-          "en": "Coverage",
-          "fr": "Couverture",
-          "nl": "Dekking"
-        },
-        "description": {
-          "en": "The repository's headline coverage.",
-          "fr": "La couverture de référence du dépôt.",
-          "nl": "De hoofddekking van de repository."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -326,16 +190,6 @@
       {
         "id": "89a49e24-b5c9-45f9-9cff-86713ab647cd",
         "name": "LatestCoverageAtUtc",
-        "label": {
-          "en": "Last Measured",
-          "fr": "Dernière mesure",
-          "nl": "Laatst gemeten"
-        },
-        "description": {
-          "en": "When the headline coverage was last refreshed.",
-          "fr": "Quand la couverture de référence a été rafraîchie pour la dernière fois.",
-          "nl": "Wanneer de hoofddekking het laatst vernieuwd is."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -348,16 +202,6 @@
       {
         "id": "86daca14-2fef-4f3a-a098-8efcbb2806aa",
         "name": "LatestCoverageSha",
-        "label": {
-          "en": "Latest commit",
-          "fr": "Dernier commit",
-          "nl": "Laatste commit"
-        },
-        "description": {
-          "en": "The default-branch commit the headline coverage was taken from.",
-          "fr": "Sha du commit de la branche par défaut dont provient la couverture principale.",
-          "nl": "Sha van de commit op de standaardbranch waaruit de hoofddekking genomen is."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -371,16 +215,6 @@
       {
         "id": "6cca49ee-2ede-4502-8811-4de802d904b6",
         "name": "Name",
-        "label": {
-          "en": "Repository",
-          "fr": "Dépôt",
-          "nl": "Repository"
-        },
-        "description": {
-          "en": "The repository name without the owner, e.g. MintPlayer.Spark.",
-          "fr": "Le nom du dépôt sans le propriétaire, p. ex. MintPlayer.Spark.",
-          "nl": "De naam van de repository zonder de eigenaar, bv. MintPlayer.Spark."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -394,12 +228,6 @@
       {
         "id": "b25a2fcd-b781-4b8e-959a-09c444cbaf87",
         "name": "OwnerKey",
-        "label": {
-          "en": "Owner Key"
-        },
-        "description": {
-          "en": "Provider and OwnerLogin as one comparable value, github:mintplayer — the form authorization filters on."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -412,16 +240,6 @@
       {
         "id": "28457041-7915-454c-9186-f6bc79f788ce",
         "name": "OwnerLogin",
-        "label": {
-          "en": "Owner",
-          "fr": "Propriétaire",
-          "nl": "Eigenaar"
-        },
-        "description": {
-          "en": "GitHub login of the owning user or organization.",
-          "fr": "Login GitHub de l'utilisateur ou de l'organisation propriétaire.",
-          "nl": "GitHub-login van de eigenaar: gebruiker of organisatie."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -434,16 +252,6 @@
       {
         "id": "bf435943-2cdf-42cd-954e-29c63fd2c583",
         "name": "PreviousFullNames",
-        "label": {
-          "en": "Previous Names",
-          "fr": "Anciens noms",
-          "nl": "Vorige namen"
-        },
-        "description": {
-          "en": "Names this repository was previously known by, oldest first.",
-          "fr": "Noms sous lesquels ce dépôt a été connu auparavant, du plus ancien au plus récent.",
-          "nl": "Namen waaronder deze repository eerder bekend was, oudste eerst."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -456,12 +264,6 @@
       {
         "id": "bd6ed75d-4e58-4789-b96c-9c285cace2fa",
         "name": "Provider",
-        "label": {
-          "en": "Provider"
-        },
-        "description": {
-          "en": "The forge that hosts this repository. Set on every document by the M6 re-key."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -481,11 +283,6 @@
     {
       "id": "7a4c9b30-5d2e-4f81-9c67-3e8b1a6d0f21",
       "name": "Account_Repositories",
-      "description": {
-        "en": "Repositories",
-        "fr": "Dépôts",
-        "nl": "Repositories"
-      },
       "source": "Custom.Account_Repositories",
       "alias": "account-repositories",
       "sortColumns": [
@@ -501,11 +298,6 @@
     {
       "id": "0f4e88db-d827-46ce-8367-56259fc81cad",
       "name": "ApiToken_SelectableRepositories",
-      "description": {
-        "en": "Selectable repositories",
-        "fr": "Dépôts sélectionnables",
-        "nl": "Selecteerbare repositories"
-      },
       "source": "Custom.ApiToken_SelectableRepositories",
       "sortColumns": [
         {

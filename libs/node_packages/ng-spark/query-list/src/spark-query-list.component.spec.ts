@@ -375,7 +375,7 @@ describe('SparkQueryListComponent', () => {
 
     it('shows the caption from the resolved query', async () => {
       const { harness } = await setup({
-        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, description: { en: 'Everyone' } }),
+        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, label: { en: 'Everyone' } }),
       });
       await navigate(harness, '/query/q-all');
 

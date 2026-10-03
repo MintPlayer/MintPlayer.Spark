@@ -4,41 +4,13 @@
     "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": {
-      "en": "Anonymous visitors",
-      "fr": "Visiteurs anonymes",
-      "nl": "Anonieme bezoekers"
-    },
-    "a1b2c3d4-0000-0000-0000-00000000000f": {
-      "en": "Signed-in users",
-      "fr": "Utilisateurs connectés",
-      "nl": "Aangemelde gebruikers"
-    },
-    "a1b2c3d4-0000-0000-0000-000000000001": {
-      "en": "Administrators",
-      "fr": "Administrateurs",
-      "nl": "Beheerders"
-    },
-    "a1b2c3d4-0000-0000-0000-000000000002": {
-      "en": "Fleet managers",
-      "fr": "Gestionnaires de flotte",
-      "nl": "Wagenparkbeheerders"
-    },
-    "a1b2c3d4-0000-0000-0000-000000000003": {
-      "en": "Viewers",
-      "fr": "Lecteurs",
-      "nl": "Lezers"
-    },
-    "b0000001-0000-0000-0000-000000000001": {
-      "en": "Module:HR",
-      "fr": "Module:HR",
-      "nl": "Module:HR"
-    },
-    "b0000002-0000-0000-0000-000000000001": {
-      "en": "Machine:FleetApi",
-      "fr": "Machine:FleetApi",
-      "nl": "Machine:FleetApi"
-    }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "a1b2c3d4-0000-0000-0000-00000000000f": "Signed-in users",
+    "a1b2c3d4-0000-0000-0000-000000000001": "Administrators",
+    "a1b2c3d4-0000-0000-0000-000000000002": "Fleet managers",
+    "a1b2c3d4-0000-0000-0000-000000000003": "Viewers",
+    "b0000001-0000-0000-0000-000000000001": "Module:HR",
+    "b0000002-0000-0000-0000-000000000001": "Machine:FleetApi"
   },
   "rights": [
     {

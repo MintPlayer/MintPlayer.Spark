@@ -20,5 +20,669 @@
       "fr": "Votre réputation",
       "nl": "Uw reputatie"
     }
+  },
+  "model": {
+    "Answer": {
+      "label": {
+        "en": "Answer",
+        "fr": "Réponse",
+        "nl": "Antwoord"
+      },
+      "attributes": {
+        "AuthorId": {
+          "label": {
+            "en": "Author",
+            "fr": "Auteur",
+            "nl": "Auteur"
+          },
+          "description": {
+            "en": "Who answered. Stamped by Moderation on create, never changed afterwards."
+          }
+        },
+        "Body": {
+          "label": {
+            "en": "Body",
+            "fr": "Contenu",
+            "nl": "Inhoud"
+          },
+          "description": {
+            "en": "The answer itself."
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créée",
+            "nl": "Aangemaakt"
+          },
+          "description": {
+            "en": "When the answer was created. Stamped by History."
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créée par",
+            "nl": "Aangemaakt door"
+          },
+          "description": {
+            "en": "Who created the answer (a user id). Stamped by History."
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimée le",
+            "nl": "Verwijderd op"
+          },
+          "description": {
+            "en": "When the answer was deleted."
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimée par",
+            "nl": "Verwijderd door"
+          },
+          "description": {
+            "en": "Who deleted the answer (a user id)."
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          },
+          "description": {
+            "en": "Why the answer was deleted, when a reason was given."
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimée",
+            "nl": "Verwijderd"
+          },
+          "description": {
+            "en": "Whether the answer was deleted. Deleted answers are hidden everywhere until restored."
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifiée",
+            "nl": "Gewijzigd"
+          },
+          "description": {
+            "en": "When the answer was changed last. Stamped by History."
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifiée par",
+            "nl": "Gewijzigd door"
+          },
+          "description": {
+            "en": "Who changed the answer last (a user id). Stamped by History."
+          }
+        },
+        "PostedAt": {
+          "label": {
+            "en": "Posted",
+            "fr": "Publiée",
+            "nl": "Geplaatst"
+          },
+          "description": {
+            "en": "When the answer was posted. Stamped by Moderation."
+          }
+        },
+        "QuestionId": {
+          "label": {
+            "en": "Question",
+            "fr": "Question",
+            "nl": "Vraag"
+          },
+          "description": {
+            "en": "The question this answers. A closed question refuses new answers."
+          }
+        },
+        "Votes": {
+          "label": {
+            "en": "Votes",
+            "fr": "Votes",
+            "nl": "Stemmen"
+          },
+          "description": {
+            "en": "The vote widget's slot on the page; the score lives in ModerationTallies/{id}."
+          }
+        }
+      }
+    },
+    "Question": {
+      "label": {
+        "en": "Question",
+        "fr": "Question",
+        "nl": "Vraag"
+      },
+      "attributes": {
+        "AuthorId": {
+          "label": {
+            "en": "Author",
+            "fr": "Auteur",
+            "nl": "Auteur"
+          },
+          "description": {
+            "en": "Who asked the question. Stamped by Moderation on create, never changed afterwards."
+          }
+        },
+        "Body": {
+          "label": {
+            "en": "Body",
+            "fr": "Contenu",
+            "nl": "Inhoud"
+          },
+          "description": {
+            "en": "The question itself: what you tried and what you expected."
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créée",
+            "nl": "Aangemaakt"
+          },
+          "description": {
+            "en": "When the question was created. Stamped by History."
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créée par",
+            "nl": "Aangemaakt door"
+          },
+          "description": {
+            "en": "Who created the question (a user id). Stamped by History."
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Deleted at",
+            "fr": "Supprimée le",
+            "nl": "Verwijderd op"
+          },
+          "description": {
+            "en": "When the question was deleted."
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Deleted by",
+            "fr": "Supprimée par",
+            "nl": "Verwijderd door"
+          },
+          "description": {
+            "en": "Who deleted the question (a user id)."
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Delete reason",
+            "fr": "Motif de suppression",
+            "nl": "Reden van verwijdering"
+          },
+          "description": {
+            "en": "Why the question was deleted, when a reason was given."
+          }
+        },
+        "IsClosed": {
+          "label": {
+            "en": "Closed",
+            "fr": "Fermée",
+            "nl": "Gesloten"
+          },
+          "description": {
+            "en": "A closed question takes no new answers. Changed with the Close and Reopen actions."
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Deleted",
+            "fr": "Supprimée",
+            "nl": "Verwijderd"
+          },
+          "description": {
+            "en": "Whether the question was deleted. Deleted questions are hidden everywhere until restored."
+          }
+        },
+        "IsDraft": {
+          "label": {
+            "en": "Draft",
+            "fr": "Brouillon",
+            "nl": "Concept"
+          },
+          "description": {
+            "en": "A draft is visible to its author only, until it is published by clearing this box."
+          }
+        },
+        "ModifiedAt": {
+          "label": {
+            "en": "Modified",
+            "fr": "Modifiée",
+            "nl": "Gewijzigd"
+          },
+          "description": {
+            "en": "When the question was changed last. Stamped by History."
+          }
+        },
+        "ModifiedBy": {
+          "label": {
+            "en": "Modified by",
+            "fr": "Modifiée par",
+            "nl": "Gewijzigd door"
+          },
+          "description": {
+            "en": "Who changed the question last (a user id). Stamped by History."
+          }
+        },
+        "PostedAt": {
+          "label": {
+            "en": "Posted",
+            "fr": "Publiée",
+            "nl": "Geplaatst"
+          },
+          "description": {
+            "en": "When the question was posted. Stamped by Moderation."
+          }
+        },
+        "Tags": {
+          "label": {
+            "en": "Tags",
+            "fr": "Étiquettes",
+            "nl": "Tags"
+          },
+          "description": {
+            "en": "Comma-separated tags, stored lower-case and without duplicates (at most five)."
+          }
+        },
+        "Title": {
+          "label": {
+            "en": "Title",
+            "fr": "Titre",
+            "nl": "Titel"
+          },
+          "description": {
+            "en": "One line that states the question."
+          }
+        },
+        "Translations": {
+          "label": {
+            "en": "Translations",
+            "fr": "Traductions",
+            "nl": "Vertalingen"
+          },
+          "description": {
+            "en": "The question in other languages, written by anyone signed in. Each language and script holds one version per translator; the latest one is shown, and every version stays in the history."
+          }
+        },
+        "Votes": {
+          "label": {
+            "en": "Votes",
+            "fr": "Votes",
+            "nl": "Stemmen"
+          },
+          "description": {
+            "en": "The vote widget's slot on the page. The score itself is never stored here: a vote writes ModerationTallies/{id}, so voting does not move this document's etag while its author edits it."
+          }
+        }
+      }
+    },
+    "QuestionTranslation": {
+      "label": {
+        "en": "Translation",
+        "fr": "Traduction",
+        "nl": "Vertaling"
+      },
+      "attributes": {
+        "Body": {
+          "label": {
+            "en": "Body",
+            "fr": "Contenu",
+            "nl": "Inhoud"
+          },
+          "description": {
+            "en": "The question itself in this language."
+          }
+        },
+        "ContributionCount": {
+          "label": {
+            "en": "Versions",
+            "fr": "Versions",
+            "nl": "Versies"
+          }
+        },
+        "ContributorName": {
+          "label": {
+            "en": "Translator",
+            "fr": "Traducteur",
+            "nl": "Vertaler"
+          }
+        },
+        "Key": {
+          "label": {
+            "en": "Key",
+            "fr": "Clé",
+            "nl": "Sleutel"
+          }
+        },
+        "Language": {
+          "label": {
+            "en": "Language",
+            "fr": "Langue",
+            "nl": "Taal"
+          },
+          "description": {
+            "en": "The language, as an ISO 639 code: nl, fr, sr."
+          }
+        },
+        "Script": {
+          "label": {
+            "en": "Script",
+            "fr": "Écriture",
+            "nl": "Schrift"
+          },
+          "description": {
+            "en": "The script, as an ISO 15924 code: Latn, Cyrl."
+          }
+        },
+        "Title": {
+          "label": {
+            "en": "Title",
+            "fr": "Titre",
+            "nl": "Titel"
+          },
+          "description": {
+            "en": "The title in this language."
+          }
+        },
+        "UpdatedAt": {
+          "label": {
+            "en": "Written",
+            "fr": "Écrite",
+            "nl": "Geschreven"
+          }
+        }
+      }
+    },
+    "QuestionTranslationsContribution": {
+      "label": {
+        "en": "Translation version",
+        "fr": "Version de traduction",
+        "nl": "Versie van een vertaling"
+      },
+      "attributes": {
+        "Body": {
+          "label": {
+            "en": "Body",
+            "fr": "Contenu",
+            "nl": "Inhoud"
+          }
+        },
+        "ContributorId": {
+          "label": {
+            "en": "Translator id",
+            "fr": "Identifiant du traducteur",
+            "nl": "Id van de vertaler"
+          }
+        },
+        "ContributorName": {
+          "label": {
+            "en": "Translator",
+            "fr": "Traducteur",
+            "nl": "Vertaler"
+          }
+        },
+        "DeletedAt": {
+          "label": {
+            "en": "Hidden at",
+            "fr": "Masquée le",
+            "nl": "Verborgen op"
+          }
+        },
+        "DeletedBy": {
+          "label": {
+            "en": "Hidden by",
+            "fr": "Masquée par",
+            "nl": "Verborgen door"
+          }
+        },
+        "DeleteReason": {
+          "label": {
+            "en": "Reason",
+            "fr": "Raison",
+            "nl": "Reden"
+          }
+        },
+        "IsDeleted": {
+          "label": {
+            "en": "Hidden",
+            "fr": "Masquée",
+            "nl": "Verborgen"
+          }
+        },
+        "Language": {
+          "label": {
+            "en": "Language",
+            "fr": "Langue",
+            "nl": "Taal"
+          }
+        },
+        "Script": {
+          "label": {
+            "en": "Script",
+            "fr": "Écriture",
+            "nl": "Schrift"
+          }
+        },
+        "TargetId": {
+          "label": {
+            "en": "Question",
+            "fr": "Question",
+            "nl": "Vraag"
+          }
+        },
+        "Title": {
+          "label": {
+            "en": "Title",
+            "fr": "Titre",
+            "nl": "Titel"
+          }
+        },
+        "UpdatedAt": {
+          "label": {
+            "en": "Written",
+            "fr": "Écrite",
+            "nl": "Geschreven"
+          }
+        }
+      }
+    },
+    "QuestionTranslationsCurrent": {
+      "label": {
+        "en": "Current translation",
+        "fr": "Traduction actuelle",
+        "nl": "Huidige vertaling"
+      },
+      "attributes": {
+        "Body": {
+          "label": {
+            "en": "Body",
+            "fr": "Contenu",
+            "nl": "Inhoud"
+          }
+        },
+        "ContributionCount": {
+          "label": {
+            "en": "Versions",
+            "fr": "Versions",
+            "nl": "Versies"
+          }
+        },
+        "ContributionId": {
+          "label": {
+            "en": "Version",
+            "fr": "Version",
+            "nl": "Versie"
+          }
+        },
+        "ContributorId": {
+          "label": {
+            "en": "Translator id",
+            "fr": "Identifiant du traducteur",
+            "nl": "Id van de vertaler"
+          }
+        },
+        "Language": {
+          "label": {
+            "en": "Language",
+            "fr": "Langue",
+            "nl": "Taal"
+          }
+        },
+        "Script": {
+          "label": {
+            "en": "Script",
+            "fr": "Écriture",
+            "nl": "Schrift"
+          }
+        },
+        "TargetId": {
+          "label": {
+            "en": "Question",
+            "fr": "Question",
+            "nl": "Vraag"
+          }
+        },
+        "Title": {
+          "label": {
+            "en": "Title",
+            "fr": "Titre",
+            "nl": "Titel"
+          }
+        },
+        "UpdatedAt": {
+          "label": {
+            "en": "Written",
+            "fr": "Écrite",
+            "nl": "Geschreven"
+          }
+        }
+      }
+    }
+  },
+  "queries": {
+    "GetAnswers": {
+      "label": {
+        "en": "Answers",
+        "fr": "Réponses",
+        "nl": "Antwoorden"
+      }
+    },
+    "Question_Answers": {
+      "label": {
+        "en": "Answers",
+        "fr": "Réponses",
+        "nl": "Antwoorden"
+      }
+    },
+    "GetQuestions": {
+      "label": {
+        "en": "Questions",
+        "fr": "Questions",
+        "nl": "Vragen"
+      }
+    },
+    "QuestionTranslationsContributions": {
+      "label": {
+        "en": "Translation history",
+        "fr": "Historique des traductions",
+        "nl": "Geschiedenis van de vertalingen"
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "questionsAnswers": {
+        "en": "Questions & answers",
+        "fr": "Questions et réponses",
+        "nl": "Vragen en antwoorden"
+      }
+    },
+    "questions": {
+      "en": "Questions",
+      "fr": "Questions",
+      "nl": "Vragen"
+    },
+    "answers": {
+      "en": "Answers",
+      "fr": "Réponses",
+      "nl": "Antwoorden"
+    }
+  },
+  "security": {
+    "groups": {
+      "Anonymous visitors": {
+        "label": {
+          "en": "Anonymous visitors",
+          "fr": "Visiteurs anonymes",
+          "nl": "Anonieme bezoekers"
+        }
+      },
+      "Signed-in users": {
+        "label": {
+          "en": "Signed-in users",
+          "fr": "Utilisateurs connectés",
+          "nl": "Aangemelde gebruikers"
+        }
+      },
+      "Moderators": {
+        "label": {
+          "en": "Moderators",
+          "fr": "Modérateurs",
+          "nl": "Moderatoren"
+        }
+      },
+      "Voters": {
+        "label": {
+          "en": "Voters",
+          "fr": "Votants",
+          "nl": "Stemmers"
+        }
+      },
+      "Downvoters": {
+        "label": {
+          "en": "Downvoters",
+          "fr": "Votants négatifs",
+          "nl": "Negatieve stemmers"
+        }
+      },
+      "Flaggers": {
+        "label": {
+          "en": "Flaggers",
+          "fr": "Signaleurs",
+          "nl": "Melders"
+        }
+      },
+      "Reviewers": {
+        "label": {
+          "en": "Reviewers",
+          "fr": "Relecteurs",
+          "nl": "Beoordelaars"
+        }
+      }
+    }
   }
 }

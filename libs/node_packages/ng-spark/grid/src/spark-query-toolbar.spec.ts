@@ -29,7 +29,7 @@ const answerType: EntityType = {
 
 const answersQuery = {
   id: 'q-answers', name: 'Question_Answers', source: 'Custom.Question_Answers', alias: 'question-answers',
-  entityType: 'Answer', sortColumns: [], isStreamingQuery: false, description: { en: 'Answers' },
+  entityType: 'Answer', sortColumns: [], isStreamingQuery: false, label: { en: 'Answers' },
 } as any;
 
 const rows: QueryResultItem[] = [

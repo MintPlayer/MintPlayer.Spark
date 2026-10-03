@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "27768be5-2ff5-4782-8b22-c0e8d163050e",
     "name": "Car",
-    "description": {
-      "en": "Car",
-      "fr": "Voiture",
-      "nl": "Auto"
-    },
     "clrType": "DemoApp.Library.Entities.Car",
     "queryType": "DemoApp.Indexes.VCar",
     "indexName": "Cars_Overview",
@@ -17,16 +12,6 @@
       {
         "id": "c93edac8-ace9-4a23-8383-c735ea8437ff",
         "name": "Brand",
-        "label": {
-          "en": "Brand",
-          "fr": "Marque",
-          "nl": "Merk"
-        },
-        "description": {
-          "en": "Manufacturer of the car, picked from the list of known brands.",
-          "fr": "Constructeur de la voiture, choisi dans la liste des marques connues.",
-          "nl": "Fabrikant van de wagen, gekozen uit de lijst met bekende merken."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -41,16 +26,6 @@
       {
         "id": "2b5612d9-0c87-4063-88cf-eeb872cedb55",
         "name": "Color",
-        "label": {
-          "en": "Color",
-          "fr": "Couleur",
-          "nl": "Kleur"
-        },
-        "description": {
-          "en": "Exterior paint colour of the car.",
-          "fr": "Couleur de la peinture extérieure de la voiture.",
-          "nl": "Kleur van de buitenlak van de wagen."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -69,16 +44,6 @@
       {
         "id": "daf84692-3fd6-4437-a688-963c7c05c6ad",
         "name": "LicensePlate",
-        "label": {
-          "en": "License Plate",
-          "fr": "Plaque d'immatriculation",
-          "nl": "Nummerplaat"
-        },
-        "description": {
-          "en": "Registration number shown on the car's licence plate.",
-          "fr": "Numéro d'immatriculation figurant sur la plaque de la voiture.",
-          "nl": "Inschrijvingsnummer dat op de nummerplaat van de wagen staat."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -90,11 +55,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "License Plate must be at least 2 characters.",
-              "fr": "La plaque d'immatriculation doit contenir au moins 2 caractères.",
-              "nl": "Nummerplaat moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Car.attributes.LicensePlate.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -103,27 +64,13 @@
           {
             "type": "regex",
             "value": "^[A-Z0-9 -]+$",
-            "message": {
-              "en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.",
-              "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.",
-              "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten."
-            }
+            "message": "model.Car.attributes.LicensePlate.rules.regex"
           }
         ]
       },
       {
         "id": "8bb19c9f-5e5d-4b2c-847c-7e0d359f40b0",
         "name": "Model",
-        "label": {
-          "en": "Model",
-          "fr": "Modèle",
-          "nl": "Model"
-        },
-        "description": {
-          "en": "Model name of the car, for example Golf or Model 3.",
-          "fr": "Nom du modèle de la voiture, par exemple Golf ou Model 3.",
-          "nl": "Modelnaam van de wagen, bijvoorbeeld Golf of Model 3."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -135,11 +82,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "Model must be at least 2 characters.",
-              "fr": "Le modèle doit contenir au moins 2 caractères.",
-              "nl": "Model moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Car.attributes.Model.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -150,16 +93,6 @@
       {
         "id": "a5a8ee72-fb33-464e-b766-7543808141f7",
         "name": "Owner",
-        "label": {
-          "en": "Owner",
-          "fr": "Propriétaire",
-          "nl": "Eigenaar"
-        },
-        "description": {
-          "en": "Company that owns this car, picked from the companies list.",
-          "fr": "Entreprise propriétaire de cette voiture, choisie dans la liste des entreprises.",
-          "nl": "Bedrijf dat eigenaar is van deze wagen, gekozen uit de lijst met bedrijven."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -175,11 +108,6 @@
       {
         "id": "7446aa9c-fbc9-4339-88f3-2e66f593fc35",
         "name": "OwnerFullName",
-        "label": {
-          "en": "Owner Full Name",
-          "fr": "Nom complet du propriétaire",
-          "nl": "Volledige naam eigenaar"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -193,16 +121,6 @@
       {
         "id": "14bb5945-d4ba-4412-a686-4346291eea9f",
         "name": "Status",
-        "label": {
-          "en": "Status",
-          "fr": "Statut",
-          "nl": "Status"
-        },
-        "description": {
-          "en": "Current state of the car: in use, on the parking lot, in maintenance or stolen.",
-          "fr": "État actuel de la voiture : en service, au parking, en entretien ou volée.",
-          "nl": "Huidige staat van de wagen: in gebruik, op de parking, in onderhoud of gestolen."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -216,16 +134,6 @@
       {
         "id": "39f84a54-c1e1-42d6-ad7a-edbc9fb73d95",
         "name": "Year",
-        "label": {
-          "en": "Year",
-          "fr": "Année",
-          "nl": "Jaar"
-        },
-        "description": {
-          "en": "Model year in which the car was built.",
-          "fr": "Millésime de construction de la voiture.",
-          "nl": "Modeljaar waarin de wagen gebouwd is."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -248,11 +156,6 @@
     {
       "id": "c0ffee01-1234-4a5b-9c8d-0e1f2a3b4c5d",
       "name": "Company_Cars",
-      "description": {
-        "en": "Cars owned by this company. A sub-query: rendered on the Company detail page, filtered by that company through the Company_Cars index.",
-        "fr": "Voitures de cette entreprise.",
-        "nl": "Auto's van dit bedrijf."
-      },
       "source": "Custom.Company_Cars",
       "alias": "company-cars",
       "sortColumns": [
@@ -269,11 +172,6 @@
     {
       "id": "bc696815-2abb-4e7c-98a1-ac86b4352105",
       "name": "GetCars",
-      "description": {
-        "en": "Cars",
-        "fr": "Voitures",
-        "nl": "Auto's"
-      },
       "source": "Database.Cars",
       "sortColumns": [
         {

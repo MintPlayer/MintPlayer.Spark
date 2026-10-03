@@ -25,11 +25,6 @@
   "persistentObject": {
     "id": "3f7c1d92-8e4a-4b16-9c05-2a7d6e0f4b83",
     "name": "SparkUser",
-    "description": {
-      "en": "User",
-      "fr": "Utilisateur",
-      "nl": "Gebruiker"
-    },
     "clrType": "MintPlayer.Spark.Authorization.Identity.SparkUser",
     "alias": "sparkuser",
     "breadcrumb": "{UserName}",
@@ -39,11 +34,6 @@
       {
         "id": "5b2e8a41-0c93-4d7f-a618-9e3b4c1d7a02",
         "name": "Id",
-        "label": {
-          "en": "Id",
-          "fr": "Id",
-          "nl": "Id"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -56,11 +46,6 @@
       {
         "id": "7d4a2c68-1f05-4e93-b72a-6c8d0e5f3a19",
         "name": "UserName",
-        "label": {
-          "en": "User name",
-          "fr": "Nom d'utilisateur",
-          "nl": "Gebruikersnaam"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,

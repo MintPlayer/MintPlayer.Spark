@@ -66,12 +66,12 @@ public class SecurityFileAccessControlTests
     }
 
     private static SecurityConfiguration ConfigWith(
-        Dictionary<Guid, TranslatedString>? groups = null,
+        Dictionary<Guid, string>? groups = null,
         params Right[] rights)
         => ConfigWith(groups, wellKnown: null, rights);
 
     private static SecurityConfiguration ConfigWith(
-        Dictionary<Guid, TranslatedString>? groups,
+        Dictionary<Guid, string>? groups,
         Dictionary<string, Guid>? wellKnown,
         params Right[] rights)
     {
@@ -92,7 +92,7 @@ public class SecurityFileAccessControlTests
         return config;
     }
 
-    private static TranslatedString En(string value) => TranslatedString.Create(value);
+    private static string En(string value) => value;
 
     [Fact]
     public async Task IsAllowedAsync_NoUserGroups_NoAnonymousGroup_ReturnsFalse()
@@ -232,20 +232,20 @@ public class SecurityFileAccessControlTests
         (await service.IsAllowedAsync("Read/Person")).Should().BeTrue();
     }
 
+    /// <summary>
+    /// #467 D24: a claim matches the group's untranslated name only. A translated label is display
+    /// text in translations.json and must never grant membership.
+    /// </summary>
     [Fact]
-    public async Task IsAllowedAsync_GroupNameMatch_UsesAnyTranslation()
+    public async Task IsAllowedAsync_GroupNameMatch_never_uses_a_translation()
     {
-        var translated = new TranslatedString();
-        translated.Translations["en"] = "Admins";
-        translated.Translations["nl"] = "Beheerders";
-
         var config = ConfigWith(
-            groups: new() { [AdminsId] = translated },
+            groups: new() { [AdminsId] = "Admins" },
             new Right { GroupId = AdminsId, Resource = "Read/Person" });
 
         var service = CreateService(config, ["Beheerders"]);
 
-        (await service.IsAllowedAsync("Read/Person")).Should().BeTrue();
+        (await service.IsAllowedAsync("Read/Person")).Should().BeFalse();
     }
 
     [Fact]
@@ -388,7 +388,7 @@ public class SecurityFileAccessControlTests
     /// renaming it can no longer un-declare its role.
     /// </summary>
     private static SecurityConfiguration AuthenticatedOnlyConfig() => ConfigWith(
-        new Dictionary<Guid, TranslatedString>
+        new Dictionary<Guid, string>
         {
             [AnonymousId] = En("Public"),
             [AuthenticatedId] = En("Signed-in users"),
@@ -429,7 +429,7 @@ public class SecurityFileAccessControlTests
     public async Task An_anonymous_grant_stops_applying_once_signed_in()
     {
         var config = ConfigWith(
-            new Dictionary<Guid, TranslatedString> { [AnonymousId] = En("Public") },
+            new Dictionary<Guid, string> { [AnonymousId] = En("Public") },
             wellKnown: new() { ["anonymous"] = AnonymousId },
             new Right { Resource = "QueryRead/Person", GroupId = AnonymousId, IsDenied = false });
 
@@ -449,7 +449,7 @@ public class SecurityFileAccessControlTests
     public async Task A_config_with_no_well_known_groups_is_unaffected()
     {
         var config = ConfigWith(
-            new Dictionary<Guid, TranslatedString> { [AdminsId] = En("Admins") },
+            new Dictionary<Guid, string> { [AdminsId] = En("Admins") },
             new Right { Resource = "QueryRead/Person", GroupId = AdminsId, IsDenied = false });
 
         // Asserted one at a time: CreateService restubs the shared group-membership substitute, so
@@ -481,7 +481,7 @@ public class SecurityFileAccessControlTests
     public async Task A_denial_still_overrides_an_authenticated_grant()
     {
         var config = ConfigWith(
-            new Dictionary<Guid, TranslatedString>
+            new Dictionary<Guid, string>
             {
                 [AuthenticatedId] = En("Signed-in users"),
                 [EditorsId] = En("Editors"),
@@ -511,35 +511,6 @@ public class SecurityFileAccessControlTests
 
         (await service.IsAllowedAsync("Query/Person")).Should()
             .BeFalse("authentication state decides the role, never a claim");
-    }
-
-    /// <summary>
-    /// A12 - also RED before this change. The roles used to be matched through
-    /// <c>TranslatedString.GetDefaultValue()</c>, which returns the first translation in FILE ORDER,
-    /// so the same group with the same translations resolved or did not depending on which key the
-    /// serializer happened to emit first.
-    /// </summary>
-    [Fact]
-    public async Task Reordering_translations_changes_no_decision()
-    {
-        var englishFirst = TranslatedString.Create("Signed-in users");
-        englishFirst.Translations["nl"] = "Aangemelde gebruikers";
-
-        var dutchFirst = new TranslatedString();
-        dutchFirst.Translations["nl"] = "Aangemelde gebruikers";
-        dutchFirst.Translations["en"] = "Signed-in users";
-
-        foreach (var name in new[] { englishFirst, dutchFirst })
-        {
-            var config = ConfigWith(
-                new Dictionary<Guid, TranslatedString> { [AuthenticatedId] = name },
-                wellKnown: new() { ["authenticated"] = AuthenticatedId },
-                new Right { Resource = "QueryRead/Person", GroupId = AuthenticatedId, IsDenied = false });
-
-            var service = CreateService(config, userGroups: [], authenticated: true);
-
-            (await service.IsAllowedAsync("Query/Person")).Should().BeTrue();
-        }
     }
 
     /// <summary>

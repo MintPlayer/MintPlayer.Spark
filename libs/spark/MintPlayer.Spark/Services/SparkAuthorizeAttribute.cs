@@ -186,7 +186,7 @@ internal sealed class SparkAuthorizeHandler(IServiceProvider serviceProvider)
         foreach (var id in groups.Ids)
         {
             var declared = config.Groups.FirstOrDefault(g => Guid.TryParse(g.Key, out var key) && key == id);
-            if (declared.Value?.Translations.Values.Any(v => string.Equals(v, group, StringComparison.OrdinalIgnoreCase)) == true)
+            if (string.Equals(declared.Value, group, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 
@@ -220,11 +220,11 @@ internal sealed class SparkAuthorizeHandler(IServiceProvider serviceProvider)
 
         foreach (var (role, groupId) in wellKnown)
         {
-            // Match the declared id directly, and the display name it resolves to — an author is
-            // far likelier to write the readable name than the GUID.
+            // Match the declared id directly, and the group's untranslated name (#467, D24) — an
+            // author is far likelier to write the readable name than the GUID.
             var matchesId = string.Equals(groupId, group, StringComparison.OrdinalIgnoreCase);
             var matchesName = config.Groups.TryGetValue(groupId, out var name)
-                && name.Translations.Values.Any(v => string.Equals(v, group, StringComparison.OrdinalIgnoreCase));
+                && string.Equals(name, group, StringComparison.OrdinalIgnoreCase);
 
             if (!matchesId && !matchesName) continue;
 

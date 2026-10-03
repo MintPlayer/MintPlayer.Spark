@@ -11,7 +11,8 @@ export interface SparkQuerySortColumn {
 export interface SparkQuery {
   id: string;
   name: string;
-  description?: TranslatedString;
+  /** The query's display name, resolved by the server (#467; formerly `description`). */
+  label?: TranslatedString;
   source: string;
   alias?: string;
   sortColumns: SparkQuerySortColumn[];

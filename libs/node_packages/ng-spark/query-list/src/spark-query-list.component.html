@@ -38,7 +38,7 @@
   </div>
 
   <h2 class="mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
-    {{ (query()?.description | resolveTranslation) || query()?.name || ('common.loading' | t) }}
+    {{ (query()?.label | resolveTranslation) || query()?.name || ('common.loading' | t) }}
     @if (isStreaming()) {
       <bs-badge [type]="colors.success" class="ms-2 align-middle spark-live-badge">LIVE</bs-badge>
     }

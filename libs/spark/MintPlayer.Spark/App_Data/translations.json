@@ -145,5 +145,14 @@
     "invalidFormat": { "en": "{0} has an invalid format.", "fr": "{0} a un format invalide.", "nl": "{0} heeft een ongeldig formaat." },
     "invalidEmail":  { "en": "{0} must be a valid email address.", "fr": "{0} doit être une adresse e-mail valide.", "nl": "{0} moet een geldig e-mailadres zijn." },
     "invalidUrl":    { "en": "{0} must be a valid URL.", "fr": "{0} doit être une URL valide.", "nl": "{0} moet een geldige URL zijn." }
+  },
+  "culture": {
+    "languages": {
+      "en": { "en": "English", "fr": "Anglais",     "nl": "Engels" },
+      "fr": { "en": "French",  "fr": "Français",    "nl": "Frans" },
+      "nl": { "en": "Dutch",   "fr": "Néerlandais", "nl": "Nederlands" },
+      "de": { "en": "German",  "fr": "Allemand",    "nl": "Duits" },
+      "es": { "en": "Spanish", "fr": "Espagnol",    "nl": "Spaans" }
+    }
   }
 }

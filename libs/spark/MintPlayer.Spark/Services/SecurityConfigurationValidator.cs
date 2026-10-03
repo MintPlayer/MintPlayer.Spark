@@ -190,8 +190,7 @@ internal static class SecurityConfigurationValidator
         if (config.WellKnown is { Count: > 0 })
             return;
 
-        var offending = config.Groups.FirstOrDefault(g => g.Value.Translations.Values
-            .Any(v => string.Equals(v, RemovedEveryoneName, StringComparison.OrdinalIgnoreCase)));
+        var offending = config.Groups.FirstOrDefault(g => string.Equals(g.Value, RemovedEveryoneName, StringComparison.OrdinalIgnoreCase));
 
         if (string.IsNullOrEmpty(offending.Key))
             return;

@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "f0f91878-bc14-4f33-bb42-2e4c6eabe88c",
     "name": "Company",
-    "description": {
-      "en": "Company",
-      "fr": "Entreprise",
-      "nl": "Bedrijf"
-    },
     "clrType": "Fleet.Replicated.Company",
     "breadcrumb": "{Name}",
     "tabs": [],
@@ -15,16 +10,6 @@
       {
         "id": "fe523875-8393-4e7e-aaaf-fe0c8e089eba",
         "name": "EmployeeCount",
-        "label": {
-          "en": "Employee Count",
-          "fr": "Nombre d'employés",
-          "nl": "Aantal werknemers"
-        },
-        "description": {
-          "en": "Number of employees the company has, as maintained in HR.",
-          "fr": "Nombre d'employés de l'entreprise, tel que géré dans HR.",
-          "nl": "Aantal werknemers van het bedrijf, zoals bijgehouden in HR."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -43,16 +28,6 @@
       {
         "id": "1a5c89ab-f7ee-4193-8e52-d64e25645be6",
         "name": "Name",
-        "label": {
-          "en": "Name",
-          "fr": "Nom",
-          "nl": "Naam"
-        },
-        "description": {
-          "en": "Legal or trading name of the company, replicated read-only from HR.",
-          "fr": "Raison sociale ou nom commercial de l'entreprise, répliqué en lecture seule depuis HR.",
-          "nl": "Juridische of handelsnaam van het bedrijf, alleen-lezen gerepliceerd vanuit HR."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -64,11 +39,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "Company Name must be at least 2 characters.",
-              "fr": "Le nom de l'entreprise doit contenir au moins 2 caractères.",
-              "nl": "Bedrijfsnaam moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Company.attributes.Name.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -79,16 +50,6 @@
       {
         "id": "4ac8ea4e-5599-40d5-b50d-ddedddd4eece",
         "name": "Website",
-        "label": {
-          "en": "Website",
-          "fr": "Site web",
-          "nl": "Website"
-        },
-        "description": {
-          "en": "Public website address of the company, replicated read-only from HR.",
-          "fr": "Adresse du site web public de l'entreprise, répliquée en lecture seule depuis HR.",
-          "nl": "Adres van de publieke website van het bedrijf, alleen-lezen gerepliceerd vanuit HR."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -109,11 +70,6 @@
     {
       "id": "a20e8400-e29b-41d4-a716-446655440003",
       "name": "GetCompanies",
-      "description": {
-        "en": "Companies",
-        "fr": "Entreprises",
-        "nl": "Bedrijven"
-      },
       "source": "Database.Companies",
       "sortColumns": [
         {
@@ -128,11 +84,6 @@
     {
       "id": "a20e8400-e29b-41d4-a716-446655440004",
       "name": "StreamCompanies",
-      "description": {
-        "en": "Companies (Live)",
-        "fr": "Entreprises (En direct)",
-        "nl": "Bedrijven (Live)"
-      },
       "source": "Custom.StreamItems",
       "sortColumns": [
         {

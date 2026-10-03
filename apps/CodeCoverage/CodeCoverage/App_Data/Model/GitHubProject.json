@@ -12,16 +12,6 @@
       {
         "id": "2cb64f5e-3d28-4240-a644-eb8a10ba1158",
         "name": "Account",
-        "label": {
-          "en": "Account",
-          "fr": "Compte",
-          "nl": "Account"
-        },
-        "description": {
-          "en": "The GitHub user or organization that owns this board.",
-          "fr": "L'utilisateur ou l'organisation GitHub propriétaire de ce tableau.",
-          "nl": "De GitHub-gebruiker of -organisatie die eigenaar is van dit bord."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -36,16 +26,6 @@
       {
         "id": "271627f8-1563-41de-b49c-ab7ec37517d0",
         "name": "AutomationEnabled",
-        "label": {
-          "en": "Automation Enabled",
-          "fr": "Automatisation activée",
-          "nl": "Automatisering ingeschakeld"
-        },
-        "description": {
-          "en": "Master switch: off means discovered but inert, and no event does anything.",
-          "fr": "Interrupteur principal : désactivé, le tableau est découvert mais inerte et aucun événement n'agit.",
-          "nl": "Hoofdschakelaar: uit betekent gevonden maar inert, en geen enkele gebeurtenis doet iets."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -58,16 +38,6 @@
       {
         "id": "613403de-ae15-48e0-9d9b-d357076ae47a",
         "name": "Columns",
-        "label": {
-          "en": "Columns",
-          "fr": "Colonnes",
-          "nl": "Kolommen"
-        },
-        "description": {
-          "en": "The board's columns as last read from GitHub.",
-          "fr": "Les colonnes du tableau telles que lues sur GitHub la dernière fois.",
-          "nl": "De kolommen van het bord zoals ze het laatst van GitHub gelezen zijn."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -81,16 +51,6 @@
       {
         "id": "3ff143b6-f1be-4adf-b22b-246f24a16948",
         "name": "ColumnsSyncedAtUtc",
-        "label": {
-          "en": "Columns Synced",
-          "fr": "Colonnes synchronisées",
-          "nl": "Kolommen gesynchroniseerd"
-        },
-        "description": {
-          "en": "When the board's columns were last read from GitHub (UTC).",
-          "fr": "Moment de la dernière lecture des colonnes du tableau depuis GitHub (UTC).",
-          "nl": "Wanneer de kolommen van het bord het laatst van GitHub gelezen zijn (UTC)."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -103,16 +63,6 @@
       {
         "id": "62b8b521-9993-4f5e-8c29-28b793eb6d4f",
         "name": "Connection",
-        "label": {
-          "en": "Connection",
-          "fr": "Connexion",
-          "nl": "Verbinding"
-        },
-        "description": {
-          "en": "Whether the GitHub App can still see this board.",
-          "fr": "Si l'application GitHub voit encore ce tableau.",
-          "nl": "Of de GitHub App dit bord nog kan zien."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -125,16 +75,6 @@
       {
         "id": "e48906e9-891d-4a29-95c0-2384f01ea00e",
         "name": "DisconnectedAtUtc",
-        "label": {
-          "en": "Disconnected",
-          "fr": "Déconnecté",
-          "nl": "Losgekoppeld"
-        },
-        "description": {
-          "en": "When the board was last disconnected (UTC); null while connected.",
-          "fr": "Moment de la dernière déconnexion du tableau (UTC) ; null tant qu'il est connecté.",
-          "nl": "Wanneer het bord het laatst losgekoppeld is (UTC); null zolang het verbonden is."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -147,16 +87,6 @@
       {
         "id": "9cba7901-84a9-4c8e-875f-949a1e2b6e01",
         "name": "DisconnectedReason",
-        "label": {
-          "en": "Disconnected Reason",
-          "fr": "Motif de déconnexion",
-          "nl": "Reden van loskoppeling"
-        },
-        "description": {
-          "en": "Why the board is disconnected, from DisconnectedReasons; null while connected.",
-          "fr": "Pourquoi le tableau est déconnecté, d'après DisconnectedReasons ; null tant qu'il est connecté.",
-          "nl": "Waarom het bord losgekoppeld is, uit DisconnectedReasons; null zolang het verbonden is."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -169,16 +99,6 @@
       {
         "id": "dd4e2321-6f3c-4b6f-bfef-26305e886e9b",
         "name": "EventMappings",
-        "label": {
-          "en": "Events",
-          "fr": "Événements",
-          "nl": "Gebeurtenissen"
-        },
-        "description": {
-          "en": "The automation rules for this board.",
-          "fr": "Les règles d'automatisation de ce tableau.",
-          "nl": "De automatiseringsregels voor dit bord."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -193,16 +113,6 @@
       {
         "id": "209f9834-a8c0-4901-b75f-57c1e6c39e65",
         "name": "InstallationId",
-        "label": {
-          "en": "Installation Id",
-          "fr": "Id d'installation",
-          "nl": "Installatie-id"
-        },
-        "description": {
-          "en": "The GitHub App installation that can act on this board.",
-          "fr": "L'installation de l'application GitHub qui peut agir sur ce tableau.",
-          "nl": "De GitHub App-installatie die op dit bord kan handelen."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -215,16 +125,6 @@
       {
         "id": "f0f795c6-7f55-4bc6-876b-d5c25e57b95b",
         "name": "Name",
-        "label": {
-          "en": "Name",
-          "fr": "Nom",
-          "nl": "Naam"
-        },
-        "description": {
-          "en": "The board's title on GitHub.",
-          "fr": "Le titre du tableau sur GitHub.",
-          "nl": "De titel van het bord op GitHub."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -237,16 +137,6 @@
       {
         "id": "c5c57138-5efb-4e97-809a-ccb2c8f0785c",
         "name": "NodeId",
-        "label": {
-          "en": "Node Id",
-          "fr": "Id de nœud",
-          "nl": "Node-id"
-        },
-        "description": {
-          "en": "GitHub's GraphQL node id for the board.",
-          "fr": "L'id de nœud GraphQL du tableau chez GitHub.",
-          "nl": "De GraphQL-node-id van het bord bij GitHub."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -259,16 +149,6 @@
       {
         "id": "3a4d612a-3e42-4002-b17c-5a692396b18b",
         "name": "Number",
-        "label": {
-          "en": "Number",
-          "fr": "Numéro",
-          "nl": "Nummer"
-        },
-        "description": {
-          "en": "The board's number within its owner, as it appears in the URL.",
-          "fr": "Le numéro du tableau chez son propriétaire, tel qu'il apparaît dans l'URL.",
-          "nl": "Het nummer van het bord bij zijn eigenaar, zoals het in de URL staat."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -281,16 +161,6 @@
       {
         "id": "7b8a7a3f-da51-45f9-b537-d80154db4f10",
         "name": "OwnerLogin",
-        "label": {
-          "en": "Owner",
-          "fr": "Propriétaire",
-          "nl": "Eigenaar"
-        },
-        "description": {
-          "en": "GitHub login of the owning user or organization.",
-          "fr": "Login GitHub de l'utilisateur ou de l'organisation propriétaire.",
-          "nl": "GitHub-login van de eigenaar: gebruiker of organisatie."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -303,16 +173,6 @@
       {
         "id": "780c1468-8739-4870-81fb-70d11e738583",
         "name": "StatusFieldId",
-        "label": {
-          "en": "Status Field",
-          "fr": "Champ Status",
-          "nl": "Status-veld"
-        },
-        "description": {
-          "en": "The board's single-select \"Status\" field, whose options are its columns.",
-          "fr": "Le champ « Status » à sélection unique du tableau, dont les options sont ses colonnes.",
-          "nl": "Het \"Status\"-veld met enkelvoudige keuze van het bord, waarvan de opties de kolommen zijn."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -329,11 +189,6 @@
     {
       "id": "5c1a7f38-2d64-4b0e-9a7c-6f3e81d5b402",
       "name": "Account_Projects",
-      "description": {
-        "en": "Project boards",
-        "fr": "Tableaux de projet",
-        "nl": "Projectborden"
-      },
       "source": "Custom.Account_Projects",
       "alias": "account-projects",
       "sortColumns": [

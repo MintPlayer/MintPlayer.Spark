@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "40b97e47-51cc-4b9e-bb72-f288dbdaea7b",
     "name": "Question",
-    "description": {
-      "en": "Question",
-      "fr": "Question",
-      "nl": "Vraag"
-    },
     "clrType": "QnA.Entities.Question",
     "alias": "question",
     "breadcrumb": "{Title}",
@@ -20,14 +15,6 @@
       {
         "id": "154f7c93-faee-41ad-bd53-57c00ec5f8c1",
         "name": "AuthorId",
-        "label": {
-          "en": "Author",
-          "fr": "Auteur",
-          "nl": "Auteur"
-        },
-        "description": {
-          "en": "Who asked the question. Stamped by Moderation on create, never changed afterwards."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -41,14 +28,6 @@
       {
         "id": "d6881be2-4340-4f55-9ece-cd7dce9a87a1",
         "name": "Body",
-        "label": {
-          "en": "Body",
-          "fr": "Contenu",
-          "nl": "Inhoud"
-        },
-        "description": {
-          "en": "The question itself: what you tried and what you expected."
-        },
         "dataType": "MultiLineString",
         "isRequired": true,
         "isVisible": true,
@@ -61,14 +40,6 @@
       {
         "id": "71c5c8e9-7fa9-4812-83e3-742a2eb5c7a4",
         "name": "CreatedAt",
-        "label": {
-          "en": "Created",
-          "fr": "Créée",
-          "nl": "Aangemaakt"
-        },
-        "description": {
-          "en": "When the question was created. Stamped by History."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -81,14 +52,6 @@
       {
         "id": "a053c5f6-b523-4184-8ebe-5e4b9f652945",
         "name": "CreatedBy",
-        "label": {
-          "en": "Created by",
-          "fr": "Créée par",
-          "nl": "Aangemaakt door"
-        },
-        "description": {
-          "en": "Who created the question (a user id). Stamped by History."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -101,14 +64,6 @@
       {
         "id": "24385cab-f37e-4761-8bda-5153b81af6f1",
         "name": "DeletedAt",
-        "label": {
-          "en": "Deleted at",
-          "fr": "Supprimée le",
-          "nl": "Verwijderd op"
-        },
-        "description": {
-          "en": "When the question was deleted."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -121,14 +76,6 @@
       {
         "id": "a3840186-f3df-45b8-9b56-b34f095827c6",
         "name": "DeletedBy",
-        "label": {
-          "en": "Deleted by",
-          "fr": "Supprimée par",
-          "nl": "Verwijderd door"
-        },
-        "description": {
-          "en": "Who deleted the question (a user id)."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -141,14 +88,6 @@
       {
         "id": "8952bf66-7763-4a1d-b18f-9ebc01754257",
         "name": "DeleteReason",
-        "label": {
-          "en": "Delete reason",
-          "fr": "Motif de suppression",
-          "nl": "Reden van verwijdering"
-        },
-        "description": {
-          "en": "Why the question was deleted, when a reason was given."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -161,14 +100,6 @@
       {
         "id": "d409e733-aa55-41ad-a160-42e1620cbbaa",
         "name": "IsClosed",
-        "label": {
-          "en": "Closed",
-          "fr": "Fermée",
-          "nl": "Gesloten"
-        },
-        "description": {
-          "en": "A closed question takes no new answers. Changed with the Close and Reopen actions."
-        },
         "dataType": "boolean",
         "isRequired": false,
         "isVisible": true,
@@ -181,14 +112,6 @@
       {
         "id": "cbccddb3-85b4-4915-8da1-562a526f170c",
         "name": "IsDeleted",
-        "label": {
-          "en": "Deleted",
-          "fr": "Supprimée",
-          "nl": "Verwijderd"
-        },
-        "description": {
-          "en": "Whether the question was deleted. Deleted questions are hidden everywhere until restored."
-        },
         "dataType": "boolean",
         "isRequired": false,
         "isVisible": true,
@@ -201,14 +124,6 @@
       {
         "id": "44b621d5-fae7-46d2-8c1b-9f58f705f9ab",
         "name": "IsDraft",
-        "label": {
-          "en": "Draft",
-          "fr": "Brouillon",
-          "nl": "Concept"
-        },
-        "description": {
-          "en": "A draft is visible to its author only, until it is published by clearing this box."
-        },
         "dataType": "boolean",
         "isRequired": false,
         "isVisible": true,
@@ -221,14 +136,6 @@
       {
         "id": "61a6d051-8aa9-4bfc-8cac-910d1897c51f",
         "name": "ModifiedAt",
-        "label": {
-          "en": "Modified",
-          "fr": "Modifiée",
-          "nl": "Gewijzigd"
-        },
-        "description": {
-          "en": "When the question was changed last. Stamped by History."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -241,14 +148,6 @@
       {
         "id": "bd854bb4-ac5f-4df3-843e-a03f9877980f",
         "name": "ModifiedBy",
-        "label": {
-          "en": "Modified by",
-          "fr": "Modifiée par",
-          "nl": "Gewijzigd door"
-        },
-        "description": {
-          "en": "Who changed the question last (a user id). Stamped by History."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -261,14 +160,6 @@
       {
         "id": "dd7ab32a-336d-4689-8448-788fe39e8767",
         "name": "PostedAt",
-        "label": {
-          "en": "Posted",
-          "fr": "Publiée",
-          "nl": "Geplaatst"
-        },
-        "description": {
-          "en": "When the question was posted. Stamped by Moderation."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -281,14 +172,6 @@
       {
         "id": "1153a127-7f27-437e-a9ad-e3a67b2b6650",
         "name": "Tags",
-        "label": {
-          "en": "Tags",
-          "fr": "Étiquettes",
-          "nl": "Tags"
-        },
-        "description": {
-          "en": "Comma-separated tags, stored lower-case and without duplicates (at most five)."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -301,14 +184,6 @@
       {
         "id": "3d62f055-9914-4afd-819d-6e23760987b3",
         "name": "Title",
-        "label": {
-          "en": "Title",
-          "fr": "Titre",
-          "nl": "Titel"
-        },
-        "description": {
-          "en": "One line that states the question."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -321,14 +196,6 @@
       {
         "id": "be7be3c4-869f-4813-85d3-954ae1593387",
         "name": "Translations",
-        "label": {
-          "en": "Translations",
-          "fr": "Traductions",
-          "nl": "Vertalingen"
-        },
-        "description": {
-          "en": "The question in other languages, written by anyone signed in. Each language and script holds one version per translator; the latest one is shown, and every version stays in the history."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -342,14 +209,6 @@
       {
         "id": "ab1b4ad8-a414-4a62-abf6-8af709383408",
         "name": "Votes",
-        "label": {
-          "en": "Votes",
-          "fr": "Votes",
-          "nl": "Stemmen"
-        },
-        "description": {
-          "en": "The vote widget's slot on the page. The score itself is never stored here: a vote writes ModerationTallies/{id}, so voting does not move this document's etag while its author edits it."
-        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -375,11 +234,6 @@
     {
       "id": "e893707a-c3a0-4cf8-8099-87a337f1f666",
       "name": "GetQuestions",
-      "description": {
-        "en": "Questions",
-        "fr": "Questions",
-        "nl": "Vragen"
-      },
       "source": "Database.Questions",
       "alias": "questions",
       "sortColumns": [

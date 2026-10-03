@@ -8,6 +8,17 @@ public class TranslatedString
 {
     public Dictionary<string, string> Translations { get; set; } = new();
 
+    /// <summary>
+    /// A translation KEY, set when the JSON held a plain string instead of an object (#467, D1/D4):
+    /// App_Data files refer to <c>translations.json</c> by key and never embed translated text.
+    /// The loader resolves such a value through <see cref="SparkText"/> into one carrying
+    /// <see cref="Translations"/>; an unresolved one serializes back to its key.
+    /// </summary>
+    public string? Key { get; init; }
+
+    /// <summary>A reference to a <c>translations.json</c> key, not yet resolved.</summary>
+    public static TranslatedString FromKey(string key) => new() { Key = key };
+
     public string GetValue(string culture)
     {
         if (Translations.TryGetValue(culture, out var value))
@@ -41,7 +52,9 @@ public class TranslatedString
 }
 
 /// <summary>
-/// Serializes TranslatedString as a flat JSON object: {"en": "value", "fr": "value"}
+/// Serializes TranslatedString as a flat JSON object: {"en": "value", "fr": "value"}.
+/// A JSON string is a translation key (<see cref="TranslatedString.Key"/>); an unresolved key
+/// (no translations) is written back as that string, the form App_Data files use.
 /// </summary>
 public class TranslatedStringJsonConverter : JsonConverter<TranslatedString>
 {
@@ -50,8 +63,11 @@ public class TranslatedStringJsonConverter : JsonConverter<TranslatedString>
         if (reader.TokenType == JsonTokenType.Null)
             return null;
 
+        if (reader.TokenType == JsonTokenType.String)
+            return TranslatedString.FromKey(reader.GetString()!);
+
         if (reader.TokenType != JsonTokenType.StartObject)
-            throw new JsonException("Expected StartObject token for TranslatedString");
+            throw new JsonException("Expected a translation key or an object for TranslatedString");
 
         var ts = new TranslatedString();
 
@@ -78,6 +94,12 @@ public class TranslatedStringJsonConverter : JsonConverter<TranslatedString>
         if (value == null)
         {
             writer.WriteNullValue();
+            return;
+        }
+
+        if (value.Key is not null && value.Translations.Count == 0)
+        {
+            writer.WriteStringValue(value.Key);
             return;
         }
 
