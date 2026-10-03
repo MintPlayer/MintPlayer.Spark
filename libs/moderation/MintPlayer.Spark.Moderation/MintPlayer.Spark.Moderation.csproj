@@ -38,6 +38,8 @@
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<ProjectReference Include="..\..\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<!-- Its vote reversal is a durable after-commit hook (#482, D17), which Messaging delivers. -->
+		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Moderation.Abstractions\MintPlayer.Spark.Moderation.Abstractions.csproj" />
 		<!-- Spark's analyzers (SPARK018 among them) run over the hand-written map-reduce indexes (spike S-MOD-A). -->
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

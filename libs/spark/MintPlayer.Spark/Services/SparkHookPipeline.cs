@@ -42,6 +42,12 @@ internal interface ISparkHookPipeline
     /// into an error nor skips the hooks after it.
     /// </summary>
     Task RunIsolatedAsync<THook>(IReadOnlyList<THook> hooks, Func<THook, ValueTask> call, Type entityType, string? id) where THook : class, ISparkHook;
+
+    /// <summary>
+    /// Stores one outbox message per applicable durable after-commit hook (#482, D17) in the write's
+    /// own session, after the last before-hook, so it commits with the write or not at all.
+    /// </summary>
+    Task EnqueueCommittedAsync(SparkHookContext context, string id, PersistentObjectOperation operation, bool isDelete, bool isReplaced, string? previousChangeVector);
 }
 
 [Register(typeof(ISparkHookPipeline), ServiceLifetime.Scoped)]
@@ -158,6 +164,43 @@ internal sealed partial class SparkHookPipeline : ISparkHookPipeline
             foreach (var hook in hooks)
                 await hook.OnAfterLoadAsync(context);
         }
+    }
+
+    public async Task EnqueueCommittedAsync(
+        SparkHookContext context, string id, PersistentObjectOperation operation, bool isDelete, bool isReplaced, string? previousChangeVector)
+    {
+        IReadOnlyList<ISparkHook> durable = isDelete
+            ? For<IAfterDeleteCommitted>(context.EntityType, operation)
+            : For<IAfterSaveCommitted>(context.EntityType, operation);
+        if (durable.Count == 0)
+            return;
+
+        // The startup check covers registered hooks; this covers an Actions class implementing one.
+        var outbox = serviceProvider.GetService<ISparkAfterCommitOutbox>()
+            ?? throw new InvalidOperationException(SparkCommittedHooksStartupCheck.MissingOutboxMessage(durable.Select(h => h.GetType())));
+
+        // A server-assigned id ("Orders|") is only known after the commit, and the message is written in it.
+        if (id.EndsWith('|'))
+            throw new InvalidOperationException(
+                $"'{context.EntityType.FullName}' uses server-assigned ids, which durable after-commit hooks cannot address: " +
+                "the message is written in the same commit, before the id exists. Assign ids on the client (the default).");
+
+        var currentUser = serviceProvider.GetService<Abstractions.Authentication.ISparkCurrentUser>();
+        var change = new SparkCommittedChange
+        {
+            EntityType = context.EntityType.FullName!,
+            Id = id,
+            Operation = operation,
+            IsReplaced = isReplaced,
+            UserId = currentUser is { IsAuthenticated: true } ? currentUser.Id : null,
+            IsSystemContext = context.IsSystemContext,
+            OccurredAt = (serviceProvider.GetService<TimeProvider>() ?? TimeProvider.System).GetUtcNow(),
+            PreviousChangeVector = previousChangeVector,
+            Facts = new Dictionary<string, string>(context.Facts, StringComparer.Ordinal),
+        };
+
+        foreach (var hook in durable)
+            await outbox.EnqueueAsync(context.Session, new SparkAfterCommitWork { HookType = hook.GetType().FullName!, IsDelete = isDelete, Change = change });
     }
 
     public async Task RunIsolatedAsync<THook>(IReadOnlyList<THook> hooks, Func<THook, ValueTask> call, Type entityType, string? id) where THook : class, ISparkHook

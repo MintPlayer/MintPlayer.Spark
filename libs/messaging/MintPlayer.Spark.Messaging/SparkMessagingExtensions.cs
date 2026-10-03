@@ -18,7 +18,14 @@ internal static class SparkMessagingExtensions
         }
 
         // IAsyncDocumentSession is now registered by AddSpark() in the core library.
-        services.AddScoped<IMessageBus, MessageBus>();
+        services.AddScoped<MessageBus>();
+        services.AddScoped<IMessageBus>(sp => sp.GetRequiredService<MessageBus>());
+        services.AddScoped<IMessageOutbox>(sp => sp.GetRequiredService<MessageBus>());
+
+        // Durable after-commit hooks (#482, D17): the framework writes through this seam, and the
+        // recipient runs them. In the default single-subscription mode the extra message type costs nothing.
+        services.AddScoped<MintPlayer.Spark.Abstractions.Interceptors.ISparkAfterCommitOutbox, SparkAfterCommitOutbox>();
+        services.AddScoped<IRecipient<MintPlayer.Spark.Abstractions.Interceptors.SparkAfterCommitWork>, SparkAfterCommitRecipient>();
         services.AddScoped<MessageCheckpoint>();
         services.AddScoped<IMessageCheckpoint>(sp => sp.GetRequiredService<MessageCheckpoint>());
         services.AddScoped<MessageContext>();

@@ -223,4 +223,49 @@ public class MessageBusTests : SparkTestDriver
         var message = await session.Query<SparkMessage>().SingleAsync();
         message.MaxAttempts.Should().Be(12);
     }
+
+    // ---- EnqueueAsync: publishing inside the caller's transaction (#467, S13; #482, D17) ---------------
+
+    private IMessageOutbox NewOutbox() => (IMessageOutbox)NewBus();
+
+    [Fact]
+    public async Task EnqueueAsync_commits_with_the_callers_save_and_not_before()
+    {
+        using (var session = Store.OpenAsyncSession())
+        {
+            await NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/2", 1m));
+            await session.StoreAsync(new { Name = "the data change" }, "Data/1");
+
+            using (var other = Store.OpenAsyncSession())
+                (await other.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(0, "only stored, not saved");
+
+            await session.SaveChangesAsync();
+        }
+
+        using var verify = Store.OpenAsyncSession();
+        var message = await verify.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults()).SingleAsync();
+        message.MessageType.Should().Be(typeof(OrderPlaced).AssemblyQualifiedName);
+        message.Status.Should().Be(EMessageStatus.Pending);
+        verify.Advanced.GetDocumentId(message).Should().StartWith("SparkMessages/");
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_in_a_session_that_is_never_saved_publishes_nothing()
+    {
+        using (var session = Store.OpenAsyncSession())
+            await NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/3", 1m));
+
+        using var verify = Store.OpenAsyncSession();
+        (await verify.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_refuses_a_deduplication_key()
+    {
+        using var session = Store.OpenAsyncSession();
+        var act = () => NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/4", 1m), new BroadcastOptions { DeduplicationKey = "k" });
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        session.Advanced.UseOptimisticConcurrency.Should().BeFalse("the caller's session is left as it was");
+    }
 }

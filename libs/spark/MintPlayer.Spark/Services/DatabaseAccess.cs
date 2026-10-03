@@ -784,6 +784,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
             await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
         else
             await session.StoreAsync(entity);
+
+        // Durable after-commit work (#482, D17), written in this commit. The store assigned the id.
+        await hooks.EnqueueCommittedAsync(context, session.Advanced.GetDocumentId(entity), operation, isDelete: false, isReplaced: false, expectedChangeVector);
         return context;
     }
 
@@ -807,6 +810,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
             User = hooks.User,
             IsSystemContext = hooks.IsSystemContext,
         };
+        if (context.Reason is { } given)
+            context.Facts[SparkFacts.Reason] = given;
 
         // Decided before any before-delete hook, so each sees the final answer (contributions and
         // replication depend on it: a soft delete must not destroy a row's contributions).
@@ -828,6 +833,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
             SparkRawWrites.IssuedByFramework(session, id);
             session.Delete(id, expectedChangeVector);
         }
+
+        await hooks.EnqueueCommittedAsync(context, id, operation, isDelete: true, context.IsReplaced, expectedChangeVector);
         return context;
     }
 

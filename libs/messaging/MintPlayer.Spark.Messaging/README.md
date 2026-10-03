@@ -220,6 +220,27 @@ rather than handled late.
 documents no worker ever selects, whereas a declared queue is known to both sides (in
 `SubscriptionPerQueue` mode it gets its own worker).
 
+#### Publishing inside your own transaction (outbox)
+
+`BroadcastAsync` saves the message in a session of its own, so "the data changed" and "the follow-up
+is queued" are two commits, and a crash between them loses one. `IMessageOutbox.EnqueueAsync` stores
+the message in **your** session instead; it commits with your `SaveChangesAsync`, or not at all:
+
+```csharp
+await session.StoreAsync(order);
+await outbox.EnqueueAsync(session, new OrderPlaced(order.Id!), new BroadcastOptions { Delay = TimeSpan.FromMinutes(1) });
+await session.SaveChangesAsync(); // the order and its message, together
+```
+
+It only stores, under a fresh id, and leaves the session's settings alone. Every option applies except
+`DeduplicationKey`, which is refused: deduplication needs optimistic concurrency on the whole session,
+and a duplicate would then roll back your own write.
+
+Spark's durable after-commit hooks (`IAfterSaveCommitted` / `IAfterDeleteCommitted`, see the
+[hooks guide](../../../docs/guide-hooks.md#5a-durable-after-commit-hooks)) are built on it:
+`AddMessaging()` registers the outbox the framework writes them through, and the recipient that runs
+them. A durable hook registered without `AddMessaging()` is a startup error.
+
 ## How It Works
 
 ### Message Processing
@@ -598,6 +619,10 @@ You can query message status directly in RavenDB Studio for observability. Compl
 | Method | Description |
 |--------|-------------|
 | `spark.AddMessaging(Action<SparkMessagingOptions>?)` | Register messaging services and deploy the `SparkMessages/ByQueue` index |
+
+| Type (`MintPlayer.Spark.Messaging`) | Description |
+|------|-------------|
+| `IMessageOutbox` | `EnqueueAsync<T>(IAsyncDocumentSession, message, BroadcastOptions?)` — store in the caller's session; commits with it |
 
 ### Source-Generated
 

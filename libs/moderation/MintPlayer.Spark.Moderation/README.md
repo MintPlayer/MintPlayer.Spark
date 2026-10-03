@@ -22,6 +22,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddAuthentication<SparkUser>();
     spark.AddSoftDelete();   // optional: restore / purge for moderators
     spark.AddHistory();      // optional: revert for moderators
+    spark.AddMessaging();    // required: the vote reversal is a durable after-commit hook
     spark.AddModeration<SparkUser>();
 });
 ```
@@ -167,7 +168,9 @@ configuration. What bounds the damage is that only reversible privileges are ear
   than `MaxPostsPerDay` moderatable posts in a UTC day gets **429** (`SparkThrottledException`,
   `Retry-After`), not 404.
 - A moderator deleting (or purging) someone else's post reverses the votes it earned
-  (`content-deleted`); an author deleting their own post keeps them.
+  (`content-deleted`); an author deleting their own post keeps them. The reversal is a durable
+  after-commit hook (`ModerationVoteReversal`): stored in the delete's own commit and run by Messaging
+  with retries, so a committed delete always reverses its votes, shortly after.
 - Every lock, unlock, suspension, merge, decision, automatic reversal, and moderator
   delete / purge / restore / revert of moderatable content is written to `ModerationAuditEntries`.
 

@@ -12,7 +12,7 @@ using Raven.Client.Documents.Linq;
 
 namespace DemoApp.Actions;
 
-public partial class CompanyActions : DefaultPersistentObjectActions<Company>, ISparkOwnsRowSecurity, IAfterSave<Company>
+public partial class CompanyActions : DefaultPersistentObjectActions<Company>, ISparkOwnsRowSecurity, IAfterSaveCommitted<Company>
 {
     /// <inheritdoc />
     public string RowSecurityRationale =>
@@ -21,19 +21,25 @@ public partial class CompanyActions : DefaultPersistentObjectActions<Company>, I
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IDocumentStore documentStore;
 
-    public async ValueTask OnAfterSaveAsync(Company entity, SaveContext context)
+    // Durable (#482, D17): delivered by Messaging after the commit, with retries. It reads the company
+    // as it is now — the payload carries no entity.
+    public async Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
     {
         // Find all employees of this company and broadcast a batch notification message
         using var session = documentStore.OpenAsyncSession();
+        var company = await session.LoadAsync<Company>(change.Id, cancellationToken);
+        if (company is null)
+            return;
+
         var employeeIds = await session.Query<VPerson, People_Overview>()
-            .Where(p => p.Company == entity.Id)
+            .Where(p => p.Company == change.Id)
             .Select(p => p.Id)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         if (employeeIds.Count > 0)
         {
             await messageBus.BroadcastAsync(
-                new CompanyUpdatedMessage(entity.Id!, entity.Name, employeeIds!));
+                new CompanyUpdatedMessage(change.Id, company.Name, employeeIds!), cancellationToken);
         }
     }
 }

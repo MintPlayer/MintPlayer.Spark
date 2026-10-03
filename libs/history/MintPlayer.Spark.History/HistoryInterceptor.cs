@@ -11,8 +11,9 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.History;
 
 /// <summary>
-/// Stamps <see cref="IAuditable"/> entities, makes a revert exact, and tells
-/// <see cref="ISparkRevisionObserver"/>s about every write to a type whose model enables revisions.
+/// Stamps <see cref="IAuditable"/> entities, makes a revert exact, and records which attributes a
+/// write to a type with revisions changed (<see cref="SparkFacts.ChangedAttributes"/>), for the
+/// durable after-commit hooks.
 /// </summary>
 /// <remarks>
 /// Persistence hooks (#482; "interceptor" is the older name), run by the framework on every write. The
@@ -20,18 +21,17 @@ namespace MintPlayer.Spark.History;
 /// fields, so "did this edit change anything?" judges the entity as it will be written. It also runs
 /// for a module sync, to observe it; it stamps nothing there.
 /// </remarks>
-internal sealed partial class HistoryInterceptor : IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete
+internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
 {
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly HistoryRequestState state;
-    [Inject] private readonly IEnumerable<ISparkRevisionObserver> observers;
     [Inject] private readonly TimeProvider? timeProvider;
 
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
 
-    /// <summary>A module sync is observed (its revision is reported); it is not stamped.</summary>
+    /// <summary>A module sync is observed (its changed attributes are recorded); it is not stamped.</summary>
     public bool HandlesSync => true;
 
     /// <summary>After every hook that changes fields, so the no-change check sees the final entity.</summary>
@@ -42,12 +42,20 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IAfterSave, IBef
 
     public ValueTask OnBeforeSaveAsync(SaveContext context)
     {
-        if (context.Before is not null)
-            state.SetPrevious(context, ChangeVectorOf(context.Entity));
+        Stamp(context);
 
+        // For the durable after-commit hooks (#482, D17), which get a payload, not the entity. Last, so
+        // the stamp counts; only for a type that keeps revisions, as the revision observer it replaces.
+        if (RevisionsEnabled(context.EntityType))
+            context.Facts[SparkFacts.ChangedAttributes] = string.Join(',', ChangedAttributes(context.EntityType, context.Before, context.Entity));
+        return ValueTask.CompletedTask;
+    }
+
+    private void Stamp(SaveContext context)
+    {
         // A module sync carries what the owner module stamped.
         if (context.Operation == PersistentObjectOperation.Sync)
-            return ValueTask.CompletedTask;
+            return;
 
         if (context.Operation == PersistentObjectOperation.Revert && state.RevertSource is { } source && source.GetType() == context.Entity.GetType())
         {
@@ -64,7 +72,7 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IAfterSave, IBef
         // Asked of the session before stamping, so the stamp itself is not the change it detects.
         if (context.Entity is IAuditable && context.Operation == PersistentObjectOperation.Save
             && context.Before is not null && !HasChanged(context.Entity))
-            return ValueTask.CompletedTask;
+            return;
 
         if (context.Entity is IAuditable audited)
         {
@@ -84,38 +92,12 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IAfterSave, IBef
             audited.ModifiedBy = currentUser.Id;
             audited.ModifiedAt = Now;
         }
-
-        return ValueTask.CompletedTask;
-    }
-
-    public async ValueTask OnAfterSaveAsync(SaveContext context)
-    {
-        var previous = state.TakePrevious(context);
-        if (!ShouldNotify(context.EntityType) || context.Entity is null)
-            return;
-
-        var id = IdOf(context.Entity) ?? context.PersistentObject.Id;
-        if (string.IsNullOrEmpty(id))
-            return;
-
-        await NotifyAsync(new SparkRevisionEvent
-        {
-            EntityType = context.EntityType,
-            Id = id,
-            ChangeVector = ChangeVectorOf(context.Entity),
-            PreviousChangeVector = previous,
-            UserId = currentUser.Id,
-            Kind = context.Operation,
-            ChangedAttributes = ChangedAttributes(context.EntityType, context.Before, context.Entity),
-        });
     }
 
     public ValueTask OnBeforeDeleteAsync(DeleteContext context)
     {
         if (context.Operation == PersistentObjectOperation.Purge)
             return ValueTask.CompletedTask;
-
-        state.SetPrevious(context, ChangeVectorOf(context.Entity));
 
         // A soft delete (a replaced delete) writes a revision: it should say who deleted. A hard delete
         // discards the stamp with the document; a refused one is evicted by IDatabaseAccess.
@@ -126,25 +108,6 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IAfterSave, IBef
         }
 
         return ValueTask.CompletedTask;
-    }
-
-    public async ValueTask OnAfterDeleteAsync(DeleteContext context)
-    {
-        var previous = state.TakePrevious(context);
-        // A purge removed every revision; there is nothing to observe.
-        if (context.IsPurge || !ShouldNotify(context.EntityType))
-            return;
-
-        await NotifyAsync(new SparkRevisionEvent
-        {
-            EntityType = context.EntityType,
-            Id = context.Id,
-            ChangeVector = context.IsReplaced ? ChangeVectorOf(context.Entity) : null,
-            PreviousChangeVector = previous,
-            UserId = currentUser.Id,
-            Kind = context.Operation,
-            ChangedAttributes = [],
-        });
     }
 
     /// <summary>
@@ -202,8 +165,6 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IAfterSave, IBef
         return copy;
     }
 
-    private bool ShouldNotify(Type entityType) => observers.Any() && RevisionsEnabled(entityType);
-
     private bool RevisionsEnabled(Type entityType)
         => modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)?.Revisions?.Enabled == true;
 
@@ -224,15 +185,6 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IAfterSave, IBef
         try { return session.Advanced.HasChanged(entity); }
         catch (InvalidOperationException) { return true; }
         catch (ArgumentException) { return true; }
-    }
-
-    private static string? IdOf(object entity)
-        => entity.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance)?.GetValue(entity)?.ToString();
-
-    private async Task NotifyAsync(SparkRevisionEvent revision)
-    {
-        foreach (var observer in observers)
-            await observer.OnRevisionCreatedAsync(revision);
     }
 
     /// <summary>The model attributes whose value differs between <paramref name="before"/> (null for a create) and <paramref name="after"/>.</summary>

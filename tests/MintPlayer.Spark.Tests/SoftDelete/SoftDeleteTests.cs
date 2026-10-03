@@ -57,7 +57,8 @@ public class SoftDeleteTests : SparkTestDriver
             {
                 s.AddSingleton<SdRecorder>();
                 s.AddScoped<SdNoteActions>();
-                s.AddSoftDeleteObserver<SdObserver>();
+                s.AddTestAfterCommitOutbox();
+                s.AddSparkHook<SdObserver>();
                 services?.Invoke(s);
             },
             configureSpark: spark =>
@@ -137,6 +138,7 @@ public class SoftDeleteTests : SparkTestDriver
         stored!.IsDeleted.Should().BeTrue();
         stored.DeletedAt.HasValue.Should().BeTrue();
         host.Recorder.OnDeleteCalls.Should().BeEmpty("the replacement is decided before the Actions class is asked");
+        await host.DrainAsync();
         host.Recorder.Events.Should().Equal($"Deleted:{note.Id}");
     }
 
@@ -232,6 +234,7 @@ public class SoftDeleteTests : SparkTestDriver
         stored.DeletedAt.HasValue.Should().BeFalse();
         stored.DeleteReason.Should().BeNull();
         stored.Title.Should().Be("gone", "a restore changes nothing but the soft-delete fields");
+        await host.DrainAsync();
         host.Recorder.Events.Should().Equal($"Restored:{note.Id}");
     }
 
@@ -273,6 +276,7 @@ public class SoftDeleteTests : SparkTestDriver
         await EnableRevisionsAsync();
         var note = await SeedNoteAsync("gone");
         await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id));
+        await host.DrainAsync();
         (await RevisionCountAsync(note.Id!)).Should().BeGreaterThan(0);
         host.Recorder.Events.Clear();
 
@@ -282,6 +286,7 @@ public class SoftDeleteTests : SparkTestDriver
         (await LoadAsync<SdNote>(note.Id!)).Should().BeNull();
         (await RevisionCountAsync(note.Id!)).Should().Be(0);
         host.Recorder.OnDeleteCalls.Should().Equal(note.Id!);
+        await host.DrainAsync();
         host.Recorder.Events.Should().Equal($"Purged:{note.Id}");
     }
 
@@ -410,6 +415,7 @@ public class SoftDeleteTests : SparkTestDriver
         var stored = await LoadAsync<SdNote>(note.Id!);
         stored!.IsDeleted.Should().BeFalse("a refused delete must leave nothing behind");
         stored.DeletedAt.HasValue.Should().BeFalse();
+        await host.DrainAsync();
         host.Recorder.Events.Should().BeEmpty();
     }
 
@@ -528,6 +534,7 @@ public class SoftDeleteTests : SparkTestDriver
         smuggledActionStatus.Should().Be(HttpStatusCode.NotFound);
         deleteStatus.Should().Be(HttpStatusCode.NotFound);
         smuggledDeleteStatus.Should().Be(HttpStatusCode.NotFound);
+        await host.DrainAsync();
         host.Recorder.Events.Should().BeEmpty("neither the action nor a second delete ran on the deleted row");
         var stored = await LoadAsync<SdNote>(gone.Id!);
         stored!.IsDeleted.Should().BeTrue();
@@ -539,6 +546,7 @@ public class SoftDeleteTests : SparkTestDriver
 
         liveAction.Should().Be(HttpStatusCode.OK);
         liveDelete.Should().Be(HttpStatusCode.NoContent);
+        await host.DrainAsync();
         host.Recorder.Events.Should().Equal($"Touched:{live.Id}", $"Deleted:{live.Id}");
     }
 
@@ -659,6 +667,7 @@ public class SoftDeleteTests : SparkTestDriver
 
         actionStatus.Should().Be(HttpStatusCode.NotFound);
         deleteStatus.Should().Be(HttpStatusCode.NotFound);
+        await host.DrainAsync();
         host.Recorder.Events.Should().BeEmpty("neither ran under the deleted parent");
         (await LoadAsync<SdNote>(live.Id!))!.IsDeleted.Should().NotBe(true);
 
@@ -673,6 +682,7 @@ public class SoftDeleteTests : SparkTestDriver
             parentType = "SdPerson",
         }));
         liveAction.Should().Be(HttpStatusCode.OK);
+        await host.DrainAsync();
         host.Recorder.Events.Should().Equal($"Touched:{liveNote.Id}");
     }
 
@@ -818,6 +828,9 @@ public class SoftDeleteTests : SparkTestDriver
     private sealed record Host(SparkEndpointFactory<SdContext> Factory, HttpClient Client, string Cookie, string Xsrf)
     {
         public SdRecorder Recorder => Factory.GetService<SdRecorder>();
+
+        /// <summary>Runs the durable after-commit hooks of every committed write so far (#482, D17).</summary>
+        public Task<int> DrainAsync() => Factory.GetService<TestAfterCommitOutbox>().DrainAsync(Factory.GetService<IServiceProvider>());
 
         public async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload)
         {
@@ -971,11 +984,24 @@ internal sealed class SdActionResolver(string name, ICustomAction action) : ICus
     public IReadOnlyList<string> GetRegisteredActionNames() => [name];
 }
 
-public sealed class SdObserver(SdRecorder recorder) : ISoftDeleteObserver
+/// <summary>What replaced <c>ISoftDeleteObserver</c> (#482, D32(4)): durable after-commit hooks.</summary>
+public sealed class SdObserver(SdRecorder recorder) : IAfterDeleteCommitted<SdNote>, IAfterSaveCommitted<SdNote>
 {
-    public ValueTask OnDeletedAsync(SoftDeleteEvent e) { recorder.Events.Enqueue($"Deleted:{e.Id}"); return ValueTask.CompletedTask; }
-    public ValueTask OnRestoredAsync(SoftDeleteEvent e) { recorder.Events.Enqueue($"Restored:{e.Id}"); return ValueTask.CompletedTask; }
-    public ValueTask OnPurgedAsync(SoftDeleteEvent e) { recorder.Events.Enqueue($"Purged:{e.Id}"); return ValueTask.CompletedTask; }
+    public Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
+    {
+        if (change.IsReplaced)
+            recorder.Events.Enqueue($"Deleted:{change.Id}");
+        else if (change.IsPurge)
+            recorder.Events.Enqueue($"Purged:{change.Id}");
+        return Task.CompletedTask;
+    }
+
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
+    {
+        if (change.Operation == PersistentObjectOperation.Restore)
+            recorder.Events.Enqueue($"Restored:{change.Id}");
+        return Task.CompletedTask;
+    }
 }
 
 public class SdContext : SparkContext

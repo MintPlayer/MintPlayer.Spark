@@ -35,11 +35,9 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ModerationUserState userState;
-    [Inject] private readonly ReputationLedger ledger;
     [Inject] private readonly ModerationAudit audit;
     [Inject] private readonly IOptions<SparkModerationOptions> options;
     [Inject] private readonly TimeProvider timeProvider;
-    [Inject] private readonly ILogger<ModerationInterceptor> logger;
 
     /// <summary>Every type: the suspension write block is not limited to moderatable content.</summary>
     public bool AppliesTo(Type entityType) => true;
@@ -83,8 +81,16 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
 
         await RefuseSuspendedAsync();
 
-        if (context.Entity is IModeratable)
-            await RefuseLockedAsync(context.EntityType, context.Id);
+        if (context.Entity is not IModeratable entity)
+            return;
+
+        await RefuseLockedAsync(context.EntityType, context.Id);
+
+        // "Content deleted by a moderator reverses its votes" (§3.12): decided here, where the author
+        // and the actor are known, and done durably after the commit (ModerationVoteReversal).
+        var actor = currentUser.IsAuthenticated ? currentUser.Id : null;
+        if (actor is not null && actor != entity.AuthorId && options.Value.ReverseVotesOnModeratorDelete)
+            context.Facts[ModerationVoteReversal.ReverseVotesFact] = "true";
     }
 
     public async ValueTask OnAfterSaveAsync(SaveContext context)
@@ -110,22 +116,6 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
 
         var typeName = TypeName(context.EntityType);
         await audit.WriteAsync(context.IsPurge ? "purge" : "delete", context.Id, typeName, entity.AuthorId);
-
-        // "Content deleted by a moderator reverses its votes" (§3.12). The delete is committed by now;
-        // the reversal is idempotent per entry, so a retry after a failure here repeats nothing.
-        if (byOther && options.Value.ReverseVotesOnModeratorDelete)
-        {
-            try
-            {
-                var voteIds = await VotesOnAsync(context.Id);
-                if (voteIds.Count > 0)
-                    await ledger.ReverseVotesAsync(voteIds, "content-deleted", null);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogError(ex, "Could not reverse the votes on deleted {TargetId}; the delete stands, re-run the reversal.", context.Id);
-            }
-        }
     }
 
     public async ValueTask OnAfterLoadAsync(LoadContext context)
@@ -193,17 +183,6 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
         counter.Count++;
         await session.StoreAsync(counter, counterId);
         session.Advanced.GetMetadataFor(counter)["@expires"] = now.Date.AddDays(2).ToString("O");
-    }
-
-    private async Task<IReadOnlyList<string>> VotesOnAsync(string targetId)
-    {
-        using var read = documentStore.OpenAsyncSession();
-        return await read.Query<ModerationVote>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-            .Where(v => v.TargetId == targetId && v.Direction != 0)
-            .Select(v => v.Id!)
-            .Take(10_000)
-            .ToListAsync();
     }
 
     private string TypeName(Type entityType)

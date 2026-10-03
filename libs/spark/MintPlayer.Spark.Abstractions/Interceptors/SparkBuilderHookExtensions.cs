@@ -12,6 +12,7 @@ public static class SparkBuilderHookExtensions
     [
         typeof(IBeforeSave), typeof(IAfterSave), typeof(IBeforeDelete), typeof(IAfterDelete),
         typeof(IDeleteReplacement), typeof(IAfterMaterialize), typeof(IAfterLoad), typeof(INaturalIdCollision),
+        typeof(IAfterSaveCommitted), typeof(IAfterDeleteCommitted),
     ];
 
     /// <summary>

@@ -8,7 +8,7 @@ Two packages:
 
 | Package | Reference it from | Contains |
 |---|---|---|
-| `MintPlayer.Spark.SoftDelete.Abstractions` | Domain / Library projects | `ISoftDeletable`, `ISparkSoftDelete`, `ISoftDeleteObserver`, `SoftDeleteRights` |
+| `MintPlayer.Spark.SoftDelete.Abstractions` | Domain / Library projects | `ISoftDeletable`, `ISparkSoftDelete`, `SoftDeleteRights` |
 | `MintPlayer.Spark.SoftDelete` | the host | the row policy, the hooks (formerly "the interceptor"), the endpoints, `AddSoftDelete()` |
 
 ## Setup
@@ -30,7 +30,7 @@ builder.Services.AddSpark(spark =>
 {
     spark.UseContext<AppContext>();
     spark.AddSoftDelete();                       // binds Spark:SoftDelete, code wins
-    spark.AddSoftDeleteObserver<OrderAudit>();   // optional
+    spark.AddHook<OrderAudit>();                 // optional, durable: needs spark.AddMessaging()
 });
 ```
 
@@ -159,19 +159,31 @@ row, and a `deleted` field in its body widens nothing.
 Core ng-spark understands `?deleted=` on both pages even without this entry point: the entry point
 only adds the controls. The server stays the gate, and a widening from a non-holder is ignored.
 
-## Observers
+## Reacting to deletes, restores and purges
+
+`ISoftDeleteObserver` is gone (#482): use the framework's durable after-commit hooks, which run once
+the write committed, even across a crash, with Messaging's retries
+([guide](../../../docs/guide-hooks.md#5a-durable-after-commit-hooks)).
 
 ```csharp
-public sealed class OrderAudit : ISoftDeleteObserver
+public sealed class OrderAudit : IAfterDeleteCommitted<Order>, IAfterSaveCommitted<Order>
 {
-    public ValueTask OnDeletedAsync(SoftDeleteEvent e) { /* e.EntityType, e.Id, e.UserId, e.Reason */ return default; }
-    public ValueTask OnRestoredAsync(SoftDeleteEvent e) => default;
-    public ValueTask OnPurgedAsync(SoftDeleteEvent e) => default;
+    public Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken ct)
+    {
+        // change.IsReplaced: soft-deleted; change.IsPurge: purged. change.Id, change.UserId, change.Reason
+        return Task.CompletedTask;
+    }
+
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken ct)
+    {
+        // change.Operation == PersistentObjectOperation.Restore: restored
+        return Task.CompletedTask;
+    }
 }
 ```
 
-Called in-process after the write committed, for every path through the Spark pipeline. An exception
-reaches the caller but does not undo the write.
+SoftDelete records the stored delete reason as `SparkFacts.Reason`, so `change.Reason` is set for a
+delete through `ISparkSoftDelete.DeleteAsync` as well as a bulk delete with a reason.
 
 ## Startup checks
 

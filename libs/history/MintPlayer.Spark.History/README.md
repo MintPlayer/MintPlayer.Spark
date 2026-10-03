@@ -2,14 +2,15 @@
 
 Revision history for [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark): RavenDB
 revisions configured from the model, audit stamping, revision reads through Spark's row security and
-redaction, revert through the normal save pipeline, and in-process revision observers.
+redaction, revert through the normal save pipeline, and the changed attributes of every write for
+durable after-commit hooks.
 
 - `IAuditable` — `CreatedBy`, `CreatedAt`, `ModifiedBy`, `ModifiedAt`, stamped on every write with
   **user ids** (never names).
 - `"revisions"` in a model file — the collection's RavenDB revisions settings, merged into the
   database at startup.
 - `POST /spark/po/revisions`, `/spark/po/revision`, `/spark/po/revert`.
-- `ISparkHistory` (the same three in code), `ISparkRevisionObserver`.
+- `ISparkHistory` (the same three in code).
 
 ## Setup
 
@@ -18,7 +19,7 @@ builder.Services.AddSpark(spark =>
 {
     spark.UseContext<AppContext>();
     spark.AddHistory();
-    spark.AddRevisionObserver<AuditTrail>();          // optional
+    spark.AddHook<AuditTrail>();                      // optional, durable: needs spark.AddMessaging()
     spark.AddHistoryUserNameResolver<UserNames>();    // optional: names in revision lists
 });
 ```
@@ -165,24 +166,32 @@ first), fields the model does not declare. Validation rules are **not** re-run: 
 when it was written. ⚠️ `AsDetail` rows are rewritten from the revision as a whole; rows have no
 identity across saves beyond their position (the known AsDetail row-identity caveat).
 
-## Observers
+## Reacting to writes
+
+`ISparkRevisionObserver` is gone (#482): use the framework's durable after-commit hooks
+([guide](../../../docs/guide-hooks.md#5a-durable-after-commit-hooks)), which run once the write
+committed, even across a crash, with Messaging's retries.
 
 ```csharp
-public sealed class AuditTrail : ISparkRevisionObserver
+public sealed class AuditTrail : IAfterSaveCommitted<Order>, IAfterDeleteCommitted<Order>
 {
-    public ValueTask OnRevisionCreatedAsync(SparkRevisionEvent e)
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken ct)
     {
-        // e.EntityType, e.Id, e.ChangeVector, e.PreviousChangeVector, e.UserId, e.Kind, e.ChangedAttributes
-        return default;
+        // change.Operation (New, Save, Revert, Restore, Sync), change.Id, change.UserId,
+        // change.PreviousChangeVector, change.Facts[SparkFacts.ChangedAttributes] ("Title,Total")
+        return Task.CompletedTask;
     }
+
+    public Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken ct)
+        => Task.CompletedTask; // change.IsReplaced: a soft delete; change.IsPurge: a purge
 }
 ```
 
-Told after every write through the Spark pipeline to a type whose model has `"revisions": { "enabled":
-true }` — create, edit, revert, restore, soft or hard delete, module sync (a purge removes the
-revisions, so it is not reported). In-process and multi-registered; an exception reaches the caller
-but does not undo the write. Writes outside `IDatabaseAccess` (a raw session, a patch, ETL) are not
-seen. History does not depend on Messaging — publish a message from an observer to fan out durably.
+For a type whose model has `"revisions": { "enabled": true }`, History records the top-level
+attributes each write changed as `SparkFacts.ChangedAttributes` (comma-separated). The payload has no
+new change vector — the message is written in the same commit, before the database assigns it — so
+a hook that needs the revision loads the row. Writes outside `IDatabaseAccess` (a raw session, a
+patch, ETL) still create revisions, but no hook hears of them.
 
 ## Permissions endpoint
 

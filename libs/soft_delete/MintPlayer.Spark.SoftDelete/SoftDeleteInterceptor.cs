@@ -16,8 +16,7 @@ namespace MintPlayer.Spark.SoftDelete;
 /// <summary>
 /// The SoftDelete hooks (#482; "interceptor" is the older name): turns a delete of an
 /// <see cref="ISoftDeletable"/> into setting its fields, owns those fields on every other write,
-/// refuses references to deleted rows, finishes a purge by deleting the row's revisions, and tells
-/// <see cref="ISoftDeleteObserver"/>s.
+/// refuses references to deleted rows, and finishes a purge by deleting the row's revisions.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,7 +30,7 @@ namespace MintPlayer.Spark.SoftDelete;
 /// </para>
 /// </remarks>
 internal sealed partial class SoftDeleteInterceptor
-    : IDeleteReplacement, IBeforeDelete, IAfterDelete, IBeforeSave, IAfterSave, INaturalIdCollision
+    : IDeleteReplacement, IBeforeDelete, IAfterDelete, IBeforeSave, INaturalIdCollision
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ISparkCurrentUser currentUser;
@@ -39,7 +38,6 @@ internal sealed partial class SoftDeleteInterceptor
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly SoftDeleteRequestState state;
     [Inject] private readonly ISoftDeleteRevisions revisions;
-    [Inject] private readonly IEnumerable<ISoftDeleteObserver> observers;
     [Inject] private readonly ILogger<SoftDeleteInterceptor> logger;
     [Inject] private readonly TimeProvider? timeProvider;
 
@@ -59,6 +57,9 @@ internal sealed partial class SoftDeleteInterceptor
         entity.DeletedAt = Now;
         entity.DeletedBy = currentUser.Id;
         entity.DeleteReason = context.Reason ?? state.PendingReason;
+        // For the durable after-commit hooks, which see a payload, not the entity.
+        if (entity.DeleteReason is { } reason)
+            context.Facts[SparkFacts.Reason] = reason;
         return ValueTask.FromResult(true);
     }
 
@@ -74,13 +75,6 @@ internal sealed partial class SoftDeleteInterceptor
 
     public async ValueTask OnAfterDeleteAsync(DeleteContext context)
     {
-        if (context.IsReplaced)
-        {
-            var entity = (ISoftDeletable)context.Entity;
-            await NotifyAsync(context.EntityType, context.Id, entity.DeleteReason, static (o, e) => o.OnDeletedAsync(e));
-            return;
-        }
-
         if (!context.IsPurge)
             return;
 
@@ -90,7 +84,6 @@ internal sealed partial class SoftDeleteInterceptor
         logger.LogInformation("Purged {EntityType} {Id} and {Revisions} revision(s).", context.EntityType.Name, context.Id, deleted);
 
         state.Purged.Add(context.Id);
-        await NotifyAsync(context.EntityType, context.Id, null, static (o, e) => o.OnPurgedAsync(e));
     }
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context)
@@ -123,12 +116,6 @@ internal sealed partial class SoftDeleteInterceptor
         }
 
         await RefuseReferencesToDeletedRowsAsync(context, context.Entity);
-    }
-
-    public async ValueTask OnAfterSaveAsync(SaveContext context)
-    {
-        if (context.Operation == PersistentObjectOperation.Restore && context.PersistentObject.Id is { } id)
-            await NotifyAsync(context.EntityType, id, null, static (o, e) => o.OnRestoredAsync(e));
     }
 
     public async ValueTask OnNaturalIdCollisionAsync(NaturalIdCollisionContext context)
@@ -202,22 +189,6 @@ internal sealed partial class SoftDeleteInterceptor
         return loaded.Where(pair => pair.Value is ISoftDeletable { IsDeleted: true }).Select(pair => pair.Key).ToList();
     }
 
-    private async Task NotifyAsync(Type entityType, string id, string? reason, Func<ISoftDeleteObserver, SoftDeleteEvent, ValueTask> call)
-    {
-        SoftDeleteEvent? e = null;
-        foreach (var observer in observers)
-        {
-            e ??= new SoftDeleteEvent
-            {
-                EntityType = entityType,
-                Id = id,
-                UserId = currentUser.Id,
-                Reason = reason,
-                OccurredAt = Now,
-            };
-            await call(observer, e);
-        }
-    }
 }
 
 /// <summary>The <c>[Reference]</c> properties of a type that point at a soft-deletable type.</summary>

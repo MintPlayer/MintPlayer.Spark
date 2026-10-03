@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Net;
@@ -54,6 +55,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
             configureServices: services =>
             {
                 services.AddSingleton<HiRecorder>();
+                services.AddTestAfterCommitOutbox();
                 services.AddScoped<HiNoteActions>();
                 services.AddScoped<ISparkCurrentUser>(_ => new HiUser(userId));
             },
@@ -61,7 +63,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
             {
                 spark.AddSoftDelete();
                 spark.AddHistory(history);
-                spark.AddRevisionObserver<HiObserver>();
+                spark.AddHook<HiObserver>();
                 spark.AddHistoryUserNameResolver<HiNames>();
             },
             security: security ?? SparkTestSecurity.Permissive);
@@ -407,32 +409,35 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         revisionWithoutRight.Should().Be(HttpStatusCode.NotFound);
     }
 
-    // ---- observers -------------------------------------------------------------------------------------
+    // ---- durable after-commit hooks (formerly revision observers; #482, D32(4)) -------------------------
 
     [Fact]
-    public async Task Observers_hear_every_write_with_its_kind_changed_attributes_and_change_vectors()
+    public async Task Durable_hooks_hear_every_write_with_its_kind_changed_attributes_and_previous_change_vector()
     {
         var host = await StartAsync();
         var (_, created) = await host.SendAsync("/spark/po/create", CreateBody(("Title", "one")));
         var id = created.GetProperty("result").GetProperty("id").GetString()!;
         var createdCv = created.GetProperty("result").GetProperty("etag").GetString();
-        await host.SendAsync("/spark/po/update", UpdateBody(id, ("Title", "two")));
+        var (_, updated) = await host.SendAsync("/spark/po/update", UpdateBody(id, ("Title", "two")));
+        var updatedCv = updated.GetProperty("result").GetProperty("etag").GetString();
         await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: id));
         await host.SendAsync("/spark/po/restore", Wire.Typed(NoteTypeId, id: id));
 
-        var events = host.Recorder.Events.ToList();
-        output.WriteLine(string.Join(Environment.NewLine, events.Select(e => $"{e.Kind} changed=[{string.Join(",", e.ChangedAttributes)}] prev={e.PreviousChangeVector} cv={e.ChangeVector} user={e.UserId}")));
+        host.Recorder.Events.Should().BeEmpty("nothing runs before the outbox delivers");
+        await host.DrainAsync();
 
-        events.Select(e => e.Kind).Should().Equal(
+        var events = host.Recorder.Events.ToList();
+        output.WriteLine(string.Join(Environment.NewLine, events.Select(e => $"{e.Operation} replaced={e.IsReplaced} facts=[{string.Join(";", e.Facts.Select(f => $"{f.Key}={f.Value}"))}] prev={e.PreviousChangeVector} user={e.UserId}")));
+
+        events.Select(e => e.Operation).Should().Equal(
             PersistentObjectOperation.New, PersistentObjectOperation.Save, PersistentObjectOperation.Delete, PersistentObjectOperation.Restore);
-        events.Should().OnlyContain(e => e.Id == id && e.UserId == Alice);
+        events.Should().OnlyContain(e => e.Id == id && e.UserId == Alice && e.EntityType == typeof(HiNote).FullName);
         events[0].PreviousChangeVector.Should().BeNull();
-        events[0].ChangeVector.Should().Be(createdCv);
-        events[1].ChangedAttributes.Should().Contain("Title");
+        events[1].Facts[SparkFacts.ChangedAttributes].Split(',').Should().Contain("Title");
         events[1].PreviousChangeVector.Should().Be(createdCv);
-        events[1].ChangeVector.Should().NotBe(createdCv);
-        events[2].ChangeVector.Should().NotBeNull("a soft delete is a save, and writes a revision");
-        events[3].PreviousChangeVector.Should().Be(events[2].ChangeVector);
+        events[2].IsReplaced.Should().BeTrue("SoftDelete replaced the delete");
+        events[2].PreviousChangeVector.Should().Be(updatedCv);
+        events[3].PreviousChangeVector.Should().NotBeNull().And.NotBe(updatedCv, "the restore found the soft-deleted version");
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------
@@ -565,6 +570,9 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
     {
         public HiRecorder Recorder => Factory.GetService<HiRecorder>();
 
+        /// <summary>Runs the durable after-commit hooks of every committed write so far (#482, D17).</summary>
+        public Task<int> DrainAsync() => Factory.GetService<TestAfterCommitOutbox>().DrainAsync(Factory.GetService<IServiceProvider>());
+
         public async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
@@ -611,15 +619,22 @@ public class HiLine
 
 public sealed class HiRecorder
 {
-    public ConcurrentQueue<SparkRevisionEvent> Events { get; } = new();
+    public ConcurrentQueue<SparkCommittedChange> Events { get; } = new();
 }
 
-public sealed class HiObserver(HiRecorder recorder) : ISparkRevisionObserver
+/// <summary>What replaced <c>ISparkRevisionObserver</c> (#482, D32(4)): durable after-commit hooks.</summary>
+public sealed class HiObserver(HiRecorder recorder) : IAfterSaveCommitted<HiNote>, IAfterDeleteCommitted<HiNote>
 {
-    public ValueTask OnRevisionCreatedAsync(SparkRevisionEvent revision)
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
     {
-        recorder.Events.Enqueue(revision);
-        return ValueTask.CompletedTask;
+        recorder.Events.Enqueue(change);
+        return Task.CompletedTask;
+    }
+
+    public Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
+    {
+        recorder.Events.Enqueue(change);
+        return Task.CompletedTask;
     }
 }
 

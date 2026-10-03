@@ -17,7 +17,8 @@ A save (create, edit, revert, restore, sync):
 3. `MapAsync(obj, existing)` on the Actions class — the posted values onto the row, or a new instance.
 4. The `IBeforeSave` hooks: `HookStage.Default` ones, then `HookStage.Finalize` ones.
 5. **WITH CHECK**: the row rule, judged on the row as the hooks left it.
-6. Store it with the expected change vector, and **commit once** (`SaveChanges`).
+6. Store it with the expected change vector, store one outbox message per durable after-commit hook
+   (`IAfterSaveCommitted`), and **commit once** (`SaveChanges`): the row and its follow-ups together.
 7. The `IAfterSave` hooks, each isolated.
 
 A delete (and a bulk delete, row by row, committed once for all rows):
@@ -26,8 +27,11 @@ A delete (and a bulk delete, row by row, committed once for all rows):
 2. The `IDeleteReplacement`, if one governs the type (SoftDelete): it decides whether the delete
    becomes a save of the row.
 3. The `IBeforeDelete` hooks (stages as above). `context.IsReplaced` is final here.
-4. Store the replacement, or delete — both with the expected change vector — and commit once.
+4. Store the replacement, or delete — both with the expected change vector — store one outbox message
+   per durable hook (`IAfterDeleteCommitted`), and commit once.
 5. The `IAfterDelete` hooks, each isolated.
+
+Later, outside the request: Messaging delivers each outbox message, and the durable hook runs (§5a).
 
 Nothing in this list can be skipped: not by a hook, not by an Actions class.
 
@@ -78,6 +82,7 @@ session the write commits through (`context.GetSession()` returns it typed).
   `UnwritableAttributes`, `IsNew`. **`Id` is null in a before-hook of a create**: the id, natural ids
   included, is assigned when the row is stored, after the before-hooks.
 - `DeleteContext`: `Operation`, `Id`, `Entity`, `Reason`, `IsPurge`, `IsReplaced`.
+- Both: `Facts`, small strings a before-hook records for the durable hooks (§5a).
 
 ## 4. What a before-hook may do
 
@@ -101,7 +106,54 @@ A refusal is safe in any order: everything any hook put in the session is evicte
 After-hooks run after the commit, and each is isolated. A failure is logged and never turns the
 committed write into an error, nor skips the hooks after it. Use them for in-request follow-ups: a
 toast, a cache invalidation, a shown-once secret. Work that must eventually happen even if the process
-dies right after the commit belongs in a durable hook (`IAfterSaveCommitted`, see #467 M7b).
+dies right after the commit belongs in a durable hook (§5a).
+
+## 5a. Durable after-commit hooks
+
+`IAfterSaveCommitted` and `IAfterDeleteCommitted` (typed: `IAfterSaveCommitted<Order>`) run **after
+the commit, for certain**. The framework stores one outbox message per row and durable hook **in the
+write's own commit**, and Spark Messaging delivers it with its retries and dead-lettering. A committed
+write therefore always gets its follow-ups, even when the process dies right after the commit, and a
+refused, cancelled or conflicting write never does: its messages were in the commit that did not
+happen.
+
+```csharp
+public sealed class OrderMail(IMailer mailer) : IBeforeSave<Order>, IAfterSaveCommitted<Order>
+{
+    public ValueTask OnBeforeSaveAsync(Order order, SaveContext context)
+    {
+        context.Facts["Customer"] = order.CustomerEmail;   // the durable hook sees no entity
+        return ValueTask.CompletedTask;
+    }
+
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken ct)
+        => change.IsNew ? mailer.SendAsync(change.Facts["Customer"], $"Order {change.Id} received", ct) : Task.CompletedTask;
+}
+```
+
+- **The payload, never the entity**: `EntityType` (full name), `Id`, `Operation`, `IsNew`,
+  `IsReplaced`, `IsPurge`, `UserId`, `IsSystemContext`, `OccurredAt`, `PreviousChangeVector`, and
+  `Facts`. The row may have changed again by the time the hook runs; load it when its current state
+  matters. There is **no new change vector**: the message is written before the database assigns one.
+- **Facts** are what a before-hook copies from the entity for later: `SparkFacts.Reason` (the delete
+  reason, set by the framework and SoftDelete), `SparkFacts.ChangedAttributes` (set by History for
+  types with revisions). Keep them small, and never put a secret in them: they are stored in an outbox
+  document. A secret shown once (CodeCoverage's API token) stays an in-request `IAfterSave`.
+- **At least once, outside any request**: the hook runs in its own DI scope with no HTTP context, and a
+  redelivery can repeat it. Make it idempotent. Throw to retry.
+- **Messaging is required.** A registered durable hook without `spark.AddMessaging()` is a startup
+  error. A library that ships one references Messaging (Moderation does).
+- **Client-assigned ids only**: a type using server-assigned ids (`Orders|`) cannot have durable hooks,
+  since its id does not exist until the commit the message is written in. Spark assigns ids on the
+  client by default.
+- A durable hook that is removed from the app while messages for it are still queued is dead-lettered
+  ("not registered in this app").
+
+They replace SoftDelete's `ISoftDeleteObserver` and History's `ISparkRevisionObserver`. Moderation's
+vote reversal and the DemoApp broadcasts are durable hooks.
+
+Publishing a message of your own inside a write works the same way: `IMessageOutbox.EnqueueAsync(session,
+message)` stores it in the write's session, and it commits with the write.
 
 ## 6. Order
 

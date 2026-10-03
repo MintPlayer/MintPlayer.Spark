@@ -231,6 +231,7 @@ public class ModerationToolsTests : SparkTestDriver
         (await host.ModeratorAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: removed))).Status.Should().Be(HttpStatusCode.NoContent);
         (await host.SendAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: withdrawn), Alice)).Status.Should().Be(HttpStatusCode.NoContent);
 
+        await host.DrainAsync();
         var alice = await host.EventsForAsync(Alice);
         alice.Should().ContainSingle(e => e.Kind == ReputationEventKinds.Reversal).Which.RuleId.Should().Be("content-deleted");
         alice.Single(e => e.Kind == ReputationEventKinds.Reversal).TargetId.Should().Be(removed);

@@ -1,11 +1,11 @@
 # Plan — Issue #467 (one pull request)
 
-Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D33 settled during implementation and follow-up grilling) and spike results live in
+Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D34 settled during implementation and follow-up grilling) and spike results live in
 [issue_467_query_selection_PRD.md](issue_467_query_selection_PRD.md) §7. This file is the order of work.
 Where the PRD's §2 and §7 disagree, §7 wins.
 
 **Rules for executing this plan**
-- One branch, one PR: `feat/467-query-selection`. Every decision D1–D33 lands in this PR; the PR also closes #482.
+- One branch, one PR: `feat/467-query-selection`. Every decision D1–D34 lands in this PR; the PR also closes #482.
 - Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
   One full sweep at the end (M9):
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
@@ -180,18 +180,28 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
       isolated after-hooks, cancel, generator snapshot tests. Docs: `guide-row-security`, the SoftDelete README,
       `guide-manager-retry-actions`, the Spark README/AGENTS.md, and a new hooks guide.
 
-### M7b — Durable after-commit hooks (D17), per S6/S13
-- [ ] `IAfterSaveCommitted` / `IAfterDeleteCommitted` take a payload, never the live entity: type name, id, operation,
-      `IsReplaced`/`IsPurge`, actor id + system flag, time, previous change vector, and `Facts` filled by before-hooks.
-- [ ] Messaging: `EnqueueAsync(IAsyncDocumentSession, msg, options)`, store only, unique id, never the dedupe path. An
-      `ISparkAfterCommitOutbox` seam in Abstractions. The persister enqueues one message per row and hook in the data change's
-      own `SaveChanges`. A recipient runs the durable hooks, with #369 retries and dead-lettering.
-- [ ] **Decided (owner, 2026-10-03):** a durable hook registered without Messaging is a **startup error**. A library that ships one
-      references Messaging, so apps get it transitively (Moderation vote reversal).
-- [ ] Hooks move to the durable phase: SoftDelete observers, History observer notification (relax `SparkRevisionEvent.ChangeVector`
-- [ ] D32(4): `ISoftDeleteObserver` and `ISparkRevisionObserver` are removed; their users (libraries, tests) move to `IAfterDeleteCommitted`/`IAfterSaveCommitted` (payload: operation, id, actor, reason, changed attributes; no new change vector).
-      for deferred observers), Moderation vote reversal, DemoApp broadcasts. This fixes the side bug: DemoApp
-      `PersonActions.OnBeforeDeleteAsync` broadcast before the commit (already moved to an in-request `IAfterDelete` in M7; M7b makes it durable).
+### M7b — Durable after-commit hooks (D17), per S6/S13 (D34)
+- [x] `IAfterSaveCommitted` / `IAfterDeleteCommitted` (typed `<T>` forms) take a `SparkCommittedChange`, never the live entity:
+      entity type name, id, operation, `IsNew`/`IsReplaced`/`IsPurge`, actor id + system flag, time, previous change vector,
+      and `Facts` that before-hooks fill (`SparkHookContext.Facts`; `SparkFacts.Reason`, `SparkFacts.ChangedAttributes`).
+- [x] Messaging: `IMessageOutbox.EnqueueAsync(IAsyncDocumentSession, msg, options)`, store only, fresh id, a deduplication key
+      refused. `ISparkAfterCommitOutbox` (the seam) and `ISparkAfterCommitDispatcher` in Abstractions. The persister enqueues one
+      `SparkAfterCommitWork` per row and hook after the last before-hook, in the data change's own `SaveChanges`; a refusal
+      evicts it with everything else (F6). The recipient (`IRecipient<SparkAfterCommitWork>`, registered by `AddMessaging`)
+      calls the framework's dispatcher, which resolves the hook by name among registered hooks and the model's Actions classes;
+      a missing hook is a `NonRetryableException`. #369 retries and dead-lettering apply.
+- [x] **Decided (owner, 2026-10-03):** a durable hook registered without Messaging is a **startup error** (`UseSpark`); an
+      Actions class implementing one without Messaging fails at its first write. Moderation references Messaging.
+- [x] D32(4): `ISoftDeleteObserver` and `ISparkRevisionObserver` are removed (and `AddSoftDeleteObserver`, `AddRevisionObserver`,
+      `SoftDeleteEvent`, `SparkRevisionEvent`). Their tests move to durable hooks. No new change vector in the payload.
+- [x] Moved to the durable phase: Moderation vote reversal (`ModerationVoteReversal`, decided in the before-delete hook via a fact),
+      DemoApp broadcasts (`PersonActions`, `CompanyActions`). This also fixes the side bug: DemoApp
+      `PersonActions.OnBeforeDeleteAsync` broadcast before the commit (moved to an in-request `IAfterDelete` in M7; durable now).
+- [x] Tests: `DurableAfterCommitHookTests` (payload and facts, previous change vector, refused / stale / cancelled writes commit
+      no work, a bulk delete refused on a later row takes back the earlier rows' work, startup error), `MessageBusTests`
+      (`EnqueueAsync` commits with the caller's save, never before; dedupe refused). `TestAfterCommitOutbox` stores exactly as
+      Messaging does and drains through the real dispatcher. SoftDelete, History and Moderation tests drain before asserting.
+      Docs: `guide-hooks.md` §5a, the SoftDelete, History, Moderation and Messaging READMEs.
 
 ### M8 — Demo, E2E, docs
 - [ ] DemoApp / Fleet: an editor sees Edit + Delete in the strip; a read-only role sees no checkboxes.
@@ -208,6 +218,7 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
 - [ ] Test call sites made stale by D12 (selections and delete-many without `queryId`): `ExecuteCustomActionTests` (fallback-path unit tests), `DisableActionsTests`, `ModerationToolsTests`, `SoftDeleteTests`, `SubQueryActionsTests`; and fixtures embedding pre-#467 shapes (see M2 note).
 - [ ] Test call sites made stale by D14/D16 (M6): raw posts to `/po/delete`, `/po/delete-many` (`ids` → `items`), `/po/purge` and `/po/update` without an etag — `DenyAllEndpointMirrorTests`, `DisableActionsTests`, `RetryFromEveryHookTests`, `SubQueryActionsTests`, `XsrfSurfaceTests`, `HistoryTests`, `ModerationToolsTests`, `SoftDeleteTests`, E2E `QnAContributionsTests`, `RetryActionDeleteTests`; any HTTP test asserting 404 for an update of a hidden row now gets 409 `deleted` (D30c); natural-id collision tests now get 409 `exists` (D30d). The typed client call sites already compile (they load first: `DeleteAsLoadedAsync` / `AsListedAsync` test helpers).
 - [ ] Expectations changed by M7 (#482, D33): after-hooks run in registration order (not reverse) and are isolated; an Actions class's own hooks run after the registered ones; a `Retry.Action` in a bulk delete refuses the row (`Issue467` S8, `I467PromptActions`); Fleet's plate mismatch is a 400 (E2E `RetryActionDeleteTests`); a raw `session.Delete` of an `ISoftDeletable` in a fixture now needs `SparkRawWrites.Allow()`; tests asserting `OnDeleteCalls` (now: committed hard deletes only).
+- [ ] Expectations changed by M7b (#482, D34): the vote reversal, the SoftDelete/History notifications (now durable hooks) and the DemoApp broadcasts happen after delivery, not in the request — an E2E test asserting a reversal right after a moderator delete must wait for it (QnA runs Messaging); every host registering Moderation needs `AddMessaging()` or `AddTestAfterCommitOutbox()`.
 - [ ] S3: measure the D18 refusal message for a 200-row batch (breadcrumbs resolve in one batched call; confirm the cost).
 - [ ] The `Spikes/Issue467` tests are all green and moved; the `Spikes` folder is gone.
 - [ ] Full local sweep (`npm run test:affected`, Developer licence), all five test projects green.

@@ -7,7 +7,8 @@ namespace MintPlayer.Spark.Abstractions.Interceptors;
 /// claims. A hook implements one or more phase interfaces — <see cref="IBeforeSave"/>,
 /// <see cref="IAfterSave"/>, <see cref="IBeforeDelete"/>, <see cref="IAfterDelete"/>,
 /// <see cref="IDeleteReplacement"/>, <see cref="IAfterMaterialize"/>, <see cref="IAfterLoad"/>,
-/// <see cref="INaturalIdCollision"/> — and is registered once with <c>spark.AddHook&lt;T&gt;()</c>
+/// <see cref="INaturalIdCollision"/>, and the durable <see cref="IAfterSaveCommitted"/> /
+/// <see cref="IAfterDeleteCommitted"/> — and is registered once with <c>spark.AddHook&lt;T&gt;()</c>
 /// (scoped), or found by the hook registration generator. Before #482 these were called
 /// <em>interceptors</em> (<c>IPersistentObjectInterceptor</c>); the namespace keeps that name.
 /// </summary>
@@ -246,6 +247,15 @@ public abstract class SparkHookContext
     /// RavenDB dependency; <c>GetSession()</c> in <c>MintPlayer.Spark</c> returns it typed.
     /// </summary>
     public required object Session { get; init; }
+
+    /// <summary>
+    /// Small facts a before-hook records for the durable after-commit hooks (#482, D17): they get a
+    /// payload, never the live entity, so what they need to know about the entity is copied here — a
+    /// delete reason, the attributes an edit changed, the author of a deleted post. Captured after the
+    /// last before-hook and stored with the write. Keep it small, and never put a secret in it: it
+    /// lands in an outbox document.
+    /// </summary>
+    public IDictionary<string, string> Facts { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
 /// <summary>A save through <c>IDatabaseAccess.SavePersistentObjectAsync</c>.</summary>

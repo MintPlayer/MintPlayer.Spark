@@ -257,6 +257,9 @@ public static class SparkExtensions
             app.ApplicationServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<SparkDataProtectionOptions>>().Value,
             app.ApplicationServices.GetRequiredService<IHostEnvironment>());
 
+        // #482, D17: a durable after-commit hook with nothing to deliver it is refused at startup.
+        Services.SparkCommittedHooksStartupCheck.Run(app.ApplicationServices);
+
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
         // Middleware that must reject a request before the cost of authenticating it is paid — a rate

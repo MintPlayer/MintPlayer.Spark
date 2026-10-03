@@ -14,7 +14,7 @@ using Raven.Client.Documents.Session;
 namespace DemoApp.Actions;
 
 public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISparkOwnsRowSecurity,
-    IBeforeSave<Person>, IAfterSave<Person>, IAfterDelete<Person>
+    IBeforeSave<Person>, IAfterSaveCommitted<Person>, IAfterDeleteCommitted<Person>
 {
     /// <inheritdoc />
     public string RowSecurityRationale =>
@@ -33,20 +33,26 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISp
         entity.FirstName = entity.FirstName?.Trim() ?? string.Empty;
         entity.LastName = entity.LastName?.Trim() ?? string.Empty;
 
+        // The durable hook below gets a payload, not the entity: what it announces is recorded here.
+        context.Facts[NameFact] = $"{entity.FirstName} {entity.LastName}";
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask OnAfterSaveAsync(Person entity, SaveContext context)
+    private const string NameFact = "DemoApp.Name";
+
+    // Durable (#482, D17): written in the save's own commit and delivered by Messaging, so a committed
+    // save is always announced and a refused one never is.
+    public async Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"[PersonActions] Person saved: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
-        await messageBus.BroadcastAsync(new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));
+        var name = change.Facts.GetValueOrDefault(NameFact, string.Empty);
+        Console.WriteLine($"[PersonActions] Person saved: {name} (ID: {change.Id})");
+        await messageBus.BroadcastAsync(new PersonCreatedMessage(change.Id, name), cancellationToken);
     }
 
-    // After the commit (#482): broadcasting before it announced deletes that a refusal then undid.
-    public async ValueTask OnAfterDeleteAsync(Person entity, DeleteContext context)
+    public async Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"[PersonActions] Person deleted: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
-        await messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
+        Console.WriteLine($"[PersonActions] Person deleted (ID: {change.Id})");
+        await messageBus.BroadcastAsync(new PersonDeletedMessage(change.Id), cancellationToken);
     }
 
     /// <summary>
