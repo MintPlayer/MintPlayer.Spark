@@ -311,7 +311,8 @@ detail page's Edit and Delete buttons are these entries (D8).
 
 **Sub-queries** are the parent type's `persistentObject.queries`. An entry is a bare alias or
 `{ "query", "selectionMode", "parentReference" }`, and `selectionMode` can also sit on the query
-itself (`auto` by default, derived from the custom actions).
+itself (`auto` by default, derived from the actions the caller can use on the list: built-in Edit and
+Delete count, `single` no longer exists, and a row click always opens the row — #467 R1, D9, D10).
 - New on a sub-query calls `OnNewAsync(SparkNewArgs<T>)` with `args.Parent` / `ParentType` / `Query`.
 - **The base fills the reference to the parent.** If you override `OnNewAsync`, call
   `base.OnNewAsync(args)` or `args.FillParentReference()`, or the reference stays empty.

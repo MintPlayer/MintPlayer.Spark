@@ -549,7 +549,7 @@ describe('SparkQueryGridComponent', () => {
 
     const copyAction = {
       name: 'CopyCarsToCompany',
-      displayName: { en: 'Copy' },
+      label: { en: 'Copy' },
       showedOn: 'both',
       selectionRule: '>=1',
       refreshOnCompleted: false,
@@ -871,7 +871,7 @@ describe('SparkQueryGridComponent', () => {
   });
 
   describe('custom actions', () => {
-    const archive = { name: 'Archive', displayName: { en: 'Archive' }, showedOn: 'query', refreshOnCompleted: false } as any;
+    const archive = { name: 'Archive', label: { en: 'Archive' }, showedOn: 'query', refreshOnCompleted: false } as any;
     const other = { ...archive, name: 'Other' };
 
     it('withholds the actions the result disabled, case-insensitively, re-read per page', async () => {
@@ -902,7 +902,7 @@ describe('SparkQueryGridComponent', () => {
       try {
         const { c, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([archive]) });
 
-        await c.onCustomAction({ ...archive, confirmationMessageKey: 'confirm.archive' });
+        await c.onCustomAction({ ...archive, confirmation: { en: 'confirm.archive' } });
 
         expect(confirmSpy).toHaveBeenCalledWith('confirm.archive');
         expect(service.executeCustomAction).not.toHaveBeenCalled();
@@ -919,7 +919,7 @@ describe('SparkQueryGridComponent', () => {
         c.customActionExecuted.subscribe(executed);
         const before = c.fetchFn();
 
-        await c.onCustomAction({ ...archive, confirmationMessageKey: 'confirm.archive', refreshOnCompleted: true });
+        await c.onCustomAction({ ...archive, confirmation: { en: 'confirm.archive' }, refreshOnCompleted: true });
 
         expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
         expect(executed).toHaveBeenCalledTimes(1);
@@ -1154,7 +1154,7 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
     const actions = c.rowActions();
     expect(actions.map(a => a.name)).toEqual(['addon']);
     expect(actions[0].kind).toBe('addon');
-    expect(actions[0].definition.displayName).toEqual({ en: 'addon.label' });
+    expect(actions[0].definition.label).toEqual({ en: 'addon.label' });
 
     const fetches = service.executeQuery.mock.calls.length;
     await c.runRowAction(actions[0], { id: 'people/1' } as any);

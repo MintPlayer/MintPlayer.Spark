@@ -48,7 +48,7 @@ const carsQuery = {
 } as any;
 
 const exportAction = {
-  name: 'Export', displayName: { en: 'Export' }, offset: 0,
+  name: 'Export', label: { en: 'Export' }, offset: 0,
   showedOn: 'query', selectionRule: undefined, refreshOnCompleted: false,
 } as any;
 

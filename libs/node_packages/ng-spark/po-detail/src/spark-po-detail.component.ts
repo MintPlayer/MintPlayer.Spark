@@ -505,7 +505,7 @@ export class SparkPoDetailComponent {
     // host component driving this method directly would otherwise bypass the check.
     if (this.runningAction()) return;
 
-    const message = confirmationText(action, 1, this.lang.language());
+    const message = confirmationText(action, 1);
     if (message && !confirm(message)) return;
 
     this.runningAction.set(action.name);
@@ -539,7 +539,7 @@ export class SparkPoDetailComponent {
   }
 
   async onDelete(): Promise<void> {
-    const message = confirmationText(this.deleteAction(), 1, this.lang.language());
+    const message = confirmationText(this.deleteAction(), 1);
     if (!message || confirm(message)) {
       await this.sparkService.delete(this.type, this.id);
       this.deleted.emit();

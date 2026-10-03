@@ -95,21 +95,21 @@ Where the PRD's §2 and §7 disagree, §7 wins.
       custom action rule violation → 400 (R4); print switch; Revoke on the card.
 
 ### M4 — Selection and action strip (R1, R3, D9, D10, D19) — needs the M0 bump
-- [ ] `SparkSelectionMode` = `auto|none|multiple` (remove `single`: server, ng-spark, `SparkSubQueryTests.cs:19,26`).
-- [ ] `selectionModeFor` (`selection-mode.ts:32`) from the **effective** list: right ∩ `showedOn` includes
+- [x] `SparkSelectionMode` = `auto|none|multiple` (remove `single`: server, ng-spark, `SparkSubQueryTests.cs:19,26`).
+- [x] `selectionModeFor` (`selection-mode.ts:32`) from the **effective** list: right ∩ `showedOn` includes
       the query ∩ not in `disabledActions` ∩ not hidden by deleted mode ∩ **the rule accepts at least one
       row** (`=0` no longer counts, S2). Result: `multiple` or `none`. Recomputed on `disabledActions` /
       deleted-mode change; cleared when the mode becomes `none`. The same list feeds `toolbarActions()`.
-- [ ] Grid: `selectionMode="checkbox"` (ng-bootstrap 22.21.0); a row click opens; the selection is kept
+- [x] Grid: `selectionMode="checkbox"` (ng-bootstrap 22.21.0); a row click opens; the selection is kept
       across pages; the chip shows the off-page count.
-- [ ] Toolbar: `kind: 'edit'` (navigate to `/po/{type}/{id}/edit` with return state); Delete not gated on
+- [x] Toolbar: `kind: 'edit'` (navigate to `/po/{type}/{id}/edit` with return state); Delete not gated on
       "already selectable"; Edit hidden when `disabledActions` has `Edit`/`Save`; pencil icon in the
       query-list and card templates; Edit in the row ⋮ menu. `spark-query-list` `selectionMode` input.
-- [ ] Update the old-behaviour specs (S2): `spark-query-toolbar.spec.ts` (:121, 126, 144, 158, 251, 290, 419,
+- [x] Update the old-behaviour specs (S2): `spark-query-toolbar.spec.ts` (:121, 126, 144, 158, 251, 290, 419,
       458, 471), `sub-query.spec.ts` (:13, 30, 36, 55), `spark-query-list.component.spec.ts:356`, grid spec
       :243-262.
-- [ ] **S1 remainder:** the chip count equals what actions receive.
-- [ ] New specs: one per R1 condition where only that condition fails (incl. a `=0` rule), explicit
+- [x] **S1 remainder:** the chip count equals what actions receive.
+- [x] New specs (type-checked; run in the M9 sweep): one per R1 condition where only that condition fails (incl. a `=0` rule), explicit
       override, click opens, checkbox selects, cross-page selection.
 
 ### M5 — Write-path gates (D11, D12, D13, D18, D20, D21)

@@ -345,8 +345,8 @@ transaction, so it stays one row at a time through `/spark/po/purge`.
 
 ### Selection mode (D17)
 
-A query declares `"selectionMode": "auto" | "none" | "single" | "multiple"`. The parent type's
-`queries` entry can override it for one parent:
+A query declares `"selectionMode": "auto" | "none" | "multiple"` (`single` was removed in #467, D10).
+The parent type's `queries` entry can override it for one parent:
 
 ```json
 "persistentObject": {
@@ -361,26 +361,41 @@ A query declares `"selectionMode": "auto" | "none" | "single" | "multiple"`. The
 - An entry is a bare alias, as before, or an object.
 - Model sync writes a bare alias back for an entry without overrides, so existing model files do not
   change.
-- `auto`, the default, derives the mode from the **custom** actions offered, exactly as before:
-  - checkboxes appear only when some action has a rule;
-  - `single` when every rule wants exactly one row.
-- The default Delete does not widen `auto`, so selection is opt-in.
+- `auto`, the default, derives the mode from the actions the caller can use **on this list**
+  (#467, R1). An action counts when all of these hold:
+  1. the caller holds its right (the list endpoint only returns those);
+  2. its `showedOn` includes the query;
+  3. the result does not withhold it (`disabledActions`; Edit also not when `Save` is), and the
+     recycle bin does not hide it;
+  4. its `selectionRule` accepts at least one row (`=0` does not).
+- Built-in Edit and Delete count like any other action. One counting action gives `multiple`;
+  none gives `none`, so a read-only user sees a list without checkboxes.
+- The mode is recomputed when `disabledActions` or the deleted mode changes, and the selection is
+  cleared when it becomes `none`.
+- There is no single selection: a selectable list always has the checkbox column, and an action
+  whose rule does not match the count is disabled (Edit with two rows ticked), never trimmed (D10).
+- A row click always opens the row; only the checkbox cell selects (D9).
 - Selection is presentation only. Every action that takes rows still enforces its own rule at submit.
 
 ### The toolbar, the chip and the row menu
 
 The grid builds one toolbar model, and both hosts render it: the sub-query card's header and the
 query-list page's action bar.
-- **Toolbar:** `New`, `Delete` and the custom actions. Each is enabled live from the selection count.
+- **Toolbar:** `New`, `Edit`, `Delete` and the custom actions, with the catalogue's labels and
+  icons. Each is enabled live from the selection count.
   - `New` needs the right, and a result that does not withhold `New`.
-  - `Delete` is shown only while rows can be selected.
+  - `Edit` (`=1`) opens the ticked row's edit page, with the list as the return state. It is
+    withheld when the result withholds `Edit` or `Save`.
+  - `Edit` and `Delete` are shown whenever they count; a list declared `none` leaves them to the
+    row menu.
   - The card puts its caption on the left and the actions on the right, with the overflow in the
     priority nav under the translated "More" label (`common.more`), as on the list and detail pages.
-- **Selection bar:** an "N selected" chip while rows are selected. There is no select-all (with
-  paged, lazy or virtual-scrolled rows it could only tick the loaded rows); the datatable's header
-  checkbox is the deselect-all, shown only while a row is selected. Single selection has no
-  checkbox column, so there the chip carries a ⊗ that clears the selection.
-- **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Delete. It
+- **Selection bar:** an "N selected" chip while rows are selected. The selection survives paging
+  and virtual scroll (D19), so the chip counts every ticked row, says how many are on other pages
+  ("7 selected · 4 on other pages"), and its ⊗ clears them all. Actions receive exactly what the
+  chip counts. Search, a column filter and a deleted-mode change clear the selection. There is no
+  select-all (with paged, lazy or virtual-scrolled rows it could only tick the loaded rows).
+- **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Edit and Delete. It
   runs on that row only and leaves the checkbox selection alone. An action without a rule acts on the
   query, not on a row, so it is not in the menu.
 - **Search box:** the card's header ends with `<spark-search-box>` (`@mintplayer/ng-spark/grid`), the

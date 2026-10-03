@@ -41,19 +41,23 @@ const rows: QueryResultItem[] = [
 const columns = [{ name: 'Body', dataType: 'string', order: 1 } as any];
 
 const newAction = {
-  name: 'New', displayName: { en: 'New' }, icon: 'plus-lg', showedOn: 'both', offset: 0,
+  name: 'New', label: { en: 'New' }, icon: 'plus-lg', showedOn: 'query', offset: 0,
   refreshOnCompleted: false, isDefault: true, variant: 'primary',
 } as CustomActionDefinition;
+const editAction = {
+  name: 'Edit', label: { en: 'Edit' }, icon: 'pencil', showedOn: 'both', selectionRule: '=1', offset: 0,
+  refreshOnCompleted: false, isDefault: true,
+} as CustomActionDefinition;
 const deleteAction = {
-  name: 'Delete', displayName: { en: 'Delete' }, icon: 'trash', showedOn: 'both', selectionRule: '>0', offset: 0,
-  refreshOnCompleted: false, isDefault: true, variant: 'danger', confirmationMessageKey: 'common.confirmDeleteSelected',
+  name: 'Delete', label: { en: 'Delete' }, icon: 'trash', showedOn: 'both', selectionRule: '>0', offset: 0,
+  refreshOnCompleted: false, isDefault: true, variant: 'danger', confirmation: { en: 'common.confirmDeleteSelected' },
 } as CustomActionDefinition;
 const duplicateAction = {
-  name: 'DuplicateAnswer', displayName: { en: 'Duplicate' }, showedOn: 'query', selectionRule: '=1', offset: 0,
+  name: 'DuplicateAnswer', label: { en: 'Duplicate' }, showedOn: 'query', selectionRule: '=1', offset: 0,
   refreshOnCompleted: true,
 } as CustomActionDefinition;
 const exportAction = {
-  name: 'Export', displayName: { en: 'Export' }, showedOn: 'Both', offset: 1, refreshOnCompleted: false,
+  name: 'Export', label: { en: 'Export' }, showedOn: 'Both', offset: 1, refreshOnCompleted: false,
 } as CustomActionDefinition;
 
 const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : v?.en ?? '') };
@@ -117,20 +121,80 @@ describe('query toolbar (#460 M15)', () => {
   beforeEach(() => TestBed.resetTestingModule());
   afterEach(() => vi.restoreAllMocks());
 
-  describe('selection modes', () => {
-    it('auto derives from the custom actions only: the default Delete does not add checkboxes', async () => {
+  /**
+   * #467 R1: in `auto`, a list is selectable exactly when an action COUNTS — the caller holds it (it
+   * was listed), it shows on queries, the result does not withhold it, the recycle bin does not hide
+   * it, and its rule accepts at least one row. One case per condition, each failing only that one.
+   */
+  describe('selection modes (R1)', () => {
+    it('the built-in Delete counts: a deleting user gets checkboxes', async () => {
       const { c } = await grid([newAction, deleteAction]);
+      expect(c.selectionMode()).toBe('multiple');
+    });
+
+    it('the built-in Edit counts too', async () => {
+      const { c } = await grid([newAction, editAction]);
+      expect(c.selectionMode()).toBe('multiple');
+    });
+
+    it('an =1 custom action gives multiple: there is no single selection (D10)', async () => {
+      const { c } = await grid([newAction, duplicateAction]);
+      expect(c.selectionMode()).toBe('multiple');
+    });
+
+    it('(1) right: an action the server did not list does not count — a read-only user sees no checkboxes', async () => {
+      const { c } = await grid([newAction]);
       expect(c.selectionMode()).toBe('none');
     });
 
-    it('auto turns single for an =1 custom action', async () => {
-      const { c } = await grid([newAction, deleteAction, duplicateAction]);
-      expect(c.selectionMode()).toBe('single');
+    it('(2) placement: an action shown only on the detail page does not count', async () => {
+      const detailOnly = { ...deleteAction, name: 'Archive', isDefault: undefined, showedOn: 'detail' } as CustomActionDefinition;
+      const { c } = await grid([detailOnly]);
+      expect(c.selectionMode()).toBe('none');
     });
 
-    it('the query definition wins over auto', async () => {
-      const { c } = await grid([deleteAction], {}, { getQuery: vi.fn().mockResolvedValue({ ...answersQuery, selectionMode: 'multiple' }) });
+    it('(3) withheld: an action the result disables does not count, and re-enabling it counts again', async () => {
+      const { c } = await grid([deleteAction]);
+      (c as any).disabledActions.set(['Delete']);
+      expect(c.selectionMode()).toBe('none');
+      (c as any).disabledActions.set([]);
       expect(c.selectionMode()).toBe('multiple');
+    });
+
+    it('(3) withheld: Edit does not count when the result withholds Save', async () => {
+      const { c } = await grid([editAction]);
+      (c as any).disabledActions.set(['save']);
+      expect(c.selectionMode()).toBe('none');
+    });
+
+    it('(3) recycle bin: nothing counts while the list shows deleted rows', async () => {
+      const { c } = await grid([deleteAction, duplicateAction], { deleted: 'only' });
+      expect(c.selectionMode()).toBe('none');
+    });
+
+    it('(4) rule: an =0 action accepts no row and does not count; a rule-less one neither', async () => {
+      const zero = { ...duplicateAction, name: 'Scatter', selectionRule: '=0' } as CustomActionDefinition;
+      const { c } = await grid([zero, exportAction]);
+      expect(c.selectionMode()).toBe('none');
+    });
+
+    it('drops the selection when the list stops being selectable', async () => {
+      const { c, fixture } = await grid([deleteAction]);
+      c.selection.set([rows[0]]);
+      (c as any).disabledActions.set(['delete']);
+      fixture.detectChanges();
+      await settle(fixture);
+      expect(c.selection()).toEqual([]);
+    });
+
+    it('an explicit multiple wins over auto', async () => {
+      const { c } = await grid([newAction], {}, { getQuery: vi.fn().mockResolvedValue({ ...answersQuery, selectionMode: 'multiple' }) });
+      expect(c.selectionMode()).toBe('multiple');
+    });
+
+    it('an explicit none wins over counting actions', async () => {
+      const { c } = await grid([deleteAction, editAction], {}, { getQuery: vi.fn().mockResolvedValue({ ...answersQuery, selectionMode: 'none' }) });
+      expect(c.selectionMode()).toBe('none');
     });
 
     it('the sub-query entry wins over the query definition', async () => {
@@ -148,6 +212,45 @@ describe('query toolbar (#460 M15)', () => {
         .toEqual(['new:New', 'delete:Delete', 'custom:DuplicateAnswer', 'custom:Export']);
       const priorities = c.toolbarActions().map(a => a.priority);
       expect([...priorities].sort((a, b) => a - b)).toEqual(priorities);
+    });
+
+    it('puts Edit between New and Delete, enabled for exactly one ticked row (R3)', async () => {
+      const { c } = await grid([newAction, editAction, deleteAction]);
+      expect(c.toolbarActions().map(a => `${a.kind}:${a.name}`)).toEqual(['new:New', 'edit:Edit', 'delete:Delete']);
+      const edit = c.toolbarActions().find(a => a.kind === 'edit')!;
+
+      expect(c.isToolbarActionEnabled(edit)).toBe(false);
+      c.selection.set([rows[0]]);
+      expect(c.isToolbarActionEnabled(edit)).toBe(true);
+      c.selection.set([rows[0], rows[1]]);
+      expect(c.isToolbarActionEnabled(edit)).toBe(false);
+      expect(c.selection().length).toBe(2);
+    });
+
+    it('Edit opens the ticked row on its edit page, with this list as the return state', async () => {
+      const { c } = await grid([editAction]);
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      c.selection.set([rows[1]]);
+
+      await c.runToolbarAction(c.toolbarActions().find(a => a.kind === 'edit')!);
+
+      const [commands, extras] = navigate.mock.calls[0] as [unknown[], any];
+      expect(commands).toEqual(['/po', 'answer', 'answers/2', 'edit']);
+      expect(extras.state).toBeDefined();
+    });
+
+    it('withholds Edit when the result disables Edit or Save', async () => {
+      for (const withheld of ['Edit', 'Save']) {
+        TestBed.resetTestingModule();
+        const { c } = await grid([editAction, deleteAction]);
+        (c as any).disabledActions.set([withheld]);
+        expect(c.toolbarActions().map(a => a.name)).toEqual(['Delete']);
+      }
+    });
+
+    it('offers Delete whenever it counts, without an explicit selection mode', async () => {
+      const { c } = await grid([deleteAction]);
+      expect(c.toolbarActions().map(a => a.name)).toEqual(['Delete']);
     });
 
     it('offers a custom action whose showedOn differs only in case', async () => {
@@ -232,7 +335,7 @@ describe('query toolbar (#460 M15)', () => {
   });
 
   describe('selection bar', () => {
-    it('shows the chip with the count while rows are selected, and no clear button of its own', async () => {
+    it('shows the chip with the count while rows are selected, and its ⊗ drops the whole selection', async () => {
       const { fixture, c } = await grid([deleteAction], { selectionModeSetting: 'multiple' });
       expect(fixture.nativeElement.querySelector('.spark-selection-chip')).toBeNull();
 
@@ -244,20 +347,52 @@ describe('query toolbar (#460 M15)', () => {
       expect(chip).not.toBeNull();
       expect(chip.textContent).toContain('2');
       expect(chip.textContent).toContain('common.selected');
-      // Deselect-all is the datatable's header checkbox; the chip does not repeat it.
-      expect(chip.querySelector('button')).toBeNull();
+      expect(chip.querySelector('.spark-selection-off-page')).toBeNull();
+
+      (chip.querySelector('.spark-selection-clear') as HTMLButtonElement).click();
+      expect(c.selection()).toEqual([]);
     });
 
-    it('single selection has no header checkbox, so the chip carries the clear button', async () => {
-      const { fixture, c } = await grid([duplicateAction], { selectionModeSetting: 'single' });
-      c.selection.set([rows[1]]);
+    /**
+     * #467 D19 / S1: the selection survives paging, so the chip counts ticked rows on other pages
+     * too, says how many those are, and the count is exactly what an action receives.
+     */
+    it('counts ticked rows on other pages, and Delete receives exactly what the chip counts', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { fixture, c, service } = await grid([deleteAction]);
+      const offPage = { id: 'answers/99', values: [{ key: 'Body', value: 'elsewhere' }] } as QueryResultItem;
+      c.selection.set([rows[0], offPage]);
       fixture.detectChanges();
       await settle(fixture);
 
-      const clear = fixture.nativeElement.querySelector('.spark-selection-chip .spark-selection-clear') as HTMLButtonElement;
-      expect(clear).not.toBeNull();
-      clear.click();
+      const chip = fixture.nativeElement.querySelector('.spark-selection-chip') as HTMLElement;
+      expect(chip.textContent).toContain('2');
+      expect(chip.querySelector('.spark-selection-off-page')!.textContent).toContain('1');
+      expect(c.offPageCount()).toBe(1);
 
+      await c.runToolbarAction(c.toolbarActions().find(a => a.kind === 'delete')!);
+      expect(service.deleteMany.mock.calls[0][1]).toEqual(['answers/1', 'answers/99']);
+    });
+
+    it('renders the checkbox-only datatable mode, so a row click never selects (D9)', async () => {
+      const { fixture } = await grid([deleteAction]);
+      const table = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<QueryResultItem>;
+      expect(table.selectionMode()).toBe('checkbox');
+    });
+
+    it('a row click opens the row on a selectable list, and a click in the checkbox cell does not', async () => {
+      const { c } = await grid([deleteAction]);
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const cell = document.createElement('td');
+      cell.className = 'checkbox-cell';
+      const inCell = document.createElement('span');
+      cell.appendChild(inCell);
+
+      (c as any).onRowClick({ row: rows[0], originalEvent: new MouseEvent('click') });
+      (c as any).onRowClick({ row: rows[1], originalEvent: { target: inCell } });
+
+      expect(navigate).toHaveBeenCalledTimes(1);
+      expect(navigate.mock.calls[0][0]).toEqual(['/po', 'answer', 'answers/1']);
       expect(c.selection()).toEqual([]);
     });
 
@@ -287,9 +422,18 @@ describe('query toolbar (#460 M15)', () => {
   });
 
   describe('row menu', () => {
-    it('lists the actions whose rule accepts one row: Delete and =1, never New or a rule-less action', async () => {
-      const { c } = await grid([newAction, deleteAction, duplicateAction, exportAction], { selectionModeSetting: 'none' });
-      expect(c.rowActions().map(a => a.name)).toEqual(['Delete', 'DuplicateAnswer']);
+    it('lists the actions whose rule accepts one row: Edit, Delete and =1, never New or a rule-less action', async () => {
+      const { c } = await grid([newAction, editAction, deleteAction, duplicateAction, exportAction], { selectionModeSetting: 'none' });
+      expect(c.rowActions().map(a => a.name)).toEqual(['Edit', 'Delete', 'DuplicateAnswer']);
+    });
+
+    it("Edit in a row's menu opens that row's edit page", async () => {
+      const { c } = await grid([editAction]);
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+      await c.runRowAction(c.rowActions()[0], rows[2]);
+
+      expect(navigate.mock.calls[0][0]).toEqual(['/po', 'answer', 'answers/3', 'edit']);
     });
 
     it('leaves out an action the result withholds', async () => {
@@ -469,7 +613,7 @@ describe('query toolbar (#460 M15)', () => {
      * menu. A detail-only action stays off the card.
      */
     it('a sub-query card offers New, Delete and the query actions, enabled live, with the row menu', async () => {
-      const detailOnly = { name: 'CloseQuestion', displayName: { en: 'Close' }, showedOn: 'detail', offset: 0, refreshOnCompleted: false } as CustomActionDefinition;
+      const detailOnly = { name: 'CloseQuestion', label: { en: 'Close' }, showedOn: 'detail', offset: 0, refreshOnCompleted: false } as CustomActionDefinition;
       const { fixture, el } = await card([newAction, deleteAction, duplicateAction, exportAction, detailOnly],
         { selectionMode: 'multiple', parentId: 'questions/1', parentType: 'Question' });
       const inner = fixture.debugElement.query(d => d.componentInstance instanceof SparkQueryGridComponent)

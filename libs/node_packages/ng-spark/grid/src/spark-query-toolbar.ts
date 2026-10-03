@@ -2,21 +2,21 @@ import { CustomActionDefinition } from '@mintplayer/ng-spark/models';
 import type { SparkQueryRowAction } from '@mintplayer/ng-spark/panels';
 
 /**
- * One button of a query's toolbar (#460, M15): the built-in New or Delete, or a custom action.
+ * One button of a query's toolbar (#460 M15, #467 R3): the built-in New, Edit or Delete, or a custom action.
  *
  * Built by `SparkQueryGridComponent.toolbarActions()` and rendered by every host of the grid — the
  * query card's header and the query-list page's action bar — so both surfaces offer the same
  * actions, enabled by the same rules.
  */
 export interface SparkQueryToolbarAction {
-  kind: 'new' | 'delete' | 'custom' | 'addon';
+  kind: 'new' | 'edit' | 'delete' | 'custom' | 'addon';
   /** For `addon` (row menu only): the add-on's entry (`SPARK_QUERY_ROW_ACTIONS`). */
   addon?: SparkQueryRowAction;
   /** The action's name, unique within the toolbar. */
   name: string;
   /** Its catalogue entry: label, icon, `selectionRule`, `variant`, confirmation. */
   definition: CustomActionDefinition;
-  /** `*bsPriorityNavItem` priority: New first, then Delete, then custom actions by offset. */
+  /** `*bsPriorityNavItem` priority: New first, then Edit, then Delete, then custom actions by offset. */
   priority: number;
 }
 
