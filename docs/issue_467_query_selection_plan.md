@@ -239,4 +239,4 @@ Design: issue #482, section "Interceptor interfaces". Lands in this PR (owner de
 - [x] Rename (owner, 2026-10-04; PRD D33(a)): every #482 name says *interceptor* (`ISparkInterceptor`, `InterceptorStage`,
       `SparkInterceptorContext`, `AddInterceptor<T>()`, `AddInterceptors()`, `SparkInterceptorPipeline`,
       `InterceptorRegistrationGenerator`, `guide-interceptors.md`).
-- [ ] Update the #467 and #482 descriptions, then open the PR closing #467 and #482.
+- [x] #467 and #482 descriptions updated (2026-10-04; #482 retitled to interceptors). PR opened closing both; CI is the sweep.
