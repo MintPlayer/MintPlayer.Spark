@@ -1,0 +1,250 @@
+# PRD — Issue #467: query selection checkboxes, Edit/Delete on the query list
+
+Rows in a query get selection checkboxes **when an action on that list needs a selection**, custom
+actions obey their `selectionRule`, and the built-in **Edit** (`=1`) and **Delete** (`>0`) appear in
+the query-list action strip so users no longer have to open a persistent object to edit or delete it.
+
+- Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/467
+- Implementation plan: [issue_467_query_selection_plan.md](issue_467_query_selection_plan.md)
+- Baseline: master `2171014b`.
+- Prior art this builds on: [issue_460_PRD.md](issue_460_PRD.md) D17–D19 / §3.15 (M15, commit
+  `d661d80b`), [query-grid-card-PRD.md](query-grid-card-PRD.md), [guide-custom-actions.md](guide-custom-actions.md) §233–330.
+
+**The framework is in preview: breaking changes are allowed** and ship as minor bumps with release
+notes (NuGet major stays 11, npm major stays 22 — see CLAUDE.md "Versioning").
+
+Investigated 2026-10-03 by four parallel investigations (backend, frontend, security, Vidyano
+reference). File:line references are against `2171014b`.
+
+---
+
+## 1. What already exists on master
+
+Most of the issue's mechanics shipped in #460 M15. The issue's real gaps are smaller than its text
+suggests.
+
+| Area | State |
+|---|---|
+| Selection-rule grammar | **EXISTS** — `X` placeholder, AND-ed terms, `<= >= < > != =`, mirrored number-first terms, ranges (`1<X<5`). Server `Services/SelectionRuleParser.cs`, client port `ng-spark/models/src/selection-rule.ts`, shared `selection-rule.fixture.json`. Malformed rules are **rejected** at config load (`CustomActionsConfigurationLoader.cs:74,100-116`) and disabled on the client — stricter than Vidyano, which treats an unparseable rule as "always true". Keep Spark's behaviour. |
+| Built-in catalogue actions | **PARTIAL** — `SparkDefaultActions.cs` has `New` (no rule) and `Delete` (`>0`, danger, confirm key `common.confirmDeleteSelected`), overridable by name in `customActions.json` (`Resolve`, :243-268). **No `Edit`.** `IsDefault` (:214-216) knows only New and Delete. |
+| `/spark/actions/list` | **EXISTS, rights-filtered** — `ListCustomActions.cs:58-67` lists New/Delete only when the user holds `New/T` / `Delete/T`; custom actions only with `{Action}/{Type}`. The client therefore only ever sees actions the user may run. |
+| Selection mode | **EXISTS** — `SparkSelectionMode` `auto|none|single|multiple` (`Abstractions/SparkSelectionMode.cs`) on `SparkQuery.SelectionMode` (`SparkQuery.cs:86-90`) with per-sub-query override (`SparkSubQuery.cs:32`). Only `apps/QnA/.../Question.json:370` sets it. |
+| `auto` derivation | **EXISTS, too narrow** — `selectionModeFor` (`models/src/selection-mode.ts`, used at `spark-query-grid.component.ts:371`) counts **custom** actions with a rule only. The default Delete deliberately does not count (D17), so almost no list has checkboxes today. |
+| Grid selection | **EXISTS** — `selection = model<QueryResultItem[]>` (grid ts:250) bound to `bs-datatable [selectionMode] [(selection)]` (html:59-61). "N selected" chip, deselect-all, **no select-all** (owner decision 2026-09-29). Selection cleared on search / filter / deleted-mode change / reload; deleted ids pruned after delete. A click selects and a double-click opens when selectable (ts:218-224). |
+| Toolbar / action strip | **EXISTS** — `toolbarActions()` (grid ts:387-404) = New, Delete (only when selectable), custom actions; enabled via `parseSelectionRule(rule)(count)` (ts:648); disabled, not hidden. Query-list page renders it in a `bs-priority-nav` (query-list html:7-21); sub-query cards render the same list. Row ⋮ menu (`rowActions()`, ts:411) offers Delete + every action whose rule accepts 1. |
+| `showedOn` filtering | **EXISTS** — `filterQueryActions` / `defaultQueryActions` (`models/src/query-actions.ts`) drop actions whose `showedOn` excludes the query. |
+| Bulk delete | **EXISTS** — `POST /spark/po/delete-many` (`DeleteMany.cs`): 200-row cap, `showedOn` + rule check (400), Delete right, collection guard, Delete row gate, disabled-action gate (403), interceptors, one atomic `SaveChanges`, all-or-nothing (404 for any missing/denied row). |
+| Custom action with selection | **EXISTS, safe** — `ExecuteCustomAction.cs` re-runs the query narrowed to the submitted ids (never trusts client rows), refuses on shrink (404), checks `AreAllowedAsync(action)` per row and the disabled-action union. Rule + cap enforced server-side **only when no `Parent` is sent** (:590-614; deliberate, for detail-page invocation). |
+| Edit from a list | **MISSING** — no Edit anywhere in grid, toolbar or row menu. The detail page's Edit is a hard-coded button (`po-detail.component.html:14-21`, `onEdit()` ts:515 → `po/:type/:id/edit`). |
+| Per-row rights in query results | **MISSING** — `QueryResultItem` (`Abstractions/QueryResult.cs:130-149`) has no `can` block, no `etag`, no per-row `DisabledActions`; those exist only on single-PO loads (`DefaultPersistentObjectActions.cs:174-195`). |
+| "Hide checkboxes" config | **EXISTS** — `selectionMode: "none"` on the query or sub-query entry. Vidyano has no per-query flag at all (its checkboxes are derived from actions; only a grid-level `noSelection` attribute). No new flag is needed. |
+| ng-bootstrap datatable | **PARTIAL.** 22.20.0 has `selectionMode`, `selection`, `rowKey`, `compareWith`, `rowClick`/`rowDblClick` (`mintplayer-ng-bootstrap-datatable.d.ts:193-245`). ~~No library work.~~ *Superseded (D9/D19):* the selection is lost across `[fetch]` pages and a row click always selects. Library work is filed as MintPlayer/mintplayer-ng-bootstrap#422. |
+
+---
+
+## 2. Requirements
+
+> **Read §7 first.** The grilling (D1–D21) widened and corrected this section: all localized text
+> moves to `translations.json` (D1–D6), `actions.json` with layered composition (D7–D8), clicks and
+> selection (D9, D10, D19), and write-path hardening (D11–D18, D20). Where this section and §7 disagree,
+> **§7 wins**. Superseded lines below are struck through.
+
+### R1 — When are checkboxes shown (the core rule)
+
+Checkboxes are **derived from the actions the user can actually use on this list**; they are not a
+per-list toggle. In `auto` mode (the default), an action **counts** when **all** of these hold:
+
+1. **Right** — the user holds the action's right (`New/T`, `Edit/T`, `Delete/T`, `{Action}/T` per
+   security.json). Already guaranteed: `/spark/actions/list` only returns permitted actions.
+2. **Placement** — its `showedOn` includes the query (a sub-query card counts as a query). An action
+   shown only on the PO page never makes a list selectable.
+3. **Not withheld** — it is not in the page's `disabledActions` (query-level `OnDisableActionsAsync`,
+   read per page) and not hidden by recycle-bin / deleted mode.
+4. **Needs a selection** — it has a non-empty `selectionRule`.
+
+Then:
+
+| Counting actions | Mode |
+|---|---|
+| none | `none`: no checkboxes |
+| ~~all rules are `=1`-like (accept exactly 1)~~ | ~~`single`~~ (removed, D10) |
+| at least one | `multiple`: checkbox column; actions whose rule does not match the count are disabled; the selection is never trimmed |
+
+A row click always opens the row; only the checkbox cell selects (D9).
+
+An explicit `selectionMode` (`none`/`multiple`; `single` removed, D10) on the query or sub-query entry
+overrides the derivation. `none` is the "hide checkboxes" switch the issue asks for.
+
+Because (3) can change per page, the mode is **recomputed whenever `disabledActions` or deleted mode
+changes**, and the selection is cleared when the mode becomes `none`.
+
+**This keeps D17's principle** (selection is opt-in, driven by actions) and **reverses only its
+detail** that the default Delete does not count. Built-in Edit and Delete now count like any other
+action. Consequence: a read-only user sees exactly today's list; anyone with Edit, Delete or a
+multi-row custom action sees checkboxes.
+
+Checkbox visibility is **presentation only**. It is never an authorization boundary (see R5).
+
+### R2 — Built-in Edit action
+
+- Add `Edit` to `SparkDefaultActions` (`Builtin`, `Resolve`, `IsDefault`): `selectionRule = "=1"`,
+  `showedOn = query | persistentObject`, icon pencil, gated by `Edit/T` in `ListCustomActions`.
+- `IsDefault` **must** include `Edit` — otherwise a `customActions.json` entry or an `ICustomAction`
+  named `Edit` becomes executable through `/actions/execute`, gated only by `Edit/T` +
+  `AreAllowedAsync("Edit")`, bypassing Update's attribute write-shield and `WITH CHECK`
+  (`ExecuteCustomAction.cs:562-566`). `Edit` becomes a framework-reserved name (no app uses it today:
+  DemoApp, CodeCoverage, Fleet, QnA checked). `/actions/execute` returns 404 for it, like New/Delete.
+- Executing Edit from the list **only navigates** to `/po/{type}/{id}/edit` with the list as return
+  state. All enforcement stays in Get/Update (row gate, `can` block, Etag, write-shield). The `=1`
+  rule is client-side only — there is no bulk endpoint to enforce it on, and no bulk edit (issue: "no
+  bulk-edit for now").
+- Apps override Edit by name in `customActions.json` exactly like New/Delete (D18): e.g. a different
+  `showedOn`, or remove it from the list.
+- Edit is withheld when `disabledActions` contains `Edit` or `Save`.
+- New keeps no rule (issue: "new => no selectionrule"); Delete keeps `>0`.
+
+### R3 — Edit and Delete in the action strip
+
+- `toolbarActions()` emits `kind: 'edit'` (between New and Delete) whenever Edit counts per R1 (1–3);
+  Delete is emitted whenever it counts — no longer gated on the list already being selectable
+  (R1 makes that circular reasoning unnecessary).
+- Both buttons obey their rule: disabled, not hidden, when the count does not match (existing
+  behaviour for custom actions).
+- The row ⋮ menu gains Edit (its rule accepts 1).
+- Icons: pencil for edit in both the query-list (`query-list html:14-18`) and the card templates.
+- `spark-query-list` gets a `selectionMode` input mirroring the card's, for hosts that embed the page.
+
+### R4 — Custom actions obey the selection
+
+Already true on master (toolbar enablement + server-side rule check). This PR adds the missing test:
+a custom action whose `selectionRule` is violated gets **400** from `/actions/execute`. Fix the stale
+doc comments that still list only `=0`, `=1`, `>0` (`CustomActionDefinition.cs:25`,
+`SparkCustomAction.cs:27-29`).
+
+### R5 — Bulk paths must be at least as strict as the single-row paths
+
+The issue makes bulk delete reachable from every list a deleting user opens, so the security
+investigation's gaps in the bulk path are in scope (one PR — CLAUDE.md). Ranked by severity; each
+has an open question (§4) and/or a spike (§5).
+
+| # | Severity | Gap | Direction (recommended, to confirm) |
+|---|---|---|---|
+| G1 | High | **After-commit hook failure.** In delete-many, per-row `OnAfterDeleteAsync` runs after the commit, outside the try (`DatabaseAccess.cs:788-803`). A throw on row k returns 400/500 for an already-committed delete and skips rows k+1..N's after-hooks (SoftDelete observers / revision cleanup `SoftDeleteInterceptor.cs:76-100`, Moderation audit + vote reversal `ModerationInterceptor.cs:104-131`, History notify). Single delete has the same flaw. | Run every after-hook, collect and log failures, return success (the data change is committed and cannot be undone). Spike S6. |
+| G2 | Medium | **No Read gate on delete-many.** Single delete pre-loads through `GetPersistentObjectAsync` (`Read/T` + Read row filter + excludes soft-deleted); delete-many checks only `Delete/T` + the Delete row rule. If a Delete row rule is wider than the Read rule, a caller can delete rows they cannot see; a mixed batch is a small 403-vs-404 existence oracle. | Apply the Read row gate in delete-many too (parity; missing ≡ no-access, M-3). Spike S4. |
+| G3 | Medium | **Query-level disable is bypassable.** The query target of `OnDisableActionsAsync` is only judged when the client sends a matching `queryId` (`DatabaseAccess.cs:669-681`, `ExecuteCustomAction.cs:902-915`). Omit it, or name another query of the same type, and "Delete disabled on this query" is skipped. | Decide: require `queryId` for list-originated bulk calls, or document query-level disabling as non-authoritative. Spike S7. |
+| G4 | Medium | **Hard delete is last-write-wins.** `OnDeleteAsync` (`DefaultPersistentObjectActions.cs:357-374`) deletes without a change vector; neither delete request nor `QueryResultItem` carries an Etag. A delete from a stale grid removes a row edited after it was loaded. | Optional per-row `etag` on `QueryResultItem` and on delete / delete-many references; enforced when present (409). Or accept LWW explicitly. Spike S5. |
+| G5 | Medium (UX) | **No per-row rights in query results.** One locked/denied row refuses the whole batch with an anonymous 404/403/400; the list cannot pre-disable Edit/Delete per row. | Optional per-row `can {edit, delete}` for row-scoped types only, intersected with the type right. Spike S3 measures cost. |
+| G6 | Low | Delete-many cannot pass a SoftDelete reason (`SparkSoftDelete.cs:25` `PendingReason`). | Optional `reason` on the request. |
+| G7 | Low | Single `Delete.cs:53-78` does not catch `SparkThrottledException` (delete-many does, `:223`). | Catch it the same way. |
+| G8 | Low | `DeleteMany.cs:109-110` comment claims single delete returns a quiet 204 for an already-gone row; `Delete.cs:45-48` returns 404. | Fix the comment. |
+| G9 | Low | An Actions `OnDeleteAsync` override that saves on its own breaks bulk atomicity (only a warning, `DatabaseAccess.cs:762-766`). | Document in guide-custom-actions; no code change. |
+
+Unchanged and restated: mixed selections stay **all-or-nothing**; missing and denied rows answer the
+same **404** (M-3); 403 only after the row gate.
+
+---
+
+## 3. Out of scope
+
+Things genuinely **not** being done (not deferrals):
+
+- **Select-all / select across pages** — rejected by the owner 2026-09-29 (issue_460_PRD.md
+  :386-400). Vidyano's `{allSelected, inverse}` protocol is noted in §6 for reference only.
+- **Bulk edit** — the issue explicitly excludes it ("no bulk-edit for now").
+- **AsDetail tables** — hand-written in-form tables (`po-detail.component.html:103-150`), not
+  persisted query rows. Unaffected.
+- **Inline edit in the grid** — Edit navigates to the existing edit page.
+
+---
+
+## 4. Open questions — all resolved (2026-10-03)
+
+| # | Question | Resolved by |
+|---|---|---|
+| Q1 | Detail-page Edit/Delete from the catalogue? | D1–D8 (widened into translations and `actions.json`; D8 answers it) |
+| Q2 | Row-click behaviour | D9 (click opens, the checkbox selects) |
+| Q3 | `single` for `=1`-only lists | D10 (always checkboxes; `single` removed) |
+| Q4 | Read gate on bulk paths | D11 |
+| Q5 | `queryId` bypass | D12, D13 |
+| Q6 | Delete/update concurrency | D14, D15, D16 |
+| Q7 | After-commit hook failure | D17 |
+| Q8 | Per-row rights in query results | D18 (no `can`; a refusal lists breadcrumbs) |
+| Q9 | Selection across pages | D19 (+ MintPlayer/mintplayer-ng-bootstrap#422) |
+| G6 | Soft-delete reason on bulk delete | D20 |
+| G7–G9 | Minor fixes | D21 |
+
+---
+
+## 5. Spikes
+
+Each spike answers one question with evidence (a red→green test, a measurement, or a recorded
+observation) and is recorded in §7 before the dependent milestone starts.
+
+| # | Question | Method | Blocks |
+|---|---|---|---|
+| S1 | ~~Does `bs-datatable` keep `selection` across pages?~~ **Answered (2026-10-03, source read): no.** Filed as MintPlayer/mintplayer-ng-bootstrap#422. What remains: after the #422 release, verify in Spark that the chip count equals what Delete/custom actions send, across pages and virtual scroll. | Grid vitest with two pages; DemoApp via the Playwright MCP. | M4 |
+| S2 | Fallout of widening `auto` with built-in Edit/Delete plus D9's click change: which grids in DemoApp / HR / Fleet / QnA / CodeCoverage change, per role, and which specs/E2E assert the old behaviour (`spark-query-toolbar.spec.ts:121,158`, `QnASubQueryTests`)? | Inventory every app's model + security.json; prototype the derivation; run the toolbar spec. | M4 |
+| S3 | ~~Cost of per-row `can`~~ (dropped by D18). **Now:** the cost of resolving redacted breadcrumbs for up to 200 failed rows in one refusal message (D18). | Benchmark with a row policy on a 200-row batch. | M5 |
+| S4 | Read-vs-Delete gate mismatch: can delete-many remove a row the caller cannot read? Is a mixed batch a 403/404 oracle? Same for the `ExecuteCustomAction` fallback. | Red test: Delete row rule wider than the Read rule. | M5 |
+| S5 | Stale-grid hard-delete race. Does a Raven **projection** return the document's change vector or the index entry's (D14 needs the document's)? | Red test in `ConcurrentWriteRaceTests` style + a projection probe. | M6 |
+| S6 | Throw from an interceptor's `OnAfterDeleteAsync` on row 2 of 3: response and lost follow-ups. **Expanded (D17):** classify every existing after-hook (SoftDelete, Moderation, History, Contributions) as must-stay-synchronous or deferrable. | Red test with a throwing test interceptor; hook inventory. | M7 |
+| S7 | delete-many / execute without `queryId`, or with another query of the same type, against a query-level Delete disable. | Red test. | M5 |
+| S8 | Moderation-locked row in a batch: response, nothing written, the D18 message names the row. Retry (449) raised from `OnBeforeDeleteAsync` inside a batch. | Tests against QnA moderation. | M5 |
+| S9 | Per-(key, language) composition (D2): is `translations.json` merged only at compile time (`HostTranslationsAggregatorGenerator`), or also at runtime (`Endpoints/Translations/Get.cs`, `Manager`)? Where does the D3 diagnostic live? | Read and prototype the merge; red test: the app adds `es` to a library key. | M1 |
+| S10 | Sync writing into a hand-edited `translations.json` (D5) while keeping its formatting, key order and comments-free layout. | Prototype against `apps/HR`'s file and diff the result. | M2 |
+| S11 | **Suspected resurrection bug (D15):** Update of a deleted id recreates it. Red test. Also list every internal caller of the update path that has no loaded etag (D16). | Red test + call-site inventory. | M6 |
+| S12 | How a library ships `App_Data/actions.json` (D7): reuse the translations generator route (embedded and aggregated at compile time) or a runtime resource scan? Per-property layering and `null` removal semantics. | Prototype with `MintPlayer.Spark` shipping New/Edit/Delete. | M3 |
+| S13 | Durable after-commit outbox (D17): can a #369 message be stored **in the same `SaveChanges`** as the data change, and how does the deferred hook get its context (type, id, before-state, user)? | Prototype on SoftDelete revision cleanup. | M7 |
+
+---
+
+## 6. Vidyano reference (for parity decisions)
+
+Sources: public client `github.com/Vidyano/vidyano` (v5.0), sample `github.com/Vidyano/ravendb-docs`.
+Vidyano.Core server is closed source — server-side behaviour marked *unverified*.
+
+- **Grammar** (`packages/core/src/common/expression-parser.ts`): same as Spark for well-formed rules.
+  Unparseable rules (`1`, `1-5`, `>1.5`→`>1`) are "always true" in Vidyano; Spark rejects them. Keep Spark's.
+- **Built-ins** (dev `model.json`; *unverified* whether framework defaults): New (query, no rule),
+  Delete (query, `>0`, `AskForDeleteItems` confirmation, refresh query), BulkEdit "Edit" (`>0`;
+  becomes `=1` when the query has `disableBulkEdit`, `query.ts:148-152`), Edit (record action).
+  → Spark's Edit `=1` on the list = Vidyano's BulkEdit under `disableBulkEdit`.
+- **Checkboxes** are derived: shown only when a visible action has a non-empty rule (or the grid is a
+  lookup); grid-level `noSelection` turns them off (`query-grid.ts:575-581`). No per-query flag.
+  Actions without a right are not shown, so they never trigger checkboxes. — Matches R1.
+- **ShowedOn** is a bit flag (1 record, 2 query, 3 both); one definition serves both pages; on a
+  record the rule is ignored.
+- **Select-all** is opt-in (`EnableSelectAll`), wire `{allSelected, allSelectedInversed}` with
+  `selectedItems` = exceptions. Not adopted (§3).
+
+---
+
+## 7. Decisions and spike results
+
+Grilling started 2026-10-03. Each decision carries its evidence.
+
+| # | Decision | Evidence |
+|---|---|---|
+| D1 | **All localized strings live in `translations.json`. No other `App_Data` file embeds translated text.** This covers actions (built-in and custom), model entity, attribute and query labels, program units, security group names and culture names. Other files refer to translations by **key**. Done in this PR; no backward compatibility (preview). Supersedes Q1's framing: the action catalogue question becomes part of D1. | Owner preference, 2026-10-03: the owner dislikes the Vidyano `model.json` carrying built-in actions with their translations. Inventory: 814 inline `"en"` strings outside `translations.json` across `apps/*/App_Data`, most of them in `Model/*.json`. |
+| D2 | **Translations compose per (key, language), not per key.** Every `translations.json` (libraries in a stable order, then the app) is layered: an app that adds `es` to a library key keeps the library's `en/fr/nl`, and an app that overrides `nl` for that key keeps the rest. This applies to every key, including messages. | Owner preference, 2026-10-03. Today `HostTranslationsAggregatorGenerator.MergeTranslations` (`:136-196`) replaces the **whole key** (`merged[key] = (asm, langs)`, last write wins). That is what changes. |
+| D4 | **Model elements find their text by convention, with an optional explicit key.** The key is derived from the element (e.g. `model.Car.attributes.Brand.label`). Model JSON *may* set `"label": "common.name"` to reuse a shared key. When no layer defines the key, the runtime shows the humanized name (`CreatedBy` → `Created By`, today's `AddSpacesToCamelCase`). **Model sync never writes `translations.json`.** Missing keys are surfaced by an **info** diagnostic or sync report entry, listing the languages `culture.json` declares but no layer translates (a mitigation proposed alongside C). | Owner decision, 2026-10-03 (C over "explicit key always written" and "convention only"). Today's sync writes inline labels: `ModelSynchronizer.cs:941`. |
+| D5 | **The description seed stays, and now writes into the app's `translations.json`.** When the conventional (or explicit) description key is defined by **no** layer, sync writes the `///` summary as `en` into the **app's** `translations.json`. It only ever adds, and never overwrites. This is the **one exception to D4's "sync never writes `translations.json`"**. #424's "seeds, never owns" still holds; blanking the value asks for the seed again. Verify fails exactly when sync would write something. | Owner decision, 2026-10-03 (A over "no seeding" and "runtime fallback"). Seed source: the `[Conditional("DEBUG")]` generator attribute (#348), absent in Release. Needs spike S10 (writing hand-edited JSON while keeping its formatting). |
+| D6 | **The entity-level `description` becomes the entity's label key** (`model.Car.label`). Today it is rendered as the entity's display name, not as help text (`spark-po-edit.component.html:25`, `spark-po-create.component.html:4`). | Proposed during D5; owner did not object, 2026-10-03. |
+| D7 | **One `actions.json`, composed in layers.** `customActions.json` is renamed to `actions.json`. The core library ships `App_Data/actions.json` with New, Edit and Delete, and any library may ship its own. The app's file composes on top **per property**; app-only names add actions. Action text uses translation keys (D1/D4 convention `actions.{Name}.label` / `.confirmation` / `.description`, explicit key optional). `SparkDefaultActions.cs` keeps only the reserved-name list (`IsDefault`: New, Edit, Delete). **Removal:** `"Edit": null` in a later layer removes the inherited action from every page. Rights still gate execution; removal is presentation. **Conflicts:** warn only when two *libraries* define the same action name differently (mirrors D3). **New switch `--spark-print-effective-actions`** prints the composed catalogue with each property's source layer, next to the existing `--spark-synchronize-model` / `--spark-verify-model` switches. | Owner decision, 2026-10-03 (A over a separate `defaultActions.json` and keeping built-ins in C#). Removal syntax delegated to the assistant and chosen as `null`, because it is explicit (an empty `showedOn` would be a hidden convention). Owner asked for the print switch to be implemented. |
+| D8 (Q1) | **The detail page's Edit and Delete buttons come from the composed catalogue,** through its `showedOn` and a `null` removal. The selection rule is ignored on the detail page. The loaded object's `can.edit` / `can.delete` (row security) must also allow it, as today. The hard-coded buttons (`po-detail.component.html:14-21`) go. | Owner decision, 2026-10-03. No app overrides New/Edit/Delete today (checked all four `customActions.json`), so there is no behaviour change for existing apps. |
+| D9 (Q2) | **A row click opens the row; only the checkbox cell selects.** This holds on every list, selectable or not. The row menu ⋮ acts on its own row. The whole first cell is the selection hit target. The click-selects / double-click-opens rule (`spark-query-grid.component.ts:218-224`) goes. QnA's E2E tests (`QnASubQueryTests`) that click to select are updated. | Owner decision, 2026-10-03. Rationale: under R1 an editor's lists all become selectable, so clicking would otherwise depend on the user's permissions. Whether the underlying `mp-datatable` lets a row click pass through without selecting is spike S1. |
+| D10 (Q3) | **A selectable list always shows the checkbox column, and the selection is never trimmed.** Actions whose rule does not match the count are disabled; for example, Edit is disabled with 2 rows ticked. The R1 table loses its `single` row: *no counting action → `none`, otherwise → `multiple`*. As a consequence, **`single` is removed from `SparkSelectionMode`** (`auto|none|multiple`), on the server and in ng-spark, with no backward compatibility. With D9, single mode has no usable click target, and trimming to one tick was rejected. Only QnA sets `selectionMode` today, and it uses `multiple`. | Owner decision, 2026-10-03: "If we deselect the other items, users will be confused as to why they can only select a single item." Datatable fact: `single` renders no checkbox column (`mintplayer-ng-bootstrap-datatable.d.ts:193`). |
+| D11 (Q4/G2) | **Every write path also checks that the user can read the row.** Delete-many and the `ExecuteCustomAction` fallback branch (row-gated load) check `Read/T`, the read row filter and the list's `deleted` mode (exclude / include / only: the recycle bin reads deleted rows), on top of the action's own checks. A row failing any check counts as missing: the whole batch gets 404 (M-3). This closes the bulk-delete gap, the existence oracle and the custom-action fallback gap. | Owner decision, 2026-10-03. Gap evidence: single delete pre-loads through `GetPersistentObjectAsync` (`Delete.cs:43`); delete-many checks only `Delete/T` plus the delete row rule (`DatabaseAccess.cs:634,649-660`). Red test: spike S4. |
+| D12 (Q5/G3) | **`OnDisableActionsAsync` is the single authority, consulted on every path.** It runs both when a page renders and when an action executes, on every entry point, with no way around it. Bulk calls (delete-many and execute with ids but no parent) **require `queryId`** (400 if missing) and fetch the rows **through that query** (query right, filter and row filter; all-or-nothing 404), as `ExecuteCustomAction` already does. The query-level decision is therefore always the decision of the query the rows actually came from. `queryId` is no longer optional in `SparkClient.DeletePersistentObjectsAsync` / `ExecuteActionAsync` or in ng-spark `deleteMany`. | Owner decision, 2026-10-03: "we should always go through OnDisableActionsAsync". It was introduced (#460 D13) because disabling actions from `OnLoad`/`OnQuery` left later code unsure whether an action was disabled. Gap evidence: query target judged only when a matching `queryId` is sent (`DatabaseAccess.cs:669-681`, `ExecuteCustomAction.cs:902-915`). Red test: spike S7. |
+| D13 (Q5b) | **For Edit, the object-level decision is the one enforced.** Edit runs only as the object's Update, where `OnDisableActionsAsync` judges the object itself (#460 D13). A query-level "Edit disabled" means "not offered from this list". It is consulted when that list renders and has no execution of its own to block. Documented in the `OnDisableActionsAsync` guide: *forbid editing an object at the object-level target; the query-level target controls what that list offers.* | Owner decision, 2026-10-03 (A over carrying the `queryId` through navigation, which is client-chosen and trivially dropped, and over showing Edit differently per entry point). |
+| D14 (Q6/G4) | **Every delete must carry an etag per id. A delete without one is a 400; a mismatch is a 409.** `QueryResultItem` gets `etag` (the **document's** change vector, also in projections; spike S5). The single-delete and delete-many request references carry one etag per id. The server deletes with that change vector. ng-spark sends it from the list and from the detail page; in the .NET client `DeletePersistentObjectsAsync` / single delete take `(id, etag)` pairs, not bare ids. | Owner decision, 2026-10-03 (B over optional etags and last-write-wins): "Concurrency handling remains important. User A edits something, user B deletes the entire object, user A wonders what happened with the change he made 3 minutes ago." Gap evidence: `OnDeleteAsync` deletes with no change vector (`DefaultPersistentObjectActions.cs:357-374`); there is no etag on `PersistentObjectReferenceRequest` or `QueryResultItem`. |
+| D15 (Q6b) | **Saving an object that was deleted since it was loaded is a 409 "deleted by another user", never a resurrection.** (A) The update path refuses before any hook when the document is gone, or is soft-deleted (the check uses the deleted state, not just existence). (C) `OnSaveAsync` writes an Update with a change vector that requires the document to exist, so a delete landing between check and write also becomes 409. Creates, including a create under a caller-chosen id, are unaffected. The 409 says neither who deleted the object nor when. The UI keeps the form values and offers no "recreate". | Owner decision, 2026-10-03. **Suspected bug found while grilling:** the etag check runs only `if (existing is not null)` (`DatabaseAccess.cs:318-341`, missing documents refused only for restore/revert at `:324`); `OnSaveAsync` then does `ToEntity` and `StoreAsync` with no change vector (`DefaultPersistentObjectActions.cs:270-298`), recreating the deleted object. Not yet reproduced; red test is spike S11. |
+| D16 (Q6c) | **Update requires an etag too (400 without one); a mismatch is a 409.** The fallback to "the version this request loaded" (`DefaultPersistentObjectActions.cs:276-278`) no longer applies to HTTP requests. Internal callers that update without a loaded etag (sync actions, `DatabaseAccess.cs:332`, imports, add-ons) either load first or use an explicit **internal overwrite option** that no HTTP request can reach. Spike S11 lists every internal caller. The .NET client's update takes the PO's `Etag` as required. | Owner decision, 2026-10-03 (A over keeping it optional): the D14 reasoning applies to concurrent edits as much as to deletes. |
+| D17 (Q7/G1) | **After-commit work is durable.** Delete, delete-many and save write one **outbox message per row in the same `SaveChanges`** as the data change. A messaging handler (#369 single-subscription: retries, dead-lettering) runs the deferred after-hooks. "Committed ⇒ follow-ups eventually done" holds even across a crash between commit and hooks. The hook contract splits in two: the existing in-request `OnAfterDeleteAsync`/`OnAfterSaveAsync` (best-effort: failures logged, never turned into an error response for a committed change) and a new durable after-commit hook. Spike S6 (expanded) classifies every existing after-hook (SoftDelete observers/revision cleanup, Moderation audit/vote reversal, History notify, Contributions) as must-stay-synchronous or deferrable before the API is fixed. | Owner decision, 2026-10-03 (C over "log and return success" and "success with warning"). Gap evidence: per-row after-hooks run after the single commit, outside the try (`DatabaseAccess.cs:788-803`); `SoftDeleteInterceptor.cs:76-100`, `ModerationInterceptor.cs:104-131`. |
+| D18 (Q8/G5) | **No per-row `can` in query results.** The toolbar enables actions from the type right, and the server decides. **A refused bulk action returns one comprehensive message listing the breadcrumb of every row that failed** (row rule, object-level `OnDisableActionsAsync`, Moderation lock, etag mismatch), concatenated so the user knows which rows to untick. **M-3 still holds:** a row that fails the read gate (D11) or no longer exists is *not* named. It is counted only ("2 items are no longer available"), because naming it would confirm that a row the user cannot read exists. Breadcrumbs are resolved through the redacting breadcrumb path. Rows still carry `etag` (D14). Spike S3 changes: no longer the cost of `can`, but the cost of resolving breadcrumbs for up to 200 failed rows. | Owner decision, 2026-10-03: B, with the message listing the failed items' breadcrumbs. The M-3 carve-out (count, not name, unreadable rows) is from the existing existence-oracle rule (#453). *Supersedes an interim recording of A in this row.* |
+| D19 (Q9) | **The selection survives paging and virtual scroll.** Search, filter, deleted-mode change and reload still clear it. The chip shows the off-page count ("7 selected, 4 on other pages"). Delete's confirmation states the total ("Delete 7 items?" via a placeholder in `common.confirmDeleteSelected`). Actions run on the whole selection. Ticked rows keep their loaded `etag`; a stale one gives a 409 that names the row (D18). **ng-bootstrap changes are required:** MintPlayer/mintplayer-ng-bootstrap#422. (1) The selection is lost across `[fetch]` pages and virtual eviction (`resolveRows` drops unresolvable ids and the wrapper replaces instead of merging). (2) An opt-in mode for D9, where a row click, right-click and Enter only open the row and the whole checkbox cell toggles. A released ng-bootstrap is a prerequisite for M2/M3, the same ordering #462 used. | Owner decision, 2026-10-03 (A). No select-all (owner decision 2026-09-29) makes cross-page selection the only way to act on more than one page. |
+| D20 (G6) | **Bulk delete takes one soft-delete reason for the whole batch,** entered by the user in the delete confirmation dialog (the same input as single delete) and applied to every row. A type that requires a reason refuses an empty one for the whole batch. There is no distinct-reasons list or suggestions. | Owner decision, 2026-10-03. The reason is client-entered (`SparkSoftDelete.cs:25` `PendingReason`). A distinct-reasons idea was raised and withdrawn by the owner. |
+| D21 (G7–G9) | Kept as written in R5: catch `SparkThrottledException` in single `Delete.cs`, fix the `DeleteMany.cs:109-110` comment, and document that a self-saving `OnDeleteAsync` breaks bulk atomicity. | No alternatives; the owner did not object, 2026-10-03. |
+| D3 | **Diagnostics for overlapping translations:** warn **only** when two *libraries* give the same (key, language) different values, because their order is an arbitrary alphabetical tiebreak. An app overriding a library value is silent, and adding a language is never a conflict. Today's `ConflictingKey` (`TranslationsDiagnostics.cs:43-46`, Warning) fires on any key defined in two assemblies, including the app, and is narrowed to this. | Owner decision, 2026-10-03. Accepted trap: an app that reuses a library key by mistake gets no warning. |
+
+Q1 (catalogue-driven Edit/Delete on the PO page) has been widened into D1 and the questions after it.
