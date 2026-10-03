@@ -301,6 +301,11 @@ public partial class SparkClient : IDisposable
     /// (notify / navigate / refresh) are passed to <paramref name="onOperation"/> (or the client-wide
     /// handler); with neither, they are dropped. An operation this SDK does not know — including
     /// an older server's removed <c>disableAction</c> — arrives as <see cref="SparkUnknownOperation"/>.
+    /// <para>
+    /// A server hook that cancels the create (answering a prompt with Cancel) makes the server answer
+    /// 204 with nothing created; this method then throws <see cref="SparkClientException"/> with
+    /// <c>StatusCode = HttpStatusCode.NoContent</c>.
+    /// </para>
     /// </remarks>
     public Task<PersistentObject> CreatePersistentObjectAsync(
         PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
@@ -965,8 +970,11 @@ public partial class SparkClient : IDisposable
             async (response, ct) =>
             {
                 await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
-                return await ReadEnvelopeResultAsync<PersistentObject>(response, onOperation, ct)
-                    ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
+                var result = await ReadEnvelopeResultAsync<PersistentObject>(response, onOperation, ct);
+                // A server hook cancelled the create (#482, SparkCancelException): nothing was created.
+                if (result is null && response.StatusCode == System.Net.HttpStatusCode.NoContent)
+                    throw new SparkClientException(response.StatusCode, responseBody: null, "Cancelled: a server hook chose not to write; nothing was created.");
+                return result ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
             },
             onRetry,
             onOperation,

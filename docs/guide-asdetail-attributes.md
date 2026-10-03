@@ -476,7 +476,7 @@ Four things about this are worth knowing before you use it.
 
 **Neither hook writes anything.** Construction is not persistence and removal is not deletion: the
 row appears or disappears for real only when the parent is saved. A hook that touches the database is
-writing outside the parent's unit of work. Record things from the *parent's* `OnBeforeSaveAsync`.
+writing outside the parent's unit of work. Record things from a before-save hook of the *parent* ([hooks guide](guide-hooks.md)).
 
 **Use `SetOriginalValue` for defaults, not `SetValue`.** `SetValue` marks the attribute changed,
 which makes the object dirty before the user has typed anything — so adding a row and abandoning it

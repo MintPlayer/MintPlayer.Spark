@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents.Linq;
@@ -13,7 +14,8 @@ using Raven.Client.Documents.Session;
 
 namespace Fleet.Actions;
 
-public partial class CarActions : DefaultPersistentObjectActions<Car>
+public partial class CarActions : DefaultPersistentObjectActions<Car>,
+    IBeforeSave<Car>, IAfterSave<Car>, IBeforeDelete<Car>, IAfterDelete<Car>
 {
     [Inject] private readonly IManager manager;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
@@ -85,14 +87,14 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
         return Task.CompletedTask;
     }
 
-    public override async Task OnBeforeSaveAsync(PersistentObject obj, Car entity)
+    public ValueTask OnBeforeSaveAsync(Car entity, SaveContext context)
     {
         // Stamp the creator id on first save. Preserve it on subsequent updates so the
         // row-level auth check stays consistent even if the owner changes password/email.
         if (string.IsNullOrEmpty(entity.CreatedBy))
             entity.CreatedBy = CurrentUserId;
 
-        var statusAttr = obj.Attributes.FirstOrDefault(a => a.Name == nameof(Car.Status));
+        var statusAttr = context.PersistentObject.Attributes.FirstOrDefault(a => a.Name == nameof(Car.Status));
         if (statusAttr?.IsValueChanged == true && entity.Status == CarStatus.Stolen)
         {
             // Step 0: Confirm marking as stolen
@@ -102,8 +104,9 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
                 message: $"Are you sure you want to mark {entity.LicensePlate} as stolen? This will lock the vehicle record."
             );
 
+            // Cancel saves nothing (#482): a silent no-op, answered with the car as stored.
             if (manager.Retry.Result!.Option == "Cancel")
-                return;
+                throw new SparkCancelException();
 
             // Step 1: Ask whether to notify fleet managers
             manager.Retry.Action(
@@ -113,17 +116,19 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
             );
 
             if (manager.Retry.Result!.Option == "Cancel")
-                return;
+                throw new SparkCancelException();
         }
 
-        await base.OnBeforeSaveAsync(obj, entity);
+        return ValueTask.CompletedTask;
     }
 
-    public override async Task OnDeleteAsync(IAsyncDocumentSession session, string id)
+    /// <summary>
+    /// Asks the user to retype the plate before a car is deleted. Runs before every delete the
+    /// framework makes of a car — a soft-deleting hook cannot skip it — and, being a before-hook,
+    /// before anything is written.
+    /// </summary>
+    public ValueTask OnBeforeDeleteAsync(Car entity, DeleteContext context)
     {
-        var entity = await session.LoadAsync<Car>(id);
-        if (entity is null) return;
-
         // Virtual PO confirmation form — user must retype the plate. The Virtual PO is
         // scaffolded from apps/Fleet/Fleet/App_Data/Model/ConfirmDeleteCar.json; the
         // populated values come back through manager.Retry.Result.PersistentObject.
@@ -139,28 +144,32 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
 
         var result = manager.Retry.Result!;
         if (result.Option == "Cancel")
-            return; // silent no-op — endpoint returns NoContent without actually deleting
+            throw new SparkCancelException(); // silent no-op — the endpoint answers 204, nothing deleted
 
         var typed = result.PersistentObject?["Confirmation"].Value?.ToString();
         if (!string.Equals(typed, entity.LicensePlate, StringComparison.Ordinal))
-            throw new InvalidOperationException(
+            throw new SparkValidationException(
                 $"Confirmation '{typed}' does not match license plate '{entity.LicensePlate}'.");
 
-        // The base delete runs OnBeforeDeleteAsync and deletes with the version the user saw (#467, D14).
-        await base.OnDeleteAsync(session, id);
+        return ValueTask.CompletedTask;
+    }
 
-        // Demo toast — surfaces a frontend notification after the retry-confirmation flow
-        // completes so the user sees explicit feedback that the deletion went through.
+    /// <summary>
+    /// Demo toast — explicit feedback, after the commit, that the deletion went through.
+    /// </summary>
+    public ValueTask OnAfterDeleteAsync(Car entity, DeleteContext context)
+    {
         manager.Client.Notify($"Car {entity.LicensePlate} deleted", NotificationKind.Success);
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
     /// Demo: emit a toast on the frontend after every successful save (Create + Update).
     /// </summary>
-    public override Task OnAfterSaveAsync(PersistentObject obj, Car entity)
+    public ValueTask OnAfterSaveAsync(Car entity, SaveContext context)
     {
         manager.Client.Notify($"Car {entity.LicensePlate} saved", NotificationKind.Success);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>

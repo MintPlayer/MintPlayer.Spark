@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -47,6 +48,10 @@ public static class SparkIdentityProviderExtensions
             return new OidcSigningKeyService(env, options.SigningKeyPath);
         });
         builder.Services.AddSingleton<OidcTokenGenerator>();
+
+        // Validation of the OIDC admin screens (#482: hooks, not Actions-class overrides).
+        builder.AddHook<Hooks.OidcApplicationHooks>();
+        builder.AddHook<Hooks.OidcScopeHooks>();
         builder.Services.AddHostedService<OidcTokenCleanupService>();
 
         // Constructed rather than resolved, because the CORS policy's predicate below has no service

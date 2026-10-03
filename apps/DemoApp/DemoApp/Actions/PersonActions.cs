@@ -4,6 +4,7 @@ using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Queries;
@@ -12,7 +13,8 @@ using Raven.Client.Documents.Session;
 
 namespace DemoApp.Actions;
 
-public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISparkOwnsRowSecurity
+public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISparkOwnsRowSecurity,
+    IBeforeSave<Person>, IAfterSave<Person>, IAfterDelete<Person>
 {
     /// <inheritdoc />
     public string RowSecurityRationale =>
@@ -21,7 +23,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISp
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IAsyncDocumentSession session;
 
-    public override Task OnBeforeSaveAsync(PersistentObject obj, Person entity)
+    public ValueTask OnBeforeSaveAsync(Person entity, SaveContext context)
     {
         if (!string.IsNullOrEmpty(entity.Email))
         {
@@ -31,18 +33,19 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISp
         entity.FirstName = entity.FirstName?.Trim() ?? string.Empty;
         entity.LastName = entity.LastName?.Trim() ?? string.Empty;
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public override async Task OnAfterSaveAsync(PersistentObject obj, Person entity)
+    public async ValueTask OnAfterSaveAsync(Person entity, SaveContext context)
     {
         Console.WriteLine($"[PersonActions] Person saved: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
         await messageBus.BroadcastAsync(new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));
     }
 
-    public override async Task OnBeforeDeleteAsync(Person entity)
+    // After the commit (#482): broadcasting before it announced deletes that a refusal then undid.
+    public async ValueTask OnAfterDeleteAsync(Person entity, DeleteContext context)
     {
-        Console.WriteLine($"[PersonActions] Person being deleted: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
+        Console.WriteLine($"[PersonActions] Person deleted: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
         await messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
     }
 

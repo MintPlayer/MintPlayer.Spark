@@ -113,16 +113,16 @@ public interface IDatabaseAccess
     /// <para>
     /// Every row goes through the single-row delete pipeline — <c>Delete/T</c>, the collection guard,
     /// the row gate, the disabled-action hook (asked about the query target, with its parent, and every
-    /// row; one refused row refuses the lot), <c>OnBeforeDeleteAsync</c>, the interceptors (so a
-    /// soft-deletable type is soft-deleted) and the Actions class's <c>OnDeleteAsync</c> — but every
-    /// gate runs before the first write, and the writes are committed by one <c>SaveChanges</c>. A
-    /// missing, foreign-collection or row-denied id refuses the whole request with
+    /// row; one refused row refuses the lot), the delete replacement (so a soft-deletable type is
+    /// soft-deleted) and the before-delete hooks — but every gate runs before the first write, and the
+    /// framework commits every row with one <c>SaveChanges</c> (#482: no hook or Actions class can
+    /// commit early). A missing, foreign-collection or row-denied id refuses the whole request with
     /// <see cref="Authorization.SparkRowLevelAccessDeniedException"/>, never a silently shorter delete.
     /// </para>
     /// <para>
-    /// ⚠️ The base <c>OnDeleteAsync</c> defers its own <c>SaveChanges</c> while the batch is open. An
-    /// override that saves on its own commits its row early and breaks the all-or-nothing guarantee
-    /// (logged as a warning) — the D1 override gap, documented rather than closed.
+    /// A hook that refuses a row names it in the refusal; a <c>Retry.Action</c> prompt from a hook is
+    /// refused the same way (a per-row prompt in a bulk delete is unworkable), and a
+    /// <see cref="SparkCancelException"/> cancels the whole batch.
     /// </para>
     /// </summary>
     /// <param name="objectTypeId">The type of every row.</param>

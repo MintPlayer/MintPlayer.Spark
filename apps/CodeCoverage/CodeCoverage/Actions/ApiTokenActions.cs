@@ -11,6 +11,7 @@ using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using CodeCoverage.ApiTokens;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Exceptions;
@@ -40,7 +41,7 @@ namespace CodeCoverage.Actions;
 /// should not depend on it.
 /// </para>
 /// </remarks>
-public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>, ISparkOwnsRowSecurity
+public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>, ISparkOwnsRowSecurity, IBeforeSave<ApiToken>, IAfterSave<ApiToken>
 {
     public override async Task OnNewAsync(SparkNewArgs<ApiToken> args)
     {
@@ -133,13 +134,13 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// database dump is not a set of working upload credentials — which is why creation cannot be a
     /// plain save of client-supplied fields.
     /// <para>
-    /// Ownership is stamped here rather than trusted from the payload. <c>EnsureRowSaveAllowedAsync</c>
+    /// Ownership is stamped here rather than trusted from the payload. WITH CHECK
     /// runs immediately after this hook and re-applies the row filter to the result, so a create
     /// must produce a row its own caller could see — stamping a login the caller does not manage is
     /// refused rather than saved.
     /// </para>
     /// </remarks>
-    public override async Task OnBeforeSaveAsync(PersistentObject obj, ApiToken entity)
+    public async ValueTask OnBeforeSaveAsync(ApiToken entity, SaveContext context)
     {
         // ⚠️ Runs on EVERY save, create and edit alike — as do the owner authorization and the
         // identity derivation below it. The early return further down is ONLY for the credential,
@@ -147,11 +148,11 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         // here, because an edit can change which repositories a token covers AND which account it
         // claims to be.
         // ⚠️ The one field that decides the owner is `Account`, and it is never a posted value. On
-        // create it is the account the New was started from: obj.Parent, which Spark resolved from
+        // create it is the account the New was started from: the object's Parent, which Spark resolved from
         // the sub-query and authorized itself. The attribute is read-only, so nothing posted is
         // written to it, and an edit keeps the stored account.
         if (string.IsNullOrEmpty(entity.Hash))
-            entity.Account = obj.Parent is { Name: nameof(Account), Id: { Length: > 0 } parentId } ? parentId : null;
+            entity.Account = context.PersistentObject.Parent is { Name: nameof(Account), Id: { Length: > 0 } parentId } ? parentId : null;
 
         // Re-authorized on every save, edit included: the caller's membership of the account can
         // have been revoked since the token was minted.
@@ -185,7 +186,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// ⚠️ <b>Nothing else checks this.</b> A reference ARRAY is written straight through
     /// (<c>EntityMapper</c> hands the posted value to the property and returns), bypassing the
     /// collection guard that binds a scalar reference's id to its type — so whatever ids the client
-    /// posts are what get stored. And <c>EnsureRowSaveAllowedAsync</c> re-applies only the
+    /// posts are what get stored. And WITH CHECK re-applies only the
     /// <c>Account</c> row filter, which says nothing about repository ownership.
     /// <para>
     /// Without this, any signed-in user could mint a token for any repository by posting its
@@ -227,7 +228,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// is worse than no token. It goes out as a notification because it is deliberately not a field
     /// — <c>ApiToken</c> has nowhere to put it, and adding one would store it.
     /// </remarks>
-    public override Task OnAfterSaveAsync(PersistentObject obj, ApiToken entity)
+    public ValueTask OnAfterSaveAsync(ApiToken entity, SaveContext context)
     {
         if (plaintext is not null)
         {
@@ -238,7 +239,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
             plaintext = null;
         }
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>Set by the create path, consumed once by <see cref="OnAfterSaveAsync"/>.</summary>

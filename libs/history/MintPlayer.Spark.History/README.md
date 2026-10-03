@@ -154,8 +154,8 @@ same pipeline as an edit:
   rules see `"Edit"`); `WITH CHECK`; protected attributes keep their stored values;
 - the disabled-action hook refuses it (403 naming the action) when it withholds `Revert`, `Edit` or
   `Save`;
-- every interceptor runs with operation `Revert` — stamping, soft deletion, locks;
-- a concurrent edit between load and save is a 409; an interceptor's refusal a 400.
+- every persistence hook runs with operation `Revert` — stamping, soft deletion, locks;
+- a concurrent edit between load and save is a 409; a hook's refusal a 400.
 
 What reverts: every **model attribute** (measured, spike H3: strings, a `TranslatedString` — made
 exact, so a language added after the revision is removed — a `DateTimeOffset` with its offset,
@@ -215,7 +215,7 @@ Outside the routed pages, use `<spark-po-history [type] [id] [entityType] [curre
 
 ## Limits
 
-- An `OnSaveAsync` override that skips the base implementation skips before-save interceptors for its
-  type — stamping and the exact-`TranslatedString` revert included (D1, documented core behaviour).
+- History's before-save hook runs in `HookStage.Finalize` (#482), after every hook that stamps or
+  trims fields, so its "did this edit change anything?" judges the row as it is written. Nothing can skip it.
 - `ChangedAttributes` compares the stored and the saved value of each top-level model attribute as
   JSON; `AsDetail` changes are reported as the whole attribute.

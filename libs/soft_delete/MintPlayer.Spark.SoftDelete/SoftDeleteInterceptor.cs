@@ -14,22 +14,24 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.SoftDelete;
 
 /// <summary>
-/// Turns a delete of an <see cref="ISoftDeletable"/> into setting its fields, owns those fields on
-/// every other write, refuses references to deleted rows, finishes a purge by deleting the row's
-/// revisions, and tells <see cref="ISoftDeleteObserver"/>s.
+/// The SoftDelete hooks (#482; "interceptor" is the older name): turns a delete of an
+/// <see cref="ISoftDeletable"/> into setting its fields, owns those fields on every other write,
+/// refuses references to deleted rows, finishes a purge by deleting the row's revisions, and tells
+/// <see cref="ISoftDeleteObserver"/>s.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Runs in <c>IDatabaseAccess</c> (D1), so an Actions class's <c>OnDeleteAsync</c> override cannot
-/// defeat the replacement: for a soft-deletable type that override is not called on a delete — only
-/// on a purge (the startup check warns about such overrides).
+/// The replacement is an <see cref="IDeleteReplacement"/>, decided by the framework before any
+/// before-delete hook runs, so nothing — no Actions class, no other hook — can turn it back into a
+/// hard delete; only a purge deletes.
 /// </para>
 /// <para>
-/// A <c>Sync</c> (a write replicated from the owner module) passes through untouched: the owner
+/// A <c>Sync</c> (a write replicated from the owner module) never reaches these hooks: the owner
 /// already decided, and its soft delete arrives here as a save.
 /// </para>
 /// </remarks>
-internal sealed partial class SoftDeleteInterceptor : IPersistentObjectInterceptor
+internal sealed partial class SoftDeleteInterceptor
+    : IDeleteReplacement, IBeforeDelete, IAfterDelete, IBeforeSave, IAfterSave, INaturalIdCollision
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ISparkCurrentUser currentUser;
@@ -41,12 +43,24 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
     [Inject] private readonly ILogger<SoftDeleteInterceptor> logger;
     [Inject] private readonly TimeProvider? timeProvider;
 
-    /// <summary>First (contributions F5): a delete becomes a replacement before any other interceptor sees it.</summary>
-    public int Order => PersistentObjectInterceptorOrder.SoftDelete;
-
     public bool AppliesTo(Type entityType) => typeof(ISoftDeletable).IsAssignableFrom(entityType);
 
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
+
+    public ValueTask<bool> ReplaceAsync(DeleteContext context)
+    {
+        // Only a caller's delete is softened.
+        if (context.Operation != PersistentObjectOperation.Delete || context.Entity is not ISoftDeletable entity)
+            return ValueTask.FromResult(false);
+
+        // Marked on the request session's tracked entity; if a hook refuses the delete, the framework
+        // evicts the entity, so the mark is never written by a later save (M7 fix).
+        entity.IsDeleted = true;
+        entity.DeletedAt = Now;
+        entity.DeletedBy = currentUser.Id;
+        entity.DeleteReason = context.Reason ?? state.PendingReason;
+        return ValueTask.FromResult(true);
+    }
 
     public async ValueTask OnBeforeDeleteAsync(DeleteContext context)
     {
@@ -54,28 +68,13 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
         // admin operation. Prove it will be allowed BEFORE the document goes, so a client certificate
         // without database-admin refuses the purge instead of leaving the history of a row that no
         // longer exists (#460, M6 finding).
-        if (context.Operation == PersistentObjectOperation.Purge)
-        {
+        if (context.IsPurge)
             await revisions.EnsureCanDeleteAsync();
-            return;
-        }
-
-        // A module sync is the owner's decision. Only a caller's delete is softened.
-        if (context.Operation != PersistentObjectOperation.Delete || context.Entity is not ISoftDeletable entity)
-            return;
-
-        // Marked on the request session's tracked entity; if a later interceptor refuses the delete,
-        // DatabaseAccess evicts the entity, so the mark is never written by a later save (M7 fix).
-        entity.IsDeleted = true;
-        entity.DeletedAt = Now;
-        entity.DeletedBy = currentUser.Id;
-        entity.DeleteReason = context.Reason ?? state.PendingReason;
-        context.Replace();
     }
 
     public async ValueTask OnAfterDeleteAsync(DeleteContext context)
     {
-        if (context.WasReplaced)
+        if (context.IsReplaced)
         {
             var entity = (ISoftDeletable)context.Entity;
             await NotifyAsync(context.EntityType, context.Id, entity.DeleteReason, static (o, e) => o.OnDeletedAsync(e));
@@ -84,16 +83,6 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
 
         if (!context.IsPurge)
             return;
-
-        // An Actions class whose OnDeleteAsync override did not actually delete (it soft-deleted by
-        // hand, say) must not have the history of a row that still exists wiped.
-        using (var check = documentStore.OpenAsyncSession())
-        {
-            if (await check.Advanced.ExistsAsync(context.Id))
-                throw new InvalidOperationException(
-                    $"Purge of '{context.Id}' did not delete the document: the {context.EntityType.Name} Actions class " +
-                    "overrides OnDeleteAsync without deleting it. Its revisions were kept.");
-        }
 
         // After the document, never before: deleting revisions first and the document second writes a
         // fresh delete revision (measured, #460 spike H1). Force-created revisions only go with the flag.
@@ -106,7 +95,7 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context)
     {
-        if (context.Operation == PersistentObjectOperation.Sync || context.Entity is not ISoftDeletable entity)
+        if (context.Entity is not ISoftDeletable entity)
             return;
 
         if (context.Operation == PersistentObjectOperation.Restore)
@@ -133,7 +122,7 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
             entity.DeleteReason = null;
         }
 
-        await RefuseReferencesToDeletedRowsAsync(context, context.Entity!);
+        await RefuseReferencesToDeletedRowsAsync(context, context.Entity);
     }
 
     public async ValueTask OnAfterSaveAsync(SaveContext context)

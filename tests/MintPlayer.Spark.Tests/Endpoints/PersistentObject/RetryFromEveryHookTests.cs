@@ -84,7 +84,8 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
         => SparkValueObjects.Register(typeof(RetryProbeLine), "Id", row => ((RetryProbeLine)row).Id.ToString());
 
     /// <summary>Raises one retry from every hook it overrides, once each.</summary>
-    public class RetryProbeActions : DefaultPersistentObjectActions<RetryProbe>, ISparkOwnsRowSecurity
+    public class RetryProbeActions : DefaultPersistentObjectActions<RetryProbe>, ISparkOwnsRowSecurity,
+        MintPlayer.Spark.Abstractions.Interceptors.IBeforeSave<RetryProbe>, MintPlayer.Spark.Abstractions.Interceptors.IBeforeDelete<RetryProbe>
     {
         private readonly IRetryAccessor retry;
         public RetryProbeActions(IEntityMapper mapper, IRetryAccessor retry) : base(mapper) => this.retry = retry;
@@ -98,16 +99,16 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
                 retry.Action(title, ["Yes", "No"], defaultOption: "No", message: "Confirm?");
         }
 
-        public override Task OnBeforeSaveAsync(Po obj, RetryProbe entity)
+        public ValueTask OnBeforeSaveAsync(RetryProbe entity, MintPlayer.Spark.Abstractions.Interceptors.SaveContext context)
         {
             PromptOnce("Save?");
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public override Task OnBeforeDeleteAsync(RetryProbe entity)
+        public ValueTask OnBeforeDeleteAsync(RetryProbe entity, MintPlayer.Spark.Abstractions.Interceptors.DeleteContext context)
         {
             PromptOnce("Delete?");
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
         public override Task OnRefreshAsync(SparkRefreshArgs<RetryProbe> args)

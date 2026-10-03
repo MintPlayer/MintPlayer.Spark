@@ -11,7 +11,7 @@ namespace QnA.Interceptors;
 /// a question but not manage it sees its own attributes read-only, so the edit form offers only the
 /// translations. A UI hint only — the save drops those attributes whatever the form sent.
 /// </summary>
-public sealed partial class QuestionTranslatorFormInterceptor : IPersistentObjectInterceptor
+public sealed partial class QuestionTranslatorFormInterceptor : IAfterLoad
 {
     [Inject] private readonly QnAAccess access;
 

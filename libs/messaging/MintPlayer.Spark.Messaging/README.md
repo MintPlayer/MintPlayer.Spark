@@ -130,18 +130,19 @@ Inject `IMessageBus` into your Actions class (or any other service) and call `Br
 ```csharp
 using MintPlayer.Spark.Messaging.Abstractions;
 
-public partial class PersonActions : DefaultPersistentObjectActions<Person>
+public partial class PersonActions : DefaultPersistentObjectActions<Person>, IAfterSave<Person>, IAfterDelete<Person>
 {
     [Inject] private readonly IMessageBus messageBus;
 
-    public override async Task OnAfterSaveAsync(PersistentObject obj, Person entity)
+    // After the commit (persistence hooks, #482): never announce a write that may still be refused.
+    public async ValueTask OnAfterSaveAsync(Person entity, SaveContext context)
     {
         // Immediate: processed as soon as possible
         await messageBus.BroadcastAsync(
             new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));
     }
 
-    public override async Task OnBeforeDeleteAsync(Person entity)
+    public async ValueTask OnAfterDeleteAsync(Person entity, DeleteContext context)
     {
         await messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
     }

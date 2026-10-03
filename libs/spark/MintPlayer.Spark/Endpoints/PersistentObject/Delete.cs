@@ -58,6 +58,11 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
                 entityType.Id, request.Id, Abstractions.Interceptors.PersistentObjectOperation.Delete, request.Etag);
             return ClientResult.Envelope(clientAccessor, null, 204);
         }
+        catch (SparkCancelException)
+        {
+            // A hook cancelled the delete (#482): nothing was deleted, and nothing went wrong.
+            return ClientResult.Envelope(clientAccessor, null, 204);
+        }
         catch (SparkConcurrencyException ex)
         {
             // The row changed since the caller saw it (#467, D14), caught by the etag check or by the

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Interceptors;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -41,7 +42,7 @@ public static class SparkHistoryExtensions
         if (section is not null)
             builder.Services.PostConfigure<SparkHistoryOptions>(options => ApplyRevisionConfiguration(section, options));
 
-        builder.Services.AddPersistentObjectInterceptor<HistoryInterceptor>();
+        builder.Services.AddSparkHook<HistoryInterceptor>();
         builder.Services.TryAddScoped<HistoryRequestState>();
         builder.Services.TryAddScoped<ISparkHistory, SparkHistory>();
 

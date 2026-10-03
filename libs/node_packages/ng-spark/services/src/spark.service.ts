@@ -241,16 +241,20 @@ export class SparkService {
    * `parent` is the sub-query the New was started from — the same `parentId`/`parentType`/`queryId`
    * `newObject` was given. The server resolves and authorizes it again and hands it to the save hooks
    * as `PersistentObject.Parent`.
+   *
+   * Resolves to `null` when a server hook cancelled the create (#482: the user answered a prompt with
+   * Cancel) — the server answers 204 and nothing was created.
    */
   async create(
     type: string,
     data: Partial<PersistentObject>,
     parent?: { parentId: string; parentType: string; queryId: string },
-  ): Promise<PersistentObject> {
-    return this.postWithEnvelope<PersistentObject>(
+  ): Promise<PersistentObject | null> {
+    const created = await this.postWithEnvelope<PersistentObject | null>(
       `${this.baseUrl}/po/create`,
       { objectTypeId: type, persistentObject: data, ...(parent ?? {}) }
     );
+    return created ?? null;
   }
 
   /**

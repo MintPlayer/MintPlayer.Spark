@@ -517,12 +517,13 @@ public class BqSoft : ISoftDeletable
 }
 
 /// <summary>Refuses "boom" mid-batch, withholds Delete on "frozen", records the New and the query target.</summary>
-public class BqChildActions(IEntityMapper entityMapper, BqRecorder recorder) : DefaultPersistentObjectActions<BqChild>(entityMapper)
+public class BqChildActions(IEntityMapper entityMapper, BqRecorder recorder) : DefaultPersistentObjectActions<BqChild>(entityMapper),
+    MintPlayer.Spark.Abstractions.Interceptors.IBeforeDelete<BqChild>
 {
-    public override Task OnBeforeDeleteAsync(BqChild entity)
+    public ValueTask OnBeforeDeleteAsync(BqChild entity, MintPlayer.Spark.Abstractions.Interceptors.DeleteContext context)
         => entity.Title == "boom"
             ? throw new SparkValidationException("boom refuses")
-            : Task.CompletedTask;
+            : ValueTask.CompletedTask;
 
     public override Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
     {

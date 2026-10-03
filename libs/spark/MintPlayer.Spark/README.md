@@ -223,33 +223,33 @@ Entities that don't implement the interface are unaffected and keep the generate
 
 ### Actions Classes
 
-Customization hooks for entity-specific business logic. Inherit from `DefaultPersistentObjectActions<T>` to add validation or custom behavior:
+Customization hooks for entity-specific business logic. Inherit from `DefaultPersistentObjectActions<T>`; for save and delete logic, implement the persistence hook interfaces on the same class (or on a separate hook class — see [the hooks guide](../../../docs/guide-hooks.md)):
 
 ```csharp
-public class PersonActions : DefaultPersistentObjectActions<Person>
+public class PersonActions : DefaultPersistentObjectActions<Person>, IBeforeSave<Person>, IAfterSave<Person>
 {
-    public override Task OnBeforeSaveAsync(PersistentObject obj, Person entity)
+    public ValueTask OnBeforeSaveAsync(Person entity, SaveContext context)
     {
         if (string.IsNullOrEmpty(entity.FirstName))
             throw new SparkValidationException("FirstName is required");
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public override Task OnAfterSaveAsync(PersistentObject obj, Person entity)
+    public ValueTask OnAfterSaveAsync(Person entity, SaveContext context)
     {
-        // Post-save logic (notifications, logging, etc.)
-        return Task.CompletedTask;
+        // After the commit: notifications, logging, etc.
+        return ValueTask.CompletedTask;
     }
 }
 ```
 
+The framework owns every write (#482): it loads, maps, runs the hooks, checks the row (WITH CHECK), writes with the expected change vector and commits once. Nothing on the Actions class can skip that.
+
 Available hooks:
 - `OnLoadAsync` - Customize single entity loading
-- `OnSaveAsync` - Customize save operation
-- `OnDeleteAsync` - Customize delete operation
-- `OnBeforeSaveAsync` - Pre-save validation/logic
-- `OnAfterSaveAsync` - Post-save logic
-- `OnBeforeDeleteAsync` - Pre-delete logic
+- `MapAsync(obj, existing)` - Customize how the posted object maps onto the entity a save writes
+- `IBeforeSave<T>` / `IAfterSave<T>` - Pre-save validation/stamping/prompts, and post-commit follow-ups
+- `IBeforeDelete<T>` / `IAfterDelete<T>` - Pre-delete validation/prompts, and post-commit follow-ups (cancel with `throw new SparkCancelException()`)
 - `GetRowFilterAsync(string action)` - **Row-level security** (preferred): the row rule as a
   `Task<Expression<Func<T,bool>>?>` the framework pushes into the RavenDB query, so a list over a
   row-scoped type reads only the caller's rows. **Construction can `await`** (fetch an allow-list);

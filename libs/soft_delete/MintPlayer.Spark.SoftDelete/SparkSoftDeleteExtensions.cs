@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Interceptors;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -34,7 +35,7 @@ public static class SparkSoftDeleteExtensions
         });
 
         builder.Services.AddSparkRowPolicy<SoftDeleteRowPolicy>();
-        builder.Services.AddPersistentObjectInterceptor<SoftDeleteInterceptor>();
+        builder.Services.AddSparkHook<SoftDeleteInterceptor>();
         builder.Services.TryAddScoped<SoftDeleteRequestState>();
         builder.Services.TryAddScoped<ISparkSoftDelete, SparkSoftDelete>();
         builder.Services.TryAddSingleton<ISoftDeleteRevisions, RavenSoftDeleteRevisions>();

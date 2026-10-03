@@ -1,6 +1,7 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
-using MintPlayer.Spark.IdentityProvider.Actions;
+using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.IdentityProvider.Hooks;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using NSubstitute;
@@ -15,8 +16,18 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </summary>
 public class OidcApplicationActionsTests
 {
-    // No session: the before-write uniqueness query is skipped, as for any hand-built actions.
-    private static OidcApplicationActions Actions() => new(corsOrigins: new OidcCorsOrigins(), requestSession: null!, entityMapper: Substitute.For<IEntityMapper>(), httpContextAccessor: null!);
+    // No session: the before-write uniqueness query is skipped, as for any hook called by hand.
+    private static OidcApplicationHooks Hooks() => new(corsOrigins: new OidcCorsOrigins());
+
+    /// <summary>A save context with no session: the rules are judged, the uniqueness query is skipped.</summary>
+    internal static SaveContext Context(Type entityType, object entity) => new()
+    {
+        EntityType = entityType,
+        Operation = PersistentObjectOperation.New,
+        PersistentObject = new PersistentObject { Name = entityType.Name, ObjectTypeId = Guid.NewGuid() },
+        Entity = entity,
+        Session = new object(),
+    };
 
     private static OidcApplication Valid() => new()
     {
@@ -32,7 +43,7 @@ public class OidcApplicationActionsTests
     {
         try
         {
-            await Actions().OnBeforeSaveAsync(new PersistentObject { Name = "OidcApplication", ObjectTypeId = Guid.NewGuid() }, app);
+            await Hooks().OnBeforeSaveAsync(app, Context(typeof(OidcApplication), app));
             return null;
         }
         catch (Exception ex)
@@ -258,13 +269,13 @@ public class OidcApplicationActionsTests
 /// <summary>Validation for the scope screen — the half that decides what a token carries.</summary>
 public class OidcScopeActionsTests
 {
-    private static OidcScopeActions Actions() => new(requestSession: null!, entityMapper: Substitute.For<IEntityMapper>(), httpContextAccessor: null!);
+    private static OidcScopeHooks Hooks() => new();
 
     private static async Task<Exception?> SaveAsync(OidcScope scope)
     {
         try
         {
-            await Actions().OnBeforeSaveAsync(new PersistentObject { Name = "OidcScope", ObjectTypeId = Guid.NewGuid() }, scope);
+            await Hooks().OnBeforeSaveAsync(scope, OidcApplicationActionsTests.Context(typeof(OidcScope), scope));
             return null;
         }
         catch (Exception ex)

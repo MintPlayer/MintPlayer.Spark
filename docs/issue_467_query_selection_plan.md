@@ -151,13 +151,13 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 
 ### M7 — The framework owns persistence; DI-registered per-phase hooks (#482, D31)
 Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision, 2026-10-03), so the PR closes #467 and #482.
-- [ ] Persister in the framework, called from `DatabaseAccess`. It runs, in this order:
+- [x] Persister in the framework, called from `DatabaseAccess`. It runs, in this order:
       load/construct → after-materialize → `MapAsync` → `IDeleteReplacement` (deletes only) → before-hooks (`Default`, then
       `Finalize`) → WITH CHECK → store or delete with the expected change vector → **one commit owned by `DatabaseAccess`** →
       replication → after-hooks (each isolated) → durable enqueue (M7b).
       `ISparkWriteBatch.IsDeferring`, `AnnounceBeforeSaveBypass`, the `savedEarly` warning, the Mark/Consume handshake and
       `InvokeBeforeDeleteHookAsync` are removed.
-- [ ] Hook interfaces in Abstractions:
+- [x] Hook interfaces in Abstractions:
       - `IBeforeSave`, `IAfterSave`, `IBeforeDelete`, `IAfterDelete`, `IAfterMaterialize`, `IAfterLoad`, `INaturalIdCollision`;
       - typed `IXxx<T>` sugar;
       - `IDeleteReplacement`;
@@ -165,17 +165,17 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
 
       `IPersistentObjectInterceptor` is deleted. `spark.AddHook<T>()` registers a hook, and a `HookRegistrationGenerator`
       emits `AddHooks`, which `AddSparkFull` calls.
-- [ ] `SparkCancelException`: write nothing, evict, no after-hooks. Answers: delete/delete-many 204, update 200 (as stored),
+- [x] `SparkCancelException`: write nothing, evict, no after-hooks. Answers: delete/delete-many 204, update 200 (as stored),
       create 204. One cancel cancels a whole bulk delete. A `Retry.Action` from a hook during a bulk delete is refused.
-- [ ] The Actions class loses `OnSaveAsync`, `OnDeleteAsync`, `OnBeforeSaveAsync`, `OnAfterSaveAsync` and `OnBeforeDeleteAsync`;
+- [x] The Actions class loses `OnSaveAsync`, `OnDeleteAsync`, `OnBeforeSaveAsync`, `OnAfterSaveAsync` and `OnBeforeDeleteAsync`;
       `IPersistentObjectActions<T>` loses them too. `MapAsync(obj, existing?)` is new.
-- [ ] Migrate SoftDelete, History, Moderation, Contributions, Replication (`ISyncActionInterceptor` reads `WasReplaced`), the QnA
+- [x] Migrate SoftDelete, History, Moderation, Contributions, Replication (`ISyncActionInterceptor` reads `WasReplaced`), the QnA
       interceptors, and every app override (CodeCoverage ApiToken/GitHubProject/Repository, DemoApp Person/Company,
       Fleet Car (prompt in `IBeforeDelete<Car>`, cancel by throwing; toast in `IAfterSave<Car>`), QnA Question, OIDC).
       ApiToken's shown-once secret stays a **sync** `IAfterSave` and must never be durable.
-- [ ] D32: no `StoreAsync` seam; nested value objects are written only with their parent. Replication becomes hooks. Load/query hooks stay out of scope.
-- [ ] D32(2) spike, then the guard: does RavenDB raise `OnBeforeDelete` for `session.Delete(id)` on an untracked document? Then a document-store listener refuses a raw hard delete of an `ISoftDeletable` document that the persister did not issue, unless inside `SparkRawWrites.Allow()`. Test: raw delete refused, purge allowed, opt-out allowed.
-- [ ] Tests: existing ordering tests (`InterceptorOrderTests` → stages/replacement), S4 (an override cannot defeat a replacement:
+- [x] D32: no `StoreAsync` seam; nested value objects are written only with their parent. Replication becomes hooks. Load/query hooks stay out of scope.
+- [x] D32(2) spike, then the guard: does RavenDB raise `OnBeforeDelete` for `session.Delete(id)` on an untracked document? Then a document-store listener refuses a raw hard delete of an `ISoftDeletable` document that the persister did not issue, unless inside `SparkRawWrites.Allow()`. Test: raw delete refused, purge allowed, opt-out allowed.
+- [x] Tests: existing ordering tests (`InterceptorOrderTests` → stages/replacement), S4 (an override cannot defeat a replacement:
       now structural), F6 (refusal evicts side documents), F7/D14 (expected change vector), `RetryFromEveryHookTests`,
       isolated after-hooks, cancel, generator snapshot tests. Docs: `guide-row-security`, the SoftDelete README,
       `guide-manager-retry-actions`, the Spark README/AGENTS.md, and a new hooks guide.
@@ -207,6 +207,7 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
 ### M9 — Full verification and PR
 - [ ] Test call sites made stale by D12 (selections and delete-many without `queryId`): `ExecuteCustomActionTests` (fallback-path unit tests), `DisableActionsTests`, `ModerationToolsTests`, `SoftDeleteTests`, `SubQueryActionsTests`; and fixtures embedding pre-#467 shapes (see M2 note).
 - [ ] Test call sites made stale by D14/D16 (M6): raw posts to `/po/delete`, `/po/delete-many` (`ids` → `items`), `/po/purge` and `/po/update` without an etag — `DenyAllEndpointMirrorTests`, `DisableActionsTests`, `RetryFromEveryHookTests`, `SubQueryActionsTests`, `XsrfSurfaceTests`, `HistoryTests`, `ModerationToolsTests`, `SoftDeleteTests`, E2E `QnAContributionsTests`, `RetryActionDeleteTests`; any HTTP test asserting 404 for an update of a hidden row now gets 409 `deleted` (D30c); natural-id collision tests now get 409 `exists` (D30d). The typed client call sites already compile (they load first: `DeleteAsLoadedAsync` / `AsListedAsync` test helpers).
+- [ ] Expectations changed by M7 (#482, D33): after-hooks run in registration order (not reverse) and are isolated; an Actions class's own hooks run after the registered ones; a `Retry.Action` in a bulk delete refuses the row (`Issue467` S8, `I467PromptActions`); Fleet's plate mismatch is a 400 (E2E `RetryActionDeleteTests`); a raw `session.Delete` of an `ISoftDeletable` in a fixture now needs `SparkRawWrites.Allow()`; tests asserting `OnDeleteCalls` (now: committed hard deletes only).
 - [ ] S3: measure the D18 refusal message for a 200-row batch (breadcrumbs resolve in one batched call; confirm the cost).
 - [ ] The `Spikes/Issue467` tests are all green and moved; the `Spikes` folder is gone.
 - [ ] Full local sweep (`npm run test:affected`, Developer licence), all five test projects green.

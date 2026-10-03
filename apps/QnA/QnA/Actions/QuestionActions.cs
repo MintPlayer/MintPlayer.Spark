@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Interceptors;
 using System.Linq.Expressions;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -13,7 +14,7 @@ namespace QnA.Actions;
 /// Questions: who may change one (a row rule), which actions a question offers (#460 D13), and the
 /// state change the Close / Reopen actions carry into the save.
 /// </summary>
-public partial class QuestionActions : DefaultPersistentObjectActions<Question>
+public partial class QuestionActions : DefaultPersistentObjectActions<Question>, IBeforeSave<Question>
 {
     [Inject] private readonly QnAAccess access;
     [Inject] private readonly QuestionStateChanges stateChanges;
@@ -87,11 +88,11 @@ public partial class QuestionActions : DefaultPersistentObjectActions<Question>
     }
 
     /// <summary>Applies a pending Close / Reopen (<see cref="QuestionStateChanges"/>) to the entity being saved.</summary>
-    public override Task OnBeforeSaveAsync(PersistentObject obj, Question entity)
+    public ValueTask OnBeforeSaveAsync(Question entity, SaveContext context)
     {
         if (entity.Id is { } id && stateChanges.TryTakeClosed(id, out var isClosed))
             entity.IsClosed = isClosed;
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>

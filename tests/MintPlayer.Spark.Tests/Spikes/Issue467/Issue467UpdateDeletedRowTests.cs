@@ -38,7 +38,7 @@ public class Issue467UpdateDeletedRowTests : SparkTestDriver
             Store,
             [TestModels.Person(PersonTypeId)],
             configureServices: services => services.AddSingleton(_race),
-            configureSpark: spark => spark.AddPersistentObjectInterceptor<DeleteAfterPreReadInterceptor>());
+            configureSpark: spark => spark.AddHook<DeleteAfterPreReadInterceptor>());
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
@@ -164,7 +164,7 @@ public class Issue467UpdateDeletedRowTests : SparkTestDriver
         }
     }
 
-    public sealed class DeleteAfterPreReadInterceptor(DeleteRace race) : IPersistentObjectInterceptor
+    public sealed class DeleteAfterPreReadInterceptor(DeleteRace race) : IAfterLoad
     {
         public bool AppliesTo(Type entityType) => entityType == typeof(Person);
 

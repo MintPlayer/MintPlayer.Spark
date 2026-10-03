@@ -103,6 +103,18 @@ public class SparkFullGenerator : IncrementalGenerator
                                 TypeName = string.Empty
                             };
                         }
+
+                        // The same filter as HookRegistrationGenerator, or AddHooks would be called and not exist.
+                        if (iface.ToDisplayString() == "MintPlayer.Spark.Abstractions.Interceptors.ISparkHook"
+                            && !classSymbol.IsGenericType && classSymbol.DeclaredAccessibility != Accessibility.Private
+                            && !classSymbol.AllInterfaces.Any(i => i.OriginalDefinition.ToDisplayString() == "MintPlayer.Spark.Actions.IPersistentObjectActions<T>"))
+                        {
+                            return new SparkFullDiscoveredType
+                            {
+                                Kind = "Hook",
+                                TypeName = string.Empty
+                            };
+                        }
                     }
 
                     return default;

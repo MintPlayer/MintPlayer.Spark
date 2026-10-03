@@ -23,7 +23,7 @@ public class Right
     /// <c>"Edit/Person/Salary"</c>, but matching is per-half and nothing in Spark ever builds a
     /// three-segment resource — so such a right would parse, load, and silently never match
     /// anything. Scope a single property through the Actions class instead
-    /// (<c>OnBeforeSaveAsync</c> to reject the change, or omit the attribute from the model).
+    /// (a before-save hook to reject the change, or omit the attribute from the model).
     /// </para>
     /// </summary>
     public string Resource { get; set; } = string.Empty;

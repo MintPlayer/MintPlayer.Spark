@@ -1,12 +1,12 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
-namespace MintPlayer.Spark.IdentityProvider.Actions;
+namespace MintPlayer.Spark.IdentityProvider.Hooks;
 
 /// <summary>
 /// Validation for the OIDC client admin screen.
@@ -20,7 +20,7 @@ namespace MintPlayer.Spark.IdentityProvider.Actions;
 /// the answer.
 /// </para>
 /// </summary>
-public partial class OidcApplicationActions : DefaultPersistentObjectActions<OidcApplication>
+public sealed partial class OidcApplicationHooks : IBeforeSave<OidcApplication>, IAfterSave<OidcApplication>
 {
     private static readonly string[] SupportedGrantTypes =
         ["authorization_code", "refresh_token", "client_credentials"];
@@ -31,10 +31,8 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     /// which the injection generator cannot place before the required ones.
     /// </summary>
     [Inject] private readonly OidcCorsOrigins corsOrigins;
-    // Null only when the actions are built by hand (unit tests); the check after the write remains.
-    [Inject] private readonly IAsyncDocumentSession requestSession;
 
-    public override async Task OnBeforeSaveAsync(PersistentObject obj, OidcApplication entity)
+    public async ValueTask OnBeforeSaveAsync(OidcApplication entity, SaveContext context)
     {
         if (string.IsNullOrWhiteSpace(entity.ClientId))
             throw new SparkValidationException("Client id is required.", nameof(entity.ClientId));
@@ -45,13 +43,12 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
         ValidateGrantTypes(entity);
         HashAnyNewSecrets(entity);
 
-        // Before the write too (#467 finding): checked only afterwards, a duplicate was refused with a
-        // 400 while staying stored. This refuses the ordinary case before anything is committed; the
-        // check after the write still catches the loser of two concurrent saves.
-        if (requestSession is not null)
-            await EnsureClientIdUniqueAsync(requestSession, entity);
-
-        await base.OnBeforeSaveAsync(obj, entity);
+        // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused with
+        // a 400 while staying stored. A pre-commit read still races two concurrent saves — both find
+        // nothing and both proceed; true uniqueness needs a compare-exchange reservation.
+        // Not a session only when the hook is called by hand (unit tests of the rules above).
+        if (context.Session is IAsyncDocumentSession session)
+            await EnsureClientIdUniqueAsync(session, entity);
     }
 
     private static async Task EnsureClientIdUniqueAsync(IAsyncDocumentSession session, OidcApplication entity)
@@ -193,28 +190,13 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     }
 
     /// <summary>
-    /// Rejects a duplicate <c>ClientId</c>. Nothing enforced this, and the lookup that resolves a
-    /// client returns whichever document the index yields first — so a second application claiming
-    /// an existing id is impersonation decided by ordering.
-    /// <para>
-    /// Checked before the write (<see cref="OnBeforeSaveAsync"/>) and again after it: a
-    /// read-then-write check races, since two concurrent saves both find nothing and both proceed.
-    /// Reading afterwards catches the loser, which then fails loudly instead of silently shadowing
-    /// the original — though its document is already stored (true uniqueness needs a
-    /// compare-exchange reservation; #482 moves this onto a pre-commit hook).
-    /// </para>
+    /// The CORS snapshot is cached with a TTL backstop, so without this an operator adding an origin
+    /// would watch the screen say it saved and the browser keep refusing for minutes. The admin screen
+    /// is the only in-app writer, which is what makes invalidating after its commit enough.
     /// </summary>
-    public override async Task<OidcApplication> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
+    public ValueTask OnAfterSaveAsync(OidcApplication entity, SaveContext context)
     {
-        var entity = await base.OnSaveAsync(session, obj);
-
-        await EnsureClientIdUniqueAsync(session, entity);
-
-        // The CORS snapshot is cached with a TTL backstop, so without this an operator adding an
-        // origin would watch the screen say it saved and the browser keep refusing for minutes.
-        // The admin screen is the only in-app writer, which is what makes invalidating here enough.
         corsOrigins.Invalidate();
-
-        return entity;
+        return ValueTask.CompletedTask;
     }
 }

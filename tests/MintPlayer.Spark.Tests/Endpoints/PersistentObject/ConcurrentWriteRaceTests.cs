@@ -52,7 +52,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
             Store,
             [TestModels.Person(PersonTypeId)],
             configureServices: services => services.AddSingleton(_race),
-            configureSpark: spark => spark.AddPersistentObjectInterceptor<ConcurrentWriterInterceptor>());
+            configureSpark: spark => spark.AddHook<ConcurrentWriterInterceptor>());
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
@@ -232,7 +232,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         }
     }
 
-    public sealed class ConcurrentWriterInterceptor(RaceSwitch race) : IPersistentObjectInterceptor
+    public sealed class ConcurrentWriterInterceptor(RaceSwitch race) : IBeforeSave, IBeforeDelete, IDeleteReplacement
     {
         public bool AppliesTo(Type entityType) => entityType == typeof(Person);
 
@@ -246,11 +246,13 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         {
             if (race.TakeDelete())
                 await race.WriteConcurrentlyAsync(context.Id);
+        }
+
+        public ValueTask<bool> ReplaceAsync(DeleteContext context)
+        {
             if (race.ReplaceDeletes)
-            {
                 ((Person)context.Entity).FirstName = "[deleted]";
-                context.Replace();
-            }
+            return ValueTask.FromResult(race.ReplaceDeletes);
         }
     }
 }

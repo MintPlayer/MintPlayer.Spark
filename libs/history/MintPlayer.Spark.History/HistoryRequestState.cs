@@ -18,10 +18,10 @@ internal sealed class HistoryRequestState
     /// </summary>
     public bool RevertPartial { get; set; }
 
-    private readonly Dictionary<PersistentObjectInterceptorContext, string?> previous = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<SparkHookContext, string?> previous = new(ReferenceEqualityComparer.Instance);
 
-    public void SetPrevious(PersistentObjectInterceptorContext context, string? changeVector) => previous[context] = changeVector;
+    public void SetPrevious(SparkHookContext context, string? changeVector) => previous[context] = changeVector;
 
-    public string? TakePrevious(PersistentObjectInterceptorContext context)
+    public string? TakePrevious(SparkHookContext context)
         => previous.Remove(context, out var changeVector) ? changeVector : null;
 }

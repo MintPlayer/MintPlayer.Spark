@@ -64,12 +64,61 @@ public class SoftDeleteTests : SparkTestDriver
             {
                 spark.AddSoftDelete();
                 // Registered after SoftDelete, so it refuses AFTER the soft-delete mark was set.
-                spark.Services.AddPersistentObjectInterceptor<SdVetoInterceptor>();
+                spark.Services.AddSparkHook<SdVetoInterceptor>();
             },
             security: security ?? SparkTestSecurity.Permissive);
         factories.Add(factory);
         var (cookie, xsrf) = await factory.MintAntiforgeryAsync();
         return new Host(factory, factory.CreateClient(), cookie, xsrf);
+    }
+
+    // ---- the raw-delete guard (#467, D32) --------------------------------------------------------
+
+    [Fact]
+    public async Task A_raw_session_delete_of_a_soft_deletable_row_is_refused()
+    {
+        await StartAsync();
+        var note = await SeedNoteAsync("raw");
+
+        using (var session = Store.OpenAsyncSession())
+        {
+            session.Delete(note.Id!);
+            var act = () => session.SaveChangesAsync();
+            await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*soft-deletable*");
+        }
+
+        (await LoadAsync<SdNote>(note.Id!)).Should().NotBeNull("the raw delete bypassed SoftDelete and was refused");
+    }
+
+    [Fact]
+    public async Task A_raw_delete_inside_SparkRawWrites_Allow_goes_through()
+    {
+        await StartAsync();
+        var note = await SeedNoteAsync("migrated");
+
+        using (var session = Store.OpenAsyncSession())
+        using (SparkRawWrites.Allow())
+        {
+            session.Delete(note.Id!);
+            await session.SaveChangesAsync();
+        }
+
+        (await LoadAsync<SdNote>(note.Id!)).Should().BeNull("the opt-out is for migrations and fixtures");
+    }
+
+    [Fact]
+    public async Task A_purge_through_the_framework_is_not_refused_by_the_guard()
+    {
+        var host = await StartAsync();
+        var note = await SeedNoteAsync("purged", deleted: true);
+
+        using (var scope = host.Factory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IDatabaseAccess>();
+            await db.DeletePersistentObjectAsync(NoteTypeId, note.Id!, PersistentObjectOperation.Purge);
+        }
+
+        (await LoadAsync<SdNote>(note.Id!)).Should().BeNull("the persister issued this hard delete");
     }
 
     // ---- delete is soft ------------------------------------------------------------------------
@@ -851,7 +900,8 @@ public sealed class SdRecorder
 }
 
 /// <summary>Withholds Edit on a row titled "frozen" and Delete on one titled "keep"; records OnDeleteAsync.</summary>
-public class SdNoteActions(IEntityMapper mapper, SdRecorder recorder, IAsyncDocumentSession session) : DefaultPersistentObjectActions<SdNote>(mapper)
+public class SdNoteActions(IEntityMapper mapper, SdRecorder recorder, IAsyncDocumentSession session) : DefaultPersistentObjectActions<SdNote>(mapper),
+    IAfterDelete<SdNote>
 {
     /// <summary>The sub-query on a person's page: the notes they wrote.</summary>
     public IRavenQueryable<SdNote> NotesByAuthor(MintPlayer.Spark.Queries.CustomQueryArgs args)
@@ -874,15 +924,17 @@ public class SdNoteActions(IEntityMapper mapper, SdRecorder recorder, IAsyncDocu
         return Task.CompletedTask;
     }
 
-    public override Task OnDeleteAsync(IAsyncDocumentSession session, string id)
+    /// <summary>Records every committed hard delete (a purge); a replaced (soft) delete is not one.</summary>
+    public ValueTask OnAfterDeleteAsync(SdNote entity, DeleteContext context)
     {
-        recorder.OnDeleteCalls.Enqueue(id);
-        return base.OnDeleteAsync(session, id);
+        if (!context.IsReplaced)
+            recorder.OnDeleteCalls.Enqueue(context.Id);
+        return ValueTask.CompletedTask;
     }
 }
 
-/// <summary>Refuses the delete of a row titled "veto" — registered after SoftDelete, so the mark is already set.</summary>
-public sealed class SdVetoInterceptor : IPersistentObjectInterceptor
+/// <summary>Refuses the delete of a row titled "veto" — after SoftDelete decided the replacement, so the mark is already set.</summary>
+public sealed class SdVetoInterceptor : IBeforeDelete
 {
     public bool AppliesTo(Type entityType) => entityType == typeof(SdNote);
 

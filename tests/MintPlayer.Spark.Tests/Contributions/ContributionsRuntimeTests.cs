@@ -73,10 +73,11 @@ public class ContributionsRuntimeTests : SparkTestDriver
             configureSpark: spark =>
             {
                 spark.AddSoftDelete();
+                // Hooks of a phase run in registration order (#482): the probes bracket Contributions' materialize.
+                spark.AddHook<CoProbeBefore>();
                 spark.AddContributions(typeof(CoSong).Assembly);
-                spark.AddPersistentObjectInterceptor<CoProbeBefore>();
-                spark.AddPersistentObjectInterceptor<CoProbeAfter>();
-                spark.AddPersistentObjectInterceptor<CoRaceInterceptor>();
+                spark.AddHook<CoProbeAfter>();
+                spark.AddHook<CoRaceInterceptor>();
             });
         factories.Add(factory);
         var client = new SparkClient(factory.CreateClient(), ownsClient: true);
@@ -632,9 +633,8 @@ public sealed class CoProbe
     }
 }
 
-public sealed class CoProbeBefore(CoProbe probe) : IPersistentObjectInterceptor
+public sealed class CoProbeBefore(CoProbe probe) : IAfterMaterialize
 {
-    public int Order => PersistentObjectInterceptorOrder.Contributions - 1;
     public bool AppliesTo(Type entityType) => entityType == typeof(CoSong);
 
     public ValueTask OnAfterMaterializeAsync(MaterializeContext context)
@@ -645,9 +645,8 @@ public sealed class CoProbeBefore(CoProbe probe) : IPersistentObjectInterceptor
     }
 }
 
-public sealed class CoProbeAfter(CoProbe probe) : IPersistentObjectInterceptor
+public sealed class CoProbeAfter(CoProbe probe) : IAfterMaterialize
 {
-    public int Order => PersistentObjectInterceptorOrder.Contributions + 1;
     public bool AppliesTo(Type entityType) => entityType == typeof(CoSong);
 
     public ValueTask OnAfterMaterializeAsync(MaterializeContext context)
@@ -689,9 +688,8 @@ public sealed class CoRace(IDocumentStore store)
     }
 }
 
-public sealed class CoRaceInterceptor(CoRace race) : IPersistentObjectInterceptor
+public sealed class CoRaceInterceptor(CoRace race) : IBeforeSave
 {
-    public int Order => PersistentObjectInterceptorOrder.Contributions + 10;
     public bool AppliesTo(Type entityType) => entityType == typeof(CoSong);
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context) => await race.FireIfArmedAsync(context.PersistentObject.Id);

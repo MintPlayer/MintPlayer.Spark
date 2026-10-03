@@ -30,15 +30,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly ICollectionGuard collectionGuard;
     [Inject] private readonly ISparkTypeResolver typeResolver;
-    [Inject] private readonly IPersistentObjectInterceptorPipeline interceptorPipeline;
+    [Inject] private readonly ISparkHookPipeline hooks;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
     [Inject] private readonly IAttributeWriteShield attributeWriteShield;
     [Inject] private readonly ISaveValidation saveValidation;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
-
-    /// <summary>Actions types whose OnSaveAsync override was seen to bypass before-save interceptors, so the warning logs once.</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> bypassAnnounced = new();
 
     public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
@@ -120,25 +117,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await task;
         var loaded = (PersistentObject?)task.GetCompletedTaskResult();
         if (loaded is not null)
-            await RunAfterLoadInterceptorsAsync(entityType, [loaded]);
+            await hooks.RunAfterLoadAsync(entityType, session, [loaded]);
         return loaded;
-    }
-
-    /// <summary>After-load interceptors (#460), in reverse registration order like every after-hook.</summary>
-    private async Task RunAfterLoadInterceptorsAsync(Type entityType, IReadOnlyList<PersistentObject> objects)
-    {
-        var interceptors = interceptorPipeline.For(entityType);
-        if (interceptors.Count == 0 || objects.Count == 0)
-            return;
-
-        var user = httpContextAccessor?.HttpContext?.User;
-        var system = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor);
-        foreach (var obj in objects)
-        {
-            var context = new LoadContext { EntityType = entityType, PersistentObject = obj, User = user, IsSystemContext = system };
-            for (var i = interceptors.Count - 1; i >= 0; i--)
-                await interceptors[i].OnAfterLoadAsync(context);
-        }
     }
 
     /// <inheritdoc />
@@ -176,7 +156,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (actions is Actions.IBatchedLoadActions { SupportsBatchedLoad: true } batched)
         {
             var batch = await batched.LoadManyAsync(ids, null);
-            await RunAfterLoadInterceptorsAsync(entityType, batch);
+            await hooks.RunAfterLoadAsync(entityType, session, batch);
             return batch;
         }
 
@@ -189,7 +169,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if ((PersistentObject?)task.GetCompletedTaskResult() is { } obj)
                 resolved.Add(obj);
         }
-        await RunAfterLoadInterceptorsAsync(entityType, resolved);
+        await hooks.RunAfterLoadAsync(entityType, session, resolved);
         return resolved;
     }
 
@@ -270,7 +250,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // per-row hook is not consulted), applied to the object itself so the probe, the gates and
             // the save all see the same values. Before the type-level New gate below, which is safe:
             // it never refuses, so it answers nothing. The shield call after the gates stays where it
-            // is, before the interceptors; it is idempotent, and on a collision it adds the Edit rules
+            // is, before the hooks; it is idempotent, and on a collision it adds the Edit rules
             // judged on the stored row.
             refusedBeforeProbe = (await attributeWriteShield.ApplyAsync(persistentObject, entityTypeDefinition, entityType, stored: null)).Refused;
 
@@ -326,7 +306,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // Hydrated like every other load (contributions F1), in the side session it came from,
             // so the row gates and SaveContext.Before see the satellite rows as they are stored.
             if (existing is not null)
-                await interceptorPipeline.RunAfterMaterializeAsync(entityType, checkSession, [existing], MaterializeReason.Before);
+                await hooks.RunAfterMaterializeAsync(entityType, checkSession, [existing], MaterializeReason.Before);
             if (existing is null && (isRestore || isRevert))
                 throw new SparkRowLevelAccessDeniedException($"{rowAction}/{entityTypeDefinition.Name}");
             // An edit of a version the caller loaded (it carries an etag), whose document is gone:
@@ -347,10 +327,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     throw new SparkRowLevelAccessDeniedException($"{rowAction}/{entityTypeDefinition.Name}");
 
                 // Concurrency check folds into the same side session — see R2-M7 / M-7. It is the
-                // fast refusal, not the guarantee: a stale etag answers 409 before any hook or
-                // interceptor runs (and for an OnSaveAsync override that never reaches the base).
-                // The guarantee is the base OnSaveAsync writing with the expected change vector
-                // (contributions F7), which also closes the window between this check and the write.
+                // fast refusal, not the guarantee: a stale etag answers 409 before any hook runs.
+                // The guarantee is the framework write carrying the expected change vector
+                // (contributions F7, WriteSaveAsync), which also closes the window between this check
+                // and the write.
                 if (!string.IsNullOrEmpty(persistentObject.Etag))
                 {
                     var currentEtag = checkSession.Advanced.GetChangeVectorFor(existing);
@@ -398,48 +378,24 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // the caller may not write, after every gate and before anything hooks, intercepts or writes.
         await saveValidation.ValidateAsync(persistentObject, entityTypeDefinition, before, shield.Unwritable);
 
-        // Interceptors (#460, D1): registered here, after every gate, so an interceptor only ever sees
-        // a save the caller was allowed to make. The before-hooks run inside the base OnSaveAsync
-        // (after mapping and OnBeforeSaveAsync, before WITH CHECK and the write); the after-hooks run
-        // here, in reverse order, once the Actions class returned.
-        var interceptors = interceptorPipeline.For(entityType);
-        SaveContext? saveContext = null;
-        if (interceptors.Count > 0)
-        {
-            saveContext = new SaveContext
-            {
-                EntityType = entityType,
-                Operation = operation,
-                PersistentObject = persistentObject,
-                Before = before,
-                UnwritableAttributes = unwritable,
-                User = httpContextAccessor?.HttpContext?.User,
-                IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
-            };
-            interceptorPipeline.BeginSave(saveContext, interceptors);
-        }
-
-        // Pass PO directly to actions — entity mapping happens inside the actions pipeline
-        object savedEntity;
-        var beforeHooksRan = false;
-        // Everything the request session tracks before the Actions class and the before-hooks run, so
-        // a refusal can take back what they wrote besides the target (contributions F6).
+        // The framework owns the write (#482): hooks only ever see a save the caller was allowed to make,
+        // and nothing an Actions class or a hook does can skip WITH CHECK, the expected change vector or
+        // the single commit. Everything the request session tracks before the hooks run is recorded, so
+        // a refusal (or a cancel) can take back what they wrote besides the target (contributions F6).
         var sessionBefore = SessionWriteSnapshot.Take(session);
+        SaveContext saveContext;
         try
         {
-            savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
+            saveContext = await WriteSaveAsync(entityType, persistentObject, operation, before, unwritable);
+            await session.SaveChangesAsync();
         }
         catch (Exception ex)
         {
-            // The twin of the refused-delete eviction below (#460, M7 finding): the base OnSaveAsync
-            // loads the row into the REQUEST session and maps the posted values onto it before WITH
-            // CHECK (or an interceptor, or OnBeforeSaveAsync) refuses. Left tracked, the request's next
+            // The save loaded the row into the REQUEST session and mapped the posted values onto it before
+            // a hook or WITH CHECK refused (#460, M7 finding). Left tracked, the request's next
             // SaveChangesAsync — another save, a custom action's own write — would commit the refused
             // change. Evicted, the next load in this request reads what is stored.
             await EvictTrackedAsync(entityType, persistentObject.Id);
-            // Not only the target (contributions F6): a before-hook that stored a side document (a
-            // contribution, an audit row) before WITH CHECK refused would otherwise have it committed
-            // by that same next SaveChangesAsync, orphaned from the save that was refused.
             sessionBefore.EvictWrittenSince();
 
             // The write found the document changed since it was loaded (contributions F7): the same
@@ -449,39 +405,19 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 throw new SparkConcurrencyException(ex);
             throw;
         }
-        finally
-        {
-            if (saveContext is not null)
-                beforeHooksRan = interceptorPipeline.EndSave(saveContext);
-        }
 
-        if (saveContext is not null)
-        {
-            if (!beforeHooksRan)
-                AnnounceBeforeSaveBypass(entityType);
-
-            saveContext.Entity = savedEntity;
-            for (var i = interceptors.Count - 1; i >= 0; i--)
-                await interceptors[i].OnAfterSaveAsync(saveContext);
-        }
-
-        // Get the generated ID from the entity
+        var savedEntity = saveContext.Entity;
         var idProperty = entityType.GetCachedProperty("Id");
         var generatedId = idProperty is not null && idProperty.CanRead
             ? AccessorCache.GetGetter(idProperty)(savedEntity)?.ToString()
             : null;
 
         persistentObject.Id = generatedId;
+        saveContext.Id = generatedId;
         // Return the fresh change vector so the client can round-trip it to the next update.
         persistentObject.Etag = session.Advanced.GetChangeVectorFor(savedEntity);
 
-        // If this is a replicated entity, also broadcast the changes to the owner module
-        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        if (interceptor != null && interceptor.IsReplicated(entityType))
-        {
-            await interceptor.HandleSaveAsync(entityType, persistentObject, isNew: operation == PersistentObjectOperation.New);
-        }
-
+        await hooks.RunIsolatedAsync(hooks.For<IAfterSave>(entityType, operation), hook => hook.OnAfterSaveAsync(saveContext), entityType, generatedId);
         return persistentObject;
     }
 
@@ -542,126 +478,34 @@ internal partial class DatabaseAccess : IDatabaseAccess
             }
         }
 
-        var interceptors = interceptorPipeline.For(entityType);
-        var syncInterceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        var replicated = syncInterceptor != null && syncInterceptor.IsReplicated(entityType);
-
         // Everything the request session tracks before any delete hook runs, so a refusal can take back
         // what the hooks wrote besides the target (contributions F6).
         var sessionBefore = SessionWriteSnapshot.Take(session);
-        var batch = serviceProvider.GetRequiredService<ISparkWriteBatch>();
-
-        if (interceptors.Count == 0)
-        {
-            // Delete locally first (includes before hook)
-            try
-            {
-                // The base OnDeleteAsync deletes with the caller's version (#467, D14).
-                if (!string.IsNullOrEmpty(etag))
-                    batch.ExpectChangeVector(id, etag);
-                await DeleteEntityViaActionsAsync(session, entityType, id);
-            }
-            catch (Exception ex)
-            {
-                // An Actions OnBeforeDeleteAsync that wrote a side document and then refused (or a
-                // failed commit) must not leave that write for the request's next SaveChangesAsync.
-                sessionBefore.EvictWrittenSince();
-                if (ex is Raven.Client.Exceptions.ConcurrencyException)
-                    throw new SparkConcurrencyException(ex);
-                throw;
-            }
-            finally
-            {
-                batch.ForgetExpectedChangeVectors();
-            }
-
-            // If this is a replicated entity, also notify the owner module
-            if (replicated)
-                await syncInterceptor!.HandleDeleteAsync(entityType, id);
-            return;
-        }
-
-        // Interceptors (#460, D1): the replacement is decided HERE, not in the Actions class, so an
-        // OnDeleteAsync override cannot defeat it (spike S4). Order: the Actions class's
-        // OnBeforeDeleteAsync, then every interceptor's before-hook in registration order; then either
-        // the replacement is saved or the Actions class deletes; then the after-hooks in reverse.
-        var actions = actionsResolver.ResolveForType(entityType);
         var entity = await LoadEntityAsync(session, entityType, id);
         if (entity is null) return;
-        // A replacement is a write of this entity: it must still find the version the caller saw (#467,
-        // D14) — or, for an internal caller, the version loaded here — or a concurrent edit that landed
-        // after the gate is overwritten (contributions F7).
+        // The write must still find the version the caller saw (#467, D14) — or, for an internal caller,
+        // the version loaded here — or a concurrent edit that landed after the gate is lost (F7).
         var expectedChangeVector = string.IsNullOrEmpty(etag) ? session.Advanced.GetChangeVectorFor(entity) : etag;
 
+        DeleteContext context;
         try
         {
-            await InvokeBeforeDeleteHookAsync(actions, entityType, entity);
-        }
-        catch
-        {
-            session.Advanced.Evict(entity);
-            sessionBefore.EvictWrittenSince();
-            throw;
-        }
-        interceptorPipeline.MarkBeforeDeleteHandled(entity);
-
-        var context = new DeleteContext
-        {
-            EntityType = entityType,
-            Operation = operation,
-            Id = id,
-            Entity = entity,
-            User = httpContextAccessor?.HttpContext?.User,
-            IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
-        };
-
-        try
-        {
-            foreach (var interceptor in interceptors)
-                await interceptor.OnBeforeDeleteAsync(context);
-
-            if (context.WasReplaced)
-            {
-                // The entity is tracked by the request session, so whatever the interceptors set on it
-                // is what gets written. Replication must forward that save — a hard delete sent for a
-                // soft one would destroy the owner module's copy.
-                await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
-                await session.SaveChangesAsync();
-                if (replicated)
-                    await syncInterceptor!.HandleSaveAsync(entity, id, isNew: false);
-            }
-            else
-            {
-                batch.ExpectChangeVector(id, expectedChangeVector!);
-                await DeleteEntityViaActionsAsync(session, entityType, id);
-                if (replicated)
-                    await syncInterceptor!.HandleDeleteAsync(entityType, id);
-            }
+            context = await WriteDeleteAsync(entityType, id, entity, operation, reason: null, expectedChangeVector!);
+            await session.SaveChangesAsync();
         }
         catch (Exception ex)
         {
             // A refusal after an earlier hook already changed the entity (SoftDelete marks it deleted,
-            // then a later interceptor says no) must leave nothing behind. The entity is tracked by the
-            // REQUEST session, so any later SaveChangesAsync in this request — another save, a custom
-            // action's own write — would otherwise commit the half-made change (#460, M6 finding).
-            // Evicted, the next load in this request reads what is stored.
+            // then a later hook says no) must leave nothing behind for a later SaveChangesAsync in this
+            // request (#460, M6 finding) — nor any other document a hook stored on the way (F6).
             session.Advanced.Evict(entity);
-            // And every other document a before-hook stored, changed or deleted on the way — the
-            // contribution recompute's current document, say — or a later save commits it (F6).
             sessionBefore.EvictWrittenSince();
             if (ex is Raven.Client.Exceptions.ConcurrencyException)
                 throw new SparkConcurrencyException(ex);
             throw;
         }
-        finally
-        {
-            // Not consumed when the Actions class's override never reached the base OnDeleteAsync.
-            interceptorPipeline.ConsumeBeforeDeleteHandled(entity);
-            batch.ForgetExpectedChangeVectors();
-        }
 
-        for (var i = interceptors.Count - 1; i >= 0; i--)
-            await interceptors[i].OnAfterDeleteAsync(context);
+        await hooks.RunIsolatedAsync(hooks.For<IAfterDelete>(entityType, operation), hook => hook.OnAfterDeleteAsync(context), entityType, id);
     }
 
     /// <summary>
@@ -813,48 +657,41 @@ internal partial class DatabaseAccess : IDatabaseAccess
             }
         }
 
-        var interceptors = interceptorPipeline.For(entityType);
-        var syncInterceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        var replicated = syncInterceptor != null && syncInterceptor.IsReplicated(entityType);
-        var batch = serviceProvider.GetRequiredService<ISparkWriteBatch>();
-        var actionsInstance = actionsResolver.ResolveForType(entityType);
-
         // Before the batch touches the request session (contributions F6), so a refusal evicts what
         // the hooks stored besides the rows themselves.
         var sessionBefore = SessionWriteSnapshot.Take(session);
 
         // One batched load into the request session: every later per-row load is an identity-map hit,
         // so 200 rows cost one request rather than blowing the session's request budget.
-        var tracked =await RowSecurity.LoadBaseDocumentsAsync(session, entityType, distinct);
+        var tracked = await RowSecurity.LoadBaseDocumentsAsync(session, entityType, distinct);
         // Every write carries the version the caller saw (#467, D14) — or, for an internal caller, the
         // version loaded here — so an edit landing after the checks above refuses the batch with a 409.
         var expectedChangeVectors = tracked.ToDictionary(
             pair => pair.Key,
             pair => context?.Etags?.GetValueOrDefault(pair.Key) is { Length: > 0 } etag ? etag : session.Advanced.GetChangeVectorFor(pair.Value),
             StringComparer.OrdinalIgnoreCase);
-        var contexts = new List<(DeleteContext Context, object Entity)>(distinct.Length);
-        var savedEarly = false;
-        void OnEarlySave(object? sender, AfterSaveChangesEventArgs e) => savedEarly = true;
+        var contexts = new List<DeleteContext>(distinct.Length);
 
-        session.Advanced.OnAfterSaveChanges += OnEarlySave;
         try
         {
-            // D18 (#467): a row a hook or interceptor refuses (a Moderation lock, a required reason) is
-            // recorded and the rest are still judged, so one refusal names every row to untick. Nothing
-            // is saved: the first refusal already decides the batch fails.
+            // D18 (#467): a row a hook refuses (a Moderation lock, a required reason) is recorded and the
+            // rest are still judged, so one refusal names every row to untick. Nothing is committed: the
+            // first refusal already decides the batch fails.
             var refused = new List<(string Id, string? Reason)>();
-            using (batch.Begin())
+            foreach (var id in distinct)
             {
-                foreach (var id in distinct)
+                try
                 {
-                    try
-                    {
-                        await DeleteOneOfBatchAsync(id);
-                    }
-                    catch (SparkValidationException ex)
-                    {
-                        refused.Add((id, ex.Message));
-                    }
+                    contexts.Add(await WriteDeleteAsync(entityType, id, tracked[id], PersistentObjectOperation.Delete, context?.Reason, expectedChangeVectors[id]));
+                }
+                catch (SparkValidationException ex)
+                {
+                    refused.Add((id, ex.Message));
+                }
+                catch (SparkRetryActionException)
+                {
+                    // A per-row prompt in a bulk delete is unworkable (#482): the row is refused instead.
+                    refused.Add((id, "asks for a confirmation; delete it on its own"));
                 }
             }
 
@@ -862,59 +699,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 throw new SparkValidationException(await BulkRefusalMessageAsync(
                     session, entityTypeDefinition, tracked, refused, "These items cannot be deleted:"));
 
-            async Task DeleteOneOfBatchAsync(string id)
-            {
-                var entity = tracked[id];
-                if (interceptors.Count == 0)
-                {
-                    batch.ExpectChangeVector(id, expectedChangeVectors[id]);
-                    await DeleteEntityViaActionsAsync(session, entityType, id);
-                    return;
-                }
-
-                await InvokeBeforeDeleteHookAsync(actionsInstance, entityType, entity);
-                interceptorPipeline.MarkBeforeDeleteHandled(entity);
-
-                var deleteContext = new DeleteContext
-                {
-                    EntityType = entityType,
-                    Operation = PersistentObjectOperation.Delete,
-                    Id = id,
-                    Entity = entity,
-                    User = httpContextAccessor?.HttpContext?.User,
-                    IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
-                    Reason = string.IsNullOrWhiteSpace(context?.Reason) ? null : context.Reason.Trim(),
-                };
-                contexts.Add((deleteContext, entity));
-
-                foreach (var interceptor in interceptors)
-                    await interceptor.OnBeforeDeleteAsync(deleteContext);
-
-                // A replaced delete (SoftDelete) is the tracked entity's own change, written by the
-                // single SaveChanges below; otherwise the Actions class deletes, deferred.
-                if (!deleteContext.WasReplaced)
-                {
-                    batch.ExpectChangeVector(id, expectedChangeVectors[id]);
-                    await DeleteEntityViaActionsAsync(session, entityType, id);
-                }
-                else
-                    // Written with the version the caller saw, as the single-row delete does
-                    // (contributions F7, #467 D14): a concurrent edit refuses the whole batch with a 409.
-                    await session.StoreAsync(entity, expectedChangeVectors[id], session.Advanced.GetDocumentId(entity));
-            }
-
-            if (savedEarly)
-                logger?.LogWarning(
-                    "A bulk delete of {Count} '{EntityType}' rows was not atomic: the Actions class's OnDeleteAsync "
-                    + "saved on its own, committing rows before the batch finished. Let the base OnDeleteAsync save, "
-                    + "or override OnBeforeDeleteAsync instead.", distinct.Length, entityTypeDefinition.Name);
-
+            // One commit for every row (#460, D18): all or nothing.
             await session.SaveChangesAsync();
         }
         catch (Exception ex)
         {
             // Nothing half-made may reach a later save in this request: every row this batch touched —
-            // marked soft-deleted, or queued for deletion — is evicted, so it reads as stored again.
+            // marked soft-deleted, or queued for deletion — is evicted, so it reads as stored again. A
+            // cancel (SparkCancelException) of one row cancels the batch the same way.
             foreach (var entity in tracked.Values)
                 session.Advanced.Evict(entity);
             sessionBefore.EvictWrittenSince();
@@ -922,53 +714,131 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 throw new SparkConcurrencyException(ex);
             throw;
         }
-        finally
-        {
-            session.Advanced.OnAfterSaveChanges -= OnEarlySave;
-            foreach (var (_, entity) in contexts)
-                interceptorPipeline.ConsumeBeforeDeleteHandled(entity);
-            batch.ForgetExpectedChangeVectors();
-        }
 
-        // After the commit, as the single-row delete does: replication, then the after-hooks.
-        foreach (var id in distinct)
-        {
-            if (!replicated) break;
-            var replaced = contexts.FirstOrDefault(c => string.Equals(c.Context.Id, id, StringComparison.OrdinalIgnoreCase));
-            if (replaced.Context?.WasReplaced == true)
-                await syncInterceptor!.HandleSaveAsync(replaced.Entity, id, isNew: false);
-            else
-                await syncInterceptor!.HandleDeleteAsync(entityType, id);
-        }
-
-        foreach (var (deleteContext, _) in contexts)
-        {
-            for (var i = interceptors.Count - 1; i >= 0; i--)
-                await interceptors[i].OnAfterDeleteAsync(deleteContext);
-        }
-    }
-
-    /// <summary>The Actions class's <c>OnBeforeDeleteAsync(T)</c>, when it has one.</summary>
-    private static async Task InvokeBeforeDeleteHookAsync(object actions, Type entityType, object entity)
-    {
-        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
-            ("DatabaseAccess.OnBeforeDeleteAsync", actions.GetType(), entityType),
-            static k => k.Actions.GetMethod("OnBeforeDeleteAsync", [k.Entity]));
-        if (method is null)
-            return;
-
-        var task = (Task)method.Invoke(actions, HookInvoke, binder: null, parameters: [entity], culture: null)!;
-        await task;
+        var afterDelete = hooks.For<IAfterDelete>(entityType, PersistentObjectOperation.Delete);
+        foreach (var deleteContext in contexts)
+            await hooks.RunIsolatedAsync(afterDelete, hook => hook.OnAfterDeleteAsync(deleteContext), entityType, deleteContext.Id);
     }
 
     /// <summary>
-    /// Gives every applicable interceptor the chance to explain a refused natural-id collision with
-    /// its own exception (a 400 that says why) before the default 404 is thrown.
+    /// The framework's half of a save (#482), after every gate and before the commit: load (or not),
+    /// hydrate, map through the Actions class's <c>MapAsync</c>, run the before-save hooks, WITH CHECK,
+    /// and store with the expected change vector. The caller commits. Nothing here can be skipped by an
+    /// Actions class or a hook.
+    /// </summary>
+    private async Task<SaveContext> WriteSaveAsync(
+        Type entityType, PersistentObject obj, PersistentObjectOperation operation, object? before, IReadOnlyList<string> unwritable)
+    {
+        object? existing = null;
+        // The change vector the write must still find (contributions F7): the client's etag when it
+        // posted one, otherwise the version this session loaded. The etag check before this compares in
+        // a side session and cannot see a write that lands after it; the write itself can. Null for a
+        // create — including a create under a caller-chosen id.
+        string? expectedChangeVector = null;
+        if (!string.IsNullOrEmpty(obj.Id))
+        {
+            existing = await LoadEntityAsync(session, entityType, obj.Id);
+            if (existing is not null)
+            {
+                expectedChangeVector = !string.IsNullOrEmpty(obj.Etag) ? obj.Etag : session.Advanced.GetChangeVectorFor(existing);
+                // Satellite properties are filled before the posted values are merged (contributions F1),
+                // so an edited hydrated row maps as an Edit, not a New plus a Delete. Idempotent: an
+                // instance the Update pre-read already hooked is not hooked again.
+                await hooks.RunAfterMaterializeAsync(entityType, session, [existing], MaterializeReason.SaveReload);
+            }
+            else if (!string.IsNullOrEmpty(obj.Etag))
+            {
+                // The caller edited a version that no longer exists (#467, D15): deleted since it was
+                // loaded. Recreating it from the posted values would undo the delete.
+                throw SparkConcurrencyException.DeletedSinceLoaded(obj.Etag);
+            }
+        }
+
+        var entity = await MapViaActionsAsync(entityType, obj, existing);
+        var context = new SaveContext
+        {
+            EntityType = entityType,
+            Operation = operation,
+            PersistentObject = obj,
+            Before = before,
+            UnwritableAttributes = unwritable,
+            Entity = entity,
+            Id = existing is null ? null : obj.Id,
+            Session = session,
+            User = hooks.User,
+            IsSystemContext = hooks.IsSystemContext,
+        };
+
+        foreach (var hook in hooks.For<IBeforeSave>(entityType, operation))
+            await hook.OnBeforeSaveAsync(context);
+
+        // WITH CHECK — the write half of row-level security, SQL RLS's WITH CHECK to the read paths'
+        // USING: judged on the entity's RESULTING state, after mapping and every before-hook (so
+        // ownership stamping has happened). A create must produce a row its caller could see, and an edit
+        // must not move a row into someone else's scope. The same rule every read path applies (#460, D1).
+        var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
+        if (!await rowSecurity.IsAllowedAsync(entityType, action, entity))
+            throw new SparkRowLevelAccessDeniedException($"{action}/{entityType.Name}");
+
+        if (expectedChangeVector is not null)
+            await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
+        else
+            await session.StoreAsync(entity);
+        return context;
+    }
+
+    /// <summary>
+    /// The framework's half of a delete (#482), after every gate and before the commit: ask the
+    /// <see cref="IDeleteReplacement"/>, run the before-delete hooks, then either store the replacement or
+    /// delete — both with the version the caller saw (#467, D14), so an edit landing after the gates is a
+    /// 409. The caller commits.
+    /// </summary>
+    private async Task<DeleteContext> WriteDeleteAsync(
+        Type entityType, string id, object entity, PersistentObjectOperation operation, string? reason, string expectedChangeVector)
+    {
+        var context = new DeleteContext
+        {
+            EntityType = entityType,
+            Operation = operation,
+            Id = id,
+            Entity = entity,
+            Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
+            Session = session,
+            User = hooks.User,
+            IsSystemContext = hooks.IsSystemContext,
+        };
+
+        // Decided before any before-delete hook, so each sees the final answer (contributions and
+        // replication depend on it: a soft delete must not destroy a row's contributions).
+        if (!context.IsPurge && hooks.For<IDeleteReplacement>(entityType, operation) is [var replacement])
+            context.IsReplaced = await replacement.ReplaceAsync(context);
+
+        foreach (var hook in hooks.For<IBeforeDelete>(entityType, operation))
+            await hook.OnBeforeDeleteAsync(context);
+
+        if (context.IsReplaced)
+        {
+            // The entity is tracked by the request session, so what the hooks set on it is written.
+            await session.StoreAsync(entity, expectedChangeVector, id);
+        }
+        else
+        {
+            // Evicted first: RavenDB refuses a delete by id of a tracked entity that a hook changed.
+            session.Advanced.Evict(entity);
+            SparkRawWrites.IssuedByFramework(session, id);
+            session.Delete(id, expectedChangeVector);
+        }
+        return context;
+    }
+
+    /// <summary>
+    /// Gives every applicable hook the chance to explain a refused natural-id collision with its own
+    /// exception (a 400 that says why) before the default 404 is thrown.
     /// </summary>
     private async Task ExplainNaturalIdCollisionAsync(Type entityType, PersistentObject persistentObject, object existing)
     {
-        var interceptors = interceptorPipeline.For(entityType);
-        if (interceptors.Count == 0)
+        var collisionHooks = hooks.For<INaturalIdCollision>(entityType);
+        if (collisionHooks.Count == 0)
             return;
 
         var context = new NaturalIdCollisionContext
@@ -977,32 +847,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
             Id = persistentObject.Id!,
             PersistentObject = persistentObject,
             Existing = existing,
-            User = httpContextAccessor?.HttpContext?.User,
-            IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
+            Session = session,
+            User = hooks.User,
+            IsSystemContext = hooks.IsSystemContext,
         };
-        foreach (var interceptor in interceptors)
-            await interceptor.OnNaturalIdCollisionAsync(context);
-    }
-
-    private void AnnounceBeforeSaveBypass(Type entityType)
-    {
-        if (!bypassAnnounced.TryAdd(entityType, true))
-            return;
-
-        logger?.LogWarning(
-            "Before-save interceptors did not run for {EntityType}: its Actions class overrides OnSaveAsync " +
-            "without calling the base implementation. That override takes over before-save interceptors " +
-            "along with WITH CHECK (#460, D1). After-save interceptors still run.",
-            entityType.Name);
-
-        // The same bypass skips the save reload's materialize hook (contributions F1): the override
-        // merges the posted values onto an entity whose satellite properties were never filled.
-        if (interceptorPipeline.HasMaterializeHooks(entityType))
-            logger?.LogWarning(
-                "Materialize interceptors did not run on the save reload for {EntityType}: its Actions class " +
-                "overrides OnSaveAsync without calling the base implementation, so satellite properties an " +
-                "interceptor fills in OnAfterMaterializeAsync are not hydrated before the posted values are merged.",
-                entityType.Name);
+        foreach (var hook in collisionHooks)
+            await hook.OnNaturalIdCollisionAsync(context);
     }
 
     /// <summary>
@@ -1145,26 +995,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return string.IsNullOrWhiteSpace(rendered) ? null : rendered;
     }
 
-    /// <summary>
-    /// Dispatches to the Actions class's virtual <c>IsAllowedAsync(string, T)</c> via reflection,
-    /// so H-2/H-3 row-level authorization fires regardless of entity type.
-    /// </summary>
 
-    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
+    /// <summary>The Actions class's <c>MapAsync(obj, existing)</c> (#482), the only save seam it keeps.</summary>
+    private async Task<object> MapViaActionsAsync(Type entityType, PersistentObject obj, object? existing)
     {
         var actions = actionsResolver.ResolveForType(entityType);
-        var onSaveMethod = GetCachedActionMethod(actions.GetType(), "OnSaveAsync");
-        var task = (Task)onSaveMethod.Invoke(actions, HookInvoke, binder: null, parameters: [session, obj], culture: null)!;
+        var mapMethod = GetCachedActionMethod(actions.GetType(), "MapAsync");
+        var task = (Task)mapMethod.Invoke(actions, HookInvoke, binder: null, parameters: [obj, existing], culture: null)!;
         await task;
-        return task.GetCompletedTaskResult()!;
-    }
-
-    private async Task DeleteEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
-    {
-        var actions = actionsResolver.ResolveForType(entityType);
-        var onDeleteMethod = GetCachedActionMethod(actions.GetType(), "OnDeleteAsync");
-        var task = (Task)onDeleteMethod.Invoke(actions, HookInvoke, binder: null, parameters: [session, id], culture: null)!;
-        await task;
+        return task.GetCompletedTaskResult()
+            ?? throw new InvalidOperationException($"'{actions.GetType().FullName}.MapAsync' returned null.");
     }
 
     /// <summary>

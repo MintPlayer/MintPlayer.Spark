@@ -198,6 +198,9 @@ export class SparkPoCreateComponent {
     try {
       const result = await this.sparkService.create(this.type(), po, this.subQueryParent() ?? undefined);
       this.isSaving.set(false);
+      // A server hook cancelled the create (the user answered its prompt with Cancel): nothing was
+      // created, so the form stays as it is.
+      if (!result) return;
       this.saved.emit(result);
       this.router.navigate(['/po', this.type(), result.id]);
     } catch (e) {

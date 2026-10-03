@@ -69,6 +69,12 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint
             var restored = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
             return SparkAddOnEndpoints.Envelope(clientAccessor, restored, StatusCodes.Status200OK);
         }
+        catch (SparkCancelException)
+        {
+            // A hook cancelled the restore (#482): nothing was written; answered with the row as stored.
+            return SparkAddOnEndpoints.Envelope(clientAccessor,
+                await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id), StatusCodes.Status200OK);
+        }
         catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
         {
             // A restore is a save, written with the version it loaded: a concurrent edit is a 409.
@@ -119,6 +125,11 @@ internal sealed partial class PurgePersistentObject : IPostEndpoint
         try
         {
             await softDelete.PurgeAsync(entityType.Id, request.Id, request.Etag, httpContext.RequestAborted);
+            return SparkAddOnEndpoints.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
+        }
+        catch (SparkCancelException)
+        {
+            // A hook cancelled the purge (#482): nothing was purged, and nothing went wrong.
             return SparkAddOnEndpoints.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
         }
         catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))

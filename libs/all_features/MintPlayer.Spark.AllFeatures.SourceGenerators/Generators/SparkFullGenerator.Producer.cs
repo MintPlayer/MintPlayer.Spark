@@ -41,6 +41,7 @@ public class SparkFullProducer : Producer
         var hasRecipients = discoveryList.Any(d => d.Kind == "Recipient");
         var hasCron = discoveryList.Any(d => d.Kind == "CronJob");
         var hasMigrations = discoveryList.Any(d => d.Kind == "Migration");
+        var hasHooks = discoveryList.Any(d => d.Kind == "Hook");
 
         writer.WriteLine(Header);
         writer.WriteLine();
@@ -51,7 +52,7 @@ public class SparkFullProducer : Producer
         {
             using (writer.OpenBlock("internal static class SparkFullBuilderExtensions"))
             {
-                WriteAddSparkFull(writer, contextType, userType, hasActions, hasCustomActions, hasRecipients, hasCron, hasMigrations);
+                WriteAddSparkFull(writer, contextType, userType, hasActions, hasCustomActions, hasRecipients, hasCron, hasMigrations, hasHooks);
                 writer.WriteLine();
                 WriteUseSparkFull(writer);
                 writer.WriteLine();
@@ -68,7 +69,8 @@ public class SparkFullProducer : Producer
         bool hasCustomActions,
         bool hasRecipients,
         bool hasCron,
-        bool hasMigrations)
+        bool hasMigrations,
+        bool hasHooks)
     {
         writer.WriteLine("/// <summary>");
         writer.WriteLine("/// Registers all Spark services, modules, and discovered actions/recipients.");
@@ -98,6 +100,9 @@ public class SparkFullProducer : Producer
 
                 if (hasMigrations)
                     writer.WriteLine($"global::{RootNamespace}.SparkMigrationsBuilderExtensions.AddMigrations(spark);");
+
+                if (hasHooks)
+                    writer.WriteLine($"global::{RootNamespace}.SparkHooksBuilderExtensions.AddHooks(spark);");
 
                 if (userType != null)
                     writer.WriteLine($"global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthentication<{userType}>(spark, options.Authentication, options.Identity, options.IdentityProviders);");

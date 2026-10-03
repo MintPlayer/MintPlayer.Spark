@@ -4,6 +4,7 @@ using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents;
@@ -11,7 +12,7 @@ using Raven.Client.Documents.Linq;
 
 namespace DemoApp.Actions;
 
-public partial class CompanyActions : DefaultPersistentObjectActions<Company>, ISparkOwnsRowSecurity
+public partial class CompanyActions : DefaultPersistentObjectActions<Company>, ISparkOwnsRowSecurity, IAfterSave<Company>
 {
     /// <inheritdoc />
     public string RowSecurityRationale =>
@@ -20,7 +21,7 @@ public partial class CompanyActions : DefaultPersistentObjectActions<Company>, I
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IDocumentStore documentStore;
 
-    public override async Task OnAfterSaveAsync(PersistentObject obj, Company entity)
+    public async ValueTask OnAfterSaveAsync(Company entity, SaveContext context)
     {
         // Find all employees of this company and broadcast a batch notification message
         using var session = documentStore.OpenAsyncSession();

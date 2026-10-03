@@ -1,3 +1,4 @@
+using CodeCoverage.Tests._Infrastructure;
 using System.Text.Json;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
@@ -96,7 +97,7 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var entity = new ApiToken { Description = "ci" };
 
-        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(MyAccount), entity);
+        await CreateActions(session, KeyFor(Mine)).BeforeSaveAsync(Po(MyAccount), entity);
 
         entity.Account.Should().Be(MyAccount);
         entity.Hash.Should().NotBeNullOrEmpty();
@@ -114,7 +115,7 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var entity = new ApiToken { Description = "ci", Account = VictimAccount };
 
-        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(MyAccount), entity);
+        await CreateActions(session, KeyFor(Mine)).BeforeSaveAsync(Po(MyAccount), entity);
 
         entity.Account.Should().Be(MyAccount);
     }
@@ -134,7 +135,7 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var entity = new ApiToken { Description = "ci", Account = MyAccount };
 
-        var act = async () => await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(parentId, parentName), entity);
+        var act = async () => await CreateActions(session, KeyFor(Mine)).BeforeSaveAsync(Po(parentId, parentName), entity);
 
         await act.Should().ThrowAsync<SparkValidationException>();
         entity.Hash.Should().BeEmpty();
@@ -149,7 +150,7 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var entity = new ApiToken { Description = "ci" };
 
-        var act = async () => await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(VictimAccount), entity);
+        var act = async () => await CreateActions(session, KeyFor(Mine)).BeforeSaveAsync(Po(VictimAccount), entity);
 
         await act.Should().ThrowAsync<SparkValidationException>();
         entity.Hash.Should().BeEmpty();
@@ -164,7 +165,7 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
 
         var act = async () => await CreateActions(session, KeyFor(Mine))
-            .OnBeforeSaveAsync(Po(Account.DocumentId(EForgeProvider.GitHub, 12345)), new ApiToken { Description = "ci" });
+            .BeforeSaveAsync(Po(Account.DocumentId(EForgeProvider.GitHub, 12345)), new ApiToken { Description = "ci" });
 
         await act.Should().ThrowAsync<SparkValidationException>();
     }
@@ -186,7 +187,7 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         }
         using var session = store.OpenAsyncSession();
 
-        var act = async () => await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(gitlabTwin), new ApiToken { Description = "ci" });
+        var act = async () => await CreateActions(session, KeyFor(Mine)).BeforeSaveAsync(Po(gitlabTwin), new ApiToken { Description = "ci" });
 
         await act.Should().ThrowAsync<SparkValidationException>();
     }
@@ -202,10 +203,10 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var actions = CreateActions(session, KeyFor(Mine), KeyFor(Victim));
         var entity = new ApiToken { Description = "ci" };
-        await actions.OnBeforeSaveAsync(Po(MyAccount), entity);
+        await actions.BeforeSaveAsync(Po(MyAccount), entity);
         entity.Hash.Should().NotBeNullOrEmpty(); // it really is an edit from here on
 
-        await actions.OnBeforeSaveAsync(Po(VictimAccount), entity);
+        await actions.BeforeSaveAsync(Po(VictimAccount), entity);
 
         entity.Account.Should().Be(MyAccount);
     }
@@ -222,15 +223,15 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
         var entity = new ApiToken { Description = "ci" };
-        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(MyAccount), entity);
+        await CreateActions(session, KeyFor(Mine)).BeforeSaveAsync(Po(MyAccount), entity);
 
         // Membership revoked since minting.
-        var revoked = async () => await CreateActions(session, KeyFor("someone-else")).OnBeforeSaveAsync(Po(), entity);
+        var revoked = async () => await CreateActions(session, KeyFor("someone-else")).BeforeSaveAsync(Po(), entity);
         await revoked.Should().ThrowAsync<SparkValidationException>();
 
         // Account repointed at the victim.
         entity.Account = VictimAccount;
-        var moved = async () => await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(), entity);
+        var moved = async () => await CreateActions(session, KeyFor(Mine)).BeforeSaveAsync(Po(), entity);
         await moved.Should().ThrowAsync<SparkValidationException>();
     }
 

@@ -44,6 +44,8 @@ internal static class SparkReplicationExtensions
 
         // Sync action services
         services.AddScoped<ISyncActionInterceptor, SyncActionInterceptor>();
+        // Forwards every committed write of a [Replicated] type to its owner (#482).
+        Spark.Abstractions.Interceptors.SparkBuilderHookExtensions.AddSparkHook<ReplicationHook>(services);
         services.AddHostedService<SyncActionSubscriptionWorker>();
 
         // Without this, a retry is scheduled and then never delivered: the subscription only

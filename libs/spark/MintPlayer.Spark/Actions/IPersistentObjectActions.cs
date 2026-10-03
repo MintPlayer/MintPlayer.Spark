@@ -1,6 +1,5 @@
 using MintPlayer.Spark.Abstractions;
 using System.Linq.Expressions;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Actions;
 
@@ -30,47 +29,20 @@ public interface IPersistentObjectActions<T> where T : class
     Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent);
 
     /// <summary>
-    /// Called when saving (creating or updating) an entity.
-    /// Receives the full PersistentObject with attribute metadata (including IsValueChanged).
-    /// Entity mapping happens inside this method.
+    /// Maps the posted object onto the entity a save writes: onto <paramref name="existing"/> (the
+    /// stored entity, already hydrated) for an edit, or onto a new instance for a creation.
     /// </summary>
-    /// <param name="session">The RavenDB async document session</param>
-    /// <param name="obj">The PersistentObject with attribute values and metadata</param>
-    /// <returns>The saved entity</returns>
-    Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj);
-
-    /// <summary>
-    /// Called when deleting an entity.
-    /// This method should call OnBeforeDeleteAsync.
-    /// </summary>
-    /// <param name="session">The RavenDB async document session</param>
-    /// <param name="id">The document ID to delete</param>
-    Task OnDeleteAsync(IAsyncDocumentSession session, string id);
-
-    /// <summary>
-    /// Lifecycle hook called before saving an entity.
-    /// Use this to validate, transform, or enrich the entity before persistence.
-    /// Has access to both the PersistentObject (with IsValueChanged metadata) and the mapped entity.
-    /// </summary>
-    /// <param name="obj">The PersistentObject with attribute metadata</param>
-    /// <param name="entity">The mapped entity about to be saved</param>
-    Task OnBeforeSaveAsync(PersistentObject obj, T entity);
-
-    /// <summary>
-    /// Lifecycle hook called after saving an entity.
-    /// Use this for post-save operations like notifications, auditing, or cache invalidation.
-    /// Has access to both the PersistentObject (with IsValueChanged metadata) and the saved entity.
-    /// </summary>
-    /// <param name="obj">The PersistentObject with attribute metadata</param>
-    /// <param name="entity">The entity that was saved</param>
-    Task OnAfterSaveAsync(PersistentObject obj, T entity);
-
-    /// <summary>
-    /// Lifecycle hook called before deleting an entity.
-    /// Use this for validation, cleanup, or cascade operations.
-    /// </summary>
-    /// <param name="entity">The entity about to be deleted</param>
-    Task OnBeforeDeleteAsync(T entity);
+    /// <remarks>
+    /// The only save seam on an Actions class (#482). The framework loads, calls this, runs the
+    /// before-save hooks (<c>IBeforeSave</c>), checks the row (WITH CHECK), writes with the expected
+    /// change vector and commits; none of that can be skipped here. Validation, defaults, prompts and
+    /// follow-ups belong in hooks — <c>IBeforeSave&lt;T&gt;</c>, <c>IAfterSave&lt;T&gt;</c>,
+    /// <c>IBeforeDelete&lt;T&gt;</c>, <c>IAfterDelete&lt;T&gt;</c> — registered with <c>spark.AddHook</c>.
+    /// </remarks>
+    /// <param name="obj">The posted object, minus every attribute the caller may not write.</param>
+    /// <param name="existing">The stored entity for an edit; null for a creation.</param>
+    /// <returns>The entity to write: <paramref name="existing"/> itself for an edit.</returns>
+    Task<T> MapAsync(PersistentObject obj, T? existing);
 
     /// <summary>
     /// Called when the value of an attribute declaring <c>"triggersRefresh": "Auto"</c> (or any other
@@ -124,7 +96,7 @@ public interface IPersistentObjectActions<T> where T : class
     /// <para>
     /// ⚠️ <b>Removal is not deletion.</b> Nothing is written here either. The row leaves the
     /// database only when the parent is saved, so a hook that needs to record something records it
-    /// from the parent's <see cref="OnBeforeSaveAsync"/>.
+    /// from a before-save hook (<c>IBeforeSave</c>) of the parent.
     /// </para>
     /// <para>
     /// ⚠️ <b>A refusal here is an affordance, not enforcement.</b> It stops a cooperating client; it
@@ -136,11 +108,9 @@ public interface IPersistentObjectActions<T> where T : class
     /// <remarks>
     /// A default implementation, for the same reason as <see cref="OnNewAsync"/>.
     /// <para>
-    /// Named <c>OnDeleteRowAsync</c> rather than an overload of <see cref="OnDeleteAsync"/>
-    /// deliberately, and not merely for readability: <c>DatabaseAccess</c> resolves the document
-    /// delete hook by <em>name alone</em>, so a second <c>OnDeleteAsync</c> would make every
-    /// document delete in the framework throw <see cref="System.Reflection.AmbiguousMatchException"/>
-    /// — at runtime, on a path this feature does not otherwise touch.
+    /// Named <c>OnDeleteRowAsync</c>, not <c>OnDeleteAsync</c>, deliberately: a row removal is not a
+    /// document delete. Deleting documents is the framework's (#482); a hook for it is an
+    /// <c>IBeforeDelete</c>/<c>IAfterDelete</c>, which a removed AsDetail row never reaches.
     /// </para>
     /// </remarks>
     Task OnDeleteRowAsync(SparkDeleteRowArgs<T> args) => Task.CompletedTask;

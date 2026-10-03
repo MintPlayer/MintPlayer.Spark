@@ -32,7 +32,7 @@ public class RefusedWriteEvictionTests : SparkTestDriver
             Store,
             [NoteModel()],
             configureServices: services => services.AddScoped<EvNoteActions>(),
-            configureSpark: spark => spark.AddPersistentObjectInterceptor<EvSideWritingInterceptor>());
+            configureSpark: spark => spark.AddHook<EvSideWritingInterceptor>());
     }
 
     public override async Task DisposeAsync()
@@ -182,7 +182,7 @@ public class EvNoteActions(IEntityMapper mapper) : DefaultPersistentObjectAction
 /// Stores a side document in every before-hook — what Contributions does with a contribution — and
 /// refuses the delete of a <see cref="Locked"/> note after storing it.
 /// </summary>
-public sealed class EvSideWritingInterceptor(IAsyncDocumentSession session) : IPersistentObjectInterceptor
+public sealed class EvSideWritingInterceptor(IAsyncDocumentSession session) : IBeforeSave, IBeforeDelete
 {
     public const string Locked = "locked";
 
@@ -190,7 +190,7 @@ public sealed class EvSideWritingInterceptor(IAsyncDocumentSession session) : IP
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context)
     {
-        var note = (EvNote)context.Entity!;
+        var note = (EvNote)context.Entity;
         await session.StoreAsync(new EvSide { Note = context.PersistentObject.Id ?? "(new)" }, $"EvSides/saved/{note.Title}");
     }
 

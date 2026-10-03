@@ -1,11 +1,10 @@
-using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
-namespace MintPlayer.Spark.IdentityProvider.Actions;
+namespace MintPlayer.Spark.IdentityProvider.Hooks;
 
 /// <summary>
 /// Validation for the OIDC scope admin screen.
@@ -15,9 +14,9 @@ namespace MintPlayer.Spark.IdentityProvider.Actions;
 /// error anywhere in the flow — the authorization simply grants less than the screens showed.
 /// </para>
 /// </summary>
-public partial class OidcScopeActions : DefaultPersistentObjectActions<OidcScope>
+public sealed class OidcScopeHooks : IBeforeSave<OidcScope>
 {
-    public override async Task OnBeforeSaveAsync(PersistentObject obj, OidcScope entity)
+    public async ValueTask OnBeforeSaveAsync(OidcScope entity, SaveContext context)
     {
         if (string.IsNullOrWhiteSpace(entity.Name))
             throw new SparkValidationException("Scope name is required.", nameof(entity.Name));
@@ -35,22 +34,11 @@ public partial class OidcScopeActions : DefaultPersistentObjectActions<OidcScope
                 throw new SparkValidationException("An audience cannot be empty.", nameof(entity.Audiences));
         }
 
-        // Before the write too (#467 finding): checked only afterwards, a duplicate was refused with a
-        // 400 while staying stored. The check after the write still catches the loser of a race.
-        if (requestSession is not null)
-            await EnsureNameUniqueAsync(requestSession, entity);
-
-        await base.OnBeforeSaveAsync(obj, entity);
-    }
-
-    // Null only when the actions are built by hand (unit tests); the check after the write remains.
-    [Inject] private readonly IAsyncDocumentSession requestSession;
-
-    public override async Task<OidcScope> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
-    {
-        var entity = await base.OnSaveAsync(session, obj);
-        await EnsureNameUniqueAsync(session, entity);
-        return entity;
+        // Before the commit (#482): a pre-commit read still races two concurrent saves; true
+        // uniqueness needs a compare-exchange reservation.
+        // Not a session only when the hook is called by hand (unit tests of the rules above).
+        if (context.Session is IAsyncDocumentSession session)
+            await EnsureNameUniqueAsync(session, entity);
     }
 
     private static async Task EnsureNameUniqueAsync(IAsyncDocumentSession session, OidcScope entity)

@@ -96,14 +96,14 @@ public class I467Prompt
 }
 
 public class I467PromptActions(IEntityMapper entityMapper, MintPlayer.Spark.Abstractions.Retry.IRetryAccessor retry)
-    : DefaultPersistentObjectActions<I467Prompt>(entityMapper)
+    : DefaultPersistentObjectActions<I467Prompt>(entityMapper), MintPlayer.Spark.Abstractions.Interceptors.IBeforeDelete<I467Prompt>
 {
-    public override Task OnBeforeDeleteAsync(I467Prompt entity)
+    public ValueTask OnBeforeDeleteAsync(I467Prompt entity, MintPlayer.Spark.Abstractions.Interceptors.DeleteContext context)
     {
         // Ask only until answered; once per request, however many rows the batch has.
         if (retry.Result is null)
             retry.Action("Delete these?", ["Yes", "No"], defaultOption: "No", message: "Confirm?");
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }
 

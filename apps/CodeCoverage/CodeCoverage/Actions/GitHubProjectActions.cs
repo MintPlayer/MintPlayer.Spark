@@ -3,6 +3,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents.Linq;
@@ -23,7 +24,7 @@ namespace CodeCoverage.Actions;
 /// is no anonymous tier at all: an empty owner list yields no boards rather than "the public ones".
 /// </para>
 /// </summary>
-public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHubProject>
+public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHubProject>, IBeforeSave<GitHubProject>
 {
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IAsyncDocumentSession session;
@@ -112,7 +113,7 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
     /// a delivery anyway: the recipient resolves rules by event key.
     /// </para>
     /// </remarks>
-    public override Task OnBeforeSaveAsync(PersistentObject obj, GitHubProject entity)
+    public ValueTask OnBeforeSaveAsync(GitHubProject entity, SaveContext context)
     {
         var duplicates = entity.EventMappings
             .Where(m => !string.IsNullOrWhiteSpace(m.EventType))
@@ -134,6 +135,6 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
             mapping.Id = mapping.EventType ?? string.Empty;
         }
 
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

@@ -13,8 +13,8 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Moderation.Services;
 
 /// <summary>
-/// Moderation's hold on the write pipeline (runs in <c>IDatabaseAccess</c>, D1, so an Actions-class
-/// override cannot skip it):
+/// Moderation's hooks on the write pipeline (#482, run by the framework, so nothing can
+/// skip them):
 /// <list type="bullet">
 /// <item>a suspended account cannot write anything (immediate, read from the suspension document);</item>
 /// <item><see cref="IModeratable.AuthorId"/> / <see cref="IModeratable.PostedAt"/> are stamped on create and immutable after;</item>
@@ -27,7 +27,7 @@ namespace MintPlayer.Spark.Moderation.Services;
 /// <remarks>
 /// A module <c>Sync</c> and the system context pass untouched: the owner module already decided.
 /// </remarks>
-internal sealed partial class ModerationInterceptor : IPersistentObjectInterceptor
+internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IAsyncDocumentSession session;
@@ -42,9 +42,6 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
     [Inject] private readonly ILogger<ModerationInterceptor> logger;
 
     /// <summary>Every type: the suspension write block is not limited to moderatable content.</summary>
-    /// <summary>After SoftDelete and History (contributions F5), before Contributions.</summary>
-    public int Order => PersistentObjectInterceptorOrder.Moderation;
-
     public bool AppliesTo(Type entityType) => true;
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;

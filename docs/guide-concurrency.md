@@ -42,11 +42,9 @@ and `DeletePersistentObjectAsync(type, id, operation, etag)` /
 The check happens twice, for different reasons:
 
 - **Early, in `DatabaseAccess`.** A posted etag that differs from the stored change vector answers
-  409 before any hook, interceptor or business rule runs. It also protects an `OnSaveAsync` override
-  that never calls the base.
-- **At the write, in `DefaultPersistentObjectActions.OnSaveAsync`.** The early check reads in a
-  separate session and cannot see a write that lands after it, so the base save writes with the
-  expected change vector:
+  409 before any hook or business rule runs.
+- **At the write, which the framework owns (#482).** The early check reads in a separate session and
+  cannot see a write that lands after it, so the framework writes with the expected change vector:
 
   ```csharp
   await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
@@ -62,11 +60,10 @@ The check happens twice, for different reasons:
 The second check is what makes it safe. Before it existed, a save with or without an etag could
 silently overwrite a write that landed between the check and the save (`ConcurrentWriteRaceTests`).
 
-**Deletes work the same way.** `DatabaseAccess` compares the etag after every gate, then the base
-`OnDeleteAsync` deletes with it (`session.Delete(id, expectedChangeVector)`), so an edit landing after
-the check is a 409 as well. An `OnDeleteAsync` override that never reaches the base keeps the early
-check but loses the write-time one; call the base to delete (Fleet's `CarActions` does, after its
-confirmation prompt).
+**Deletes work the same way.** `DatabaseAccess` compares the etag after every gate, then deletes (or
+stores the soft-delete replacement) with it (`session.Delete(id, expectedChangeVector)`), so an edit
+landing after the check is a 409 as well. No hook and no Actions class can skip that: deleting is the
+framework's, and a hook that asks for confirmation first (Fleet's `CarActions`) runs before it.
 
 **An internal save without an etag is protected too:** it is checked against the version it loaded.
 The consequence is that a replication sync or a restore that races another write gets a 409 where it
@@ -89,7 +86,7 @@ it may have no business knowing, so they stay in the inner exception, for logs o
 not need them: it re-fetches the object (section 3), or, for a `deleted` 409, says so and keeps the
 form as typed.
 
-A refused save leaves nothing behind. The entity, and every document an interceptor stored, changed
+A refused save leaves nothing behind. The entity, and every document a hook stored, changed
 or deleted during that save (a contribution, an audit row), is evicted from the request session, so a
 later `SaveChangesAsync` in the same request cannot commit half of it (`RefusedWriteEvictionTests`).
 

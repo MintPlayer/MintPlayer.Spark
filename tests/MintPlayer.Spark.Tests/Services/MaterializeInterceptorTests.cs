@@ -61,7 +61,7 @@ public class MaterializeInterceptorTests : SparkTestDriver
             configureSpark: spark =>
             {
                 spark.AddHistory();
-                spark.AddPersistentObjectInterceptor<MzHydratingInterceptor>();
+                spark.AddHook<MzHydratingInterceptor>();
             },
             security: security ?? SparkTestSecurity.Permissive);
         factories.Add(factory);
@@ -340,7 +340,7 @@ public sealed class MzRecorder
 }
 
 /// <summary>Hydrates <see cref="MzSong.Lines"/> from side documents and writes it back on save.</summary>
-public sealed class MzHydratingInterceptor(MzRecorder recorder, IAsyncDocumentSession session) : IPersistentObjectInterceptor
+public sealed class MzHydratingInterceptor(MzRecorder recorder, IAsyncDocumentSession session) : IAfterMaterialize, IBeforeSave
 {
     public bool AppliesTo(Type entityType) => entityType == typeof(MzSong);
 

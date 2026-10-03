@@ -81,7 +81,17 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             // caller may write, since the others keep their stored value whatever was posted.
             saveValidation.Request(obj, httpContext.RequestAborted);
 
-            var result = await databaseAccess.SavePersistentObjectAsync(obj);
+            Abstractions.PersistentObject result;
+            try
+            {
+                result = await databaseAccess.SavePersistentObjectAsync(obj);
+            }
+            catch (SparkCancelException)
+            {
+                // A hook cancelled the save (#482): nothing was written, so the answer is the object as
+                // stored — a 200, never an error.
+                result = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id) ?? existingObj;
+            }
 
             // Re-presented as a load presents it (contributions M2c-2b, leak 2): never the posted
             // object, which is the client's values plus whatever the save hooks wrote into it.

@@ -15,11 +15,12 @@ namespace MintPlayer.Spark.History;
 /// <see cref="ISparkRevisionObserver"/>s about every write to a type whose model enables revisions.
 /// </summary>
 /// <remarks>
-/// Runs in <c>IDatabaseAccess</c> (D1) like every interceptor: an Actions class's <c>OnSaveAsync</c>
-/// override that skips the base skips the stamping too (documented core behaviour; a warning is
-/// logged once per type). After-hooks — the observers — always run.
+/// Persistence hooks (#482; "interceptor" is the older name), run by the framework on every write. The
+/// before-save hook runs in <see cref="HookStage.Finalize"/>, after every hook that trims or stamps
+/// fields, so "did this edit change anything?" judges the entity as it will be written. It also runs
+/// for a module sync, to observe it; it stamps nothing there.
 /// </remarks>
-internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
+internal sealed partial class HistoryInterceptor : IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete
 {
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IModelLoader modelLoader;
@@ -30,17 +31,17 @@ internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
 
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
 
-    /// <summary>After SoftDelete, before Moderation (contributions F5).</summary>
-    public int Order => PersistentObjectInterceptorOrder.History;
+    /// <summary>A module sync is observed (its revision is reported); it is not stamped.</summary>
+    public bool HandlesSync => true;
+
+    /// <summary>After every hook that changes fields, so the no-change check sees the final entity.</summary>
+    HookStage IBeforeSave.Stage => HookStage.Finalize;
 
     public bool AppliesTo(Type entityType)
         => typeof(IAuditable).IsAssignableFrom(entityType) || RevisionsEnabled(entityType);
 
     public ValueTask OnBeforeSaveAsync(SaveContext context)
     {
-        if (context.Entity is null)
-            return ValueTask.CompletedTask;
-
         if (context.Before is not null)
             state.SetPrevious(context, ChangeVectorOf(context.Entity));
 
@@ -138,7 +139,7 @@ internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
         {
             EntityType = context.EntityType,
             Id = context.Id,
-            ChangeVector = context.WasReplaced ? ChangeVectorOf(context.Entity) : null,
+            ChangeVector = context.IsReplaced ? ChangeVectorOf(context.Entity) : null,
             PreviousChangeVector = previous,
             UserId = currentUser.Id,
             Kind = context.Operation,
@@ -208,8 +209,7 @@ internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
 
     private string? ChangeVectorOf(object entity)
     {
-        // Not tracked by the request session (a create, or an OnSaveAsync override using its own
-        // session): no change vector to report.
+        // Not tracked by the request session (a create, before it is stored): no change vector to report.
         try { return session.Advanced.GetChangeVectorFor(entity); }
         catch (InvalidOperationException) { return null; }
         catch (ArgumentException) { return null; }
