@@ -19,7 +19,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Attributes only ([IgnoreProperty] in SyncAction): not the Web-SDK Abstractions, so entity libraries stay free of ASP.NET Core (#388). -->
+		<ProjectReference Include="..\..\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
 	</ItemGroup>
 
 </Project>

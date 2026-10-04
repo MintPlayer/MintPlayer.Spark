@@ -34,7 +34,7 @@ internal partial class QueryLoader : IQueryLoader
 
         // Alias derivation and the one-query-per-URL rule both live in SparkQueryAliases, shared
         // with the --spark-verify-model gate so CI cannot accept a model the runtime refuses.
-        var byAlias = SparkQueryAliases.Index(queries);
+        var byAlias = SparkQueryAliasIndex.Index(queries);
 
         AnnounceComposedQueries(queries);
 

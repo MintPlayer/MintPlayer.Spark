@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.History;
 /// <remarks>
 /// <para>
 /// <b>User ids only</b> (#460, D8) — never a name or an email. A name is resolved at read time (an
-/// <see cref="IHistoryUserNameResolver"/>), so deleting an account leaves an id that resolves to
+/// <c>IHistoryUserNameResolver</c> (MintPlayer.Spark.History)), so deleting an account leaves an id that resolves to
 /// nothing ("deleted user") instead of personal data spread over every document it touched.
 /// </para>
 /// <para>

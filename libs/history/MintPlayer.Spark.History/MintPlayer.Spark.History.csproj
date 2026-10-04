@@ -36,6 +36,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.History.Abstractions\MintPlayer.Spark.History.Abstractions.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

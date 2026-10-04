@@ -892,7 +892,7 @@ public static class SparkDevelopmentExtensions
     /// <para>
     /// Reads the files directly rather than resolving <c>IQueryLoader</c>: there is no service
     /// provider in the builder phase, and building one would need a document store. The rule
-    /// itself is shared (<see cref="SparkQueryAliases.Index"/>), so only the reading differs.
+    /// itself is shared (<see cref="SparkQueryAliasIndex.Index"/>), so only the reading differs.
     /// </para>
     /// </remarks>
     private static void VerifyQueryAliasesAreUnique(string contentRootPath)
@@ -923,7 +923,7 @@ public static class SparkDevelopmentExtensions
 
         try
         {
-            SparkQueryAliases.Index(queries);
+            SparkQueryAliasIndex.Index(queries);
         }
         catch (InvalidOperationException ex)
         {

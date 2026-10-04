@@ -1,27 +1,16 @@
 namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>
-/// Derives query aliases and indexes them by name — <b>one query per URL</b>.
+/// Indexes queries by alias — <b>one query per URL</b>. The alias itself is derived by
+/// <see cref="SparkQueryAliases.Derive"/> (MintPlayer.Spark.Model, #388).
 /// </summary>
 /// <remarks>
 /// Shared by the runtime loader and the build-time <c>--spark-verify-model</c> gate, so the set of
 /// aliases CI accepts is provably the set the application resolves. Written twice, they would
 /// disagree the first time either changed.
 /// </remarks>
-public static class SparkQueryAliases
+public static class SparkQueryAliasIndex
 {
-    /// <summary>
-    /// The alias a query is reachable at when it declares none: the name, minus a <c>Get</c>
-    /// prefix, lowercased. <c>GetCars</c> → <c>cars</c>.
-    /// </summary>
-    public static string Derive(string name)
-    {
-        var alias = name;
-        if (alias.StartsWith("Get", StringComparison.OrdinalIgnoreCase) && alias.Length > 3)
-            alias = alias[3..];
-        return alias.ToLowerInvariant();
-    }
-
     /// <summary>
     /// Assigns each query its alias (deriving one where absent) and indexes them.
     /// </summary>
@@ -43,7 +32,7 @@ public static class SparkQueryAliases
 
         foreach (var query in queries)
         {
-            query.Alias ??= Derive(query.Name);
+            query.Alias ??= SparkQueryAliases.Derive(query.Name);
 
             if (byAlias.TryGetValue(query.Alias, out var existing))
                 throw new InvalidOperationException(DescribeCollision(query.Alias, existing, query));
@@ -65,7 +54,7 @@ public static class SparkQueryAliases
 
     private static string Describe(SparkQuery query)
         => $"'{query.Name}' (source {query.Source}, alias "
-         + (string.Equals(query.Alias, Derive(query.Name), StringComparison.OrdinalIgnoreCase)
+         + (string.Equals(query.Alias, SparkQueryAliases.Derive(query.Name), StringComparison.OrdinalIgnoreCase)
                 ? "derived from its name)"
                 : "declared)");
 }

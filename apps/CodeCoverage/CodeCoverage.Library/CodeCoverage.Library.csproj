@@ -5,28 +5,32 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<IsPackable>false</IsPackable>
+		<SparkEntityLibrary>true</SparkEntityLibrary>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<!-- [JsonIgnore] on transient entity properties: RavenDB serializes through
 		     Newtonsoft, so its attribute is what keeps a value out of the document. -->
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+		<!-- SourceContentCache's MemoryCache. Stated explicitly: it used to resolve only through the
+		     ASP.NET Core shared framework the Abstractions reference dragged in (#388). -->
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="11.0.0-rc.1.26425.128" />
+		<!-- [GenerateIndex] emits the library's own copy of the indexes only where RavenDB.Client is
+		     referenced, and CodeCoverage.GithubIntegration aliases Indexes to exactly that copy (see its
+		     csproj). It used to arrive through the Authorization package; stated explicitly since #388. -->
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Attributes (+ Model) only, never the Web-SDK Abstractions: SPARKLIB001 fails the build if ASP.NET Core creeps back in (#388). -->
+		<ProjectReference Include="..\..\..\libs\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+		<ProjectReference Include="..\..\..\libs\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
 		<!-- [MessageQueue] on the neutral forge envelope (D21). Abstractions only: the library declares
 		     the message shape, the app and the forge libraries do the publishing. -->
 		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
-		<!--
-		  For SparkUser, which ApiToken.CreatedByUserId references. [Reference] takes a Type, so the
-		  declaring assembly has to be referenced — there is no by-name overload.
-		  ⚠️ This pulls the authorization package into an entity library, which is the opposite of
-		  what #388 (entity libraries should not drag in dependencies) is trying to achieve. Revisit
-		  it there: either SparkUser's identity contract moves somewhere lighter, or [Reference]
-		  gains a by-name overload for exactly this case.
-		-->
-		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- For SparkUser, which ApiToken.CreatedByUserId references ([Reference] takes a Type). The
+		     user document model lives in the plain-SDK Authorization.Abstractions, not the web package (#388). -->
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization.Abstractions\MintPlayer.Spark.Authorization.Abstractions.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). -->
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<!-- Keys the [ValueObject] types declared here. Analyzer ProjectReferences are not transitive. -->

@@ -27,7 +27,8 @@
 	<ItemGroup>
 		<!-- SparkReservedActions / SparkCoreActions: ModerationRights declares its verbs as reserved, and its
 		     earnable defaults name core's verbs through their constants rather than a hand-kept copy. -->
-		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Model only (the reserved-action constants): not the Web-SDK Abstractions, so an entity library stays free of ASP.NET Core (#388). -->
+		<ProjectReference Include="..\..\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
 	</ItemGroup>
 
 </Project>

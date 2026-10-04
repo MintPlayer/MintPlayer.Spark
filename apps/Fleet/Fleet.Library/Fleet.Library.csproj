@@ -5,10 +5,13 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<IsPackable>false</IsPackable>
+		<SparkEntityLibrary>true</SparkEntityLibrary>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Attributes (+ Model) only, never the Web-SDK Abstractions: SPARKLIB001 fails the build if ASP.NET Core creeps back in (#388). -->
+		<ProjectReference Include="..\..\..\libs\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+		<ProjectReference Include="..\..\..\libs\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
 		<ProjectReference Include="..\..\..\libs\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). -->
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

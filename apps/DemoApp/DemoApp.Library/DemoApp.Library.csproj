@@ -5,6 +5,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<IsPackable>false</IsPackable>
+		<SparkEntityLibrary>true</SparkEntityLibrary>
 		<!--
 		  Optional upgrade for attribute descriptions (#348): with documentation on, the generator
 		  reads structured XML with resolved crefs instead of raw /// text. Not required — HR.Library
@@ -15,7 +16,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Attributes (+ Model) only, never the Web-SDK Abstractions: SPARKLIB001 fails the build if ASP.NET Core creeps back in (#388). -->
+		<ProjectReference Include="..\..\..\libs\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+		<ProjectReference Include="..\..\..\libs\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
 		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). NuGet consumers: PackageReference MintPlayer.Spark.SourceGenerators with PrivateAssets="all". -->
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

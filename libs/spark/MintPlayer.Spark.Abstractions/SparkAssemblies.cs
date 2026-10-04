@@ -10,13 +10,14 @@ public static class SparkAssemblies
 {
     /// <summary>
     /// The loaded assemblies, plus — transitively — the references of every assembly that references
-    /// <c>MintPlayer.Spark.Abstractions</c>, since only those can declare anything or pull in one that
-    /// does. References are followed because assemblies load lazily: a package the application
-    /// references but has not touched yet (SoftDelete, before the first request) still counts.
+    /// a Spark vocabulary assembly (<see cref="VocabularyAssemblyNames"/>), since only those can declare
+    /// anything or pull in one that does. References are followed because assemblies load lazily: a
+    /// package the application references but has not touched yet (SoftDelete, before the first
+    /// request) still counts.
     /// </summary>
     public static IEnumerable<Assembly> SparkAware()
     {
-        var abstractionsName = typeof(SparkAssemblies).Assembly.GetName().Name;
+        var vocabulary = VocabularyAssemblyNames;
         var seen = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
         var queue = new Queue<Assembly>();
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
@@ -33,8 +34,8 @@ public static class SparkAssemblies
             try { references = assembly.GetReferencedAssemblies(); }
             catch { continue; }
 
-            if (!string.Equals(assembly.GetName().Name, abstractionsName, StringComparison.OrdinalIgnoreCase)
-                && !references.Any(r => string.Equals(r.Name, abstractionsName, StringComparison.OrdinalIgnoreCase)))
+            if (!vocabulary.Contains(assembly.GetName().Name ?? string.Empty)
+                && !references.Any(r => r.Name is { } referenced && vocabulary.Contains(referenced)))
                 continue;
 
             foreach (var reference in references)
@@ -56,6 +57,21 @@ public static class SparkAssemblies
 
         return seen.Values.Where(a => a is not null);
     }
+
+    /// <summary>
+    /// The assemblies whose types a Spark-aware package uses: Abstractions, and the plain-SDK packages
+    /// split off it (#388). A package such as Moderation.Abstractions references only Model, yet
+    /// declares <c>[assembly: SparkReservedActions]</c>; keyed on Abstractions alone, its verbs would
+    /// silently stop being reserved. Named through types, so a rename cannot go unnoticed.
+    /// </summary>
+    internal static readonly HashSet<string> VocabularyAssemblyNames = new(
+        new[]
+        {
+            typeof(SparkAssemblies).Assembly,                                   // MintPlayer.Spark.Abstractions
+            typeof(TranslatedString).Assembly,                                  // MintPlayer.Spark.Model
+            typeof(GenerateIndexAttribute).Assembly,                            // MintPlayer.Spark.Attributes
+        }.Select(a => a.GetName().Name!),
+        StringComparer.OrdinalIgnoreCase);
 
     private static bool IsPlatform(string name)
         => name.StartsWith("System", StringComparison.Ordinal)

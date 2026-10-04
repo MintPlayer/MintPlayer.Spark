@@ -26,7 +26,8 @@
 
 	<ItemGroup>
 		<!-- SparkReservedActions (RevertContribution is a reserved verb) and ValidationError (the T7 hook's result). -->
-		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Model only (SparkReservedActions, ValidationError): not the Web-SDK Abstractions, so an entity library stays free of ASP.NET Core (#388). -->
+		<ProjectReference Include="..\..\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
 	</ItemGroup>
 
 </Project>
