@@ -78,7 +78,6 @@ internal sealed class DenyAllRowSecurity : IRowSecurity
             {
                 attribute.Value = null;
                 attribute.Breadcrumb = null;
-                attribute.IsVisible = false;
             }
 
         return Task.CompletedTask;

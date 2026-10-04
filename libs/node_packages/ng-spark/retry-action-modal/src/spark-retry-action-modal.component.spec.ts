@@ -12,8 +12,8 @@ const confirmDeleteCarType: EntityType = {
   clrType: 'Fleet.VirtualObjects.ConfirmDeleteCar',
   breadcrumb: '{Confirmation}',
   attributes: [
-    { id: 'a-plate', name: 'LicensePlate', dataType: 'string', order: 1, isRequired: false, isVisible: true, isReadOnly: true, rules: [] },
-    { id: 'a-conf',  name: 'Confirmation', dataType: 'string', order: 2, isRequired: true,  isVisible: true, isReadOnly: false, rules: [] },
+    { id: 'a-plate', name: 'LicensePlate', dataType: 'string', order: 1, isRequired: false, isReadOnly: true, rules: [] },
+    { id: 'a-conf',  name: 'Confirmation', dataType: 'string', order: 2, isRequired: true,  isReadOnly: false, rules: [] },
   ],
 };
 
@@ -22,8 +22,8 @@ const scaffoldedPo: PersistentObject = {
   name: 'ConfirmDeleteCar',
   objectTypeId: 't/confirm-delete-car',
   attributes: [
-    { id: 'a-plate', name: 'LicensePlate', dataType: 'string', value: 'ABC123', isRequired: false, isVisible: true, isReadOnly: true, order: 1, rules: [] },
-    { id: 'a-conf',  name: 'Confirmation', dataType: 'string', value: null,     isRequired: true,  isVisible: true, isReadOnly: false, order: 2, rules: [] },
+    { id: 'a-plate', name: 'LicensePlate', dataType: 'string', value: 'ABC123', isRequired: false, isReadOnly: true, order: 1, rules: [] },
+    { id: 'a-conf',  name: 'Confirmation', dataType: 'string', value: null,     isRequired: true,  isReadOnly: false, order: 2, rules: [] },
   ],
 };
 

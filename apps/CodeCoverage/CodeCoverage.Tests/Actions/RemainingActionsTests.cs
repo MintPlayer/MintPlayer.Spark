@@ -123,8 +123,8 @@ public class RemainingActionsTests : CoverageRavenTest
         home["Title"].Value.Should().Be("Coverage");
         home.Breadcrumb.Should().Be("Coverage");
         home["Subtitle"].Value.Should().Be("Line coverage. Sign in.");
-        home["AccountCount"].IsVisible.Should().BeFalse();
-        home["RepoCount"].IsVisible.Should().BeFalse();
+        home["AccountCount"].ShowedOn.Should().Be(EShowedOn.None);
+        home["RepoCount"].ShowedOn.Should().Be(EShowedOn.None);
         await myAccounts.DidNotReceiveWithAnyArgs().GetAsync(default);
     }
 
@@ -141,7 +141,7 @@ public class RemainingActionsTests : CoverageRavenTest
         home["Subtitle"].Value.Should().Be("Line coverage.");
         home["AccountCount"].Value.Should().Be(2);
         home["RepoCount"].Value.Should().Be(10);
-        home["AccountCount"].IsVisible.Should().BeTrue();
+        home["AccountCount"].ShowedOn.Should().NotBe(EShowedOn.None);
     }
 
     // ------------------------------------------------------------------------------------------

@@ -17,7 +17,6 @@ function attr(partial: Partial<PersistentObjectAttribute> & { name: string }): P
   return {
     id: partial.name,
     isRequired: false,
-    isVisible: true,
     isReadOnly: false,
     order: 0,
     rules: [],
@@ -123,14 +122,14 @@ describe('nestedPoToDisplayRow', () => {
 describe('dictToNestedPo', () => {
   const songArtistType: EntityType = {
     id: 'sa', name: 'SongArtist', clrType: 'Demo.SongArtist',
-    attributes: [{ id: 'ArtistId', name: 'ArtistId', dataType: 'Reference', isRequired: false, isVisible: true, isReadOnly: false, order: 0, rules: [] } as any],
+    attributes: [{ id: 'ArtistId', name: 'ArtistId', dataType: 'Reference', isRequired: false, isReadOnly: false, order: 0, rules: [] } as any],
   } as EntityType;
 
   const songType: EntityType = {
     id: 'song', name: 'Song', clrType: 'Demo.Song',
     attributes: [
-      { id: 'Title', name: 'Title', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 0, rules: [] } as any,
-      { id: 'Artists', name: 'Artists', dataType: 'AsDetail', isArray: true, asDetailType: 'Demo.SongArtist', isRequired: false, isVisible: true, isReadOnly: false, order: 1, rules: [] } as any,
+      { id: 'Title', name: 'Title', dataType: 'string', isRequired: false, isReadOnly: false, order: 0, rules: [] } as any,
+      { id: 'Artists', name: 'Artists', dataType: 'AsDetail', isArray: true, asDetailType: 'Demo.SongArtist', isRequired: false, isReadOnly: false, order: 1, rules: [] } as any,
     ],
   } as EntityType;
 
@@ -204,7 +203,7 @@ describe('self breadcrumb', () => {
     const addressType: EntityType = {
       id: 't', name: 'Address', clrType: 'HR.Entities.Address',
       attributes: [
-        { id: 'a', name: 'Street', dataType: 'string', isVisible: true, isReadOnly: false, isRequired: false, isArray: false, order: 1 },
+        { id: 'a', name: 'Street', dataType: 'string', isReadOnly: false, isRequired: false, isArray: false, order: 1 },
       ],
     } as any;
 
@@ -249,7 +248,7 @@ describe('row key round trip', () => {
     name: 'Address',
     clrType: 'HR.Entities.Address',
     attributes: [
-      { id: 'City', name: 'City', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 0, rules: [] },
+      { id: 'City', name: 'City', dataType: 'string', isRequired: false, isReadOnly: false, order: 0, rules: [] },
     ],
   } as unknown as EntityType;
 

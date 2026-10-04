@@ -144,7 +144,7 @@ public class RefusedWriteEvictionTests : SparkTestDriver
             Breadcrumb = "{Title}",
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
             ],
         },
     };

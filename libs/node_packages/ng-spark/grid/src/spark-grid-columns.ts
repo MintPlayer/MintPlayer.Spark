@@ -20,7 +20,7 @@ export const SPARK_GRID_PAGE_SIZES = [10, 25, 50];
  */
 export function visibleGridAttributes(entityType: EntityType | null): EntityAttributeDefinition[] {
   return entityType?.attributes
-    .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
+    .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.Query))
     .sort((a, b) => a.order - b.order) ?? [];
 }
 

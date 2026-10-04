@@ -36,7 +36,6 @@ export interface EntityAttributeDefinition {
   description?: TranslatedString;
   dataType: string;
   isRequired: boolean;
-  isVisible: boolean;
   isReadOnly: boolean;
   order: number;
   query?: string;

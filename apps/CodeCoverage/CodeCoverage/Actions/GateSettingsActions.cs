@@ -1,5 +1,6 @@
 using CodeCoverage.Entities;
 using CodeCoverage.LookupReferences;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 
 namespace CodeCoverage.Actions;
@@ -38,7 +39,8 @@ public partial class GateSettingsActions : DefaultPersistentObjectActions<GateSe
             StringComparison.Ordinal);
 
         var target = obj[nameof(GateSettings.ProjectTarget)];
-        target.IsVisible = isFixed;
+        // Off the form (not the grid) unless the mode consumes it: the runtime ShowedOn (#264).
+        target.ShowedOn = isFixed ? EShowedOn.Query | EShowedOn.PersistentObject : EShowedOn.Query;
         target.IsRequired = isFixed;
 
         // ⚠️ ProjectThreshold is deliberately NOT toggled. It reads like an "auto"-only setting and

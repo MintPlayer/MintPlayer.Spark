@@ -25,7 +25,6 @@ export interface RefreshedOption {
 export interface AttributeOverlay {
   isRequired?: boolean;
   isReadOnly?: boolean;
-  isVisible?: boolean;
   /** Where the attribute is drawn for this object; an action sets it on load, new or refresh (#264). */
   showedOn?: ShowedOn | string;
   rules?: ValidationRule[];
@@ -47,7 +46,6 @@ export function applyOverlay(
     ...attr,
     isRequired: overlay.isRequired ?? attr.isRequired,
     isReadOnly: overlay.isReadOnly ?? attr.isReadOnly,
-    isVisible: overlay.isVisible ?? attr.isVisible,
     showedOn: overlay.showedOn ?? attr.showedOn,
     rules: overlay.rules ?? attr.rules,
     query: overlay.query ?? attr.query,
@@ -69,7 +67,6 @@ export function overlayFromResponse(response: PersistentObject): RefreshOverlay 
     overlay[attr.name] = {
       isRequired: attr.isRequired,
       isReadOnly: attr.isReadOnly,
-      isVisible: attr.isVisible,
       showedOn: attr.showedOn,
       rules: attr.rules ?? [],
       query: attr.query,

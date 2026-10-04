@@ -451,7 +451,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// trigger but <c>"None"</c>) changes, so the
     /// form can be reshaped in response. Mutate <c>args.PersistentObject</c>: toggle
     /// <see cref="PersistentObjectAttribute.IsRequired"/>, <see cref="PersistentObjectAttribute.IsReadOnly"/>
-    /// and <see cref="PersistentObjectAttribute.IsVisible"/>, rewrite
+    /// and <see cref="PersistentObjectAttribute.ShowedOn"/>, rewrite
     /// <see cref="PersistentObjectAttribute.Rules"/>, replace an attribute's selectable options, or set a
     /// dependent value. Does nothing by default.
     ///

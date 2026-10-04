@@ -83,7 +83,7 @@ public class GateSettingsTests
         await Create<GateSettingsActions>()
             .OnRefreshAsync(RefreshArgs(obj));
 
-        obj[nameof(GateSettings.ProjectTarget)].IsVisible.Should().Be(expected);
+        obj[nameof(GateSettings.ProjectTarget)].ShowedOn.HasFlag(EShowedOn.PersistentObject).Should().Be(expected);
         obj[nameof(GateSettings.ProjectTarget)].IsRequired.Should().Be(expected);
     }
 
@@ -98,7 +98,7 @@ public class GateSettingsTests
 
         await actions.OnRefreshAsync(RefreshArgs(fixedMode));
 
-        fixedMode[nameof(GateSettings.ProjectThreshold)].IsVisible.Should().BeTrue();
+        fixedMode[nameof(GateSettings.ProjectThreshold)].ShowedOn.HasFlag(EShowedOn.PersistentObject).Should().BeTrue();
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class GateSettingsTests
 
         await Create<GateSettingsActions>().OnRefreshAsync(RefreshArgs(obj));
 
-        obj[nameof(GateSettings.ProjectTarget)].IsVisible.Should().BeTrue();
+        obj[nameof(GateSettings.ProjectTarget)].ShowedOn.HasFlag(EShowedOn.PersistentObject).Should().BeTrue();
     }
 
     [Fact]
@@ -139,11 +139,11 @@ public class GateSettingsTests
 
         var toFixed = GatePo("fixed");
         await actions.OnRefreshAsync(RefreshArgs(toFixed));
-        toFixed[nameof(GateSettings.ProjectTarget)].IsVisible.Should().BeTrue();
+        toFixed[nameof(GateSettings.ProjectTarget)].ShowedOn.HasFlag(EShowedOn.PersistentObject).Should().BeTrue();
 
         var backToAuto = GatePo("auto");
         await actions.OnRefreshAsync(RefreshArgs(backToAuto));
-        backToAuto[nameof(GateSettings.ProjectTarget)].IsVisible.Should().BeFalse();
+        backToAuto[nameof(GateSettings.ProjectTarget)].ShowedOn.HasFlag(EShowedOn.PersistentObject).Should().BeFalse();
     }
 
     // ---- the save-time rules, which are the actual guarantee ---------------------------------

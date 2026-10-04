@@ -65,7 +65,7 @@ export class SparkReferencePickerComponent {
   /** The picker lists query rows, so its columns are the query's: `showedOn` includes Query (#264; not None). */
   visibleAttributes = computed(() => {
     return this.entityType()?.attributes
-      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
+      .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.Query))
       .sort((a, b) => a.order - b.order) || [];
   });
 

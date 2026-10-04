@@ -217,7 +217,6 @@ public sealed class EntityAttributeDefinition
     public TranslatedString? Description { get; set; }
     public string DataType { get; set; } = "string";
     public bool IsRequired { get; set; }
-    public bool IsVisible { get; set; } = true;
     public bool IsReadOnly { get; set; }
     public int Order { get; set; }
     public string? Query { get; set; }
@@ -297,7 +296,7 @@ public sealed class EntityAttributeDefinition
     /// asks the server to reshape the object: the client posts the in-progress object to
     /// <c>/spark/po/{objectTypeId}/refresh</c> and the entity's actions class receives
     /// <c>OnRefreshAsync</c>, which may toggle <see cref="IsRequired"/>, <see cref="IsReadOnly"/> and
-    /// <see cref="IsVisible"/>, rewrite <see cref="Rules"/>, replace an attribute's selectable
+    /// <see cref="ShowedOn"/>, rewrite <see cref="Rules"/>, replace an attribute's selectable
     /// options, or set dependent values. The value decides <i>when</i> the client sends it — see
     /// <see cref="ERefreshTrigger"/>. Absent (<see langword="null"/>) means <see cref="ERefreshTrigger.None"/>.
     /// <para>

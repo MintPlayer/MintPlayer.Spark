@@ -493,11 +493,11 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
             ClrType = typeof(RetryProbe).FullName!,
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Reference", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Reference", DataType = "string" },
                 new()
                 {
                     Id = Guid.NewGuid(), Name = "Lines", DataType = "AsDetail", IsArray = true,
-                    IsVisible = true, AsDetailType = typeof(RetryProbeLine).FullName!,
+                    AsDetailType = typeof(RetryProbeLine).FullName!,
                 },
             ],
         },
@@ -526,7 +526,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
             ClrType = typeof(RetryProbeRead).FullName!,
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Reference", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Reference", DataType = "string" },
             ],
         },
         Queries =
@@ -548,7 +548,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
             ClrType = typeof(RetryProbeLine).FullName!,
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Description", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Description", DataType = "string" },
             ],
         },
     };

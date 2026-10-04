@@ -617,6 +617,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             try
             {
                 var json = File.ReadAllText(file);
+                // Rewriting the file would strip "isVisible": false and show a hidden attribute, so a
+                // legacy hidden attribute stops the command (#264, G-Q8); the catch below lets it
+                // through. "isVisible": true is dropped by the rewrite, the property no longer existing.
+                ModelLoader.RefuseLegacyIsVisible(json, file);
                 var entityTypeFile = JsonSerializer.Deserialize<EntityTypeFile>(json, jsonOptions);
                 if (entityTypeFile?.PersistentObject != null)
                 {
@@ -631,7 +635,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not InvalidOperationException)
             {
                 Console.WriteLine($"Error loading model file {file}: {ex.Message}");
             }
@@ -919,7 +923,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     IsRequired = property.CanWrite
                         && !IsNullable(property.PropertyType)
                         && property.PropertyType != typeof(string),
-                    IsVisible = true,
                     // Computed properties surface read-only rather than not at all. Only set on
                     // creation — the update branch never reassigns IsReadOnly, so a hand-set value
                     // survives re-synchronize.
@@ -937,13 +940,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     ShowedOn = showedOn,
                     Rules = []
                 };
-                // A library's defaults for an attribute it generates (contributions M5b: the raw
-                // ContributorId off the history grid). Creation only, so the model file owns them after.
-                if (SparkModelSatellites.NewAttributeSeedFor(entityType, propertyName) is { } newSeed)
-                {
-                    if (newSeed.ShowedOn is { } seededShowedOn) newAttr.ShowedOn = seededShowedOn;
-                    if (newSeed.IsVisible is { } seededVisible) newAttr.IsVisible = seededVisible;
-                }
                 CollectDescriptionSeed(entityTypeDef.Name, newAttr, descriptionSeed);
                 newAttributes.Add(newAttr);
             }

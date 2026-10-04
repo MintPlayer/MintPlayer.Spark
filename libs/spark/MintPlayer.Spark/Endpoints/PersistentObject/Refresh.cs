@@ -146,7 +146,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
             // if the load withheld the owning attribute, a refresh addressed inside it returns
             // nothing. Without this the row is scaffolded from the nested model regardless, and a
             // hook that loads from the database and writes onto the row — or simply sets
-            // IsVisible — hands back what the load refused. The root path is already protected by
+            // ShowedOn — hands back what the load refused. The root path is already protected by
             // ApplyRedactionOf below; this is the same intersection at the granularity redaction
             // actually has.
             if (redactedOnLoad.Contains(nested.Attribute, StringComparer.Ordinal))

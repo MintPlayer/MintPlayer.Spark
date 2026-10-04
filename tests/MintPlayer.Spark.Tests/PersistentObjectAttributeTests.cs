@@ -10,7 +10,6 @@ public class PersistentObjectAttributeTests
         var attr = new PersistentObjectAttribute { Name = "Test" };
 
         attr.DataType.Should().Be("string");
-        attr.IsVisible.Should().BeTrue();
         attr.IsReadOnly.Should().BeFalse();
         attr.IsRequired.Should().BeFalse();
         attr.IsArray.Should().BeFalse();

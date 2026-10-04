@@ -543,13 +543,13 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
             Revisions = new EntityRevisionsDefinition { Enabled = true },
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "Secret", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "Owner", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "Label", DataType = "TranslatedString", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "DueAt", DataType = "datetime", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "Lines", DataType = "AsDetail", AsDetailType = typeof(HiLine).FullName, IsArray = true, IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "CreatedBy", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "Secret", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "Owner", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "Label", DataType = "TranslatedString" },
+                new() { Id = Guid.NewGuid(), Name = "DueAt", DataType = "datetime" },
+                new() { Id = Guid.NewGuid(), Name = "Lines", DataType = "AsDetail", AsDetailType = typeof(HiLine).FullName, IsArray = true },
+                new() { Id = Guid.NewGuid(), Name = "CreatedBy", DataType = "string" },
             ],
         },
     };
@@ -564,8 +564,8 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
             Breadcrumb = "{Text}",
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Text", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "Quantity", DataType = "number", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Text", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "Quantity", DataType = "number" },
             ],
         },
     };

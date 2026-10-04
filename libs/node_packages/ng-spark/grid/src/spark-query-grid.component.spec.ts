@@ -28,17 +28,17 @@ const personType: EntityType = {
   attributes: [
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
-      isVisible: true, isReadOnly: false, isRequired: false,
+      isReadOnly: false, isRequired: false,
       order: 1, showedOn: ShowedOn.Query | ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-internal', name: 'Internal', dataType: 'string',
-      isVisible: false, isReadOnly: false, isRequired: false,
-      order: 2, showedOn: ShowedOn.Query,
+      isReadOnly: false, isRequired: false,
+      order: 2, showedOn: ShowedOn.None,
     } as any,
     {
       id: 'a-detail-only', name: 'DetailOnly', dataType: 'string',
-      isVisible: true, isReadOnly: false, isRequired: false,
+      isReadOnly: false, isRequired: false,
       order: 3, showedOn: ShowedOn.PersistentObject,
     } as any,
   ],
@@ -149,11 +149,11 @@ describe('SparkQueryGridComponent', () => {
   });
 
   it(`renders the columns the result declares, not the entity type's attributes`, async () => {
-    // The visible-column rule (isVisible && ShowedOn.Query) moved to the server, which is also
+    // The column rule (ShowedOn.Query) lives on the server, which is also
     // where the sort-column allow-list is checked — so both now derive from one place.
     const { c } = await setup();
 
-    expect(c.visibleColumns().map(col => col.name)).toEqual(['FirstName']);
+    expect(c.allColumns().map(col => col.name)).toEqual(['FirstName']);
   });
 
   it('isVirtualScrolling reflects the query renderMode', async () => {
@@ -392,20 +392,17 @@ describe('SparkQueryGridComponent', () => {
     });
   });
 
-  describe('ship-vs-draw columns', () => {
-    it('does not draw a column marked isVisible false, but keeps its value reachable', async () => {
-      // A renderer needing a sibling value (a lock glyph beside a name) reads it off the row; the
-      // grid must not give it a column. showedOn decides the wire, isVisible decides the drawing.
+  describe('columns', () => {
+    it('draws every column the result declares (#264: no shipped-but-hidden column)', async () => {
       const cols = [
-        { name: 'Name', dataType: 'string', order: 1, isVisible: true },
-        { name: 'IsPrivate', dataType: 'boolean', order: 2, isVisible: false },
+        { name: 'Name', dataType: 'string', order: 1 },
+        { name: 'IsPrivate', dataType: 'boolean', order: 2 },
       ] as any;
       const { c } = await setup({}, {
         data: [{ id: 'r/1', values: [{ key: 'Name', value: 'spark' }, { key: 'IsPrivate', value: true }] }],
         columns: cols,
       });
 
-      expect(c.visibleColumns().map((x: any) => x.name)).toEqual(['Name']);
       expect(c.allColumns().map((x: any) => x.name)).toEqual(['Name', 'IsPrivate']);
     });
 
@@ -413,7 +410,7 @@ describe('SparkQueryGridComponent', () => {
       // The datatable sizes its columns once, from the first render with rows. Columns left over
       // from the previous query would be the ones it measured, against the next query's rows.
       const { fixture, c, service } = await setup();
-      expect(c.visibleColumns().map(col => col.name)).toEqual(['FirstName']);
+      expect(c.allColumns().map(col => col.name)).toEqual(['FirstName']);
 
       service.getQuery.mockReturnValue(new Promise(() => { /* still loading */ }));
       fixture.componentRef.setInput('queryId', 'q-other');
@@ -421,15 +418,7 @@ describe('SparkQueryGridComponent', () => {
       await Promise.resolve();
 
       expect(service.getQuery).toHaveBeenLastCalledWith('q-other');
-      expect(c.visibleColumns()).toEqual([]);
-    });
-
-    it('treats an absent isVisible as visible', async () => {
-      // A server predating the field must keep drawing everything.
-      const cols = [{ name: 'Name', dataType: 'string', order: 1 }] as any;
-      const { c } = await setup({}, { data: [], columns: cols });
-
-      expect(c.visibleColumns().map((x: any) => x.name)).toEqual(['Name']);
+      expect(c.allColumns()).toEqual([]);
     });
   });
 
@@ -680,7 +669,7 @@ describe('SparkQueryGridComponent', () => {
       };
       const { c } = await setup({ executeQuery: vi.fn().mockResolvedValue(page) });
 
-      expect(c.visibleColumns().map(col => col.description?.['en'])).toEqual(['Given name.', undefined]);
+      expect(c.allColumns().map(col => col.description?.['en'])).toEqual(['Given name.', undefined]);
     });
   });
 
@@ -699,8 +688,8 @@ describe('SparkQueryGridComponent', () => {
 
       // Asserted on component state, not on the header cells: mp-datatable is a Lit element and
       // does not upgrade under jsdom, so nothing it renders is observable here.
-      expect(c.visibleColumns().map((col: any) => col.canFilter)).toEqual([undefined, false]);
-      expect(c.visibleColumns().map((col: any) => col.canSort)).toEqual([undefined, false]);
+      expect(c.allColumns().map((col: any) => col.canFilter)).toEqual([undefined, false]);
+      expect(c.allColumns().map((col: any) => col.canSort)).toEqual([undefined, false]);
     });
 
     it('translates a values change into includes and refetches from page one', async () => {

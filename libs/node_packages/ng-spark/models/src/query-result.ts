@@ -63,7 +63,7 @@ export interface QueryColumn extends SparkCellColumn {
    * header sortable anyway. Neither side read it. The attribute-level `isSortable` on `EntityType`
    * is the drag-reorder flag and stays.
    *
-   * Absent means sortable, matching `isVisible`: a server predating the field still draws arrows.
+   * Absent means sortable: a server predating the field still draws arrows.
    */
   canSort?: boolean;
   /** Whether the grid draws a filter cell for this column. Absent means filterable. */
@@ -74,12 +74,6 @@ export interface QueryColumn extends SparkCellColumn {
    * stronger disclosure than filtering by one already known.
    */
   canListDistincts?: boolean;
-  /**
-   * Whether the grid draws this column. `false` means the row carries the value but no column is
-   * rendered — for a renderer that needs a sibling value (a lock glyph beside a name) without
-   * spending a column on it. `showedOn` decides what ships; this decides what is drawn.
-   */
-  isVisible?: boolean;
   /** The query backing a Reference column, by name — the client's option source. */
   query?: string;
 }
@@ -144,8 +138,8 @@ export type SparkRow = QueryResultItem | PersistentObject | Record<string, unkno
  * for its `objectId` as for its text, and a helper that discarded it would have to be replaced the
  * first time a renderer wanted to link somewhere. `?.value` is the cost, once per call site.
  *
- * ⚠️ A value only reaches a grid row if its attribute is on the **query surface**. To read a sibling
- * the grid does not draw, mark it `"showedOn": "Query", "isVisible": false` — shipped, not drawn. An
+ * ⚠️ A value only reaches a grid row if its attribute is on the **query surface**, which also makes it a
+ * column: there is no shipped-but-not-drawn value (#264). An
  * attribute marked `"showedOn": "PersistentObject"` is absent from a row by design, and this returns
  * `undefined` for it; that is the first thing to check when a sibling read comes back empty.
  */

@@ -5,7 +5,7 @@
     "clrType": "HR.Entities.Person",
     "queryType": "HR.Indexes.VPerson",
     "indexName": "People_Overview",
-    "breadcrumb": "{FirstName} {LastName} @ {Company}",
+    "breadcrumb": "{FullName} @ {Company}",
     "tabs": [
       {
         "id": "a1b2c3d4-0001-0001-0001-000000000001",
@@ -44,7 +44,6 @@
         "name": "Address",
         "dataType": "AsDetail",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 7,
         "asDetailType": "HR.Entities.Address",
@@ -58,7 +57,6 @@
         "name": "Company",
         "dataType": "Reference",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 6,
         "query": "GetCompanies",
@@ -73,7 +71,6 @@
         "name": "DateOfBirth",
         "dataType": "date",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 5,
         "isArray": false,
@@ -86,7 +83,6 @@
         "name": "Email",
         "dataType": "string",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 4,
         "isArray": false,
@@ -107,7 +103,6 @@
         "name": "FirstName",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
@@ -130,7 +125,6 @@
         "name": "FullName",
         "dataType": "string",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 3,
         "isArray": false,
@@ -142,7 +136,6 @@
         "name": "Jobs",
         "dataType": "AsDetail",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 8,
         "asDetailType": "HR.Entities.CarreerJob",
@@ -158,11 +151,10 @@
         "name": "LastName",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": false,
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "PersistentObject",
         "rules": [
           {
             "type": "minLength",
@@ -181,7 +173,6 @@
         "name": "Professions",
         "dataType": "Reference",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 9,
         "query": "GetProfessions",
@@ -216,7 +207,7 @@
       "source": "Database.People",
       "sortColumns": [
         {
-          "property": "LastName",
+          "property": "FullName",
           "direction": "asc"
         }
       ],

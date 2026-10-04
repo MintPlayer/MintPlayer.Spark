@@ -240,8 +240,8 @@ public class MaterializeInterceptorTests : SparkTestDriver
             Revisions = new EntityRevisionsDefinition { Enabled = true },
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "Lines", DataType = "AsDetail", AsDetailType = typeof(MzLine).FullName, IsArray = true, IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "Lines", DataType = "AsDetail", AsDetailType = typeof(MzLine).FullName, IsArray = true },
             ],
         },
     };
@@ -256,8 +256,8 @@ public class MaterializeInterceptorTests : SparkTestDriver
             Breadcrumb = "{Text}",
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Slot", DataType = "number", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "Text", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Slot", DataType = "number" },
+                new() { Id = Guid.NewGuid(), Name = "Text", DataType = "string" },
             ],
         },
     };

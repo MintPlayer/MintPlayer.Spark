@@ -19,7 +19,7 @@ export class AsDetailColumnsPipe implements PipeTransform {
     const type = asDetailTypes[attr.name];
     if (!type) return [];
     return type.attributes
-      .filter(a => a.isVisible && isDrawnSomewhere(a) && !isRowRendered(a, renderers))
+      .filter(a => isDrawnSomewhere(a) && !isRowRendered(a, renderers))
       .sort((a, b) => a.order - b.order);
   }
 }

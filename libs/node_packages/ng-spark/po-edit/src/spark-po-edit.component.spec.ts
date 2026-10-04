@@ -19,19 +19,19 @@ const personType: EntityType = {
   attributes: [
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
-      isRequired: true, isVisible: true, isReadOnly: false,
+      isRequired: true, isReadOnly: false,
       order: 1, showedOn: ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-last', name: 'LastName', dataType: 'string',
-      isRequired: false, isVisible: true, isReadOnly: false,
+      isRequired: false, isReadOnly: false,
       order: 2, showedOn: ShowedOn.PersistentObject,
     } as any,
     // Hidden as loaded. A refresh hook reveals it — see the overlay test below.
     {
       id: 'a-reason', name: 'Reason', dataType: 'string',
-      isRequired: false, isVisible: false, isReadOnly: false,
-      order: 3, showedOn: ShowedOn.PersistentObject,
+      isRequired: false, isReadOnly: false,
+      order: 3, showedOn: ShowedOn.None,
     } as any,
   ],
 } as any;
@@ -153,7 +153,7 @@ describe('SparkPoEditComponent', () => {
 
     // What the form does when a refresh response reveals it, and what its control does on first
     // keystroke: an in-place write into the shared formData object.
-    c.refreshOverlay.set({ Reason: { isVisible: true, isRequired: true } });
+    c.refreshOverlay.set({ Reason: { showedOn: ShowedOn.PersistentObject, isRequired: true } });
     c.formData()['Reason'] = 'Moved abroad';
 
     await c.onSave();
@@ -199,7 +199,7 @@ describe('SparkPoEditComponent', () => {
       ...personType,
       attributes: [
         ...personType.attributes,
-        { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 4, showedOn: 'None' } as any,
+        { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isReadOnly: false, order: 4, showedOn: 'None' } as any,
       ],
     } as EntityType;
     const loaded = (report: Record<string, unknown>, last: Record<string, unknown> = {}) => ({
@@ -259,7 +259,7 @@ describe('SparkPoEditComponent', () => {
       ...personType,
       attributes: [
         ...personType.attributes,
-        { id: 'a-code', name: 'Code', dataType: 'string', isRequired: true, isVisible: true, isReadOnly: false, order: 4, showedOn: ShowedOn.Query } as any,
+        { id: 'a-code', name: 'Code', dataType: 'string', isRequired: true, isReadOnly: false, order: 4, showedOn: ShowedOn.Query } as any,
       ],
     } as EntityType;
     const error = new HttpErrorResponse({
@@ -512,7 +512,7 @@ describe('SparkPoEditComponent', () => {
     });
 
     it('gives the dialog the reference labels of both reads', async () => {
-      const owner = { id: 'a-owner', name: 'Owner', dataType: 'Reference', query: 'People', referenceType: 'Test.Person', isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.PersistentObject } as any;
+      const owner = { id: 'a-owner', name: 'Owner', dataType: 'Reference', query: 'People', referenceType: 'Test.Person', isReadOnly: false, order: 5, showedOn: ShowedOn.PersistentObject } as any;
       const typed: any = { ...personType, attributes: [...personType.attributes, owner] };
       const loaded: any = { ...existingItem, attributes: [...existingItem.attributes, { id: 'a-owner', name: 'Owner', dataType: 'Reference', value: 'people/7', breadcrumb: 'Ann' }] };
       const theirs: any = {
@@ -545,7 +545,7 @@ describe('SparkPoEditComponent', () => {
     const gateType: any = {
       id: 't-gate', name: 'Gate', clrType: 'Test.Gate',
       attributes: [
-        { id: 'g-mode', name: 'Mode', dataType: 'string', isVisible: true, isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject },
+        { id: 'g-mode', name: 'Mode', dataType: 'string', isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject },
       ],
     };
 
@@ -556,7 +556,7 @@ describe('SparkPoEditComponent', () => {
         ...personType.attributes,
         {
           id: 'a-gate', name: 'Gate', dataType: 'AsDetail', asDetailType: 'Test.Gate',
-          isArray: false, isVisible: true, isReadOnly: false, order: 4,
+          isArray: false, isReadOnly: false, order: 4,
           showedOn: ShowedOn.PersistentObject,
         },
       ],

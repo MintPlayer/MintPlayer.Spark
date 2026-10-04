@@ -126,12 +126,10 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
     }
 
     [Fact]
-    public async Task An_invisible_attribute_still_ships_its_value()
+    public async Task A_showedOn_None_attribute_ships_no_query_value()
     {
-        // showedOn decides what is ON THE WIRE; isVisible decides what is DRAWN. A renderer that
-        // needs a sibling value — a lock glyph beside a name — must be able to read it without the
-        // app spending a column on it. Filtering both flags server-side took that away with no way
-        // to ask for it back, since making it visible is the layout decision the app was avoiding.
+        // #264, G-Q4: there is no ship-but-don't-draw on a query. Drawn nowhere means no column and
+        // no value in the rows; a renderer that needs a value gets it from a column.
         var model = GalleryModel();
         model.PersistentObject.Attributes =
         [
@@ -139,24 +137,21 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
             new EntityAttributeDefinition
             {
                 Id = Guid.NewGuid(), Name = "Hidden", DataType = "string",
-                IsVisible = false, ShowedOn = EShowedOn.Query,
+                ShowedOn = EShowedOn.None,
             },
         ];
 
         await using var factory = new SparkEndpointFactory(Store, [model]);
         var result = await ExecuteAsync(factory);
 
-        var column = result.Columns.Single(c => c.Name == "Hidden");
-        column.IsVisible.Should().BeFalse("the client decides whether to draw it");
-        result.Items.Should().OnlyContain(i => i.Values.Any(v => v.Key == "Hidden"),
-            "the value ships regardless — that is the point");
+        result.Columns.Should().NotContain(c => c.Name == "Hidden");
+        result.Items.Should().OnlyContain(i => i.Values.All(v => v.Key != "Hidden"));
     }
 
     [Fact]
     public async Task An_attribute_off_the_query_surface_does_not_ship_at_all()
     {
-        // The other half of the rule, and the one that keeps the payload saving: showedOn still
-        // decides membership. isVisible never widens it.
+        // showedOn decides membership, and keeps the payload saving.
         var model = GalleryModel();
         model.PersistentObject.Attributes =
         [
@@ -164,7 +159,7 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
             new EntityAttributeDefinition
             {
                 Id = Guid.NewGuid(), Name = "DetailOnly", DataType = "string",
-                IsVisible = true, ShowedOn = EShowedOn.PersistentObject,
+                ShowedOn = EShowedOn.PersistentObject,
             },
         ];
 
@@ -173,16 +168,6 @@ public class StringPresentationColumnTests(StringPresentationColumnTests.Host ho
 
         result.Columns.Should().NotContain(c => c.Name == "DetailOnly");
         result.Items.Should().OnlyContain(i => i.Values.All(v => v.Key != "DetailOnly"));
-    }
-
-    [Fact]
-    public async Task Columns_are_visible_by_default()
-    {
-        var factory = host.Factory;
-
-        var result = await ExecuteAsync(factory);
-
-        result.Columns.Should().OnlyContain(c => c.IsVisible);
     }
 
     [Fact]

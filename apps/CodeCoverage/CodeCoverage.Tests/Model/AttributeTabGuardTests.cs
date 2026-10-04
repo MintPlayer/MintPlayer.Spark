@@ -126,7 +126,7 @@ public class AttributeTabGuardTests
             .EnumerateArray()
             .Single(a => a.GetProperty("name").GetString() == "OwnerKey");
 
-        ownerKey.GetProperty("isVisible").GetBoolean().Should().BeFalse(
+        ownerKey.GetProperty("showedOn").GetString().Should().Be("None",
             "the account page is already scoped to this owner, so showing its key adds nothing");
     }
 }

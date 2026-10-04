@@ -33,11 +33,11 @@ const persistentObject = {
   name: 'spark',
   objectTypeId: 't/1',
   attributes: [
-    { id: 'a1', name: 'Name', value: 'spark', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 1 },
-    { id: 'a2', name: 'IsPrivate', value: true, dataType: 'boolean', isRequired: false, isVisible: true, isReadOnly: false, order: 2 },
+    { id: 'a1', name: 'Name', value: 'spark', dataType: 'string', isRequired: false, isReadOnly: false, order: 1 },
+    { id: 'a2', name: 'IsPrivate', value: true, dataType: 'boolean', isRequired: false, isReadOnly: false, order: 2 },
     {
       id: 'a3', name: 'Owner', value: 'people/7', dataType: 'Reference', breadcrumb: 'Ada Lovelace',
-      isRequired: false, isVisible: true, isReadOnly: false, order: 3,
+      isRequired: false, isReadOnly: false, order: 3,
     },
   ],
 } as PersistentObject;

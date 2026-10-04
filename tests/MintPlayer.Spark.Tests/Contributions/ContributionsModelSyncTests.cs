@@ -89,14 +89,16 @@ public class ContributionsModelSyncTests : IDisposable
     }
 
     [Fact]
-    public void The_contribution_type_hides_the_raw_contributor_id_and_diffs_its_text_by_default_but_authored_values_win()
+    public void The_contribution_type_diffs_its_text_by_default_and_leaves_the_contributor_id_to_the_application()
     {
         Synchronize();
         var contribution = Read("CoSongLyricsContribution.json");
 
+        // #264, G-Q16: a library does not decide visibility, so ContributorId is created like any
+        // other attribute, and how it is shown is the application's model file's call.
         var contributorId = Attribute(contribution, "ContributorId");
-        contributorId.GetProperty("showedOn").GetString().Should().Be("PersistentObject", "not a query column: the resolved name is shown instead");
-        contributorId.GetProperty("isVisible").GetBoolean().Should().BeFalse();
+        contributorId.TryGetProperty("isVisible", out _).Should().BeFalse("isVisible was removed");
+        contributorId.GetProperty("showedOn").GetString().Should().NotBe("None", "no library seed hides it");
 
         var text = Attribute(contribution, "Text");
         text.GetProperty("renderer").GetString().Should().Be(ContributionDescriptor.LineDiffRenderingHint);
@@ -106,31 +108,36 @@ public class ContributionsModelSyncTests : IDisposable
         options.GetProperty("compareRowAttribute").GetString().Should().Be("Text");
         Attribute(contribution, "Language").TryGetProperty("renderer", out _).Should().BeFalse("only value attributes are diffed");
 
-        // An authored ShowedOn on the existing attribute survives: the seed applies on creation only.
-        var path = Path.Combine(ModelDir, "CoSongLyricsContribution.json");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("\"isVisible\": false", "\"isVisible\": true"));
+        // The application's choice survives a re-synchronize.
+        AuthorShowedOnNone("CoSongLyricsContribution.json", "ContributorId");
         Synchronize();
-        Attribute(Read("CoSongLyricsContribution.json"), "ContributorId").GetProperty("isVisible").GetBoolean().Should().BeTrue();
+        Attribute(Read("CoSongLyricsContribution.json"), "ContributorId").GetProperty("showedOn").GetString().Should().Be("None");
     }
 
     [Fact]
-    public void The_generated_row_key_is_hidden_on_a_new_element_attribute_but_an_authored_visible_key_survives()
+    public void The_generated_row_key_is_an_ordinary_attribute_the_application_shapes()
     {
         Synchronize();
 
+        // #264, G-Q16: no library seed; identity travels as po.Id, so the application decides.
         var key = Attribute(Read("CoLyrics.json"), ContributionDescriptor.RowKeyName);
-        key.GetProperty("isVisible").GetBoolean().Should().BeFalse("the row key is the slot tuple, which the slot columns already show");
-        key.GetProperty("showedOn").GetString().Should().Be("PersistentObject", "not a column of the rows either");
+        key.TryGetProperty("isVisible", out _).Should().BeFalse("isVisible was removed");
+        key.GetProperty("showedOn").GetString().Should().NotBe("None", "no library seed hides it");
 
-        var path = Path.Combine(ModelDir, "CoLyrics.json");
-        var json = JsonNode.Parse(File.ReadAllText(path))!;
-        var authored = json["persistentObject"]!["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == ContributionDescriptor.RowKeyName)!;
-        authored["isVisible"] = true;
-        File.WriteAllText(path, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-
+        AuthorShowedOnNone("CoLyrics.json", ContributionDescriptor.RowKeyName);
         Synchronize();
 
-        Attribute(Read("CoLyrics.json"), ContributionDescriptor.RowKeyName).GetProperty("isVisible").GetBoolean().Should().BeTrue("the seed applies on creation only");
+        Attribute(Read("CoLyrics.json"), ContributionDescriptor.RowKeyName).GetProperty("showedOn").GetString()
+            .Should().Be("None", "an authored showedOn: None is never healed (G-Q4)");
+    }
+
+    private void AuthorShowedOnNone(string file, string attribute)
+    {
+        var path = Path.Combine(ModelDir, file);
+        var json = JsonNode.Parse(File.ReadAllText(path))!;
+        var authored = json["persistentObject"]!["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == attribute)!;
+        authored["showedOn"] = "None";
+        File.WriteAllText(path, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     [Fact]

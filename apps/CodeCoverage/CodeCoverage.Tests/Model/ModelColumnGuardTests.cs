@@ -36,8 +36,7 @@ public class ModelColumnGuardTests
 
     private static string[] VisibleQueryColumns(JsonElement persistentObject)
         => [.. persistentObject.GetProperty("attributes").EnumerateArray()
-            .Where(a => a.GetProperty("isVisible").GetBoolean()
-                && a.GetProperty("showedOn").GetString()!.Contains("Query"))
+            .Where(a => a.GetProperty("showedOn").GetString()!.Contains("Query"))
             .OrderBy(a => a.GetProperty("order").GetInt32())
             .Select(a => a.GetProperty("name").GetString()!)];
 

@@ -135,14 +135,14 @@ public class TriggersRefreshTests
 
         status.Should().Be(HttpStatusCode.OK);
 
-        Attribute(body, "PoliceReportNumber").GetProperty("isVisible").GetBoolean()
-            .Should().BeTrue("a stolen car needs a police report");
+        Attribute(body, "PoliceReportNumber").GetProperty("showedOn").GetString()
+            .Should().Be("PersistentObject", "a stolen car needs a police report");
         Attribute(body, "PoliceReportNumber").GetProperty("isRequired").GetBoolean()
             .Should().BeTrue();
         Attribute(body, "LicensePlate").GetProperty("isReadOnly").GetBoolean()
             .Should().BeTrue("this is the 'locks the vehicle record' the save prompt already promised");
-        Attribute(body, "PromoVideoUrl").GetProperty("isVisible").GetBoolean()
-            .Should().BeFalse("you do not advertise a car you no longer have");
+        Attribute(body, "PromoVideoUrl").GetProperty("showedOn").GetString()
+            .Should().Be("Query", "you do not advertise a car you no longer have");
     }
 
     [Fact]
@@ -155,10 +155,10 @@ public class TriggersRefreshTests
 
         status.Should().Be(HttpStatusCode.OK);
 
-        Attribute(body, "PoliceReportNumber").GetProperty("isVisible").GetBoolean().Should().BeFalse();
+        Attribute(body, "PoliceReportNumber").GetProperty("showedOn").GetString().Should().Be("None");
         Attribute(body, "PoliceReportNumber").GetProperty("isRequired").GetBoolean().Should().BeFalse();
         Attribute(body, "LicensePlate").GetProperty("isReadOnly").GetBoolean().Should().BeFalse();
-        Attribute(body, "PromoVideoUrl").GetProperty("isVisible").GetBoolean().Should().BeTrue();
+        Attribute(body, "PromoVideoUrl").GetProperty("showedOn").GetString().Should().Be("Query, PersistentObject");
     }
 
     [Fact]

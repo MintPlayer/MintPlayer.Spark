@@ -65,5 +65,7 @@ public partial class HomeActions
         => translations.Resolve(key)?.GetValue(culture) ?? string.Empty;
 
     private static void Hide(PersistentObject obj, string attribute)
-        => obj[attribute].IsVisible = false;
+        // Drawn nowhere for this object (#264, runtime ShowedOn); #264 M5 replaces it with a
+        // security.json deny on the anonymous group.
+        => obj[attribute].ShowedOn = EShowedOn.None;
 }

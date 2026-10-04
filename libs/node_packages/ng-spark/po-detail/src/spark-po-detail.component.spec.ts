@@ -28,12 +28,12 @@ const personType: EntityType = {
   attributes: [
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
-      isRequired: true, isVisible: true, isReadOnly: false,
+      isRequired: true, isReadOnly: false,
       order: 1, showedOn: ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-query-only', name: 'QueryOnly', dataType: 'string',
-      isRequired: false, isVisible: true, isReadOnly: false,
+      isRequired: false, isReadOnly: false,
       order: 2, showedOn: ShowedOn.Query,
     } as any,
   ],
@@ -257,7 +257,7 @@ describe('SparkPoDetailComponent', () => {
       ...personType,
       attributes: [
         ...personType.attributes,
-        { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 3, showedOn: 'None' } as any,
+        { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isReadOnly: false, order: 3, showedOn: 'None' } as any,
       ],
     } as EntityType;
 
@@ -294,7 +294,7 @@ describe('SparkPoDetailComponent', () => {
         { ...personType.attributes[0], description: { en: 'Given name.' } },
         {
           id: 'a-last', name: 'LastName', dataType: 'string',
-          isRequired: false, isVisible: true, isReadOnly: false,
+          isRequired: false, isReadOnly: false,
           order: 2, showedOn: ShowedOn.PersistentObject,
         } as any,
       ],
@@ -689,9 +689,9 @@ describe('SparkPoDetailComponent', () => {
     const lookupType: EntityType = {
       ...personType,
       attributes: [
-        { id: 'a-role', name: 'Role', dataType: 'string', lookupReferenceType: 'Roles', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'a-status', name: 'Status', dataType: 'string', lookupReferenceType: 'Statuses', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'a-alt', name: 'AltRole', dataType: 'string', lookupReferenceType: 'Roles', isVisible: true, order: 3, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-role', name: 'Role', dataType: 'string', lookupReferenceType: 'Roles', order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-status', name: 'Status', dataType: 'string', lookupReferenceType: 'Statuses', order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-alt', name: 'AltRole', dataType: 'string', lookupReferenceType: 'Roles', order: 3, showedOn: ShowedOn.PersistentObject } as any,
       ],
     } as any;
     const statuses = { name: 'Statuses', values: [{ key: 'on', values: { en: 'On' }, isActive: true }] } as any;
@@ -721,16 +721,16 @@ describe('SparkPoDetailComponent', () => {
       name: 'Line',
       clrType: 'Test.Line',
       attributes: [
-        { id: 'l-product', name: 'Product', dataType: 'Reference', query: 'GetProducts', referenceType: 'Test.Product', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'l-qty', name: 'Qty', dataType: 'string', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'l-product', name: 'Product', dataType: 'Reference', query: 'GetProducts', referenceType: 'Test.Product', order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'l-qty', name: 'Qty', dataType: 'string', order: 2, showedOn: ShowedOn.PersistentObject } as any,
       ],
     } as any;
     const orderType = (detailTypes?: EntityType[]): EntityType => ({
       ...personType,
       attributes: [
-        { id: 'a-lines', name: 'Lines', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Line', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-lines', name: 'Lines', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Line', order: 1, showedOn: ShowedOn.PersistentObject } as any,
         // No type anywhere: must be skipped rather than recorded as undefined.
-        { id: 'a-ghost', name: 'Ghosts', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Ghost', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-ghost', name: 'Ghosts', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Ghost', order: 2, showedOn: ShowedOn.PersistentObject } as any,
       ],
       detailTypes,
     } as any);

@@ -239,9 +239,9 @@ describe('AsDetailColumnsPipe', () => {
     const types = {
       addr: {
         attributes: [
-          { name: 'City', isVisible: true, order: 2 },
-          { name: 'Hidden', isVisible: false, order: 1 },
-          { name: 'Street', isVisible: true, order: 1 },
+          { name: 'City', order: 2 },
+          { name: 'Hidden', order: 1, showedOn: 'None' },
+          { name: 'Street', order: 1 },
         ],
       },
     } as any;
@@ -253,9 +253,9 @@ describe('AsDetailColumnsPipe', () => {
     const types = {
       addr: {
         attributes: [
-          { name: 'Street', isVisible: true, order: 1, showedOn: 'PersistentObject' },
-          { name: 'Geo', isVisible: true, order: 2, showedOn: 'None' },
-          { name: 'Zip', isVisible: true, order: 3, showedOn: 0 },
+          { name: 'Street', order: 1, showedOn: 'PersistentObject' },
+          { name: 'Geo', order: 2, showedOn: 'None' },
+          { name: 'Zip', order: 3, showedOn: 0 },
         ],
       },
     } as any;

@@ -439,7 +439,6 @@ internal partial class EntityMapper : IEntityMapper
                 DataType = def.DataType,
                 IsArray = def.IsArray,
                 IsRequired = def.IsRequired,
-                IsVisible = def.IsVisible,
                 IsReadOnly = def.IsReadOnly,
                 Order = def.Order,
                 ShowedOn = def.ShowedOn,
@@ -473,7 +472,6 @@ internal partial class EntityMapper : IEntityMapper
             DataType = def.DataType,
             IsArray = def.IsArray,
             IsRequired = def.IsRequired,
-            IsVisible = def.IsVisible,
             IsReadOnly = def.IsReadOnly,
             Order = def.Order,
             ShowedOn = def.ShowedOn,
@@ -566,7 +564,7 @@ internal partial class EntityMapper : IEntityMapper
     /// entity's CLR type and refuse any write to an attribute the schema marks
     /// as IsReadOnly=true. ⚠️ Visibility is layout, never a write gate (#264, G-Q7):
     /// protect a field with <c>isReadOnly</c> or an <c>Edit</c>/<c>New</c> deny.
-    /// The old <c>IsVisible=false</c> gate silently dropped the value a refresh hook
+    /// The removed visibility gate silently dropped the value a refresh hook
     /// had revealed (Fleet's police report number). Attributes whose name has no
     /// schema entry are also refused (defense-in-depth against client-introduced
     /// fields that happen to match a CLR property name not declared on the

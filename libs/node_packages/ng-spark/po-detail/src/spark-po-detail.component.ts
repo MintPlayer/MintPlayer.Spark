@@ -335,7 +335,7 @@ export class SparkPoDetailComponent {
   visibleAttributes = computed(() => {
     const loaded = new Map((this.item()?.attributes ?? []).map(a => [a.name, a] as const));
     return this.entityType()?.attributes
-      .filter(a => a.isVisible && hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.PersistentObject))
+      .filter(a => hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   });
 

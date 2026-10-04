@@ -14,9 +14,9 @@ import { comparableValue, diffRevision } from './revision-diff';
 const entityType: EntityType = {
   id: 't-doc', name: 'Doc', alias: 'doc', clrType: 'Test.Doc',
   attributes: [
-    { id: 'a1', name: 'Title', dataType: 'string', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
-    { id: 'a2', name: 'Body', dataType: 'string', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
-    { id: 'a3', name: 'Hidden', dataType: 'string', isVisible: false, order: 3, showedOn: ShowedOn.PersistentObject } as any,
+    { id: 'a1', name: 'Title', dataType: 'string', order: 1, showedOn: ShowedOn.PersistentObject } as any,
+    { id: 'a2', name: 'Body', dataType: 'string', order: 2, showedOn: ShowedOn.PersistentObject } as any,
+    { id: 'a3', name: 'Hidden', dataType: 'string', order: 3, showedOn: ShowedOn.None } as any,
   ],
 } as any;
 
@@ -145,10 +145,10 @@ describe('history entry point (#460)', () => {
     const typed: EntityType = {
       ...entityType,
       attributes: [
-        { id: 'b1', name: 'Question', dataType: 'Reference', referenceType: 'Test.Question', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'b2', name: 'PostedAt', dataType: 'datetime', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'b3', name: 'IsDeleted', dataType: 'boolean', isVisible: true, order: 3, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'b4', name: 'Reason', dataType: 'string', isVisible: true, order: 4, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'b1', name: 'Question', dataType: 'Reference', referenceType: 'Test.Question', order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'b2', name: 'PostedAt', dataType: 'datetime', order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'b3', name: 'IsDeleted', dataType: 'boolean', order: 3, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'b4', name: 'Reason', dataType: 'string', order: 4, showedOn: ShowedOn.PersistentObject } as any,
       ],
     } as any;
     const revision = {

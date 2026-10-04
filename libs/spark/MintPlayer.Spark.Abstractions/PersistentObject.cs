@@ -183,7 +183,6 @@ public class PersistentObjectAttribute
     public string DataType { get; set; } = "string";
     public bool IsArray { get; set; }
     public bool IsRequired { get; set; }
-    public bool IsVisible { get; set; } = true;
     public bool IsReadOnly { get; set; }
     public bool IsValueChanged { get; set; }
     public int Order { get; set; }

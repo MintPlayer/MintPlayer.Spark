@@ -117,9 +117,9 @@ public class NestedRefreshEndpointTests(NestedRefreshEndpointTests.Host host)
 
         // NestedRefreshGateActions, not NestedRefreshPolicyActions. The hook that owns a type's
         // shape is that type's own.
-        Attribute(fixedMode, "Target").GetProperty("isVisible").GetBoolean().Should().BeTrue();
+        Attribute(fixedMode, "Target").GetProperty("showedOn").GetString().Should().Be("Query, PersistentObject");
         Attribute(fixedMode, "Target").GetProperty("isRequired").GetBoolean().Should().BeTrue();
-        Attribute(autoMode, "Target").GetProperty("isVisible").GetBoolean().Should().BeFalse();
+        Attribute(autoMode, "Target").GetProperty("showedOn").GetString().Should().Be("None");
     }
 
     [Fact]
@@ -231,7 +231,7 @@ public class NestedRefreshEndpointTests(NestedRefreshEndpointTests.Host host)
         var (status, body) = await PostRefreshAsync(obj, "Gate.Mode");
 
         status.Should().Be(HttpStatusCode.OK);
-        Attribute(body, "Target").GetProperty("isVisible").GetBoolean().Should().BeTrue();
+        Attribute(body, "Target").GetProperty("showedOn").GetString().Should().Be("Query, PersistentObject");
     }
 
     // ---- saving what the refresh reshaped -----------------------------------------------------
@@ -394,7 +394,7 @@ public class NestedRefreshGateActions : DefaultPersistentObjectActions<NestedRef
         var obj = args.PersistentObject;
         var isFixed = obj["Mode"].Value?.ToString() == "fixed";
 
-        obj["Target"].IsVisible = isFixed;
+        obj["Target"].ShowedOn = isFixed ? EShowedOn.Query | EShowedOn.PersistentObject : EShowedOn.None;
         obj["Target"].IsRequired = isFixed;
 
         // Read-only context, proving the row is handed its owner.

@@ -36,11 +36,10 @@
         "name": "Id",
         "dataType": "string",
         "isRequired": false,
-        "isVisible": false,
         "isReadOnly": true,
         "order": 1,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -48,7 +47,6 @@
         "name": "UserName",
         "dataType": "string",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": true,
         "order": 2,
         "isArray": false,

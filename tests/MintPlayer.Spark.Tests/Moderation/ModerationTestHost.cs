@@ -384,9 +384,9 @@ public sealed class MoHost : IAsyncDisposable
             Revisions = new EntityRevisionsDefinition { Enabled = true },
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "AuthorId", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "Lines", DataType = "AsDetail", AsDetailType = typeof(MoLine).FullName, IsArray = true, IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "AuthorId", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "Lines", DataType = "AsDetail", AsDetailType = typeof(MoLine).FullName, IsArray = true },
             ],
         },
         Queries = [new SparkQuery { Id = PostsQueryId, Name = "MoPosts", Source = "Database.Posts", EntityType = "MoPost" }],
@@ -399,7 +399,7 @@ public sealed class MoHost : IAsyncDisposable
             Id = LineTypeId,
             Name = "MoLine",
             ClrType = typeof(MoLine).FullName!,
-            Attributes = [new() { Id = Guid.NewGuid(), Name = "Text", DataType = "string", IsVisible = true }],
+            Attributes = [new() { Id = Guid.NewGuid(), Name = "Text", DataType = "string" }],
         },
     };
 
@@ -410,7 +410,7 @@ public sealed class MoHost : IAsyncDisposable
             Id = PlainTypeId,
             Name = "MoPlain",
             ClrType = typeof(MoPlain).FullName!,
-            Attributes = [new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string", IsVisible = true }],
+            Attributes = [new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string" }],
         },
     };
 

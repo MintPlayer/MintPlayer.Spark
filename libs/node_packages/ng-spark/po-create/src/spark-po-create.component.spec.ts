@@ -18,24 +18,24 @@ const personType: EntityType = {
   attributes: [
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
-      isRequired: true, isVisible: true, isReadOnly: false,
+      isRequired: true, isReadOnly: false,
       order: 1, showedOn: ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-active', name: 'Active', dataType: 'boolean',
-      isRequired: false, isVisible: true, isReadOnly: false,
+      isRequired: false, isReadOnly: false,
       order: 2, showedOn: ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-jobs', name: 'Jobs', dataType: 'AsDetail', isArray: true,
-      isRequired: false, isVisible: true, isReadOnly: false,
+      isRequired: false, isReadOnly: false,
       order: 3, showedOn: ShowedOn.PersistentObject,
     } as any,
     // Hidden as loaded; revealed by a refresh in the overlay test below.
     {
       id: 'a-reason', name: 'Reason', dataType: 'string',
-      isRequired: false, isVisible: false, isReadOnly: false,
-      order: 4, showedOn: ShowedOn.PersistentObject,
+      isRequired: false, isReadOnly: false,
+      order: 4, showedOn: ShowedOn.None,
     } as any,
   ],
 } as any;
@@ -129,7 +129,7 @@ describe('SparkPoCreateComponent', () => {
 
     expect(c.getEditableAttributes().map(a => a.name)).not.toContain('Reason');
 
-    c.refreshOverlay.set({ Reason: { isVisible: true, isRequired: true } });
+    c.refreshOverlay.set({ Reason: { showedOn: ShowedOn.PersistentObject, isRequired: true } });
     c.formData()['Reason'] = 'Relocation';
 
     await c.onSave();
@@ -180,7 +180,7 @@ describe('SparkPoCreateComponent', () => {
       ...personType,
       attributes: [
         ...personType.attributes,
-        { id: 'a-code', name: 'Code', dataType: 'string', isRequired: true, isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.Query } as any,
+        { id: 'a-code', name: 'Code', dataType: 'string', isRequired: true, isReadOnly: false, order: 5, showedOn: ShowedOn.Query } as any,
       ],
     } as EntityType;
     const error = new HttpErrorResponse({
@@ -234,7 +234,7 @@ describe('SparkPoCreateComponent', () => {
         ...personType,
         attributes: [
           ...personType.attributes,
-          { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.None } as any,
+          { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isReadOnly: false, order: 5, showedOn: ShowedOn.None } as any,
         ],
       } as EntityType;
       const newObject = vi.fn().mockResolvedValue({
@@ -256,7 +256,7 @@ describe('SparkPoCreateComponent', () => {
         ...personType,
         attributes: [
           ...personType.attributes,
-          { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.None } as any,
+          { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isReadOnly: false, order: 5, showedOn: ShowedOn.None } as any,
         ],
       } as EntityType;
       const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withReport]) });

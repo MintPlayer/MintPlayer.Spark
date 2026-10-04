@@ -622,8 +622,8 @@ public class DisableActionsTests : SparkTestDriver
             ClrType = typeof(DisProbe).FullName!,
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Reference", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "State", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Reference", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "State", DataType = "string" },
             ],
         },
         Queries =

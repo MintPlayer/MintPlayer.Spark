@@ -129,7 +129,6 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
                     case "DataType":        attr.DataType       = prop.Value.GetString() ?? "string"; break;
                     case "IsArray":         attr.IsArray        = prop.Value.GetBoolean(); break;
                     case "IsRequired":      attr.IsRequired     = prop.Value.GetBoolean(); break;
-                    case "IsVisible":       attr.IsVisible      = prop.Value.GetBoolean(); break;
                     case "IsReadOnly":      attr.IsReadOnly     = prop.Value.GetBoolean(); break;
                     case "IsValueChanged":  attr.IsValueChanged = prop.Value.GetBoolean(); break;
                     case "Order":           attr.Order          = prop.Value.GetInt32(); break;
@@ -155,7 +154,6 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
             WritePropertyName(writer, "DataType", options);        writer.WriteStringValue(value.DataType);
             WritePropertyName(writer, "IsArray", options);         writer.WriteBooleanValue(value.IsArray);
             WritePropertyName(writer, "IsRequired", options);      writer.WriteBooleanValue(value.IsRequired);
-            WritePropertyName(writer, "IsVisible", options);       writer.WriteBooleanValue(value.IsVisible);
             WritePropertyName(writer, "IsReadOnly", options);      writer.WriteBooleanValue(value.IsReadOnly);
             WritePropertyName(writer, "IsValueChanged", options);  writer.WriteBooleanValue(value.IsValueChanged);
             WritePropertyName(writer, "Order", options);           writer.WriteNumberValue(value.Order);
@@ -205,7 +203,7 @@ public sealed class PersistentObjectAttributeJsonConverter : JsonConverterFactor
 
         private static readonly string[] KnownFieldNames =
         [
-            "Id", "Name", "Label", "Value", "DataType", "IsArray", "IsRequired", "IsVisible",
+            "Id", "Name", "Label", "Value", "DataType", "IsArray", "IsRequired",
             "IsReadOnly", "IsValueChanged", "Order", "Query", "Breadcrumb", "Breadcrumbs", "ShowedOn",
             "Rules", "Group", "Renderer", "RendererOptions", "Options",
         ];

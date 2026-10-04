@@ -9,7 +9,7 @@ import { SparkPoConflictDialogComponent } from './spark-po-conflict-dialog.compo
 import { addReferenceLabelsOf, addReferenceLabelsOfOptions } from './reference-labels';
 
 function attr(name: string, extra: Partial<EntityAttributeDefinition> = {}): EntityAttributeDefinition {
-  return { id: name, name, dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject, ...extra } as any;
+  return { id: name, name, dataType: 'string', isRequired: false, isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject, ...extra } as any;
 }
 
 const lineType: EntityType = {
@@ -17,7 +17,7 @@ const lineType: EntityType = {
   attributes: [
     attr('Text', { order: 1 }),
     attr('Driver', { dataType: 'Reference', referenceType: 'Test.Person', order: 2 }),
-    attr('Secret', { isVisible: false, order: 3 }),
+    attr('Secret', { showedOn: ShowedOn.None, order: 3 }),
   ],
 } as any;
 
