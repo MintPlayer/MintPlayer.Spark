@@ -36,13 +36,13 @@ public class GitHubOnCreatingTicketTests
 
         var identity = await RunAsync(backchannel);
 
-        identity.FindFirst("email_verified")?.Value.Should().Be("true");
-        identity.FindFirst(ClaimTypes.NameIdentifier)?.Value.Should().Be("4242");
-        identity.FindFirst(ClaimTypes.Name)?.Value.Should().Be("octo-dev");
-        identity.FindFirst(ClaimTypes.Email)?.Value.Should().Be("dev@example.test");
+        (identity.FindFirst("email_verified")?.Value).Should().Be("true");
+        (identity.FindFirst(ClaimTypes.NameIdentifier)?.Value).Should().Be("4242");
+        (identity.FindFirst(ClaimTypes.Name)?.Value).Should().Be("octo-dev");
+        (identity.FindFirst(ClaimTypes.Email)?.Value).Should().Be("dev@example.test");
         backchannel.Requests.Should().AllSatisfy(r =>
         {
-            r.Headers.Authorization?.ToString().Should().Be("Bearer access-token");
+            (r.Headers.Authorization?.ToString()).Should().Be("Bearer access-token");
             r.Headers.UserAgent.ToString().Should().Contain("SparkAuth");
         });
     }
@@ -61,7 +61,7 @@ public class GitHubOnCreatingTicketTests
 
         backchannel.Requests.Select(r => r.RequestUri!.Host).Should().OnlyContain(host => host == "ghe.example.test",
             "the token belongs to the Enterprise host and must never be sent anywhere else");
-        identity.FindFirst("email_verified")?.Value.Should().Be("true");
+        (identity.FindFirst("email_verified")?.Value).Should().Be("true");
     }
 
     [Theory]
@@ -80,7 +80,7 @@ public class GitHubOnCreatingTicketTests
         var identity = await RunAsync(backchannel);
 
         identity.FindFirst("email_verified").Should().BeNull();
-        identity.FindFirst(ClaimTypes.Name)?.Value.Should().Be("octo-dev", "the sign-in itself still succeeds");
+        (identity.FindFirst(ClaimTypes.Name)?.Value).Should().Be("octo-dev", "the sign-in itself still succeeds");
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class GitHubOnCreatingTicketTests
         var identity = await RunAsync(backchannel);
 
         identity.FindFirst("email_verified").Should().BeNull();
-        identity.FindFirst(ClaimTypes.NameIdentifier)?.Value.Should().Be("4242");
+        (identity.FindFirst(ClaimTypes.NameIdentifier)?.Value).Should().Be("4242");
     }
 
     [Fact]

@@ -66,7 +66,9 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
                     }
                 }
                 """,
-        }), token: cancellationToken);
+        },
+        // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
+        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);
 
         var backfilled = await backfill.WaitForCompletionAsync<BulkOperationResult>();
         logger.LogInformation("Account.Connection backfilled: {Count} accounts scanned.", backfilled.Total);
@@ -89,7 +91,9 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
                 """,
             WaitForNonStaleResults = true,
             WaitForNonStaleResultsTimeout = IndexCatchUpBudget,
-        }), token: cancellationToken);
+        },
+        // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
+        new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);
 
         var dropped = await drop.WaitForCompletionAsync<BulkOperationResult>();
         if (dropped.Total > 0)

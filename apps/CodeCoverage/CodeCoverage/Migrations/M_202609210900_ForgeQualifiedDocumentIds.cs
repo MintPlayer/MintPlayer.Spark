@@ -245,7 +245,7 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
     private async Task PutAsync(string label, string script, CancellationToken cancellationToken)
     {
         var operation = await store.Operations.SendAsync(
-            new PatchByQueryOperation(new IndexQuery { Query = script }), token: cancellationToken);
+            new PatchByQueryOperation(new IndexQuery { Query = script }, new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), token: cancellationToken);
         var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
         // ⚠️ "scanned", not "re-keyed". The script skips documents that already carry the segment,
         // but the operation still matched them, so a second run legitimately reports roughly double
@@ -380,7 +380,9 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
                 // the delete work from a picture of the database taken before the put phase ran.
                 WaitForNonStaleResults = true,
                 WaitForNonStaleResultsTimeout = IndexCatchUpBudget,
-            }), token: cancellationToken);
+            },
+            // Wait up to IndexCatchUpBudget for the index, never AllowStale: a bulk operation on a stale index is refused outright.
+            new QueryOperationOptions { StaleTimeout = IndexCatchUpBudget }), token: cancellationToken);
             var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
 
             logger.LogInformation(

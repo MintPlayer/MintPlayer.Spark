@@ -59,7 +59,7 @@ public class AnonymousSurfaceTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal([.. Expected.OrderBy(n => n, StringComparer.Ordinal)], actual);
+        actual.Should().Equal([.. Expected.OrderBy(n => n, StringComparer.Ordinal)]);
     }
 
     /// <summary>
@@ -74,10 +74,10 @@ public class AnonymousSurfaceTests
         var anonymous = AnonymousActions().Select(a => a.DeclaringType!.Name).Distinct().ToArray();
         var controllers = ControllerTypes().ToArray();
 
-        Assert.NotEmpty(controllers);
+        controllers.Should().NotBeEmpty();
         // UploadsController is [Authorize]d at class level and must never be in the anonymous set.
-        Assert.Contains(controllers, c => c.Name == "UploadsController");
-        Assert.DoesNotContain("UploadsController", anonymous);
+        controllers.Should().Contain(c => c.Name == "UploadsController");
+        anonymous.Should().NotContain("UploadsController");
     }
 
     private static IEnumerable<Type> ControllerTypes()

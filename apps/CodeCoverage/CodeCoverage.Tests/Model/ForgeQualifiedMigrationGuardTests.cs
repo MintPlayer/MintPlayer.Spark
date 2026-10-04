@@ -101,7 +101,7 @@ public class ForgeQualifiedMigrationGuardTests : CoverageRavenTest
             await seed.SaveChangesAsync();
         }
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(store));
+        var ex = (await new Func<Task>(() => RunAsync(store)).Should().ThrowExactlyAsync<InvalidOperationException>()).Which;
 
         ex.Message.Should().Contain("Refusing to delete 1 legacy 'Accounts' documents");
         using var session = store.OpenAsyncSession();

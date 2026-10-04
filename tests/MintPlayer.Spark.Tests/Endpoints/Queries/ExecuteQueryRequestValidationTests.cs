@@ -75,8 +75,8 @@ public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTes
     [Fact]
     public async Task An_unknown_sort_column_is_a_400_naming_it()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.ExecuteQueryAsync(
-            AllPeopleQueryId, sortColumns: [new SortColumn { Property = "PasswordHash" }]));
+        var ex = (await new Func<Task>(() => _client.ExecuteQueryAsync(
+            AllPeopleQueryId, sortColumns: [new SortColumn { Property = "PasswordHash" }])).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         ex.ResponseBody.Should().Contain("Unknown sort column(s): PasswordHash");
@@ -97,8 +97,8 @@ public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTes
     [Fact]
     public async Task An_unknown_filter_column_is_a_400_naming_it()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.ExecuteQueryAsync(
-            AllPeopleQueryId, columns: [new QueryColumnFilter { Name = "Salary", Includes = [1] }]));
+        var ex = (await new Func<Task>(() => _client.ExecuteQueryAsync(
+            AllPeopleQueryId, columns: [new QueryColumnFilter { Name = "Salary", Includes = [1] }])).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         ex.ResponseBody.Should().Contain("Unknown filter column(s): Salary");
@@ -117,8 +117,8 @@ public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTes
     [Fact]
     public async Task A_parent_that_does_not_resolve_is_a_404_rather_than_the_unscoped_rows()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.ExecuteQueryAsync(
-            AllPeopleQueryId, parentId: "people/404", parentType: "Person"));
+        var ex = (await new Func<Task>(() => _client.ExecuteQueryAsync(
+            AllPeopleQueryId, parentId: "people/404", parentType: "Person")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -126,8 +126,8 @@ public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTes
     [Fact]
     public async Task A_parent_of_an_unknown_type_is_a_404()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.ExecuteQueryAsync(
-            AllPeopleQueryId, parentId: "people/1", parentType: "NoSuchType"));
+        var ex = (await new Func<Task>(() => _client.ExecuteQueryAsync(
+            AllPeopleQueryId, parentId: "people/1", parentType: "NoSuchType")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -139,8 +139,8 @@ public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTes
         await using var denied = new SparkEndpointFactory(Store, [Model()], security: SparkTestSecurity.Empty);
         using var client = new SparkClient(denied.CreateClient(), ownsClient: true);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.ExecuteQueryAsync(
-            AllPeopleQueryId, sortColumns: [new SortColumn { Property = "PasswordHash" }]));
+        var ex = (await new Func<Task>(() => client.ExecuteQueryAsync(
+            AllPeopleQueryId, sortColumns: [new SortColumn { Property = "PasswordHash" }])).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

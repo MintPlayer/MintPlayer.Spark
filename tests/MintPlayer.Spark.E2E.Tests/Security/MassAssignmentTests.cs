@@ -82,7 +82,7 @@ public class MassAssignmentTests
 
         // Victim record must be unchanged.
         var victimReloaded = await admin.GetPersistentObjectAsync(CarFixture.TypeId, victimId);
-        victimReloaded!.Attributes.First(a => a.Name == "Model").Value?.ToString()
+        (victimReloaded!.Attributes.First(a => a.Name == "Model").Value?.ToString())
             .Should().Be(originalModel,
                 "victim record's Model must NOT have been overwritten by the POST");
     }

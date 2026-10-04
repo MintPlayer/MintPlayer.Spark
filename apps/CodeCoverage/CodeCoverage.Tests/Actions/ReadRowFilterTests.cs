@@ -188,8 +188,7 @@ public class ReadRowFilterTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var actions = CreateActions<CommitActions>(VisibilityFor(session), session);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => actions.Repository_Commits(ParentArgs("Account", "Accounts/github/1")));
+        await new Func<Task>(() => actions.Repository_Commits(ParentArgs("Account", "Accounts/github/1"))).Should().ThrowExactlyAsync<InvalidOperationException>();
     }
 
     private static Build BuildOf(string? commitId) => new() { Commit = commitId };
@@ -350,7 +349,7 @@ public class ReadRowFilterTests : CoverageRavenTest
             ],
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => actions.BeforeSaveAsync(BoardObject(), board));
+        var ex = (await new Func<Task>(() => actions.BeforeSaveAsync(BoardObject(), board)).Should().ThrowExactlyAsync<InvalidOperationException>()).Which;
 
         ex.Message.Should().Contain("more than once");
     }

@@ -64,16 +64,14 @@ public class ExecuteQueryParentGateTests : SparkTestDriver
     {
         await SeedAsync(new GuardedDoc { Id = "docs/forbidden-parent", Name = "hidden", IsVisible = false });
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.ExecuteQueryAsync(ChildrenQueryId, parentId: "docs/forbidden-parent", parentType: "GuardedDoc"));
+        var ex = (await new Func<Task>(() => _client.ExecuteQueryAsync(ChildrenQueryId, parentId: "docs/forbidden-parent", parentType: "GuardedDoc")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
     public async Task Execute_returns_404_when_parent_does_not_exist()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.ExecuteQueryAsync(ChildrenQueryId, parentId: "docs/ghost", parentType: "GuardedDoc"));
+        var ex = (await new Func<Task>(() => _client.ExecuteQueryAsync(ChildrenQueryId, parentId: "docs/ghost", parentType: "GuardedDoc")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 

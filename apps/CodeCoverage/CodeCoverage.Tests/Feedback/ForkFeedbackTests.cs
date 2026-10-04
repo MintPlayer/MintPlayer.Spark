@@ -54,7 +54,7 @@ public class ForkFeedbackTests
     {
         var verdict = PublishFeedbackRecipient.ToVerdict(Verdict(conclusion), contributedFromFork: true);
 
-        Assert.Equal(EForgeOutcome.Neutral, verdict.Outcome);
+        verdict.Outcome.Should().Be(EForgeOutcome.Neutral);
     }
 
     [Theory]
@@ -65,7 +65,7 @@ public class ForkFeedbackTests
     {
         var verdict = PublishFeedbackRecipient.ToVerdict(Verdict(conclusion), contributedFromFork: false);
 
-        Assert.Equal(expected, verdict.Outcome);
+        verdict.Outcome.Should().Be(expected);
     }
 
     /// <summary>
@@ -77,12 +77,12 @@ public class ForkFeedbackTests
         var fork = PublishFeedbackRecipient.ToVerdict(Verdict("success"), contributedFromFork: true);
         var own = PublishFeedbackRecipient.ToVerdict(Verdict("success"), contributedFromFork: false);
 
-        Assert.Contains("fork", fork.Title, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("fork", fork.Summary, StringComparison.OrdinalIgnoreCase);
+        fork.Title.Should().ContainEquivalentOf("fork");
+        fork.Summary.Should().ContainEquivalentOf("fork");
 
         // The number itself is still there — the provenance annotates it, it does not replace it.
-        Assert.Contains("71.4%", fork.Title, StringComparison.Ordinal);
-        Assert.DoesNotContain("fork", own.Title, StringComparison.OrdinalIgnoreCase);
+        fork.Title.Should().Contain("71.4%");
+        own.Title.Should().NotContainEquivalentOf("fork");
     }
 
     [Fact]
@@ -92,13 +92,12 @@ public class ForkFeedbackTests
             Repo(), Commit(fromFork: true), Verdict("success"), Verdict("success"),
             assembly: null, BaseUrl, badgeSignature: null);
 
-        Assert.Contains("Contributed from a fork", body, StringComparison.Ordinal);
+        body.Should().Contain("Contributed from a fork");
 
         // Before the table, not after it: a reader who stops at the numbers has still been told.
         var notice = body.IndexOf("Contributed from a fork", StringComparison.Ordinal);
         var table = body.IndexOf("| Check | Result |", StringComparison.Ordinal);
-        Assert.True(notice >= 0 && table >= 0 && notice < table,
-            "The fork notice must appear above the results table.");
+        (notice >= 0 && table >= 0 && notice < table).Should().BeTrue("The fork notice must appear above the results table.");
     }
 
     [Fact]
@@ -108,6 +107,6 @@ public class ForkFeedbackTests
             Repo(), Commit(fromFork: false), Verdict("success"), Verdict("success"),
             assembly: null, BaseUrl, badgeSignature: null);
 
-        Assert.DoesNotContain("Contributed from a fork", body, StringComparison.Ordinal);
+        body.Should().NotContain("Contributed from a fork");
     }
 }

@@ -47,7 +47,7 @@ public class UpdateEndpointTests : SparkTestDriver
         po.ObjectTypeId = Guid.NewGuid();  // force unknown type
         po.Etag = StoredEtag.ForMissingRow;
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.UpdatePersistentObjectAsync(po));
+        var ex = (await new Func<Task>(() => _client.UpdatePersistentObjectAsync(po)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -62,7 +62,7 @@ public class UpdateEndpointTests : SparkTestDriver
         var po = NewPerson("people/does-not-exist", "A", "B");
         po.Etag = StoredEtag.ForMissingRow;
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.UpdatePersistentObjectAsync(po));
+        var ex = (await new Func<Task>(() => _client.UpdatePersistentObjectAsync(po)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.Conflict);
         ex.ResponseBody.Should().Contain("deleted");

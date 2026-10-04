@@ -36,7 +36,7 @@ public class WebSocketOriginTests
 
         var connectTask = ws.ConnectAsync(new Uri(wssUrl), CancellationToken.None);
 
-        var ex = await Assert.ThrowsAnyAsync<Exception>(() => connectTask);
+        var ex = (await new Func<Task>(() => connectTask).Should().ThrowAsync<Exception>()).Which;
         // The middleware sets 403 before AcceptWebSocketAsync, so the client sees
         // the handshake fail. .NET's ClientWebSocket surfaces this as
         // WebSocketException with HTTP-level detail.

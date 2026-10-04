@@ -323,16 +323,16 @@ public class ContributionsRuntimeTests : SparkTestDriver
     {
         var host = await StartAsync();
 
-        var duplicate = await Assert.ThrowsAsync<SparkClientException>(() =>
-            SaveRowsAsync(host, rows => [.. rows, NewRow("en", "Latn", "a"), NewRow("en", "Latn", "b")]));
+        var duplicate = (await new Func<Task>(() =>
+            SaveRowsAsync(host, rows => [.. rows, NewRow("en", "Latn", "a"), NewRow("en", "Latn", "b")])).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         duplicate.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         duplicate.ResponseBody.Should().Contain("share");
 
-        var invalid = await Assert.ThrowsAsync<SparkClientException>(() => AddAsync(host, "en us", "Latn", "a"));
+        var invalid = (await new Func<Task>(() => AddAsync(host, "en us", "Latn", "a")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         invalid.ResponseBody.Should().Contain("Language");
 
-        var slash = await Assert.ThrowsAsync<SparkClientException>(() => AddAsync(host, "en/x", "Latn", "a"));
+        var slash = (await new Func<Task>(() => AddAsync(host, "en/x", "Latn", "a")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         slash.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         (await IdsStartingWithAsync(SongId + "/")).Should().BeEmpty("a refused save writes no contribution and no current document");
@@ -343,7 +343,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
     {
         var host = await StartAsync(s => s.AddSingleton<IContributionValidator<CoLyrics>, CoValidator>());
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => AddAsync(host, "en", "Latn", "forbidden words"));
+        var ex = (await new Func<Task>(() => AddAsync(host, "en", "Latn", "forbidden words")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         ex.ResponseBody.Should().Contain("not allowed");
@@ -357,7 +357,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
     {
         var host = await StartAsync(s => s.AddScoped<ISatelliteWriteGuard, CoLockedGuard>());
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => AddAsync(host, "en", "Latn", "x"));
+        var ex = (await new Func<Task>(() => AddAsync(host, "en", "Latn", "x")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         ex.ResponseBody.Should().Contain("locked");
@@ -386,7 +386,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
 
         // A moderator's hide is not undone by the author saving the slot again.
         host.Identity.Id = Bob;
-        var refused = await Assert.ThrowsAsync<SparkClientException>(() => EditTextAsync(host, "en/Latn", "bob again"));
+        var refused = (await new Func<Task>(() => EditTextAsync(host, "en/Latn", "bob again")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         refused.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         refused.ResponseBody.Should().Contain("hidden by a moderator");
 
@@ -413,9 +413,9 @@ public class ContributionsRuntimeTests : SparkTestDriver
         var songBefore = await ChangeVectorAsync<CoSong>(SongId);
 
         host.Race.Arm(SongId);
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => slotExists
+        var ex = (await new Func<Task>(() => slotExists
             ? EditTextAsync(host, "en/Latn", "alice's edit")
-            : AddAsync(host, "en", "Latn", "alice's edit"));
+            : AddAsync(host, "en", "Latn", "alice's edit")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         host.Race.Fired.Should().BeTrue("Bob's save must have landed between Alice's read and her write");
         ex.StatusCode.Should().Be(HttpStatusCode.Conflict, "the current document is written with a pinned change vector; the client's conflict flow takes over");

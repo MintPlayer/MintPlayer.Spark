@@ -51,7 +51,7 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
 
     private static ForgeQualifiedIdVerifier.Finding Check(
         IReadOnlyList<ForgeQualifiedIdVerifier.Finding> findings, string contains)
-        => Assert.Single(findings, f => f.Check.Contains(contains, StringComparison.Ordinal));
+        => findings.Should().ContainSingle(f => f.Check.Contains(contains, StringComparison.Ordinal)).Which;
 
     [Fact]
     public async Task A_correctly_migrated_database_passes_every_check()
@@ -61,8 +61,8 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
 
         var findings = await VerifyAsync(store);
 
-        Assert.NotEmpty(findings);
-        Assert.All(findings, f => Assert.True(f.Ok, $"{f.Check}: {f.Detail}"));
+        findings.Should().NotBeEmpty();
+        findings.Should().AllSatisfy(f => f.Ok.Should().BeTrue($"{f.Check}: {f.Detail}"));
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
 
         var findings = await VerifyAsync(store);
 
-        Assert.False(Check(findings, "Commits: no legacy ids").Ok);
+        Check(findings, "Commits: no legacy ids").Ok.Should().BeFalse();
     }
 
     /// <summary>
@@ -103,7 +103,7 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
 
         var findings = await VerifyAsync(store);
 
-        Assert.False(Check(findings, "PullRequestFeedbacks.Repository").Ok);
+        Check(findings, "PullRequestFeedbacks.Repository").Ok.Should().BeFalse();
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
 
         var findings = await VerifyAsync(store);
 
-        Assert.False(Check(findings, "FileCoverages.Origin.FromBuildId").Ok);
+        Check(findings, "FileCoverages.Origin.FromBuildId").Ok.Should().BeFalse();
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
 
         var findings = await VerifyAsync(store);
 
-        Assert.False(Check(findings, "GitHubProjects.Account").Ok);
+        Check(findings, "GitHubProjects.Account").Ok.Should().BeFalse();
     }
 
     /// <summary>
@@ -171,7 +171,7 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
 
         var findings = await VerifyAsync(store);
 
-        Assert.False(Check(findings, "Attachments named by build sessions").Ok);
+        Check(findings, "Attachments named by build sessions").Ok.Should().BeFalse();
     }
 
     /// <summary>
@@ -196,14 +196,14 @@ public class ForgeQualifiedIdVerifierTests : CoverageRavenTest
             await seed.SaveChangesAsync();
         }
 
-        Assert.False(Check(await VerifyAsync(store), "PullRequestFeedbacks.Repository").Ok);
+        Check(await VerifyAsync(store), "PullRequestFeedbacks.Repository").Ok.Should().BeFalse();
 
         await new M_202609220900_ForgeQualifiedReferencesTheFirstPassMissed(
             store, NullLogger<M_202609220900_ForgeQualifiedReferencesTheFirstPassMissed>.Instance)
             .UpAsync(CancellationToken.None);
 
         var after = await VerifyAsync(store);
-        Assert.True(Check(after, "PullRequestFeedbacks.Repository").Ok);
-        Assert.True(Check(after, "GitHubProjects.Account").Ok);
+        Check(after, "PullRequestFeedbacks.Repository").Ok.Should().BeTrue();
+        Check(after, "GitHubProjects.Account").Ok.Should().BeTrue();
     }
 }

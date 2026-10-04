@@ -165,8 +165,7 @@ public class SparkClientQueryTests
         handler.EnqueueStatus(HttpStatusCode.NotFound);
         using (client)
         {
-            var ex = await Assert.ThrowsAsync<SparkClientException>(
-                () => client.ExecuteQueryAsync(Guid.NewGuid()));
+            var ex = (await new Func<Task>(() => client.ExecuteQueryAsync(Guid.NewGuid())).Should().ThrowExactlyAsync<SparkClientException>()).Which;
             ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
         }
     }

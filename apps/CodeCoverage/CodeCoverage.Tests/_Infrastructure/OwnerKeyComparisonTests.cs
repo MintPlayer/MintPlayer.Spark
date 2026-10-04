@@ -65,8 +65,7 @@ public class OwnerKeyComparisonTests
             }
         }
 
-        Assert.True(offenders.Count == 0,
-            "The allowed-owner set holds `provider:login` KEYS. Compare an OwnerKey, never a bare "
+        (offenders.Count == 0).Should().BeTrue("The allowed-owner set holds `provider:login` KEYS. Compare an OwnerKey, never a bare "
             + "login — \"acme\" is not \"github:acme\", so this matches nothing and fails CLOSED:\n  "
             + string.Join("\n  ", offenders));
     }
@@ -83,7 +82,7 @@ public class OwnerKeyComparisonTests
     public void The_detector_matches_the_broken_shapes_and_not_the_correct_one(string snippet, bool shouldMatch)
     {
         var matched = BareLoginProperties.Any(p => Comparison(p).IsMatch(snippet));
-        Assert.Equal(shouldMatch, matched);
+        matched.Should().Be(shouldMatch);
     }
 
     private static IEnumerable<string> SourceFiles()
@@ -91,10 +90,10 @@ public class OwnerKeyComparisonTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "apps")))
             dir = dir.Parent;
-        Assert.NotNull(dir);
+        dir.Should().NotBeNull();
 
         var app = Path.Combine(dir!.FullName, "apps", "CodeCoverage");
-        Assert.True(Directory.Exists(app), $"Expected the app at {app}");
+        Directory.Exists(app).Should().BeTrue($"Expected the app at {app}");
 
         return Directory.EnumerateFiles(app, "*.cs", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
@@ -104,5 +103,5 @@ public class OwnerKeyComparisonTests
 
     [Fact]
     public void The_sweep_reads_a_substantial_number_of_files()
-        => Assert.True(SourceFiles().Count() > 100, "Expected the sweep to walk the whole app.");
+        => (SourceFiles().Count() > 100).Should().BeTrue("Expected the sweep to walk the whole app.");
 }

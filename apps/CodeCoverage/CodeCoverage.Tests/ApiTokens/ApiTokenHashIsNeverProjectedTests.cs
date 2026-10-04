@@ -34,7 +34,7 @@ public class ApiTokenHashIsNeverProjectedTests
                 AppContext.BaseDirectory, "..", "..", "..", "..", "CodeCoverage", "App_Data", "Model", "ApiToken.json"));
         }
 
-        Assert.True(File.Exists(path), $"ApiToken.json not found (looked at {path})");
+        File.Exists(path).Should().BeTrue($"ApiToken.json not found (looked at {path})");
         return JsonDocument.Parse(File.ReadAllText(path)).RootElement;
     }
 

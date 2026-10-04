@@ -257,7 +257,7 @@ public class OidcConsentSecurityTests(OidcSharedHost host) : OidcTestHost(host),
         await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
         var code = (await CaseTokensAsync(session)).SingleOrDefault();
-        code?.Scopes.Should().NotContain("admin", "the grant is bounded by what authorize validated");
+        (code?.Scopes).Should().NotContain("admin", "the grant is bounded by what authorize validated");
     }
 
     /// <summary>A-F1 — the CSRF gate. Same request, token withheld.</summary>

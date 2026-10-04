@@ -96,10 +96,8 @@ public class ApiTokenForgeNeutralRenameTests : CoverageRavenTest
     [Fact]
     public void The_rename_is_ordered_before_the_account_reference_migration()
     {
-        Assert.True(
-            M_202609220950_ApiTokenFieldsAreForgeNeutral.Version
-                < M_202610021200_ApiTokenReferencesItsAccount.Version,
-            "The rename must run first, or the account migration never sees the numeric id.");
+        (M_202609220950_ApiTokenFieldsAreForgeNeutral.Version
+                < M_202610021200_ApiTokenReferencesItsAccount.Version).Should().BeTrue("The rename must run first, or the account migration never sees the numeric id.");
     }
 
     [Fact]
@@ -124,7 +122,7 @@ public class ApiTokenForgeNeutralRenameTests : CoverageRavenTest
         await RunRenameAsync(store);
 
         var token = await ReadAsync(store, "ApiTokens/1-A");
-        Assert.Equal(["Repositories/github/1", "Repositories/github/2"], token.RepositoryIds);
+        token.RepositoryIds.Should().Equal(["Repositories/github/1", "Repositories/github/2"]);
     }
 
     /// <summary>The provider is written as the enum NAME, which is what the account migration parses.</summary>
@@ -181,7 +179,7 @@ public class ApiTokenForgeNeutralRenameTests : CoverageRavenTest
 
         var token = await ReadAsync(store, "ApiTokens/1-A");
         token.AccountId.Should().Be(42);
-        Assert.Equal(["Repositories/github/1"], token.RepositoryIds);
+        token.RepositoryIds.Should().Equal(["Repositories/github/1"]);
         token.Provider.Should().Be(nameof(EForgeProvider.GitHub));
     }
 

@@ -222,7 +222,14 @@ export class SparkAuthService {
         popup.close();
 
         this.zone.run(async () => {
-          if (!error) await this.checkAuth();
+          if (!error) {
+            // Explicit, like login(): the identity just changed, so ask for a token bound to it
+            // rather than relying on the server minting one on whatever response comes next.
+            // Never fatal — the sign-in already happened, and a rejection here would leave this
+            // promise unresolved.
+            await this.csrfRefresh().catch(() => undefined);
+            await this.checkAuth();
+          }
           resolve(error ? { success: false, error } : { success: true });
         });
       };

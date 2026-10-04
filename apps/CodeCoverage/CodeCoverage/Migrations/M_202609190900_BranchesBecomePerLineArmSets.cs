@@ -107,7 +107,7 @@ public partial class M_202609190900_BranchesBecomePerLineArmSets : ISparkMigrati
                         }
                         """,
                 },
-                new QueryOperationOptions { IgnoreMaxStepsForScript = true }),
+                new QueryOperationOptions { IgnoreMaxStepsForScript = true, StaleTimeout = TimeSpan.FromMinutes(5) }),
             token: cancellationToken);
 
         // Wait, so a throw here aborts startup and the migration is retried on the next start

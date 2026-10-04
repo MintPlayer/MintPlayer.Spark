@@ -103,8 +103,8 @@ public class StreamExecuteQueryTests : IAsyncLifetime
         _queryLoader.ResolveQuery("missing").Returns((SparkQuery?)null);
 
         var wsClient = _host.GetTestServer().CreateWebSocketClient();
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => wsClient.ConnectAsync(
-            new Uri(_host.GetTestServer().BaseAddress, "/stream/missing"), CancellationToken.None));
+        var ex = (await new Func<Task>(() => wsClient.ConnectAsync(
+            new Uri(_host.GetTestServer().BaseAddress, "/stream/missing"), CancellationToken.None)).Should().ThrowExactlyAsync<InvalidOperationException>()).Which;
 
         // TestServer surfaces a pre-upgrade HTTP rejection as "Incomplete handshake, status code: NNN"
         ex.Message.Should().Contain("404");
@@ -117,8 +117,8 @@ public class StreamExecuteQueryTests : IAsyncLifetime
         _queryLoader.ResolveQuery("all-people").Returns(nonStreaming);
 
         var wsClient = _host.GetTestServer().CreateWebSocketClient();
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => wsClient.ConnectAsync(
-            new Uri(_host.GetTestServer().BaseAddress, "/stream/all-people"), CancellationToken.None));
+        var ex = (await new Func<Task>(() => wsClient.ConnectAsync(
+            new Uri(_host.GetTestServer().BaseAddress, "/stream/all-people"), CancellationToken.None)).Should().ThrowExactlyAsync<InvalidOperationException>()).Which;
 
         ex.Message.Should().Contain("400");
     }

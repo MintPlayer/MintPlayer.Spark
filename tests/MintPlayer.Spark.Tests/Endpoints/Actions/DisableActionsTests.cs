@@ -466,7 +466,7 @@ public class DisableActionsTests : SparkTestDriver
         (await StatusOfAsync(() => client.ExecuteActionAsync(ProbeTypeId, Run,
             selectedItemIds: [.. Enumerable.Range(0, 201).Select(i => $"DisProbes/{i}")], queryId: ProbesQueryId.ToString()))).Should().Be(HttpStatusCode.BadRequest);
 
-        var forbidden = await Assert.ThrowsAsync<SparkClientException>(() => client.ExecuteActionAsync(ProbeTypeId, Run, parent));
+        var forbidden = (await new Func<Task>(() => client.ExecuteActionAsync(ProbeTypeId, Run, parent)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         forbidden.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         forbidden.ResponseBody.Should().Contain(Run);
     }
@@ -542,7 +542,7 @@ public class DisableActionsTests : SparkTestDriver
 
     private static async Task<HttpStatusCode> StatusOfAsync(Func<Task> call)
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(call);
+        var ex = (await call.Should().ThrowExactlyAsync<SparkClientException>()).Which;
         return ex.StatusCode;
     }
 

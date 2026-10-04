@@ -124,7 +124,7 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
 
         // Not merely "no check run" — no feedback state either. Recording a state here would make
         // the build look processed when it still has work coming.
-        Assert.Null(build!.Feedback);
+        build!.Feedback.Should().BeNull();
     }
 
     [Fact]
@@ -160,10 +160,10 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
         using var verify = store.OpenAsyncSession();
         var feedback = (await verify.LoadAsync<Build>(BuildId))!.Feedback;
 
-        Assert.NotNull(feedback);
-        Assert.Equal("Unavailable", feedback!.State);
-        Assert.Null(feedback.NextAttemptAtUtc);
-        Assert.Contains("installation", feedback.Error, StringComparison.OrdinalIgnoreCase);
+        feedback.Should().NotBeNull();
+        feedback!.State.Should().Be("Unavailable");
+        feedback.NextAttemptAtUtc.Should().NotHaveValue();
+        feedback.Error.Should().ContainEquivalentOf("installation");
     }
 
     /// <summary>
@@ -182,8 +182,8 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
         using var verify = store.OpenAsyncSession();
         var feedback = (await verify.LoadAsync<Build>(BuildId))!.Feedback;
 
-        Assert.NotNull(feedback);
-        Assert.Equal("Unavailable", feedback!.State);
-        Assert.Null(feedback.NextAttemptAtUtc);
+        feedback.Should().NotBeNull();
+        feedback!.State.Should().Be("Unavailable");
+        feedback.NextAttemptAtUtc.Should().NotHaveValue();
     }
 }

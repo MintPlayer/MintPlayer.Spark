@@ -108,8 +108,7 @@ public class RowLevelAuthzTests
         {
             // GetCars scoped to admin's car as the parent — the parent fetch must fail the
             // row-level gate and surface as 404 rather than silently run the query unscoped.
-            var ex = await Assert.ThrowsAsync<SparkClientException>(
-                () => userBClient.ExecuteQueryAsync(GetCarsQueryId, parentId: adminCarId, parentType: CarFixture.TypeName));
+            var ex = (await new Func<Task>(() => userBClient.ExecuteQueryAsync(GetCarsQueryId, parentId: adminCarId, parentType: CarFixture.TypeName)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
             ex.StatusCode.Should().Be(HttpStatusCode.NotFound,
                 "parent fetch must apply the row-level gate — cannot scope a query to an inaccessible parent");
         }

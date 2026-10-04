@@ -61,8 +61,7 @@ public class SparkClientAliasAndActionTests : SparkTestDriver
     [Fact]
     public async Task ExecuteActionAsync_throws_not_found_when_entity_type_is_unknown()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.ExecuteActionAsync(Guid.NewGuid(), "Archive"));
+        var ex = (await new Func<Task>(() => _client.ExecuteActionAsync(Guid.NewGuid(), "Archive")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

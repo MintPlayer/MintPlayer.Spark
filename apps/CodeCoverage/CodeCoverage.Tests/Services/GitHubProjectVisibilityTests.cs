@@ -68,8 +68,8 @@ public class GitHubProjectVisibilityTests : CoverageRavenTest
         var board = Board(Owner);
         var allowed = Keys(Owner);
 
-        Assert.True(GitHubProjectVisibility.IsVisible(board, allowed));
-        Assert.True(await MatchesQueryAsync(store, board, allowed));
+        GitHubProjectVisibility.IsVisible(board, allowed).Should().BeTrue();
+        (await MatchesQueryAsync(store, board, allowed)).Should().BeTrue();
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public class GitHubProjectVisibilityTests : CoverageRavenTest
         var board = Board(Owner);
         var allowed = Keys(Stranger);
 
-        Assert.False(GitHubProjectVisibility.IsVisible(board, allowed));
-        Assert.False(await MatchesQueryAsync(store, board, allowed));
+        GitHubProjectVisibility.IsVisible(board, allowed).Should().BeFalse();
+        (await MatchesQueryAsync(store, board, allowed)).Should().BeFalse();
     }
 
     [Fact]
@@ -89,8 +89,8 @@ public class GitHubProjectVisibilityTests : CoverageRavenTest
         using var store = GetDocumentStore();
         var board = Board(Owner);
 
-        Assert.False(GitHubProjectVisibility.IsVisible(board, []));
-        Assert.False(await MatchesQueryAsync(store, board, []));
+        GitHubProjectVisibility.IsVisible(board, []).Should().BeFalse();
+        (await MatchesQueryAsync(store, board, [])).Should().BeFalse();
     }
 
     /// <summary>
@@ -104,8 +104,8 @@ public class GitHubProjectVisibilityTests : CoverageRavenTest
         var board = Board(Owner);
         var gitlabOnly = new[] { new ForgeOwner(EForgeProvider.GitLab, Owner).ToString() };
 
-        Assert.False(GitHubProjectVisibility.IsVisible(board, gitlabOnly));
-        Assert.False(await MatchesQueryAsync(store, board, gitlabOnly));
+        GitHubProjectVisibility.IsVisible(board, gitlabOnly).Should().BeFalse();
+        (await MatchesQueryAsync(store, board, gitlabOnly)).Should().BeFalse();
     }
 
     /// <summary>
@@ -119,8 +119,8 @@ public class GitHubProjectVisibilityTests : CoverageRavenTest
         var board = Board(Owner, RepositoryConnection.Disconnected);
         var allowed = Keys(Owner);
 
-        Assert.False(GitHubProjectVisibility.IsVisible(board, allowed));
-        Assert.False(await MatchesQueryAsync(store, board, allowed));
+        GitHubProjectVisibility.IsVisible(board, allowed).Should().BeFalse();
+        (await MatchesQueryAsync(store, board, allowed)).Should().BeFalse();
     }
 
     /// <summary>
@@ -143,7 +143,7 @@ public class GitHubProjectVisibilityTests : CoverageRavenTest
             "from GitHubProjects update { delete this.Connection; }"));
         var result = patch.WaitForCompletion<Raven.Client.Documents.Operations.BulkOperationResult>(
             TimeSpan.FromSeconds(30));
-        Assert.Equal(1, result.Total);
+        result.Total.Should().Be(1);
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
@@ -151,6 +151,6 @@ public class GitHubProjectVisibilityTests : CoverageRavenTest
             .Where(GitHubProjectVisibility.Filter(Keys(Owner)))
             .AnyAsync();
 
-        Assert.True(visible);
+        visible.Should().BeTrue();
     }
 }

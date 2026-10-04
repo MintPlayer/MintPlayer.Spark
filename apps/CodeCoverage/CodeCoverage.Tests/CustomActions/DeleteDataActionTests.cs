@@ -105,8 +105,8 @@ public class DeleteDataActionTests : CoverageRavenTest
         var queue = (MessageQueueAttribute?)Attribute.GetCustomAttribute(
             typeof(DeleteRepositoryDataMessage), typeof(MessageQueueAttribute));
 
-        Assert.NotNull(queue);
-        Assert.Equal(CoverageQueues.Publishing, queue!.QueueName);
+        queue.Should().NotBeNull();
+        queue!.QueueName.Should().Be(CoverageQueues.Publishing);
     }
 
     /// <summary>
@@ -141,12 +141,11 @@ public class DeleteDataActionTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
 
-        Assert.NotNull(repository);
-        Assert.Equal(RepositoryConnection.Connected, repository!.Connection);
+        repository.Should().NotBeNull();
+        repository!.Connection.Should().Be(RepositoryConnection.Connected);
 
         // The gate the action applies, spelled the way the action spells it.
-        Assert.True(repository.Connection != RepositoryConnection.Disconnected,
-            "a repository with no persisted Connection must be treated as connected, and therefore "
+        (repository.Connection != RepositoryConnection.Disconnected).Should().BeTrue("a repository with no persisted Connection must be treated as connected, and therefore "
             + "must not be deletable until the reconciler has positively marked it disconnected");
     }
 
@@ -207,7 +206,7 @@ public class DeleteDataActionTests : CoverageRavenTest
             Entity = repository,
         });
 
-        Assert.Equal(expectWithheld, obj.DisabledActions?.Contains("DeleteData") == true);
+        (obj.DisabledActions?.Contains("DeleteData") == true).Should().Be(expectWithheld);
 
         // The same question at submit (#460, D13) must give the same answer, or the button and the
         // 403 disagree.
@@ -220,7 +219,7 @@ public class DeleteDataActionTests : CoverageRavenTest
             Id = obj.Id,
             Entity = repository,
         });
-        Assert.Equal(expectWithheld, submit.Names.Contains("DeleteData"));
+        submit.Names.Contains("DeleteData").Should().Be(expectWithheld);
     }
 
     /// <summary>
@@ -253,6 +252,6 @@ public class DeleteDataActionTests : CoverageRavenTest
         }
 
         using var verify = store.OpenAsyncSession();
-        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
+        (await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId))).Should().NotBeNull();
     }
 }

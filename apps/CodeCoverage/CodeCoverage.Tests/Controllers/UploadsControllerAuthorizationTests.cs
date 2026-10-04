@@ -250,8 +250,8 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         await UploadAsync(controller, "acme/widgets");
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal(RepositoryConnection.Connected, repository!.Connection);
-        Assert.Null(repository.DisconnectedReason);
+        repository!.Connection.Should().Be(RepositoryConnection.Connected);
+        repository.DisconnectedReason.Should().BeNull();
     }
 
     /// <summary>
@@ -270,9 +270,9 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         await UploadAsync(controller, "acme-renamed/widgets");
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal("acme-renamed/widgets", repository!.FullName);
-        Assert.Equal("acme-renamed", repository.OwnerLogin);
-        Assert.Contains("acme/widgets", repository.PreviousFullNames);
+        repository!.FullName.Should().Be("acme-renamed/widgets");
+        repository.OwnerLogin.Should().Be("acme-renamed");
+        repository.PreviousFullNames.Should().Contain("acme/widgets");
     }
 
     /// <summary>
@@ -292,6 +292,6 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         await controller.Status("acme/widgets", "0123456789abcdef0123456789abcdef01234567", runId: 7);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
+        repository!.Connection.Should().Be(RepositoryConnection.Disconnected);
     }
 }

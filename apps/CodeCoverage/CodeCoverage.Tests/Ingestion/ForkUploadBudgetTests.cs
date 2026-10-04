@@ -25,15 +25,15 @@ public class ForkUploadBudgetTests
 
     [Fact]
     public void A_repository_that_has_never_taken_one_has_room()
-        => Assert.True(ForkUploadBudget.HasRoom(null, Now));
+        => ForkUploadBudget.HasRoom(null, Now).Should().BeTrue();
 
     [Fact]
     public void Accepting_the_first_one_starts_a_window()
     {
         var budget = ForkUploadBudget.Accept(null, Now);
 
-        Assert.Equal(1, budget.Count);
-        Assert.Equal(Now, budget.WindowStartedUtc);
+        budget.Count.Should().Be(1);
+        budget.WindowStartedUtc.Should().Be(Now);
     }
 
     [Fact]
@@ -42,10 +42,10 @@ public class ForkUploadBudgetTests
         var first = ForkUploadBudget.Accept(null, Now);
         var second = ForkUploadBudget.Accept(first, Now.AddHours(3));
 
-        Assert.Equal(2, second.Count);
+        second.Count.Should().Be(2);
         // ⚠️ The window must NOT slide forward, or a steady trickle of uploads would keep pushing
         // it and the allowance would never reset.
-        Assert.Equal(Now, second.WindowStartedUtc);
+        second.WindowStartedUtc.Should().Be(Now);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class ForkUploadBudgetTests
     {
         var full = new ForkUploadBudget(ForkUploadBudget.PerWindow, Now);
 
-        Assert.False(ForkUploadBudget.HasRoom(full, Now.AddHours(1)));
+        ForkUploadBudget.HasRoom(full, Now.AddHours(1)).Should().BeFalse();
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class ForkUploadBudgetTests
     {
         var nearlyFull = new ForkUploadBudget(ForkUploadBudget.PerWindow - 1, Now);
 
-        Assert.True(ForkUploadBudget.HasRoom(nearlyFull, Now.AddHours(1)));
+        ForkUploadBudget.HasRoom(nearlyFull, Now.AddHours(1)).Should().BeTrue();
     }
 
     /// <summary>
@@ -73,11 +73,11 @@ public class ForkUploadBudgetTests
         var full = new ForkUploadBudget(ForkUploadBudget.PerWindow * 10, Now);
         var later = Now + ForkUploadBudget.Window;
 
-        Assert.True(ForkUploadBudget.HasRoom(full, later));
+        ForkUploadBudget.HasRoom(full, later).Should().BeTrue();
 
         var restarted = ForkUploadBudget.Accept(full, later);
-        Assert.Equal(1, restarted.Count);
-        Assert.Equal(later, restarted.WindowStartedUtc);
+        restarted.Count.Should().Be(1);
+        restarted.WindowStartedUtc.Should().Be(later);
     }
 
     /// <summary>
@@ -89,8 +89,8 @@ public class ForkUploadBudgetTests
     {
         var full = new ForkUploadBudget(ForkUploadBudget.PerWindow, Now);
 
-        Assert.False(ForkUploadBudget.HasRoom(full, Now + ForkUploadBudget.Window - TimeSpan.FromSeconds(1)));
-        Assert.True(ForkUploadBudget.HasRoom(full, Now + ForkUploadBudget.Window));
+        ForkUploadBudget.HasRoom(full, Now + ForkUploadBudget.Window - TimeSpan.FromSeconds(1)).Should().BeFalse();
+        ForkUploadBudget.HasRoom(full, Now + ForkUploadBudget.Window).Should().BeTrue();
     }
 
     /// <summary>
@@ -104,11 +104,11 @@ public class ForkUploadBudgetTests
 
         for (var i = 0; i < ForkUploadBudget.PerWindow; i++)
         {
-            Assert.True(ForkUploadBudget.HasRoom(budget, Now), $"refused at upload {i + 1}");
+            ForkUploadBudget.HasRoom(budget, Now).Should().BeTrue($"refused at upload {i + 1}");
             budget = ForkUploadBudget.Accept(budget, Now);
         }
 
-        Assert.False(ForkUploadBudget.HasRoom(budget, Now));
-        Assert.Equal(ForkUploadBudget.PerWindow, budget!.Count);
+        ForkUploadBudget.HasRoom(budget, Now).Should().BeFalse();
+        budget!.Count.Should().Be(ForkUploadBudget.PerWindow);
     }
 }

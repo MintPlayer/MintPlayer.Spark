@@ -423,8 +423,7 @@ public class ExecuteCustomActionTests
         var endpoint = NewEndpoint();
         var context = NewContext(CarType.Id.ToString(), "Archive", body: new CustomActionRequest());
 
-        var thrown = await Assert.ThrowsAsync<SparkRetryActionException>(
-            () => endpoint.HandleAsync(context));
+        var thrown = (await new Func<Task>(() => endpoint.HandleAsync(context)).Should().ThrowExactlyAsync<SparkRetryActionException>()).Which;
 
         // The payload has to survive intact, because the middleware builds the envelope from it.
         thrown.Step.Should().Be(2);

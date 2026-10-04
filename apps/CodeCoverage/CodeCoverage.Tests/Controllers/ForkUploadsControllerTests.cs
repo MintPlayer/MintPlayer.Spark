@@ -99,7 +99,7 @@ public class ForkUploadsControllerTests
     /// <summary>The single refusal: one status, one body.</summary>
     private static void ShouldBeTheUniformRefusal(IActionResult result)
     {
-        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Which;
         notFound.Value!.ToString().Should().Contain("No such pull request, or coverage cannot be accepted for it.");
     }
 
@@ -111,7 +111,7 @@ public class ForkUploadsControllerTests
 
         var result = await Upload(h, Form());
 
-        var accepted = Assert.IsType<AcceptedResult>(result);
+        var accepted = result.Should().BeOfType<AcceptedResult>().Which;
         accepted.Value!.ToString().Should().Contain("Builds/1");
         var request = h.Ingested.Should().ContainSingle().Which;
         request.CommitSha.Should().Be(HeadSha);
@@ -138,7 +138,7 @@ public class ForkUploadsControllerTests
         repository.DefaultBranch = "trunk";
         var h = Create(repository, ForkPull(defaultBranch: "main"));
 
-        Assert.IsType<AcceptedResult>(await Upload(h, Form()));
+        (await Upload(h, Form())).Should().BeOfType<AcceptedResult>();
 
         repository.DefaultBranch.Should().Be("trunk");
     }
@@ -149,7 +149,7 @@ public class ForkUploadsControllerTests
     {
         var h = Create(PublicRepository(), ForkPull(headRepositoryId: null));
 
-        Assert.IsType<AcceptedResult>(await Upload(h, Form()));
+        (await Upload(h, Form())).Should().BeOfType<AcceptedResult>();
     }
 
     [Fact]
@@ -163,20 +163,20 @@ public class ForkUploadsControllerTests
 
         var result = await Upload(h, Form(files: 65));
 
-        Assert.IsType<BadRequestObjectResult>(result).Value!.ToString().Should().Contain("Too many report files");
+        result.Should().BeOfType<BadRequestObjectResult>().Which.Value!.ToString().Should().Contain("Too many report files");
         await h.Forge.DidNotReceiveWithAnyArgs().GetPullRequestAsync(default!, default, default);
     }
 
     [Fact]
     public async Task At_the_file_limit_the_upload_is_not_refused_by_the_bound()
-        => Assert.IsType<AcceptedResult>(await Upload(Create(PublicRepository(), ForkPull()), Form(files: 64)));
+        => (await Upload(Create(PublicRepository(), ForkPull()), Form(files: 64))).Should().BeOfType<AcceptedResult>();
 
     [Fact]
     public async Task An_oversized_file_list_is_a_bad_request()
     {
         var result = await Upload(Create(PublicRepository(), ForkPull()), Form(fileList: new string('a', 1024 * 1024 + 1)));
 
-        Assert.IsType<BadRequestObjectResult>(result).Value!.ToString().Should().Contain("file list is too large");
+        result.Should().BeOfType<BadRequestObjectResult>().Which.Value!.ToString().Should().Contain("file list is too large");
     }
 
     [Theory]
@@ -269,5 +269,5 @@ public class ForkUploadsControllerTests
     /// <summary>The head-sha comparison is case-insensitive: a sha is hex, and the forge and git may disagree on case.</summary>
     [Fact]
     public async Task The_head_sha_comparison_ignores_case()
-        => Assert.IsType<AcceptedResult>(await Upload(Create(PublicRepository(), ForkPull()), Form(sha: HeadSha.ToUpperInvariant())));
+        => (await Upload(Create(PublicRepository(), ForkPull()), Form(sha: HeadSha.ToUpperInvariant()))).Should().BeOfType<AcceptedResult>();
 }

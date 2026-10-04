@@ -66,8 +66,7 @@ public class AbsentFieldPredicateTests
             }
         }
 
-        Assert.True(offenders.Count == 0,
-            "Use `x.Field != true`, never `!x.Field` — an absent JSON field does not satisfy an "
+        (offenders.Count == 0).Should().BeTrue("Use `x.Field != true`, never `!x.Field` — an absent JSON field does not satisfy an "
             + "equality in RavenDB, so the negation silently matches nothing:\n  "
             + string.Join("\n  ", offenders));
     }
@@ -81,7 +80,7 @@ public class AbsentFieldPredicateTests
     [InlineData(".Where(c => c.ContributedFromFork != true)", false)]
     [InlineData(".Where(c => c.PullRequestNumber == pr)", false)]
     public void The_detector_matches_the_broken_shapes_and_not_the_correct_one(string snippet, bool shouldMatch)
-        => Assert.Equal(shouldMatch, ForbiddenPredicate("ContributedFromFork").IsMatch(snippet));
+        => ForbiddenPredicate("ContributedFromFork").IsMatch(snippet).Should().Be(shouldMatch);
 
     /// <summary>
     /// The lambda test, which is what separates a translated predicate from ordinary C#.
@@ -93,8 +92,8 @@ public class AbsentFieldPredicateTests
     public void Only_a_lambda_counts_as_a_query_predicate(string snippet, bool isQuery)
     {
         var match = ForbiddenPredicate("ContributedFromFork").Match(snippet);
-        Assert.True(match.Success, "the fixture must contain the shape being classified");
-        Assert.Equal(isQuery, IsQueryPredicate(snippet, match.Index));
+        match.Success.Should().BeTrue("the fixture must contain the shape being classified");
+        IsQueryPredicate(snippet, match.Index).Should().Be(isQuery);
     }
 
     /// <summary>
@@ -133,7 +132,7 @@ public class AbsentFieldPredicateTests
     {
         var root = FindRepositoryRoot();
         var app = Path.Combine(root, "apps", "CodeCoverage");
-        Assert.True(Directory.Exists(app), $"Expected the app at {app}");
+        Directory.Exists(app).Should().BeTrue($"Expected the app at {app}");
 
         return Directory.EnumerateFiles(app, "*.cs", SearchOption.AllDirectories)
             .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
@@ -149,7 +148,7 @@ public class AbsentFieldPredicateTests
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "apps")))
             dir = dir.Parent;
 
-        Assert.NotNull(dir);
+        dir.Should().NotBeNull();
         return dir!.FullName;
     }
 
@@ -159,5 +158,5 @@ public class AbsentFieldPredicateTests
     /// </summary>
     [Fact]
     public void The_sweep_reads_a_substantial_number_of_files()
-        => Assert.True(SourceFiles().Count() > 100, "Expected the sweep to walk the whole app.");
+        => (SourceFiles().Count() > 100).Should().BeTrue("Expected the sweep to walk the whole app.");
 }

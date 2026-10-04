@@ -227,8 +227,7 @@ public class ParseSessionRecipientArmsTests : CoverageRavenTest
         var source = new EndlessZeros();
         using var destination = new MemoryStream();
 
-        var ex = await Assert.ThrowsAsync<ReportTooLargeException>(
-            () => ParseSessionRecipient.CopyBounded(source, destination, limit: 3 * 1024 * 1024, CancellationToken.None));
+        var ex = (await new Func<Task>(() => ParseSessionRecipient.CopyBounded(source, destination, limit: 3 * 1024 * 1024, CancellationToken.None)).Should().ThrowExactlyAsync<ReportTooLargeException>()).Which;
 
         ex.Message.Should().Be("The report expands to more than 3 MB when decompressed.");
         destination.Length.Should().BeLessThanOrEqualTo(3 * 1024 * 1024);
@@ -270,12 +269,12 @@ public class ParseSessionRecipientArmsTests : CoverageRavenTest
     public void The_xml_readers_own_size_limit_is_classified_too_large()
     {
         var settings = new System.Xml.XmlReaderSettings { MaxCharactersInDocument = 64 };
-        var real = Assert.Throws<System.Xml.XmlException>(() =>
+        var real = new Action(() =>
         {
             // Create already reads ahead, so it belongs inside the assertion too.
             using var reader = System.Xml.XmlReader.Create(new StringReader($"<coverage>{new string('x', 1000)}</coverage>"), settings);
             while (reader.Read()) { }
-        });
+        }).Should().ThrowExactly<System.Xml.XmlException>().Which;
 
         ParseSessionRecipient.ClassifyParseFailure(real).Should().Be(ReportRejectionReason.TooLarge, real.Message);
     }

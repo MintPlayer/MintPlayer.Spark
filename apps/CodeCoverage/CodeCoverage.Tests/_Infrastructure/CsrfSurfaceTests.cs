@@ -75,7 +75,7 @@ public class CsrfSurfaceTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal([.. ExpectedExempt.OrderBy(n => n, StringComparer.Ordinal)], actual);
+        actual.Should().Equal([.. ExpectedExempt.OrderBy(n => n, StringComparer.Ordinal)]);
     }
 
     /// <summary>
@@ -93,7 +93,7 @@ public class CsrfSurfaceTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Empty(unannotated);
+        unannotated.Should().BeEmpty();
     }
 
     /// <summary>
@@ -111,7 +111,7 @@ public class CsrfSurfaceTests
             .Select(Name)
             .ToArray();
 
-        Assert.Empty(misannotated);
+        misannotated.Should().BeEmpty();
     }
 
     private static IEnumerable<MethodInfo> MutatingActions() =>

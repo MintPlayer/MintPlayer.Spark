@@ -84,7 +84,9 @@ public partial class M_202609230900_DisconnectedReasonsStopNamingGitHub : ISpark
                         {{script}}
                     }
                     """,
-            }), token: cancellationToken);
+            },
+            // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
+            new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);
 
             var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
             total += result.Total;

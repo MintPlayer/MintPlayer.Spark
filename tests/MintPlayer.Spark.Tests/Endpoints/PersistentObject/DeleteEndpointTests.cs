@@ -30,8 +30,7 @@ public class DeleteEndpointTests : SparkTestDriver
     [Fact]
     public async Task Delete_throws_404_when_entity_type_is_unknown()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.DeleteAsLoadedAsync(Guid.NewGuid(), "people/1"));
+        var ex = (await new Func<Task>(() => _client.DeleteAsLoadedAsync(Guid.NewGuid(), "people/1")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -39,8 +38,7 @@ public class DeleteEndpointTests : SparkTestDriver
     [Fact]
     public async Task Delete_throws_404_when_id_does_not_exist()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.DeleteAsLoadedAsync(PersonTypeId, "people/does-not-exist"));
+        var ex = (await new Func<Task>(() => _client.DeleteAsLoadedAsync(PersonTypeId, "people/does-not-exist")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

@@ -49,7 +49,7 @@ public class GitHubRenameRedirectContractTests
 
         var repository = await client.Repository.Get(OldOwner, OldName);
 
-        Assert.Equal(ExpectedId, repository.Id);
-        Assert.Equal(ExpectedFullName, repository.FullName);
+        repository.Id.Should().Be(ExpectedId);
+        repository.FullName.Should().Be(ExpectedFullName);
     }
 }

@@ -52,8 +52,7 @@ public class ExecuteQueryEndpointTests : SparkTestDriver
     [Fact]
     public async Task Execute_throws_404_when_query_unknown()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.ExecuteQueryAsync(Guid.NewGuid()));
+        var ex = (await new Func<Task>(() => _client.ExecuteQueryAsync(Guid.NewGuid())).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

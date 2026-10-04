@@ -38,7 +38,7 @@ public class ReferenceRoundTripTests
         var refetched = await client.GetPersistentObjectAsync(CarFixture.TypeId, created.Id!)
             ?? throw new InvalidOperationException($"Created car {created.Id} not re-fetchable");
         var manager = refetched.Attributes.Single(a => a.Name == "Manager");
-        manager.Value?.ToString().Should().Be(alice.Id, "inverse path must persist the refId onto the entity");
+        (manager.Value?.ToString()).Should().Be(alice.Id, "inverse path must persist the refId onto the entity");
         manager.Breadcrumb.Should().Be("Alice", "forward path must resolve the Person's display value");
 
         // Update Manager to Bob. Ensure Attributes collection is mutated through a fresh
@@ -49,7 +49,7 @@ public class ReferenceRoundTripTests
         var afterUpdate = await client.GetPersistentObjectAsync(CarFixture.TypeId, created.Id!)
             ?? throw new InvalidOperationException($"Updated car {created.Id} not re-fetchable");
         var managerAfter = afterUpdate.Attributes.Single(a => a.Name == "Manager");
-        managerAfter.Value?.ToString().Should().Be(bob.Id, "update path must overwrite the refId");
+        (managerAfter.Value?.ToString()).Should().Be(bob.Id, "update path must overwrite the refId");
         managerAfter.Breadcrumb.Should().Be("Bob", "breadcrumb must reflect the new reference");
     }
 
@@ -71,7 +71,7 @@ public class ReferenceRoundTripTests
         var afterClear = await client.GetPersistentObjectAsync(CarFixture.TypeId, created.Id!)
             ?? throw new InvalidOperationException($"Cleared car {created.Id} not re-fetchable");
         var managerAfter = afterClear.Attributes.Single(a => a.Name == "Manager");
-        managerAfter.Value?.ToString().Should().BeNullOrEmpty("null/empty incoming refId unsets the reference");
+        (managerAfter.Value?.ToString()).Should().BeNullOrEmpty("null/empty incoming refId unsets the reference");
         managerAfter.Breadcrumb.Should().BeNull("cleared reference has no breadcrumb to resolve");
     }
 

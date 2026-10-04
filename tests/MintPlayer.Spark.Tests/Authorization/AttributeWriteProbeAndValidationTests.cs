@@ -161,7 +161,7 @@ public class AttributeWriteProbeAndValidationTests : SparkTestDriver
 
         var saved = await client.UpdatePersistentObjectAsync(po);
 
-        saved["Name"].Value?.ToString().Should().Be("renamed");
+        (saved["Name"].Value?.ToString()).Should().Be("renamed");
         var stored = await LoadAsync(WvItem.GetId("L"));
         stored.Name.Should().Be("renamed");
         stored.Pin.Should().Be("p-stored", "the blank posted back did not wipe the stored value");

@@ -93,8 +93,7 @@ public class SparkActionResultTests
         handler.EnqueueStatus(HttpStatusCode.InternalServerError);
         using (client)
         {
-            var ex = await Assert.ThrowsAsync<SparkClientException>(
-                () => client.ExecuteActionAsync(Guid.NewGuid(), "Explode"));
+            var ex = (await new Func<Task>(() => client.ExecuteActionAsync(Guid.NewGuid(), "Explode")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
             ex.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
         }
     }

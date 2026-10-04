@@ -35,8 +35,7 @@ public class AnonymousPersistentObjectAccessTests
     {
         using var client = Anonymous();
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.ExecuteQueryAsync(GetCarsQueryId));
+        var ex = (await new Func<Task>(() => client.ExecuteQueryAsync(GetCarsQueryId)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         // 404, and deliberately not 401. This used to read through GET /spark/po/{type}, which
         // refuses with 401 for an anonymous caller so a client knows authenticating would help. That
@@ -74,9 +73,8 @@ public class AnonymousPersistentObjectAccessTests
     {
         using var client = Anonymous();
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.CreatePersistentObjectAsync(
-                CarFixture.New(CarFixture.RandomLicensePlate("AN"), model: "ANON")));
+        var ex = (await new Func<Task>(() => client.CreatePersistentObjectAsync(
+                CarFixture.New(CarFixture.RandomLicensePlate("AN"), model: "ANON"))).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         // SparkClient primes and echoes the XSRF token itself, so this request clears the
         // antiforgery gate and is refused by authorization proper — which is the stronger result.
@@ -105,8 +103,7 @@ public class AnonymousPersistentObjectAccessTests
             ],
         };
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.CreatePersistentObjectAsync(company));
+        var ex = (await new Func<Task>(() => client.CreatePersistentObjectAsync(company)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         // N23, fixed in M11.4. This payload deliberately omits attributes Company requires, so
         // before the reorder it came back 400 with those validation errors — telling a caller who

@@ -108,6 +108,9 @@ end.
   response is bound to the signed-in user and works for the next mutating call. Sign-out still needs
   `/spark/auth/csrf-refresh`, because `SignOutAsync` never resets `HttpContext.User`
   (`XsrfMintingPlacementTests`).
+- **A refusal carries a fresh token.** The generator is registered above Spark's antiforgery gate, so
+  the gate's 400 for a missing or stale token sets a new `XSRF-TOKEN`, and the client can recover by
+  retrying (`XsrfEnforcementTests`).
 - **Shared-cacheable endpoints must opt out.** Mark them `[SkipXsrfToken]` or `.SkipXsrfToken()`. A
   response that carries the token's `Set-Cookie` has its `Cache-Control` forced to `private`, so a
   `public` endpoint that keeps minting silently stops being cacheable. The opt-out does not take the

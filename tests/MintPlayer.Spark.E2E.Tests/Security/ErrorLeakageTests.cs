@@ -50,12 +50,10 @@ public class ErrorLeakageTests
         // The subject here is leakage, not the status: whichever refusal shape applies, the body
         // must carry nothing internal. A bogus type name and a bogus query id exercise the two
         // paths that could interpolate something they should not.
-        var unknownType = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.GetPersistentObjectAsync("this-is-not-a-real-type", "some-id"));
+        var unknownType = (await new Func<Task>(() => client.GetPersistentObjectAsync("this-is-not-a-real-type", "some-id")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         AssertNoLeakyTokens(unknownType.ResponseBody, "Get with unknown entity type");
 
-        var unknownQuery = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.ExecuteQueryAsync(Guid.NewGuid()));
+        var unknownQuery = (await new Func<Task>(() => client.ExecuteQueryAsync(Guid.NewGuid())).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         AssertNoLeakyTokens(unknownQuery.ResponseBody, "ExecuteQuery on unknown id");
     }
 
@@ -67,7 +65,7 @@ public class ErrorLeakageTests
         // Unknown id → client returns null (404), no body surfaced to caller. Exercise via
         // the update path which DOES throw on 404 and preserves ResponseBody.
         var carTypeId = Guid.Parse("facb6829-f2a1-4ae2-a046-6ba506e8c0ce");
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.DeleteAsLoadedAsync(carTypeId, "{}"));
+        var ex = (await new Func<Task>(() => client.DeleteAsLoadedAsync(carTypeId, "{}")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         AssertNoLeakyTokens(ex.ResponseBody, "Delete with malformed id");
     }
 

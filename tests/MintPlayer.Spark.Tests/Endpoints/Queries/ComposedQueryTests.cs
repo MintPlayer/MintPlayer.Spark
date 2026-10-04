@@ -166,7 +166,7 @@ public class ComposedQueryTests(ComposedQueryHost host)
             services.AddSingleton(perms);
         });
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => ExecuteAsync(factory, DashboardQueryId));
+        var ex = (await new Func<Task>(() => ExecuteAsync(factory, DashboardQueryId)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
     }
@@ -184,8 +184,7 @@ public class ComposedQueryTests(ComposedQueryHost host)
 
         await using var factory = new SparkEndpointFactory(Store, [orphan]);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => ExecuteAsync(factory, Guid.Parse("aaaaaaaa-cccc-cccc-cccc-aaaaaaaaaaaa")));
+        var ex = (await new Func<Task>(() => ExecuteAsync(factory, Guid.Parse("aaaaaaaa-cccc-cccc-cccc-aaaaaaaaaaaa"))).Should().ThrowExactlyAsync<InvalidOperationException>()).Which;
 
         ex.Message.Should().Contain("OrphanBoardActions").And.Contain("no source at all");
     }
@@ -261,7 +260,7 @@ public class ComposedQueryTests(ComposedQueryHost host)
         // authoring bug in the actions class, and the projector refuses it.
         var factory = SharedFactory;
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => ExecuteAsync(factory, DuplicateQueryId));
+        var ex = (await new Func<Task>(() => ExecuteAsync(factory, DuplicateQueryId)).Should().ThrowExactlyAsync<InvalidOperationException>()).Which;
 
         ex.Message.Should().Contain("two rows with the id 'row/1'");
     }

@@ -106,7 +106,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         SetAttribute(po, "FirstName", "Alicia");
 
         _race.ArmSave();
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.UpdatePersistentObjectAsync(po));
+        var ex = (await new Func<Task>(() => _client.UpdatePersistentObjectAsync(po)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         _race.Fired.Should().BeTrue("the concurrent writer must have landed for this test to mean anything");
         await AssertConflictAsync(ex);
@@ -141,7 +141,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         var po = await SeedAndLoadAsync();
 
         _race.ArmDeleteRace();
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.DeletePersistentObjectAsync(po));
+        var ex = (await new Func<Task>(() => _client.DeletePersistentObjectAsync(po)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         _race.Fired.Should().BeTrue();
         await AssertConflictAsync(ex);
@@ -169,7 +169,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         await SeedAndLoadAsync();
 
         _race.ArmDelete();
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.DeleteAsLoadedAsync(PersonTypeId, Id));
+        var ex = (await new Func<Task>(() => _client.DeleteAsLoadedAsync(PersonTypeId, Id)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         _race.Fired.Should().BeTrue();
         await AssertConflictAsync(ex);

@@ -65,16 +65,24 @@ public class XsrfMintingPlacementTests : SparkTestDriver
                 })
                 .Configure(app =>
                 {
+                    // Outermost, as an application registers it, so the reason-3 case below sees
+                    // the handler rewrite a response the mint already registered for.
+                    app.UseExceptionHandler(handler => handler.Run(ctx =>
+                    {
+                        ctx.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                        return Task.CompletedTask;
+                    }));
                     app.UseRouting();
                     app.UseAuthentication();
                     app.UseAuthorization();
 
-                    // The same order as SparkMiddleware: Spark's gate, then the built-in middleware
+                    // The same order as SparkMiddleware: the mint ABOVE Spark's gate, so the gate's
+                    // own 400 carries a fresh token; then the gate; then the built-in middleware
                     // (ASP.NET Core throws if an endpoint carries antiforgery metadata and it is
-                    // absent, even when Spark's gate already handled it), then the mint.
+                    // absent, even when Spark's gate already handled it).
+                    app.UseAntiforgeryGenerator();
                     app.UseSparkAntiforgery();
                     app.UseAntiforgery();
-                    app.UseAntiforgeryGenerator();
 
                     app.UseEndpoints(endpoints =>
                     {
@@ -96,6 +104,11 @@ public class XsrfMintingPlacementTests : SparkTestDriver
                         endpoints.MapPost("/probe/protected", (HttpContext ctx) =>
                             Results.Ok(new { caller = ctx.User.Identity?.Name ?? "(anonymous)" }))
                             .WithMetadata(new Microsoft.AspNetCore.Antiforgery.RequireAntiforgeryTokenAttribute(true));
+
+                        endpoints.MapGet("/probe/throws", () =>
+                        {
+                            throw new InvalidOperationException("probe failure");
+                        });
                     });
                 }))
             .StartAsync();
@@ -258,6 +271,51 @@ public class XsrfMintingPlacementTests : SparkTestDriver
 
         (await PostAsync(host, "/probe/protected", jar, sendXsrfHeader: false)).StatusCode
             .Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// PRD §5, reason 3: an error page still carries the cookie. <c>UseExceptionHandler</c> clears
+    /// the response's headers before it re-executes, which wiped a cookie appended eagerly; it does
+    /// not remove <c>OnStarting</c> callbacks, so the package's mint runs on the rewritten response.
+    /// </summary>
+    [Fact]
+    public async Task A_response_rewritten_by_the_exception_handler_still_carries_the_cookie()
+    {
+        using var host = await StartAsync();
+        using var client = host.GetTestServer().CreateClient();
+
+        var response = await client.GetAsync("/probe/throws");
+
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        response.Headers.TryGetValues("Set-Cookie", out var cookies).Should().BeTrue();
+        cookies!.Should().Contain(c => c.StartsWith(CookieName + "=", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// PRD §5, reason 2: the gate's own refusal carries a fresh token, so a client holding a stale
+    /// one recovers by retrying. Only true while the generator is registered above the gate, which
+    /// short-circuits before anything below it can add an <c>OnStarting</c> callback. The real-host
+    /// counterpart is <c>XsrfEnforcementTests.The_gates_refusal_carries_a_fresh_token_…</c>.
+    /// </summary>
+    [Fact]
+    public async Task The_gates_refusal_carries_a_fresh_token_that_works_on_retry()
+    {
+        await SeedUserAsync();
+        using var host = await StartAsync();
+        var jar = Jar.Empty();
+
+        await PostAsync(host, "/probe/sign-in", jar, sendXsrfHeader: false);
+        var stale = jar.Xsrf;
+
+        var refused = await PostAsync(host, "/probe/protected", jar, sendXsrfHeader: false);
+        refused.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        refused.Headers.TryGetValues("Set-Cookie", out var cookies).Should().BeTrue(
+            "the refusal must carry a Set-Cookie, or the client has nothing new to retry with");
+        cookies!.Should().Contain(c => c.StartsWith(CookieName + "=", StringComparison.Ordinal));
+        jar.Xsrf.Should().NotBe(stale);
+
+        (await PostAsync(host, "/probe/protected", jar, sendXsrfHeader: true)).StatusCode
+            .Should().Be(HttpStatusCode.OK);
     }
 
     /// <summary>

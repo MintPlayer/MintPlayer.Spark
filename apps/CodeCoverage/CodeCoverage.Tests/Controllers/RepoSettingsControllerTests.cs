@@ -77,7 +77,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session, new TestGitHubAccessService("someone-else"));
 
-        Assert.IsType<NotFoundResult>((await controller.RotateBadgeToken("github", Owner, Name, default)).Result);
+        ((await controller.RotateBadgeToken("github", Owner, Name, default)).Result).Should().BeOfType<NotFoundResult>();
     }
 
     [Fact]
@@ -92,13 +92,13 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             var controller = CreateController(session, new TestGitHubAccessService(Owner));
-            Assert.IsType<OkObjectResult>((await controller.RotateBadgeToken("github", Owner, Name, default)).Result);
+            ((await controller.RotateBadgeToken("github", Owner, Name, default)).Result).Should().BeOfType<OkObjectResult>();
 
             using var read = store.OpenAsyncSession();
             first = (await read.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!.BadgeToken;
         }
 
-        Assert.False(string.IsNullOrWhiteSpace(first));
+        string.IsNullOrWhiteSpace(first).Should().BeFalse();
 
         using (var session = store.OpenAsyncSession())
         {
@@ -111,6 +111,6 @@ public class RepoSettingsControllerTests : CoverageRavenTest
 
         // Rotation must actually rotate: the previous badge URL has to stop working, which is the
         // entire reason the endpoint exists.
-        Assert.NotEqual(first, second);
+        second.Should().NotBe(first);
     }
 }

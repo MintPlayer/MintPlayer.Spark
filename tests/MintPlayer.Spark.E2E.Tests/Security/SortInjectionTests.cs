@@ -24,8 +24,7 @@ public class SortInjectionTests
     {
         using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.ExecuteQueryAsync(CarsQueryId, sortColumns: [new SortColumn { Property = "NoSuchProperty", Direction = "asc" }]));
+        var ex = (await new Func<Task>(() => client.ExecuteQueryAsync(CarsQueryId, sortColumns: [new SortColumn { Property = "NoSuchProperty", Direction = "asc" }])).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ((int)ex.StatusCode).Should().BeOneOf(new[] { 400, 422 },
             "sorting by a property not in the query's schema must be rejected, not silently ignored");
@@ -38,8 +37,7 @@ public class SortInjectionTests
 
         // The VCar projection is a C# class; any public property on it is reflectable.
         // "Id" is reflectable-but-not-declared on the query — it must be rejected.
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.ExecuteQueryAsync(CarsQueryId, sortColumns: [new SortColumn { Property = "Id", Direction = "asc" }]));
+        var ex = (await new Func<Task>(() => client.ExecuteQueryAsync(CarsQueryId, sortColumns: [new SortColumn { Property = "Id", Direction = "asc" }])).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ((int)ex.StatusCode).Should().BeOneOf(new[] { 400, 422 },
             "sorting by a reflectable-but-undeclared property (Id) must be rejected");

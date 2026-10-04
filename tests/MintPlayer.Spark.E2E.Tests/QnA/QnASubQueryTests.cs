@@ -85,7 +85,7 @@ public class QnASubQueryTests
 
         var blank = await author.Client.NewPersistentObjectFromSubQueryAsync("answer", "Question", questionId, "question-answers");
 
-        blank["QuestionId"].Value?.ToString().Should().Be(questionId);
+        (blank["QuestionId"].Value?.ToString()).Should().Be(questionId);
     }
 
     [Fact]

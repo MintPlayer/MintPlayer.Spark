@@ -109,7 +109,7 @@ public class RevokeTokenActionTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
             await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId));
 
-        Assert.NotNull(await RevokedAtAsync(store));
+        (await RevokedAtAsync(store)).Should().HaveValue();
     }
 
     /// <summary>
@@ -124,7 +124,7 @@ public class RevokeTokenActionTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
             await CreateAction(session, canManageOwner: false).Action.ExecuteAsync(ArgsFor(TokenId));
 
-        Assert.Null(await RevokedAtAsync(store));
+        (await RevokedAtAsync(store)).Should().NotHaveValue();
     }
 
     /// <summary>
@@ -140,7 +140,7 @@ public class RevokeTokenActionTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
             await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId));
 
-        Assert.Null(await RevokedAtAsync(store));
+        (await RevokedAtAsync(store)).Should().NotHaveValue();
     }
 
     /// <summary>
@@ -162,7 +162,7 @@ public class RevokeTokenActionTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
             await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId));
 
-        Assert.Null(await RevokedAtAsync(store));
+        (await RevokedAtAsync(store)).Should().NotHaveValue();
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class RevokeTokenActionTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
             await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId));
 
-        Assert.Equal(original, await RevokedAtAsync(store));
+        (await RevokedAtAsync(store)).Should().Be(original);
     }
 
     /// <summary>
@@ -219,9 +219,9 @@ public class RevokeTokenActionTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
             await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId, foreignToken));
 
-        Assert.Null(await RevokedAtAsync(store));
+        (await RevokedAtAsync(store)).Should().NotHaveValue();
         using var verify = store.OpenAsyncSession();
-        Assert.Null((await verify.LoadAsync<ApiToken>(foreignToken)).RevokedAtUtc);
+        ((await verify.LoadAsync<ApiToken>(foreignToken)).RevokedAtUtc).Should().NotHaveValue();
     }
 
     [Fact]
@@ -239,9 +239,9 @@ public class RevokeTokenActionTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
             await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId, secondToken));
 
-        Assert.NotNull(await RevokedAtAsync(store));
+        (await RevokedAtAsync(store)).Should().HaveValue();
         using var verify = store.OpenAsyncSession();
-        Assert.NotNull((await verify.LoadAsync<ApiToken>(secondToken)).RevokedAtUtc);
+        ((await verify.LoadAsync<ApiToken>(secondToken)).RevokedAtUtc).Should().HaveValue();
     }
 
     [Fact]

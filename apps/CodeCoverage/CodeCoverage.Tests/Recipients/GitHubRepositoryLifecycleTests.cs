@@ -292,13 +292,13 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             Message("repository", RepositoryEventJson("deleted", OldOwnerId, "acme", "widgets")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal(RepositoryConnection.Disconnected, repository.Connection);
-        Assert.Equal(DisconnectedReasons.DeletedOnForge, repository.DisconnectedReason);
+        repository.Should().NotBeNull();
+        repository.Connection.Should().Be(RepositoryConnection.Disconnected);
+        repository.DisconnectedReason.Should().Be(DisconnectedReasons.DeletedOnForge);
 
         // The point of not deleting: the commit under it is still reachable, so a report link
         // someone shared still resolves.
-        Assert.NotNull(await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "abc")));
+        (await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "abc"))).Should().NotBeNull();
     }
 
     /// <summary>
@@ -327,13 +327,13 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             Message("repository", RepositoryEventJson("transferred", NewOwnerId, "acme-archive", "widgets")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal("acme-archive/widgets", repository.FullName);
-        Assert.Equal("acme-archive", repository.OwnerLogin);
-        Assert.Equal(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId), repository.Account);
-        Assert.Contains("acme/widgets", repository.PreviousFullNames);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
-        Assert.Null(repository.DisconnectedReason);
+        repository.Should().NotBeNull();
+        repository.FullName.Should().Be("acme-archive/widgets");
+        repository.OwnerLogin.Should().Be("acme-archive");
+        repository.Account.Should().Be(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId));
+        repository.PreviousFullNames.Should().Contain("acme/widgets");
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
+        repository.DisconnectedReason.Should().BeNull();
     }
 
     /// <summary>
@@ -354,9 +354,9 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal(RepositoryConnection.Disconnected, repository.Connection);
-        Assert.Equal(DisconnectedReasons.RemovedFromInstallation, repository.DisconnectedReason);
+        repository.Should().NotBeNull();
+        repository.Connection.Should().Be(RepositoryConnection.Disconnected);
+        repository.DisconnectedReason.Should().Be(DisconnectedReasons.RemovedFromInstallation);
     }
 
     /// <summary>
@@ -384,8 +384,8 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        repository.Should().NotBeNull();
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
     }
 
     [Fact]
@@ -399,10 +399,10 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             Message("repository", RepositoryEventJson("renamed", OldOwnerId, "acme", "gadgets")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal("acme/gadgets", repository.FullName);
-        Assert.Contains("acme/widgets", repository.PreviousFullNames);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        repository.Should().NotBeNull();
+        repository.FullName.Should().Be("acme/gadgets");
+        repository.PreviousFullNames.Should().Contain("acme/widgets");
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
     }
 
     [Fact]
@@ -416,9 +416,9 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             Message("repository", RepositoryEventJson("archived", OldOwnerId, "acme", "widgets", archived: true)));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.True(repository.Archived);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        repository.Should().NotBeNull();
+        repository.Archived.Should().BeTrue();
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
     }
 
     [Fact]
@@ -433,10 +433,10 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal(RepositoryConnection.Disconnected, repository.Connection);
-        Assert.Equal(DisconnectedReasons.RemovedFromInstallation, repository.DisconnectedReason);
-        Assert.NotNull(await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "abc")));
+        repository.Should().NotBeNull();
+        repository.Connection.Should().Be(RepositoryConnection.Disconnected);
+        repository.DisconnectedReason.Should().Be(DisconnectedReasons.RemovedFromInstallation);
+        (await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "abc"))).Should().NotBeNull();
     }
 
     [Fact]
@@ -458,10 +458,10 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
-        Assert.Null(repository.DisconnectedReason);
-        Assert.Null(repository.DisconnectedAtUtc);
+        repository.Should().NotBeNull();
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
+        repository.DisconnectedReason.Should().BeNull();
+        repository.DisconnectedAtUtc.Should().NotHaveValue();
     }
 
     /// <summary>
@@ -500,8 +500,8 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId), repository!.Account);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        repository!.Account.Should().Be(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId));
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
     }
 
     /// <summary>
@@ -520,8 +520,8 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-        Assert.Equal(DisconnectedReasons.RemovedFromInstallation, repository.DisconnectedReason);
+        repository!.Connection.Should().Be(RepositoryConnection.Disconnected);
+        repository.DisconnectedReason.Should().Be(DisconnectedReasons.RemovedFromInstallation);
     }
 
     /// <summary>
@@ -538,11 +538,11 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             Message("repository", RepositoryEventJson("created", OldOwnerId, "acme", "widgets")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal("acme/widgets", repository.FullName);
-        Assert.Equal("master", repository.DefaultBranch);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
-        Assert.Equal("acme", (await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId)))!.Login);
+        repository.Should().NotBeNull();
+        repository.FullName.Should().Be("acme/widgets");
+        repository.DefaultBranch.Should().Be("master");
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
+        ((await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId)))!.Login).Should().Be("acme");
     }
 
     /// <summary>
@@ -563,8 +563,8 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await HandleAndDeliverAsync(session,Message("repository", json));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal(expectedPrivate, repository!.IsPrivate);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        repository!.IsPrivate.Should().Be(expectedPrivate);
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
     }
 
     [Fact]
@@ -584,8 +584,8 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.False(repository!.Archived);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        repository!.Archived.Should().BeFalse();
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
     }
 
     [Fact]
@@ -598,12 +598,12 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             InstallationJson("created", repositories: LiteRepositoryJson("acme", "widgets"))));
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId));
-        Assert.Equal(1, account!.InstallationId);
-        Assert.Equal("Organization", account.Type);
+        account!.InstallationId.Should().Be(1);
+        account.Type.Should().Be("Organization");
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.NotNull(repository);
-        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        repository.Should().NotBeNull();
+        repository.Connection.Should().Be(RepositoryConnection.Connected);
     }
 
     [Fact]
@@ -617,9 +617,9 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await HandleAndDeliverAsync(session,Message("installation", InstallationJson("deleted")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-        Assert.Equal(DisconnectedReasons.IntegrationRemoved, repository.DisconnectedReason);
-        Assert.NotNull(await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "abc")));
+        repository!.Connection.Should().Be(RepositoryConnection.Disconnected);
+        repository.DisconnectedReason.Should().Be(DisconnectedReasons.IntegrationRemoved);
+        (await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "abc"))).Should().NotBeNull();
     }
 
     /// <summary>
@@ -643,9 +643,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
                 added: action == "added" ? lite : "",
                 removed: action == "removed" ? lite : "")));
 
-        Assert.Contains(
-            bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>(),
-            m => m.AccountId == OldOwnerId && m.Provider == EForgeProvider.GitHub);
+        bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>().Should().Contain(m => m.AccountId == OldOwnerId && m.Provider == EForgeProvider.GitHub);
     }
 
     [Fact]
@@ -659,9 +657,9 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await HandleAndDeliverAsync(session,Message("installation", InstallationJson("suspend")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-        Assert.Equal(DisconnectedReasons.IntegrationSuspended, repository.DisconnectedReason);
-        Assert.Null((await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId)))!.InstallationId);
+        repository!.Connection.Should().Be(RepositoryConnection.Disconnected);
+        repository.DisconnectedReason.Should().Be(DisconnectedReasons.IntegrationSuspended);
+        ((await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId)))!.InstallationId).Should().NotHaveValue();
     }
 
     /// <summary>
@@ -687,10 +685,10 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await DeliverForgeEventsAsync(session, bus);
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId));
-        Assert.NotNull(account!.InstallationId);
+        account!.InstallationId.Should().HaveValue();
 
         var reconcile = bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>().ToList();
-        Assert.Contains(reconcile, m => m.AccountId == OldOwnerId && m.Provider == EForgeProvider.GitHub);
+        reconcile.Should().Contain(m => m.AccountId == OldOwnerId && m.Provider == EForgeProvider.GitHub);
     }
 
     /// <summary>
@@ -719,12 +717,12 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await DeliverForgeEventsAsync(session, bus);
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId));
-        Assert.Equal("acme-renamed", account!.Login);
+        account!.Login.Should().Be("acme-renamed");
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal("acme-renamed/widgets", repository!.FullName);
-        Assert.Equal("acme-renamed", repository.OwnerLogin);
-        Assert.Contains("acme/widgets", repository.PreviousFullNames);
+        repository!.FullName.Should().Be("acme-renamed/widgets");
+        repository.OwnerLogin.Should().Be("acme-renamed");
+        repository.PreviousFullNames.Should().Contain("acme/widgets");
     }
 
     [Fact]
@@ -744,8 +742,8 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await HandleAndDeliverAsync(session,Message("organization", json));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        Assert.Equal("acme/widgets", repository!.FullName);
-        Assert.Empty(repository.PreviousFullNames);
+        repository!.FullName.Should().Be("acme/widgets");
+        repository.PreviousFullNames.Should().BeEmpty();
     }
 
     [Fact]
@@ -762,7 +760,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             Message("repository", RepositoryEventJson("edited", OldOwnerId, "acme-renamed", "widgets")));
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId));
-        Assert.NotNull(account);
-        Assert.Equal("acme-renamed", account.Login);
+        account.Should().NotBeNull();
+        account.Login.Should().Be("acme-renamed");
     }
 }

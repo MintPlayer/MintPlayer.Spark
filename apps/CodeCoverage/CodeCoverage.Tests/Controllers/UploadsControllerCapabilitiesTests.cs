@@ -92,7 +92,7 @@ public class UploadsControllerCapabilitiesTests
         // A client treats a missing endpoint as contract 0, so the served value
         // must be at least 1 or an up-to-date server is indistinguishable from an
         // image that predates the endpoint entirely.
-        Assert.True(response.Contract >= 1);
+        (response.Contract >= 1).Should().BeTrue();
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class UploadsControllerCapabilitiesTests
         // The one feature the action branches on today: without it, `partial:
         // true` is silently dropped and a subset gets compared against a
         // whole-workspace baseline.
-        Assert.Contains("partial-uploads", response.Features);
+        response.Features.Should().Contain("partial-uploads");
     }
 
     [Fact]
@@ -111,14 +111,14 @@ public class UploadsControllerCapabilitiesTests
     {
         var response = Body(CreateController().Capabilities());
 
-        Assert.All(response.Features, feature =>
+        response.Features.Should().AllSatisfy(feature =>
         {
-            Assert.False(string.IsNullOrWhiteSpace(feature));
+            string.IsNullOrWhiteSpace(feature).Should().BeFalse();
             // Lower-kebab, like the flag vocabulary — a client compares these as
             // literals, so casing drift is a silent mismatch.
-            Assert.Matches("^[a-z0-9-]+$", feature);
+            feature.Should().MatchRegex("^[a-z0-9-]+$");
         });
-        Assert.Equal(response.Features.Length, response.Features.Distinct().Count());
+        response.Features.Distinct().Count().Should().Be(response.Features.Length);
     }
 
     /// <summary>
@@ -133,6 +133,6 @@ public class UploadsControllerCapabilitiesTests
 
         var result = controller.Capabilities();
 
-        Assert.IsType<OkObjectResult>(result.Result);
+        result.Result.Should().BeOfType<OkObjectResult>();
     }
 }

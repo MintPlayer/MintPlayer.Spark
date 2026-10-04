@@ -33,7 +33,7 @@ public class ModerationSatelliteWriteGuardTests : SparkTestDriver
         await using var host = await MoHost.StartAsync(Store);
         await SeedAsync(session => session.StoreAsync(new ModerationLock(), ModerationIds.Lock("MoPosts/locked")));
 
-        var ex = await Assert.ThrowsAsync<SparkValidationException>(() => EnsureAsync(host, typeof(MoPost), "MoPosts/locked"));
+        var ex = (await new Func<Task>(() => EnsureAsync(host, typeof(MoPost), "MoPosts/locked")).Should().ThrowExactlyAsync<SparkValidationException>()).Which;
         ex.Message.Should().Contain("locked");
 
         await EnsureAsync(host, typeof(MoPost), "MoPosts/open");

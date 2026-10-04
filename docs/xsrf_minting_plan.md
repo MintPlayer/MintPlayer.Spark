@@ -10,6 +10,62 @@ what survives.
 Status: **M0 done** (coverage — the part that closes a real hole). ~~**M1–M5 not started** (minting
 placement — ergonomics, one round trip).~~
 
+**Status 2026-10-04 (second pass): M1–M5 done through #452 / PR #485** (branch
+`feat/452-adopt-xsrf-package`). Spark's own mint was deleted and replaced by `UseAntiforgeryGenerator()`
+from `MintPlayer.AspNetCore.SpaServices.Xsrf` `11.0.0-rc.3`. The package does everything M1 lists
+(mints in `OnStarting`, same flags, null guard, try/catch, snapshot and restore of the cache headers),
+plus `[SkipXsrfToken]`, which the coverage badge uses.
+
+| | State | Evidence |
+|---|---|---|
+| M1 position | ✅ The generator is registered **above** `UseSparkAntiforgery()`, so the gate's 400 carries a fresh cookie (PRD §5, reason 2). | **Red → green.** `XsrfEnforcementTests.The_gates_refusal_carries_a_fresh_token_so_signing_in_again_after_sign_out_recovers` failed with the generator in its old position, below the gate: 1 failed, 8 passed, at "Did not expect session.XsrfToken to be …". It passes with the move. The unit twin is `XsrfMintingPlacementTests.The_gates_refusal_carries_a_fresh_token_that_works_on_retry`. |
+| M1 reason 1 (sign-in) | ✅ | `XsrfMintingPlacementTests.Token_minted_on_the_sign_in_response_is_usable_immediately`, plus the Fleet case under M2. |
+| M1 reason 3 (survives `UseExceptionHandler`) | ✅ Now measured. | `XsrfMintingPlacementTests.A_response_rewritten_by_the_exception_handler_still_carries_the_cookie`. |
+| M2 | ✅ `XsrfEnforcementTests.A_mutating_call_right_after_sign_in_succeeds_without_csrf_refresh` (real Fleet host, real HTTPS, real cookie jar). | The `BeforeHandler` arm is **not** restored. Claude's decision while implementing the remaining work (2026-10-04); the owner did not rule on it. The code it measured no longer exists, so a copy kept only for the A/B would test nothing in the product. The measurement it produced (sign-in: eager 400, `OnStarting` 200) stays in the class remarks. |
+| M3 | ✅ `externalFlow` calls `csrfRefresh()` before `checkAuth()`. A failing refresh is swallowed, because a rejection there would leave the popup promise unresolved. `ng-spark-auth` → `22.18.0`. | `spark-auth.external-login.spec.ts`: the success case now expects `csrf-refresh` before `/me`, plus a new case where the refresh fails and the sign-in still resolves. |
+| M4 | ✅ Browser run on HR (`dotnet run --launch-profile https`, `playwright_node` MCP, `fetch` from the page with the browser's own cookie jar). | Register 200 → login 200 (token changed) → **logout right after login, no refresh: 200** → login with the token from the sign-out response: **400, and the 400 changed the token** → retry 200 → `/me` authenticated. |
+| M5 | ✅ `MintPlayer.Spark` → `11.0.0-preview.96`, `@mintplayer/ng-spark-auth` → `22.18.0`. | Release notes: `docs/release-notes-preview-96.md`. |
+
+**MintPlayer.Assertions migration (owner request, same PR):** all 568 xUnit `Assert.*` calls in 83
+files are converted, by a script that parses each call's arguments and maps them in order
+(`Equal(e, a)` → `a.Should().Be(e)`, collection literal → `.Equal`, `ThrowsAsync` → `ThrowExactlyAsync`
+because xUnit's is exact-type, `StringComparison.OrdinalIgnoreCase` → `…EquivalentOf`, `Single`/`IsType`
+→ `.Which` where the value is used). The compiler caught the rest: 24 nullable value types
+(`BeNull` → `NotHaveValue`), 6 ordered collection comparisons (`.Be` → `.Equal`), and one
+expression-bodied `Single`. Seven call sites were converted by hand.
+
+`Microsoft.CodeAnalysis.BannedApiAnalyzers` bans `T:Xunit.Assert` as an **error** (RS0030) in every
+`*.Tests` project (`Directory.Build.targets`, `BannedSymbols.Tests.txt`). ⚠️ The first version keyed on
+`IsTestProject` and **did nothing**: restore does not import package props, so the analyzer was never
+restored, and a probe `Xunit.Assert.True(true)` built clean. Keyed on the project name, the same probe
+fails with RS0030.
+
+**Found along the way, fixed in the same PR:**
+- **32 assertions that could never fail on null.** In `x?.Value.Should().Be(…)`, the `?.` skips the
+  whole chain, assertion included. 24 were already in the suite and 8 came from the conversion. Their
+  receivers are now parenthesised. Found by reading the diff of `ApiTokenRepositoryIdListMigrationTests`.
+- **Migrations that throw "Cannot perform bulk operation. Index is stale."** RavenDB refuses a
+  patch or delete by query on a stale index unless `QueryOperationOptions` allows a wait, and under
+  load the auto-index behind the query can still be catching up. All 18 sites (CodeCoverage, HR,
+  `MintPlayer.Spark.Authorization` → `11.0.0-preview.96`) now pass `StaleTimeout = 5 min`.
+  **Explained from the exception, not reproduced:** sweep 2's only failure was
+  `ApiTokenRepositoryIdListMigrationTests.A_token_without_the_legacy_field_is_left_alone`, after 49 s.
+
+**Local verification:**
+- **Sweep 2** (`npm run test:affected`, Developer licence, 8m40s), run before the two fixes above.
+  Green: MintPlayer.Spark.Tests, E2E, Client, SourceGenerators, `ng-spark-auth` and the CodeCoverage
+  client. CodeCoverage.Tests: 1090/1091, the stale-index failure.
+- **Sweep 3**, after the fixes, was stopped at the owner's request (2026-10-04, "takes too long").
+  Everything compiled. CodeCoverage.Tests finished at 1090/1091, and the failure was the stale-timeout
+  fix itself: `ForgeQualifiedDocumentIdsMigrationTests.A_count_that_cannot_catch_up_refuses_rather_than_guesses`
+  sets the migration's own `IndexCatchUpBudget` to zero and expects a refusal, and a flat 5 minutes
+  overrode it. That migration now uses `StaleTimeout = IndexCatchUpBudget`. Both migration test classes
+  are green (7/7). The other projects did not finish in sweep 3, so for the parenthesised assertions
+  outside CodeCoverage, **CI is the first run**. A newly failing wrapped assertion means its value
+  really was null: investigate it rather than revert the wrap.
+
+<details><summary>Superseded: the first-pass status (commit eb021a7e)</summary>
+
 **Status 2026-10-04: M1 is in progress through #452 / PR #485** (branch `feat/452-adopt-xsrf-package`,
 commit `f8dd2fc1`). Spark's own mint was deleted and replaced by `UseAntiforgeryGenerator()` from
 `MintPlayer.AspNetCore.SpaServices.Xsrf` `11.0.0-rc.3`. The package already does everything M1 lists
@@ -39,6 +95,8 @@ Traps: `Assert.Equal(expected, actual)` argument order; collection `Assert.Equal
 to `.Equal`, not `BeEquivalentTo`; `Assert.Contains(sub, str)` order; `Single`/`IsType`/`ThrowsAsync`
 map to `.Which`; precision `Equal` maps to `BeCloseTo`. Verify with identical per-test results before
 and after. Awaiting the owner's go.
+
+</details>
 
 ---
 

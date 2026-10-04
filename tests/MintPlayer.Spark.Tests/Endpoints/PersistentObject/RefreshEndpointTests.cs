@@ -176,8 +176,7 @@ public class RefreshEndpointTests(RefreshEndpointTests.Host host)
         // model does not mark PoliceReport required; only the hook does, and only when Status is
         // Stolen. If the server does not re-derive the rules itself, this save succeeds and the
         // whole feature is client-side decoration.
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.CreatePersistentObjectAsync(Car("Stolen")));
+        var ex = (await new Func<Task>(() => _client.CreatePersistentObjectAsync(Car("Stolen"))).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         ex.Message.Should().Contain("PoliceReport");
@@ -230,8 +229,7 @@ public class RefreshEndpointTests(RefreshEndpointTests.Host host)
             Attributes = [.. obj.Attributes, new POA { Name = "Nickname", Value = "a-long-nickname" }],
         };
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.CreatePersistentObjectAsync(withNickname));
+        var ex = (await new Func<Task>(() => _client.CreatePersistentObjectAsync(withNickname)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

@@ -41,7 +41,7 @@ public class GateSettingsTests
     {
         var keys = ProjectComparison.Items.Select(i => i.Key).ToArray();
 
-        Assert.Equal(["auto", "fixed"], keys);
+        keys.Should().Equal(["auto", "fixed"]);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class GateSettingsTests
     {
         var keys = LookupReferences.ProjectBasis.Items.Select(i => i.Key).ToArray();
 
-        Assert.Equal(["scoped", "projection"], keys);
+        keys.Should().Equal(["scoped", "projection"]);
     }
 
     [Fact]
@@ -59,8 +59,8 @@ public class GateSettingsTests
         // A default that no option matches renders as an empty dropdown on an untouched gate.
         var gate = new GateSettings();
 
-        Assert.Contains(ProjectComparison.Items, i => i.Key == gate.ProjectMode);
-        Assert.Contains(LookupReferences.ProjectBasis.Items, i => i.Key == gate.ProjectBasis);
+        ProjectComparison.Items.Should().Contain(i => i.Key == gate.ProjectMode);
+        LookupReferences.ProjectBasis.Items.Should().Contain(i => i.Key == gate.ProjectBasis);
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class GateSettingsTests
     {
         // GateEvaluator substitutes "whole" for a build that is not partial. It is a derived state,
         // never a choice — offering it would let a user set something the evaluator overwrites.
-        Assert.DoesNotContain(LookupReferences.ProjectBasis.Items, i => i.Key == "whole");
+        LookupReferences.ProjectBasis.Items.Should().NotContain(i => i.Key == "whole");
     }
 
     // ---- the refresh hook shapes the form ----------------------------------------------------
@@ -83,8 +83,8 @@ public class GateSettingsTests
         await Create<GateSettingsActions>()
             .OnRefreshAsync(RefreshArgs(obj));
 
-        Assert.Equal(expected, obj[nameof(GateSettings.ProjectTarget)].IsVisible);
-        Assert.Equal(expected, obj[nameof(GateSettings.ProjectTarget)].IsRequired);
+        obj[nameof(GateSettings.ProjectTarget)].IsVisible.Should().Be(expected);
+        obj[nameof(GateSettings.ProjectTarget)].IsRequired.Should().Be(expected);
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public class GateSettingsTests
 
         await actions.OnRefreshAsync(RefreshArgs(fixedMode));
 
-        Assert.True(fixedMode[nameof(GateSettings.ProjectThreshold)].IsVisible);
+        fixedMode[nameof(GateSettings.ProjectThreshold)].IsVisible.Should().BeTrue();
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class GateSettingsTests
 
         await Create<GateSettingsActions>().OnRefreshAsync(RefreshArgs(obj));
 
-        Assert.True(obj[nameof(GateSettings.ProjectTarget)].IsVisible);
+        obj[nameof(GateSettings.ProjectTarget)].IsVisible.Should().BeTrue();
     }
 
     [Fact]
@@ -139,11 +139,11 @@ public class GateSettingsTests
 
         var toFixed = GatePo("fixed");
         await actions.OnRefreshAsync(RefreshArgs(toFixed));
-        Assert.True(toFixed[nameof(GateSettings.ProjectTarget)].IsVisible);
+        toFixed[nameof(GateSettings.ProjectTarget)].IsVisible.Should().BeTrue();
 
         var backToAuto = GatePo("auto");
         await actions.OnRefreshAsync(RefreshArgs(backToAuto));
-        Assert.False(backToAuto[nameof(GateSettings.ProjectTarget)].IsVisible);
+        backToAuto[nameof(GateSettings.ProjectTarget)].IsVisible.Should().BeFalse();
     }
 
     // ---- the save-time rules, which are the actual guarantee ---------------------------------
@@ -177,8 +177,7 @@ public class GateSettingsTests
             },
         };
 
-        await Assert.ThrowsAsync<SparkValidationException>(
-            () => Actions().BeforeSaveAsync(Po(), repository));
+        await new Func<Task>(() => Actions().BeforeSaveAsync(Po(), repository)).Should().ThrowExactlyAsync<SparkValidationException>();
     }
 
     [Fact]
@@ -216,8 +215,8 @@ public class GateSettingsTests
 
         await Actions().BeforeSaveAsync(Po(), repository);
 
-        Assert.Equal(ProjectComparison.Auto, repository.Gate!.ProjectMode);
-        Assert.Equal(LookupReferences.ProjectBasis.Scoped, repository.Gate.ProjectBasis);
+        repository.Gate!.ProjectMode.Should().Be(ProjectComparison.Auto);
+        repository.Gate.ProjectBasis.Should().Be(LookupReferences.ProjectBasis.Scoped);
     }
 
     [Fact]
@@ -240,10 +239,9 @@ public class GateSettingsTests
             Gate = new GateSettings { ProjectMode = ProjectComparison.Fixed, ProjectTarget = null },
         };
 
-        var ex = await Assert.ThrowsAsync<SparkValidationException>(
-            () => Actions().BeforeSaveAsync(Po(), repository));
+        var ex = (await new Func<Task>(() => Actions().BeforeSaveAsync(Po(), repository)).Should().ThrowExactlyAsync<SparkValidationException>()).Which;
 
-        Assert.Equal(nameof(GateSettings.ProjectTarget), ex.AttributeName);
+        ex.AttributeName.Should().Be(nameof(GateSettings.ProjectTarget));
     }
 
     /// <summary>

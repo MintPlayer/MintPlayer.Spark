@@ -56,11 +56,10 @@ public class ForkDocumentIdCollisionTests
         var fork = Tree(ForkCommit, ForkBuild);
 
         // Same length, so the comparison below is over the same set of concepts.
-        Assert.Equal(firstParty.Length, fork.Length);
+        fork.Length.Should().Be(firstParty.Length);
 
         var collisions = firstParty.Intersect(fork, StringComparer.Ordinal).ToArray();
-        Assert.True(collisions.Length == 0,
-            "These ids are produced by BOTH a fork and a first-party upload for the same commit, so "
+        (collisions.Length == 0).Should().BeTrue("These ids are produced by BOTH a fork and a first-party upload for the same commit, so "
             + "one would overwrite the other:\n  " + string.Join("\n  ", collisions));
     }
 
@@ -74,7 +73,7 @@ public class ForkDocumentIdCollisionTests
         var a = Tree(FirstPartyCommit, FirstPartyBuild);
         var b = Tree(FirstPartyCommit, FirstPartyBuild);
 
-        Assert.Equal(a.Length, a.Intersect(b, StringComparer.Ordinal).Count());
+        a.Intersect(b, StringComparer.Ordinal).Count().Should().Be(a.Length);
     }
 
     /// <summary>
@@ -92,10 +91,10 @@ public class ForkDocumentIdCollisionTests
         var prefix = $"Commits/github/{RepoId}/pr/{Pr}/";
         var repositoryPrefix = $"Commits/github/{RepoId}/";
 
-        Assert.All(Tree(ForkCommit, ForkBuild), id =>
+        Tree(ForkCommit, ForkBuild).Should().AllSatisfy(id =>
         {
-            Assert.StartsWith(prefix, id, StringComparison.Ordinal);
-            Assert.StartsWith(repositoryPrefix, id, StringComparison.Ordinal);
+            id.Should().StartWith(prefix);
+            id.Should().StartWith(repositoryPrefix);
         });
     }
 
@@ -117,7 +116,7 @@ public class ForkDocumentIdCollisionTests
             Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 43),
             Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, RunId, Attempt, 43));
 
-        Assert.Empty(first.Intersect(second, StringComparer.Ordinal));
+        first.Intersect(second, StringComparer.Ordinal).Should().BeEmpty();
     }
 
     /// <summary>
@@ -133,7 +132,7 @@ public class ForkDocumentIdCollisionTests
     {
         var other = Commit.DocumentId(EForgeProvider.GitHub, 999, Sha, Pr);
 
-        Assert.DoesNotContain($"/{RepoId}/", other, StringComparison.Ordinal);
-        Assert.StartsWith("Commits/github/999/", other, StringComparison.Ordinal);
+        other.Should().NotContain($"/{RepoId}/");
+        other.Should().StartWith("Commits/github/999/");
     }
 }
