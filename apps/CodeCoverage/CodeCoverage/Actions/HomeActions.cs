@@ -29,17 +29,17 @@ public partial class HomeActions
     /// them uses, so the header cannot disagree with the rows it introduces. For an anonymous
     /// caller that service yields nothing, and the counts are hidden rather than shown as zero —
     /// "0 accounts" reads as a fact about the visitor's GitHub rather than about their being
-    /// signed out.
+    /// signed out. The hiding is <c>security.json</c>'s: <c>QueryRead/Home/AccountCount</c> and
+    /// <c>RepoCount</c> are denied to the anonymous role, so the two attributes never reach a
+    /// visitor at all (#264). This hook only skips computing them.
     /// </remarks>
     public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
         var obj = manager.GetPersistentObject("Home");
         var lang = culture.GetCurrentCulture();
 
-        obj["Title"].Value = Translate("app.welcomeTitle", lang);
-        // The framework titles the page from the breadcrumb template over the values just filled,
-        // but only when the hook leaves Breadcrumb null. Setting it here is the same string by a
-        // shorter path, and keeps the title working if the template is ever changed.
+        // The page title is the breadcrumb, set here directly: Home.json declares no breadcrumb
+        // template, and no Title attribute to feed one.
         obj.Breadcrumb = Translate("app.welcomeTitle", lang);
 
         var isAuthenticated = httpContextAccessor.HttpContext?.User?.Identity?.IsAuthenticated == true;
@@ -47,8 +47,6 @@ public partial class HomeActions
         {
             obj["Subtitle"].Value =
                 $"{Translate("app.welcomeSubtitle", lang)} {Translate("app.signInPrompt", lang)}".Trim();
-            Hide(obj, "AccountCount");
-            Hide(obj, "RepoCount");
             return obj;
         }
 
@@ -63,9 +61,4 @@ public partial class HomeActions
 
     private string Translate(string key, string culture)
         => translations.Resolve(key)?.GetValue(culture) ?? string.Empty;
-
-    private static void Hide(PersistentObject obj, string attribute)
-        // Drawn nowhere for this object (#264, runtime ShowedOn); #264 M5 replaces it with a
-        // security.json deny on the anonymous group.
-        => obj[attribute].ShowedOn = EShowedOn.None;
 }

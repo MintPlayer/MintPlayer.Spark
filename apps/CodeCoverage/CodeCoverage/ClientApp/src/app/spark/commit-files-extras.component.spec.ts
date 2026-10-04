@@ -44,10 +44,10 @@ describe('CommitFilesExtrasComponent', () => {
 
   it('loads the referenced repository and hands the panel its forge, owner, name and sha', async () => {
     const { fixture, spark } = await setup(
-      po({ Sha: 'abc123', Repository: 'repos/7' }),
-      () => Promise.resolve(po({ FullName: 'acme/widgets', OwnerKey: 'gitlab:acme' })));
+      po({ Sha: 'abc123', Repository: 'Repositories/gitlab/7' }),
+      () => Promise.resolve(po({ FullName: 'acme/widgets' })));
 
-    expect(spark.get).toHaveBeenCalledWith('Repository', 'repos/7');
+    expect(spark.get).toHaveBeenCalledWith('Repository', 'Repositories/gitlab/7');
     const target = panel(fixture)!;
     expect([target.provider(), target.owner(), target.name(), target.sha()]).toEqual(['gitlab', 'acme', 'widgets', 'abc123']);
   });
@@ -61,10 +61,16 @@ describe('CommitFilesExtrasComponent', () => {
     }
   });
 
-  it('renders no panel when the repository carries no forge or no owner/name', async () => {
-    for (const repo of [po({ FullName: 'acme/widgets' }), po({ FullName: 'widgets', OwnerKey: 'github:acme' }), po({ OwnerKey: 'github:acme' })]) {
+  // The forge comes from the repository's document id, so an id without one means no panel.
+  it('renders no panel when the repository id carries no forge or the repository no owner/name', async () => {
+    const cases: [string, PersistentObject][] = [
+      ['repos/7', po({ FullName: 'acme/widgets' })],
+      ['Repositories/github/7', po({ FullName: 'widgets' })],
+      ['Repositories/github/7', po({})],
+    ];
+    for (const [repositoryId, repo] of cases) {
       TestBed.resetTestingModule();
-      const { fixture } = await setup(po({ Sha: 'abc', Repository: 'repos/7' }), () => Promise.resolve(repo));
+      const { fixture } = await setup(po({ Sha: 'abc', Repository: repositoryId }), () => Promise.resolve(repo));
       expect(panel(fixture)).toBeNull();
     }
   });

@@ -7,9 +7,9 @@ import { valueFor } from '@mintplayer/ng-spark/models';
  * hand-rolled `rowAttr` helper to Spark's `valueFor` in the preview.67 adoption.
  *
  * These cases are the ones `rowAttr` was written to cover — they are kept
- * because `repo-name` (IsPrivate) and `short-sha` (FullName, titleAttribute)
+ * because `account-avatar` (Login) and `short-sha` (FullName, titleAttribute)
  * fail *silently* when a sibling read comes back empty: the cell still renders,
- * just without its badge, link or tooltip.
+ * just without its alt text, link or tooltip.
  */
 
 function po(attributes: Record<string, unknown>): PersistentObject {

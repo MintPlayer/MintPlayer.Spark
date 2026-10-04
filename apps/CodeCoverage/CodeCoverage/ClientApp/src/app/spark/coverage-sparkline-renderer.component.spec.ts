@@ -7,9 +7,9 @@ import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline'
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle, StubSparkline } from '../../testing/test-utils';
 import { clearSparklineCacheForTesting, CoverageSparklineRendererComponent } from './coverage-sparkline-renderer.component';
 
-function row(values: Record<string, unknown>): QueryResultItem {
+function row(values: Record<string, unknown>, id = 'items/1'): QueryResultItem {
   return {
-    id: 'items/1',
+    id,
     values: Object.entries(values).map(([key, value]) => ({ key, value })),
   } as unknown as QueryResultItem;
 }
@@ -24,8 +24,8 @@ function row(values: Record<string, unknown>): QueryResultItem {
   `,
 })
 class TwoCellsHost {
-  readonly rowA = row({ OwnerKey: 'github:acme' });
-  readonly rowB = row({ OwnerKey: 'github:acme' });
+  readonly rowA = row({}, 'Repositories/github/1');
+  readonly rowB = row({}, 'Repositories/github/1');
 }
 
 describe('CoverageSparklineRendererComponent', () => {
@@ -70,18 +70,18 @@ describe('CoverageSparklineRendererComponent', () => {
   it('keeps the memo across component instances until it is cleared', async () => {
     configure(() => Promise.resolve({ 'acme/widgets': [1, 2] }));
 
-    await render({ value: 'acme/widgets', item: row({ OwnerKey: 'github:acme' }) });
-    await render({ value: 'acme/widgets', item: row({ OwnerKey: 'github:acme' }) });
+    await render({ value: 'acme/widgets', item: row({}, 'Repositories/github/1') });
+    await render({ value: 'acme/widgets', item: row({}, 'Repositories/github/1') });
 
     expect(browse.getSparklines).toHaveBeenCalledTimes(1);
   });
 
   // The memo key is provider AND owner: a same-named owner on another forge is another account.
-  it('takes the provider from the OwnerKey prefix and keys the memo on it', async () => {
+  it('takes the provider from the row id and keys the memo on it', async () => {
     configure((provider: string) => Promise.resolve({ 'acme/widgets': provider === 'gitlab' ? [5, 6] : [7, 8] }));
 
-    const gitlab = await render({ value: 'acme/widgets', item: row({ OwnerKey: 'gitlab:acme' }) });
-    const github = await render({ value: 'acme/widgets', item: row({ OwnerKey: 'github:acme' }) });
+    const gitlab = await render({ value: 'acme/widgets', item: row({}, 'Repositories/gitlab/1') });
+    const github = await render({ value: 'acme/widgets', item: row({}, 'Repositories/github/1') });
 
     expect(browse.getSparklines.mock.calls).toEqual([['gitlab', 'acme'], ['github', 'acme']]);
     expect(sparklines(gitlab)[0].points()).toEqual([5, 6]);
@@ -91,7 +91,7 @@ describe('CoverageSparklineRendererComponent', () => {
   it('binds the fixed 0-100 scale and a labelled trend', async () => {
     configure(() => Promise.resolve({ 'acme/widgets': [1, 2] }));
 
-    const [spark] = sparklines(await render({ value: 'acme/widgets', item: row({ OwnerKey: 'github:acme' }) }));
+    const [spark] = sparklines(await render({ value: 'acme/widgets', item: row({}, 'Repositories/github/1') }));
 
     expect(spark.yMin()).toBe(0);
     expect(spark.yMax()).toBe(100);
@@ -102,7 +102,7 @@ describe('CoverageSparklineRendererComponent', () => {
     configure(() => Promise.resolve({ 'acme/widgets': [1, 2] }));
 
     await render({ value: 'acme/widgets', item: row({}), options: { provider: 'bitbucket' } });
-    await render({ value: 'acme/widgets', item: row({ OwnerKey: 'github:acme' }), options: { provider: 'bitbucket' } });
+    await render({ value: 'acme/widgets', item: row({}, 'Repositories/github/1'), options: { provider: 'bitbucket' } });
 
     expect(browse.getSparklines.mock.calls).toEqual([['bitbucket', 'acme'], ['github', 'acme']]);
   });
@@ -113,7 +113,7 @@ describe('CoverageSparklineRendererComponent', () => {
 
     for (const inputs of [
       { value: 'acme/widgets' },
-      { value: 'acme/widgets', item: row({ OwnerKey: 'acme' }) },
+      { value: 'acme/widgets', item: row({}) },
       { value: 'acme/widgets', item: row({}), options: { provider: '' } },
     ]) {
       const fixture = await render(inputs);
@@ -127,7 +127,7 @@ describe('CoverageSparklineRendererComponent', () => {
     configure(() => Promise.resolve({}));
 
     for (const value of [null, 42, '', '/widgets']) {
-      const fixture = await render({ value, item: row({ OwnerKey: 'github:acme' }) });
+      const fixture = await render({ value, item: row({}, 'Repositories/github/1') });
       expect((fixture.nativeElement as HTMLElement).textContent!.trim()).toBe('—');
     }
     expect(browse.getSparklines).not.toHaveBeenCalled();
@@ -137,7 +137,7 @@ describe('CoverageSparklineRendererComponent', () => {
     configure(() => Promise.resolve({ 'acme/widgets': [42] }));
 
     for (const value of ['acme/widgets', 'acme/other']) {
-      const fixture = await render({ value, item: row({ OwnerKey: 'github:acme' }) });
+      const fixture = await render({ value, item: row({}, 'Repositories/github/1') });
       expect(sparklines(fixture)).toHaveLength(0);
       expect((fixture.nativeElement as HTMLElement).textContent!.trim()).toBe('—');
     }
@@ -148,8 +148,8 @@ describe('CoverageSparklineRendererComponent', () => {
   it('treats a failed batch as no data, and does not refetch it', async () => {
     configure(() => Promise.reject(new Error('503')));
 
-    const first = await render({ value: 'acme/widgets', item: row({ OwnerKey: 'github:acme' }) });
-    await render({ value: 'acme/gadgets', item: row({ OwnerKey: 'github:acme' }) });
+    const first = await render({ value: 'acme/widgets', item: row({}, 'Repositories/github/1') });
+    await render({ value: 'acme/gadgets', item: row({}, 'Repositories/github/1') });
 
     expect((first.nativeElement as HTMLElement).textContent!.trim()).toBe('—');
     expect(browse.getSparklines).toHaveBeenCalledTimes(1);

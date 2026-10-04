@@ -139,26 +139,16 @@
         "rules": []
       },
       {
-        "id": "2eeb1e3b-9a67-40f3-8ed7-052961f44df0",
-        "name": "GitHubId",
-        "dataType": "number",
-        "isRequired": true,
-        "isReadOnly": true,
-        "order": 2,
-        "isArray": false,
-        "showedOn": "None",
-        "rules": []
-      },
-      {
         "id": "dfb8fc92-bdce-42c0-9439-5469de78c911",
         "name": "IsPrivate",
         "dataType": "boolean",
         "isRequired": true,
         "isReadOnly": true,
-        "order": 8,
+        "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "renderer": "private-lock"
       },
       {
         "id": "a5dab619-07dd-4a7a-ba95-d7966cee3f30",
@@ -202,7 +192,7 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 3,
+        "order": 2,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": [],
@@ -216,7 +206,7 @@
         "isReadOnly": true,
         "order": 4,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {

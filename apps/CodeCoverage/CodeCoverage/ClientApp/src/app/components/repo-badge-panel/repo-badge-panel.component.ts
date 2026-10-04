@@ -65,7 +65,7 @@ import { BrowseService, RepoInfo } from '../../services/browse.service';
 export class RepoBadgePanelComponent {
   private readonly browse = inject(BrowseService);
 
-  /** Canonical forge spelling, e.g. "github". Sourced from the PO's OwnerKey. */
+  /** Canonical forge spelling, e.g. "github". Sourced from the PO's document id (`forgeOf`). */
   provider = input.required<string>();
   owner = input.required<string>();
   name = input.required<string>();

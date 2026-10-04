@@ -16,22 +16,9 @@
   "persistentObject": {
     "id": "149ab426-ae90-4c96-ae26-3fdde3554754",
     "name": "Home",
-    "breadcrumb": "{Title}",
     "tabs": [],
     "groups": [],
     "attributes": [
-      {
-        "id": "1db89eca-02af-45ec-a093-161a8ec5438e",
-        "name": "Title",
-        "dataType": "string",
-        "isRequired": false,
-        "isReadOnly": true,
-        "order": 1,
-        "isArray": false,
-        "_comment": "Feeds the breadcrumb template only; never drawn as a row. HomeActions sets Breadcrumb directly as well, so this is the fallback path rather than the primary one.",
-        "showedOn": "None",
-        "rules": []
-      },
       {
         "id": "641cd307-8cba-4ed5-adcd-7fa8300f04ad",
         "name": "Subtitle",

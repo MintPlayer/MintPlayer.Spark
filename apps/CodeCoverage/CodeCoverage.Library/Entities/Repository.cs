@@ -19,7 +19,14 @@ public class Repository : IForgeConnectable
     public string? Account { get; set; }
 
     /// <summary>GitHub's numeric id for this repository.</summary>
-    /// <remarks>Stable across renames and transfers.</remarks>
+    /// <remarks>
+    /// Stable across renames and transfers.
+    /// <para>
+    /// [IgnoreProperty]: an entity-side key for the forge API and the document ids, never shown and
+    /// filtered by no index query, so it stays out of the model, the wire and the generated index (#264).
+    /// </para>
+    /// </remarks>
+    [IgnoreProperty]
     public long GitHubId { get; set; }
 
     /// <summary>

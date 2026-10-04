@@ -32,14 +32,29 @@ public partial class GateSettingsActions : DefaultPersistentObjectActions<GateSe
     /// </remarks>
     public override Task OnRefreshAsync(SparkRefreshArgs<GateSettings> args)
     {
-        var obj = args.PersistentObject;
+        ShapeForMode(args.PersistentObject);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// The project target on the form only when the mode consumes it, through the runtime
+    /// <c>ShowedOn</c> (#264, G-Q3). The model says <c>showedOn: Query</c>, so a new gate (auto by
+    /// default) starts without it; this shows it for <c>fixed</c>.
+    /// </summary>
+    /// <remarks>
+    /// Shared with <see cref="RepositoryActions.OnLoadAsync"/>: a gate is embedded in its repository
+    /// and never loaded on its own, so the load-time half of this rule has to run there. Without it a
+    /// gate saved as <c>fixed</c> opened with its target hidden until the mode was touched.
+    /// </remarks>
+    internal static void ShapeForMode(PersistentObject obj)
+    {
         var isFixed = string.Equals(
             obj[nameof(GateSettings.ProjectMode)].GetValue<string>(),
             ProjectComparison.Fixed,
             StringComparison.Ordinal);
 
         var target = obj[nameof(GateSettings.ProjectTarget)];
-        // Off the form (not the grid) unless the mode consumes it: the runtime ShowedOn (#264).
+        // Off the form (not the grid) unless the mode consumes it.
         target.ShowedOn = isFixed ? EShowedOn.Query | EShowedOn.PersistentObject : EShowedOn.Query;
         target.IsRequired = isFixed;
 
@@ -47,6 +62,5 @@ public partial class GateSettingsActions : DefaultPersistentObjectActions<GateSe
         // it is not: GateEvaluator judges `headRate >= baseRate - ProjectThreshold` in both modes,
         // where baseRate is the fixed target under "fixed". Hiding it would hide a number that is
         // still in force.
-        return Task.CompletedTask;
     }
 }

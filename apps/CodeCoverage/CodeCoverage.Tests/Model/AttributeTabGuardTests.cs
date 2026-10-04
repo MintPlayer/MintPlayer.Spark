@@ -116,17 +116,27 @@ public class AttributeTabGuardTests
     /// account you are already looking at, so it restates the page's own identity in a field that
     /// looks editable.
     /// </summary>
+    /// <remarks>
+    /// Hidden by a <c>security.json</c> deny on both well-known groups (everyone) since #264: the key
+    /// is a server-side value that index queries and row filters use, and the client has no use for it.
+    /// <c>showedOn: None</c> on its own would still ship it with the object.
+    /// </remarks>
     [Fact]
     public void The_account_page_does_not_show_its_own_owner_key()
     {
-        var path = Path.Combine(ModelDirectory(), "Account.json");
-        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        using var doc = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(RepositoryRoot(), "apps", "CodeCoverage", "CodeCoverage", "App_Data", "security.json")));
+        var wellKnown = doc.RootElement.GetProperty("wellKnown");
+        var everyone = new[] { wellKnown.GetProperty("anonymous").GetString(), wellKnown.GetProperty("authenticated").GetString() };
 
-        var ownerKey = doc.RootElement.GetProperty("persistentObject").GetProperty("attributes")
-            .EnumerateArray()
-            .Single(a => a.GetProperty("name").GetString() == "OwnerKey");
+        var deniedTo = doc.RootElement.GetProperty("rights").EnumerateArray()
+            .Where(r => r.GetProperty("resource").GetString() == "QueryRead/Account/OwnerKey"
+                && r.TryGetProperty("isDenied", out var denied) && denied.GetBoolean())
+            .Select(r => r.GetProperty("groupId").GetString())
+            .Order()
+            .ToArray();
 
-        ownerKey.GetProperty("showedOn").GetString().Should().Be("None",
+        deniedTo.Should().Equal(everyone.Order().ToArray(),
             "the account page is already scoped to this owner, so showing its key adds nothing");
     }
 }

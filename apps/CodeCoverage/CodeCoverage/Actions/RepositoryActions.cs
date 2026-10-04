@@ -33,6 +33,23 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     [Inject] private readonly IAsyncDocumentSession session;
 
     /// <summary>
+    /// Opens the embedded gate in the shape its mode calls for (#264, G-Q3): a <c>fixed</c> gate
+    /// shows its project target from the first render, not only after the mode is touched.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than on <see cref="GateSettingsActions"/>, because a gate is never loaded on its
+    /// own — it arrives inside its repository, and only the root's load hook runs. Overriding this
+    /// gives up batched loads for Repository (a bulk action on selected rows loads them one by one).
+    /// </remarks>
+    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+    {
+        var po = await base.OnLoadAsync(id, parent);
+        if (po?.Attributes.FirstOrDefault(a => a.Name == nameof(Repository.Gate)) is PersistentObjectAttributeAsDetail { Object: { } gate })
+            GateSettingsActions.ShapeForMode(gate);
+        return po;
+    }
+
+    /// <summary>
     /// Withholds <c>DeleteData</c> on a repository that is still connected.
     /// <para>
     /// The right is granted to every signed-in user in security.json, and it has to be: rights

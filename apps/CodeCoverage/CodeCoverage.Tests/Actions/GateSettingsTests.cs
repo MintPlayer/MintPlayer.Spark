@@ -146,6 +146,27 @@ public class GateSettingsTests
         backToAuto[nameof(GateSettings.ProjectTarget)].ShowedOn.HasFlag(EShowedOn.PersistentObject).Should().BeFalse();
     }
 
+    /// <summary>
+    /// The load half (#264, G-Q3): <c>RepositoryActions.OnLoadAsync</c> shapes the embedded gate with
+    /// the same rule, so a <c>fixed</c> gate opens with its target shown and an <c>auto</c> one
+    /// without, whatever the scaffold started from. It used to be refresh-only, and an auto gate
+    /// opened showing a target nothing reads.
+    /// </summary>
+    [Theory]
+    [InlineData("fixed", true)]
+    [InlineData("auto", false)]
+    public void A_loaded_gate_opens_in_the_shape_of_its_mode(string mode, bool expected)
+    {
+        var obj = GatePo(mode);
+        obj[nameof(GateSettings.ProjectTarget)].ShowedOn = EShowedOn.Query | EShowedOn.PersistentObject;
+
+        GateSettingsActions.ShapeForMode(obj);
+
+        obj[nameof(GateSettings.ProjectTarget)].ShowedOn.HasFlag(EShowedOn.PersistentObject).Should().Be(expected);
+        obj[nameof(GateSettings.ProjectTarget)].ShowedOn.HasFlag(EShowedOn.Query).Should().BeTrue("the grid column does not depend on the mode");
+        obj[nameof(GateSettings.ProjectTarget)].IsRequired.Should().Be(expected);
+    }
+
     // ---- the save-time rules, which are the actual guarantee ---------------------------------
 
     [Theory]

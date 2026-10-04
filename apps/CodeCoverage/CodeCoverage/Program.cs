@@ -72,8 +72,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // roles — 'anonymous' is not 'everyone', so a right both should have is two
     // grants. The Actions classes (Coverage/Actions) are the only gate behind
     // that: row filters scope reads per viewer (public repos for anonymous,
-    // GitHub-granted owners for signed-in users) and redact BadgeToken/
-    // InstallationId for non-managers. Writes stay denied at the type level
+    // GitHub-granted owners for signed-in users) and redact BadgeToken for
+    // non-managers. Writes stay denied at the type level
     // (no Edit/New/Delete right exists), so the generic UI is read-only.
     // The /api controllers remain the primary read surface for the vanity pages.
     spark.AddActions();

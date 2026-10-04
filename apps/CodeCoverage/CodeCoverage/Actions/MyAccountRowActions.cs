@@ -44,15 +44,42 @@ public partial class MyAccountRowActions : ISparkOwnsRowSecurity
     /// <c>sortColumns</c> may name any property on the row — nothing here reaches an index.
     /// </summary>
     /// <remarks>
-    /// Every row's <c>Id</c> is its <c>Login</c>. The projector throws by name on a null or
-    /// duplicate row id rather than collapsing the grid to one row, and logins are already unique
-    /// per account, so this needs no separate identity.
+    /// Every row's <c>Id</c> is its owner key, <c>{provider}:{login}</c> (see <see cref="MyAccountRow"/>):
+    /// the projector throws by name on a null or duplicate row id, and a login alone is unique only per
+    /// forge. The <c>account-link</c> renderer takes the forge from that id, so the row ships no
+    /// separate <c>Provider</c> value (#264).
     /// </remarks>
     public async Task<IQueryable<MyAccountRow>> MyAccounts(CustomQueryArgs args)
     {
         var result = await myAccounts.GetAsync(CancellationToken.None, provider: ProviderOf(args.Parent));
-        return result.Accounts.AsQueryable();
+        return result.Accounts.Select(WithAvatarFallback).AsQueryable();
     }
+
+    /// <summary>
+    /// What the <c>account-avatar</c> cell shows for an account with no avatar image:
+    /// <see cref="GroupAvatar"/> for an organisation, null (the person icon) for anyone else.
+    /// </summary>
+    /// <remarks>
+    /// The account type used to ship as its own <c>Type</c> attribute, shown on no column, so that the
+    /// renderer could pick the icon. A value reaches a grid row only as a column since #264 (G-Q4), so
+    /// the choice is made here and travels in the one cell that draws it.
+    /// <para>
+    /// ⚠ Matched as a deny-list on purpose, so an unrecognised type falls back to the person icon
+    /// rather than to nothing. <c>Type</c> is whatever the forge library stored — GitHub says
+    /// <c>Organization</c>, GitLab <c>group</c>, Bitbucket <c>workspace</c> or <c>team</c> — and
+    /// guessing "organisation" for a value we do not know is the one mistake to avoid.
+    /// </para>
+    /// </remarks>
+    internal static MyAccountRow WithAvatarFallback(MyAccountRow row)
+        => string.IsNullOrEmpty(row.AvatarUrl) && GroupAccountTypes.Contains(row.Type)
+            ? row with { AvatarUrl = GroupAvatar }
+            : row;
+
+    /// <summary>The <c>AvatarUrl</c> cell value the <c>account-avatar</c> renderer draws as the group icon.</summary>
+    internal const string GroupAvatar = "icon:group";
+
+    private static readonly HashSet<string> GroupAccountTypes =
+        new(["organization", "organisation", "group", "team", "workspace"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The forge this grid is scoped to, or null for the merged Home page.

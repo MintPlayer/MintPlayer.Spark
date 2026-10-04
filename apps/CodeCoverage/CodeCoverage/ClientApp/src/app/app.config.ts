@@ -15,6 +15,7 @@ import { CoverageSparklineRendererComponent } from './spark/coverage-sparkline-r
 import { ShortShaRendererComponent } from './spark/short-sha-renderer.component';
 import { BuildSessionsRendererComponent } from './spark/build-sessions-renderer.component';
 import { RepoNameRendererComponent } from './spark/repo-name-renderer.component';
+import { PrivateLockRendererComponent } from './spark/private-lock-renderer.component';
 import { DateTimeRendererComponent } from './spark/date-time-renderer.component';
 import { CoverageDeltaRendererComponent } from './spark/coverage-delta-renderer.component';
 import { AccountAvatarRendererComponent } from './spark/account-avatar-renderer.component';
@@ -59,6 +60,11 @@ export const appConfig: ApplicationConfig = {
         name: 'repo-name',
         detailComponent: RepoNameRendererComponent,
         columnComponent: RepoNameRendererComponent,
+      },
+      {
+        name: 'private-lock',
+        detailComponent: PrivateLockRendererComponent,
+        columnComponent: PrivateLockRendererComponent,
       },
       {
         name: 'date-time',
