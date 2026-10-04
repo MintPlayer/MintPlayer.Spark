@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "07b6abbf-ac76-4337-93e0-0d50d28f1e1e",
     "name": "ProjectColumn",

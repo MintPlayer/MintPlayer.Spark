@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "f5ddda9f-8c61-43f0-bea5-4b5b34c10e4a",
     "name": "EventColumnMapping",

@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/translations.schema.json",
   "app": {
     "welcomeTitle": {
       "en": "Welcome to HR",

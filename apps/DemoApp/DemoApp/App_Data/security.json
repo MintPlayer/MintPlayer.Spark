@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/security.schema.json",
   "_comment": [
     "DemoApp has no sign-in, so everything is granted to the anonymous group.",
     "Every anonymous grant is mirrored on authenticated: anonymous is NOT a floor, so the day",

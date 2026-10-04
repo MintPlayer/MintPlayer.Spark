@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "_comment": [
     "HAND-AUTHORED and NOT generated. --spark-synchronize-model leaves it alone because there is no",
     "CLR entity behind it: MyAccountRow is a virtual type, and preview.67 made a composed query on a",

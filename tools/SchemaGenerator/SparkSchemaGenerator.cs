@@ -249,15 +249,18 @@ public static class SparkSchemaGenerator
     /// <summary>
     /// translations.json is a tree: every object holds either only strings (a leaf, language → text)
     /// or only objects (a namespace). The translations source generator reports anything else
-    /// (<c>TranslationsTreeFlattener</c>), and skips underscore properties as comments.
+    /// (<c>TranslationsTreeFlattener</c>), and skips underscore properties as comments. Its parser
+    /// accepts strings and objects only (<c>MiniJson</c>), so a comment here must be a string.
     /// </summary>
     private static JsonObject TranslationsSchema()
     {
+        static JsonObject Comments() => new() { [CommentPattern] = new JsonObject { ["type"] = "string" } };
+
         static JsonObject Branch(JsonNode values)
         {
             var branch = new JsonObject
             {
-                ["patternProperties"] = new JsonObject { [CommentPattern] = new JsonObject() },
+                ["patternProperties"] = Comments(),
                 ["additionalProperties"] = values,
             };
             return branch;
@@ -267,7 +270,7 @@ public static class SparkSchemaGenerator
         {
             ["type"] = "object",
             ["properties"] = new JsonObject { ["$schema"] = new JsonObject { ["type"] = "string" } },
-            ["patternProperties"] = new JsonObject { [CommentPattern] = new JsonObject() },
+            ["patternProperties"] = Comments(),
             ["additionalProperties"] = new JsonObject { ["$ref"] = "#/$defs/node" },
             ["$defs"] = new JsonObject
             {

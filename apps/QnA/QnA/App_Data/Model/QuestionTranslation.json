@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "d363f757-1d6a-46d1-a1a9-2ed1c4acbcb4",
     "name": "QuestionTranslation",

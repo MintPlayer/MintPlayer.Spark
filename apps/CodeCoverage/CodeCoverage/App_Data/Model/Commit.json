@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "ec83c3f7-45d7-44e8-928a-2daf9a4b3ffe",
     "name": "Commit",

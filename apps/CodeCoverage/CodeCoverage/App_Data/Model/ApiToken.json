@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "c312f028-5d74-4d1f-9026-ed07d53e9be0",
     "name": "ApiToken",

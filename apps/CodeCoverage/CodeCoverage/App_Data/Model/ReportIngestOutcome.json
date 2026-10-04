@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "72381a60-3faa-4a95-934e-f62d19f95d04",
     "name": "ReportIngestOutcome",

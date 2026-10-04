@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
     "name": "Car",

@@ -62,9 +62,13 @@ internal static class LibraryActionsReader
         if (root is not JsonObject actions) return result;
         foreach (var action in actions.Members)
         {
+            // $schema and _comments are not actions or properties; SparkActionLayers skips them too.
+            if (action.Key.StartsWith("_", StringComparison.Ordinal) || action.Key == "$schema")
+                continue;
             if (action.Value is JsonObject definition)
             {
                 var properties = definition.Members
+                    .Where(p => !p.Key.StartsWith("_", StringComparison.Ordinal))
                     .Select(p => new KeyValuePair<string, string>(p.Key, Render(p.Value)))
                     .ToList();
                 result.Add(new KeyValuePair<string, IReadOnlyList<KeyValuePair<string, string>>?>(action.Key, properties));

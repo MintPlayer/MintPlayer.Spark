@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "20b9b5b9-b248-4a3a-89ae-9516b0eab779",
     "name": "OidcApplication",

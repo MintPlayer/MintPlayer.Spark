@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "36383521-7c87-4608-aef7-d2948ddf5c97",
     "name": "OidcScope",

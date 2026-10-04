@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "283378ff-b248-43a6-ab1c-1fca3ea6ce9d",
     "name": "BuildFeedback",

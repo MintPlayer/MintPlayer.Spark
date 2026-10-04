@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "44ddbb76-0656-49a8-ac54-80db0134067a",
     "name": "GitHubProject",

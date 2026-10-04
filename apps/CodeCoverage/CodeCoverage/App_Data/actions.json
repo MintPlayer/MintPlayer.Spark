@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/actions.schema.json",
   "Resync": {
     "icon": "ArrowRepeat",
     "showedOn": "detail",

@@ -205,7 +205,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
-            File.WriteAllText(fileName, json);
+            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, json));
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
@@ -269,7 +269,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
-            File.WriteAllText(fileName, JsonSerializer.Serialize(entityTypeFile, JsonOptions));
+            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, JsonSerializer.Serialize(entityTypeFile, JsonOptions)));
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
             Console.WriteLine($"Synchronized model (satellite of {satellite.OwnerType.Name}): {satelliteType.Name} -> {fileName}");
@@ -302,7 +302,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
-            File.WriteAllText(fileName, json);
+            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, json));
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
@@ -336,6 +336,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
         TranslationsSeeder.Apply(hostEnvironment.ContentRootPath, seeds);
         ReportMissingTranslations();
+
+        // Last of the file edits (#264, G-Q17), so a file the seeder rewrote is covered too. Before the
+        // hashes only by habit: $schema is not part of any hashed shape.
+        foreach (var path in SparkSchemaReference.ApplyAll(hostEnvironment.ContentRootPath, SparkSchemaRevision.Current))
+            Console.WriteLine($"Pointed $schema at schema revision v{SparkSchemaRevision.Current}: {path}");
 
         if (WouldCertifyAnEmptyModel(contextType, queryableProperties.Count, modelPath))
             return;

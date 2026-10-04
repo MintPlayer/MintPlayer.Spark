@@ -169,6 +169,8 @@ public static class SparkActionLayers
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (name, value) in entries)
         {
+            if (IsAnnotation(name, root: true))
+                continue;
             if (!seen.Add(name))
                 throw new InvalidOperationException($"{layer.Name} declares the action '{name}' twice (names are case-insensitive).");
 
@@ -182,11 +184,20 @@ public static class SparkActionLayers
         }
     }
 
+    /// <summary>
+    /// Not an action or a property: the file's <c>$schema</c> (root only) and <c>_</c>-prefixed
+    /// comments, which the published schema allows everywhere (#264, G-Q12/Q17).
+    /// </summary>
+    private static bool IsAnnotation(string name, bool root)
+        => name.StartsWith('_') || (root && name == "$schema");
+
     private static IEnumerable<(string Property, JsonNode? Value)> Properties(SparkActionsLayer layer, string action, JsonObject definition)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (property, value) in definition)
         {
+            if (IsAnnotation(property, root: false))
+                continue;
             if (!seen.Add(property))
                 throw new InvalidOperationException($"{layer.Name}: '{action}' states '{property}' twice (names are case-insensitive).");
             yield return (property, value);

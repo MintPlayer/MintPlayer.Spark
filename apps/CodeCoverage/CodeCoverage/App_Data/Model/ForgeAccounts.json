@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "_comment": [
     "HAND-AUTHORED and NOT generated. Like Home, this is a virtual page: no clrType, no documents,",
     "no collection. ForgeAccountsActions.OnLoadAsync scaffolds it per request.",

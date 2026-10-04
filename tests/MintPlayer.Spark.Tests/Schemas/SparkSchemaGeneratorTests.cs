@@ -91,8 +91,10 @@ public sealed class SparkSchemaGeneratorTests
     {
         var translations = Schemas()["translations"];
 
-        Validate(translations, """{ "$schema": "x", "_c": 1, "app": { "title": { "en": "T", "nl": "T" } } }""").Should().BeEmpty();
+        Validate(translations, """{ "$schema": "x", "_c": "c", "app": { "title": { "_c": "c", "en": "T", "nl": "T" } } }""").Should().BeEmpty();
         Validate(translations, """{ "app": { "title": { "en": "T" }, "en": "T" } }""").Should().NotBeEmpty();
+        // The generators' parser (MiniJson) refuses numbers and arrays in translations.json, comments included.
+        Validate(translations, """{ "_c": 1, "app": { "title": { "en": "T" } } }""").Should().NotBeEmpty();
     }
 
     [Fact]

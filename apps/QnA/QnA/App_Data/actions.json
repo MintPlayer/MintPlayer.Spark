@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/actions.schema.json",
   "CloseQuestion": {
     "icon": "Lock",
     "showedOn": "detail",

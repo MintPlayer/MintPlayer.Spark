@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "d2b0f1f4-7ca0-4e37-bd5d-c8bc649bd9a3",
     "name": "PatchCoverage",

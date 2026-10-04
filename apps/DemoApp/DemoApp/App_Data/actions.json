@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/actions.schema.json",
   "CopyCarsToCompany": {
     "icon": "Copy",
     "showedOn": "both",

@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "d6d57891-1be6-4208-b04c-39711c7751fb",
     "name": "ForkUploadBudget",

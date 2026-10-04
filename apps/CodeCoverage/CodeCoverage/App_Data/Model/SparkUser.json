@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "_comment": [
     "HAND-AUTHORED and NOT generated. --spark-synchronize-model leaves it alone: SparkUser is not a",
     "context root and not an embedded type, so the synchronizer never discovers it and never rewrites",
