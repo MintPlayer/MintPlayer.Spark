@@ -172,6 +172,32 @@ describe('SparkPoCreateComponent', () => {
     expect(c.generalErrors()).toHaveLength(1);
   });
 
+  // #264 G6: HR's create form did not draw the required LastName, and the server's "Last Name is required."
+  // went nowhere: the form only shows an attribute's error next to that attribute. An error on an
+  // attribute the form does not draw is promoted to a form-level error, as Vidyano does.
+  it('shows a 400 error on an attribute the form does not draw as a form-level error', async () => {
+    const withUndrawn = {
+      ...personType,
+      attributes: [
+        ...personType.attributes,
+        { id: 'a-code', name: 'Code', dataType: 'string', isRequired: true, isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.Query } as any,
+      ],
+    } as EntityType;
+    const error = new HttpErrorResponse({
+      status: 400,
+      error: { result: { errors: [{ attributeName: 'Code', errorMessage: { en: 'Code is required.' }, ruleType: 'required' }] }, operations: [] },
+    });
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withUndrawn]), create: vi.fn().mockRejectedValue(error) });
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+    harness.fixture.detectChanges();
+    await harness.fixture.whenStable();
+
+    expect((harness.routeNativeElement as HTMLElement).textContent).toContain('Code is required.');
+  });
+
   it('onSave non-400 error sets a single generic error', async () => {
     const { harness } = await setup({ create: vi.fn().mockRejectedValue(new Error('boom')) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);

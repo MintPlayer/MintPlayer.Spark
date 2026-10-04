@@ -192,6 +192,31 @@ describe('SparkPoEditComponent', () => {
     expect(c.isSaving()).toBe(false);
   });
 
+  // #264 G6: an error on an attribute the form does not draw has nowhere to appear next to its field, so it
+  // is promoted to a form-level error (Vidyano shows it as a notification) instead of being swallowed.
+  it('shows a 400 error on an attribute the form does not draw as a form-level error', async () => {
+    const withUndrawn = {
+      ...personType,
+      attributes: [
+        ...personType.attributes,
+        { id: 'a-code', name: 'Code', dataType: 'string', isRequired: true, isVisible: true, isReadOnly: false, order: 4, showedOn: ShowedOn.Query } as any,
+      ],
+    } as EntityType;
+    const error = new HttpErrorResponse({
+      status: 400,
+      error: { result: { errors: [{ attributeName: 'Code', errorMessage: { en: 'Code is required.' }, ruleType: 'required' }] }, operations: [] },
+    });
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withUndrawn]), update: vi.fn().mockRejectedValue(error) });
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+    harness.fixture.detectChanges();
+    await harness.fixture.whenStable();
+
+    expect((harness.routeNativeElement as HTMLElement).textContent).toContain('Code is required.');
+  });
+
   it('a 409 for an object deleted since it was loaded says so, keeps the form and merges nothing', async () => {
     const error = new HttpErrorResponse({
       status: 409,
