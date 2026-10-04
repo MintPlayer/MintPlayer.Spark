@@ -34,7 +34,7 @@ public class GenerateIndexGeneratorRavenGateTests
             GeneratorName,
             [Source],
             referenceTypes: [typeof(GenerateIndexAttribute)],
-            rootNamespace: "Lib");
+            rootNamespace: "Lib", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
         result.GeneratedSources.Should().BeEmpty();
         result.GeneratorDiagnostics.Should().BeEmpty();
@@ -47,7 +47,7 @@ public class GenerateIndexGeneratorRavenGateTests
             GeneratorName,
             [Source],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "Lib");
+            rootNamespace: "Lib", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
         result.GeneratedSources.Should().Contain(s => s.Source.Contains("AbstractIndexCreationTask<global::Lib.Entities.Car>"));
     }

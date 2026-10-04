@@ -40,7 +40,7 @@ public class ReferencedAssemblyEntityTests
             GeneratorName,
             [appSource],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "Fleet",
+            rootNamespace: "Fleet", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication,
             additionalReferences: [library]);
     }
 
@@ -122,7 +122,7 @@ public class ReferencedAssemblyEntityTests
             GeneratorName,
             ["namespace Fleet; public class Program { }"],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "Fleet",
+            rootNamespace: "Fleet", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication,
             additionalReferences: [unrelated]);
 
         result.GeneratedSources.Should().BeEmpty();
@@ -198,12 +198,31 @@ public class ReferencedAssemblyEntityTests
             GeneratorName,
             ["namespace Fleet; public class Program { }"],
             referenceTypes: [.. vocabulary, typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "Fleet",
+            rootNamespace: "Fleet", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication,
             additionalReferences: [library]);
 
         var generated = result.GeneratedSources.Should().ContainSingle().Which.Source;
         generated.Should().Contain("AbstractIndexCreationTask<global::Fleet.Library.Entities.Car>");
         generated.Should().Contain("ModelSearch = car.Model,");
+    }
+
+    /// <summary>
+    /// #388: index classes live in the application only. A class library that sees <c>[GenerateIndex]</c>
+    /// entities AND references RavenDB.Client used to get its own, never-deployed copy:
+    /// CodeCoverage.Library (Raven through Authorization) and the forge integrations (through
+    /// MintPlayer.Spark). Referencing Raven must not be enough.
+    /// </summary>
+    [Fact]
+    public void A_class_library_that_references_Raven_gets_no_index_classes()
+    {
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [EntityLibrarySource],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            rootNamespace: "Fleet.Library",
+            outputKind: Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary);
+
+        result.GeneratedSources.Where(s => s.Source.Contains("AbstractIndexCreationTask")).Should().BeEmpty();
     }
 
     [Fact]

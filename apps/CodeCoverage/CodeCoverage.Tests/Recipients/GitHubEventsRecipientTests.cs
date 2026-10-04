@@ -96,6 +96,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         // registration every test in this class fails at construction — which is how the feature
         // originally shipped, having no tests of its own.
         services.AddSingleton<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>(installer);
+        services.AddSingleton<CodeCoverage.Services.IGitHubIndexQueries, CodeCoverage.Services.GitHubIndexQueries>();
         services.AddScoped<GitHubEventsRecipient>();
         return services.BuildServiceProvider().GetRequiredService<GitHubEventsRecipient>();
     }

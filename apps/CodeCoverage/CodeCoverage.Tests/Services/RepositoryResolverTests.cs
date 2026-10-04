@@ -37,6 +37,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         services.AddMemoryCache();
         services.AddSingleton(session);
         services.AddSingleton<IGitHubInstallationService>(github);
+        services.AddSingleton<CodeCoverage.Services.IGitHubIndexQueries, CodeCoverage.Services.GitHubIndexQueries>();
         services.AddScoped<RepositoryResolver>();
         return (services.BuildServiceProvider().GetRequiredService<RepositoryResolver>(), github);
     }

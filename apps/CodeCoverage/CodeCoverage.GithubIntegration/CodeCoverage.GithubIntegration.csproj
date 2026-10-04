@@ -21,17 +21,9 @@
 		  and a future move back and forth churns all of them.
 		-->
 		<!--
-		  ⚠ "Indexes.Xxx" in the moved code must mean ONE set of index classes, and it must not be
-		  a set this assembly declares itself.
-		  [GenerateIndex] emits into {RootNamespace}.Indexes in EVERY compilation that references
-		  the entities, so the app, the library and this project each get their own copy. Pointing
-		  this assembly at the library's copy keeps the count at the two that already existed
-		  before this project did - and, more importantly, stops CodeCoverage.Tests (which
-		  references both the app and this project, and so has no "own" copy to prefer) failing
-		  with CS0433 on every index it touches. Pinning RootNamespace to CodeCoverage was the
-		  first attempt and caused exactly that.
+		  No index classes here: [GenerateIndex] emits them only in the application (#388). The
+		  index queries this project needs go through IGitHubIndexQueries, which the app implements.
 		-->
-		<Using Include="CodeCoverage.Library.Indexes" Alias="Indexes" />
 		<Using Include="Microsoft.AspNetCore.Hosting" />
 		<Using Include="Microsoft.AspNetCore.Http" />
 		<Using Include="Microsoft.Extensions.Configuration" />

@@ -16,7 +16,7 @@ public class HandWrittenIndexEntitySortFieldsTests
             GeneratorName,
             [source],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "TestApp");
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
     /// <summary>
     /// Passes each fixture piece as its own source <em>file</em>. Concatenating them would put two file-scoped
@@ -27,7 +27,7 @@ public class HandWrittenIndexEntitySortFieldsTests
             GeneratorName,
             sources,
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "TestApp");
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
     /// <summary>
     /// A stand-in for the RavenDB base class, so the fixture compiles without referencing RavenDB. The

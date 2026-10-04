@@ -224,7 +224,8 @@ public class SourceGeneratorSnapshots
             "GenerateIndexGenerator",
             [source],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "TestApp");
+            rootNamespace: "TestApp",
+            outputKind: OutputKind.ConsoleApplication);
 
         return Verifier.Verify(Render(result));
     }

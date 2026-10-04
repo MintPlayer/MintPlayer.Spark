@@ -102,7 +102,7 @@ public class GitHubStateReconcilerBoardTests : CoverageRavenTest
         WaitForIndexing(store);
         using var session = store.OpenAsyncSession();
         var account = await session.LoadAsync<Account>(AccountId);
-        await new GitHubStateReconciler(session, repositories, projects, NullLogger<GitHubStateReconciler>.Instance)
+        await new GitHubStateReconciler(session, new GitHubIndexQueries(), repositories, projects, NullLogger<GitHubStateReconciler>.Instance)
             .ReconcileAsync(account);
         await session.SaveChangesAsync();
     }

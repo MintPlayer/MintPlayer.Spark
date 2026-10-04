@@ -31,6 +31,7 @@ public interface IGitHubStateReconciler
 public partial class GitHubStateReconciler : IGitHubStateReconciler
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IGitHubIndexQueries indexes;
     [Inject] private readonly IInstallationRepositories installationRepositories;
     [Inject] private readonly IInstallationProjects installationProjects;
     [Inject] private readonly ILogger<GitHubStateReconciler> logger;
@@ -255,10 +256,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
     {
         if (account.Id is null) return [];
 
-        return await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.Account == account.Id)
-            .Take(MaxRepositoriesPerAccount)
-            .ToListAsync(ct);
+        return await indexes.RepositoriesOfAccountAsync(session, account.Id, MaxRepositoriesPerAccount, ct);
     }
 
     /// <summary>
@@ -329,9 +327,6 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
     {
         if (account.Id is null) return [];
 
-        return await session.Query<GitHubProject, Indexes.GitHubProjects_Overview>()
-            .Where(p => p.Account == account.Id)
-            .Take(MaxProjectsPerAccount)
-            .ToListAsync(ct);
+        return await indexes.ProjectsOfAccountAsync(session, account.Id, MaxProjectsPerAccount, ct);
     }
 }

@@ -20,7 +20,7 @@ public class BreadcrumbCompanionTests
             GeneratorName,
             [source],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "TestApp");
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
     private const string PersonWithMarkedAddress = """
         using MintPlayer.Spark.Abstractions;
@@ -303,7 +303,7 @@ public class BreadcrumbCompanionTests
             GeneratorName,
             ["namespace TestApp; public class Program { }"],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "TestApp",
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication,
             additionalReferences: [library]);
 
         result.GeneratedSources[0].Source.Should().Contain("AddressSort = person.Address!.City,");

@@ -120,7 +120,7 @@ them would widen the package past what its name says.
 | `Replication.Abstractions` | Drop the Abstractions `ProjectReference` (csproj :22). Its only use is `SyncAction.cs:2,99,103`: `GetCachedProperties()`, `AccessorCache.GetGetter` and (missed by the investigation) `IsIgnoredForSparkModel()`, which is just "has `[IgnoreProperty]`". **Built:** references Attributes instead; `SyncAction<T>` keeps a static per-closed-type `PropertyInfo[]` (public, readable, non-indexer, no `[IgnoreProperty]`) and reads through `GetValue` | consumer investigation §2; build |
 | `Contributions.Abstractions`, `Moderation.Abstractions` | Reference `Model` instead of Abstractions (csproj :29 / :30) | §3.1 table |
 | **`MintPlayer.Spark.History.Abstractions`** (new, `libs/history/`) | Holds `IAuditable` (`libs/history/MintPlayer.Spark.History/IAuditable.cs:21`, namespace `MintPlayer.Spark.History` kept). `History` references it | QnA blocker |
-| `CodeCoverage.Library` | Swap Authorization for Authorization.Abstractions. ~~Add an explicit `Microsoft.Extensions.Caching.Memory` PackageReference~~ **Superseded (owner, 2026-10-04):** `SourceContentCache`, the only `MemoryCache` user, is a service, not an entity; it moved to its only consumer, CodeCoverage.GithubIntegration (which has the ASP.NET Core framework), so the library needs no caching package. It also gained `GetOrFetchAsync`: one GitHub fetch per uncached file under concurrency. HybridCache was considered and rejected: its in-memory tier is the shared `IMemoryCache`, the bound this class exists to keep off it. `Newtonsoft.Json` is **dropped**: no file in the library uses it (no `[JsonIgnore]`, no `Newtonsoft` using; its csproj comment was stale), and the solution builds without it. (An earlier version of this line claimed it was used; that was taken from the comment, not checked.) **Found during implementation:** add an explicit `RavenDB.Client`. It used to arrive through Authorization, and without it `[GenerateIndex]` stops emitting the library's own copy of the indexes (gate at `GenerateIndexGenerator.cs:107-109`), which `CodeCoverage.GithubIntegration` aliases as `Indexes` (its csproj :24-34). CS0234 proved it | consumer investigation §1; build |
+| `CodeCoverage.Library` | Swap Authorization for Authorization.Abstractions. ~~Add an explicit `Microsoft.Extensions.Caching.Memory` PackageReference~~ **Superseded (owner, 2026-10-04):** `SourceContentCache`, the only `MemoryCache` user, is a service, not an entity; it moved to its only consumer, CodeCoverage.GithubIntegration (which has the ASP.NET Core framework), so the library needs no caching package. It also gained `GetOrFetchAsync`: one GitHub fetch per uncached file under concurrency. HybridCache was considered and rejected: its in-memory tier is the shared `IMemoryCache`, the bound this class exists to keep off it. `Newtonsoft.Json` is **dropped**: no file in the library uses it (no `[JsonIgnore]`, no `Newtonsoft` using; its csproj comment was stale), and the solution builds without it. (An earlier version of this line claimed it was used; that was taken from the comment, not checked.) ~~**Found during implementation:** add an explicit `RavenDB.Client`.~~ **Reverted, see §3.7:** indexes belong in the application only. It used to arrive through Authorization, and without it `[GenerateIndex]` stops emitting the library's own copy of the indexes (gate at `GenerateIndexGenerator.cs:107-109`), which `CodeCoverage.GithubIntegration` aliases as `Indexes` (its csproj :24-34). CS0234 proved it | consumer investigation §1; build |
 | `QnA.Library` | Swap History for History.Abstractions. Add an explicit `Newtonsoft.Json` PackageReference for `Question.cs:78` | consumer investigation §1 |
 | All five libraries | Drop the Abstractions reference. Add explicit `Attributes`, plus `Model` where it is used (today they get Attributes transitively via `Abstractions.csproj:24`). **Built:** HR.Library needs Model too, despite using no Model type in source: its generated `[ValueObject]` keys register into `SparkValueObjects` | #388 S4; build |
 | `Abstractions` | References `Model` (and keeps `Attributes`), so every existing consumer still sees every moved type | |
@@ -225,6 +225,49 @@ assemblies"):
      with a public migration is registered; an internal one triggers the warning; an app with no
      migrations of its own still gets `AddMigrations()`.
    - A runtime test: a fresh database records the package migration's marker.
+
+### 3.7 Index classes live in the application only (owner decision 2026-10-04)
+
+> "The intended setup is that the RavenDB Indexes ALWAYS live in the application - there's no point
+> in shipping them in a class library." … "The IndexGenerator should … trigger on any class that
+> carries the GenerateIndexAttribute inside the current assembly + referenced assemblies. Then the
+> IndexGenerator can generate the index code in the application project."
+
+**Why they did not.** `GenerateIndexGenerator`'s gate was "sees `[GenerateIndex]` **and** references
+RavenDB.Client" (`GenerateIndexGenerator.cs:107-109`). Its comment (#357, 2026-09-02) assumed an
+entity library never references Raven. That held for DemoApp/Fleet/HR/QnA and broke for CodeCoverage
+twice:
+
+- CodeCoverage.Library reached Raven through Authorization (#392, 2026-09-09, for
+  `[Reference(typeof(SparkUser))]`).
+- The three forge integration libraries reach it through `MintPlayer.Spark` (#434, 2026-09-21).
+
+Built DLLs before the fix: the app plus four class libraries each carried a full set of index
+classes. Only the app's was ever deployed: `ResolveIndexAssemblies()` covers the entry assembly and
+the `SparkContext`'s, and nothing added the others. GithubIntegration then aliased `Indexes` to the
+*library's* copy for six queries (`csproj:34`, #434). That alias is what made the library copy look
+necessary, and it is why this PR briefly gave CodeCoverage.Library an explicit `RavenDB.Client`.
+That reference is now reverted.
+
+**Built:**
+- **Generator:** the index producer emits only when `OutputKind` is Console/Windows (the
+  application); the hand-written sort-fields and context-roots producers are unchanged. The
+  application still finds `[GenerateIndex]` entities in its own source and in referenced assemblies
+  (`referencedEntitiesProvider`).
+- **CodeCoverage.Library:** no `RavenDB.Client`; `project.assets.json` no longer mentions it.
+- **GithubIntegration's six index queries:** behind `IGitHubIndexQueries` (declared in GithubIntegration,
+  so it may name `IAsyncDocumentSession`), implemented by the app as `GitHubIndexQueries` against its own
+  generated indexes. Every method takes the caller's session, so returned entities stay tracked and save
+  with it. Owner chose this over string index names (`Query<T>("Repositories/Overview")`), which would
+  fail only at run time.
+- **Tests:** generator tests that expect index classes compile as an application. A new test checks
+  that a class library referencing Raven gets none. The five CodeCoverage test containers that resolve
+  the real GitHub services register `GitHubIndexQueries`.
+
+**Verified:**
+- Rescan of the built DLLs: index namespaces only in CodeCoverage, DemoApp, Fleet and HR; none in any
+  library.
+- SourceGenerators.Tests 541/541; CodeCoverage.Tests 1,088/1,088.
 
 ## 4. Risks
 
