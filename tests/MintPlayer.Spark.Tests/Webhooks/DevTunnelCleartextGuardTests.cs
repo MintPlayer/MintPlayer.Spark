@@ -29,11 +29,11 @@ public class DevTunnelCleartextGuardTests
     {
         var uri = new Uri(url);
 
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => WebSocketDevClientService.EnsureTokenWillNotTravelInCleartext(uri));
+        var ex = new Action(
+            () => WebSocketDevClientService.EnsureTokenWillNotTravelInCleartext(uri)).Should().ThrowExactly<InvalidOperationException>().Which;
 
-        Assert.Contains("cleartext", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(uri.Host, ex.Message, StringComparison.OrdinalIgnoreCase);
+        ex.Message.Should().ContainEquivalentOf("cleartext");
+        ex.Message.Should().ContainEquivalentOf(uri.Host);
     }
 
     /// <summary>

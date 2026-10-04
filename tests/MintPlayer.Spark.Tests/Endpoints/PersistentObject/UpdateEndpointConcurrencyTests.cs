@@ -69,8 +69,7 @@ public class UpdateEndpointConcurrencyTests : SparkTestDriver
         poB!.Etag = etagV1;
         SetAttribute(poB, "LastName", "Jones");
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.UpdatePersistentObjectAsync(poB));
+        var ex = (await new Func<Task>(() => _client.UpdatePersistentObjectAsync(poB)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         ex.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 

@@ -25,8 +25,7 @@ public class SparkClientWarmupTests
         var handler = new ScriptedHttpHandler().EnqueueOk();
         using var client = NewClient(handler);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1"));
+        var ex = (await new Func<Task>(() => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.Message.Should().Contain("XSRF-TOKEN");
     }
@@ -38,8 +37,7 @@ public class SparkClientWarmupTests
             .EnqueueWithCookies("random-cookie=value; Path=/");
         using var client = NewClient(handler);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1"));
+        var ex = (await new Func<Task>(() => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.Message.Should().Contain("XSRF-TOKEN");
     }

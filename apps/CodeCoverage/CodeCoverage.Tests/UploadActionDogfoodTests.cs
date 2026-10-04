@@ -43,7 +43,7 @@ public class UploadActionDogfoodTests : CoverageRavenTest
     // 401 twenty seconds into a live-server run.
     [Fact]
     public void The_fixture_token_hash_matches_the_token()
-        => Assert.True(ActionDogfoodHarness.FixtureMatchesToken(), "Fixtures/Dogfood/dogfood.json's Hash is not SHA-256 of ActionDogfoodHarness.Token.");
+        => ActionDogfoodHarness.FixtureMatchesToken().Should().BeTrue("Fixtures/Dogfood/dogfood.json's Hash is not SHA-256 of ActionDogfoodHarness.Token.");
 
     [Fact]
     public async Task The_committed_bundle_uploads_to_a_live_server()
@@ -76,16 +76,16 @@ public class UploadActionDogfoodTests : CoverageRavenTest
                 var (exitCode, log) = await ActionDogfoodHarness.RunActionAsync(
                     bundle, workspace.FullName, outputFile, baseUrl, token, RepoName, Sha, RunId);
 
-                Assert.True(exitCode == 0, $"The action failed (exit {exitCode}):\n{log}\n--- server (last 40 lines) ---\n{ActionDogfoodHarness.Tail(serverOutput, 40)}");
+                exitCode.Should().Be(0, $"The action failed (exit {exitCode}):\n{log}\n--- server (last 40 lines) ---\n{ActionDogfoodHarness.Tail(serverOutput, 40)}");
                 // Proves the server accepted the multipart body and answered the shape the action
                 // expects -- a 202 whose JSON carries buildId and sessionId.
-                Assert.Contains("Upload accepted", log);
+                log.Should().Contain("Upload accepted");
 
                 var outputs = await File.ReadAllTextAsync(outputFile);
-                Assert.Contains("build-id<<", outputs);
+                outputs.Should().Contain("build-id<<");
                 // The capabilities probe reached a server that advertises the contract, rather than
                 // falling back to the pre-capabilities baseline of 0.
-                Assert.Matches(@"server-contract<<.*\r?\n1\r?\n", outputs);
+                outputs.Should().MatchRegex(@"server-contract<<.*\r?\n1\r?\n");
 
                 await AssertBuildParsed(store);
             }
@@ -123,14 +123,14 @@ public class UploadActionDogfoodTests : CoverageRavenTest
             await Task.Delay(500);
         }
 
-        Assert.NotNull(build);
-        Assert.NotEmpty(build!.Sessions);
-        Assert.All(build.Sessions, s => Assert.Equal("Parsed", s.ParseStatus));
-        Assert.NotNull(build.Coverage);
+        build.Should().NotBeNull();
+        build!.Sessions.Should().NotBeEmpty();
+        build.Sessions.Should().AllSatisfy(s => s.ParseStatus.Should().Be("Parsed"));
+        build.Coverage.Should().NotBeNull();
         // The report declared two coverable lines, one of them covered. Asserting the numbers
         // rather than mere presence is what catches a parser that silently drops a report whose
         // paths it cannot match.
-        Assert.Equal(2, build.Coverage!.LinesCoverable);
-        Assert.Equal(1, build.Coverage.LinesCovered);
+        build.Coverage!.LinesCoverable.Should().Be(2);
+        build.Coverage.LinesCovered.Should().Be(1);
     }
 }

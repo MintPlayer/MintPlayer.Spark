@@ -50,7 +50,9 @@ public partial class M_202609081600_MoveDeleteBranchFlagToRepository : ISparkMig
             new PatchByQueryOperation(new IndexQuery
             {
                 Query = "from GitHubProjects update { delete this.DeleteBranchOnPrClose; }",
-            }),
+            },
+            // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
+            new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }),
             token: cancellationToken);
 
         // Wait, so a throw here aborts startup and the migration is retried on the next start

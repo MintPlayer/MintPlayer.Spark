@@ -369,8 +369,8 @@ public class CommitAssemblerTests : CoverageRavenTest
         await SeedAssembledBase(store, T0); // m1: 4/6 = 66.67%
 
         var m1 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m1"));
-        Assert.Null(m1!.CoverageDeltaVsParent);
-        Assert.Null(m1.CoverageDeltaVsDefaultBranch);
+        m1!.CoverageDeltaVsParent.Should().NotHaveValue();
+        m1.CoverageDeltaVsDefaultBranch.Should().NotHaveValue();
 
         // m2: child of m1, full upload with a.cs now 2/2 → 5/6 = 83.33%.
         await SeedCommit(store, "m2", "master", T0.AddHours(1), parentSha: "m1");
@@ -379,9 +379,9 @@ public class CommitAssemblerTests : CoverageRavenTest
 
         var m2 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m2"));
         var expected = 5 * 100d / 6 - 4 * 100d / 6;
-        Assert.NotNull(m2!.CoverageDeltaVsParent);
+        m2!.CoverageDeltaVsParent.Should().HaveValue();
         Math.Abs(m2.CoverageDeltaVsParent!.Value - expected).Should().BeLessThan(0.0001);
-        Assert.NotNull(m2.CoverageDeltaVsDefaultBranch);
+        m2.CoverageDeltaVsDefaultBranch.Should().HaveValue();
         Math.Abs(m2.CoverageDeltaVsDefaultBranch!.Value - expected).Should().BeLessThan(0.0001);
 
         // A PR commit off m2 that measures a.cs back to 1/2 (4/6): −16.67 against both parent and master.
@@ -441,15 +441,15 @@ public class CommitAssemblerTests : CoverageRavenTest
         var m2 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m2"));
         m2!.ParentSha.Should().Be("m1");
         m2.ParentShaSource.Should().Be("api");
-        Assert.NotNull(m2.ParentLookupAttemptedAtUtc);
+        m2.ParentLookupAttemptedAtUtc.Should().HaveValue();
         var expected = 5 * 100d / 6 - 4 * 100d / 6;
-        Assert.NotNull(m2.CoverageDeltaVsParent);
+        m2.CoverageDeltaVsParent.Should().HaveValue();
         Math.Abs(m2.CoverageDeltaVsParent!.Value - expected).Should().BeLessThan(0.0001);
-        Assert.NotNull(m2.CoverageDeltaVsDefaultBranch);
+        m2.CoverageDeltaVsDefaultBranch.Should().HaveValue();
 
         // m1 had no parent to find, but was still marked as attempted by its assembly.
         var m1 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m1"));
-        Assert.NotNull(m1!.ParentLookupAttemptedAtUtc);
+        m1!.ParentLookupAttemptedAtUtc.Should().HaveValue();
     }
 
     [Fact]
@@ -466,7 +466,7 @@ public class CommitAssemblerTests : CoverageRavenTest
         await Assemble(store, "m1");
 
         var m2 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m2"));
-        Assert.NotNull(m2!.CoverageDeltaVsParent);
+        m2!.CoverageDeltaVsParent.Should().HaveValue();
         Math.Abs(m2.CoverageDeltaVsParent!.Value).Should().BeLessThan(0.0001);
     }
 }

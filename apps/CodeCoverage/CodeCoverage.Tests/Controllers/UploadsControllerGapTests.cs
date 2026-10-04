@@ -135,7 +135,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
 
         var result = await Create(session, OidcToken("acme/widget")).Controller.Upload(Form(repository, files, sha), default);
 
-        Assert.IsType<BadRequestObjectResult>(result.Result).Value!.ToString().Should().Contain(expected);
+        result.Result.Should().BeOfType<BadRequestObjectResult>().Which.Value!.ToString().Should().Contain(expected);
     }
 
     /// <summary>A partial upload with nothing to report but a file list is legitimate: the assembler fills it in from the base.</summary>
@@ -150,7 +150,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
         form.Partial = true;
         form.FileList = "src/a.ts\n";
 
-        Assert.IsType<AcceptedResult>((await h.Controller.Upload(form, default)).Result);
+        ((await h.Controller.Upload(form, default)).Result).Should().BeOfType<AcceptedResult>();
         h.Ingested.Single().Partial.Should().BeTrue();
     }
 
@@ -184,7 +184,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var h = Create(session, OidcToken("someone/else"));
 
-        Assert.IsType<NotFoundObjectResult>((await h.Controller.Upload(Form(), default)).Result);
+        ((await h.Controller.Upload(Form(), default)).Result).Should().BeOfType<NotFoundObjectResult>();
         h.Ingested.Should().BeEmpty();
     }
 
@@ -195,7 +195,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             var h = Create(session, OidcToken("newcomer/lib"));
-            Assert.IsType<AcceptedResult>((await h.Controller.Upload(Form("newcomer/lib"), default)).Result);
+            ((await h.Controller.Upload(Form("newcomer/lib"), default)).Result).Should().BeOfType<AcceptedResult>();
             await session.SaveChangesAsync(); // the real ingestor's save; the substitute has none
         }
 
@@ -257,7 +257,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             var h = Create(session, OidcToken("secret/lib", visibility: visibility));
-            Assert.IsType<NotFoundObjectResult>((await h.Controller.Upload(Form("secret/lib"), default)).Result);
+            ((await h.Controller.Upload(Form("secret/lib"), default)).Result).Should().BeOfType<NotFoundObjectResult>();
             await session.SaveChangesAsync();
             h.Ingested.Should().BeEmpty();
         }
@@ -275,7 +275,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(Oidc.RepositoryClaim, "acme/widget"), new Claim(Oidc.RepositoryIdClaim, "not-a-number")], Oidc.SchemeName));
 
-        Assert.IsType<NotFoundObjectResult>((await Create(session, principal).Controller.Upload(Form(), default)).Result);
+        ((await Create(session, principal).Controller.Upload(Form(), default)).Result).Should().BeOfType<NotFoundObjectResult>();
     }
 
     /// <summary>
@@ -289,7 +289,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
         await SeedRepositoryAsync(store, "acme/old-name", RepositoryConnection.Disconnected);
         using (var session = store.OpenAsyncSession())
         {
-            Assert.IsType<AcceptedResult>((await Create(session, OidcToken("acme/new-name")).Controller.Upload(Form("acme/new-name"), default)).Result);
+            ((await Create(session, OidcToken("acme/new-name")).Controller.Upload(Form("acme/new-name"), default)).Result).Should().BeOfType<AcceptedResult>();
             await session.SaveChangesAsync();
         }
 
@@ -348,8 +348,8 @@ public class UploadsControllerGapTests : CoverageRavenTest
         WaitForIndexing(store);
         using var session = store.OpenAsyncSession();
 
-        Assert.IsType<AcceptedResult>((await Create(session, RepositoryToken(1, RepoId)).Controller.Upload(Form(), default)).Result);
-        Assert.IsType<NotFoundObjectResult>((await Create(session, RepositoryToken(1)).Controller.Upload(Form(), default)).Result);
+        ((await Create(session, RepositoryToken(1, RepoId)).Controller.Upload(Form(), default)).Result).Should().BeOfType<AcceptedResult>();
+        ((await Create(session, RepositoryToken(1)).Controller.Upload(Form(), default)).Result).Should().BeOfType<NotFoundObjectResult>();
     }
 
     [Fact]
@@ -362,8 +362,8 @@ public class UploadsControllerGapTests : CoverageRavenTest
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Everything")], ApiTokenAuthenticationHandler.SchemeName));
 
-        Assert.IsType<NotFoundObjectResult>((await Create(session, principal).Controller.Upload(Form(), default)).Result);
-        Assert.IsType<NotFoundObjectResult>((await Create(session, principal).Controller.Upload(Form("a/b/c"), default)).Result);
+        ((await Create(session, principal).Controller.Upload(Form(), default)).Result).Should().BeOfType<NotFoundObjectResult>();
+        ((await Create(session, principal).Controller.Upload(Form("a/b/c"), default)).Result).Should().BeOfType<NotFoundObjectResult>();
     }
 
     // ------------------------------------------------------------------------------------------
@@ -386,7 +386,7 @@ public class UploadsControllerGapTests : CoverageRavenTest
 
         var result = await h.Controller.Finish(new UploadsController.FinishRequest("acme/widget", Sha, 11, 2), default);
 
-        Assert.IsType<AcceptedResult>(result);
+        result.Should().BeOfType<AcceptedResult>();
         h.Bus.Of<FinalizeBuildMessage>().Single().BuildId.Should().Be(buildId);
     }
 
@@ -398,8 +398,8 @@ public class UploadsControllerGapTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var h = Create(session, OidcToken("acme/widget"));
 
-        Assert.IsType<NotFoundResult>(await h.Controller.Finish(new UploadsController.FinishRequest("acme/widget", Sha, 99, 1), default));
-        Assert.IsType<NotFoundResult>(await h.Controller.Finish(new UploadsController.FinishRequest("other/repo", Sha, 11, 2), default));
+        (await h.Controller.Finish(new UploadsController.FinishRequest("acme/widget", Sha, 99, 1), default)).Should().BeOfType<NotFoundResult>();
+        (await h.Controller.Finish(new UploadsController.FinishRequest("other/repo", Sha, 11, 2), default)).Should().BeOfType<NotFoundResult>();
         h.Bus.Messages.Should().BeEmpty();
     }
 }

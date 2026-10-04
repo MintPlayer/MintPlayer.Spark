@@ -245,7 +245,7 @@ public class RetryConversationTests
         {
             var prompt = await client.ExecuteActionAsync(Guid.NewGuid(), "DeleteCar");
 
-            var ex = await Assert.ThrowsAsync<ArgumentException>(() => client.ContinueAsync(prompt, "Yes"));
+            var ex = (await new Func<Task>(() => client.ContinueAsync(prompt, "Yes")).Should().ThrowExactlyAsync<ArgumentException>()).Which;
             ex.Message.Should().Contain("Delete / Cancel");
         }
 
@@ -264,7 +264,7 @@ public class RetryConversationTests
             var done = await client.ExecuteActionAsync(Guid.NewGuid(), "Whatever");
             done.IsRetry.Should().BeFalse();
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() => client.ContinueAsync(done, "Yes"));
+            await new Func<Task>(() => client.ContinueAsync(done, "Yes")).Should().ThrowExactlyAsync<InvalidOperationException>();
         }
     }
 
@@ -362,7 +362,7 @@ public class RetryConversationTests
                 _ => throw new ArgumentOutOfRangeException(nameof(endpoint)),
             };
 
-            var ex = await Assert.ThrowsAsync<SparkRetryRequiredException>(call);
+            var ex = (await call.Should().ThrowExactlyAsync<SparkRetryRequiredException>()).Which;
             ex.Prompt.Step.Should().Be(3);
             ex.Prompt.Title.Should().Be("Are you quite sure?");
             ex.Prompt.Options.Should().BeEquivalentTo(["Yes", "No"]);
@@ -384,9 +384,9 @@ public class RetryConversationTests
 
         using (client)
         {
-            var ex = await Assert.ThrowsAsync<SparkRetryRequiredException>(() =>
+            var ex = (await new Func<Task>(() =>
                 client.ExecuteQueryAsync("allpeople", onRetry: (prompt, _) =>
-                    Task.FromResult(prompt.Step == 0 ? RetryAnswer.Choose("Yes") : null)));
+                    Task.FromResult(prompt.Step == 0 ? RetryAnswer.Choose("Yes") : null))).Should().ThrowExactlyAsync<SparkRetryRequiredException>()).Which;
 
             ex.AnsweredSoFar.Should().Be(1);
             ex.Prompt.Title.Should().Be("Second");
@@ -413,9 +413,9 @@ public class RetryConversationTests
         {
             client.MaxRetryDepth = 3;
 
-            var ex = await Assert.ThrowsAsync<SparkClientException>(() =>
+            var ex = (await new Func<Task>(() =>
                 client.ExecuteActionAsync(Guid.NewGuid(), "Loop",
-                    onRetry: (_, _) => Task.FromResult<RetryAnswer?>(RetryAnswer.Choose("Yes"))));
+                    onRetry: (_, _) => Task.FromResult<RetryAnswer?>(RetryAnswer.Choose("Yes")))).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
             ex.Message.Should().Contain("Gave up after answering 3");
         }
@@ -439,7 +439,7 @@ public class RetryConversationTests
             result = await client.ContinueAsync(result, "Yes");
             result = await client.ContinueAsync(result, "Yes");
 
-            var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.ContinueAsync(result, "Yes"));
+            var ex = (await new Func<Task>(() => client.ContinueAsync(result, "Yes")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
             ex.Message.Should().Contain("Gave up after answering 2");
         }
     }

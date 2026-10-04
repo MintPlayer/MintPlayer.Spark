@@ -43,7 +43,7 @@ public class PersistentObjectSerializationTests
         roundTripped.Etag.Should().Be("etag-123");
         roundTripped.Attributes.Should().HaveCount(2);
         roundTripped.Attributes[0].Name.Should().Be("LicensePlate");
-        roundTripped.Attributes[0].Value?.ToString().Should().Be("ABC-123");
+        (roundTripped.Attributes[0].Value?.ToString()).Should().Be("ABC-123");
         roundTripped.Attributes[1].Name.Should().Be("Year");
 
         // Every deserialized attribute must have its Parent back-reference set.

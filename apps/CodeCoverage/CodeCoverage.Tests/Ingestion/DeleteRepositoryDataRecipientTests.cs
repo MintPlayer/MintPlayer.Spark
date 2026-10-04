@@ -168,15 +168,15 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             });
         }
 
-        Assert.Equal(0, await CountUnderAsync(store, CommitPrefix(RepoId)));
-        Assert.Equal(0, await CountUnderAsync(store, FeedbackPrefix(RepoId)));
+        (await CountUnderAsync(store, CommitPrefix(RepoId))).Should().Be(0);
+        (await CountUnderAsync(store, FeedbackPrefix(RepoId))).Should().Be(0);
 
         using var verify = store.OpenAsyncSession();
-        Assert.Null(await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
-        Assert.Empty(await verify.Query<ApiToken>()
+        (await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId))).Should().BeNull();
+        (await verify.Query<ApiToken>()
             .Customize(q => q.WaitForNonStaleResults())
             .Where(t => t.Hash == $"hash{RepoId}")
-            .ToListAsync());
+            .ToListAsync()).Should().BeEmpty();
     }
 
     /// <summary>
@@ -206,7 +206,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
                 RequestedByUserId = "users/1",
             });
 
-            Assert.Empty(bus.Broadcast);
+            bus.Broadcast.Should().BeEmpty();
         }
     }
 
@@ -229,14 +229,14 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             });
         }
 
-        Assert.Equal(before, await CountUnderAsync(store, CommitPrefix(OtherRepoId)));
+        (await CountUnderAsync(store, CommitPrefix(OtherRepoId))).Should().Be(before);
 
         using var verify = store.OpenAsyncSession();
-        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)));
-        Assert.NotEmpty(await verify.Query<ApiToken>()
+        (await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId))).Should().NotBeNull();
+        (await verify.Query<ApiToken>()
             .Customize(q => q.WaitForNonStaleResults())
             .Where(t => t.Hash == $"hash{OtherRepoId}")
-            .ToListAsync());
+            .ToListAsync()).Should().NotBeEmpty();
     }
 
     /// <summary>
@@ -263,8 +263,8 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
         }
 
         using var verify = store.OpenAsyncSession();
-        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
-        Assert.True(await CountUnderAsync(store, CommitPrefix(RepoId)) > 0);
+        (await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId))).Should().NotBeNull();
+        (await CountUnderAsync(store, CommitPrefix(RepoId))).Should().BeGreaterThan(0);
     }
 
     [Fact]
@@ -324,10 +324,10 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             .Where(t => t.Hash == "hash-multi")
             .SingleOrDefaultAsync();
 
-        Assert.NotNull(survivor);
-        Assert.Equal([Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)], survivor!.RepositoryIds);
+        survivor.Should().NotBeNull();
+        survivor!.RepositoryIds.Should().Equal([Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)]);
         // Still repository-scoped: an emptied list would silently WIDEN it to account scope, which
         // is the opposite of what deleting a repository should mean.
-        Assert.Equal("Repository", survivor.Scope);
+        survivor.Scope.Should().Be("Repository");
     }
 }

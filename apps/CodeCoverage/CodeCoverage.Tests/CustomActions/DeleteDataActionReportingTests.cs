@@ -147,7 +147,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
         await harness.Action.ExecuteAsync(ArgsFor(null));
 
         harness.Client.Received().Notify(Arg.Any<string>(), NotificationKind.Error, Arg.Any<TimeSpan?>());
-        Assert.Empty(harness.Broadcast);
+        harness.Broadcast.Should().BeEmpty();
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
         await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(EForgeProvider.GitHub, 999999)));
 
         harness.Client.Received().Notify(Arg.Any<string>(), NotificationKind.Info, Arg.Any<TimeSpan?>());
-        Assert.Empty(harness.Broadcast);
+        harness.Broadcast.Should().BeEmpty();
     }
 
     /// <summary>
@@ -180,7 +180,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
 
         harness.Client.Received().Notify(
             Arg.Is<string>(m => m.Contains(Owner)), NotificationKind.Error, Arg.Any<TimeSpan?>());
-        Assert.Empty(harness.Broadcast);
+        harness.Broadcast.Should().BeEmpty();
     }
 
     /// <summary>
@@ -200,7 +200,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
 
         harness.Client.Received().Notify(
             Arg.Is<string>(m => m.Contains("Resync")), NotificationKind.Warning, Arg.Any<TimeSpan?>());
-        Assert.Empty(harness.Broadcast);
+        harness.Broadcast.Should().BeEmpty();
     }
 
     /// <summary>
@@ -219,9 +219,9 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
 
         await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
 
-        var queued = Assert.Single(harness.Broadcast);
-        var message = Assert.IsType<DeleteRepositoryDataMessage>(queued);
-        Assert.Equal(RepoId, message.RepositoryGitHubId);
+        var queued = harness.Broadcast.Should().ContainSingle().Which;
+        var message = queued.Should().BeOfType<DeleteRepositoryDataMessage>().Which;
+        message.RepositoryGitHubId.Should().Be(RepoId);
 
         harness.Client.Received().Notify(Arg.Any<string>(), NotificationKind.Success, Arg.Any<TimeSpan?>());
         harness.Client.Received().Navigate(Arg.Is<string>(r => r.Contains(Owner)));

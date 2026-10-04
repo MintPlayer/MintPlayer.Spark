@@ -70,7 +70,7 @@ public partial class M_202609091210_BackfillValueObjectKeys : ISparkMigration
             """;
 
         var operation = await store.Operations.SendAsync(
-            new PatchByQueryOperation(new IndexQuery { Query = shape.Replace("%BODY%", body) }),
+            new PatchByQueryOperation(new IndexQuery { Query = shape.Replace("%BODY%", body) }, new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }),
             token: cancellationToken);
 
         // Wait, so a throw here aborts startup and the migration is retried on the next start

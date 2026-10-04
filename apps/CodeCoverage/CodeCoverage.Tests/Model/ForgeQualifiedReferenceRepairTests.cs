@@ -52,7 +52,7 @@ public class ForgeQualifiedReferenceRepairTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         var feedback = await verify.LoadAsync<PullRequestFeedback>($"PullRequestFeedbacks/github/{RepositoryId}/79");
-        Assert.Equal($"Repositories/github/{RepositoryId}", feedback.Repository);
+        feedback.Repository.Should().Be($"Repositories/github/{RepositoryId}");
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class ForgeQualifiedReferenceRepairTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         var file = await verify.LoadAsync<FileCoverage>(id);
-        Assert.StartsWith($"Commits/github/{RepositoryId}/", file.Origin!.FromBuildId, StringComparison.Ordinal);
+        file.Origin!.FromBuildId.Should().StartWith($"Commits/github/{RepositoryId}/");
     }
 
     /// <summary>
@@ -104,8 +104,8 @@ public class ForgeQualifiedReferenceRepairTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         var file = await verify.LoadAsync<FileCoverage>(id);
-        Assert.NotNull(file);
-        Assert.Null(file.Origin);
+        file.Should().NotBeNull();
+        file.Origin.Should().BeNull();
     }
 
     [Fact]
@@ -129,11 +129,11 @@ public class ForgeQualifiedReferenceRepairTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         var board = await verify.LoadAsync<GitHubProject>("GitHubProjects/PVT_kwDO");
-        Assert.Equal($"Accounts/github/{AccountId}", board.Account);
+        board.Account.Should().Be($"Accounts/github/{AccountId}");
 
         // ⚠️ The board's OWN id must not move — it is node-id-derived, which is exactly why the
         // first migration skipped this collection and why only the reference had to follow.
-        Assert.Equal("GitHubProjects/PVT_kwDO", board.Id);
+        board.Id.Should().Be("GitHubProjects/PVT_kwDO");
     }
 
     /// <summary>
@@ -162,8 +162,8 @@ public class ForgeQualifiedReferenceRepairTests : CoverageRavenTest
 
         // Not merely "still qualified" — never DOUBLE-qualified, which is the failure a naive
         // prefix-prepend would produce and which no later run could undo.
-        Assert.Equal($"Repositories/github/{RepositoryId}", feedback.Repository);
-        Assert.DoesNotContain("github/github", feedback.Repository, StringComparison.Ordinal);
+        feedback.Repository.Should().Be($"Repositories/github/{RepositoryId}");
+        feedback.Repository.Should().NotContain("github/github");
     }
 
     /// <summary>
@@ -187,6 +187,6 @@ public class ForgeQualifiedReferenceRepairTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         var feedback = await verify.LoadAsync<PullRequestFeedback>($"PullRequestFeedbacks/github/{RepositoryId}/80");
-        Assert.Equal($"Repositories/github/{RepositoryId}", feedback.Repository);
+        feedback.Repository.Should().Be($"Repositories/github/{RepositoryId}");
     }
 }

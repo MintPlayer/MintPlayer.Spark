@@ -117,8 +117,7 @@ public class DistinctValuesEndpointTests(DistinctValuesEndpointTests.Host host)
     [Fact]
     public async Task An_unknown_query_is_a_404()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.GetDistinctValuesAsync(Guid.NewGuid(), "LastName"));
+        var ex = (await new Func<Task>(() => _client.GetDistinctValuesAsync(Guid.NewGuid(), "LastName")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -126,8 +125,8 @@ public class DistinctValuesEndpointTests(DistinctValuesEndpointTests.Host host)
     [Fact]
     public async Task An_unresolvable_parent_is_a_404_not_the_unscoped_values()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.GetDistinctValuesAsync(
-            AllPeopleQueryId, "LastName", parentId: "people/404", parentType: "Person"));
+        var ex = (await new Func<Task>(() => _client.GetDistinctValuesAsync(
+            AllPeopleQueryId, "LastName", parentId: "people/404", parentType: "Person")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -135,8 +134,8 @@ public class DistinctValuesEndpointTests(DistinctValuesEndpointTests.Host host)
     [Fact]
     public async Task An_unknown_parent_type_is_a_404()
     {
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.GetDistinctValuesAsync(
-            AllPeopleQueryId, "LastName", parentId: "people/1", parentType: "NoSuchType"));
+        var ex = (await new Func<Task>(() => _client.GetDistinctValuesAsync(
+            AllPeopleQueryId, "LastName", parentId: "people/1", parentType: "NoSuchType")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -159,8 +158,7 @@ public class DistinctValuesEndpointTests(DistinctValuesEndpointTests.Host host)
         await using var denied = new SparkEndpointFactory(Store, [Model()], security: SparkTestSecurity.Empty);
         using var client = new SparkClient(denied.CreateClient(), ownsClient: true);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.GetDistinctValuesAsync(AllPeopleQueryId, "LastName"));
+        var ex = (await new Func<Task>(() => client.GetDistinctValuesAsync(AllPeopleQueryId, "LastName")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

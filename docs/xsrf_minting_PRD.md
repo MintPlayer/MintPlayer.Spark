@@ -222,6 +222,18 @@ CI uploads.
   hardened, §3.2 of the plan and the flag set below are the shopping list. Spark keeps its own
   flags: `HttpOnly=false`, `SameSite=Strict`, `Secure=IsHttps`, `Path=/` — a swap was already
   rejected on evidence once (`docs/coverage-handoff-plan.md:667-676`).
+  **Superseded 2026-10-04 (#452):** the shopping list was met upstream in
+  MintPlayer/MintPlayer.AspNetCore.SpaServices#86 (`11.0.0-rc.2`): the same four flags as defaults, a
+  guarded null token, and a caught mint failure. Spark now calls `UseAntiforgeryGenerator()`
+  (`11.0.0-rc.3`) in place of its own mint. That delivers §5's `OnStarting` placement for sign-in
+  (reason 1). ~~Reason 2 is **not** delivered while the generator sits after `UseSparkAntiforgery()`;
+  see the status table in the plan.~~ Reason 2 is delivered too: the generator now sits above the gate,
+  proven red → green by `XsrfEnforcementTests.The_gates_refusal_carries_a_fresh_token_…`, and
+  reason 3 by `XsrfMintingPlacementTests.A_response_rewritten_by_the_exception_handler_…` (plan
+  status table). The one
+  difference from Spark's old mint is cache headers: the package forces any `Cache-Control` on a
+  minted response to `private`, so the `public` coverage badge opts out with `[SkipXsrfToken]`
+  (#89).
 - **The client's existing `csrfRefresh()` calls stay.** Redundant for sign-in after §5, but removing
   them breaks 8 assertions across 2 spec files and creates a client/server version floor, for a
   round trip that is cheap.

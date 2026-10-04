@@ -137,9 +137,9 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         var kept = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, KeptRepoId));
         var gone = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
 
-        Assert.Equal(RepositoryConnection.Connected, kept!.Connection);
-        Assert.Equal(RepositoryConnection.Disconnected, gone!.Connection);
-        Assert.Equal(DisconnectedReasons.RemovedFromInstallation, gone.DisconnectedReason);
+        kept!.Connection.Should().Be(RepositoryConnection.Connected);
+        gone!.Connection.Should().Be(RepositoryConnection.Disconnected);
+        gone.DisconnectedReason.Should().Be(DisconnectedReasons.RemovedFromInstallation);
     }
 
     [Fact]
@@ -152,14 +152,14 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         // The dangerous case. "GitHub did not answer" must never be read as "the installation holds
         // nothing", or one bad night disconnects every repository the service knows about.
         var github = new FakeInstallationRepositories { Throws = new HttpRequestException("connection reset") };
-        await Assert.ThrowsAsync<HttpRequestException>(() => CreateReconciler(session, github).ReconcileAsync(account));
+        await new Func<Task>(() => CreateReconciler(session, github).ReconcileAsync(account)).Should().ThrowExactlyAsync<HttpRequestException>();
 
         var kept = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, KeptRepoId));
         var gone = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
 
-        Assert.Equal(RepositoryConnection.Connected, kept!.Connection);
-        Assert.Equal(RepositoryConnection.Connected, gone!.Connection);
-        Assert.Equal(InstallationId, (await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, AccountId)))!.InstallationId);
+        kept!.Connection.Should().Be(RepositoryConnection.Connected);
+        gone!.Connection.Should().Be(RepositoryConnection.Connected);
+        ((await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, AccountId)))!.InstallationId).Should().Be(InstallationId);
     }
 
     [Fact]
@@ -175,10 +175,10 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         {
             Throws = new ApiException("bad gateway", System.Net.HttpStatusCode.BadGateway),
         };
-        await Assert.ThrowsAsync<ApiException>(() => CreateReconciler(session, github).ReconcileAsync(account));
+        await new Func<Task>(() => CreateReconciler(session, github).ReconcileAsync(account)).Should().ThrowExactlyAsync<ApiException>();
 
         var gone = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
-        Assert.Equal(RepositoryConnection.Connected, gone!.Connection);
+        gone!.Connection.Should().Be(RepositoryConnection.Connected);
     }
 
     [Fact]
@@ -193,13 +193,13 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         await session.SaveChangesAsync();
 
         var reloaded = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, AccountId));
-        Assert.Null(reloaded!.InstallationId);
+        reloaded!.InstallationId.Should().NotHaveValue();
 
         foreach (var id in new[] { KeptRepoId, GoneRepoId })
         {
             var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, id));
-            Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-            Assert.Equal(DisconnectedReasons.IntegrationRemoved, repository.DisconnectedReason);
+            repository!.Connection.Should().Be(RepositoryConnection.Disconnected);
+            repository.DisconnectedReason.Should().Be(DisconnectedReasons.IntegrationRemoved);
         }
     }
 
@@ -218,9 +218,9 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         await session.SaveChangesAsync();
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, KeptRepoId));
-        Assert.Equal("acme/renamed", repository!.FullName);
-        Assert.Equal("renamed", repository.Name);
-        Assert.Contains("acme/kept", repository.PreviousFullNames);
+        repository!.FullName.Should().Be("acme/renamed");
+        repository.Name.Should().Be("renamed");
+        repository.PreviousFullNames.Should().Contain("acme/kept");
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         await session.SaveChangesAsync();
 
         var reloaded = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
-        Assert.Equal(RepositoryConnection.Connected, reloaded!.Connection);
-        Assert.Null(reloaded.DisconnectedReason);
+        reloaded!.Connection.Should().Be(RepositoryConnection.Connected);
+        reloaded.DisconnectedReason.Should().BeNull();
     }
 }

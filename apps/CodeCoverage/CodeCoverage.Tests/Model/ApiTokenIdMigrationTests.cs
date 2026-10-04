@@ -65,9 +65,9 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
         await RunAsync(store);
 
         var tokens = await AllAsync(store);
-        Assert.Single(tokens);
-        Assert.Equal(Hash, tokens[0].Hash);
-        Assert.DoesNotContain(Hash, tokens[0].Id);
+        tokens.Should().ContainSingle();
+        tokens[0].Hash.Should().Be(Hash);
+        tokens[0].Id.Should().NotContain(Hash);
     }
 
     [Fact]
@@ -79,12 +79,12 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
         await RunAsync(store);
 
         var token = (await AllAsync(store))[0];
-        Assert.Equal("Account", token.Scope);
+        token.Scope.Should().Be("Account");
         // Read from the raw document: a later migration (M_202610021200) turns it into Account.
         using (var raw = store.OpenAsyncSession())
-            Assert.Equal("MintPlayer", (await raw.LoadAsync<Dictionary<string, object?>>(token.Id))["AccountLogin"]?.ToString());
-        Assert.Equal("MintPlayer token", token.Description);
-        Assert.Equal(new DateTime(2026, 8, 13, 10, 49, 57, DateTimeKind.Utc), token.CreatedAtUtc.ToUniversalTime());
+            ((await raw.LoadAsync<Dictionary<string, object?>>(token.Id))["AccountLogin"]?.ToString()).Should().Be("MintPlayer");
+        token.Description.Should().Be("MintPlayer token");
+        token.CreatedAtUtc.ToUniversalTime().Should().Be(new DateTime(2026, 8, 13, 10, 49, 57, DateTimeKind.Utc));
     }
 
     /// <summary>
@@ -100,8 +100,8 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
         await RunAsync(store);
 
         using var session = store.OpenAsyncSession();
-        Assert.Null(await session.LoadAsync<ApiToken>($"ApiTokens/{Hash}"));
-        Assert.Single(await AllAsync(store));
+        (await session.LoadAsync<ApiToken>($"ApiTokens/{Hash}")).Should().BeNull();
+        (await AllAsync(store)).Should().ContainSingle();
     }
 
     /// <summary>
@@ -120,8 +120,8 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
         await RunAsync(store);
         var second = (await AllAsync(store)).Single();
 
-        Assert.Equal(first.Id, second.Id);
-        Assert.Equal(first.Hash, second.Hash);
+        second.Id.Should().Be(first.Id);
+        second.Hash.Should().Be(first.Hash);
     }
 
     /// <summary>
@@ -144,7 +144,7 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
         await RunAsync(store);
 
         var tokens = await AllAsync(store);
-        Assert.Single(tokens);
-        Assert.Equal(id, tokens[0].Id);
+        tokens.Should().ContainSingle();
+        tokens[0].Id.Should().Be(id);
     }
 }

@@ -94,8 +94,8 @@ public class UploadsControllerInputBoundsTests
 
         var result = await CreateController().Upload(form, CancellationToken.None);
 
-        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
-        Assert.Contains("Too many report files", bad.Value!.ToString());
+        var bad = result.Result.Should().BeOfType<BadRequestObjectResult>().Which;
+        bad.Value!.ToString().Should().Contain("Too many report files");
     }
 
     /// <summary>
@@ -127,7 +127,7 @@ public class UploadsControllerInputBoundsTests
         }
 
         if (result.Result is BadRequestObjectResult bad)
-            Assert.DoesNotContain("Too many report files", bad.Value!.ToString());
+            bad.Value!.ToString().Should().NotContain("Too many report files");
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class UploadsControllerInputBoundsTests
 
         var result = await CreateController().Upload(form, CancellationToken.None);
 
-        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
-        Assert.Contains("file list is too large", bad.Value!.ToString());
+        var bad = result.Result.Should().BeOfType<BadRequestObjectResult>().Which;
+        bad.Value!.ToString().Should().Contain("file list is too large");
     }
 }

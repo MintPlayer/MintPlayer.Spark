@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark</PackageId>
-		<Version>11.0.0-preview.95</Version>
+		<Version>11.0.0-preview.96</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
@@ -80,6 +80,7 @@
 
 	<ItemGroup>
 	  <PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.3.0-rc.0" />
+	  <PackageReference Include="MintPlayer.AspNetCore.SpaServices.Xsrf" Version="11.0.0-rc.3" />
 	  <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 	</ItemGroup>
 

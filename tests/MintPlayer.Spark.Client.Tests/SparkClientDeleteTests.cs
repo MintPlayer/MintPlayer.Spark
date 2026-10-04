@@ -61,8 +61,7 @@ public class SparkClientDeleteTests
         handler.EnqueueStatus(HttpStatusCode.NotFound);
         using (client)
         {
-            var ex = await Assert.ThrowsAsync<SparkClientException>(
-                () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1"));
+            var ex = (await new Func<Task>(() => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
             ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
         }
     }
@@ -74,8 +73,7 @@ public class SparkClientDeleteTests
         handler.EnqueueStatus(HttpStatusCode.Forbidden);
         using (client)
         {
-            var ex = await Assert.ThrowsAsync<SparkClientException>(
-                () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1"));
+            var ex = (await new Func<Task>(() => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1")).Should().ThrowExactlyAsync<SparkClientException>()).Which;
             ex.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         }
     }

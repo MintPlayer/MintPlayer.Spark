@@ -89,8 +89,8 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var handler = await CreateAsync(session, header);
         var result = await handler.AuthenticateAsync();
 
-        Assert.False(result.Succeeded);
-        Assert.False(result.Failure is not null, "an absent or foreign credential must be NoResult, not Fail");
+        result.Succeeded.Should().BeFalse();
+        result.Failure.Should().BeNull("an absent or foreign credential must be NoResult, not Fail");
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var handler = await CreateAsync(session, $"Bearer {ApiTokenService.GenerateTokenValue()}");
         var result = await handler.AuthenticateAsync();
 
-        Assert.NotNull(result.Failure);
+        result.Failure.Should().NotBeNull();
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var handler = await CreateAsync(session, $"Bearer {value}");
         var result = await handler.AuthenticateAsync();
 
-        Assert.NotNull(result.Failure);
+        result.Failure.Should().NotBeNull();
     }
 
     /// <summary>
@@ -137,24 +137,24 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var handler = await CreateAsync(session, $"{scheme} {value}");
         var result = await handler.AuthenticateAsync();
 
-        Assert.True(result.Succeeded, result.Failure?.Message);
+        result.Succeeded.Should().BeTrue(result.Failure?.Message);
 
         var principal = result.Principal!;
-        Assert.Equal("Account", principal.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value);
+        (principal.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value).Should().Be("Account");
         // The account document id — forge and numeric id in one value — and exactly one of it.
-        Assert.Equal("Accounts/github/42", principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value);
-        Assert.Single(principal.FindAll(ApiTokenAuthenticationHandler.AccountClaim));
+        (principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value).Should().Be("Accounts/github/42");
+        principal.FindAll(ApiTokenAuthenticationHandler.AccountClaim).Should().ContainSingle();
         // The retired id/provider pair is gone: nothing may reassemble an account from halves.
-        Assert.Null(principal.FindFirst("covt:accountid"));
-        Assert.Null(principal.FindFirst("covt:provider"));
-        Assert.Equal(Repository.DocumentId(EForgeProvider.GitHub, 777), principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
+        principal.FindFirst("covt:accountid").Should().BeNull();
+        principal.FindFirst("covt:provider").Should().BeNull();
+        (principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value).Should().Be(Repository.DocumentId(EForgeProvider.GitHub, 777));
 
         // The hash, never the token value: anything downstream that logs the principal must not be
         // able to leak a working credential.
         var hash = principal.FindFirst(ApiTokenAuthenticationHandler.TokenHashClaim)?.Value;
-        Assert.NotNull(hash);
-        Assert.DoesNotContain(value, hash);
-        Assert.Equal(ApiTokenService.Hash(value), hash);
+        hash.Should().NotBeNull();
+        hash.Should().NotContain(value);
+        hash.Should().Be(ApiTokenService.Hash(value));
     }
 
     /// <summary>
@@ -180,14 +180,14 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var handler = await CreateAsync(session, $"Bearer {value}");
         var result = await handler.AuthenticateAsync();
 
-        Assert.True(result.Succeeded, result.Failure?.Message);
+        result.Succeeded.Should().BeTrue(result.Failure?.Message);
         var claims = result.Principal!
             .FindAll(ApiTokenAuthenticationHandler.RepositoryClaim)
             .Select(c => c.Value)
             .OrderBy(v => v, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal([Repository.DocumentId(EForgeProvider.GitHub, 777), Repository.DocumentId(EForgeProvider.GitHub, 888)], claims);
+        claims.Should().Equal([Repository.DocumentId(EForgeProvider.GitHub, 777), Repository.DocumentId(EForgeProvider.GitHub, 888)]);
     }
 
     /// <summary>
@@ -211,8 +211,8 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var handler = await CreateAsync(session, $"Bearer {value}");
         var result = await handler.AuthenticateAsync();
 
-        Assert.True(result.Succeeded, result.Failure?.Message);
-        Assert.Null(result.Principal!.FindFirst(ApiTokenAuthenticationHandler.AccountClaim));
-        Assert.Null(result.Principal!.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim));
+        result.Succeeded.Should().BeTrue(result.Failure?.Message);
+        result.Principal!.FindFirst(ApiTokenAuthenticationHandler.AccountClaim).Should().BeNull();
+        result.Principal!.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim).Should().BeNull();
     }
 }

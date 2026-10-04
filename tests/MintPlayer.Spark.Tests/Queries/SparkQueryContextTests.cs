@@ -121,7 +121,7 @@ public class SparkQueryInfoTests
             .Select(p => p.Name)
             .ToArray();
 
-        Assert.Empty(settable);
+        settable.Should().BeEmpty();
     }
 
     /// <summary>
@@ -143,7 +143,7 @@ public class SparkQueryInfoTests
 
         var info = SparkQueryInfo.From(query);
 
-        Assert.NotSame(query.SortColumns, info.SortColumns);
-        Assert.Single(info.SortColumns);
+        info.SortColumns.Should().NotBeSameAs(query.SortColumns);
+        info.SortColumns.Should().ContainSingle();
     }
 }

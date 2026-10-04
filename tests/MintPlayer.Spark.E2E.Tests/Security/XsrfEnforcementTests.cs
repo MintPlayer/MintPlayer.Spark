@@ -112,19 +112,17 @@ public class XsrfEnforcementTests
     }
 
     /// <summary>
-    /// The paired positive — and the <c>csrf-refresh</c> in the middle is not boilerplate, it is the
-    /// behaviour this whole branch documents.
+    /// The paired positive, through the path the Angular client takes: <c>SparkAuthService.login()</c>
+    /// still calls <c>csrf-refresh</c> after signing in, so this keeps that sequence working.
     /// </summary>
     /// <remarks>
-    /// ⚠️ The token minted on the sign-in response is bound to the <b>anonymous</b> principal, because
-    /// Spark mints before the handler runs and the handler is what signs the user in. So immediately
-    /// after login the client holds a token that is already wrong for the identity it now has, and
-    /// the next mutating call is refused until it asks for a fresh one. That is exactly why
-    /// <c>SparkAuthService.login()</c> calls <c>csrfRefresh()</c> before <c>checkAuth()</c>, and why
-    /// moving the mint into <c>Response.OnStarting</c> is worth doing — it removes this round trip
-    /// for sign-in (though not for sign-out; see the PRD).
+    /// <s>⚠️ The token minted on the sign-in response is bound to the <b>anonymous</b> principal, because
+    /// Spark mints before the handler runs</s> — superseded by #452: the mint now runs in
+    /// <c>Response.OnStarting</c>, after the handler, so the refresh is no longer needed after sign-in
+    /// (<see cref="A_mutating_call_right_after_sign_in_succeeds_without_csrf_refresh"/>). It stays
+    /// here because the client still makes it and must keep getting a 200.
     /// <para>
-    /// An earlier version of this test omitted the refresh and asserted 200. It failed, correctly,
+    /// Before #452 a version of this test omitted the refresh and asserted 200. It failed, correctly,
     /// and the failure was the test's, not the server's.
     /// </para>
     /// </remarks>
@@ -140,6 +138,63 @@ public class XsrfEnforcementTests
 
         ((int)response.StatusCode).Should().Be(200,
             "after csrf-refresh the client holds a token bound to the identity it actually has");
+    }
+
+    /// <summary>
+    /// #452 (plan M2): the token on the sign-in response is minted <b>after</b> the handler signed the
+    /// user in, so it is bound to the signed-in principal and the very next mutating call passes —
+    /// no <c>csrf-refresh</c> in between.
+    /// </summary>
+    /// <remarks>
+    /// Before #452 Spark minted before the handler, and this exact sequence returned 400:
+    /// <see cref="An_authenticated_mutating_call_with_a_token_succeeds"/> had to refresh first.
+    /// </remarks>
+    [Fact]
+    public async Task A_mutating_call_right_after_sign_in_succeeds_without_csrf_refresh()
+    {
+        using var session = await Session.StartAsync(_fixture.Host);
+        await session.SignInAsync(_fixture.Host);
+
+        var response = await session.PostAsync("/spark/auth/logout", new { }, session.XsrfToken);
+
+        ((int)response.StatusCode).Should().Be(200,
+            "the sign-in response's token is bound to the identity the sign-in established");
+    }
+
+    /// <summary>
+    /// #452 (PRD §5, reason 2): the antiforgery gate's own 400 carries a fresh token, so a client
+    /// holding a stale one recovers by retrying instead of having to know about <c>csrf-refresh</c>.
+    /// </summary>
+    /// <remarks>
+    /// Sign-out is the realistic way to end up stale: <c>SignOutAsync</c> does not reset
+    /// <c>HttpContext.User</c>, so the token minted on the sign-out response is still bound to the
+    /// user who just left, and the next anonymous POST (signing in again) is refused. That refusal
+    /// only carries a new cookie when <c>UseAntiforgeryGenerator()</c> is registered <b>above</b>
+    /// <c>UseSparkAntiforgery()</c>: the gate short-circuits, so a generator registered below it never
+    /// gets to add its <c>OnStarting</c> callback. With it below, the retry repeats the stale token
+    /// and is refused again.
+    /// </remarks>
+    [Fact]
+    public async Task The_gates_refusal_carries_a_fresh_token_so_signing_in_again_after_sign_out_recovers()
+    {
+        using var session = await Session.StartAsync(_fixture.Host);
+        await session.SignInAsync(_fixture.Host);
+
+        var signOut = await session.PostAsync("/spark/auth/logout", new { }, session.XsrfToken);
+        ((int)signOut.StatusCode).Should().Be(200, "the signed-in token is valid for sign-out");
+
+        var credentials = new { email = _fixture.Host.AdminEmailAddress, password = _fixture.Host.AdminPass };
+        var staleToken = session.XsrfToken;
+
+        var refused = await session.PostAsync("/spark/auth/login?useCookies=true", credentials, staleToken);
+        ((int)refused.StatusCode).Should().Be(400,
+            "the token minted on the sign-out response is still bound to the user who signed out");
+        session.XsrfToken.Should().NotBe(staleToken,
+            "the gate's 400 must carry a fresh XSRF-TOKEN, or the client cannot recover by retrying");
+
+        var retried = await session.PostAsync("/spark/auth/login?useCookies=true", credentials, session.XsrfToken);
+        ((int)retried.StatusCode).Should().Be(200,
+            "the token from the refusal is bound to the anonymous principal now making the request");
     }
 
     // ---------------------------------------------------------- csrf-refresh

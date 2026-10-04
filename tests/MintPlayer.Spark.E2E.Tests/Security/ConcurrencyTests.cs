@@ -46,7 +46,7 @@ public class ConcurrencyTests
         stale.Id = created.Id;
         stale.Etag = etagV1;
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.UpdatePersistentObjectAsync(stale));
+        var ex = (await new Func<Task>(() => client.UpdatePersistentObjectAsync(stale)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
         ex.StatusCode.Should().Be(HttpStatusCode.Conflict,
             "the second writer's request is based on a stale version and must be rejected with 409 Conflict");
     }

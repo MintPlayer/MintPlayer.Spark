@@ -227,8 +227,7 @@ public class ClientOperationTests
 
         using (client)
         {
-            var thrown = await Assert.ThrowsAsync<SparkRetryRequiredException>(
-                () => client.UpdatePersistentObjectAsync(Car(Guid.NewGuid(), "cars/1")));
+            var thrown = (await new Func<Task>(() => client.UpdatePersistentObjectAsync(Car(Guid.NewGuid(), "cars/1"))).Should().ThrowExactlyAsync<SparkRetryRequiredException>()).Which;
 
             thrown.Operations.OfType<SparkNotifyOperation>().Single().Message.Should().Be("Saved 3 of 4");
             thrown.Operations.Should().NotContain(o => o is SparkRetryOperation);

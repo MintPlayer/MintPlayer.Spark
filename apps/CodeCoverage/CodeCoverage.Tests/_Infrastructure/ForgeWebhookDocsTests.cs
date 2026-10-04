@@ -27,10 +27,10 @@ public class ForgeWebhookDocsTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "docs")))
             dir = dir.Parent;
-        Assert.NotNull(dir);
+        dir.Should().NotBeNull();
 
         var path = Path.Combine(dir!.FullName, "docs", "code-coverage", "forge-webhooks.md");
-        Assert.True(File.Exists(path), $"Expected the forge webhook reference at {path}");
+        File.Exists(path).Should().BeTrue($"Expected the forge webhook reference at {path}");
         return File.ReadAllText(path);
     }
 
@@ -49,8 +49,7 @@ public class ForgeWebhookDocsTests
             .OrderBy(n => n)
             .ToArray();
 
-        Assert.True(missing.Length == 0,
-            "These events exist but the forge-webhook reference never mentions them, so a second "
+        missing.Should().BeEmpty("These events exist but the forge-webhook reference never mentions them, so a second "
             + "forge would not know to raise them:\n  " + string.Join("\n  ", missing));
     }
 
@@ -63,7 +62,7 @@ public class ForgeWebhookDocsTests
         var doc = ReferenceDoc();
 
         foreach (var provider in Enum.GetNames<EForgeProvider>())
-            Assert.Contains(provider, doc, StringComparison.OrdinalIgnoreCase);
+            doc.Should().ContainEquivalentOf(provider);
     }
 
     /// <summary>
@@ -74,7 +73,7 @@ public class ForgeWebhookDocsTests
     {
         var doc = ReferenceDoc();
 
-        Assert.True(doc.Length > 2000, "The reference looks truncated.");
-        Assert.Contains("IRecipient<ForgeWebhookMessage<", doc, StringComparison.Ordinal);
+        doc.Length.Should().BeGreaterThan(2000, "The reference looks truncated.");
+        doc.Should().Contain("IRecipient<ForgeWebhookMessage<");
     }
 }

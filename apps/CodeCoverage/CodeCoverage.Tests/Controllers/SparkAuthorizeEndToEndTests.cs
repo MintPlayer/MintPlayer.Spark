@@ -54,7 +54,7 @@ public class SparkAuthorizeEndToEndTests
     {
         using var client = CreateClient();
 
-        Assert.NotNull(client);
+        client.Should().NotBeNull();
     }
 
     /// <summary>
@@ -70,8 +70,8 @@ public class SparkAuthorizeEndToEndTests
 
         // 404, or an "unknown" badge, are both fine. What must NOT happen is 401/403 — that would
         // mean authorization is being applied to a deliberately public endpoint.
-        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        response.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
     }
 
     /// <summary>
@@ -86,12 +86,10 @@ public class SparkAuthorizeEndToEndTests
 
         var response = await client.GetAsync("/api/me/accounts");
 
-        Assert.True(
-            response.StatusCode is HttpStatusCode.Unauthorized
+        (response.StatusCode is HttpStatusCode.Unauthorized
                 or HttpStatusCode.Forbidden
                 or HttpStatusCode.Found
-                or HttpStatusCode.Redirect,
-            $"an anonymous caller reached /api/me/accounts and got {(int)response.StatusCode} "
+                or HttpStatusCode.Redirect).Should().BeTrue($"an anonymous caller reached /api/me/accounts and got {(int)response.StatusCode} "
             + $"{response.StatusCode}; the authorization filter did not run.");
     }
 
@@ -128,12 +126,10 @@ public class SparkAuthorizeEndToEndTests
 
         var response = await client.PostAsync(path, content: null);
 
-        Assert.True(
-            response.StatusCode is HttpStatusCode.Unauthorized
+        (response.StatusCode is HttpStatusCode.Unauthorized
                 or HttpStatusCode.Forbidden
                 or HttpStatusCode.Found
-                or HttpStatusCode.Redirect,
-            $"{path} answered {(int)response.StatusCode} to an anonymous caller.");
+                or HttpStatusCode.Redirect).Should().BeTrue($"{path} answered {(int)response.StatusCode} to an anonymous caller.");
     }
 
     // ----------------------------------------------------------------------------------
@@ -224,7 +220,7 @@ public class SparkAuthorizeEndToEndTests
         reference.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         response.StatusCode.Should().Be(reference.StatusCode, path);
         (await response.Content.ReadAsStringAsync()).Should().Be(await reference.Content.ReadAsStringAsync(), path);
-        response.Content.Headers.ContentType?.ToString().Should().Be(reference.Content.Headers.ContentType?.ToString(), path);
+        (response.Content.Headers.ContentType?.ToString()).Should().Be(reference.Content.Headers.ContentType?.ToString(), path);
         response.Headers.WwwAuthenticate.ToString().Should().Be(reference.Headers.WwwAuthenticate.ToString(), path);
     }
 

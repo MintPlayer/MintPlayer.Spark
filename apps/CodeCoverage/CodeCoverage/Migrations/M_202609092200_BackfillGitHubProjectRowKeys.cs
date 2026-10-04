@@ -87,7 +87,9 @@ public partial class M_202609092200_BackfillGitHubProjectRowKeys : ISparkMigrati
                         }
                     }
                     """,
-            }),
+            },
+            // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
+            new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }),
             token: cancellationToken);
 
         // Wait, so a throw here aborts startup and the migration is retried on the next start

@@ -99,10 +99,10 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, github) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "widgets", _ => true);
 
-        Assert.NotNull(resolution.Repository);
-        Assert.Equal(1, resolution.Repository!.GitHubId);
-        Assert.False(resolution.Redirect);
-        Assert.False(github.AppClients > 0);
+        resolution.Repository.Should().NotBeNull();
+        resolution.Repository!.GitHubId.Should().Be(1);
+        resolution.Redirect.Should().BeFalse();
+        github.AppClients.Should().Be(0);
     }
 
     [Fact]
@@ -114,9 +114,9 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, _) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "widgets", _ => true);
 
-        Assert.NotNull(resolution.Repository);
-        Assert.Equal(1, resolution.Repository!.GitHubId);
-        Assert.True(resolution.Redirect);
+        resolution.Repository.Should().NotBeNull();
+        resolution.Repository!.GitHubId.Should().Be(1);
+        resolution.Redirect.Should().BeTrue();
     }
 
     /// <summary>
@@ -135,9 +135,9 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, _) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "widgets", _ => true);
 
-        Assert.NotNull(resolution.Repository);
-        Assert.Equal(2, resolution.Repository!.GitHubId);
-        Assert.False(resolution.Redirect);
+        resolution.Repository.Should().NotBeNull();
+        resolution.Repository!.GitHubId.Should().Be(2);
+        resolution.Redirect.Should().BeFalse();
     }
 
     /// <summary>
@@ -156,7 +156,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, _) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "widgets", _ => true);
 
-        Assert.Null(resolution.Repository);
+        resolution.Repository.Should().BeNull();
     }
 
     [Fact]
@@ -168,8 +168,8 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, _) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "nobody", "nothing", _ => true);
 
-        Assert.Null(resolution.Repository);
-        Assert.False(resolution.Redirect);
+        resolution.Repository.Should().BeNull();
+        resolution.Redirect.Should().BeFalse();
     }
 
     /// <summary>
@@ -196,8 +196,8 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, github) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "some-stranger", "anything", _ => true);
 
-        Assert.Null(resolution.Repository);
-        Assert.False(github.AppClients > 0);
+        resolution.Repository.Should().BeNull();
+        github.AppClients.Should().Be(0);
     }
 
     /// <summary>
@@ -222,8 +222,8 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, github) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "some-old-name", _ => true);
 
-        Assert.Null(resolution.Repository);
-        Assert.True(github.AppClients > 0, "a stale name under a known owner is exactly what step three is for");
+        resolution.Repository.Should().BeNull();
+        github.AppClients.Should().BeGreaterThan(0, "a stale name under a known owner is exactly what step three is for");
     }
 
     /// <summary>
@@ -251,10 +251,10 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, github) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(provider, "acme", "widgets", _ => true);
 
-        Assert.NotNull(resolution.Repository);
-        Assert.Equal(expected, resolution.Repository!.GitHubId);
-        Assert.Equal(provider, resolution.Repository.Provider);
-        Assert.False(github.AppClients > 0);
+        resolution.Repository.Should().NotBeNull();
+        resolution.Repository!.GitHubId.Should().Be(expected);
+        resolution.Repository.Provider.Should().Be(provider);
+        github.AppClients.Should().Be(0);
     }
 
     /// <summary>
@@ -270,7 +270,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, _) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.Bitbucket, "acme", "widgets", _ => true);
 
-        Assert.Null(resolution.Repository);
+        resolution.Repository.Should().BeNull();
     }
 
     /// <summary>
@@ -284,8 +284,8 @@ public class RepositoryResolverTests : CoverageRavenTest
 
         var (resolver, _) = CreateResolver(session);
 
-        Assert.NotNull((await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "gadgets", _ => true)).Repository);
-        Assert.Null((await resolver.ResolveAsync(EForgeProvider.GitLab, "acme", "gadgets", _ => true)).Repository);
+        ((await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "gadgets", _ => true)).Repository).Should().NotBeNull();
+        ((await resolver.ResolveAsync(EForgeProvider.GitLab, "acme", "gadgets", _ => true)).Repository).Should().BeNull();
     }
 
     /// <summary>
@@ -308,7 +308,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         var (resolver, github) = CreateResolver(session);
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitLab, "acme", "unknown", _ => true);
 
-        Assert.Null(resolution.Repository);
-        Assert.False(github.AppClients > 0);
+        resolution.Repository.Should().BeNull();
+        github.AppClients.Should().Be(0);
     }
 }

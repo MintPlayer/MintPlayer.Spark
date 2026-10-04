@@ -54,8 +54,8 @@ public class RepositoryVisibilityTests : CoverageRavenTest
     {
         var repository = Repo(1, "acme", "widgets", connection: RepositoryConnection.Disconnected);
 
-        Assert.True(RepositoryVisibility.IsVisible(repository, []));
-        Assert.False(RepositoryVisibility.IsListed(repository, []));
+        RepositoryVisibility.IsVisible(repository, []).Should().BeTrue();
+        RepositoryVisibility.IsListed(repository, []).Should().BeFalse();
     }
 
     [Fact]
@@ -63,20 +63,20 @@ public class RepositoryVisibilityTests : CoverageRavenTest
     {
         var repository = Repo(1, "acme", "widgets", connection: RepositoryConnection.Disconnected);
 
-        Assert.True(RepositoryVisibility.IsListed(repository, Owners("acme")));
+        RepositoryVisibility.IsListed(repository, Owners("acme")).Should().BeTrue();
     }
 
     [Fact]
     public void A_connected_public_repository_is_listed_for_everyone()
     {
-        Assert.True(RepositoryVisibility.IsListed(Repo(1, "acme", "widgets"), []));
+        RepositoryVisibility.IsListed(Repo(1, "acme", "widgets"), []).Should().BeTrue();
     }
 
     [Fact]
     public void A_private_repository_is_never_listed_to_a_stranger()
     {
-        Assert.False(RepositoryVisibility.IsListed(Repo(1, "acme", "secret", isPrivate: true), []));
-        Assert.True(RepositoryVisibility.IsListed(Repo(1, "acme", "secret", isPrivate: true), Owners("acme")));
+        RepositoryVisibility.IsListed(Repo(1, "acme", "secret", isPrivate: true), []).Should().BeFalse();
+        RepositoryVisibility.IsListed(Repo(1, "acme", "secret", isPrivate: true), Owners("acme")).Should().BeTrue();
     }
 
     /// <summary>
@@ -95,11 +95,11 @@ public class RepositoryVisibilityTests : CoverageRavenTest
         var github = Repo(1, "acme", "secret", isPrivate: true);
 
         // Holding the GitHub owner grants nothing on GitLab, and vice versa.
-        Assert.False(RepositoryVisibility.IsListed(gitlab, Owners("acme")));
-        Assert.False(RepositoryVisibility.IsVisible(gitlab, Owners("acme")));
+        RepositoryVisibility.IsListed(gitlab, Owners("acme")).Should().BeFalse();
+        RepositoryVisibility.IsVisible(gitlab, Owners("acme")).Should().BeFalse();
 
-        Assert.True(RepositoryVisibility.IsListed(github, Owners("acme")));
-        Assert.True(RepositoryVisibility.IsVisible(github, Owners("acme")));
+        RepositoryVisibility.IsListed(github, Owners("acme")).Should().BeTrue();
+        RepositoryVisibility.IsVisible(github, Owners("acme")).Should().BeTrue();
     }
 
     /// <summary>
@@ -134,7 +134,7 @@ public class RepositoryVisibilityTests : CoverageRavenTest
                 .Where(RepositoryVisibility.ListingFilter([]))
                 .ToListAsync();
 
-            Assert.Single(listed);
+            listed.Should().ContainSingle();
         }
     }
 }

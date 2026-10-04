@@ -101,4 +101,27 @@
 		<Error Condition="'@(_SparkEntityLibraryAspNet)' != ''" Code="SPARKLIB001"
 			Text="$(MSBuildProjectName) is an entity library (SparkEntityLibrary=true) but depends on the ASP.NET Core shared framework (Microsoft.AspNetCore.App), directly or through a ProjectReference/PackageReference. Reference MintPlayer.Spark.Attributes, MintPlayer.Spark.Model and the plain *.Abstractions packages, never MintPlayer.Spark.Abstractions or another Web-SDK project." />
 	</Target>
+
+	<!--
+	  Test projects assert with MintPlayer.Assertions only (#452). xUnit's Assert is banned, and the
+	  ban is an error, so a new call fails the build (RS0030) instead of slowly re-mixing two assertion
+	  styles. Mind the argument order when converting: Assert.Equal(expected, actual) is
+	  actual.Should().Be(expected).
+
+	  ⚠️ Keyed on the project NAME, not IsTestProject. IsTestProject comes from Microsoft.NET.Test.Sdk's
+	  package props, which restore does not import, so a PackageReference conditioned on it is never
+	  restored and the ban silently does nothing (measured 2026-10-04: a probe Xunit.Assert.True built
+	  clean). Every test project is named *.Tests; MintPlayer.Spark.Testing, the published package that
+	  references xunit, is not.
+	-->
+	<PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+		<WarningsAsErrors>$(WarningsAsErrors);RS0030</WarningsAsErrors>
+	</PropertyGroup>
+	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+		<PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.Tests.txt" />
+	</ItemGroup>
 </Project>

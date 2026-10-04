@@ -547,8 +547,8 @@ public class GitHubRestAdapterTests : CoverageRavenTest
             """{"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/checks/runs#create-a-check-run"}""");
         using var session = store.OpenAsyncSession();
 
-        var ex = await Assert.ThrowsAsync<ForgeAccessDeniedException>(() => Publisher(session, github).PublishStatusAsync(
-            repository, Head, "coverage/project", new ForgeVerdict(EForgeOutcome.Success, "t", "s"), existingId: null));
+        var ex = (await new Func<Task>(() => Publisher(session, github).PublishStatusAsync(
+            repository, Head, "coverage/project", new ForgeVerdict(EForgeOutcome.Success, "t", "s"), existingId: null)).Should().ThrowExactlyAsync<ForgeAccessDeniedException>()).Which;
 
         ex.Message.Should().Contain("Resource not accessible by integration");
     }
@@ -560,8 +560,8 @@ public class GitHubRestAdapterTests : CoverageRavenTest
         var repository = await SeedInstalledAsync(store, 910053, installationId: null);
         using var session = store.OpenAsyncSession();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Publisher(session, new StubGitHub()).PublishStatusAsync(
-            repository, Head, "coverage/project", new ForgeVerdict(EForgeOutcome.Success, "t", "s"), existingId: null));
+        await new Func<Task>(() => Publisher(session, new StubGitHub()).PublishStatusAsync(
+            repository, Head, "coverage/project", new ForgeVerdict(EForgeOutcome.Success, "t", "s"), existingId: null)).Should().ThrowExactlyAsync<InvalidOperationException>();
     }
 
     [Fact]
@@ -689,6 +689,6 @@ public class GitHubRestAdapterTests : CoverageRavenTest
     {
         var github = new StubGitHub();
 
-        await Assert.ThrowsAsync<Octokit.NotFoundException>(() => new InstallationRepositories(github).ListAsync(5, max: 100));
+        await new Func<Task>(() => new InstallationRepositories(github).ListAsync(5, max: 100)).Should().ThrowExactlyAsync<Octokit.NotFoundException>();
     }
 }

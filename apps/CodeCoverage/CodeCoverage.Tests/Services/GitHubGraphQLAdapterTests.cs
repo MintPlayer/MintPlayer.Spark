@@ -204,8 +204,7 @@ public class GitHubGraphQLAdapterTests
     {
         var github = new StubGitHub().OnGraphQL(IssueItems("I_kwDOissue", hasNextPage: false, ("PVT_board", "PVTI_here")));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => Cards(github).MoveIssueAsync(Board(statusFieldId: null), "acme", "widget", 5, "opt", addIfMissing: false));
+        var ex = (await new Func<Task>(() => Cards(github).MoveIssueAsync(Board(statusFieldId: null), "acme", "widget", 5, "opt", addIfMissing: false)).Should().ThrowExactlyAsync<InvalidOperationException>()).Which;
 
         ex.Message.Should().Contain("Run Sync columns");
     }

@@ -171,10 +171,10 @@ public class ContributionsSurfaceTests : SparkTestDriver
         var rows = Lyrics(await LoadSongAsync(host)).Objects!;
 
         var en = rows.Single(r => r.Id == "en/Latn");
-        en["ContributorName"].Value?.ToString().Should().Be("Bob");
+        (en["ContributorName"].Value?.ToString()).Should().Be("Bob");
         en["UpdatedAt"].Value.Should().NotBeNull();
         Convert.ToInt32(en["ContributionCount"].Value?.ToString()).Should().Be(2);
-        rows.Single(r => r.Id == "ko/Kore")["ContributorName"].Value?.ToString().Should().Be("Bob");
+        (rows.Single(r => r.Id == "ko/Kore")["ContributorName"].Value?.ToString()).Should().Be("Bob");
 
         var current = await ReadAsync<CoSongLyricsCurrent>(CurrentId("en", "Latn"));
         JsonSerializer.Serialize(current).Should().NotContain("Bob", "names are resolved at read time, never stored");
@@ -317,7 +317,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
         await AddAsync(host, "en", "Latn", "alice's text");
 
         host.Identity.Id = Moderator;
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => host.Client.DeleteAsLoadedAsync(CurrentTypeId, CurrentId("en", "Latn")));
+        var ex = (await new Func<Task>(() => host.Client.DeleteAsLoadedAsync(CurrentTypeId, CurrentId("en", "Latn"))).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound, "a refusal is indistinguishable from a missing row");
         (await ReadAsync<CoSongLyricsContribution>(ContributionId("en", "Latn", Alice)))!.IsDeleted.Should().BeFalse();
@@ -362,7 +362,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
         entry.Reason.Should().Be("reverted");
 
         host.Identity.Id = Alice;
-        Lyrics(await LoadSongAsync(host)).Objects!.Single()["Text"].Value?.ToString().Should().Be("alice's text");
+        (Lyrics(await LoadSongAsync(host)).Objects!.Single()["Text"].Value?.ToString()).Should().Be("alice's text");
     }
 
     [Fact]

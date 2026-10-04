@@ -79,7 +79,7 @@ public class DisconnectedReasonRenameTests : CoverageRavenTest
 
         await RunAsync(store);
 
-        Assert.Equal(expected, await ReasonAsync(store));
+        (await ReasonAsync(store)).Should().Be(expected);
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public class DisconnectedReasonRenameTests : CoverageRavenTest
 
         await RunAsync(store);
 
-        Assert.Equal(DisconnectedReasons.RemovedFromInstallation, await ReasonAsync(store));
+        (await ReasonAsync(store)).Should().Be(DisconnectedReasons.RemovedFromInstallation);
     }
 
     /// <summary>
@@ -111,7 +111,7 @@ public class DisconnectedReasonRenameTests : CoverageRavenTest
         await RunAsync(store);
         await RunAsync(store);
 
-        Assert.Equal(DisconnectedReasons.IntegrationRemoved, await ReasonAsync(store));
+        (await ReasonAsync(store)).Should().Be(DisconnectedReasons.IntegrationRemoved);
     }
 
     /// <summary>
@@ -136,7 +136,7 @@ public class DisconnectedReasonRenameTests : CoverageRavenTest
 
         await RunAsync(store);
 
-        Assert.Null(await ReasonAsync(store));
+        (await ReasonAsync(store)).Should().BeNull();
     }
 
     /// <summary>
@@ -172,6 +172,6 @@ public class DisconnectedReasonRenameTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         var account = await verify.LoadAsync<Account>(id);
-        Assert.Equal(DisconnectedReasons.IntegrationRemoved, account.DisconnectedReason);
+        account.DisconnectedReason.Should().Be(DisconnectedReasons.IntegrationRemoved);
     }
 }

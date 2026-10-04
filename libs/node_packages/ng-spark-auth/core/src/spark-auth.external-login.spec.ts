@@ -79,6 +79,10 @@ describe('SparkAuthService.loginWithProvider', () => {
     postFromCallback({ type: 'spark:external-login', success: true });
     await flush();
 
+    // The identity changed, so the token is refreshed before the session is re-read.
+    http.expectOne('/spark/auth/csrf-refresh').flush(null);
+    await flush();
+
     http.expectOne('/spark/auth/me').flush({
       isAuthenticated: true, userName: 'jane', email: 'jane@example.com', roles: [],
     });
@@ -86,6 +90,25 @@ describe('SparkAuthService.loginWithProvider', () => {
     await expect(promise).resolves.toEqual({ success: true });
     expect(service.isAuthenticated()).toBe(true);
     expect(popup.close).toHaveBeenCalled();
+  });
+
+  it('still resolves the sign-in when the token refresh fails', async () => {
+    open.mockReturnValue(fakePopup() as unknown as Window);
+
+    const promise = service.loginWithProvider('GitHub');
+    postFromCallback({ type: 'spark:external-login', success: true });
+    await flush();
+
+    // The sign-in already happened in the popup; a failed refresh must not leave the flow hanging.
+    http.expectOne('/spark/auth/csrf-refresh').flush(null, { status: 500, statusText: 'Server Error' });
+    await flush();
+
+    http.expectOne('/spark/auth/me').flush({
+      isAuthenticated: true, userName: 'jane', email: 'jane@example.com', roles: [],
+    });
+
+    await expect(promise).resolves.toEqual({ success: true });
+    expect(service.isAuthenticated()).toBe(true);
   });
 
   it('surfaces the server-side refusal code without signing anyone in', async () => {

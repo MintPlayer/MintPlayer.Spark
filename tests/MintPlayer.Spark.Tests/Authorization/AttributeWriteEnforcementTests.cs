@@ -225,7 +225,7 @@ public class AttributeWriteEnforcementTests : SparkTestDriver
         json.Should().NotContain("kode-stored", "the Read-denied stored value must not be echoed");
         saved.Attributes.Select(a => a.Name).Should().NotContain("Code");
         saved["Pin"].Value.Should().BeNull();
-        saved["Name"].Value?.ToString().Should().Be("renamed");
+        (saved["Name"].Value?.ToString()).Should().Be("renamed");
         saved.Etag.Should().NotBeNullOrEmpty().And.NotBe(po.Etag, "the client needs the fresh etag for its next save");
         (await LoadAsync("items/1")).Pin.Should().Be("p0-stored", "the blank posted back did not wipe the stored value");
     }
@@ -387,8 +387,8 @@ public class AttributeWriteEnforcementTests : SparkTestDriver
         var loaded = await client.GetPersistentObjectAsync(NestedTypeId, created.Id!);
         var refreshed = await client.RefreshPersistentObjectAsync(loaded!, "Name");
 
-        loaded!["Name"].Value?.ToString().Should().Be("inner");
-        refreshed["Name"].Value?.ToString().Should().Be("inner");
+        (loaded!["Name"].Value?.ToString()).Should().Be("inner");
+        (refreshed["Name"].Value?.ToString()).Should().Be("inner");
     }
 
     // ---- helpers ----------------------------------------------------------------------------------

@@ -460,9 +460,11 @@ The comment goes when the routes move into `SparkAuthGroup`.
 
 ## Out of scope
 
-- ⚠️ **`MintPlayer.AspNetCore.SpaServices.Xsrf` is NOT being adopted, and this is settled** — no
+- ~~⚠️ **`MintPlayer.AspNetCore.SpaServices.Xsrf` is NOT being adopted, and this is settled** — no
   `Secure`, no `SameSite`; `XsrfCookieFlagTests` would fail the swap. Declined on evidence twice.
-  `11.0.0-rc.2` is published and the swap is tracked in MintPlayer.Spark#452; the pin stays at 10.5.0.
+  `11.0.0-rc.2` is published and the swap is tracked in MintPlayer.Spark#452; the pin stays at 10.5.0.~~
+  **Superseded 2026-10-04:** adopted in #452 at `11.0.0-rc.3`, outside this PRD's scope. The
+  package now sets `Secure` and `SameSite=Strict`, and `XsrfCookieFlagTests` passes.
 - **Spark's own XSRF mint placement** — `docs/xsrf_minting_plan.md` M1-M3.
 - **Modernising the 7 hand-read route values and 4 hand-deserialised bodies** to `[RouteParam]` /
   typed request endpoints. Legal today (MPEP008 skips raw endpoints) and tempting, but not this change.

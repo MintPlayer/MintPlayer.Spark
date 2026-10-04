@@ -5,6 +5,7 @@ using CodeCoverage.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -18,9 +19,17 @@ namespace CodeCoverage.Controllers;
 /// report data. Wrong/missing token renders "unknown" (never 404: a 404 would
 /// confirm the repo exists).
 /// </summary>
+/// <remarks>
+/// <c>[SkipXsrfToken]</c> keeps the badge out of the XSRF mint (#452) without taking it out of the
+/// pipeline. The "badges" rate limiter still runs; <c>.ShortCircuit()</c> would bypass it. A badge
+/// is an <c>&lt;img&gt;</c> fetched through camo and has no use for a CSRF token. Minting one would
+/// also add a per-user <c>Set-Cookie</c>, and the mint forces <c>public, max-age=300</c> to
+/// <c>private</c> on any such response, so camo would stop caching the badge.
+/// </remarks>
 [ApiController]
 [AllowAnonymous]
 [EnableRateLimiting("badges")]
+[SkipXsrfToken]
 public partial class BadgeController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;

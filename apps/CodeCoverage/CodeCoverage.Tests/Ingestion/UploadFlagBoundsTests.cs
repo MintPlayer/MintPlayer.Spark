@@ -74,7 +74,7 @@ public class UploadFlagBoundsTests : CoverageRavenTest
 
         var stored = await FlagsOfAsync(store, flags, fromFork: true);
 
-        Assert.Equal(4, stored.Length);
+        stored.Length.Should().Be(4);
     }
 
     [Fact]
@@ -85,7 +85,7 @@ public class UploadFlagBoundsTests : CoverageRavenTest
 
         var stored = await FlagsOfAsync(store, flags, fromFork: false);
 
-        Assert.Equal(32, stored.Length);
+        stored.Length.Should().Be(32);
     }
 
     /// <summary>
@@ -101,7 +101,7 @@ public class UploadFlagBoundsTests : CoverageRavenTest
 
         var stored = await FlagsOfAsync(store, "unit,integration", fromFork);
 
-        Assert.Equal(["unit", "integration"], stored);
+        stored.Should().Equal(["unit", "integration"]);
     }
 
     /// <summary>
@@ -115,7 +115,7 @@ public class UploadFlagBoundsTests : CoverageRavenTest
 
         var stored = await FlagsOfAsync(store, "unit,unit,UNIT, unit ", fromFork: false);
 
-        Assert.Equal(["unit"], stored);
+        stored.Should().Equal(["unit"]);
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public class UploadFlagBoundsTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
 
-        Assert.Empty(await FlagsOfAsync(store, null, fromFork: false));
-        Assert.Empty(await FlagsOfAsync(store, "  ,  ,", fromFork: false));
+        (await FlagsOfAsync(store, null, fromFork: false)).Should().BeEmpty();
+        (await FlagsOfAsync(store, "  ,  ,", fromFork: false)).Should().BeEmpty();
     }
 
     private sealed class SilentBus : IMessageBus

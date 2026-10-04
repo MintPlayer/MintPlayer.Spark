@@ -143,8 +143,8 @@ public class ForkContributionTests : CoverageRavenTest
         await Assemble(store, commitId);
 
         var repository = await LoadRepository(store);
-        Assert.Null(repository.LatestCoverage);
-        Assert.Null(repository.LatestCoverageSha);
+        repository.LatestCoverage.Should().BeNull();
+        repository.LatestCoverageSha.Should().BeNull();
     }
 
     [Fact]
@@ -158,8 +158,8 @@ public class ForkContributionTests : CoverageRavenTest
         await Assemble(store, commitId);
 
         var repository = await LoadRepository(store);
-        Assert.NotNull(repository.LatestCoverage);
-        Assert.Equal(sha, repository.LatestCoverageSha);
+        repository.LatestCoverage.Should().NotBeNull();
+        repository.LatestCoverageSha.Should().Be(sha);
     }
 
     /// <summary>
@@ -187,7 +187,7 @@ public class ForkContributionTests : CoverageRavenTest
         await Assemble(store, commitId);
 
         var repository = await LoadRepository(store);
-        Assert.NotNull(repository.LatestCoverage);
+        repository.LatestCoverage.Should().NotBeNull();
     }
 
     /// <summary>
@@ -206,8 +206,8 @@ public class ForkContributionTests : CoverageRavenTest
 
         var repository = await LoadRepository(store);
         // Untouched: still the seeded 10/10, not the feature branch's 1/2.
-        Assert.Equal(10, repository.LatestCoverage!.LinesCovered);
-        Assert.Null(repository.LatestCoverageSha);
+        repository.LatestCoverage!.LinesCovered.Should().Be(10);
+        repository.LatestCoverageSha.Should().BeNull();
     }
 
     [Fact]
@@ -220,7 +220,7 @@ public class ForkContributionTests : CoverageRavenTest
         await Assemble(store, commitId);
 
         var repository = await LoadRepository(store);
-        Assert.NotNull(repository.LatestCoverage);
+        repository.LatestCoverage.Should().NotBeNull();
     }
 
     // ── Baseline ────────────────────────────────────────────────────────────────────────────────
@@ -247,8 +247,8 @@ public class ForkContributionTests : CoverageRavenTest
 
         var resolved = await resolver.ResolveAsync(await LoadRepository(store), head, declaredBaseSha: null, CancellationToken.None);
 
-        Assert.Equal(ResolvedBase.None, resolved.Mode);
-        Assert.Null(resolved.ResolvedSha);
+        resolved.Mode.Should().Be(ResolvedBase.None);
+        resolved.ResolvedSha.Should().BeNull();
     }
 
     [Fact]
@@ -272,7 +272,7 @@ public class ForkContributionTests : CoverageRavenTest
 
         var resolved = await resolver.ResolveAsync(await LoadRepository(store), head, declaredBaseSha: null, CancellationToken.None);
 
-        Assert.Equal(baseSha, resolved.ResolvedSha);
+        resolved.ResolvedSha.Should().Be(baseSha);
     }
 
     // ── The absent field ───────────────────────────────────────────────────────
@@ -328,7 +328,7 @@ public class ForkContributionTests : CoverageRavenTest
         // vacuously against a document that still carries the field.
         var patched = patch.WaitForCompletion<Raven.Client.Documents.Operations.BulkOperationResult>(
             TimeSpan.FromSeconds(30));
-        Assert.Equal(1, patched.Total);
+        patched.Total.Should().Be(1);
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
@@ -337,7 +337,7 @@ public class ForkContributionTests : CoverageRavenTest
             .OfType<Commit>()
             .ToListAsync();
 
-        Assert.Contains(listed, c => c.Sha == sha);
+        listed.Should().Contain(c => c.Sha == sha);
     }
 
     // ── Provenance ──────────────────────────────────────────────────────────────────────────────
@@ -362,7 +362,7 @@ public class ForkContributionTests : CoverageRavenTest
                 .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
                 .BuildServiceProvider());
 
-        await Assert.ThrowsAsync<ArgumentException>(() => ingestor.IngestAsync(request));
+        await new Func<Task>(() => ingestor.IngestAsync(request)).Should().ThrowExactlyAsync<ArgumentException>();
     }
 
     /// <summary>The ingestor never reaches a broadcast in these tests; this only satisfies the ctor.</summary>
@@ -387,8 +387,8 @@ public class ForkContributionTests : CoverageRavenTest
         var firstParty = Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha);
         var fork = Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha, 42);
 
-        Assert.NotEqual(firstParty, fork);
-        Assert.Contains("/pr/42/", fork, StringComparison.Ordinal);
-        Assert.DoesNotContain("/pr/", firstParty, StringComparison.Ordinal);
+        fork.Should().NotBe(firstParty);
+        fork.Should().Contain("/pr/42/");
+        firstParty.Should().NotContain("/pr/");
     }
 }

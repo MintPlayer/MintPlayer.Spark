@@ -35,7 +35,9 @@ public partial class M_202608190900_BackfillBuildRun : ISparkMigration
                 // Mirrors Build.ComposeRun. CI run ids are ~11 digits, well inside
                 // the exact-integer range, so string concatenation is faithful.
                 Query = "from Builds update { this.Run = this.CiRunId + '.' + this.CiRunAttempt; }",
-            }),
+            },
+            // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
+            new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }),
             token: cancellationToken);
 
         // Wait, so a throw here aborts startup and the migration is retried on the

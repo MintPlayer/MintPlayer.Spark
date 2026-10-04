@@ -159,9 +159,9 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
     {
         var (required, exempt, unstated) = Classify(hosts.CoreFactory.GetService<EndpointDataSource>());
 
-        Assert.Equal(Sorted(CoreRequired), required);
-        Assert.Equal(Sorted(CoreExempt), exempt);
-        Assert.Equal(Sorted([]), unstated);
+        required.Should().Equal(Sorted(CoreRequired));
+        exempt.Should().Equal(Sorted(CoreExempt));
+        unstated.Should().Equal(Sorted([]));
     }
 
     [Fact]
@@ -172,9 +172,9 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
         var (required, exempt, unstated) = Classify(
             host.Services.GetRequiredService<EndpointDataSource>());
 
-        Assert.Equal(Sorted(AuthRequired), required);
-        Assert.Equal(Sorted(AuthExempt), exempt);
-        Assert.Equal(Sorted(AuthUnprotected), unstated);
+        required.Should().Equal(Sorted(AuthRequired));
+        exempt.Should().Equal(Sorted(AuthExempt));
+        unstated.Should().Equal(Sorted(AuthUnprotected));
     }
 
     /// <summary>
@@ -194,9 +194,8 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
 
         var metadata = login.Metadata.GetMetadata<IAntiforgeryMetadata>();
 
-        Assert.NotNull(metadata);
-        Assert.True(metadata!.RequiresValidation,
-            "POST /spark/auth/login must require an antiforgery token: without it an attacker page "
+        metadata.Should().NotBeNull();
+        metadata!.RequiresValidation.Should().BeTrue("POST /spark/auth/login must require an antiforgery token: without it an attacker page "
             + "can sign a victim's browser into the attacker's own account (login CSRF), and every "
             + "subsequent action the victim takes lands in an account the attacker controls.");
     }
@@ -216,9 +215,8 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
 
         var metadata = refresh.Metadata.GetMetadata<IAntiforgeryMetadata>();
 
-        Assert.NotNull(metadata);
-        Assert.False(metadata!.RequiresValidation,
-            "POST /spark/auth/csrf-refresh must NOT require an antiforgery token. Its whole purpose "
+        metadata.Should().NotBeNull();
+        metadata!.RequiresValidation.Should().BeFalse("POST /spark/auth/csrf-refresh must NOT require an antiforgery token. Its whole purpose "
             + "is to hand a fresh, correctly-bound token to a client whose old one just became "
             + "stale, so requiring a valid one first is a deadlock with no recovery.");
     }

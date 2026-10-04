@@ -104,8 +104,8 @@ public class UploadActionWindowsPathsTests : CoverageRavenTest
                         ["INPUT_DISABLE-SEARCH"] = "true",
                     });
 
-                Assert.True(exitCode == 0, $"The action failed (exit {exitCode}):\n{log}\n--- server (last 40 lines) ---\n{ActionDogfoodHarness.Tail(serverOutput, 40)}");
-                Assert.Contains("Upload accepted", log);
+                exitCode.Should().Be(0, $"The action failed (exit {exitCode}):\n{log}\n--- server (last 40 lines) ---\n{ActionDogfoodHarness.Tail(serverOutput, 40)}");
+                log.Should().Contain("Upload accepted");
 
                 await AssertFileMatchedAndCounted(store);
             }

@@ -61,10 +61,10 @@ public class ForgeEventContractTests
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "apps")))
             dir = dir.Parent;
-        Assert.NotNull(dir);
+        dir.Should().NotBeNull();
 
         var integration = Path.Combine(dir!.FullName, "apps", "CodeCoverage", "CodeCoverage.GithubIntegration");
-        Assert.True(Directory.Exists(integration), $"Expected the GitHub library at {integration}");
+        Directory.Exists(integration).Should().BeTrue($"Expected the GitHub library at {integration}");
 
         var source = string.Join('\n', Directory
             .EnumerateFiles(integration, "*.cs", SearchOption.AllDirectories)
@@ -83,8 +83,7 @@ public class ForgeEventContractTests
         var consumed = ConsumedEvents().Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
         var orphans = NeutralEvents().Select(t => t.Name).Where(n => !consumed.Contains(n)).OrderBy(n => n).ToArray();
 
-        Assert.True(orphans.Length == 0,
-            "These neutral events are declared but nothing consumes them. A second forge raising one "
+        orphans.Should().BeEmpty("These neutral events are declared but nothing consumes them. A second forge raising one "
             + "would find it silently dropped:\n  " + string.Join("\n  ", orphans));
     }
 
@@ -94,8 +93,7 @@ public class ForgeEventContractTests
         var produced = ProducedEventNames();
         var orphans = NeutralEvents().Select(t => t.Name).Where(n => !produced.Contains(n)).OrderBy(n => n).ToArray();
 
-        Assert.True(orphans.Length == 0,
-            "These neutral events are declared but GitHub never raises one. Either the fact is being "
+        orphans.Should().BeEmpty("These neutral events are declared but GitHub never raises one. Either the fact is being "
             + "handled inline — which is what a second forge would have to reimplement — or the event "
             + "is dead weight:\n  " + string.Join("\n  ", orphans));
     }
@@ -109,15 +107,15 @@ public class ForgeEventContractTests
         var events = NeutralEvents().Select(t => t.Name).ToArray();
 
         // The six the vocabulary is documented as having.
-        Assert.Contains(nameof(BranchCommitPushed), events);
-        Assert.Contains(nameof(PullRequestUpdated), events);
-        Assert.Contains(nameof(PullRequestMerged), events);
-        Assert.Contains(nameof(OwnerRenamed), events);
-        Assert.Contains(nameof(RepositoryRenamed), events);
-        Assert.Contains(nameof(RepositoryConnectionChanged), events);
+        events.Should().Contain(nameof(BranchCommitPushed));
+        events.Should().Contain(nameof(PullRequestUpdated));
+        events.Should().Contain(nameof(PullRequestMerged));
+        events.Should().Contain(nameof(OwnerRenamed));
+        events.Should().Contain(nameof(RepositoryRenamed));
+        events.Should().Contain(nameof(RepositoryConnectionChanged));
 
-        Assert.NotEmpty(ConsumedEvents());
-        Assert.NotEmpty(ProducedEventNames());
+        ConsumedEvents().Should().NotBeEmpty();
+        ProducedEventNames().Should().NotBeEmpty();
     }
 
     /// <summary>
@@ -137,12 +135,12 @@ public class ForgeEventContractTests
             .Select(t => t.Name)
             .ToArray();
 
-        Assert.NotEmpty(consumers);
-        Assert.All(consumers, name =>
+        consumers.Should().NotBeEmpty();
+        consumers.Should().AllSatisfy(name =>
         {
-            Assert.DoesNotContain("GitHub", name, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("GitLab", name, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("Bitbucket", name, StringComparison.OrdinalIgnoreCase);
+            name.Should().NotContainEquivalentOf("GitHub");
+            name.Should().NotContainEquivalentOf("GitLab");
+            name.Should().NotContainEquivalentOf("Bitbucket");
         });
     }
 }

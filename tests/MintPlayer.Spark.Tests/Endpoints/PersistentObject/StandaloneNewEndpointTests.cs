@@ -61,7 +61,7 @@ public class StandaloneNewEndpointTests(StandaloneNewEndpointHost host)
             Store, [TestModels.Person(PersonTypeId)], security: SparkTestSecurity.Empty);
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.NewPersistentObjectAsync(PersonTypeId));
+        var ex = (await new Func<Task>(() => client.NewPersistentObjectAsync(PersonTypeId)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -72,7 +72,7 @@ public class StandaloneNewEndpointTests(StandaloneNewEndpointHost host)
         var factory = host.Factory;
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.NewPersistentObjectAsync(Guid.NewGuid()));
+        var ex = (await new Func<Task>(() => client.NewPersistentObjectAsync(Guid.NewGuid())).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

@@ -47,13 +47,12 @@ public class CreateEndpointTests : SparkTestDriver
         // Create endpoint routes on PO.Name as the URL segment — override both Name and
         // ObjectTypeId so neither resolves server-side, proving the 404 path.
         var unknownName = $"unknown-type-{Guid.NewGuid():N}";
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.CreatePersistentObjectAsync(new PO
+        var ex = (await new Func<Task>(() => _client.CreatePersistentObjectAsync(new PO
             {
                 Name = unknownName,
                 ObjectTypeId = Guid.NewGuid(),
                 Attributes = [],
-            }));
+            })).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -96,8 +95,7 @@ public class CreateEndpointTests : SparkTestDriver
         await using var factory = new SparkEndpointFactory(Store, [typeWithRequired]);
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.CreatePersistentObjectAsync(new PO
+        var ex = (await new Func<Task>(() => client.CreatePersistentObjectAsync(new PO
             {
                 Name = "Person",
                 ObjectTypeId = typeWithRequired.PersistentObject.Id,
@@ -106,7 +104,7 @@ public class CreateEndpointTests : SparkTestDriver
                     new POA { Name = "FirstName", Value = "Alice" },
                     // LastName intentionally omitted
                 ],
-            }));
+            })).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
         ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

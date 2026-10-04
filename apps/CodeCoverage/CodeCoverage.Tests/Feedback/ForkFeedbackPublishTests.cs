@@ -127,10 +127,10 @@ public class ForkFeedbackPublishTests : CoverageRavenTest
         using var store = GetDocumentStore();
         var (comments, _) = await RunAsync(store, contributedFromFork: true);
 
-        var comment = Assert.Single(comments);
-        Assert.Equal(PullRequest, comment.PullRequestNumber);
-        Assert.Equal(Sha, comment.Sha);
-        Assert.Contains("Contributed from a fork", comment.Body, StringComparison.Ordinal);
+        var comment = comments.Should().ContainSingle().Which;
+        comment.PullRequestNumber.Should().Be(PullRequest);
+        comment.Sha.Should().Be(Sha);
+        comment.Body.Should().Contain("Contributed from a fork");
     }
 
     [Fact]
@@ -141,11 +141,11 @@ public class ForkFeedbackPublishTests : CoverageRavenTest
 
         // Both checks, not just one: a reviewer sees two rows and an absent one reads as "still
         // running" rather than "not applicable".
-        Assert.Equal(2, statuses.Count);
-        Assert.Contains(statuses, s => s.Name == "coverage/project");
-        Assert.Contains(statuses, s => s.Name == "coverage/patch");
-        Assert.All(statuses, s => Assert.Equal(EForgeOutcome.Neutral, s.Verdict.Outcome));
-        Assert.All(statuses, s => Assert.Contains("fork", s.Verdict.Title, StringComparison.OrdinalIgnoreCase));
+        statuses.Count.Should().Be(2);
+        statuses.Should().Contain(s => s.Name == "coverage/project");
+        statuses.Should().Contain(s => s.Name == "coverage/patch");
+        statuses.Should().AllSatisfy(s => s.Verdict.Outcome.Should().Be(EForgeOutcome.Neutral));
+        statuses.Should().AllSatisfy(s => s.Verdict.Title.Should().ContainEquivalentOf("fork"));
     }
 
     /// <summary>
@@ -158,12 +158,12 @@ public class ForkFeedbackPublishTests : CoverageRavenTest
         using var store = GetDocumentStore();
         var (comments, statuses) = await RunAsync(store, contributedFromFork: false);
 
-        var comment = Assert.Single(comments);
-        Assert.Equal(PullRequest, comment.PullRequestNumber);
-        Assert.DoesNotContain("Contributed from a fork", comment.Body, StringComparison.Ordinal);
+        var comment = comments.Should().ContainSingle().Which;
+        comment.PullRequestNumber.Should().Be(PullRequest);
+        comment.Body.Should().NotContain("Contributed from a fork");
 
-        Assert.Equal(2, statuses.Count);
-        Assert.All(statuses, s => Assert.DoesNotContain("fork", s.Verdict.Title, StringComparison.OrdinalIgnoreCase));
+        statuses.Count.Should().Be(2);
+        statuses.Should().AllSatisfy(s => s.Verdict.Title.Should().NotContainEquivalentOf("fork"));
     }
 
     /// <summary>
@@ -179,7 +179,7 @@ public class ForkFeedbackPublishTests : CoverageRavenTest
         using var verify = store.OpenAsyncSession();
         var build = await verify.LoadAsync<Build>(BuildId);
 
-        Assert.Equal("Posted", build.Feedback?.State);
-        Assert.Null(build.Feedback?.NextAttemptAtUtc);
+        (build.Feedback?.State).Should().Be("Posted");
+        (build.Feedback?.NextAttemptAtUtc).Should().NotHaveValue();
     }
 }

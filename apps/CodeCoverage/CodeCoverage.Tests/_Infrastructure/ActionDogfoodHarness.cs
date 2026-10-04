@@ -35,7 +35,7 @@ public static class ActionDogfoodHarness
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "MintPlayer.Spark.slnx")))
             directory = directory.Parent;
 
-        Assert.NotNull(directory);
+        directory.Should().NotBeNull();
         return directory!.FullName;
     }
 
@@ -43,8 +43,7 @@ public static class ActionDogfoodHarness
     public static string ActionBundle(string repositoryRoot)
     {
         var bundle = Path.Combine(repositoryRoot, "apps", "CodeCoverage", "action", "dist", "index.js");
-        Assert.True(File.Exists(bundle),
-            $"The action bundle is missing at {bundle}. Run `npm run build` in apps/CodeCoverage/action.");
+        File.Exists(bundle).Should().BeTrue($"The action bundle is missing at {bundle}. Run `npm run build` in apps/CodeCoverage/action.");
         return bundle;
     }
 
@@ -66,8 +65,7 @@ public static class ActionDogfoodHarness
             ? Directory.GetFiles(directory, "CodeCoverage.dll", SearchOption.AllDirectories).FirstOrDefault()
             : null;
 
-        Assert.True(assembly is not null,
-            $"CodeCoverage.dll was not found under {directory}. Build the app before running this test.");
+        assembly.Should().NotBeNull($"CodeCoverage.dll was not found under {directory}. Build the app before running this test.");
         return assembly!;
     }
 
@@ -154,7 +152,7 @@ public static class ActionDogfoodHarness
         start.Environment["GitHub__Production__ClientSecret"] = "dogfood-not-a-real-secret";
 
         var server = Process.Start(start);
-        Assert.NotNull(server);
+        server.Should().NotBeNull();
 
         var output = new List<string>();
         server!.OutputDataReceived += (_, e) => { if (e.Data is not null) lock (output) output.Add(e.Data); };
@@ -180,7 +178,7 @@ public static class ActionDogfoodHarness
             if (server.HasExited)
             {
                 lock (serverOutput)
-                    Assert.Fail($"The server exited with {server.ExitCode} before becoming healthy:\n{string.Join('\n', serverOutput.TakeLast(30))}");
+                    throw new AssertionFailedException($"The server exited with {server.ExitCode} before becoming healthy:\n{string.Join('\n', serverOutput.TakeLast(30))}");
             }
 
             try
@@ -195,7 +193,7 @@ public static class ActionDogfoodHarness
         }
 
         lock (serverOutput)
-            Assert.Fail($"The server was not healthy within 90s:\n{string.Join('\n', serverOutput.TakeLast(30))}");
+            throw new AssertionFailedException($"The server was not healthy within 90s:\n{string.Join('\n', serverOutput.TakeLast(30))}");
     }
 
     /// <summary>
@@ -253,7 +251,7 @@ public static class ActionDogfoodHarness
         foreach (var (key, value) in environment) start.Environment[key] = value;
 
         using var action = Process.Start(start);
-        Assert.NotNull(action);
+        action.Should().NotBeNull();
 
         var stdout = await action!.StandardOutput.ReadToEndAsync();
         var stderr = await action.StandardError.ReadToEndAsync();
@@ -320,10 +318,10 @@ public static class ActionDogfoodHarness
             UseShellExecute = false,
         };
         using var process = Process.Start(start);
-        Assert.NotNull(process);
+        process.Should().NotBeNull();
         var stderr = process!.StandardError.ReadToEnd();
         process.StandardOutput.ReadToEnd();
         process.WaitForExit();
-        Assert.True(process.ExitCode == 0, $"git {arguments} failed: {stderr}");
+        process.ExitCode.Should().Be(0, $"git {arguments} failed: {stderr}");
     }
 }
