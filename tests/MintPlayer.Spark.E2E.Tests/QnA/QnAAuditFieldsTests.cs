@@ -1,3 +1,6 @@
+using System.Net;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 using static MintPlayer.Spark.E2E.Tests._Infrastructure.QnATestHost;
 
@@ -6,8 +9,12 @@ namespace MintPlayer.Spark.E2E.Tests.QnA;
 /// <summary>
 /// QnA shows who wrote and last changed a post (#264, G-Q14/G-Q15): <c>CreatedBy</c> and
 /// <c>ModifiedBy</c> are <c>SparkUser</c> references, drawn by the user's <c>{UserName}</c> breadcrumb.
-/// Visitors may read <c>SparkUser</c> for that, and <c>security.json</c> denies them — and signed-in
-/// users — every user attribute but <c>UserName</c>.
+/// <para>
+/// ⚠️ No caller holds a right on <c>SparkUser</c>. A reference label is resolved through row security on
+/// the target only, not through a type right, so the name renders for visitors while a user can be
+/// neither loaded nor listed. A <c>Read/SparkUser</c> grant to <c>anonymous</c> would also be refused at
+/// startup: <c>SparkUserActions</c> declares no row rule, so it would publish every user.
+/// </para>
 /// </summary>
 [Collection(QnAE2ECollection.Name)]
 public class QnAAuditFieldsTests
@@ -20,27 +27,21 @@ public class QnAAuditFieldsTests
     public QnAAuditFieldsTests(QnAE2ECollectionFixture fixture) => host = fixture.Host;
 
     [Fact]
-    public async Task A_visitor_loading_a_user_gets_the_user_name_and_nothing_else()
+    public async Task A_visitor_cannot_load_a_user()
     {
         using var user = await host.CreateUserAsync("audit-visible");
         using var anonymous = host.NewClient();
 
-        var loaded = await anonymous.GetPersistentObjectAsync(SparkUserTypeId, user.Id);
-
-        loaded.Should().NotBeNull("anonymous holds Read/SparkUser so that author names resolve");
-        loaded!.Attributes.Select(a => a.Name).Should().Equal("UserName");
-        loaded.Attributes[0].Value?.ToString().Should().NotBeNullOrEmpty();
+        (await LoadOrNullAsync(anonymous, user.Id)).Should().BeNull("nobody holds a right on SparkUser");
     }
 
     [Fact]
-    public async Task A_signed_in_caller_loading_another_user_gets_the_user_name_and_nothing_else()
+    public async Task A_signed_in_caller_cannot_load_another_user()
     {
         using var user = await host.CreateUserAsync("audit-target");
         using var other = await host.CreateUserAsync("audit-reader");
 
-        var loaded = await other.Client.GetPersistentObjectAsync(SparkUserTypeId, user.Id);
-
-        loaded!.Attributes.Select(a => a.Name).Should().Equal("UserName");
+        (await LoadOrNullAsync(other.Client, user.Id)).Should().BeNull("nobody holds a right on SparkUser");
     }
 
     [Fact]
@@ -50,16 +51,31 @@ public class QnAAuditFieldsTests
         using var anonymous = host.NewClient();
         var question = await author.Client.AskAsync("Who wrote this? " + Guid.NewGuid().ToString("N"));
 
-        var userName = (await anonymous.GetPersistentObjectAsync(SparkUserTypeId, author.Id))!["UserName"].Value?.ToString();
         var loaded = (await anonymous.GetPersistentObjectAsync(QuestionTypeId, question.Id!))!;
 
         foreach (var name in new[] { "CreatedBy", "ModifiedBy" })
         {
             var attribute = loaded[name];
             attribute.Value?.ToString().Should().Be(author.Id, $"{name} stores the user's id");
-            attribute.Breadcrumb.Should().Be(userName, $"{name} is drawn by SparkUser's {{UserName}} breadcrumb");
+            // Registration sets UserName to the email address (SparkAccountEndpoints).
+            attribute.Breadcrumb.Should().Be(author.Email, $"{name} is drawn by SparkUser's {{UserName}} breadcrumb");
             attribute.IsReadOnly.Should().BeTrue();
         }
-        userName.Should().NotBeNullOrEmpty();
+    }
+
+    /// <summary>
+    /// A refused load: null for a 404, and the 401/403 the type gate answers otherwise. Any other failure
+    /// is rethrown, so a broken endpoint cannot pass as a refusal.
+    /// </summary>
+    private static async Task<PersistentObject?> LoadOrNullAsync(SparkClient client, string id)
+    {
+        try
+        {
+            return await client.GetPersistentObjectAsync(SparkUserTypeId, id);
+        }
+        catch (SparkClientException e) when (e.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return null;
+        }
     }
 }

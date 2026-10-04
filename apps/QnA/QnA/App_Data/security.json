@@ -301,66 +301,6 @@
       "resource": "Delete/QuestionTranslationsCurrent",
       "groupId": "4e130000-0000-4000-8000-000000000001",
       "isDenied": false
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000101",
-      "resource": "Read/SparkUser",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": false
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000102",
-      "resource": "Read/SparkUser",
-      "groupId": "4e130000-0000-4000-8000-00000000000f",
-      "isDenied": false
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000103",
-      "resource": "Read/SparkUser/Email",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": true
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000104",
-      "resource": "Read/SparkUser/Email",
-      "groupId": "4e130000-0000-4000-8000-00000000000f",
-      "isDenied": true
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000105",
-      "resource": "Read/SparkUser/CreatedAtUtc",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": true
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000106",
-      "resource": "Read/SparkUser/CreatedAtUtc",
-      "groupId": "4e130000-0000-4000-8000-00000000000f",
-      "isDenied": true
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000107",
-      "resource": "Read/SparkUser/PreferredCulture",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": true
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000108",
-      "resource": "Read/SparkUser/PreferredCulture",
-      "groupId": "4e130000-0000-4000-8000-00000000000f",
-      "isDenied": true
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-000000000109",
-      "resource": "Read/SparkUser/UserName",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": false
-    },
-    {
-      "id": "4e13ffff-0000-4000-8000-00000000010a",
-      "resource": "Read/SparkUser/UserName",
-      "groupId": "4e130000-0000-4000-8000-00000000000f",
-      "isDenied": false
     }
   ]
 }
