@@ -284,4 +284,29 @@ public class MessageQueueRouterTests : SparkTestDriver
 
         router.StartedLaneCount.Should().Be(0);
     }
+
+    /// <summary>
+    /// The router is disposed twice by design: <c>MessageSubscriptionManager.StopAsync</c> calls it,
+    /// and so does the container that owns the singleton. When the two overlapped, both passed the
+    /// null check, and the second one dereferenced the field the first had just cleared. CI (PR
+    /// #485) failed with a <c>NullReferenceException</c> at <c>lifetime.Dispose()</c> while a host
+    /// shut down.
+    /// </summary>
+    [Fact]
+    public async Task Concurrent_disposal_is_safe()
+    {
+        for (var round = 0; round < 200; round++)
+        {
+            var router = NewRouter();
+            using var go = new ManualResetEventSlim();
+
+            var disposers = Enumerable.Range(0, 8)
+                .Select(_ => Task.Run(async () => { go.Wait(); await router.DisposeAsync(); }))
+                .ToArray();
+            go.Set();
+
+            var act = () => Task.WhenAll(disposers);
+            await act.Should().NotThrowAsync();
+        }
+    }
 }

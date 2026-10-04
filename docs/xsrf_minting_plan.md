@@ -51,6 +51,13 @@ fails with RS0030.
   **Explained from the exception, not reproduced:** sweep 2's only failure was
   `ApiTokenRepositoryIdListMigrationTests.A_token_without_the_legacy_field_is_left_alone`, after 49 s.
 
+- **`MessageQueueRouter.DisposeAsync` raced with itself.** PR #485 CI run `37220579446` failed
+  `RegistrationInventoryTests.The_forge_services_are_registered` with a `NullReferenceException` at
+  `lifetime.Dispose()` during host shutdown. The router is disposed by both `StopAsync` and the
+  container, and the null check was separated from the dispose by an `await`. Red → green:
+  `MessageQueueRouterTests.Concurrent_disposal_is_safe` threw the same exception before the
+  `Interlocked.Exchange` fix. `MintPlayer.Spark.Messaging` → `11.0.0-preview.96`.
+
 **Local verification:**
 - **Sweep 2** (`npm run test:affected`, Developer licence, 8m40s), run before the two fixes above.
   Green: MintPlayer.Spark.Tests, E2E, Client, SourceGenerators, `ng-spark-auth` and the CodeCoverage

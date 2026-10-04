@@ -1,6 +1,7 @@
 # Spark 11.0.0-preview.96 — the XSRF-TOKEN cookie comes from MintPlayer.AspNetCore.SpaServices.Xsrf (#452)
 
-**Packages:** `MintPlayer.Spark` and `MintPlayer.Spark.Authorization` → `11.0.0-preview.96`. npm:
+**Packages:** `MintPlayer.Spark`, `MintPlayer.Spark.Authorization` and `MintPlayer.Spark.Messaging` →
+`11.0.0-preview.96`. npm:
 `@mintplayer/ng-spark-auth` → `22.18.0`. No other package changed. The majors do not move: the packages still target .NET 11 and Angular 22.
 
 `MintPlayer.Spark` now depends on `MintPlayer.AspNetCore.SpaServices.Xsrf` `11.0.0-rc.3` and calls its
@@ -83,6 +84,15 @@ index outright ("Cannot perform bulk operation. Index is stale.") unless the ope
 and under load the auto-index behind the query can still be catching up. The migration now waits up
 to five minutes for it. The same fix was applied to the CodeCoverage and HR migrations. A local test
 sweep hit this as a failure in `ApiTokenRepositoryIdListMigrationTests`.
+
+---
+
+## `MintPlayer.Spark.Messaging`: shutdown could throw
+
+`MessageQueueRouter` is disposed twice on shutdown, once by `MessageSubscriptionManager.StopAsync` and
+once by the container. When the two overlapped, the second hit a `NullReferenceException` and host
+shutdown reported an error. Disposal now takes ownership of its token source atomically.
+`MessageQueueRouterTests.Concurrent_disposal_is_safe` reproduced the exception before the fix.
 
 ---
 

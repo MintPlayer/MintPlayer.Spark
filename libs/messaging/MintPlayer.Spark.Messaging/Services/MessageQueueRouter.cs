@@ -173,11 +173,14 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (lifetime is not null)
+        // ⚠️ Take ownership atomically. Disposal happens twice by design (MessageSubscriptionManager.
+        // StopAsync and the container that owns this singleton), and a check-then-act across the
+        // await let both callers through, so the second dereferenced a field the first had cleared.
+        var owned = Interlocked.Exchange(ref lifetime, null);
+        if (owned is not null)
         {
-            await lifetime.CancelAsync();
-            lifetime.Dispose();
-            lifetime = null;
+            await owned.CancelAsync();
+            owned.Dispose();
         }
 
         lanes.Clear();
