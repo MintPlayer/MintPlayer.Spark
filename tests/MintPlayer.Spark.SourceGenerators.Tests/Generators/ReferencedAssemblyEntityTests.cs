@@ -158,6 +158,54 @@ public class ReferencedAssemblyEntityTests
         generated.Should().NotContain("System.Runtime.CompilerServices");
     }
 
+    /// <summary>
+    /// #388: an entity library references MintPlayer.Spark.Attributes and MintPlayer.Spark.Model, never the
+    /// Web-SDK Abstractions. The library here is compiled against exactly those two assemblies (no Raven
+    /// either; <see cref="GeneratorHarness.CompileToMetadataReference"/> throws if it does not compile), uses
+    /// the Model types the real libraries use, and the app still generates its index.
+    /// </summary>
+    [Fact]
+    public void A_library_built_on_Attributes_and_Model_alone_produces_an_index_in_the_app()
+    {
+        Type[] vocabulary = [typeof(GenerateIndexAttribute), typeof(TranslatedString)];
+        typeof(GenerateIndexAttribute).Assembly.GetName().Name.Should().Be("MintPlayer.Spark.Attributes");
+        typeof(TranslatedString).Assembly.GetName().Name.Should().Be("MintPlayer.Spark.Model");
+
+        var library = GeneratorHarness.CompileToMetadataReference(
+            "Fleet.Library",
+            ["""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace Fleet.Library.Entities;
+
+            public sealed class CarStatus : TransientLookupReference
+            {
+                public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
+            }
+
+            [GenerateIndex]
+            public class Car
+            {
+                public string? Id { get; set; }
+                [Search] public string? Model { get; set; }
+                [LookupReference(typeof(CarStatus))] public string? Status { get; set; }
+                public TranslatedString? Remarks { get; set; }
+            }
+            """],
+            referenceTypes: vocabulary);
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            ["namespace Fleet; public class Program { }"],
+            referenceTypes: [.. vocabulary, typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            rootNamespace: "Fleet",
+            additionalReferences: [library]);
+
+        var generated = result.GeneratedSources.Should().ContainSingle().Which.Source;
+        generated.Should().Contain("AbstractIndexCreationTask<global::Fleet.Library.Entities.Car>");
+        generated.Should().Contain("ModelSearch = car.Model,");
+    }
+
     [Fact]
     public void A_nested_entity_in_a_referenced_assembly_is_found()
     {

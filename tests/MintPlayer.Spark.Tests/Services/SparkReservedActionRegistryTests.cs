@@ -59,6 +59,35 @@ public class SparkReservedActionRegistryTests
         SparkReservedActionRegistry.IsReserved("CarCopy").Should().BeFalse();
     }
 
+    /// <summary>
+    /// #388 R1: Moderation.Abstractions and Contributions.Abstractions reference only the plain-SDK
+    /// Model, not the Web-SDK Abstractions. SparkAware used to follow only assemblies that reference
+    /// Abstractions by name, so their declared verbs could silently stop being reserved.
+    /// </summary>
+    [Fact]
+    public void Packages_that_reference_only_Model_are_still_scanned()
+    {
+        var moderationAbstractions = typeof(ModerationRights).Assembly;
+        var contributionsAbstractions = typeof(MintPlayer.Spark.Contributions.ContributionRights).Assembly;
+        foreach (var package in new[] { moderationAbstractions, contributionsAbstractions })
+        {
+            // The premise: no reference to Abstractions, only to Model.
+            var references = package.GetReferencedAssemblies().Select(r => r.Name).ToArray();
+            references.Should().NotContain("MintPlayer.Spark.Abstractions");
+            references.Should().Contain("MintPlayer.Spark.Model");
+        }
+
+        MintPlayer.Spark.Abstractions.SparkAssemblies.VocabularyAssemblyNames.Should().BeEquivalentTo(
+            ["MintPlayer.Spark.Abstractions", "MintPlayer.Spark.Model", "MintPlayer.Spark.Attributes"]);
+        var sparkAware = MintPlayer.Spark.Abstractions.SparkAssemblies.SparkAware().ToList();
+        sparkAware.Should().Contain(moderationAbstractions);
+        sparkAware.Should().Contain(contributionsAbstractions);
+
+        SparkReservedActionRegistry.IsReserved(ModerationRights.Vote).Should().BeTrue();
+        SparkReservedActionRegistry.IsReserved(MintPlayer.Spark.Contributions.ContributionRights.RevertContribution).Should().BeTrue();
+        SparkReservedActionRegistry.IsReserved(SparkCoreActions.Query).Should().BeTrue();
+    }
+
     [Theory]
     [InlineData("Restore")]
     [InlineData("restore")]
