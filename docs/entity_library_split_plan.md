@@ -2,7 +2,7 @@
 
 PRD: [entity_library_split_PRD.md](entity_library_split_PRD.md) · PR: [#484](https://github.com/MintPlayer/MintPlayer.Spark/pull/484)
 (branch `fix/bs-select-full-width`).
-Status 2026-10-04: **M0 done** (ng-bootstrap 22.21.1 bump, `b899cbea` on the branch); spikes S1–S3 and M1–M8 not started.
+Status 2026-10-04: **M0 done** (ng-bootstrap 22.21.1 bump, `b899cbea` on the branch); spikes S1–S3 resolved; M1–M8 (no M6) not started.
 
 Rules for this work:
 - **Commit per milestone; run tests only at the end (M8).** Intermediate milestones are checked by
@@ -20,18 +20,16 @@ Rules for this work:
 - **S1. A migration shipped by a framework package. ✅ Resolved 2026-10-04 → PRD §3.6.**
   Packages cannot ship migrations today: both generators scan only the app's syntax. Fix:
   scan referenced assemblies (milestone M2a).
-- **S2. netstandard2.0 (PRD §3.4).** Throwaway: Attributes + Model + Messaging.Abstractions +
-  DemoApp.Library with `netstandard2.0` added, plus PolySharp. List every compile error, especially in
-  the generator output. Decide whether M6 stays as planned.
-- **S3. Build-guard mechanism (PRD §3.5).** Find out whether a transitive `Microsoft.AspNetCore.App`
-  framework reference is observable in a *referencing* plain-SDK project during its build: the
-  `FrameworkReference` items after `ResolvePackageAssets`/`ResolveFrameworkReferences`, or
-  `project.assets.json`'s `frameworkReferences`. Find the target to hook, and prove it fires on HR.Library
-  today, before any move.
+- **S2. netstandard2.0. ✅ Resolved 2026-10-04 → PRD §3.4: dropped** (owner: ".NET Core purely").
+  The spike found that `IMessageBus` default interface members (CS8701) and `DateOnly` in entities
+  block it. M6 is removed.
+- **S3. Build-guard mechanism. ✅ Resolved 2026-10-04 → PRD §3.5.** Hook `AfterTargets="ResolvePackageAssets"`
+  and check `@(TransitiveFrameworkReference)`. It is red on today's HR.Library (exit code 1) and green
+  on Attributes.
 
 ### M1: `MintPlayer.Spark.Model`
 1. Create `libs/model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj`: `Microsoft.NET.Sdk`,
-   `net11.0` (netstandard2.0 comes in M6), `Version 11.0.0-preview.95`, package metadata copied from Attributes.
+   `net11.0`, `Version 11.0.0-preview.95`, package metadata copied from Attributes.
 2. `git mv` the following, keeping their namespaces:
    - `TranslatedString.cs` (with its converter)
    - `TransientLookupReference.cs`
@@ -86,14 +84,15 @@ Rules for this work:
 1. `SparkAssemblies.SparkAware()` (`SparkAssemblies.cs:17-37`) treats a reference to any of
    `MintPlayer.Spark.Abstractions`, `.Model` or `.Attributes` as "Spark-aware". Name the three
    assemblies from types (`typeof(TranslatedString).Assembly`, …), never as string literals.
-2. Audit every other place that decides on an assembly *name* or "references Abstractions" and fix it
-   the same way. Search for: `GetReferencedAssemblies`, `GetName().Name`, `ContainingAssembly`,
-   `AppDomain.CurrentDomain.GetAssemblies`, and `typeof(...).Assembly` used as a filter. Look at model
-   sync, lookup-reference discovery (`ModelSynchronizer` around `:754`), translations, `[SparkActions]`
-   layers, and `LibraryActionsReader.cs:24`. List each place in the PRD with its verdict.
-3. Write the red/green test now and run it in M8: `SparkReservedActionRegistry.All` contains
-   `ModerationRights`, `ContributionRights`, `HistoryRights`, `SoftDeleteRights` and the
-   `SparkCoreActions` verbs.
+2. ✅ Audit done before implementation (PRD §4.1): `SparkAssemblies` is the only runtime site that
+   breaks. Generators: fix R6 here. `SparkFullGenerator.cs:130` `HasSparkUser` becomes
+   `HasAuthorization`, keyed on `SparkBuilderAuthorizationExtensions`, and `AddAuthentication` is only
+   emitted when it is set.
+3. Write the red/green tests now and run them in M8:
+   - `SparkReservedActionRegistry.All` contains `ModerationRights`, `ContributionRights`,
+     `HistoryRights`, `SoftDeleteRights` and the `SparkCoreActions` verbs.
+   - The R6 generator test: `SparkUser` visible without Authorization gives no `AddAuthentication`
+     call; with Authorization it does.
 
 ### M4: feature packages
 1. `Replication.Abstractions`: drop the Abstractions reference (csproj :22). In `SyncAction.cs:99,103`,
@@ -114,22 +113,16 @@ Rules for this work:
      resolves; drop `Newtonsoft.Json` (:13) only if a build without it is green.
    - **QnA:** History → History.Abstractions; add an explicit `Newtonsoft.Json` PackageReference.
      Check the contributions `.targets` import (csproj :25) for anything Abstractions-dependent.
-2. Build guard in `apps/Directory.Build.targets` (or the root one, conditioned on `SparkEntityLibrary`):
-   a target after `ResolveFrameworkReferences` errors if `@(FrameworkReference)` or the resolved
-   framework references contain `Microsoft.AspNetCore.App`. Name the offending path if MSBuild can.
+2. Add the build guard to the root `Directory.Build.targets`, conditioned on `SparkEntityLibrary`.
+   Use the S3 target from PRD §3.5 (`AfterTargets="ResolvePackageAssets"`, checking
+   `@(FrameworkReference);@(TransitiveFrameworkReference)`, error `SPARKLIB001`). Document it in
+   `docs/diagnostics.md`.
 3. **Prove the guard is falsifiable:** temporarily re-add Abstractions to HR.Library and expect the
    build to fail; revert. Record the error text in the PRD.
 4. Check: solution build. All five host apps still build; each references `MintPlayer.Spark`, which
    brings Abstractions in.
 
-### M6: netstandard2.0
-1. `Attributes`, `Model`, `Messaging.Abstractions` and `DemoApp.Library` get
-   `<TargetFrameworks>netstandard2.0;net11.0</TargetFrameworks>`, plus `PolySharp` (`PrivateAssets=all`)
-   for `required`/`init`. Model adds `System.Text.Json` on netstandard2.0 only, and `LangVersion latest`
-   where needed.
-2. Fix whatever does not compile: LINQ and collection-expression availability, `Dictionary`
-   constructors, and generator output into DemoApp.Library (fix the generator, keep the target).
-3. Check: solution build. DemoApp still runs (`dotnet run`, one page load through the Playwright MCP).
+### ~~M6: netstandard2.0~~ (dropped, PRD §3.4)
 
 ### M7: versions, CI, docs
 1. Bump **every** `libs/**` package from `11.0.0-preview.94` to `.95` in lockstep, like #382.

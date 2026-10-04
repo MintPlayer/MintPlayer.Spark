@@ -11,8 +11,8 @@ by three read-only investigations on that date.
 
 ## 1. Problem
 
-A project that declares nothing but entities still gets the ASP.NET Core shared framework. It
-cannot target `netstandard2.0`, and a host without that framework cannot load it. The reason is that
+A project that declares nothing but entities still gets the ASP.NET Core shared framework, so a
+host without that framework (a console tool, a worker, a test fixture) cannot load it. The reason is that
 `MintPlayer.Spark.Abstractions` is `Sdk="Microsoft.NET.Sdk.Web"`
 (`libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj:1`), and the framework
 reference flows transitively to everything that references it.
@@ -44,8 +44,8 @@ also references `MintPlayer.Spark` (§4 of the consumer investigation).
 
 All five `apps/*/*.Library` projects build without the `Microsoft.AspNetCore.App` framework
 reference, directly or transitively. A build guard enforces this, so it cannot regress silently.
-At least one library targets `netstandard2.0`, which proves the dependency chain underneath it is
-really free.
+The guard is also the proof that the dependency chain underneath each library is really free.
+Everything stays on `net11.0` (§3.4).
 
 Owner decision 2026-10-04: **all five** libraries, in this PR. Freeing only DemoApp, Fleet and HR
 was the other option.
@@ -111,26 +111,54 @@ them would widen the package past what its name says.
 | `Abstractions` | References `Model` (and keeps `Attributes`), so every existing consumer still sees every moved type | |
 | `Directory.Build.targets:2-5` | Unchanged: Abstractions and Authorization are still Web-SDK class libraries | |
 
-### 3.4 `netstandard2.0` (#388 S5)
+### 3.4 No `netstandard2.0` (#388 S5 dropped)
 
-`Attributes`, `Model`, `Messaging.Abstractions` and `DemoApp.Library` multi-target `netstandard2.0;net11.0`.
-DemoApp.Library is the proof candidate because its whole closure (Attributes, Model, Messaging.Abstractions)
-is new or reference-free. HR and Fleet would also drag `Replication.Abstractions` (STJ, Etl models)
-onto netstandard2.0.
+**Decision 2026-10-04 (owner): .NET Core only.** "We probably shouldn't support .NET Framework. Just
+.NET Core purely." Every project stays on `net11.0`. The #388 S5 proof, "target netstandard2.0 on at
+least one", is replaced by the build guard (§3.5), which proves the same thing: no ASP.NET Core
+anywhere in the closure.
 
-- `required` and `init` need `IsExternalInit`, `RequiredMemberAttribute` and `CompilerFeatureRequiredAttribute`
-  polyfills. These come from a compile-only `PolySharp` (`PrivateAssets=all`) rather than hand-written
-  copies, so nothing leaks into consumers.
-- `TranslatedString` needs the `System.Text.Json` package on netstandard2.0 only.
-- The library generators emit code into DemoApp.Library. If that code uses net-only APIs, the
-  generator output is fixed; the target is not dropped.
+Spike S2 (2026-10-04), a throwaway multi-target build of Attributes, Model, Messaging.Abstractions
+and DemoApp.Library on netstandard2.0 with PolySharp, found:
+- Attributes and the Model types compile unchanged (PolySharp + System.Text.Json 10.0.12).
+- `Messaging.Abstractions` `IMessageBus.cs:12,15,36` uses default interface members. That is CS8701 on
+  netstandard2.0, a runtime feature with no polyfill. Supporting it would have meant changing the
+  public API.
+- Entities use `DateOnly` (`DemoApp.Library/Entities/Person.cs:17`), which does not exist on
+  netstandard2.0. So the target would constrain the entities themselves, not just Spark.
+
+The issue's other netstandard argument, "cannot be loaded by a host without that framework", is
+fully met by dropping the ASP.NET Core framework reference on `net11.0`.
 
 ### 3.5 Build guard
 
 An MSBuild target that runs for projects marked `<SparkEntityLibrary>true</SparkEntityLibrary>`
-(the five libraries) fails the build when the resolved `@(FrameworkReference)` contains
-`Microsoft.AspNetCore.App`. It must be proven falsifiable: temporarily re-add the Abstractions reference
-to one library and watch the build fail. Neither a clean grep nor a green build proves anything on its own.
+(the five libraries) fails the build when `Microsoft.AspNetCore.App` appears in
+`@(FrameworkReference)` or `@(TransitiveFrameworkReference)`.
+
+**Spike S3 (2026-10-04) confirmed the mechanism.**
+- Where the reference shows up:
+  - A transitive web reference reaches a plain-SDK project as a **`TransitiveFrameworkReference`**
+    item, not a `FrameworkReference`. It is populated by `ResolvePackageAssets` from
+    `project.assets.json`, where it sits on the referenced project's entry
+    (`"MintPlayer.Spark.Abstractions/11.0.0-preview.94": frameworkReferences ["Microsoft.AspNetCore.App"]`).
+  - Measured on today's master: HR.Library and DemoApp.Library have
+    `FrameworkReference=Microsoft.NETCore.App | TransitiveFrameworkReference=Microsoft.AspNetCore.App`.
+    Attributes has an empty `TransitiveFrameworkReference`.
+- The guard:
+  ```xml
+  <Target Name="SparkEntityLibraryGuard" AfterTargets="ResolvePackageAssets" Condition="'$(SparkEntityLibrary)' == 'true'">
+    <ItemGroup>
+      <_SparkAspNet Include="@(FrameworkReference);@(TransitiveFrameworkReference)" Condition="'%(Identity)' == 'Microsoft.AspNetCore.App'" />
+    </ItemGroup>
+    <Error Condition="'@(_SparkAspNet)' != ''" Code="SPARKLIB001" Text="…" />
+  </Target>
+  ```
+- **Red/green:**
+  - Red on today's HR.Library: `error SPARKLIB001`, exit code 1 from both `dotnet msbuild` and `dotnet build`.
+  - Green on Attributes and Messaging.Abstractions.
+- After the move it must still be proven falsifiable: temporarily re-add the Abstractions reference
+  to one library and watch the build fail. Neither a clean grep nor a green build proves anything on its own.
 
 ### 3.6 Packages can ship migrations (needed for R4)
 
@@ -229,6 +257,41 @@ assemblies"):
 - **R5. `SparkUser`'s `cref`s.** Moved doc comments referencing web types (`SparkUser.cs:36` mentions
   `UserManager` in a `<c>`) must not become `<see cref>` to types the new package cannot see. The same
   applies to `TranslatedString.cs:14`, whose `<see cref="SparkText"/>` becomes `<c>`.
+- **R6. AllFeatures reads "`SparkUser` resolves" as "Authorization is referenced". Found 2026-10-04.**
+  - `SparkFullGenerator.cs:130` sets `HasSparkUser = GetTypeByMetadataName("…Identity.SparkUser") != null`.
+  - When that flag is set, `Producer.cs:36-37,108` emits
+    `SparkBuilderAuthorizationExtensions.AddAuthentication<SparkUser>(…)`.
+  - After the move, `SparkUser` also resolves through Authorization.Abstractions, for example in an
+    app that references `CodeCoverage.Library` but not Authorization. The generated call then targets
+    a package the app does not reference, which is a compile error.
+  - The same happens to an app that subclasses `SparkUser` (`Kind == "User"`, `:45`) without
+    referencing Authorization.
+  - **Fix:** rename the flag to `HasAuthorization`, key it on
+    `MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions` (which stays in
+    Authorization, like the other flags at `:131-132`), and emit `AddAuthentication` only when it is set.
+  - Generator tests: no Authorization reference means no call, even with `SparkUser` visible; with
+    Authorization referenced, the call is emitted as today.
+
+### 4.1 Pre-implementation audit (2026-10-04)
+
+**Code that checks an assembly by name.** Every `GetReferencedAssemblies`, `GetName().Name`,
+`ContainingAssembly`, and `AppDomain…GetAssemblies` site in `libs/` was checked:
+
+| Site | Keys on | Verdict |
+|---|---|---|
+| `SparkAssemblies.cs:19,36-37` | the `MintPlayer.Spark.Abstractions` name | **Breaks** → R1 |
+| `ContributionCatalog.cs:32,120` | the `MintPlayer.Spark.Contributions.Abstractions` name | Safe: that package is not split, and QnA.Library keeps referencing it |
+| `LookupReferenceDiscoveryService.cs:34`, `CustomActionResolver.cs:75`, `ActionsResolver.cs:131`, `SparkTypeResolver.cs:50`, `SparkHistory.cs:234`, `ModerationTargets.cs:60`, `SparkSoftDelete.cs:79`, `ContributionShapeCheck.cs:90`, `SparkDevelopmentExtensions.cs:852,1305` | every loaded assembly, matched by type or name, with no assembly filter | Safe: a moved type is still one type |
+| `SparkActionLayers.cs:82`, `SparkReservedActionRegistry.cs:73`, `SparkMiddleware.cs:597,849-867`, `AttributeDescriptionCatalog.cs:59`, `SparkMailTemplateResolver.cs:76` | the name in a log or error message | Safe |
+| Generators | `GenerateIndexGenerator.cs:512-526` derives the assembly from the symbol; `ReservedActionsReader.cs:40` walks every reference; `SparkFullGenerator.cs:130` | Safe, except **R6** |
+
+**Other checks:**
+- **`internal` members:** none on any moved type (all 15 files grepped), so no `InternalsVisibleTo` is needed.
+- **QnA's `spark-contributions.targets`:** it adds only the Contributions generator as an analyzer
+  (`:29-30`), with no Abstractions dependency.
+- **NuGet ids:** `MintPlayer.Spark.Model`, `MintPlayer.Spark.Authorization.Abstractions` and
+  `MintPlayer.Spark.History.Abstractions` are unclaimed on nuget.org (flat-container 404);
+  `MintPlayer.Spark.Attributes` is ours (200).
 
 ## 5. Out of scope (genuinely not being done)
 
