@@ -37,6 +37,9 @@
   <Folder Name="/libs/attributes/">
     <Project Path="libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj" />
   </Folder>
+  <Folder Name="/libs/model/">
+    <Project Path="libs/model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj" />
+  </Folder>
   <Folder Name="/libs/authorization/">
     <Project Path="libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj" />
   </Folder>
