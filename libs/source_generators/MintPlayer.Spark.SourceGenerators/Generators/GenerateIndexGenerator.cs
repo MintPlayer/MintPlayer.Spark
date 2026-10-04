@@ -108,6 +108,18 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) != null &&
                 compilation.GetTypeByMetadataName("Raven.Client.Documents.Indexes.AbstractIndexCreationTask") != null);
 
+        // The index classes themselves are emitted ONLY in the application (#388). They are deployed
+        // from there, and a class library has no use for its own copy. "Does not reference Raven" was
+        // never a dependable stand-in for "is not the application": CodeCoverage.Library reached Raven
+        // through Authorization, and the forge integration libraries through MintPlayer.Spark, so each
+        // carried a full, undeployed copy, and one integration came to query through the library's.
+        // The application still finds every [GenerateIndex] entity, its own and its references' (see
+        // referencedEntitiesProvider). A library that needs an index query asks the application for it.
+        var emitsIndexesProvider = context.CompilationProvider
+            .Combine(knowsSparkProvider)
+            .Select(static (pair, ct) => pair.Right
+                && pair.Left.Options.OutputKind is OutputKind.ConsoleApplication or OutputKind.WindowsApplication);
+
         var allEntitiesProvider = entitiesProvider
             .Combine(referencedEntitiesProvider)
             .Select(static (providers, ct) => providers.Left
@@ -118,7 +130,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
             ;
 
         var sourceProvider = allEntitiesProvider
-            .Combine(knowsSparkProvider)
+            .Combine(emitsIndexesProvider)
             .Combine(languagesProvider)
             .Combine(settingsProvider)
             .Select(static Producer (providers, ct) =>

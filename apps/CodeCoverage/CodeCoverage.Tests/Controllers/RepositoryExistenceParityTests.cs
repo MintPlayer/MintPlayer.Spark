@@ -103,6 +103,7 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
         services.AddMemoryCache();
         services.AddSingleton(session);
         services.AddSingleton<IGitHubInstallationService>(github);
+        services.AddSingleton<CodeCoverage.Services.IGitHubIndexQueries, CodeCoverage.Services.GitHubIndexQueries>();
         services.AddScoped<IRepositoryResolver, RepositoryResolver>();
 
         // A signed-in caller who administers nothing: the "authenticated non-member".

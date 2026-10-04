@@ -18,7 +18,7 @@ public class GenerateIndexGeneratorTests
             GeneratorName,
             [source],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: rootNamespace);
+            rootNamespace: rootNamespace, outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
     private const string PlainCar = """
         using MintPlayer.Spark.Abstractions;
@@ -149,7 +149,7 @@ public class GenerateIndexGeneratorTests
             GeneratorName,
             ["namespace TestApp; public class Foo { }"],
             referenceTypes: Array.Empty<Type>(),
-            rootNamespace: "TestApp");
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
         result.GeneratedSources.Should().BeEmpty();
     }

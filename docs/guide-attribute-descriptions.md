@@ -141,7 +141,8 @@ No attribute descriptions found in HR: either its public properties carry no ///
 ### The entity project must run the generator
 
 The generator has to compile **the project that contains the `///` comments** — usually a
-`*.Library` project that references only `MintPlayer.Spark.Abstractions`. Add the analyzer there:
+`*.Library` project that references only `MintPlayer.Spark.Attributes` and `MintPlayer.Spark.Model`
+(never the Web-SDK `MintPlayer.Spark.Abstractions`; SPARKLIB001 enforces that). Add the analyzer there:
 
 ```xml
 <!-- NuGet consumers -->

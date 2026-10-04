@@ -18,7 +18,7 @@ public class ComplexFieldClassificationTests
             GeneratorName,
             [source],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask), typeof(System.Drawing.Color)],
-            rootNamespace: "TestApp");
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
     private const string PersonWithAddress = """
         using MintPlayer.Spark.Abstractions;
@@ -223,7 +223,7 @@ public class ComplexFieldClassificationTests
             GeneratorName,
             ["namespace TestApp; public class Program { }"],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "TestApp",
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication,
             additionalReferences: [library]);
 
         var generated = result.GeneratedSources[0].Source;

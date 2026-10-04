@@ -31,16 +31,17 @@ public class SparkFullProducer : Producer
         if (contextType == null)
             return;
 
-        // Find the SparkUser subclass, or fall back to SparkUser if Authorization is referenced
-        var userType = discoveryList.FirstOrDefault(d => d.Kind == "User")?.TypeName;
-        if (userType == null && flags.HasSparkUser)
-            userType = "global::MintPlayer.Spark.Authorization.Identity.SparkUser";
+        // Find the SparkUser subclass, or fall back to SparkUser, but only when the Authorization
+        // package is referenced: SparkUser alone also resolves through Authorization.Abstractions (#388).
+        var userType = flags.HasAuthorization
+            ? discoveryList.FirstOrDefault(d => d.Kind == "User")?.TypeName ?? "global::MintPlayer.Spark.Authorization.Identity.SparkUser"
+            : null;
 
         var hasActions = discoveryList.Any(d => d.Kind == "Actions");
         var hasCustomActions = discoveryList.Any(d => d.Kind == "CustomAction");
         var hasRecipients = discoveryList.Any(d => d.Kind == "Recipient");
         var hasCron = discoveryList.Any(d => d.Kind == "CronJob");
-        var hasMigrations = discoveryList.Any(d => d.Kind == "Migration");
+        var hasMigrations = discoveryList.Any(d => d.Kind == "Migration") || flags.HasReferencedMigrations;
         var hasInterceptors = discoveryList.Any(d => d.Kind == "Interceptor");
 
         writer.WriteLine(Header);

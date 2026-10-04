@@ -97,7 +97,10 @@ internal static class SparkAuthenticationExtensions
                 : null!);
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<MailManager.ISparkMailRecipientCulture, SparkUserMailCulture<TUser>>());
         // The account mails' default templates; an app's Templates/Mail/SparkAuth/*.mjml overrides them.
-        builder.Services.AddSparkMailTemplates(typeof(SparkUser).Assembly, "SparkMail/");
+        // Anchored on SparkAuthMailTemplates, which lives in this assembly with the embedded templates. Not
+        // SparkUser: it moved to Authorization.Abstractions (#388), which has no templates, and every
+        // account mail then failed with "No mail template 'SparkAuth/…'".
+        builder.Services.AddSparkMailTemplates(typeof(SparkAuthMailTemplates).Assembly, "SparkMail/");
 
         services.AddAntiforgery(options => options.HeaderName = "X-XSRF-TOKEN");
 

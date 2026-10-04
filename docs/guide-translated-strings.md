@@ -14,7 +14,8 @@ This format is used across the entire Spark data model: entity descriptions, att
 
 ## The TranslatedString Class (C#)
 
-The C# class lives in `MintPlayer.Spark.Abstractions`:
+The C# class lives in the `MintPlayer.Spark.Model` package, in namespace `MintPlayer.Spark.Abstractions`,
+so an entity library can use it without referencing ASP.NET Core (#388):
 
 ```csharp
 [JsonConverter(typeof(TranslatedStringJsonConverter))]
@@ -387,4 +388,4 @@ See the demo apps for working examples:
 - `libs/node_packages/ng-spark/models/src/translated-string.ts` -- Angular type and resolver
 - `libs/node_packages/ng-spark/services/src/spark-language.service.ts` -- SparkLanguageService
 - `libs/node_packages/ng-spark/pipes/src/translate-key.pipe.ts` -- TranslateKeyPipe
-- `MintPlayer.Spark.Abstractions/TranslatedString.cs` -- C# TranslatedString class with JSON converter
+- `libs/model/MintPlayer.Spark.Model/TranslatedString.cs` -- C# TranslatedString class with JSON converter

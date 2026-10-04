@@ -127,6 +127,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         // registration every test here fails at construction rather than on an assertion.
         services.AddSingleton<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>(
             NSubstitute.Substitute.For<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>());
+        services.AddSingleton<CodeCoverage.Services.IGitHubIndexQueries, CodeCoverage.Services.GitHubIndexQueries>();
         services.AddScoped<GitHubEventsRecipient>();
         return services.BuildServiceProvider().GetRequiredService<GitHubEventsRecipient>();
     }

@@ -109,7 +109,8 @@ public class AnalyzerSeesGeneratedCodeTests
                 typeof(GenerateIndexAttribute),
                 typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask),
             ],
-            rootNamespace: "TestApp");
+            rootNamespace: "TestApp",
+            outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
     // ---------------------------------------------------------------------------------------------
     // 1. The claim itself: a real analyzer changes its answer because a generated member exists.

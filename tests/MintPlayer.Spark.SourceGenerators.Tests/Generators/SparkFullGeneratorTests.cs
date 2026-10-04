@@ -75,13 +75,43 @@ public class SparkFullGeneratorTests
         var result = GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(SparkContext), typeof(SparkUser)],
+            referenceTypes: [typeof(SparkContext), typeof(SparkUser), typeof(MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions)],
             rootNamespace: "TestApp",
             generatorAssemblyName: GeneratorAssembly);
 
         var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
         combined.Should().Contain("TestApp.AppUser");
         combined.Should().Contain("AddAuthentication");
+    }
+
+    /// <summary>
+    /// #388 R6: SparkUser now also resolves through the plain-SDK Authorization.Abstractions (an entity
+    /// library can bring it in). Seeing SparkUser must not be read as "Authorization is referenced":
+    /// an AddAuthentication call into an unreferenced package would not compile.
+    /// </summary>
+    [Fact]
+    public void SparkUser_without_the_Authorization_package_is_not_routed_through_AddAuthentication()
+    {
+        var source = """
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Authorization.Identity;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext { }
+            public class AppUser : SparkUser { }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext), typeof(SparkUser)],
+            rootNamespace: "TestApp",
+            generatorAssemblyName: GeneratorAssembly);
+
+        var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
+        combined.Should().Contain("TestApp.AppContext");
+        combined.Should().NotContain("AddAuthentication");
     }
 
     [Fact]
@@ -233,7 +263,7 @@ public class SparkFullGeneratorTests
         var result = GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(SparkContext), typeof(SparkUser)],
+            referenceTypes: [typeof(SparkContext), typeof(SparkUser), typeof(MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions)],
             rootNamespace: "TestApp",
             generatorAssemblyName: GeneratorAssembly);
 

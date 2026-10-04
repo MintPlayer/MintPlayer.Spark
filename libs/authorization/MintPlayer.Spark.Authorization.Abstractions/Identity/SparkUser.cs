@@ -44,7 +44,7 @@ public class SparkUser
     public DateTime? CreatedAtUtc { get; set; }
 
     /// <summary>
-    /// How the account was created — one of <see cref="SparkRegistrationMethods"/>
+    /// How the account was created — one of <c>SparkRegistrationMethods</c>
     /// (<c>password</c>, <c>external:{provider}</c>, <c>other</c>); <see langword="null"/> when unknown
     /// (accounts that predate the field).
     /// </summary>

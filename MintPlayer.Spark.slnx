@@ -37,8 +37,12 @@
   <Folder Name="/libs/attributes/">
     <Project Path="libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj" />
   </Folder>
+  <Folder Name="/libs/model/">
+    <Project Path="libs/model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj" />
+  </Folder>
   <Folder Name="/libs/authorization/">
     <Project Path="libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj" />
+    <Project Path="libs/authorization/MintPlayer.Spark.Authorization.Abstractions/MintPlayer.Spark.Authorization.Abstractions.csproj" />
   </Folder>
   <Folder Name="/libs/client/">
     <Project Path="libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj" />
@@ -57,6 +61,7 @@
   </Folder>
   <Folder Name="/libs/history/">
     <Project Path="libs/history/MintPlayer.Spark.History/MintPlayer.Spark.History.csproj" />
+    <Project Path="libs/history/MintPlayer.Spark.History.Abstractions/MintPlayer.Spark.History.Abstractions.csproj" />
   </Folder>
   <Folder Name="/libs/identity_provider/">
     <Project Path="libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj" />

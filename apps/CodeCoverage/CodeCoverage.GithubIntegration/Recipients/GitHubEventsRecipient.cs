@@ -1,3 +1,4 @@
+using CodeCoverage.Services;
 using CodeCoverage.Forge;
 using System.Text.Json;
 using CodeCoverage.Entities;
@@ -27,6 +28,7 @@ namespace CodeCoverage.Recipients;
 public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IGitHubIndexQueries indexes;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly ILogger<GitHubEventsRecipient> logger;
 
@@ -481,10 +483,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         // One query, not a load per repository — this runs inside a session whose request budget
         // is 30, and a real organization has more repositories than that.
-        return await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.Account == account.Id)
-            .Take(MaxRepositoriesPerAccount)
-            .ToListAsync(ct);
+        return await indexes.RepositoriesOfAccountAsync(session, account.Id, MaxRepositoriesPerAccount, ct);
     }
 
     /// <summary>

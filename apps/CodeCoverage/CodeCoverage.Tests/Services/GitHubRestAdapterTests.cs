@@ -269,6 +269,51 @@ public class GitHubRestAdapterTests : CoverageRavenTest
         ((IDisposable)cache).Dispose();
     }
 
+    /// <summary>
+    /// Concurrent requests for the same uncached file share ONE fetch (an anonymous browse could
+    /// otherwise make the app fetch a file from GitHub once per parallel request), and a caller that
+    /// gives up does not fail the others.
+    /// </summary>
+    [Fact]
+    public async Task Concurrent_requests_for_one_uncached_key_share_a_single_fetch()
+    {
+        ISourceContentCache cache = new SourceContentCache();
+        var release = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fetches = 0;
+        Task<string?> Fetch() { Interlocked.Increment(ref fetches); return release.Task; }
+
+        using var giveUp = new CancellationTokenSource();
+        var first = cache.GetOrFetchAsync("k", Fetch, TimeSpan.FromMinutes(1));
+        var second = cache.GetOrFetchAsync("k", Fetch, TimeSpan.FromMinutes(1));
+        var abandoned = cache.GetOrFetchAsync("k", Fetch, TimeSpan.FromMinutes(1), giveUp.Token);
+        giveUp.Cancel();
+        release.SetResult("body");
+
+        (await first).Should().Be("body");
+        (await second).Should().Be("body");
+        var waitAbandoned = async () => await abandoned;
+        await waitAbandoned.Should().ThrowAsync<OperationCanceledException>();
+        fetches.Should().Be(1);
+
+        // Cached now: no further fetch.
+        (await cache.GetOrFetchAsync("k", Fetch, TimeSpan.FromMinutes(1))).Should().Be("body");
+        fetches.Should().Be(1);
+        ((IDisposable)cache).Dispose();
+    }
+
+    [Fact]
+    public async Task A_missing_file_is_not_cached_by_the_shared_fetch()
+    {
+        ISourceContentCache cache = new SourceContentCache();
+        var fetches = 0;
+        Task<string?> Fetch() { Interlocked.Increment(ref fetches); return Task.FromResult<string?>(null); }
+
+        (await cache.GetOrFetchAsync("missing", Fetch, TimeSpan.FromMinutes(1))).Should().BeNull();
+        (await cache.GetOrFetchAsync("missing", Fetch, TimeSpan.FromMinutes(1))).Should().BeNull();
+        fetches.Should().Be(2);
+        ((IDisposable)cache).Dispose();
+    }
+
     // ------------------------------------------------------------------------------------------
     // GitHubForgeClient
     // ------------------------------------------------------------------------------------------

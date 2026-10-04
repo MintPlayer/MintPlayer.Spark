@@ -59,10 +59,17 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK034 | Error | Unsupported `[Contribution]` declaration: owner generic or not a class; static/indexer property; unknown collection type; no setter on a non-`List`/`IList`/`ICollection` property; element not a non-abstract, non-generic class/record with a parameterless constructor; slot without a public getter and setter | `ContributionsAnalyzer` | — |
 | SPARK035 | Error | Contribution element clashes with generated members: a reserved name (`Key`, `Id`, `TargetId`, `ContributorId`, `ContributionId`, `UpdatedAt`, `ContributionCount`, `ContributorName`, the `ISoftDeletable` members), `[ValueKey]`, or `[ValueObject]` | `ContributionsAnalyzer` | — |
 | SPARK036 | Warning | Two referenced libraries state the same property of the same action differently in their `actions.json`; the later library by assembly name wins. State the property in the app's `actions.json` to choose (#467, D7) | `LibraryActionsConflictAnalyzer` | — |
+| SPARK037 | Warning | A library declares an `ISparkMigration` that is not `public` (or sits in a non-public type). The application's generated `AddMigrations()` registers a package's migrations by name, so this one would never run (#388) | `LibraryMigrationVisibilityAnalyzer` | — |
+| SPARKLIB001 | Error | A project marked `<SparkEntityLibrary>true</SparkEntityLibrary>` depends on the ASP.NET Core shared framework (`Microsoft.AspNetCore.App`), directly or through a reference to a Web-SDK project such as `MintPlayer.Spark.Abstractions` or `MintPlayer.Spark.Authorization`. Reference `MintPlayer.Spark.Attributes`, `MintPlayer.Spark.Model` and the plain `*.Abstractions` packages instead (#388) | MSBuild target `SparkEntityLibraryGuard` (repository `Directory.Build.targets`) | — |
 
 SPARK030 is an **MSBuild** warning, not a Roslyn diagnostic: it is raised before `Build` in a project
 that references `MintPlayer.Spark.Authorization`, has `EnableSparkAuthSpa=true` and a
 `$(SpaRoot)package.json`. `#pragma` and `.editorconfig` severities do not apply to it.
+
+SPARKLIB001 is an **MSBuild** error too, and it applies to this repository only: the target lives in
+the root `Directory.Build.targets`, which is not shipped in any package. It runs after
+`ResolvePackageAssets` and checks both `FrameworkReference` and `TransitiveFrameworkReference`,
+because a framework reference inherited through a `ProjectReference` arrives as the latter.
 
 Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
 (`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…`

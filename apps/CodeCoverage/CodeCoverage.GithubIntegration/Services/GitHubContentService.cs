@@ -28,10 +28,18 @@ public partial class GitHubContentService : IGitHubContentService
 
     public async Task<string?> GetFileContentAsync(Repository repository, long? installationId, string sha, string path, CancellationToken cancellationToken = default)
     {
+        // One GitHub fetch per uncached file however many requests ask for it at once; a miss
+        // (null) is returned but not cached.
         var cacheKey = $"content/{repository.GitHubId}/{sha}/{path}";
-        if (sourceCache.TryGet(cacheKey, out var cached))
-            return cached;
+        return await sourceCache.GetOrFetchAsync(cacheKey, () => FetchFileContentAsync(repository, installationId, sha, path), CacheDuration, cancellationToken);
+    }
 
+    /// <summary>
+    /// Runs once per key for every caller waiting on it, so it does not take any one caller's
+    /// cancellation token (see <see cref="ISourceContentCache.GetOrFetchAsync"/>).
+    /// </summary>
+    private async Task<string?> FetchFileContentAsync(Repository repository, long? installationId, string sha, string path)
+    {
         string? content = null;
 
         if (installationId is not null)
@@ -56,18 +64,15 @@ public partial class GitHubContentService : IGitHubContentService
                 using var request = new HttpRequestMessage(HttpMethod.Get,
                     $"https://raw.githubusercontent.com/{repository.FullName}/{sha}/{Uri.EscapeDataString(path).Replace("%2F", "/")}");
                 request.Headers.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("Coverage", "1.0"));
-                var response = await http.SendAsync(request, cancellationToken);
+                var response = await http.SendAsync(request);
                 if (response.IsSuccessStatusCode)
-                    content = await response.Content.ReadAsStringAsync(cancellationToken);
+                    content = await response.Content.ReadAsStringAsync();
             }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Raw content fetch failed for {Repo}@{Sha}:{Path}", repository.FullName, sha, path);
             }
         }
-
-        if (content is not null)
-            sourceCache.Set(cacheKey, content, CacheDuration);
 
         return content;
     }

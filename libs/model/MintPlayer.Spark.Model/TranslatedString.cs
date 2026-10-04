@@ -11,7 +11,7 @@ public class TranslatedString
     /// <summary>
     /// A translation KEY, set when the JSON held a plain string instead of an object (#467, D1/D4):
     /// App_Data files refer to <c>translations.json</c> by key and never embed translated text.
-    /// The loader resolves such a value through <see cref="SparkText"/> into one carrying
+    /// The loader resolves such a value through <c>SparkText</c> (MintPlayer.Spark.Abstractions) into one carrying
     /// <see cref="Translations"/>; an unresolved one serializes back to its key.
     /// </summary>
     public string? Key { get; init; }

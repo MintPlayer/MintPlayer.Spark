@@ -79,4 +79,26 @@
 			Condition="Exists('$(OutDir)RavenDBServer')">
 		<RemoveDir Directories="$(OutDir)RavenDBServer" ContinueOnError="true" />
 	</Target>
+
+	<!--
+	  SPARKLIB001: an entity library must not depend on ASP.NET Core (#388).
+
+	  A project that sets <SparkEntityLibrary>true</SparkEntityLibrary> holds entities only, so a host
+	  without the ASP.NET Core shared framework (a console tool, a worker, a test fixture) can load it.
+	  One ProjectReference or PackageReference to a Web-SDK project (MintPlayer.Spark.Abstractions,
+	  MintPlayer.Spark.Authorization, …) silently brings Microsoft.AspNetCore.App back, so the build fails.
+
+	  A transitive framework reference reaches a plain-SDK project as a TransitiveFrameworkReference item,
+	  populated by ResolvePackageAssets from project.assets.json, not as a FrameworkReference. Both are
+	  checked. Proven red on HR.Library before the split, green on Attributes (PRD §3.5, S3).
+	-->
+	<Target Name="SparkEntityLibraryGuard" AfterTargets="ResolvePackageAssets"
+			Condition="'$(SparkEntityLibrary)' == 'true'">
+		<ItemGroup>
+			<_SparkEntityLibraryAspNet Include="@(FrameworkReference);@(TransitiveFrameworkReference)"
+				Condition="'%(Identity)' == 'Microsoft.AspNetCore.App'" />
+		</ItemGroup>
+		<Error Condition="'@(_SparkEntityLibraryAspNet)' != ''" Code="SPARKLIB001"
+			Text="$(MSBuildProjectName) is an entity library (SparkEntityLibrary=true) but depends on the ASP.NET Core shared framework (Microsoft.AspNetCore.App), directly or through a ProjectReference/PackageReference. Reference MintPlayer.Spark.Attributes, MintPlayer.Spark.Model and the plain *.Abstractions packages, never MintPlayer.Spark.Abstractions or another Web-SDK project." />
+	</Target>
 </Project>

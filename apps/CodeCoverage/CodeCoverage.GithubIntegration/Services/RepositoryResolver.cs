@@ -15,6 +15,7 @@ namespace CodeCoverage.Services;
 public partial class RepositoryResolver : IRepositoryResolver
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IGitHubIndexQueries indexes;
     [Inject] private readonly IGitHubInstallationService installations;
     [Inject] private readonly IMemoryCache cache;
     [Inject] private readonly ILogger<RepositoryResolver> logger;
@@ -48,10 +49,7 @@ public partial class RepositoryResolver : IRepositoryResolver
         //    Filtered after the query rather than inside it: at most a couple of rows come back,
         //    and this compares the enum rather than depending on which fields the generated index
         //    happens to expose.
-        var live = (await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.FullName == fullName)
-            .Take(8)
-            .ToListAsync(cancellationToken))
+        var live = (await indexes.RepositoriesNamedAsync(session, fullName, 8, cancellationToken))
             .FirstOrDefault(r => r.Provider == provider);
         //    ⚠ An invisible hit falls through, it does NOT return None here (#453). Returning early
         //    is what made "private" answer in ~4 ms and "missing" in ~270 ms (the GitHub step).
@@ -63,10 +61,7 @@ public partial class RepositoryResolver : IRepositoryResolver
         //    would look tidier: a repository transferred to another owner keeps its old full name
         //    here while its owner key has already moved, so that would lose exactly the case this
         //    step exists for.
-        var aliased = (await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.PreviousFullNames.Any(previous => previous == fullName))
-            .Take(8)
-            .ToListAsync(cancellationToken))
+        var aliased = (await indexes.RepositoriesPreviouslyNamedAsync(session, fullName, 8, cancellationToken))
             .Where(r => r.Provider == provider && isVisible(r))
             .Take(2)
             .ToList();
@@ -129,8 +124,7 @@ public partial class RepositoryResolver : IRepositoryResolver
         if (cache.TryGetValue<bool>(cacheKey, out var known))
             return known;
 
-        known = await session.Query<Account, Indexes.Accounts_Overview>()
-            .AnyAsync(a => a.OwnerKey == ownerKey, cancellationToken);
+        known = await indexes.AccountExistsAsync(session, ownerKey, cancellationToken);
 
         cache.Set(cacheKey, known, LookupCacheDuration);
         return known;

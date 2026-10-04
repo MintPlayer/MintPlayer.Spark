@@ -32,6 +32,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddActions();
     spark.AddInterceptors();
     spark.AddCustomActions();
+    // Generated: runs the migrations referenced packages ship once at startup. QnA has none of its
+    // own; Authorization migrates stored SparkUser/SparkRole documents (#388).
+    spark.AddMigrations();
 
     // Password accounts, and every account must confirm its email before it can sign in (D6). The
     // confirmation link points at the SPA's confirm-email page (withAccount(), D16).

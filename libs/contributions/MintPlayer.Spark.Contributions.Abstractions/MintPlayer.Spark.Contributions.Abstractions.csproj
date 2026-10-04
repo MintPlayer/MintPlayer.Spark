@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Contributions.Abstractions</PackageId>
-		<Version>11.0.0-preview.94</Version>
+		<Version>11.0.0-preview.95</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Contracts for MintPlayer.Spark contributions (preview): the [Contribution] and [ContributionSlot] attributes, the IContribution / ICurrentContribution shapes the generator implements, IContributions, the IContributionValidator&lt;T&gt; app hook and the RevertContribution right. Reference this from Domain/Library projects; the host references MintPlayer.Spark.Contributions.</Description>
@@ -26,7 +26,8 @@
 
 	<ItemGroup>
 		<!-- SparkReservedActions (RevertContribution is a reserved verb) and ValidationError (the T7 hook's result). -->
-		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- Model only (SparkReservedActions, ValidationError): not the Web-SDK Abstractions, so an entity library stays free of ASP.NET Core (#388). -->
+		<ProjectReference Include="..\..\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
 	</ItemGroup>
 
 </Project>

@@ -30,7 +30,7 @@
     "@mintplayer/dailymotion-player": "^20.0.0",
     "@mintplayer/file-player": "^20.0.0",
     "@mintplayer/ng-animations": "22.1.0",
-    "@mintplayer/ng-bootstrap": "^22.21.0",
+    "@mintplayer/ng-bootstrap": "^22.21.1",
     "@mintplayer/ng-click-outside": "^22.1.0",
     "@mintplayer/ng-focus-on-load": "^22.1.0",
     "@mintplayer/ng-video-player": "^22.0.0",

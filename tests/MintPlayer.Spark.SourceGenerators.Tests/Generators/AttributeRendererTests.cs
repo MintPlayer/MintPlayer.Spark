@@ -51,7 +51,7 @@ public class AttributeRendererTests
             "GenerateIndexGenerator",
             [Fixture.Replace("{{PROPERTY}}", $"{attribute} public string? Model {{ get; set; }}")],
             referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
-            rootNamespace: "TestApp");
+            rootNamespace: "TestApp", outputKind: Microsoft.CodeAnalysis.OutputKind.ConsoleApplication);
 
         var (hintName, generated) = result.GeneratedSources.Single();
         var errors = result.FinalCompilationDiagnostics

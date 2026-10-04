@@ -60,7 +60,7 @@ internal partial class ModelLoader : IModelLoader
                     // Auto-generate alias from Name if not explicitly set
                     entityType.Alias ??= entityType.Name.ToLowerInvariant();
 
-                    // Symmetrical with SparkQueryAliases.Index, which throws for the same reason
+                    // Symmetrical with SparkQueryAliasIndex.Index, which throws for the same reason
                     // (#327 M3). This used to warn to the console and keep the FIRST, while the
                     // line above kept the LAST — so on a collision the two indexes resolved the same
                     // alias to different types, and the loser was silently unroutable. A URL names

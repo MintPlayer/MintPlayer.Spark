@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
-using MintPlayer.Spark.Abstractions.Reflection;
+using System.Reflection;
+using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Replication.Abstractions.Models;
 
@@ -93,15 +94,22 @@ public class SyncAction<T> where T : class
         Properties = Properties,
     };
 
+    /// <summary>
+    /// The readable public instance properties of <typeparamref name="T"/> that are part of the Spark
+    /// model, computed once per closed type. <c>[IgnoreProperty]</c> ones are excluded from the model, so
+    /// excluded from the transport payload too. Plain reflection rather than Abstractions' accessor
+    /// cache, so this package does not depend on the Web-SDK Abstractions (#388).
+    /// </summary>
+    private static readonly PropertyInfo[] TransportProperties = typeof(T)
+        .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+        .Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && p.GetCustomAttribute<IgnorePropertyAttribute>() is null)
+        .ToArray();
+
     private static Dictionary<string, object?> EntityToDictionary(T entity)
     {
         var dict = new Dictionary<string, object?>();
-        foreach (var prop in typeof(T).GetCachedProperties())
-        {
-            // Excluded from the model, so excluded from the transport payload too.
-            if (prop.CanRead && !prop.IsIgnoredForSparkModel())
-                dict[prop.Name] = AccessorCache.GetGetter(prop)(entity!);
-        }
+        foreach (var prop in TransportProperties)
+            dict[prop.Name] = prop.GetValue(entity);
         return dict;
     }
 }

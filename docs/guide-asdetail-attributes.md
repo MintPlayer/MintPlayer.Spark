@@ -212,7 +212,7 @@ type".
 ### Marking a type
 
 ⚠️ **The attribute does nothing unless the declaring project references the generator.** Analyzer
-`ProjectReference`s are not transitive, so a library that references `MintPlayer.Spark.Abstractions`
+`ProjectReference`s are not transitive, so a library that references `MintPlayer.Spark.Attributes`
 (where the attribute lives) still needs its own:
 
 ```xml

@@ -138,7 +138,8 @@ internal static class GeneratorHarness
         string? rootNamespace = null,
         IEnumerable<(string Path, string Text)>? additionalTexts = null,
         IEnumerable<MetadataReference>? additionalReferences = null,
-        string? generatorAssemblyName = null)
+        string? generatorAssemblyName = null,
+        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary)
     {
         var trees = sourceFiles
             .Select(f => CSharpSyntaxTree.ParseText(f.Text, path: f.Path))
@@ -153,7 +154,7 @@ internal static class GeneratorHarness
             assemblyName: "TestInput",
             syntaxTrees: trees,
             references: references,
-            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            options: new CSharpCompilationOptions(outputKind));
 
         var additionalTextArray = System.Collections.Immutable.ImmutableArray.CreateRange(
             (additionalTexts ?? Array.Empty<(string, string)>())

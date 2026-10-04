@@ -79,6 +79,7 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         services.AddSingleton(session);
         services.AddSingleton(github);
         services.AddSingleton<IInstallationProjects>(new NoInstallationProjects());
+        services.AddSingleton<CodeCoverage.Services.IGitHubIndexQueries, CodeCoverage.Services.GitHubIndexQueries>();
         services.AddScoped<GitHubStateReconciler>();
         return services.BuildServiceProvider().GetRequiredService<GitHubStateReconciler>();
     }
