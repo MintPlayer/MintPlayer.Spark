@@ -424,3 +424,8 @@ apps/*/raven-license.json
 
 # #460 M8: MailManager pickup-folder mode in the demo apps writes every mail here as an .eml file.
 mail-pickup/
+
+# #264 G-Q19/Q20: the Spark JSON schemas are build artifacts, written here by
+# tools/SchemaGenerator on build. Never tracked: the published revisions are GitHub releases
+# tagged schemas/v{n}. Anchored, so nothing else named schemas/ is swallowed.
+/schemas/

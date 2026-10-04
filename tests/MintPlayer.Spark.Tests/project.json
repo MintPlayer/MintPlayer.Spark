@@ -7,7 +7,8 @@
         "default",
         "^production",
         "{workspaceRoot}/apps/*/*/App_Data/Model/*.json",
-        "{workspaceRoot}/apps/*/*/App_Data/security.json"
+        "{workspaceRoot}/apps/*/*/App_Data/*.json",
+        "{workspaceRoot}/libs/*/*/App_Data/*.json"
       ],
       "options": {
         "cwd": "tests/MintPlayer.Spark.Tests",

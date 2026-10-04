@@ -112,7 +112,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
         return new ActionsCatalogue(actions, composition.Conflicts);
     }
 
-    private static readonly string[] KnownProperties =
+    internal static readonly string[] KnownProperties =
         ["label", "description", "confirmation", "icon", "showedOn", "selectionRule", "refreshOnCompleted", "variant", "offset"];
 
     private static ActionDefinition Bind(SparkComposedAction action, List<string> problems)

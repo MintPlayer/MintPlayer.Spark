@@ -119,6 +119,9 @@
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />
     <Project Path="libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/MintPlayer.Spark.Webhooks.GitHub.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SchemaGenerator/MintPlayer.Spark.SchemaGenerator.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MintPlayer.Spark.Client.Tests/MintPlayer.Spark.Client.Tests.csproj" />
     <Project Path="tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj" />
