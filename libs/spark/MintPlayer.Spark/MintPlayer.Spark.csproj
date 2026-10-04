@@ -80,6 +80,7 @@
 
 	<ItemGroup>
 	  <PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.3.0-rc.0" />
+	  <PackageReference Include="MintPlayer.AspNetCore.SpaServices.Xsrf" Version="11.0.0-rc.3" />
 	  <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 	</ItemGroup>
 

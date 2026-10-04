@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -7,41 +6,39 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
-using System.Security.Claims;
 
 namespace MintPlayer.Spark.Tests.Extensions;
 
 /// <summary>
-/// Does WHERE the <c>XSRF-TOKEN</c> cookie is minted decide whether a blank refresh request is
-/// needed after a principal change?
+/// Is the <c>XSRF-TOKEN</c> minted on a sign-in or sign-out response usable for the very next
+/// mutating call, with no <c>/spark/auth/csrf-refresh</c> in between?
 /// </summary>
 /// <remarks>
 /// <para>
 /// An antiforgery token is bound to the caller's identity, so a token minted while anonymous is
-/// refused for an authenticated request and vice versa. Spark mints the cookie <em>before</em> the
-/// handler runs; <c>MintPlayer.AspNetCore.SpaServices.Xsrf</c> mints it in
-/// <c>Response.OnStarting</c>, i.e. after. If the later placement sees the post-sign-in principal,
-/// the client would not need to call <c>/spark/auth/csrf-refresh</c> afterwards.
+/// refused for an authenticated request and vice versa. Which principal the token on a sign-in or
+/// sign-out response is bound to therefore depends on <em>when</em> it is minted.
 /// </para>
 /// <para>
-/// ⚠️ This is an A/B, not an assertion of a belief. Both placements are driven through a real
-/// Identity sign-in and sign-out, and the test records what each one actually produces. The answer
-/// decides whether a published library changes, so it is measured rather than reasoned.
+/// History: this file began as an A/B between Spark's own mint, which ran <em>before</em> the
+/// handler, and <c>MintPlayer.AspNetCore.SpaServices.Xsrf</c>, which mints in
+/// <c>Response.OnStarting</c>. Measured then: after sign-in, 400 for the eager mint and 200 for
+/// <c>OnStarting</c>; after sign-out, 400 for both. That result is why Spark adopted the package
+/// (#452). The eager arm is gone, and the tests now drive the package's real middleware, so a
+/// change to the package's placement fails here and not just in its own repository.
 /// </para>
 /// </remarks>
 public class XsrfMintingPlacementTests : SparkTestDriver
 {
     private const string CookieName = "XSRF-TOKEN";
 
-    /// <summary>Public only because xUnit's <c>[InlineData]</c> needs to name it.</summary>
-    public enum Placement { BeforeHandler, OnStarting }
-
-    private async Task<IHost> StartAsync(Placement placement)
+    private async Task<IHost> StartAsync()
     {
         return await new HostBuilder()
             .ConfigureWebHost(webHost => webHost
@@ -72,33 +69,12 @@ public class XsrfMintingPlacementTests : SparkTestDriver
                     app.UseAuthentication();
                     app.UseAuthorization();
 
-                    // The candidate under test. Everything else in the pipeline is identical.
-                    app.Use(async (context, next) =>
-                    {
-                        var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
-
-                        if (placement == Placement.OnStarting)
-                        {
-                            context.Response.OnStarting(state =>
-                            {
-                                var ctx = (HttpContext)state;
-                                Append(ctx, antiforgery.GetAndStoreTokens(ctx).RequestToken);
-                                return Task.CompletedTask;
-                            }, context);
-                            await next(context);
-                            return;
-                        }
-
-                        Append(context, antiforgery.GetAndStoreTokens(context).RequestToken);
-                        await next(context);
-                    });
-
+                    // The same order as SparkMiddleware: Spark's gate, then the built-in middleware
+                    // (ASP.NET Core throws if an endpoint carries antiforgery metadata and it is
+                    // absent, even when Spark's gate already handled it), then the mint.
                     app.UseSparkAntiforgery();
-
-                    // Both, exactly as SparkMiddleware does (:301 then :306). ASP.NET Core throws if
-                    // an endpoint carries antiforgery metadata and no built-in middleware is present,
-                    // even when Spark's gate already handled it.
                     app.UseAntiforgery();
+                    app.UseAntiforgeryGenerator();
 
                     app.UseEndpoints(endpoints =>
                     {
@@ -119,22 +95,10 @@ public class XsrfMintingPlacementTests : SparkTestDriver
                         // signed out — which is what makes the sign-out half measurable.
                         endpoints.MapPost("/probe/protected", (HttpContext ctx) =>
                             Results.Ok(new { caller = ctx.User.Identity?.Name ?? "(anonymous)" }))
-                            .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+                            .WithMetadata(new Microsoft.AspNetCore.Antiforgery.RequireAntiforgeryTokenAttribute(true));
                     });
                 }))
             .StartAsync();
-
-        static void Append(HttpContext ctx, string? token)
-        {
-            if (token is null) return;
-            ctx.Response.Cookies.Append(CookieName, token, new CookieOptions
-            {
-                HttpOnly = false,
-                SameSite = SameSiteMode.Strict,
-                Secure = ctx.Request.IsHttps,
-                Path = "/",
-            });
-        }
     }
 
     /// <summary>Everything a browser would be holding after a response.</summary>
@@ -214,13 +178,11 @@ public class XsrfMintingPlacementTests : SparkTestDriver
     /// The sign-in half: take the cookie minted on the sign-in response itself and use it
     /// immediately, with no refresh in between.
     /// </summary>
-    [Theory]
-    [InlineData(Placement.BeforeHandler)]
-    [InlineData(Placement.OnStarting)]
-    public async Task Token_minted_on_the_sign_in_response_is_usable_immediately(Placement placement)
+    [Fact]
+    public async Task Token_minted_on_the_sign_in_response_is_usable_immediately()
     {
         await SeedUserAsync();
-        using var host = await StartAsync(placement);
+        using var host = await StartAsync();
         var jar = Jar.Empty();
 
         var signIn = await PostAsync(host, "/probe/sign-in", jar, sendXsrfHeader: false);
@@ -228,34 +190,22 @@ public class XsrfMintingPlacementTests : SparkTestDriver
 
         var protectedCall = await PostAsync(host, "/probe/protected", jar, sendXsrfHeader: true);
 
-        var expected = placement switch
-        {
-            // Minted before the handler ran, i.e. while still anonymous. The follow-up call is
-            // authenticated, so the token is "meant for a different claims-based user".
-            Placement.BeforeHandler => HttpStatusCode.BadRequest,
-
-            // SignInManager assigns Context.User on the current request, so a token minted at
-            // response-start is already bound to the signed-in principal.
-            Placement.OnStarting => HttpStatusCode.OK,
-
-            _ => throw new ArgumentOutOfRangeException(nameof(placement)),
-        };
-
-        protectedCall.StatusCode.Should().Be(expected,
-            "placement decides which principal the sign-in response's token is bound to");
+        // SignInManager assigns Context.User on the current request, and the package mints at
+        // response-start, so the token is already bound to the signed-in principal. Spark's old
+        // eager mint got 400 here: it minted while the request was still anonymous.
+        protectedCall.StatusCode.Should().Be(HttpStatusCode.OK,
+            "the package mints after the handler, so the sign-in response's token is bound to the signed-in user");
     }
 
     /// <summary>
-    /// The sign-out half — the one the reasoning says cannot be fixed by placement, because
-    /// <c>SignOutAsync</c> never resets <c>HttpContext.User</c>.
+    /// The sign-out half, which placement cannot fix, because <c>SignOutAsync</c> never resets
+    /// <c>HttpContext.User</c>. This is why <c>/spark/auth/csrf-refresh</c> stays.
     /// </summary>
-    [Theory]
-    [InlineData(Placement.BeforeHandler)]
-    [InlineData(Placement.OnStarting)]
-    public async Task Token_minted_on_the_sign_out_response_is_usable_immediately(Placement placement)
+    [Fact]
+    public async Task Token_minted_on_the_sign_out_response_is_not_usable_immediately()
     {
         await SeedUserAsync();
-        using var host = await StartAsync(placement);
+        using var host = await StartAsync();
         var jar = Jar.Empty();
 
         await PostAsync(host, "/probe/sign-in", jar, sendXsrfHeader: false);
@@ -263,15 +213,12 @@ public class XsrfMintingPlacementTests : SparkTestDriver
         var signOut = await PostAsync(host, "/probe/sign-out", jar, sendXsrfHeader: false);
         signOut.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // The auth cookie is gone now, so this call is anonymous. If the XSRF token minted on the
-        // sign-out response is still bound to the departed user, it is refused.
+        // The auth cookie is gone now, so this call is anonymous. The XSRF token minted on the
+        // sign-out response is still bound to the departed user, so it is refused. Only a fresh
+        // request, where authentication re-evaluates from cookies that no longer exist, can mint
+        // an anonymous-bound token.
         var protectedCall = await PostAsync(host, "/probe/protected", jar, sendXsrfHeader: true);
 
-        // ⚠️ THE ANSWER: both placements fail here, and that is the point. SignOutAsync never resets
-        // HttpContext.User, so at response-start the principal is still the user who just logged
-        // out — the token is bound to them, and the next (anonymous) request is refused. No choice
-        // of placement fixes this; only a fresh request, where authentication re-evaluates from the
-        // cookies that no longer exist, can mint an anonymous-bound token.
         protectedCall.StatusCode.Should().Be(HttpStatusCode.BadRequest,
             "sign-out cannot be fixed by moving where the cookie is minted");
     }
@@ -281,13 +228,11 @@ public class XsrfMintingPlacementTests : SparkTestDriver
     /// actually reject a bad token, every "it worked" above is the pipeline waving requests through,
     /// not evidence about minting placement.
     /// </summary>
-    [Theory]
-    [InlineData(Placement.BeforeHandler)]
-    [InlineData(Placement.OnStarting)]
-    public async Task A_garbage_token_is_rejected(Placement placement)
+    [Fact]
+    public async Task A_garbage_token_is_rejected()
     {
         await SeedUserAsync();
-        using var host = await StartAsync(placement);
+        using var host = await StartAsync();
         var jar = Jar.Empty();
 
         await PostAsync(host, "/probe/sign-in", jar, sendXsrfHeader: false);
@@ -306,7 +251,7 @@ public class XsrfMintingPlacementTests : SparkTestDriver
     public async Task A_missing_token_is_rejected()
     {
         await SeedUserAsync();
-        using var host = await StartAsync(Placement.OnStarting);
+        using var host = await StartAsync();
         var jar = Jar.Empty();
 
         await PostAsync(host, "/probe/sign-in", jar, sendXsrfHeader: false);
@@ -323,7 +268,7 @@ public class XsrfMintingPlacementTests : SparkTestDriver
     public async Task Sign_in_updates_the_current_principal_and_sign_out_does_not()
     {
         await SeedUserAsync();
-        using var host = await StartAsync(Placement.OnStarting);
+        using var host = await StartAsync();
         var jar = Jar.Empty();
 
         var signIn = await PostAsync(host, "/probe/sign-in", jar, sendXsrfHeader: false);

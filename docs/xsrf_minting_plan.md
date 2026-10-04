@@ -114,7 +114,8 @@ and `.Webhooks.GitHub` → `.85`. ⚠️ `ng-spark-auth` only if M3 lands.
 ## Out of scope
 
 - Changing `MintPlayer.AspNetCore.SpaServices.Xsrf` (PRD §4) — if it is hardened later, Spark's flag
-  set and the try/catch above are its shopping list.
+  set and the try/catch above are its shopping list. **Done 2026-10-04:** hardened upstream (#86,
+  #89) and adopted by Spark in #452. See PRD §4.
 - Removing the client's now-redundant `csrfRefresh()` calls after sign-in — 8 assertions across 2
   spec files and a version floor, for a cheap round trip.
 - Turning `WarnOnly` off in CodeCoverage. Deliberately deferred: production should log its `/api`

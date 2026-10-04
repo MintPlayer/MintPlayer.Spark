@@ -664,7 +664,15 @@ Both live in `MintPlayer.Spark.Abstractions`, not core — the Authorization pac
 
 That the decision keys on the *authenticating scheme* rather than on request shape is the security property, not an implementation detail. Were it keyed on "did the caller send an `Authorization` header", an attacker could disable CSRF protection for a cookie-authenticated victim by attaching a junk header. A junk header authenticates nothing, so no scheme records itself and the gate still runs — pinned by `An_unrecognised_credential_does_not_suppress_the_antiforgery_gate`.
 
-**The XSRF package swap is declined — D2's premise was false.** D2 recorded that `UseAntiforgeryGenerator()` from `MintPlayer.AspNetCore.SpaServices.Xsrf` "does the identical `GetAndStoreTokens` + `XSRF-TOKEN` cookie with `HttpOnly = false`". It does not. The package is published (`10.2.1`) and was read rather than assumed:
+> **Superseded 2026-10-04 (#452): the package was hardened and Spark adopted it.** Every reason below
+> for declining was fixed upstream in MintPlayer/MintPlayer.AspNetCore.SpaServices#86 (`11.0.0-rc.2`):
+> `SameSite=Strict`, `Secure` via `SameAsRequest`, a guarded null token, and a mint failure that no
+> longer destroys the response. #89 (`11.0.0-rc.3`) added `[SkipXsrfToken]`, which the coverage badge
+> needs to stay `public`. `XsrfCookieFlagTests` still passes after the swap, and
+> `XsrfMintingPlacementTests` now drives the package's real middleware. The text below records the
+> decision as it stood.
+
+~~**The XSRF package swap is declined — D2's premise was false.**~~ D2 recorded that `UseAntiforgeryGenerator()` from `MintPlayer.AspNetCore.SpaServices.Xsrf` "does the identical `GetAndStoreTokens` + `XSRF-TOKEN` cookie with `HttpOnly = false`". It does not. The package is published (`10.2.1`) and was read rather than assumed:
 
 | | Spark (`SparkMiddleware.cs:239-259`) | Package (`AntiforgeryMiddleware.cs:19`) |
 |---|---|---|

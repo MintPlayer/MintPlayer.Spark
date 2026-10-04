@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.AspNetCore.SpaServices.Xsrf;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
@@ -372,27 +372,19 @@ public static class SparkExtensions
             await next(context);
         });
 
-        // Generate XSRF-TOKEN cookie on each response for Angular's HttpClient
-        app.Use(async (context, next) =>
-        {
-            var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
-            var tokens = antiforgery.GetAndStoreTokens(context);
-            if (tokens.RequestToken != null)
-            {
-                context.Response.Cookies.Append("XSRF-TOKEN", tokens.RequestToken, new CookieOptions
-                {
-                    // HttpOnly=false is intentional — the Angular client reads this cookie
-                    // and echoes it back in X-XSRF-TOKEN (double-submit pattern).
-                    HttpOnly = false,
-                    SameSite = SameSiteMode.Strict,
-                    // Secure=IsHttps so the token is never sent over plain HTTP in production,
-                    // but local HTTP development still works.
-                    Secure = context.Request.IsHttps,
-                    Path = "/"
-                });
-            }
-            await next(context);
-        });
+        // XSRF-TOKEN cookie on every response, for Angular's HttpClient to echo back in X-XSRF-TOKEN
+        // (#452). The package's defaults are exactly the flags Spark used to write itself: script-
+        // readable (HttpOnly=false), SameSite=Strict, Secure when the request is HTTPS, Path=/.
+        //
+        // It mints in Response.OnStarting, i.e. AFTER the handler, where Spark's own copy minted
+        // before it. The token on a sign-in response is therefore bound to the signed-in principal
+        // and works for the very next mutating call (XsrfMintingPlacementTests). Sign-out still needs
+        // /spark/auth/csrf-refresh: SignOutAsync never resets HttpContext.User.
+        //
+        // ⚠️ An endpoint that declares itself shared-cacheable must opt out with [SkipXsrfToken] /
+        // .SkipXsrfToken(). A response carrying a per-user Set-Cookie has its Cache-Control forced
+        // to private, so a "public" endpoint that keeps minting silently stops being cacheable.
+        app.UseAntiforgeryGenerator();
 
         // One place turns a raised retry into its 449 envelope, for every endpoint.
         //

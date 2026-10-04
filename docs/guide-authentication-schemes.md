@@ -98,12 +98,22 @@ cookie-authenticated victim by attaching a junk header. A junk header authentica
 scheme records itself and the gate still runs.
 *Pinned by `CredentialSchemeTests.An_unrecognised_credential_does_not_suppress_the_antiforgery_gate`.*
 
-Spark mints the `XSRF-TOKEN` cookie itself (`SparkExtensions`, the middleware registration) with
-`SameSite=Strict`, `Secure` when the request is HTTPS, and `HttpOnly=false` so the SPA can read and
-echo it. It deliberately does **not** use `UseAntiforgeryGenerator()` from
-`MintPlayer.AspNetCore.SpaServices.Xsrf`, which sets only `Path` and `HttpOnly` — adopting it would
-drop `Secure` from the token cookie. `XsrfCookieFlagTests` asserts both attributes end to end, so
-that swap would fail the suite rather than pass quietly.
+Spark mints the `XSRF-TOKEN` cookie through `UseAntiforgeryGenerator()` from
+`MintPlayer.AspNetCore.SpaServices.Xsrf` (#452). It is registered by `UseSpark()`, and an application
+does not call it. The cookie is `SameSite=Strict`, `Secure` when the request is HTTPS, and
+`HttpOnly=false` so the SPA can read and echo it. `XsrfCookieFlagTests` asserts both attributes end to
+end.
+
+- **Minted after the handler.** The package mints in `Response.OnStarting`, so the token on a sign-in
+  response is bound to the signed-in user and works for the next mutating call. Sign-out still needs
+  `/spark/auth/csrf-refresh`, because `SignOutAsync` never resets `HttpContext.User`
+  (`XsrfMintingPlacementTests`).
+- **Shared-cacheable endpoints must opt out.** Mark them `[SkipXsrfToken]` or `.SkipXsrfToken()`. A
+  response that carries the token's `Set-Cookie` has its `Cache-Control` forced to `private`, so a
+  `public` endpoint that keeps minting silently stops being cacheable. The opt-out does not take the
+  endpoint out of the pipeline: authentication, authorization and rate limiting still run.
+  `.ShortCircuit()` would skip them. Never put it on the SPA's HTML entry point or on
+  `/spark/auth/csrf-refresh`.
 
 ---
 
