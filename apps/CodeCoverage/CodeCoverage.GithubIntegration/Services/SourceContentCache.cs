@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace CodeCoverage.Services;
@@ -16,11 +17,31 @@ namespace CodeCoverage.Services;
 /// omits an explicit <c>Size</c> throws — including calls inside the framework,
 /// which we neither own nor can audit. Bounding only what needs bounding keeps
 /// the blast radius to this file.
+///
+/// Why not HybridCache: its in-memory tier is that same shared <see cref="IMemoryCache"/>, so
+/// bounding it means the <c>SizeLimit</c> above. Its keys here are commit-addressed and never
+/// change, and the app runs as one process, so its distributed tier and tag invalidation buy
+/// nothing. The one thing it would add, one fetch per key under concurrency, is
+/// <see cref="GetOrFetchAsync"/>.
+///
+/// Lives with its only consumer (<c>GitHubContentService</c>) rather than in CodeCoverage.Library,
+/// which holds entities and contracts only and must not depend on ASP.NET Core (#388).
 /// </summary>
 public interface ISourceContentCache
 {
     bool TryGet(string key, out string? content);
     void Set(string key, string content, TimeSpan duration);
+
+    /// <summary>
+    /// The cached content for <paramref name="key"/>, or the result of <paramref name="fetch"/>, run
+    /// <b>once</b> however many callers ask for the same uncached key at the same time. A
+    /// <c>null</c> result (not found, fetch failed) is returned but not cached.
+    /// </summary>
+    /// <remarks>
+    /// The shared fetch does not run under any one caller's token, so one caller giving up cannot fail
+    /// the others; each caller stops waiting on its own <paramref name="cancellationToken"/>.
+    /// </remarks>
+    Task<string?> GetOrFetchAsync(string key, Func<Task<string?>> fetch, TimeSpan duration, CancellationToken cancellationToken = default);
 }
 
 public sealed class SourceContentCache : ISourceContentCache, IDisposable
@@ -45,7 +66,35 @@ public sealed class SourceContentCache : ISourceContentCache, IDisposable
         CompactionPercentage = 0.25,
     });
 
+    /// <summary>The fetches in flight, one per key; removed when they finish, whatever the outcome.</summary>
+    private readonly ConcurrentDictionary<string, Lazy<Task<string?>>> inFlight = new(StringComparer.Ordinal);
+
     public bool TryGet(string key, out string? content) => cache.TryGetValue(key, out content);
+
+    public async Task<string?> GetOrFetchAsync(string key, Func<Task<string?>> fetch, TimeSpan duration, CancellationToken cancellationToken = default)
+    {
+        if (TryGet(key, out var cached))
+            return cached;
+
+        // Lazy, so a GetOrAdd race builds the wrapper twice but starts the fetch once.
+        var shared = inFlight.GetOrAdd(key, k => new Lazy<Task<string?>>(() => FetchAndStoreAsync(k, fetch, duration)));
+        return await shared.Value.WaitAsync(cancellationToken);
+    }
+
+    private async Task<string?> FetchAndStoreAsync(string key, Func<Task<string?>> fetch, TimeSpan duration)
+    {
+        try
+        {
+            var content = await fetch();
+            if (content is not null)
+                Set(key, content, duration);
+            return content;
+        }
+        finally
+        {
+            inFlight.TryRemove(key, out _);
+        }
+    }
 
     public void Set(string key, string content, TimeSpan duration)
     {

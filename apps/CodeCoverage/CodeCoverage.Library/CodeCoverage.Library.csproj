@@ -9,9 +9,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<!-- SourceContentCache's MemoryCache. Stated explicitly: it used to resolve only through the
-		     ASP.NET Core shared framework the Abstractions reference dragged in (#388). -->
-		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="11.0.0-rc.1.26425.128" />
 		<!-- [GenerateIndex] emits the library's own copy of the indexes only where RavenDB.Client is
 		     referenced, and CodeCoverage.GithubIntegration aliases Indexes to exactly that copy (see its
 		     csproj). It used to arrive through the Authorization package; stated explicitly since #388. -->
