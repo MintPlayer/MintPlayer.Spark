@@ -132,6 +132,50 @@ An MSBuild target that runs for projects marked `<SparkEntityLibrary>true</Spark
 `Microsoft.AspNetCore.App`. It must be proven falsifiable: temporarily re-add the Abstractions reference
 to one library and watch the build fail. Neither a clean grep nor a green build proves anything on its own.
 
+### 3.6 Packages can ship migrations (needed for R4)
+
+**Today they cannot.** Verified 2026-10-04:
+- **Generators:** `MigrationRegistrationGenerator` (`SourceGenerators/Generators/MigrationRegistrationGenerator.cs:16-33`)
+  and `SparkFullGenerator` (`AllFeatures.SourceGenerators/…/SparkFullGenerator.cs:98`) scan
+  `context.SyntaxProvider`, so they only find classes in the app's own source.
+- **Runtime:** there is no assembly scan. `SparkMigrationRegistry` holds only what the generated
+  `AddMigration<T>()` calls register.
+- **Apps without migrations:** an app with none of its own gets no generated `AddMigrations()` at all
+  (`MigrationRegistrationGenerator.Producer.cs:27`).
+
+The runner itself is ready for this:
+- Every version gets its own applied-marker (`SparkMigrationRunner.cs:50-55`, `SparkMigrationRecords/{version}`),
+  and every unapplied version runs, ordered by version. A package migration with an older timestamp
+  therefore still runs on a database that is further along.
+- A version clash throws at startup (`SparkMigrationRegistry.cs:22-25`), so it is loud.
+
+**Design** (owner proposal 2026-10-04, "a source-generator … that looks through all referenced
+assemblies"):
+1. Both generators also walk `compilation.SourceModule.ReferencedAssemblySymbols`, the way
+   `ReservedActionsReader.cs:40` already does. They pick up public, non-abstract types that implement
+   `MintPlayer.Spark.Migrations.ISparkMigration`, and emit `migrations.AddMigration<global::…>()` for
+   each one, after the app's own.
+   - Only assemblies that themselves reference `MintPlayer.Spark.Migrations` are walked. That keeps
+     the scan off the BCL and third-party packages.
+   - The result is reduced to an equatable list of type names, so the incremental pipeline does not
+     re-emit on every keystroke.
+2. `AddMigrations()` is emitted when *either* the app or a referenced package has migrations, so QnA
+   gets one.
+3. Every app that stores users (CodeCoverage, HR, QnA) calls `spark.AddMigrations()`. QnA does not
+   today (`Program.cs`), and it is added in this PR.
+4. A package migration must be `public`, because the generated code in the app names it. A new
+   analyzer warns on a non-public `ISparkMigration` in a project that is not an app (`OutputType`
+   Library). Otherwise such a migration would be skipped silently.
+5. A package migration uses the same `yyyyMMddHHmm` version scheme. A clash with an app's version
+   fails startup with the existing message.
+6. Authorization references `MintPlayer.Spark.Migrations`, which is plain SDK, so this adds no
+   web dependency anywhere it matters.
+7. **Tests:**
+   - Generator tests: a referenced in-memory assembly (`GeneratorHarness.CompileToMetadataReference`)
+     with a public migration is registered; an internal one triggers the warning; an app with no
+     migrations of its own still gets `AddMigrations()`.
+   - A runtime test: a fresh database records the package migration's marker.
+
 ## 4. Risks
 
 - **R1. Silent loss of reserved actions and action layers. Found 2026-10-04; not in the issue.**
@@ -178,9 +222,8 @@ to one library and watch the build fail. Neither a clean grep nor a green build 
     records the app's assembly and is unaffected.
   - **Fix:** a `RavenMigration` (`ISparkMigration`) that rewrites `Raven-Clr-Type` on `SparkUsers`
     and `SparkRoles` documents whose value names the old assembly.
-    - Shipped by the framework, not by each app. Today no `libs/` package ships a migration; the
-      generated `AddMigrations()` discovers only the app's own project (`libs/migrations/…/README.md:28-34`).
-      So this needs spike S1 (plan).
+    - Shipped by the framework (Authorization), not by each app. See §3.6 for how a package's
+      migrations get discovered.
     - Tests: red/green on a document whose metadata names the old assembly. After the migration it
       loads untyped as `SparkUser`, not `JObject`. Run it twice to prove it is idempotent.
 - **R5. `SparkUser`'s `cref`s.** Moved doc comments referencing web types (`SparkUser.cs:36` mentions
