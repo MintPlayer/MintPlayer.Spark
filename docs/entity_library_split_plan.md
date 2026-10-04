@@ -2,7 +2,7 @@
 
 PRD: [entity_library_split_PRD.md](entity_library_split_PRD.md) · PR: [#484](https://github.com/MintPlayer/MintPlayer.Spark/pull/484)
 (branch `fix/bs-select-full-width`).
-Status 2026-10-04: **M0–M8 implemented** on `fix/bs-select-full-width` (M6 dropped); the local sweep is the last step. Nothing pushed.
+Status 2026-10-04: **M0–M8 done** on `fix/bs-select-full-width` (M6 dropped); local sweep green. Not pushed yet.
 
 Rules for this work:
 - **Commit per milestone; run tests only at the end (M8).** Intermediate milestones are checked by
@@ -136,7 +136,7 @@ Rules for this work:
    History.Abstractions, each stating that the namespace is deliberately not the package name, and why.
 5. ✅ The old `docs/prd/` PRD and plan carry a superseded banner (done with the PRD).
 
-### M8: verification (the only test run) — tests `2b262aac`; sweep running
+### M8: verification (the only test run) ✅ tests `2b262aac`, fixes `a091e7a6`; sweep green (PRD §9)
 1. Extend `ReferencedAssemblyEntityTests` with a library using `TransientLookupReference` and
    `TranslatedString`, compiled against Attributes and Model only (no Abstractions in its references).
 2. Run the M2b migration test (written in M2b).

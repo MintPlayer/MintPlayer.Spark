@@ -6,7 +6,7 @@ Plan: [entity_library_split_plan.md](entity_library_split_plan.md).
 **Supersedes** `docs/prd/PRD-Entity-Library-Dependency-Split.md` and `docs/prd/plan-entity-library-dependency-split.md`
 (written at #382, before #460/#465/#466/#483). Their stale statements are listed in §8.
 
-Status 2026-10-04: **implemented (M1–M8), local sweep pending.** Implementation findings are marked
+Status 2026-10-04: **implemented (M1–M8), local sweep green** (§9). Implementation findings are marked
 "Found during implementation" / "Built". Every planning claim below was re-verified against `master` @ `9e2f32bd`
 by three read-only investigations on that date.
 
@@ -364,3 +364,29 @@ assemblies"):
 | `ModelSynchronizer.cs:684-686` lookup reflection | around `:754` |
 | "88 source files" | 102 |
 | (not mentioned) | CodeCoverage needs Authorization; QnA needs History; `SparkAware` R1; the PR version-bump gate |
+
+## 9. Verification results (2026-10-04)
+
+`RAVENDB_LICENSE=<Developer> npm run test:affected`, everything affected:
+
+1. **Run 1:** `MintPlayer.Spark.Tests` failed 5 of 3,617; Nx then bailed. Two real defects from the
+   move, both invisible to the build:
+   - **Auth mail templates.** `SparkAuthenticationExtensions.cs` registered Authorization's embedded
+     `SparkAuth/*.mjml` via `typeof(SparkUser).Assembly`, which is now Authorization.Abstractions.
+     Every account mail (confirm email, password reset, link confirmation) would have thrown
+     "No mail template 'SparkAuth/ConfirmEmail'". Anchored on `SparkAuthMailTemplates`.
+     (`MailManagerTests` ×2, `MailSpikeM2Tests`.)
+   - **`HistoryRights`** shared `IAuditable.cs` and moved with it, away from History's
+     `[assembly: SparkReservedActions(typeof(HistoryRights))]`, so `History`/`Revert` stopped being
+     read from that assembly. Moved back, with `IHistoryUserNameResolver`.
+     (`SparkReservedActionRegistryTests` ×2.)
+   - Fixed in `a091e7a6`; those four classes plus the new migration tests re-run green (46 tests).
+2. **Run 2:** every test project green (`Spark.Tests`, `SourceGenerators.Tests`, `CodeCoverage.Tests`,
+   `Client.Tests`, the Angular suites). `MintPlayer.Spark.E2E.Tests:build` failed only on
+   `Misconfigured remote cache endpoint: Unexpected response status: 499`: the remote Nx cache
+   rejected the upload. That is infrastructure, not code.
+3. **Run 3** (`-- --skip-remote-cache`): E2E built from the local cache and its tests passed (2m 3s).
+   **All 13 test projects green.**
+
+Afterwards, every top-level type in every moved file was listed and every `typeof(<moved type>).Assembly`
+was grepped, including fully qualified forms. No other anchor exists.
