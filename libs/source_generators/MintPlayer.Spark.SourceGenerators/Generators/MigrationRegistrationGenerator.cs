@@ -30,7 +30,7 @@ public class MigrationRegistrationGenerator : IncrementalGenerator
 
                     foreach (var iface in classSymbol.AllInterfaces)
                     {
-                        if (iface.ToDisplayString() == "MintPlayer.Spark.Migrations.ISparkMigration")
+                        if (iface.ToDisplayString() == ReferencedMigrationsReader.MigrationInterfaceMetadataName)
                         {
                             return new MigrationClassInfo
                             {
@@ -47,19 +47,29 @@ public class MigrationRegistrationGenerator : IncrementalGenerator
         // Only emit when the project actually references MintPlayer.Spark.Migrations
         var knowsMigrationsProvider = context.CompilationProvider
             .Select((compilation, ct) =>
-                compilation.GetTypeByMetadataName("MintPlayer.Spark.Migrations.ISparkMigration") != null);
+                compilation.GetTypeByMetadataName(ReferencedMigrationsReader.MigrationInterfaceMetadataName) != null);
+
+        // Migrations that referenced packages ship (#388), registered after the app's own. Host only.
+        var referencedMigrationsProvider = context.CompilationProvider
+            .Select(static (compilation, ct) => ReferencedMigrationsReader.Read(compilation, ct));
 
         var sourceProvider = migrationClassesProvider
             .Combine(knowsMigrationsProvider)
+            .Combine(referencedMigrationsProvider)
             .Combine(settingsProvider)
             .Select(static (providers, ct) =>
             {
-                var migrationClasses = providers.Left.Left;
-                var knowsMigrations = providers.Left.Right;
+                var migrationClasses = providers.Left.Left.Left;
+                var knowsMigrations = providers.Left.Left.Right;
+                var referencedMigrations = providers.Left.Right;
                 var settings = providers.Right;
 
+                var own = migrationClasses.Where(x => x != null).Cast<MigrationClassInfo>().ToList();
+                var ownNames = new HashSet<string>(own.Select(m => m.MigrationTypeName), StringComparer.Ordinal);
+                var all = own.Concat(referencedMigrations.Migrations.Where(m => !ownNames.Contains(m.MigrationTypeName)));
+
                 return (Producer)new MigrationRegistrationProducer(
-                    migrationClasses.Where(x => x != null).Cast<MigrationClassInfo>(),
+                    all,
                     knowsMigrations,
                     settings.RootNamespace ?? "GeneratedCode");
             });

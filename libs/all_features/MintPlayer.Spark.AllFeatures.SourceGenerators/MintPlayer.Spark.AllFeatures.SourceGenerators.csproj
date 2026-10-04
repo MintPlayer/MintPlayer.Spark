@@ -23,6 +23,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- Shared with MintPlayer.Spark.SourceGenerators: finding the migrations referenced packages ship (#388). -->
+        <Compile Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\Generators\ReferencedMigrationsReader.cs" Link="Shared\ReferencedMigrationsReader.cs" />
+        <Compile Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\Models\MigrationClassInfo.cs" Link="Shared\MigrationClassInfo.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="12.1.1" PrivateAssets="all" GeneratePathProperty="true" />
         <PackageReference Include="MintPlayer.ValueComparerGenerator" Version="12.1.1" PrivateAssets="all" GeneratePathProperty="true" />
         <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="12.1.1" PrivateAssets="all" GeneratePathProperty="true" />

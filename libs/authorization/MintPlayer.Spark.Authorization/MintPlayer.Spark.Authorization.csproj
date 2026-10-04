@@ -65,6 +65,9 @@
 		<PackageReference Include="QRCoder" Version="1.8.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.3.0-rc.0" />
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Authorization.Abstractions\MintPlayer.Spark.Authorization.Abstractions.csproj" />
+		<!-- Ships M_202610041800 (#388); the app's generated AddMigrations() registers it. -->
+		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

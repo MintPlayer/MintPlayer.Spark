@@ -127,9 +127,10 @@ public class SparkFullGenerator : IncrementalGenerator
             .Select(static (compilation, ct) => new SparkFullFeatureFlags
             {
                 HasSpark = compilation.GetTypeByMetadataName("MintPlayer.Spark.SparkContext") != null,
-                HasSparkUser = compilation.GetTypeByMetadataName("MintPlayer.Spark.Authorization.Identity.SparkUser") != null,
+                HasAuthorization = compilation.GetTypeByMetadataName("MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions") != null,
                 HasMessaging = compilation.GetTypeByMetadataName("MintPlayer.Spark.Messaging.SparkBuilderMessagingExtensions") != null,
                 HasReplication = compilation.GetTypeByMetadataName("MintPlayer.Spark.Replication.SparkBuilderReplicationExtensions") != null,
+                HasReferencedMigrations = global::MintPlayer.Spark.SourceGenerators.Generators.ReferencedMigrationsReader.Read(compilation, ct).Migrations.Count > 0,
             });
 
         // Combine all providers and produce source
