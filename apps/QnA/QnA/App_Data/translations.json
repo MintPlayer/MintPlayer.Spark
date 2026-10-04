@@ -597,6 +597,43 @@
           }
         }
       }
+    },
+    "SparkUser": {
+      "label": {
+        "en": "User",
+        "fr": "Utilisateur",
+        "nl": "Gebruiker"
+      },
+      "attributes": {
+        "UserName": {
+          "label": {
+            "en": "User name",
+            "fr": "Nom d'utilisateur",
+            "nl": "Gebruikersnaam"
+          }
+        },
+        "Email": {
+          "label": {
+            "en": "Email",
+            "fr": "E-mail",
+            "nl": "E-mail"
+          }
+        },
+        "CreatedAtUtc": {
+          "label": {
+            "en": "Registered",
+            "fr": "Inscrit le",
+            "nl": "Geregistreerd"
+          }
+        },
+        "PreferredCulture": {
+          "label": {
+            "en": "Language",
+            "fr": "Langue",
+            "nl": "Taal"
+          }
+        }
+      }
     }
   },
   "queries": {

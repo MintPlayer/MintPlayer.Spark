@@ -1,6 +1,10 @@
 Query/Answer
 Query/Question
 Query/QuestionTranslationsContribution
+Query/SparkUser
+Query/SparkUser/UserName
 Read/Answer
 Read/Question
 Read/QuestionTranslationsContribution
+Read/SparkUser
+Read/SparkUser/UserName

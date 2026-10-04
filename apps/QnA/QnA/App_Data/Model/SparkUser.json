@@ -1,0 +1,75 @@
+{
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. --spark-synchronize-model leaves it alone: SparkUser is not a",
+    "context root, so the synchronizer never discovers it and never rewrites this file.",
+    "",
+    "It exists so that Question/Answer CreatedBy and ModifiedBy render the user name instead of a raw",
+    "document id: a reference resolves its label through the target type's breadcrumb (#264, G-Q15).",
+    "",
+    "security.json grants Read/SparkUser to both well-known groups -- the breadcrumb is resolved for",
+    "visitors too -- and DENIES Read on every attribute here but UserName to both groups, so a",
+    "/spark/po/load of a user shows nobody anything but the name. Only the profile fields below are",
+    "declared, and only so the deny has something to deny: credential material (PasswordHash,",
+    "SecurityStamp, AuthenticatorKey, recovery codes, tokens, logins, passkeys, claims) is never",
+    "declared, because an attribute that is not in the model cannot reach the wire whatever a right says.",
+    "",
+    "⚠️ Anything added here is readable by every caller unless security.json denies it as well."
+  ],
+  "persistentObject": {
+    "id": "4e13c0de-0000-4000-8000-000000000001",
+    "name": "SparkUser",
+    "clrType": "MintPlayer.Spark.Authorization.Identity.SparkUser",
+    "alias": "sparkuser",
+    "breadcrumb": "{UserName}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "4e13c0de-0000-4000-8000-000000000011",
+        "name": "UserName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4e13c0de-0000-4000-8000-000000000012",
+        "name": "Email",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4e13c0de-0000-4000-8000-000000000013",
+        "name": "CreatedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4e13c0de-0000-4000-8000-000000000014",
+        "name": "PreferredCulture",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}
