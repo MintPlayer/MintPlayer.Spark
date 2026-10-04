@@ -124,7 +124,7 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
             },
             security: SparkTestSecurity.Empty
                 .Granting("QueryReadEditNew/AttrVault", "QueryReadEditNew/AttrKeeper", $"{Echo}/AttrVault")
-                .Denying("QueryRead/AttrVault/Secret", "QueryRead/AttrKeeper/Code", "Edit/AttrVault/Note"));
+                .Denying("QueryRead/AttrVault/Secret", "QueryRead/AttrKeeper/Code", "Edit/AttrVault/Note", "New/AttrVault/Locked"));
     }
 
     private readonly SparkEndpointFactory<AttrContext> _factory = host.Factory;
@@ -302,6 +302,37 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
             definition.Attributes.Single(a => a.Name == "Note").IsReadOnly.Should().BeTrue("Note is Edit-denied");
             definition.Attributes.Single(a => a.Name == "Name").IsReadOnly.Should().BeFalse();
         }
+    }
+
+    /// <summary>
+    /// #264 G1/G2: the create form asks <c>?for=new</c>. A New-denied attribute is absent (it was drawn and
+    /// refused on save), and an Edit-only deny no longer makes a field read-only on create. Red before the
+    /// change: <c>Locked</c> was present and <c>Note</c> read-only. The default shape is unchanged.
+    /// </summary>
+    [Fact]
+    public async Task The_create_form_shape_leaves_out_New_denied_attributes_and_ignores_Edit_denies()
+    {
+        using var http = _factory.CreateClient();
+
+        var forNew = await AttributesAsync(http, "/spark/types/AttrVault?for=new");
+        forNew.Keys.Should().NotContain("Locked", "Locked is New-denied");
+        forNew.Keys.Should().NotContain("Secret", "a purpose never widens what is read");
+        forNew["Note"].Should().BeFalse("Note is only Edit-denied, and a create is governed by New");
+
+        var byDefault = await AttributesAsync(http, "/spark/types/AttrVault");
+        byDefault.Keys.Should().Contain("Locked");
+        byDefault["Note"].Should().BeTrue("the default stays the edit shape");
+    }
+
+    /// <summary>Attribute name → isReadOnly, as the endpoint sent them.</summary>
+    private static async Task<Dictionary<string, bool>> AttributesAsync(HttpClient http, string url)
+    {
+        using var response = await http.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+        using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.GetProperty("attributes").EnumerateArray().ToDictionary(
+            a => a.GetProperty("name").GetString()!,
+            a => a.GetProperty("isReadOnly").GetBoolean());
     }
 
     [Fact]

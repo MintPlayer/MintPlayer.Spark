@@ -50,6 +50,12 @@ describe('SparkService', () => {
     await expect(promise).resolves.toMatchObject({ id: 'Pers/On' });
   });
 
+  it('getEntityType passes the form purpose as ?for=', async () => {
+    const promise = service.getEntityType('Person', 'new');
+    httpTesting.expectOne('/spark/types/Person?for=new').flush({ id: 'Person', name: 'Person' });
+    await expect(promise).resolves.toMatchObject({ id: 'Person' });
+  });
+
   it('executeQuery serialises sortColumns and parent params correctly', async () => {
     const promise = service.executeQuery('q/1', {
       sortColumns: [

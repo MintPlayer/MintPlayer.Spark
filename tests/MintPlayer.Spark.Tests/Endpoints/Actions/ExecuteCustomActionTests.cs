@@ -583,6 +583,52 @@ public class ExecuteCustomActionTests
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// #264 G4: the batched-load fallback projects the selected rows through the caller's query surface, as
+    /// the re-run query does. It used the model's definition, so a Query-denied attribute reached the action
+    /// as a column value. Red before the change: <c>Secret</c> was in the row.
+    /// </summary>
+    [Fact]
+    public async Task A_fallback_selection_leaves_out_a_Query_denied_attribute()
+    {
+        var action = Substitute.For<ICustomAction>();
+        var carType = new EntityTypeDefinition
+        {
+            Id = CarType.Id,
+            Name = CarType.Name,
+            ClrType = CarType.ClrType,
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Plate", DataType = "string", Order = 1 },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Secret", DataType = "string", Order = 2 },
+            ],
+        };
+        var surface = carType.ShallowCopy();
+        surface.Attributes = [carType.Attributes[0]];
+        _attributeRights.ForQueryAsync(carType, Arg.Any<CancellationToken>()).Returns(surface);
+
+        var row = Row("cars/1");
+        row.AddAttribute(new MintPlayer.Spark.Abstractions.PersistentObjectAttribute { Name = "Plate", Value = "1-ABC" });
+        row.AddAttribute(new MintPlayer.Spark.Abstractions.PersistentObjectAttribute { Name = "Secret", Value = "s3cret" });
+        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
+            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { row });
+
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(carType);
+        _actionResolver.Resolve("Archive").Returns(action);
+
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItemIds = ["cars/1"] });
+
+        var result = await NewEndpoint().HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+        await action.Received(1).ExecuteAsync(
+            Arg.Is<CustomActionArgs>(a => a.SelectedItems.Length == 1
+                && a.SelectedItems[0].Values.Any(v => v.Key == "Plate")
+                && a.SelectedItems[0].Values.All(v => v.Key != "Secret")),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task An_id_less_selected_item_refuses_the_whole_request()
     {
@@ -678,9 +724,20 @@ public class ExecuteCustomActionTests
     private readonly IQueryLoader _queryLoader = Substitute.For<IQueryLoader>();
     private readonly IQueryExecutor _queryExecutor = Substitute.For<IQueryExecutor>();
 
+    // Nothing denied by default: the caller's query surface is the model's. The G4 test narrows it.
+    private readonly IAttributeRightsEnforcement _attributeRights = PassThroughAttributeRights();
+
+    private static IAttributeRightsEnforcement PassThroughAttributeRights()
+    {
+        var rights = Substitute.For<IAttributeRightsEnforcement>();
+        rights.ForQueryAsync(Arg.Any<EntityTypeDefinition>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.Arg<EntityTypeDefinition>());
+        return rights;
+    }
+
     private ExecuteCustomAction NewEndpoint() =>
         new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _catalogueLoader, _queryLoader,
-            new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session, NullLogger<SparkSelectionResolver>.Instance),
+            new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session, NullLogger<SparkSelectionResolver>.Instance, _attributeRights),
             new NothingDisabled());
 
     /// <summary>

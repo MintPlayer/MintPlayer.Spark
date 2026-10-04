@@ -52,6 +52,9 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
     newObject: vi.fn().mockResolvedValue({ name: 'Person', attributes: [] }),
     ...serviceOverrides,
   };
+  // The create form fetches its own shape (`?for=new`); by default it is the listed type.
+  service.getEntityType ??= vi.fn(async (id: string) =>
+    ((await service.getEntityTypes()) as EntityType[]).find(t => t.id === id));
   TestBed.configureTestingModule({
     providers: [
       provideRouter(routes),
@@ -76,6 +79,15 @@ describe('SparkPoCreateComponent', () => {
     expect(data['FirstName']).toBe('');
     expect(data['Active']).toBe(false);
     expect(data['Jobs']).toEqual([]);
+  });
+
+  // #264 G1/G2: the create form draws the caller's create shape, not the edit one.
+  it('asks the server for the type shaped for a new object', async () => {
+    const { harness, service } = await setup();
+    await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+
+    expect(service.getEntityType).toHaveBeenCalledWith('t-person', 'new');
   });
 
   it('resolves entity type by alias OR id', async () => {

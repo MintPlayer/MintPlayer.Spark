@@ -37,7 +37,19 @@ internal sealed partial class GetEntityType : IGetEndpoint
         // Per caller (contributions M2c-2a): Read-denied attributes absent, Edit-denied read-only, on
         // the type and on each embedded detail type by its own rights. Always a copy when it changes
         // anything — the loader's definitions are shared process-wide.
+        // `?for=new` shapes it for the create form instead (#264, G1/G2): New-denied attributes absent
+        // too, and no Edit deny applied. It only ever narrows what is seen: Read-denied stays absent.
         return Results.Json(await attributeRights.ForFormAsync(
-            SubQueryPruner.EmbedDetailTypes(pruned, modelLoader), httpContext.RequestAborted));
+            SubQueryPruner.EmbedDetailTypes(pruned, modelLoader),
+            FormVerb(httpContext.Request.Query["for"].ToString()),
+            httpContext.RequestAborted));
     }
+
+    /// <summary><c>new</c>, <c>edit</c> or <c>read</c>; anything else is the edit shape, the default.</summary>
+    private static string FormVerb(string purpose) => purpose.ToLowerInvariant() switch
+    {
+        "new" => SparkCoreActions.New,
+        "read" => SparkCoreActions.Read,
+        _ => SparkCoreActions.Edit,
+    };
 }

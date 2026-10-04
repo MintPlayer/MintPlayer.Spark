@@ -50,7 +50,19 @@ export class SparkPoCreateComponent {
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
   private allEntityTypes = signal<EntityType[]>([]);
-  generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
+  /**
+   * The errors the form cannot show next to a field: those with no attribute, and those on an attribute the
+   * form does not draw (#264, G6). Those used to be swallowed; Vidyano promotes them to a notification too.
+   */
+  generalErrors = computed(() => {
+    const overlay = this.refreshOverlay();
+    const drawn = new Set((this.entityType()?.attributes ?? [])
+      .map(a => applyOverlay(a, overlay[a.name]))
+      .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+      .map(a => a.name));
+    // A row error names its AsDetail attribute first ("Jobs[0].Title", "Jobs.Title").
+    return this.validationErrors().filter(e => !e.attributeName || !drawn.has(e.attributeName.split(/[.[]/)[0]));
+  });
   /**
    * The parent a sub-query card's New passed in the URL (`parentId`, `parentType`, `queryId`), or
    * null. Forwarded to the form so a Reference attribute's option query runs under the object the
@@ -65,7 +77,10 @@ export class SparkPoCreateComponent {
   private async onParamsChange(params: any): Promise<void> {
     this.type.set(params.get('type') || '');
     const types = await this.sparkService.getEntityTypes();
-    const entityType = types.find(t => t.id === this.type() || t.alias === this.type()) || null;
+    const listed = types.find(t => t.id === this.type() || t.alias === this.type()) || null;
+    // The create form's own shape (#264, G1/G2): what the caller may not create is absent, and an
+    // edit-only deny does not make a field read-only here.
+    const entityType = listed ? await this.sparkService.getEntityType(listed.id, 'new') : null;
     this.allEntityTypes.set(types);
     this.initFormData(entityType);
     if (entityType) await this.applyServerDefaults(entityType);

@@ -107,7 +107,19 @@ export class SparkPoEditComponent {
   // Cached list of every entity type — needed by the AsDetail save path to resolve
   // nested type schemas when rebuilding the nested PO wire shape from the flat form dict.
   private allEntityTypes = signal<EntityType[]>([]);
-  generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
+  /**
+   * The errors the form cannot show next to a field: those with no attribute, and those on an attribute the
+   * form does not draw (#264, G6). Those used to be swallowed; Vidyano promotes them to a notification too.
+   */
+  generalErrors = computed(() => {
+    const overlay = this.refreshOverlay();
+    const drawn = new Set((this.formEntityType()?.attributes ?? [])
+      .map(a => applyOverlay(a, overlay[a.name]))
+      .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+      .map(a => a.name));
+    // A row error names its AsDetail attribute first ("Jobs[0].Title", "Jobs.Title").
+    return this.validationErrors().filter(e => !e.attributeName || !drawn.has(e.attributeName.split(/[.[]/)[0]));
+  });
   /** After a 409 was merged: what they changed, and that nothing has been saved yet. */
   private readonly conflictNoticeText = signal<string | null>(null);
   /** The notice with its "Changed by X at T", which fills in the name once History resolved it. */

@@ -48,11 +48,19 @@ internal interface IAttributeRightsEnforcement
     Task<EntityTypeDefinition> ForQueryAsync(EntityTypeDefinition definition, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The caller's form definition (<c>EntityTypes/Get|List</c>): <c>Read</c>-denied attributes
-    /// removed and <c>Edit</c>-denied ones read-only, on the type and on every embedded detail type
-    /// by that type's own rights. The same reference when nothing changes.
+    /// The caller's form definition (<c>EntityTypes/Get|List</c>) for <paramref name="verb"/>, on the type
+    /// and on every embedded detail type by that type's own rights. The same reference when nothing changes.
+    /// <list type="bullet">
+    /// <item><c>Edit</c> (the default) and <c>Read</c>: <c>Read</c>-denied attributes removed,
+    /// <c>Edit</c>-denied ones read-only.</item>
+    /// <item><c>New</c> (#264, G1/G2): <c>Read</c>- and <c>New</c>-denied attributes removed; an
+    /// <c>Edit</c> deny does not apply, since a create is governed by <c>New</c>.</item>
+    /// </list>
+    /// ⚠️ Only ever narrows what a caller may <em>see</em>: every verb removes the <c>Read</c>-denied
+    /// attributes. Whether a value may be <em>written</em> is still decided at save time.
     /// </summary>
-    Task<EntityTypeDefinition> ForFormAsync(EntityTypeDefinition definition, CancellationToken cancellationToken = default);
+    Task<EntityTypeDefinition> ForFormAsync(
+        EntityTypeDefinition definition, string verb = SparkCoreActions.Edit, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Removes the attributes denied for <paramref name="removeVerb"/> from each object and marks
@@ -106,9 +114,9 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
     }
 
     public async Task<EntityTypeDefinition> ForFormAsync(
-        EntityTypeDefinition definition, CancellationToken cancellationToken = default)
+        EntityTypeDefinition definition, string verb = SparkCoreActions.Edit, CancellationToken cancellationToken = default)
     {
-        var result = await PruneForFormAsync(definition, cancellationToken);
+        var result = await PruneForFormAsync(definition, verb, cancellationToken);
 
         if (definition.DetailTypes is { Length: > 0 } detailTypes)
         {
@@ -116,7 +124,7 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
             var changed = false;
             for (var i = 0; i < detailTypes.Length; i++)
             {
-                pruned[i] = await PruneForFormAsync(detailTypes[i], cancellationToken);
+                pruned[i] = await PruneForFormAsync(detailTypes[i], verb, cancellationToken);
                 changed |= !ReferenceEquals(pruned[i], detailTypes[i]);
             }
 
@@ -132,17 +140,19 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
     }
 
     private async Task<EntityTypeDefinition> PruneForFormAsync(
-        EntityTypeDefinition definition, CancellationToken cancellationToken)
+        EntityTypeDefinition definition, string verb, CancellationToken cancellationToken)
     {
+        var isNew = string.Equals(verb, SparkCoreActions.New, StringComparison.Ordinal);
         var unreadable = await GetDeniedAsync(definition, SparkCoreActions.Read, cancellationToken);
-        var uneditable = await GetDeniedAsync(definition, SparkCoreActions.Edit, cancellationToken);
-        if (unreadable.Count == 0 && uneditable.Count == 0)
+        var uncreatable = isNew ? await GetDeniedAsync(definition, SparkCoreActions.New, cancellationToken) : None;
+        var uneditable = isNew ? None : await GetDeniedAsync(definition, SparkCoreActions.Edit, cancellationToken);
+        if (unreadable.Count == 0 && uncreatable.Count == 0 && uneditable.Count == 0)
             return definition;
 
         var attributes = new List<EntityAttributeDefinition>(definition.Attributes.Length);
         foreach (var attribute in definition.Attributes)
         {
-            if (unreadable.Contains(attribute.Name))
+            if (unreadable.Contains(attribute.Name) || uncreatable.Contains(attribute.Name))
                 continue;
 
             if (uneditable.Contains(attribute.Name) && !attribute.IsReadOnly)
