@@ -3,7 +3,7 @@ namespace MintPlayer.Spark.Authorization.Identity;
 /// <summary>
 /// A WebAuthn credential (passkey) enrolled by a user, embedded in the user document.
 /// <para>
-/// This mirrors <see cref="Microsoft.AspNetCore.Identity.UserPasskeyInfo"/> field for field. It is
+/// This mirrors <c>Microsoft.AspNetCore.Identity.UserPasskeyInfo</c> field for field. It is
 /// deliberately <em>not</em> <c>IdentityUserPasskey&lt;TKey&gt;</c>: that type ships in
 /// <c>Microsoft.Extensions.Identity.Stores</c> shaped for an EF <c>DbSet</c>, carrying a
 /// <c>UserId</c> back-pointer that an embedded document has no use for.
