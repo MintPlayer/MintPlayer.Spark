@@ -3,6 +3,12 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "targets": {
     "test": {
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/apps/*/*/App_Data/Model/*.json",
+        "{workspaceRoot}/apps/*/*/App_Data/security.json"
+      ],
       "options": {
         "cwd": "tests/MintPlayer.Spark.Tests",
         "command": "dotnet test --no-build --no-restore --settings ../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage",

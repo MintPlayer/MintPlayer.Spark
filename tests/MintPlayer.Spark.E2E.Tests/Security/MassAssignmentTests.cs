@@ -5,9 +5,9 @@ using MintPlayer.Spark.E2E.Tests._Infrastructure;
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
-/// R2-H8 — EntityMapper now consults the schema's IsReadOnly / IsVisible flags on
-/// writes. CarFixture's CreatedBy is IsReadOnly=true + IsVisible=false in Fleet's
-/// model JSON. A client posting the field on PUT used to overwrite it; now the
+/// R2-H8 — EntityMapper now consults the schema's IsReadOnly flag on writes
+/// (visibility stopped being a write gate in #264). CarFixture's CreatedBy is IsReadOnly=true
+/// in Fleet's model JSON. A client posting the field on PUT used to overwrite it; now the
 /// gate refuses the write.
 ///
 /// R2-M18 — Create endpoint forces obj.Id = null after deserialization, so a POST

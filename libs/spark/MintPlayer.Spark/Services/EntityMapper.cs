@@ -561,10 +561,13 @@ internal partial class EntityMapper : IEntityMapper
 
     /// <summary>
     /// R2-H8 schema-side write gate. The client-supplied attribute carries its
-    /// own IsReadOnly / IsVisible flags, but those are advisory — the source of
+    /// own IsReadOnly flag, but that is advisory — the source of
     /// truth is the entity's schema definition. We look up the schema for the
     /// entity's CLR type and refuse any write to an attribute the schema marks
-    /// as IsReadOnly=true or IsVisible=false. Attributes whose name has no
+    /// as IsReadOnly=true. ⚠️ Visibility is layout, never a write gate (#264, G-Q7):
+    /// protect a field with <c>isReadOnly</c> or an <c>Edit</c>/<c>New</c> deny.
+    /// The old <c>IsVisible=false</c> gate silently dropped the value a refresh hook
+    /// had revealed (Fleet's police report number). Attributes whose name has no
     /// schema entry are also refused (defense-in-depth against client-introduced
     /// fields that happen to match a CLR property name not declared on the
     /// model).
@@ -593,7 +596,6 @@ internal partial class EntityMapper : IEntityMapper
         if (!schemaAttributes.TryGetValue(attribute.Name, out var def))
             return false;
         if (def.IsReadOnly) return false;
-        if (!def.IsVisible) return false;
         return true;
     }
 
