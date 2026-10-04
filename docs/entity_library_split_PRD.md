@@ -126,6 +126,9 @@ and DemoApp.Library on netstandard2.0 with PolySharp, found:
   public API.
 - Entities use `DateOnly` (`DemoApp.Library/Entities/Person.cs:17`), which does not exist on
   netstandard2.0. So the target would constrain the entities themselves, not just Spark.
+- The spike was rerun to completion with `IMessageBus.cs` excluded and `DateOnly` stubbed. The build
+  succeeded with **0 errors**, including the generated `SparkAttributeDescriptions.g.cs`. So those two
+  are the *only* blockers: the generators and the Model/Attributes code are not.
 
 The issue's other netstandard argument, "cannot be loaded by a host without that framework", is
 fully met by dropping the ASP.NET Core framework reference on `net11.0`.
