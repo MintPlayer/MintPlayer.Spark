@@ -42,7 +42,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
             Attributes = [new() { Name = "Plate", Value = "ABC-123", IsValueChanged = true }],
         };
 
-        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po, isNew: po.Id == null);
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
@@ -68,7 +68,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
             Attributes = [new() { Name = "Plate", Value = "XYZ-999", IsValueChanged = true }],
         };
 
-        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po, isNew: po.Id == null);
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
@@ -112,7 +112,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
             ],
         };
 
-        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po, isNew: po.Id == null);
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
@@ -141,7 +141,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
             ],
         };
 
-        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po, isNew: po.Id == null);
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
@@ -169,7 +169,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
             ],
         };
 
-        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po, isNew: po.Id == null);
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
@@ -200,7 +200,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
             Attributes = [],
         };
 
-        var act = async () => await interceptor.HandleSaveAsync(typeof(NonReplicated), po);
+        var act = async () => await interceptor.HandleSaveAsync(typeof(NonReplicated), po, isNew: po.Id == null);
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*not a replicated entity*");
@@ -239,7 +239,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
             ],
         };
 
-        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po);
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po, isNew: po.Id == null);
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
@@ -263,7 +263,7 @@ public class SyncActionInterceptorTests : SparkTestDriver
             InternalToken = "s3cret",
         };
 
-        await interceptor.HandleSaveAsync(car, "cars/7");
+        await interceptor.HandleSaveAsync(car, "cars/7", isNew: false);
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();

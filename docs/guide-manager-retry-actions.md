@@ -42,23 +42,31 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
 
 ## Step 2: Add Retry Actions
 
-Call `manager.Retry.Action()` in any lifecycle hook (`OnBeforeSaveAsync`, `OnBeforeDeleteAsync`, etc.) to prompt the user:
+Call `manager.Retry.Action()` in any before-interceptor ([persistence interceptors](guide-interceptors.md): `IBeforeSave<T>`, `IBeforeDelete<T>` — on an interceptor class or on the Actions class itself) to prompt the user:
 
 ```csharp
-public override async Task OnBeforeDeleteAsync(Car entity)
+public partial class CarActions : DefaultPersistentObjectActions<Car>, IBeforeDelete<Car>
 {
-    manager.Retry.Action(
-        title: "Confirm deletion",
-        options: ["Delete"],
-        message: $"Are you sure you want to delete {entity.LicensePlate}?"
-    );
+    [Inject] private readonly IManager manager;
 
-    if (manager.Retry.Result!.Option == "Cancel")
-        return;
+    public ValueTask OnBeforeDeleteAsync(Car entity, DeleteContext context)
+    {
+        manager.Retry.Action(
+            title: "Confirm deletion",
+            options: ["Delete"],
+            message: $"Are you sure you want to delete {entity.LicensePlate}?"
+        );
 
-    await base.OnBeforeDeleteAsync(entity);
+        // Cancel deletes nothing: a silent no-op, answered with 204 (#482).
+        if (manager.Retry.Result!.Option == "Cancel")
+            throw new SparkCancelException();
+
+        return ValueTask.CompletedTask;
+    }
 }
 ```
+
+`return` would not stop anything: the framework, not the interceptor, does the delete. `SparkCancelException` tells it to write nothing, keep nothing the interceptors stored, and run no after-interceptor. A prompt during a **bulk** delete is refused (that row is named in the refusal): a per-row prompt across a selection is unworkable.
 
 ### How It Works
 
@@ -93,9 +101,9 @@ The Angular `SparkService` intercepts this automatically -- no custom error hand
 Multiple `Action()` calls can be chained. Each call is tracked by a step index (0, 1, 2, ...) and the framework replays already-answered steps before hitting the next unanswered one:
 
 ```csharp
-public override async Task OnBeforeSaveAsync(PersistentObject obj, Car entity)
+public ValueTask OnBeforeSaveAsync(Car entity, SaveContext context)
 {
-    var statusAttr = obj.Attributes.FirstOrDefault(a => a.Name == nameof(Car.Status));
+    var statusAttr = context.PersistentObject.Attributes.FirstOrDefault(a => a.Name == nameof(Car.Status));
     if (statusAttr?.IsValueChanged == true && entity.Status == CarStatus.Stolen)
     {
         // Step 0: Confirm marking as stolen
@@ -107,7 +115,7 @@ public override async Task OnBeforeSaveAsync(PersistentObject obj, Car entity)
         );
 
         if (manager.Retry.Result!.Option == "Cancel")
-            return;
+            throw new SparkCancelException();
 
         // Step 1: Ask whether to notify fleet managers
         manager.Retry.Action(
@@ -117,12 +125,12 @@ public override async Task OnBeforeSaveAsync(PersistentObject obj, Car entity)
         );
 
         if (manager.Retry.Result!.Option == "Cancel")
-            return;
+            throw new SparkCancelException();
 
-        // Both steps answered -- proceed with save
+        // Both steps answered -- the framework proceeds with the save
     }
 
-    await base.OnBeforeSaveAsync(obj, entity);
+    return ValueTask.CompletedTask;
 }
 ```
 
@@ -136,11 +144,11 @@ The user sees two sequential modals. The flow:
 
 ### The Cancel Option
 
-When the user dismisses the modal (clicking the X button or pressing Escape), the frontend sends `"Cancel"` as the option. You do not need to include "Cancel" in your `options` array -- it is always available as a dismiss action. Check for it in your code to abort the operation:
+When the user dismisses the modal (clicking the X button or pressing Escape), the frontend sends `"Cancel"` as the option. You do not need to include "Cancel" in your `options` array -- it is always available as a dismiss action. Check for it in your code to abort the operation. In a save or delete interceptor, abort with `SparkCancelException` — the framework then writes nothing (a `return` would let the write go ahead); in a custom action, a plain `return` is enough, since the action itself is the work:
 
 ```csharp
 if (manager.Retry.Result!.Option == "Cancel")
-    return;
+    throw new SparkCancelException(); // in a custom action: return;
 ```
 
 ## Action() Parameters
@@ -187,7 +195,7 @@ manager.Retry.Action(
 );
 
 if (manager.Retry.Result!.Option == "Cancel")
-    return;
+    throw new SparkCancelException(); // in a custom action: return;
 
 // Read the user's input
 var reason = manager.Retry.Result.PersistentObject?

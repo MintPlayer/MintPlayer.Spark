@@ -4,41 +4,13 @@
     "authenticated": "4e130000-0000-4000-8000-00000000000f"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": {
-      "en": "Anonymous visitors",
-      "fr": "Visiteurs anonymes",
-      "nl": "Anonieme bezoekers"
-    },
-    "4e130000-0000-4000-8000-00000000000f": {
-      "en": "Signed-in users",
-      "fr": "Utilisateurs connectés",
-      "nl": "Aangemelde gebruikers"
-    },
-    "4e130000-0000-4000-8000-000000000001": {
-      "en": "Moderators",
-      "fr": "Modérateurs",
-      "nl": "Moderatoren"
-    },
-    "4e130000-0000-4000-8000-000000000002": {
-      "en": "Voters",
-      "fr": "Votants",
-      "nl": "Stemmers"
-    },
-    "4e130000-0000-4000-8000-000000000003": {
-      "en": "Downvoters",
-      "fr": "Votants négatifs",
-      "nl": "Negatieve stemmers"
-    },
-    "4e130000-0000-4000-8000-000000000004": {
-      "en": "Flaggers",
-      "fr": "Signaleurs",
-      "nl": "Melders"
-    },
-    "4e130000-0000-4000-8000-000000000005": {
-      "en": "Reviewers",
-      "fr": "Relecteurs",
-      "nl": "Beoordelaars"
-    }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "4e130000-0000-4000-8000-00000000000f": "Signed-in users",
+    "4e130000-0000-4000-8000-000000000001": "Moderators",
+    "4e130000-0000-4000-8000-000000000002": "Voters",
+    "4e130000-0000-4000-8000-000000000003": "Downvoters",
+    "4e130000-0000-4000-8000-000000000004": "Flaggers",
+    "4e130000-0000-4000-8000-000000000005": "Reviewers"
   },
   "rights": [
     {

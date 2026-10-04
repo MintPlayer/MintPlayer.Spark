@@ -223,4 +223,110 @@ public class MessageBusTests : SparkTestDriver
         var message = await session.Query<SparkMessage>().SingleAsync();
         message.MaxAttempts.Should().Be(12);
     }
+
+    // ---- EnqueueAsync: publishing inside the caller's transaction (#467, S13; #482, D17) ---------------
+
+    private IMessageOutbox NewOutbox() => (IMessageOutbox)NewBus();
+
+    [Fact]
+    public async Task EnqueueAsync_commits_with_the_callers_save_and_not_before()
+    {
+        using (var session = Store.OpenAsyncSession())
+        {
+            await NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/2", 1m));
+            await session.StoreAsync(new { Name = "the data change" }, "Data/1");
+
+            using (var other = Store.OpenAsyncSession())
+                (await other.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(0, "only stored, not saved");
+
+            await session.SaveChangesAsync();
+        }
+
+        using var verify = Store.OpenAsyncSession();
+        var message = await verify.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults()).SingleAsync();
+        message.MessageType.Should().Be(typeof(OrderPlaced).AssemblyQualifiedName);
+        message.Status.Should().Be(EMessageStatus.Pending);
+        verify.Advanced.GetDocumentId(message).Should().StartWith("SparkMessages/");
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_in_a_session_that_is_never_saved_publishes_nothing()
+    {
+        using (var session = Store.OpenAsyncSession())
+            await NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/3", 1m));
+
+        using var verify = Store.OpenAsyncSession();
+        (await verify.Query<SparkMessage>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_refuses_a_deduplication_key()
+    {
+        using var session = Store.OpenAsyncSession();
+        var act = () => NewOutbox().EnqueueAsync(session, new OrderPlaced("orders/4", 1m), new BroadcastOptions { DeduplicationKey = "k" });
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        session.Advanced.UseOptimisticConcurrency.Should().BeFalse("the caller's session is left as it was");
+    }
+
+    // ---- durable after-commit interceptors: the recipient (#482, D17) ----------------------------------------
+
+    private sealed class FixedDispatcher(bool found) : MintPlayer.Spark.Abstractions.Interceptors.ISparkAfterCommitDispatcher
+    {
+        public Task<bool> DispatchAsync(MintPlayer.Spark.Abstractions.Interceptors.SparkAfterCommitWork work, CancellationToken cancellationToken)
+            => Task.FromResult(found);
+    }
+
+    private static MintPlayer.Spark.Abstractions.Interceptors.SparkAfterCommitWork Work() => new()
+    {
+        InterceptorType = "Some.Interceptor",
+        IsDelete = true,
+        Change = new MintPlayer.Spark.Abstractions.Interceptors.SparkCommittedChange
+        {
+            EntityType = "Some.Entity",
+            Id = "Entities/1",
+            Operation = MintPlayer.Spark.Abstractions.Interceptors.PersistentObjectOperation.Delete,
+            OccurredAt = DateTimeOffset.UtcNow,
+        },
+    };
+
+    [Fact]
+    public async Task The_after_commit_recipient_dead_letters_work_for_an_interceptor_the_app_no_longer_has()
+    {
+        var act = () => new SparkAfterCommitRecipient(new FixedDispatcher(found: false)).HandleAsync(Work());
+
+        // Non-retryable: retrying cannot make a removed interceptor appear, and the message must not loop.
+        (await act.Should().ThrowAsync<NonRetryableException>()).Which.Message.Should().Contain("Some.Interceptor").And.Contain("Entities/1");
+    }
+
+    [Fact]
+    public async Task The_after_commit_recipient_completes_when_the_interceptor_ran()
+    {
+        var act = () => new SparkAfterCommitRecipient(new FixedDispatcher(found: true)).HandleAsync(Work());
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public void A_SparkAfterCommitWork_survives_the_message_payload_round_trip()
+    {
+        // The bus serializes with Newtonsoft; the payload's facts and flags must come back intact.
+        var work = Work() with
+        {
+            Change = Work().Change with
+            {
+                IsReplaced = true,
+                PreviousChangeVector = "A:1-x",
+                Facts = new Dictionary<string, string> { ["Reason"] = "spam" },
+            },
+        };
+        var json = Newtonsoft.Json.JsonConvert.SerializeObject(work);
+        var back = Newtonsoft.Json.JsonConvert.DeserializeObject<MintPlayer.Spark.Abstractions.Interceptors.SparkAfterCommitWork>(json)!;
+
+        back.InterceptorType.Should().Be("Some.Interceptor");
+        back.IsDelete.Should().BeTrue();
+        back.Change.IsReplaced.Should().BeTrue();
+        back.Change.PreviousChangeVector.Should().Be("A:1-x");
+        back.Change.Reason.Should().Be("spam");
+        back.Change.Operation.Should().Be(MintPlayer.Spark.Abstractions.Interceptors.PersistentObjectOperation.Delete);
+    }
 }

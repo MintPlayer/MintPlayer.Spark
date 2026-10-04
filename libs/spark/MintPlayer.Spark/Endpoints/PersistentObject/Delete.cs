@@ -35,6 +35,13 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
+        // A delete says which version it removes (#467, D14), so a row edited since it was shown is a
+        // 409 rather than lost. Before any read, so the answer says nothing about the row.
+        if (string.IsNullOrEmpty(request.Etag))
+        {
+            return ClientResult.Envelope(clientAccessor, new { error = "A delete must carry the etag of the version it removes." }, 400);
+        }
+
         RetryScope.Accept(retryAccessor, request);
 
         try
@@ -47,14 +54,21 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
-            await databaseAccess.DeletePersistentObjectAsync(entityType.Id, request.Id);
+            await databaseAccess.DeletePersistentObjectAsync(
+                entityType.Id, request.Id, Abstractions.Interceptors.PersistentObjectOperation.Delete, request.Etag);
             return ClientResult.Envelope(clientAccessor, null, 204);
         }
-        catch (SparkConcurrencyException)
+        catch (SparkCancelException)
         {
-            // A replaced (soft) delete is a write, and it met a concurrent edit (contributions F7).
-            // Generic body, as in Update (R2-M1): the exception carries change vectors.
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+            // An interceptor cancelled the delete (#482): nothing was deleted, and nothing went wrong.
+            return ClientResult.Envelope(clientAccessor, null, 204);
+        }
+        catch (SparkConcurrencyException ex)
+        {
+            // The row changed since the caller saw it (#467, D14), caught by the etag check or by the
+            // write itself (contributions F7). Generic body, as in Update (R2-M1): the exception carries
+            // change vectors.
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {
@@ -75,6 +89,11 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
         catch (SparkAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+        }
+        catch (SparkThrottledException ex)
+        {
+            // A business quota from an interceptor (#460, M12), answered as delete-many answers it (#467, D21).
+            return ClientResult.Throttled(clientAccessor, httpContext, ex);
         }
     }
 }

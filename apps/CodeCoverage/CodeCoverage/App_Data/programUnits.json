@@ -24,21 +24,13 @@
   "programUnitGroups": [
     {
       "id": "f9f0d8c9-7a38-4a58-9098-910934099b7f",
-      "name": {
-        "en": "Coverage",
-        "fr": "Coverage",
-        "nl": "Coverage"
-      },
+      "name": "programUnits.groups.coverage",
       "icon": "bi-graph-up",
       "order": 1,
       "programUnits": [
         {
           "id": "8ee457f1-37bd-4736-a9bd-046ea808912c",
-          "name": {
-            "en": "Home",
-            "fr": "Accueil",
-            "nl": "Start"
-          },
+          "name": "programUnits.home",
           "icon": "bi-house",
           "type": "persistentObject",
           "persistentObjectId": "149ab426-ae90-4c96-ae26-3fdde3554754",
@@ -48,11 +40,7 @@
         },
         {
           "id": "1c7e9a03-5d84-4b21-9f68-0a3e5c7d1b46",
-          "name": {
-            "en": "GitHub",
-            "fr": "GitHub",
-            "nl": "GitHub"
-          },
+          "name": "programUnits.forgeAccounts",
           "icon": "bi-github",
           "type": "persistentObject",
           "persistentObjectId": "2d6f4b10-9c27-4e83-b5a1-7f0c8e3d6a94",

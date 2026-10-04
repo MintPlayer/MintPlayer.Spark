@@ -46,7 +46,7 @@ public class LibraryTranslationsProducer : Producer
     /// escaping for inclusion in source code. Verbatim/raw strings would be
     /// more readable but complicate escaping of quotes inside translation templates.
     /// </summary>
-    private static string BuildCSharpStringLiteral(string value)
+    internal static string BuildCSharpStringLiteral(string value)
     {
         var sb = new StringBuilder(value.Length + 2);
         sb.Append('"');

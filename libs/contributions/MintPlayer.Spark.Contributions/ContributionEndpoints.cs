@@ -27,7 +27,7 @@ internal sealed class RevertContributionRequest : ISparkTypedRequest
 
 /// <summary>
 /// The endpoint Contributions adds (an add-on endpoint, like History's revert): custom actions are
-/// declared by the app's <c>customActions.json</c>, so a library verb is served by its own route.
+/// declared by the app's <c>actions.json</c>, so a library verb is served by its own route.
 /// </summary>
 internal static class ContributionEndpoints
 {
@@ -101,7 +101,7 @@ internal static class ContributionEndpoints
         }
         catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
         {
-            return SparkAddOnEndpoints.ConcurrencyConflict(client);
+            return SparkAddOnEndpoints.ConcurrencyConflict(client, ex);
         }
         catch (SparkValidationException ex)
         {

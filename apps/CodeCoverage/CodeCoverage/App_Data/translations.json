@@ -72,5 +72,1958 @@
       "fr": "Ceci supprime définitivement tous les commits, builds et rapports de couverture de ce dépôt. Cette action est irréversible.",
       "nl": "Dit verwijdert definitief alle commits, builds en dekkingsrapporten van deze repository. Dit kan niet ongedaan worden gemaakt."
     }
+  },
+  "model": {
+    "Account": {
+      "attributes": {
+        "AvatarUrl": {
+          "label": {
+            "en": "Avatar",
+            "fr": "Avatar",
+            "nl": "Avatar"
+          },
+          "description": {
+            "en": "URL of the account's GitHub avatar image, shown next to the login.",
+            "fr": "URL de l'image d'avatar GitHub du compte, affichée à côté du login.",
+            "nl": "URL van de GitHub-avatarafbeelding van het account, getoond naast de login."
+          }
+        },
+        "Connection": {
+          "description": {
+            "en": "Whether we can still act on this account's repositories."
+          }
+        },
+        "DeleteBranchOnPrClose": {
+          "label": {
+            "en": "Delete branch on merge",
+            "fr": "Supprimer la branche à la fusion",
+            "nl": "Branch verwijderen bij mergen"
+          },
+          "description": {
+            "en": "Account-wide default: delete a merged pull request's head branch, in every repository of this account that does not decide for itself."
+          }
+        },
+        "DisconnectedAtUtc": {
+          "description": {
+            "en": "When the account was last disconnected (UTC); null while connected."
+          }
+        },
+        "DisconnectedReason": {
+          "description": {
+            "en": "Why the account is disconnected, from DisconnectedReasons; null while connected."
+          }
+        },
+        "GitHubId": {
+          "label": {
+            "en": "GitHub Id",
+            "fr": "Id GitHub",
+            "nl": "GitHub-id"
+          },
+          "description": {
+            "en": "GitHub's numeric id for this user or organization; stable even when the login is renamed.",
+            "fr": "Id numérique GitHub de cet utilisateur ou de cette organisation ; stable même lorsque le login est renommé.",
+            "nl": "GitHub's numerieke id voor deze gebruiker of organisatie; stabiel zelfs wanneer de login hernoemd wordt."
+          }
+        },
+        "InstallationId": {
+          "label": {
+            "en": "Installation Id",
+            "fr": "Id d'installation",
+            "nl": "Installatie-id"
+          },
+          "description": {
+            "en": "GitHub App installation on this account, when the app is installed.",
+            "fr": "Installation de l'application GitHub sur ce compte, lorsque l'application est installée.",
+            "nl": "Installatie van de GitHub App op dit account, wanneer de app geïnstalleerd is."
+          }
+        },
+        "Login": {
+          "label": {
+            "en": "Login",
+            "fr": "Identifiant",
+            "nl": "Login"
+          },
+          "description": {
+            "en": "The GitHub login (user name or organization slug) of this account.",
+            "fr": "Le login GitHub (nom d'utilisateur ou slug d'organisation) de ce compte.",
+            "nl": "De GitHub-login (gebruikersnaam of organisatieslug) van dit account."
+          }
+        },
+        "OwnerKey": {
+          "description": {
+            "en": "Provider and Login as one comparable value, github:acme."
+          }
+        },
+        "Provider": {
+          "description": {
+            "en": "The forge that hosts this account. Set on every document by the M6 re-key."
+          }
+        },
+        "Type": {
+          "label": {
+            "en": "Type",
+            "fr": "Type",
+            "nl": "Type"
+          },
+          "description": {
+            "en": "\"User\" or \"Organization\".",
+            "fr": "« User » ou « Organization ».",
+            "nl": "\"User\" of \"Organization\"."
+          }
+        }
+      },
+      "tabs": {
+        "General": {
+          "label": {
+            "en": "General",
+            "fr": "Général",
+            "nl": "Algemeen"
+          }
+        }
+      },
+      "groups": {
+        "Identity": {
+          "label": {
+            "en": "Identity",
+            "fr": "Identité",
+            "nl": "Identiteit"
+          }
+        },
+        "Installation": {
+          "label": {
+            "en": "Installation",
+            "fr": "Installation",
+            "nl": "Installatie"
+          }
+        },
+        "Connection": {
+          "label": {
+            "en": "Connection",
+            "fr": "Connexion",
+            "nl": "Verbinding"
+          }
+        },
+        "Defaults": {
+          "label": {
+            "en": "Defaults for this account",
+            "fr": "Valeurs par défaut du compte",
+            "nl": "Standaardinstellingen van dit account"
+          }
+        }
+      }
+    },
+    "ApiToken": {
+      "attributes": {
+        "Account": {
+          "description": {
+            "en": "The account this token uploads for: the Account document id, Accounts/{provider}/{id}."
+          }
+        },
+        "AccountLogin": {
+          "description": {
+            "en": "Owner login this token uploads for, when Scope is \"Account\". Display only — a login is renameable and a repository can be transferred out from under it, so authorizing on this string means a token keeps working for an account that no longer owns the repository, and stops working for the one that does. AccountId is the authorization key."
+          }
+        },
+        "AccountOwnerKey": {
+          "description": {
+            "en": "The owning account as provider:login — what the row filter compares."
+          }
+        },
+        "CreatedAtUtc": {
+          "description": {
+            "en": "When the token was created (UTC)."
+          }
+        },
+        "CreatedByUserId": {
+          "description": {
+            "en": "The signed-in user who created this token."
+          }
+        },
+        "Description": {
+          "description": {
+            "en": "Free-text label telling you where this token is used, e.g. the CI workflow it was created for."
+          }
+        },
+        "Provider": {
+          "description": {
+            "en": "The forge of the owning account."
+          }
+        },
+        "RepositoryIds": {
+          "description": {
+            "en": "Document ids of the repositories this token may upload for. Empty means the token is account-scoped and covers every repository of AccountId."
+          }
+        },
+        "RevokedAtUtc": {
+          "description": {
+            "en": "When the token was revoked (UTC); null while it is still valid for uploads."
+          }
+        },
+        "Scope": {
+          "description": {
+            "en": "\"Account\" (all repos of a user/org) or \"Repository\" (one repo)."
+          }
+        }
+      }
+    },
+    "Build": {
+      "attributes": {
+        "CarryForward": {
+          "label": {
+            "en": "Carry Forward",
+            "fr": "Report",
+            "nl": "Overdracht"
+          },
+          "description": {
+            "en": "The tests behind this run passed, so unmeasured files may be filled in from the base.",
+            "fr": "Les tests derrière ce run ont réussi, donc les fichiers non mesurés peuvent être repris de la base.",
+            "nl": "De tests achter deze run zijn geslaagd, dus niet-gemeten bestanden mogen uit de basis overgenomen worden."
+          }
+        },
+        "CiRunAttempt": {
+          "label": {
+            "en": "CI Attempt",
+            "fr": "Tentative CI",
+            "nl": "CI-poging"
+          },
+          "description": {
+            "en": "The attempt number of that workflow run.",
+            "fr": "Le numéro de tentative de cette exécution de workflow ; une réexécution de la même exécution crée un build distinct.",
+            "nl": "Het pogingsnummer van die workflow-run; een herhaling van dezelfde run maakt een aparte build aan."
+          }
+        },
+        "CiRunId": {
+          "label": {
+            "en": "CI Run Id",
+            "fr": "Id du run CI",
+            "nl": "CI-run-id"
+          },
+          "description": {
+            "en": "The GitHub Actions workflow run id all uploads of this build came from.",
+            "fr": "L'id d'exécution du workflow GitHub Actions dont proviennent tous les envois de ce build.",
+            "nl": "De run-id van de GitHub Actions-workflow waaruit alle uploads van deze build afkomstig zijn."
+          }
+        },
+        "Commit": {
+          "label": {
+            "en": "Commit",
+            "fr": "Commit",
+            "nl": "Commit"
+          },
+          "description": {
+            "en": "The commit this CI run measured coverage for.",
+            "fr": "Le commit pour lequel cette exécution CI a mesuré la couverture.",
+            "nl": "De commit waarvoor deze CI-run de dekking gemeten heeft."
+          }
+        },
+        "Coverage": {
+          "label": {
+            "en": "Coverage",
+            "fr": "Couverture",
+            "nl": "Dekking"
+          },
+          "description": {
+            "en": "Whole-build line and branch totals; empty while the build is open.",
+            "fr": "Totaux de lignes et de branches de tout le build ; vide tant que le build est ouvert.",
+            "nl": "Totalen van regels en branches voor het hele build; leeg zolang het build open staat."
+          }
+        },
+        "CreatedAtUtc": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé",
+            "nl": "Aangemaakt"
+          },
+          "description": {
+            "en": "When the first upload of this run created the build (UTC).",
+            "fr": "Moment où le premier envoi de cette exécution a créé le build (UTC).",
+            "nl": "Wanneer de eerste upload van deze run de build heeft aangemaakt (UTC)."
+          }
+        },
+        "DeclaredBaseSha": {
+          "label": {
+            "en": "Declared Base Sha",
+            "fr": "Sha de base déclaré",
+            "nl": "Aangegeven basis-sha"
+          },
+          "description": {
+            "en": "The base sha the uploader's affected-computation ran against.",
+            "fr": "Le sha de base contre lequel le calcul « affected » de l'uploader a tourné.",
+            "nl": "De basis-sha waartegen de affected-berekening van de uploader gelopen heeft."
+          }
+        },
+        "EventName": {
+          "label": {
+            "en": "Event",
+            "fr": "Événement",
+            "nl": "Gebeurtenis"
+          },
+          "description": {
+            "en": "The GitHub event that triggered the run.",
+            "fr": "L'événement GitHub qui a déclenché l'exécution, p. ex. push ou pull_request.",
+            "nl": "De GitHub-gebeurtenis die de run getriggerd heeft, bv. push of pull_request."
+          }
+        },
+        "Feedback": {
+          "label": {
+            "en": "Feedback",
+            "fr": "Retour",
+            "nl": "Feedback"
+          },
+          "description": {
+            "en": "Check-run outbox; empty until the first publish attempt is enqueued.",
+            "fr": "File d'envoi des check-runs ; null tant que la première tentative de publication n'est pas mise en file.",
+            "nl": "Outbox voor check-runs; null totdat de eerste publicatiepoging in de wachtrij staat."
+          }
+        },
+        "FeedbackNextAttemptAtUtc": {
+          "label": {
+            "en": "Next Feedback Attempt",
+            "fr": "Prochaine tentative de retour",
+            "nl": "Volgende feedbackpoging"
+          },
+          "description": {
+            "en": "Queryable mirror of NextAttemptAtUtc.",
+            "fr": "Miroir interrogeable de NextAttemptAtUtc.",
+            "nl": "Bevraagbare spiegel van NextAttemptAtUtc."
+          }
+        },
+        "FeedbackState": {
+          "label": {
+            "en": "Feedback State",
+            "fr": "État du retour",
+            "nl": "Feedbackstatus"
+          },
+          "description": {
+            "en": "Queryable mirror of State — the sweep cron's filter.",
+            "fr": "Miroir interrogeable de State — le filtre du cron de balayage.",
+            "nl": "Bevraagbare spiegel van State — het filter van de opruimcron."
+          }
+        },
+        "FinalizedAtUtc": {
+          "label": {
+            "en": "Finalized",
+            "fr": "Finalisé",
+            "nl": "Gefinaliseerd"
+          },
+          "description": {
+            "en": "When the build was closed and its coverage computed; empty while still open.",
+            "fr": "Moment où le build a été clôturé et sa couverture calculée (UTC) ; null tant qu'il est ouvert.",
+            "nl": "Wanneer de build afgesloten is en zijn dekking berekend werd (UTC); null zolang hij nog open is."
+          }
+        },
+        "FinalizeReason": {
+          "label": {
+            "en": "Finalize Reason",
+            "fr": "Motif de finalisation",
+            "nl": "Reden van finalisering"
+          },
+          "description": {
+            "en": "\"Explicit\" | \"Debounce\" | \"Timeout\"",
+            "fr": "« Explicit » | « Debounce » | « Timeout »",
+            "nl": "\"Explicit\" | \"Debounce\" | \"Timeout\""
+          }
+        },
+        "FlagCoverage": {
+          "label": {
+            "en": "Flag Coverage",
+            "fr": "Couverture par flag",
+            "nl": "Dekking per flag"
+          },
+          "description": {
+            "en": "Per-flag totals, keyed by flag name.",
+            "fr": "Totaux par flag, indexés par nom de flag.",
+            "nl": "Totalen per flag, gesleuteld op flagnaam."
+          }
+        },
+        "GateSnapshot": {
+          "label": {
+            "en": "Gate Snapshot",
+            "fr": "Instantané du seuil",
+            "nl": "Momentopname van de poort"
+          },
+          "description": {
+            "en": "The effective gate this build was judged by.",
+            "fr": "Le seuil effectif selon lequel ce build a été jugé.",
+            "nl": "De effectieve poort waarop dit build beoordeeld is."
+          }
+        },
+        "LastUploadAtUtc": {
+          "label": {
+            "en": "Last Upload",
+            "fr": "Dernier envoi",
+            "nl": "Laatste upload"
+          },
+          "description": {
+            "en": "When the most recent upload arrived.",
+            "fr": "Moment d'arrivée de l'envoi le plus récent (UTC) ; la finalisation par debounce compte à partir d'ici.",
+            "nl": "Wanneer de meest recente upload aangekomen is (UTC); de debounce-finalisering telt vanaf hier."
+          }
+        },
+        "Partial": {
+          "label": {
+            "en": "Partial",
+            "fr": "Partiel",
+            "nl": "Gedeeltelijk"
+          },
+          "description": {
+            "en": "This run measured only a subset of the workspace.",
+            "fr": "Ce run n'a mesuré qu'une partie de l'espace de travail.",
+            "nl": "Deze run heeft maar een deel van de workspace gemeten."
+          }
+        },
+        "Patch": {
+          "label": {
+            "en": "Patch",
+            "fr": "Patch",
+            "nl": "Patch"
+          },
+          "description": {
+            "en": "Added-lines coverage vs the diff base; empty when no diff was obtainable.",
+            "fr": "Couverture des lignes ajoutées par rapport à la base du diff ; null lorsqu'aucun diff n'a pu être obtenu.",
+            "nl": "Dekking van de toegevoegde regels ten opzichte van de diff-basis; null wanneer er geen diff verkrijgbaar was."
+          }
+        },
+        "ReportsReapedAtUtc": {
+          "description": {
+            "en": "When the uploaded report attachments were deleted by the retention sweep, or null while they are still held.\nRaw reports are inert once parsed — nothing reads them again, and the coverage they described is fully materialised into FileCoverage — so they are the cheapest thing to drop as the database grows. The filelist attachment is NOT reaped: BuildComparer and CommitAssembler still read it when this build serves as a comparison base.\nThis marker exists because a reaped build, unlike a deleted document, stays in every query that found it — without it the sweep would revisit the same builds forever. It also lets a future reprocess-from-attachments job say \"this build cannot be replayed\" instead of silently finding nothing."
+          }
+        },
+        "Run": {
+          "label": {
+            "en": "Run",
+            "fr": "Exécution",
+            "nl": "Run"
+          },
+          "description": {
+            "en": "The workflow run this build came from, as \"runId.attempt\".",
+            "fr": "Le run de workflow dont provient ce build, sous la forme « runId.tentative ».",
+            "nl": "De workflow-run waaruit dit build komt, als \"runId.poging\"."
+          }
+        },
+        "Sessions": {
+          "label": {
+            "en": "Sessions",
+            "fr": "Sessions",
+            "nl": "Sessies"
+          },
+          "description": {
+            "en": "The individual uploads (one per action invocation) merged into this build.",
+            "fr": "Les envois individuels (un par invocation de l'action) fusionnés dans ce build.",
+            "nl": "De afzonderlijke uploads (één per aanroep van de action) die in deze build zijn samengevoegd."
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          },
+          "description": {
+            "en": "\"Open\" while uploads may still arrive; \"Finalized\" once closed.",
+            "fr": "« Open » tant que des envois peuvent encore arriver ; « Finalized » une fois clôturé.",
+            "nl": "\"Open\" zolang er nog uploads kunnen binnenkomen; \"Finalized\" zodra afgesloten."
+          }
+        },
+        "WorkflowName": {
+          "label": {
+            "en": "Workflow",
+            "fr": "Workflow",
+            "nl": "Workflow"
+          },
+          "description": {
+            "en": "The GitHub Actions workflow that produced this build.",
+            "fr": "Nom du workflow GitHub Actions qui a produit ce build (p. ex. CI).",
+            "nl": "Naam van de GitHub Actions-workflow die deze build heeft voortgebracht (bv. CI)."
+          }
+        }
+      }
+    },
+    "BuildFeedback": {
+      "attributes": {
+        "Attempts": {
+          "label": {
+            "en": "Attempts",
+            "fr": "Tentatives",
+            "nl": "Pogingen"
+          },
+          "description": {
+            "en": "How many times publishing the check-runs to GitHub has been attempted for this build.",
+            "fr": "Nombre de tentatives de publication des check-runs vers GitHub pour ce build.",
+            "nl": "Hoe vaak er voor deze build geprobeerd is de check-runs naar GitHub te publiceren."
+          }
+        },
+        "Error": {
+          "label": {
+            "en": "Error",
+            "fr": "Erreur",
+            "nl": "Fout"
+          },
+          "description": {
+            "en": "Message of the last failed publish attempt; null when the last attempt succeeded.",
+            "fr": "Message de la dernière tentative de publication échouée ; null lorsque la dernière tentative a réussi.",
+            "nl": "Bericht van de laatste mislukte publicatiepoging; null wanneer de laatste poging geslaagd is."
+          }
+        },
+        "NextAttemptAtUtc": {
+          "label": {
+            "en": "Next Attempt",
+            "fr": "Prochaine tentative",
+            "nl": "Volgende poging"
+          },
+          "description": {
+            "en": "When the sweep should next try to publish (UTC); null when no retry is scheduled.",
+            "fr": "Moment où le balayage doit réessayer de publier (UTC) ; null lorsqu'aucune nouvelle tentative n'est planifiée.",
+            "nl": "Wanneer de opruimronde de volgende keer moet proberen te publiceren (UTC); null wanneer er geen nieuwe poging gepland is."
+          }
+        },
+        "PatchCheckRunId": {
+          "label": {
+            "en": "Patch Check Run Id",
+            "fr": "Id du check-run du patch",
+            "nl": "Id van de patch-check-run"
+          },
+          "description": {
+            "en": "GitHub id of the patch-coverage check-run already posted, so a re-finalize updates it instead of creating a duplicate.",
+            "fr": "Id GitHub du check-run de couverture du patch déjà publié, afin qu'une refinalisation le mette à jour au lieu d'en créer un doublon.",
+            "nl": "GitHub-id van de reeds geplaatste check-run voor patchdekking, zodat een herfinalisering ze bijwerkt in plaats van een duplicaat aan te maken."
+          }
+        },
+        "ProjectCheckRunId": {
+          "label": {
+            "en": "Project Check Run Id",
+            "fr": "Id du check-run du projet",
+            "nl": "Id van de project-check-run"
+          },
+          "description": {
+            "en": "GitHub id of the project-coverage check-run already posted, so a re-finalize updates it instead of creating a duplicate.",
+            "fr": "Id GitHub du check-run de couverture du projet déjà publié, afin qu'une refinalisation le mette à jour au lieu d'en créer un doublon.",
+            "nl": "GitHub-id van de reeds geplaatste check-run voor projectdekking, zodat een herfinalisering ze bijwerkt in plaats van een duplicaat aan te maken."
+          }
+        },
+        "State": {
+          "label": {
+            "en": "State",
+            "fr": "État",
+            "nl": "Staat"
+          },
+          "description": {
+            "en": "Pending | Posted | Retry | Unavailable | Failed.",
+            "fr": "Pending | Posted | Retry | Unavailable | Failed.",
+            "nl": "Pending | Posted | Retry | Unavailable | Failed."
+          }
+        }
+      }
+    },
+    "BuildSession": {
+      "attributes": {
+        "Error": {
+          "label": {
+            "en": "Error",
+            "fr": "Erreur",
+            "nl": "Fout"
+          },
+          "description": {
+            "en": "Why parsing this session's reports failed; null unless the parse status is Failed.",
+            "fr": "Pourquoi l'analyse des rapports de cette session a échoué ; null sauf si le statut d'analyse est Failed.",
+            "nl": "Waarom het parseren van de rapporten van deze sessie mislukt is; null tenzij de parseerstatus Failed is."
+          }
+        },
+        "FilesCount": {
+          "label": {
+            "en": "Files",
+            "fr": "Fichiers",
+            "nl": "Bestanden"
+          },
+          "description": {
+            "en": "Number of source files this session's reports contained coverage for.",
+            "fr": "Nombre de fichiers sources pour lesquels les rapports de cette session contenaient de la couverture.",
+            "nl": "Aantal bronbestanden waarvoor de rapporten van deze sessie dekking bevatten."
+          }
+        },
+        "Flags": {
+          "label": {
+            "en": "Flags",
+            "fr": "Flags",
+            "nl": "Flags"
+          },
+          "description": {
+            "en": "Flags the uploader tagged this session with (e.g. a project or test suite name); each flag gets its own per-flag coverage totals.",
+            "fr": "Flags avec lesquels l'émetteur a étiqueté cette session (p. ex. un nom de projet ou de suite de tests) ; chaque flag obtient ses propres totaux de couverture.",
+            "nl": "Flags waarmee de uploader deze sessie heeft getagd (bv. een project- of testsuitenaam); elke flag krijgt zijn eigen dekkingstotalen."
+          }
+        },
+        "JobName": {
+          "label": {
+            "en": "Job",
+            "fr": "Job",
+            "nl": "Job"
+          },
+          "description": {
+            "en": "Name of the CI job that produced this upload, as reported by the action.",
+            "fr": "Nom du job CI qui a produit cet envoi, tel que rapporté par l'action.",
+            "nl": "Naam van de CI-job die deze upload heeft voortgebracht, zoals gemeld door de action."
+          }
+        },
+        "ParseStatus": {
+          "label": {
+            "en": "Parse Status",
+            "fr": "Statut d'analyse",
+            "nl": "Parseerstatus"
+          },
+          "description": {
+            "en": "\"Pending\" | \"Parsed\" | \"Failed\"",
+            "fr": "« Pending » | « Parsed » | « Failed »",
+            "nl": "\"Pending\" | \"Parsed\" | \"Failed\""
+          }
+        },
+        "RawFileNames": {
+          "label": {
+            "en": "Raw Files",
+            "fr": "Fichiers bruts",
+            "nl": "Ruwe bestanden"
+          },
+          "description": {
+            "en": "Attachment names on the Build document holding this session's raw report files.",
+            "fr": "Noms des pièces jointes sur le document Build contenant les fichiers de rapport bruts de cette session.",
+            "nl": "Namen van de bijlagen op het Build-document met de ruwe rapportbestanden van deze sessie."
+          }
+        },
+        "Reports": {
+          "description": {
+            "en": "What happened to each uploaded report file — parsed, or rejected with a named reason (#417). One entry per attachment, so a session that ingested five of six reports says so instead of resolving to an anonymous failure. Empty on sessions ingested before this existed."
+          }
+        },
+        "RootDir": {
+          "label": {
+            "en": "Root Dir",
+            "fr": "Répertoire racine",
+            "nl": "Hoofdmap"
+          },
+          "description": {
+            "en": "The CI workspace root (GITHUB_WORKSPACE), for stripping absolute report paths.",
+            "fr": "La racine de l'espace de travail CI (GITHUB_WORKSPACE), pour retirer les chemins absolus des rapports.",
+            "nl": "De hoofdmap van de CI-workspace (GITHUB_WORKSPACE), om absolute rapportpaden weg te knippen."
+          }
+        },
+        "SessionId": {
+          "label": {
+            "en": "Session Id",
+            "fr": "Id de session",
+            "nl": "Sessie-id"
+          },
+          "description": {
+            "en": "Unique id of this upload within the build, assigned when the action's report files are received.",
+            "fr": "Id unique de cet envoi au sein du build, attribué à la réception des fichiers de rapport de l'action.",
+            "nl": "Unieke id van deze upload binnen de build, toegekend wanneer de rapportbestanden van de action ontvangen worden."
+          }
+        },
+        "UploadedAtUtc": {
+          "label": {
+            "en": "Uploaded",
+            "fr": "Envoyé",
+            "nl": "Geüpload"
+          },
+          "description": {
+            "en": "When this session's report files were received (UTC).",
+            "fr": "Moment de réception des fichiers de rapport de cette session (UTC).",
+            "nl": "Wanneer de rapportbestanden van deze sessie ontvangen zijn (UTC)."
+          }
+        }
+      }
+    },
+    "Commit": {
+      "attributes": {
+        "AssemblyCompleteness": {
+          "label": {
+            "en": "Assembly Completeness",
+            "fr": "Complétude de l'assemblage",
+            "nl": "Volledigheid van de assemblage"
+          },
+          "description": {
+            "en": "Whether the commit's coverage is complete or partial.",
+            "fr": "Si la couverture du commit est complète ou partielle.",
+            "nl": "Of de dekking van het commit volledig of gedeeltelijk is."
+          }
+        },
+        "AuthoredAt": {
+          "label": {
+            "en": "Authored",
+            "fr": "Rédigé",
+            "nl": "Geschreven"
+          },
+          "description": {
+            "en": "When the commit was authored; empty for commits only seen through an upload.",
+            "fr": "Moment de rédaction du commit, d'après la charge utile du webhook ; null pour les commits vus uniquement via un envoi.",
+            "nl": "Wanneer de commit geschreven is, uit de webhookpayload; null voor commits die enkel via een upload gezien zijn."
+          }
+        },
+        "Branch": {
+          "label": {
+            "en": "Branch",
+            "fr": "Branche",
+            "nl": "Branch"
+          },
+          "description": {
+            "en": "The branch the commit was pushed to or the PR head branch, when known.",
+            "fr": "La branche sur laquelle le commit a été poussé, ou la branche head de la PR, lorsqu'elle est connue.",
+            "nl": "De branch waarnaar de commit gepusht is of de head-branch van de PR, wanneer bekend."
+          }
+        },
+        "ContributedFromFork": {
+          "description": {
+            "en": "True when this commit's coverage was contributed from a fork, by a caller holding no credential for this repository."
+          }
+        },
+        "Coverage": {
+          "label": {
+            "en": "Coverage",
+            "fr": "Couverture",
+            "nl": "Dekking"
+          },
+          "description": {
+            "en": "The commit's headline coverage.",
+            "fr": "La couverture de référence du commit.",
+            "nl": "De hoofddekking van het commit."
+          }
+        },
+        "CoverageDeltaVsDefaultBranch": {
+          "label": {
+            "en": "Δ base branch",
+            "fr": "Δ branche de base",
+            "nl": "Δ basisbranch"
+          },
+          "description": {
+            "en": "Percentage-point change versus the default branch — what merging would do.",
+            "fr": "Écart en points face à la branche par défaut — ce que la fusion changerait.",
+            "nl": "Verschil in procentpunten t.o.v. de standaardbranch — wat mergen zou doen."
+          }
+        },
+        "CoverageDeltaVsParent": {
+          "label": {
+            "en": "Δ parent",
+            "fr": "Δ parent",
+            "nl": "Δ ouder"
+          },
+          "description": {
+            "en": "Percentage-point change versus the git first parent.",
+            "fr": "Écart en points face au premier parent git.",
+            "nl": "Verschil in procentpunten t.o.v. de eerste git-ouder."
+          }
+        },
+        "Date": {
+          "label": {
+            "en": "Date",
+            "fr": "Date",
+            "nl": "Datum"
+          },
+          "description": {
+            "en": "AuthoredAt coalesced with FirstSeenAtUtc, so an upload-only commit — which never gets a webhook timestamp — still sorts chronologically instead of clustering at one end."
+          }
+        },
+        "FirstSeenAtUtc": {
+          "label": {
+            "en": "First Seen",
+            "fr": "Vu pour la première fois",
+            "nl": "Eerst gezien"
+          },
+          "description": {
+            "en": "When this commit was first seen, by webhook or by upload.",
+            "fr": "Quand ce commit a été vu pour la première fois, par webhook ou par envoi.",
+            "nl": "Wanneer dit commit eerst gezien is, via webhook of via upload."
+          }
+        },
+        "LatestBuildId": {
+          "label": {
+            "en": "Latest Build Id",
+            "fr": "Id du dernier build",
+            "nl": "Id van de laatste build"
+          },
+          "description": {
+            "en": "The build whose coverage is shown for this commit.",
+            "fr": "Le build dont la couverture est affichée pour ce commit.",
+            "nl": "Het build waarvan de dekking voor dit commit getoond wordt."
+          }
+        },
+        "Message": {
+          "label": {
+            "en": "Message",
+            "fr": "Message",
+            "nl": "Bericht"
+          },
+          "description": {
+            "en": "The commit message, as delivered by the push or pull-request webhook.",
+            "fr": "Le message de commit, tel que livré par le webhook push ou pull request.",
+            "nl": "Het commitbericht, zoals afgeleverd door de push- of pull-request-webhook."
+          }
+        },
+        "ParentLookupAttemptedAtUtc": {
+          "label": {
+            "en": "Parent Lookup",
+            "fr": "Recherche du parent",
+            "nl": "Ouder opgezocht"
+          },
+          "description": {
+            "en": "When the server last asked GitHub for the parent.",
+            "fr": "Quand le serveur a demandé le parent à GitHub pour la dernière fois.",
+            "nl": "Wanneer de server de ouder het laatst bij GitHub opgevraagd heeft."
+          }
+        },
+        "ParentSha": {
+          "label": {
+            "en": "Parent Sha",
+            "fr": "Sha du parent",
+            "nl": "Sha van de ouder"
+          },
+          "description": {
+            "en": "Sha of the git first parent, the reference for the delta-vs-parent.",
+            "fr": "Sha du premier parent git, la référence de l'écart face au parent.",
+            "nl": "Sha van de eerste git-ouder, de referentie voor het verschil met de ouder."
+          }
+        },
+        "ParentShaSource": {
+          "label": {
+            "en": "Parent Sha Source",
+            "fr": "Source du sha du parent",
+            "nl": "Bron van de ouder-sha"
+          },
+          "description": {
+            "en": "Who set the parent sha: the upload's claim, or GitHub's API.",
+            "fr": "Qui a fixé le sha du parent : la déclaration de l'envoi, ou l'API GitHub.",
+            "nl": "Wie de ouder-sha gezet heeft: de claim van de upload, of de GitHub-API."
+          }
+        },
+        "PullRequestBaseRef": {
+          "label": {
+            "en": "PR Base Ref",
+            "fr": "Réf. de base PR",
+            "nl": "PR-basisref"
+          },
+          "description": {
+            "en": "The branch the pull request targets, not its head branch.",
+            "fr": "La branche que la pull request cible, pas sa branche source.",
+            "nl": "De branch waarop de pull request mikt, niet zijn eigen branch."
+          }
+        },
+        "PullRequestBaseSha": {
+          "label": {
+            "en": "PR Base Sha",
+            "fr": "Sha de base PR",
+            "nl": "PR-basis-sha"
+          },
+          "description": {
+            "en": "Tip of the target branch as of the PR's last synchronise.",
+            "fr": "Le sommet de la branche cible lors de la dernière synchronisation de la PR.",
+            "nl": "De top van de doelbranch bij de laatste synchronisatie van de PR."
+          }
+        },
+        "PullRequestNumber": {
+          "label": {
+            "en": "PR",
+            "fr": "PR",
+            "nl": "PR"
+          },
+          "description": {
+            "en": "Number of the pull request this commit was seen on; empty for plain pushes.",
+            "fr": "Numéro de la pull request sur laquelle ce commit a été vu ; null pour de simples pushes.",
+            "nl": "Nummer van de pull request waarop deze commit gezien is; null bij gewone pushes."
+          }
+        },
+        "Repository": {
+          "label": {
+            "en": "Repository",
+            "fr": "Dépôt",
+            "nl": "Repository"
+          },
+          "description": {
+            "en": "The repository this commit belongs to.",
+            "fr": "Le dépôt auquel appartient ce commit.",
+            "nl": "De repository waartoe deze commit behoort."
+          }
+        },
+        "Sha": {
+          "label": {
+            "en": "Commit",
+            "fr": "Commit",
+            "nl": "Commit"
+          },
+          "description": {
+            "en": "The full 40-character git commit sha.",
+            "fr": "Le sha de commit git complet, de 40 caractères.",
+            "nl": "De volledige git-commit-sha van 40 tekens."
+          }
+        }
+      }
+    },
+    "CoverageSummary": {
+      "attributes": {
+        "BranchesCovered": {
+          "label": {
+            "en": "Branches Covered",
+            "fr": "Branches couvertes",
+            "nl": "Gedekte branches"
+          },
+          "description": {
+            "en": "Number of branch edges (if/else, switch arms, ...) that were taken at least once.",
+            "fr": "Nombre d'arêtes de branchement (if/else, branches de switch, ...) empruntées au moins une fois.",
+            "nl": "Aantal vertakkingen (if/else, switch-armen, ...) die minstens één keer genomen zijn."
+          }
+        },
+        "BranchesTotal": {
+          "label": {
+            "en": "Branches Total",
+            "fr": "Total des branches",
+            "nl": "Totaal aantal branches"
+          },
+          "description": {
+            "en": "Total number of branch edges the reports know about, the denominator of the branch coverage percentage.",
+            "fr": "Nombre total d'arêtes de branchement connues des rapports, le dénominateur du pourcentage de couverture de branches.",
+            "nl": "Totaal aantal vertakkingen dat de rapporten kennen, de noemer van het percentage vertakkingsdekking."
+          }
+        },
+        "FilesCount": {
+          "label": {
+            "en": "Files",
+            "fr": "Fichiers",
+            "nl": "Bestanden"
+          },
+          "description": {
+            "en": "Number of source files these totals were aggregated from.",
+            "fr": "Nombre de fichiers sources à partir desquels ces totaux ont été agrégés.",
+            "nl": "Aantal bronbestanden waaruit deze totalen zijn samengesteld."
+          }
+        },
+        "LinesCoverable": {
+          "label": {
+            "en": "Lines Coverable",
+            "fr": "Lignes couvrables",
+            "nl": "Dekbare regels"
+          },
+          "description": {
+            "en": "Number of lines that tests could have executed, the denominator of the line coverage percentage.",
+            "fr": "Nombre de lignes que les tests auraient pu exécuter, le dénominateur du pourcentage de couverture de lignes.",
+            "nl": "Aantal regels die tests hadden kunnen uitvoeren, de noemer van het percentage regeldekking."
+          }
+        },
+        "LinesCovered": {
+          "label": {
+            "en": "Lines Covered",
+            "fr": "Lignes couvertes",
+            "nl": "Gedekte regels"
+          },
+          "description": {
+            "en": "Number of coverable lines executed at least once; divided by the coverable count this gives the line coverage percentage.",
+            "fr": "Nombre de lignes couvrables exécutées au moins une fois ; divisé par le nombre de lignes couvrables, cela donne le pourcentage de couverture de lignes.",
+            "nl": "Aantal dekbare regels die minstens één keer uitgevoerd zijn; gedeeld door het aantal dekbare regels geeft dit het percentage regeldekking."
+          }
+        }
+      }
+    },
+    "EventColumnMapping": {
+      "attributes": {
+        "AutoAddToBoard": {
+          "label": {
+            "en": "Add To Board",
+            "fr": "Ajouter au tableau",
+            "nl": "Aan bord toevoegen"
+          },
+          "description": {
+            "en": "Add an item to the board when this rule has to move it and it is not on the board yet.",
+            "fr": "Ajouter un élément au tableau lorsque cette règle doit le déplacer et qu'il n'y figure pas encore.",
+            "nl": "Een item aan het bord toevoegen wanneer deze regel het moet verplaatsen en het er nog niet op staat."
+          }
+        },
+        "Enabled": {
+          "label": {
+            "en": "Enabled",
+            "fr": "Activé",
+            "nl": "Ingeschakeld"
+          },
+          "description": {
+            "en": "Turns this one rule off without deleting it.",
+            "fr": "Désactive cette seule règle sans la supprimer.",
+            "nl": "Zet deze ene regel uit zonder ze te verwijderen."
+          }
+        },
+        "EventType": {
+          "label": {
+            "en": "Event",
+            "fr": "Événement",
+            "nl": "Gebeurtenis"
+          },
+          "description": {
+            "en": "Which GitHub event this rule reacts to.",
+            "fr": "L'événement GitHub auquel cette règle réagit.",
+            "nl": "De GitHub-gebeurtenis waarop deze regel reageert."
+          }
+        },
+        "LastError": {
+          "label": {
+            "en": "Error",
+            "fr": "Erreur",
+            "nl": "Fout"
+          },
+          "description": {
+            "en": "Why this rule last failed, or empty if its last attempt succeeded.",
+            "fr": "Pourquoi cette règle a échoué la dernière fois, ou vide si sa dernière tentative a réussi.",
+            "nl": "Waarom deze regel de laatste keer mislukt is, of leeg als de laatste poging gelukt is."
+          }
+        },
+        "LastErrorAtUtc": {
+          "label": {
+            "en": "Failed At",
+            "fr": "Échoué le",
+            "nl": "Mislukt op"
+          },
+          "description": {
+            "en": "When the last failure happened; empty when the rule is healthy.",
+            "fr": "Moment où LastError a été enregistrée (UTC) ; null lorsque la règle est saine.",
+            "nl": "Wanneer LastError vastgelegd is (UTC); null wanneer de regel gezond is."
+          }
+        },
+        "LastFiredAtUtc": {
+          "label": {
+            "en": "Last Fired",
+            "fr": "Dernier déclenchement",
+            "nl": "Laatst afgevuurd"
+          },
+          "description": {
+            "en": "When this rule last moved a card, or empty if it never has.",
+            "fr": "Quand cette règle a déplacé une carte pour la dernière fois, ou vide si jamais.",
+            "nl": "Wanneer deze regel het laatst een kaart verplaatst heeft, of leeg als dat nooit gebeurd is."
+          }
+        },
+        "MoveLinkedIssues": {
+          "label": {
+            "en": "Move Linked Issues",
+            "fr": "Déplacer les tickets liés",
+            "nl": "Gekoppelde issues verplaatsen"
+          },
+          "description": {
+            "en": "Also move the cards of the issues a pull request closes, alongside the PR's own card. Ignored for issue events.",
+            "fr": "Déplacer aussi les cartes des tickets qu'une pull request clôture, en plus de celle de la PR. Ignoré pour les événements de ticket.",
+            "nl": "Ook de kaarten verplaatsen van de issues die een pull request sluit, naast die van de PR zelf. Genegeerd voor issue-gebeurtenissen."
+          }
+        },
+        "TargetColumnOptionId": {
+          "label": {
+            "en": "Target Column",
+            "fr": "Colonne cible",
+            "nl": "Doelkolom"
+          },
+          "description": {
+            "en": "The board column this rule moves the card to.",
+            "fr": "La colonne du tableau vers laquelle cette règle déplace la carte.",
+            "nl": "De bordkolom waarnaar deze regel de kaart verplaatst."
+          }
+        }
+      }
+    },
+    "ForgeAccounts": {
+      "attributes": {
+        "Title": {
+          "label": {
+            "en": "",
+            "fr": "",
+            "nl": ""
+          }
+        },
+        "Provider": {
+          "label": {
+            "en": "Forge",
+            "fr": "Forge",
+            "nl": "Forge"
+          }
+        },
+        "AccountCount": {
+          "label": {
+            "en": "Accounts",
+            "fr": "Comptes",
+            "nl": "Accounts"
+          }
+        },
+        "RepoCount": {
+          "label": {
+            "en": "Repositories",
+            "fr": "Dépôts",
+            "nl": "Repositories"
+          }
+        }
+      }
+    },
+    "GateSettings": {
+      "attributes": {
+        "Blocking": {
+          "label": {
+            "en": "Blocking",
+            "fr": "Bloquant",
+            "nl": "Blokkerend"
+          },
+          "description": {
+            "en": "Whether a failing gate blocks the pull request.",
+            "fr": "Si un seuil non atteint bloque la pull request.",
+            "nl": "Of een niet-gehaalde poort de pull request blokkeert."
+          }
+        },
+        "PatchTarget": {
+          "label": {
+            "en": "Patch target (%)",
+            "fr": "Cible du patch (%)",
+            "nl": "Patchdoel (%)"
+          },
+          "description": {
+            "en": "Percent target for patch coverage; null disables the patch gate.",
+            "fr": "Cible en pourcentage pour la couverture du patch ; null désactive le seuil du patch.",
+            "nl": "Doelpercentage voor patchdekking; null schakelt de patchpoort uit."
+          }
+        },
+        "PatchThreshold": {
+          "label": {
+            "en": "Patch tolerance (points)",
+            "fr": "Tolérance du patch (points)",
+            "nl": "Patchtolerantie (punten)"
+          },
+          "description": {
+            "en": "Allowed shortfall in percentage points below PatchTarget.",
+            "fr": "Écart autorisé, en points de pourcentage, sous PatchTarget.",
+            "nl": "Toegestane achterstand in procentpunten onder PatchTarget."
+          }
+        },
+        "ProjectBasis": {
+          "label": {
+            "en": "Partial builds judge",
+            "fr": "Base des builds partiels",
+            "nl": "Beoordeling van gedeeltelijke builds"
+          },
+          "description": {
+            "en": "Which number a partial build's project status judges.",
+            "fr": "Quel chiffre le statut projet d'un build partiel évalue.",
+            "nl": "Welk cijfer de projectstatus van een gedeeltelijk build beoordeelt."
+          }
+        },
+        "ProjectMode": {
+          "label": {
+            "en": "Project comparison",
+            "fr": "Comparaison du projet",
+            "nl": "Projectvergelijking"
+          },
+          "description": {
+            "en": "\"auto\" ratchets against the resolved base; \"fixed\" compares to ProjectTarget and needs no base at all.",
+            "fr": "« auto » se cale sur la base résolue ; « fixed » compare à ProjectTarget et n'a besoin d'aucune base.",
+            "nl": "\"auto\" schuift mee met de opgeloste basis; \"fixed\" vergelijkt met ProjectTarget en heeft helemaal geen basis nodig."
+          }
+        },
+        "ProjectTarget": {
+          "label": {
+            "en": "Project target (%)",
+            "fr": "Cible du projet (%)",
+            "nl": "Projectdoel (%)"
+          },
+          "description": {
+            "en": "Percent target for fixed mode (e.g. 80 = 80%).",
+            "fr": "Cible en pourcentage pour le mode fixed (p. ex. 80 = 80 %).",
+            "nl": "Doelpercentage voor de modus fixed (bv. 80 = 80%)."
+          }
+        },
+        "ProjectThreshold": {
+          "label": {
+            "en": "Allowed drop (points)",
+            "fr": "Baisse autorisée (points)",
+            "nl": "Toegestane daling (punten)"
+          },
+          "description": {
+            "en": "Allowed drop in percentage points before the project status fails.",
+            "fr": "Baisse autorisée, en points de pourcentage, avant que le statut du projet n'échoue.",
+            "nl": "Toegestane daling in procentpunten voordat de projectstatus faalt."
+          }
+        }
+      }
+    },
+    "GitHubProject": {
+      "attributes": {
+        "Account": {
+          "label": {
+            "en": "Account",
+            "fr": "Compte",
+            "nl": "Account"
+          },
+          "description": {
+            "en": "The GitHub user or organization that owns this board.",
+            "fr": "L'utilisateur ou l'organisation GitHub propriétaire de ce tableau.",
+            "nl": "De GitHub-gebruiker of -organisatie die eigenaar is van dit bord."
+          }
+        },
+        "AutomationEnabled": {
+          "label": {
+            "en": "Automation Enabled",
+            "fr": "Automatisation activée",
+            "nl": "Automatisering ingeschakeld"
+          },
+          "description": {
+            "en": "Master switch: off means discovered but inert, and no event does anything.",
+            "fr": "Interrupteur principal : désactivé, le tableau est découvert mais inerte et aucun événement n'agit.",
+            "nl": "Hoofdschakelaar: uit betekent gevonden maar inert, en geen enkele gebeurtenis doet iets."
+          }
+        },
+        "Columns": {
+          "label": {
+            "en": "Columns",
+            "fr": "Colonnes",
+            "nl": "Kolommen"
+          },
+          "description": {
+            "en": "The board's columns as last read from GitHub.",
+            "fr": "Les colonnes du tableau telles que lues sur GitHub la dernière fois.",
+            "nl": "De kolommen van het bord zoals ze het laatst van GitHub gelezen zijn."
+          }
+        },
+        "ColumnsSyncedAtUtc": {
+          "label": {
+            "en": "Columns Synced",
+            "fr": "Colonnes synchronisées",
+            "nl": "Kolommen gesynchroniseerd"
+          },
+          "description": {
+            "en": "When the board's columns were last read from GitHub (UTC).",
+            "fr": "Moment de la dernière lecture des colonnes du tableau depuis GitHub (UTC).",
+            "nl": "Wanneer de kolommen van het bord het laatst van GitHub gelezen zijn (UTC)."
+          }
+        },
+        "Connection": {
+          "label": {
+            "en": "Connection",
+            "fr": "Connexion",
+            "nl": "Verbinding"
+          },
+          "description": {
+            "en": "Whether the GitHub App can still see this board.",
+            "fr": "Si l'application GitHub voit encore ce tableau.",
+            "nl": "Of de GitHub App dit bord nog kan zien."
+          }
+        },
+        "DisconnectedAtUtc": {
+          "label": {
+            "en": "Disconnected",
+            "fr": "Déconnecté",
+            "nl": "Losgekoppeld"
+          },
+          "description": {
+            "en": "When the board was last disconnected (UTC); null while connected.",
+            "fr": "Moment de la dernière déconnexion du tableau (UTC) ; null tant qu'il est connecté.",
+            "nl": "Wanneer het bord het laatst losgekoppeld is (UTC); null zolang het verbonden is."
+          }
+        },
+        "DisconnectedReason": {
+          "label": {
+            "en": "Disconnected Reason",
+            "fr": "Motif de déconnexion",
+            "nl": "Reden van loskoppeling"
+          },
+          "description": {
+            "en": "Why the board is disconnected, from DisconnectedReasons; null while connected.",
+            "fr": "Pourquoi le tableau est déconnecté, d'après DisconnectedReasons ; null tant qu'il est connecté.",
+            "nl": "Waarom het bord losgekoppeld is, uit DisconnectedReasons; null zolang het verbonden is."
+          }
+        },
+        "EventMappings": {
+          "label": {
+            "en": "Events",
+            "fr": "Événements",
+            "nl": "Gebeurtenissen"
+          },
+          "description": {
+            "en": "The automation rules for this board.",
+            "fr": "Les règles d'automatisation de ce tableau.",
+            "nl": "De automatiseringsregels voor dit bord."
+          }
+        },
+        "InstallationId": {
+          "label": {
+            "en": "Installation Id",
+            "fr": "Id d'installation",
+            "nl": "Installatie-id"
+          },
+          "description": {
+            "en": "The GitHub App installation that can act on this board.",
+            "fr": "L'installation de l'application GitHub qui peut agir sur ce tableau.",
+            "nl": "De GitHub App-installatie die op dit bord kan handelen."
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          },
+          "description": {
+            "en": "The board's title on GitHub.",
+            "fr": "Le titre du tableau sur GitHub.",
+            "nl": "De titel van het bord op GitHub."
+          }
+        },
+        "NodeId": {
+          "label": {
+            "en": "Node Id",
+            "fr": "Id de nœud",
+            "nl": "Node-id"
+          },
+          "description": {
+            "en": "GitHub's GraphQL node id for the board.",
+            "fr": "L'id de nœud GraphQL du tableau chez GitHub.",
+            "nl": "De GraphQL-node-id van het bord bij GitHub."
+          }
+        },
+        "Number": {
+          "label": {
+            "en": "Number",
+            "fr": "Numéro",
+            "nl": "Nummer"
+          },
+          "description": {
+            "en": "The board's number within its owner, as it appears in the URL.",
+            "fr": "Le numéro du tableau chez son propriétaire, tel qu'il apparaît dans l'URL.",
+            "nl": "Het nummer van het bord bij zijn eigenaar, zoals het in de URL staat."
+          }
+        },
+        "OwnerLogin": {
+          "label": {
+            "en": "Owner",
+            "fr": "Propriétaire",
+            "nl": "Eigenaar"
+          },
+          "description": {
+            "en": "GitHub login of the owning user or organization.",
+            "fr": "Login GitHub de l'utilisateur ou de l'organisation propriétaire.",
+            "nl": "GitHub-login van de eigenaar: gebruiker of organisatie."
+          }
+        },
+        "StatusFieldId": {
+          "label": {
+            "en": "Status Field",
+            "fr": "Champ Status",
+            "nl": "Status-veld"
+          },
+          "description": {
+            "en": "The board's single-select \"Status\" field, whose options are its columns.",
+            "fr": "Le champ « Status » à sélection unique du tableau, dont les options sont ses colonnes.",
+            "nl": "Het \"Status\"-veld met enkelvoudige keuze van het bord, waarvan de opties de kolommen zijn."
+          }
+        }
+      }
+    },
+    "Home": {
+      "attributes": {
+        "Title": {
+          "label": {
+            "en": "",
+            "fr": "",
+            "nl": ""
+          }
+        },
+        "Subtitle": {
+          "label": {
+            "en": "About",
+            "fr": "À propos",
+            "nl": "Over"
+          }
+        },
+        "AccountCount": {
+          "label": {
+            "en": "Accounts",
+            "fr": "Comptes",
+            "nl": "Accounts"
+          }
+        },
+        "RepoCount": {
+          "label": {
+            "en": "Repositories",
+            "fr": "Dépôts",
+            "nl": "Repositories"
+          }
+        }
+      }
+    },
+    "MyAccountRow": {
+      "attributes": {
+        "AvatarUrl": {
+          "label": {
+            "en": "Avatar",
+            "fr": "Avatar",
+            "nl": "Avatar"
+          }
+        },
+        "Provider": {
+          "label": {
+            "en": "Forge",
+            "fr": "Forge",
+            "nl": "Forge"
+          }
+        },
+        "Login": {
+          "label": {
+            "en": "Account",
+            "fr": "Compte",
+            "nl": "Account"
+          }
+        },
+        "Type": {
+          "label": {
+            "en": "Type",
+            "fr": "Type",
+            "nl": "Type"
+          }
+        },
+        "RepoCount": {
+          "label": {
+            "en": "Repositories",
+            "fr": "Dépôts",
+            "nl": "Repositories"
+          }
+        },
+        "AggregateCoverage": {
+          "label": {
+            "en": "Coverage",
+            "fr": "Couverture",
+            "nl": "Dekking"
+          }
+        },
+        "IsConnected": {
+          "label": {
+            "en": "Connected",
+            "fr": "Connecte",
+            "nl": "Verbonden"
+          }
+        }
+      }
+    },
+    "PatchCoverage": {
+      "attributes": {
+        "DiffBaseRef": {
+          "label": {
+            "en": "Diff Base Ref",
+            "fr": "Réf. de base du diff",
+            "nl": "Diff-basisref"
+          },
+          "description": {
+            "en": "What the diff compared against (declared base sha, or the PR base tip hint).",
+            "fr": "Ce à quoi le diff s'est comparé (sha de base déclaré, ou indication de la tête de base de la PR).",
+            "nl": "Waarmee de diff vergeleken heeft (de aangegeven basis-sha, of de hint van de basistip van de PR)."
+          }
+        },
+        "DiffTruncated": {
+          "label": {
+            "en": "Diff Truncated",
+            "fr": "Diff tronqué",
+            "nl": "Diff afgekapt"
+          },
+          "description": {
+            "en": "True when GitHub's 300-file comparison cap cut the diff short; the number under-reports.",
+            "fr": "Vrai lorsque la limite de comparaison de 300 fichiers de GitHub a écourté le diff ; le chiffre est sous-estimé.",
+            "nl": "True wanneer GitHubs vergelijkingslimiet van 300 bestanden de diff heeft afgekapt; het cijfer is te laag."
+          }
+        },
+        "FilesInDiff": {
+          "label": {
+            "en": "Files In Diff",
+            "fr": "Fichiers dans le diff",
+            "nl": "Bestanden in de diff"
+          },
+          "description": {
+            "en": "Number of files the diff touched, before dropping the ones the build did not measure.",
+            "fr": "Nombre de fichiers touchés par le diff, avant d'écarter ceux que le build n'a pas mesurés.",
+            "nl": "Aantal bestanden dat de diff raakte, vóór het weglaten van de bestanden die de build niet gemeten heeft."
+          }
+        },
+        "FilesMatched": {
+          "label": {
+            "en": "Files Matched",
+            "fr": "Fichiers correspondants",
+            "nl": "Overeenkomende bestanden"
+          },
+          "description": {
+            "en": "Diff files the build actually measured — the denominator's file scope.",
+            "fr": "Fichiers du diff que le build a réellement mesurés — la portée de fichiers du dénominateur.",
+            "nl": "Diff-bestanden die de build daadwerkelijk heeft gemeten — de bestandsscope van de noemer."
+          }
+        },
+        "LinesCoverable": {
+          "label": {
+            "en": "Lines Coverable",
+            "fr": "Lignes couvrables",
+            "nl": "Dekbare regels"
+          },
+          "description": {
+            "en": "Number of lines added by the change that tests could have executed, the patch coverage denominator.",
+            "fr": "Nombre de lignes ajoutées par la modification que les tests auraient pu exécuter, le dénominateur de la couverture du patch.",
+            "nl": "Aantal door de wijziging toegevoegde regels die tests hadden kunnen uitvoeren, de noemer van de patchdekking."
+          }
+        },
+        "LinesCovered": {
+          "label": {
+            "en": "Lines Covered",
+            "fr": "Lignes couvertes",
+            "nl": "Gedekte regels"
+          },
+          "description": {
+            "en": "Number of lines added by the change that were executed at least once.",
+            "fr": "Nombre de lignes ajoutées par la modification qui ont été exécutées au moins une fois.",
+            "nl": "Aantal door de wijziging toegevoegde regels die minstens één keer uitgevoerd zijn."
+          }
+        },
+        "MergeBaseSha": {
+          "label": {
+            "en": "Merge Base Sha",
+            "fr": "Sha de la base de fusion",
+            "nl": "Merge-base-sha"
+          },
+          "description": {
+            "en": "The merge-base GitHub computed for that comparison.",
+            "fr": "La base de fusion que GitHub a calculée pour cette comparaison.",
+            "nl": "De merge-base die GitHub voor die vergelijking berekend heeft."
+          }
+        }
+      }
+    },
+    "ProjectColumn": {
+      "attributes": {
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          },
+          "description": {
+            "en": "The option's display name, e.g. In Progress. Shown to the user when picking a target column.",
+            "fr": "Le nom d'affichage de l'option, p. ex. In Progress. Affiché à l'utilisateur lors du choix d'une colonne cible.",
+            "nl": "De weergavenaam van de optie, bv. In Progress. Getoond aan de gebruiker bij het kiezen van een doelkolom."
+          }
+        }
+      }
+    },
+    "ReportIngestOutcome": {
+      "attributes": {
+        "BranchLinesCountOnly": {
+          "description": {
+            "en": "Lines whose branch coverage this report gave only as a count (Cobertura's condition-coverage, JaCoCo's mb/cb, Clover's truecount/falsecount).\nThese contribute a floor rather than named arms, so two such reports covering *different* arms of one line merge to \"at least N\", never to their union — the format destroyed the information before it reached us. Surfaced because the previous model discarded such reports outright and nothing said so; a number here explains a total that looks low."
+          }
+        },
+        "BranchLinesIdentified": {
+          "description": {
+            "en": "Lines whose branch arms this report identified individually (lcov, istanbul). These merge exactly across reports: two reports covering different arms of one line union to both."
+          }
+        },
+        "Detail": {
+          "description": {
+            "en": "Human-readable detail — the parser's own message, bounded."
+          }
+        },
+        "FileName": {
+          "description": {
+            "en": "The uploaded file's name, as the consumer would recognise it."
+          }
+        },
+        "FilesCount": {
+          "description": {
+            "en": "Files the report described, when it parsed."
+          }
+        },
+        "Format": {
+          "description": {
+            "en": "The report format that claimed the file, when one did."
+          }
+        },
+        "Parsed": {
+          "description": {
+            "en": "True when the file was parsed and its files merged."
+          }
+        },
+        "Reason": {
+          "description": {
+            "en": "Why the file was rejected, from ReportRejectionReason. Null when Parsed. A closed set so a consumer can branch on it."
+          }
+        }
+      }
+    },
+    "Repository": {
+      "attributes": {
+        "Account": {
+          "label": {
+            "en": "Account",
+            "fr": "Compte",
+            "nl": "Account"
+          },
+          "description": {
+            "en": "The GitHub user or organization that owns this repository.",
+            "fr": "L'utilisateur ou l'organisation GitHub propriétaire de ce dépôt.",
+            "nl": "De GitHub-gebruiker of -organisatie die eigenaar is van deze repository."
+          }
+        },
+        "Archived": {
+          "label": {
+            "en": "Archived",
+            "fr": "Archivé",
+            "nl": "Gearchiveerd"
+          },
+          "description": {
+            "en": "Whether the repository has been archived on GitHub.",
+            "fr": "Vrai lorsque le dépôt a été archivé sur GitHub et ne reçoit plus d'envois.",
+            "nl": "True wanneer de repository op GitHub gearchiveerd is en geen uploads meer ontvangt."
+          }
+        },
+        "BadgeToken": {
+          "label": {
+            "en": "Badge Token",
+            "fr": "Jeton de badge",
+            "nl": "Badgetoken"
+          },
+          "description": {
+            "en": "Grants access to the rendered badge SVG only — never report data.",
+            "fr": "Donne accès au badge SVG rendu uniquement — jamais aux données du rapport.",
+            "nl": "Geeft enkel toegang tot de gerenderde badge-SVG — nooit tot rapportgegevens."
+          }
+        },
+        "Connection": {
+          "label": {
+            "en": "Connection",
+            "fr": "Connexion",
+            "nl": "Verbinding"
+          },
+          "description": {
+            "en": "Whether the GitHub App can still see this repository.",
+            "fr": "Si l'application GitHub voit encore ce dépôt.",
+            "nl": "Of de GitHub App deze repository nog kan zien."
+          }
+        },
+        "DefaultBranch": {
+          "label": {
+            "en": "Default Branch",
+            "fr": "Branche par défaut",
+            "nl": "Standaardbranch"
+          },
+          "description": {
+            "en": "The repository's default branch on GitHub.",
+            "fr": "La branche par défaut du dépôt sur GitHub.",
+            "nl": "De standaardbranch van de repository op GitHub."
+          }
+        },
+        "DeleteBranchOnPrClose": {
+          "label": {
+            "en": "Delete Branch On Merge",
+            "fr": "Supprimer la branche à la fusion",
+            "nl": "Branch verwijderen bij mergen"
+          },
+          "description": {
+            "en": "Whether a merged pull request's head branch is deleted — or whether that is left to the owning Account.",
+            "fr": "Supprimer la branche source d'une pull request lorsque celle-ci est fusionnée.",
+            "nl": "De bronbranch van een pull request verwijderen wanneer die gemerged wordt."
+          }
+        },
+        "DisconnectedAtUtc": {
+          "label": {
+            "en": "Disconnected",
+            "fr": "Déconnecté",
+            "nl": "Losgekoppeld"
+          },
+          "description": {
+            "en": "When the repository was last disconnected (UTC); null while connected.",
+            "fr": "Moment de la dernière déconnexion du dépôt (UTC) ; null tant qu'il est connecté.",
+            "nl": "Wanneer de repository het laatst losgekoppeld is (UTC); null zolang ze verbonden is."
+          }
+        },
+        "DisconnectedReason": {
+          "label": {
+            "en": "Disconnected Reason",
+            "fr": "Motif de déconnexion",
+            "nl": "Reden van loskoppeling"
+          },
+          "description": {
+            "en": "Why the repository is disconnected, from DisconnectedReasons; null while connected.",
+            "fr": "Pourquoi le dépôt est déconnecté, d'après DisconnectedReasons ; null tant qu'il est connecté.",
+            "nl": "Waarom de repository losgekoppeld is, uit DisconnectedReasons; null zolang ze verbonden is."
+          }
+        },
+        "ForkUploads": {
+          "description": {
+            "en": "How many fork-contributed uploads this repository has accepted in the current window."
+          }
+        },
+        "FullName": {
+          "label": {
+            "en": "Trend",
+            "fr": "Tendance",
+            "nl": "Trend"
+          },
+          "description": {
+            "en": "owner/name",
+            "fr": "propriétaire/nom",
+            "nl": "eigenaar/naam"
+          }
+        },
+        "Gate": {
+          "label": {
+            "en": "Coverage gate",
+            "fr": "Seuil de couverture",
+            "nl": "Coverage gate"
+          },
+          "description": {
+            "en": "Gate policy; empty means every default (informational, auto-ratchet).",
+            "fr": "Politique de seuil ; vide signifie toutes les valeurs par défaut (informatif, cliquet automatique).",
+            "nl": "Poortbeleid; leeg betekent alle standaardwaarden (informatief, automatische ratel)."
+          }
+        },
+        "GitHubId": {
+          "label": {
+            "en": "GitHub Id",
+            "fr": "Id GitHub",
+            "nl": "GitHub-id"
+          },
+          "description": {
+            "en": "GitHub's numeric id for this repository.",
+            "fr": "Id numérique GitHub de ce dépôt ; stable malgré les renommages et les transferts.",
+            "nl": "GitHub's numerieke id voor deze repository; stabiel bij hernoemingen en overdrachten."
+          }
+        },
+        "IsPrivate": {
+          "label": {
+            "en": "Private",
+            "fr": "Privé",
+            "nl": "Privé"
+          },
+          "description": {
+            "en": "Whether the repository is private on GitHub.",
+            "fr": "Si le dépôt est privé sur GitHub.",
+            "nl": "Of de repository privé is op GitHub."
+          }
+        },
+        "LatestCoverage": {
+          "label": {
+            "en": "Coverage",
+            "fr": "Couverture",
+            "nl": "Dekking"
+          },
+          "description": {
+            "en": "The repository's headline coverage.",
+            "fr": "La couverture de référence du dépôt.",
+            "nl": "De hoofddekking van de repository."
+          }
+        },
+        "LatestCoverageAtUtc": {
+          "label": {
+            "en": "Last Measured",
+            "fr": "Dernière mesure",
+            "nl": "Laatst gemeten"
+          },
+          "description": {
+            "en": "When the headline coverage was last refreshed.",
+            "fr": "Quand la couverture de référence a été rafraîchie pour la dernière fois.",
+            "nl": "Wanneer de hoofddekking het laatst vernieuwd is."
+          }
+        },
+        "LatestCoverageSha": {
+          "label": {
+            "en": "Latest commit",
+            "fr": "Dernier commit",
+            "nl": "Laatste commit"
+          },
+          "description": {
+            "en": "The default-branch commit the headline coverage was taken from.",
+            "fr": "Sha du commit de la branche par défaut dont provient la couverture principale.",
+            "nl": "Sha van de commit op de standaardbranch waaruit de hoofddekking genomen is."
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Repository",
+            "fr": "Dépôt",
+            "nl": "Repository"
+          },
+          "description": {
+            "en": "The repository name without the owner, e.g. MintPlayer.Spark.",
+            "fr": "Le nom du dépôt sans le propriétaire, p. ex. MintPlayer.Spark.",
+            "nl": "De naam van de repository zonder de eigenaar, bv. MintPlayer.Spark."
+          }
+        },
+        "OwnerKey": {
+          "description": {
+            "en": "Provider and OwnerLogin as one comparable value, github:mintplayer — the form authorization filters on."
+          }
+        },
+        "OwnerLogin": {
+          "label": {
+            "en": "Owner",
+            "fr": "Propriétaire",
+            "nl": "Eigenaar"
+          },
+          "description": {
+            "en": "GitHub login of the owning user or organization.",
+            "fr": "Login GitHub de l'utilisateur ou de l'organisation propriétaire.",
+            "nl": "GitHub-login van de eigenaar: gebruiker of organisatie."
+          }
+        },
+        "PreviousFullNames": {
+          "label": {
+            "en": "Previous Names",
+            "fr": "Anciens noms",
+            "nl": "Vorige namen"
+          },
+          "description": {
+            "en": "Names this repository was previously known by, oldest first.",
+            "fr": "Noms sous lesquels ce dépôt a été connu auparavant, du plus ancien au plus récent.",
+            "nl": "Namen waaronder deze repository eerder bekend was, oudste eerst."
+          }
+        },
+        "Provider": {
+          "description": {
+            "en": "The forge that hosts this repository. Set on every document by the M6 re-key."
+          }
+        }
+      }
+    },
+    "SparkUser": {
+      "label": {
+        "en": "User",
+        "fr": "Utilisateur",
+        "nl": "Gebruiker"
+      },
+      "attributes": {
+        "Id": {
+          "label": {
+            "en": "Id",
+            "fr": "Id",
+            "nl": "Id"
+          }
+        },
+        "UserName": {
+          "label": {
+            "en": "User name",
+            "fr": "Nom d'utilisateur",
+            "nl": "Gebruikersnaam"
+          }
+        }
+      }
+    }
+  },
+  "queries": {
+    "Account_UploadTokens": {
+      "label": {
+        "en": "Upload tokens",
+        "fr": "Jetons d'envoi",
+        "nl": "Upload-tokens"
+      }
+    },
+    "Commit_Builds": {
+      "label": {
+        "en": "Builds",
+        "fr": "Builds",
+        "nl": "Builds"
+      }
+    },
+    "Repository_Commits": {
+      "label": {
+        "en": "Commits",
+        "fr": "Commits",
+        "nl": "Commits"
+      }
+    },
+    "Account_Projects": {
+      "label": {
+        "en": "Project boards",
+        "fr": "Tableaux de projet",
+        "nl": "Projectborden"
+      }
+    },
+    "MyAccounts": {
+      "label": {
+        "en": "Your accounts",
+        "fr": "Vos comptes",
+        "nl": "Jouw accounts"
+      }
+    },
+    "Account_Repositories": {
+      "label": {
+        "en": "Repositories",
+        "fr": "Dépôts",
+        "nl": "Repositories"
+      }
+    },
+    "ApiToken_SelectableRepositories": {
+      "label": {
+        "en": "Selectable repositories",
+        "fr": "Dépôts sélectionnables",
+        "nl": "Selecteerbare repositories"
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "coverage": {
+        "en": "Coverage",
+        "fr": "Coverage",
+        "nl": "Coverage"
+      }
+    },
+    "home": {
+      "en": "Home",
+      "fr": "Accueil",
+      "nl": "Start"
+    },
+    "forgeAccounts": {
+      "en": "GitHub",
+      "fr": "GitHub",
+      "nl": "GitHub"
+    }
+  },
+  "security": {
+    "groups": {
+      "Anonymous visitors": {
+        "label": {
+          "en": "Anonymous visitors",
+          "fr": "Visiteurs anonymes",
+          "nl": "Anonieme bezoekers"
+        }
+      },
+      "Signed-in users": {
+        "label": {
+          "en": "Signed-in users",
+          "fr": "Utilisateurs connectés",
+          "nl": "Aangemelde gebruikers"
+        }
+      }
+    }
+  },
+  "actions": {
+    "Resync": {
+      "label": {
+        "en": "Resync",
+        "fr": "Resynchroniser",
+        "nl": "Hersynchroniseren"
+      }
+    },
+    "DeleteData": {
+      "label": {
+        "en": "Delete data",
+        "fr": "Supprimer les données",
+        "nl": "Gegevens verwijderen"
+      }
+    },
+    "SyncColumns": {
+      "label": {
+        "en": "Sync columns",
+        "fr": "Synchroniser les colonnes",
+        "nl": "Kolommen synchroniseren"
+      }
+    },
+    "Revoke": {
+      "label": {
+        "en": "Revoke",
+        "fr": "Révoquer",
+        "nl": "Intrekken"
+      },
+      "confirmation": {
+        "en": "Revoke {count} token(s)? A revoked token stops working for uploads and cannot be restored.",
+        "fr": "Révoquer {count} jeton(s) ? Un jeton révoqué ne fonctionne plus pour les envois et ne peut pas être rétabli.",
+        "nl": "{count} token(s) intrekken? Een ingetrokken token werkt niet meer voor uploads en kan niet worden hersteld."
+      }
+    }
   }
 }

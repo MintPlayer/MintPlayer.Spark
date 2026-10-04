@@ -161,10 +161,10 @@ public sealed class SparkTestSecurity
                 [SparkWellKnownGroups.Anonymous] = AnonymousGroupId.ToString(),
                 [SparkWellKnownGroups.Authenticated] = AuthenticatedGroupId.ToString(),
             },
-            Groups = new Dictionary<string, TranslatedString>
+            Groups = new Dictionary<string, string>
             {
-                [AnonymousGroupId.ToString()] = TranslatedString.Create("Anonymous visitors"),
-                [AuthenticatedGroupId.ToString()] = TranslatedString.Create("Signed-in users"),
+                [AnonymousGroupId.ToString()] = "Anonymous visitors",
+                [AuthenticatedGroupId.ToString()] = "Signed-in users",
             },
             Rights = rights,
         };

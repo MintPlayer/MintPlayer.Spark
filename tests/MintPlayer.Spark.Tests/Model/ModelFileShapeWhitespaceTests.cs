@@ -100,11 +100,9 @@ public class ModelFileShapeWhitespaceTests : IDisposable
         HashModelFile(renamed).Should().NotBe(HashModelFile(ModelJson));
     }
 
-    private const string CustomActionsJson = """
+    private const string ActionsJson = """
         {
-          "actions": [
-            { "name": "Approve", "showedOn": "PersistentObject", "selectionRule": "=1" }
-          ]
+          "Approve": { "showedOn": "persistentObject", "selectionRule": "=1" }
         }
         """;
 
@@ -112,22 +110,22 @@ public class ModelFileShapeWhitespaceTests : IDisposable
     {
         var appData = Path.Combine(_dir, Guid.NewGuid().ToString("N"), "App_Data");
         Directory.CreateDirectory(appData);
-        File.WriteAllText(Path.Combine(appData, "customActions.json"), contents);
+        File.WriteAllText(Path.Combine(appData, "actions.json"), contents);
 
         var hashes = ConfigFileShape.ComputeFileHashes(appData);
-        return hashes.TryGetValue("customActions.json", out var hash) ? hash : "(absent)";
+        return hashes.TryGetValue("actions.json", out var hash) ? hash : "(absent)";
     }
 
     /// <summary>
-    /// `customActions.json` and `programUnits.json` are hand-authored far more often than
+    /// `actions.json` and `programUnits.json` are hand-authored far more often than
     /// the generated model files, so they meet a stray newline more often, not less.
     /// </summary>
     [Fact]
     public void Surrounding_whitespace_does_not_move_a_config_file_hash()
     {
-        var padded = HashConfigFile("\r\n\t" + CustomActionsJson + "\n\n  \n");
+        var padded = HashConfigFile("\r\n\t" + ActionsJson + "\n\n  \n");
 
         padded.Should().NotBe("(absent)");
-        padded.Should().Be(HashConfigFile(CustomActionsJson));
+        padded.Should().Be(HashConfigFile(ActionsJson));
     }
 }

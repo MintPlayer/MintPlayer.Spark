@@ -4,6 +4,7 @@ using CodeCoverage.LookupReferences;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents;
@@ -26,7 +27,7 @@ namespace CodeCoverage.Actions;
 /// enforces server-side regardless of what a client posts.
 /// </para>
 /// </summary>
-public partial class RepositoryActions : DefaultPersistentObjectActions<Repository>
+public partial class RepositoryActions : DefaultPersistentObjectActions<Repository>, IBeforeSave<Repository>
 {
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IAsyncDocumentSession session;
@@ -71,7 +72,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// These moved here verbatim from <c>RepoSettingsController.PutGate</c>, which this work
     /// deleted along with the hand-written panel that called it. They must live on Repository and
     /// not on <c>GateSettingsActions</c>: a gate is embedded in its Repository's document, so it has
-    /// no save of its own and a hook there would never run.
+    /// no save of its own and an interceptor there would never run.
     /// </para>
     /// <para>
     /// ⚠️ <c>GateSettingsActions.OnRefreshAsync</c> makes <c>ProjectTarget</c> required in fixed
@@ -80,11 +81,11 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// the two must be changed together.
     /// </para>
     /// </summary>
-    public override Task OnBeforeSaveAsync(PersistentObject obj, Repository entity)
+    public ValueTask OnBeforeSaveAsync(Repository entity, SaveContext context)
     {
         var gate = entity.Gate;
         if (gate is null)
-            return base.OnBeforeSaveAsync(obj, entity);
+            return ValueTask.CompletedTask;
 
         // A form posts every attribute, including the ones nobody touched, so an unset dropdown
         // arrives as null rather than as the property initializer's value — that initializer only
@@ -129,7 +130,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             throw new SparkValidationException(
                 "A fixed comparison needs a project target.", nameof(GateSettings.ProjectTarget));
 
-        return base.OnBeforeSaveAsync(obj, entity);
+        return ValueTask.CompletedTask;
     }
 
     public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsync(string action)

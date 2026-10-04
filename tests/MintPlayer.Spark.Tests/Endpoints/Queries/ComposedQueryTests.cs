@@ -134,14 +134,19 @@ public class ComposedQueryTests(ComposedQueryHost host)
     }
 
     [Fact]
-    public void A_row_carries_no_affordance_to_close()
+    public async Task A_row_carries_no_affordance_to_close()
     {
         // The PRD listed "square the per-row envelope closed (Can = none)" under this milestone.
         // M4 settled it structurally instead: a row is a projection, so QueryResultItem has no
-        // "can" block and no etag at all — there is nothing to force to false, on this path or any
-        // other. Pinned as a type-shape fact so a future addition has to argue with this test.
+        // "can" block — there is nothing to force to false, on this path or any other.
         typeof(QueryResultItem).GetProperty("Can").Should().BeNull();
-        typeof(QueryResultItem).GetProperty("Etag").Should().BeNull();
+
+        // #467 (D30a) did argue with this test: a row now carries the etag of the document it was read
+        // from, so a selection deletes the version the user saw. A composed row has no document, so its
+        // etag stays empty — it names no version a write could target.
+        var result = await ExecuteAsync(SharedFactory, DashboardQueryId);
+        result.Items.Should().NotBeEmpty();
+        result.Items.Should().AllSatisfy(item => item.Etag.Should().BeNull());
     }
 
     [Fact]

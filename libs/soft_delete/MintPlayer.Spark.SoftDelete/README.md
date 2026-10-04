@@ -8,8 +8,8 @@ Two packages:
 
 | Package | Reference it from | Contains |
 |---|---|---|
-| `MintPlayer.Spark.SoftDelete.Abstractions` | Domain / Library projects | `ISoftDeletable`, `ISparkSoftDelete`, `ISoftDeleteObserver`, `SoftDeleteRights` |
-| `MintPlayer.Spark.SoftDelete` | the host | the row policy, the interceptor, the endpoints, `AddSoftDelete()` |
+| `MintPlayer.Spark.SoftDelete.Abstractions` | Domain / Library projects | `ISoftDeletable`, `ISparkSoftDelete`, `SoftDeleteRights` |
+| `MintPlayer.Spark.SoftDelete` | the host | the row policy, the interceptors, the endpoints, `AddSoftDelete()` |
 
 ## Setup
 
@@ -30,7 +30,7 @@ builder.Services.AddSpark(spark =>
 {
     spark.UseContext<AppContext>();
     spark.AddSoftDelete();                       // binds Spark:SoftDelete, code wins
-    spark.AddSoftDeleteObserver<OrderAudit>();   // optional
+    spark.AddInterceptor<OrderAudit>();                 // optional, durable: needs spark.AddMessaging()
 });
 ```
 
@@ -50,9 +50,9 @@ None implies another: `Edit` does not grant `Restore`, `Delete` does not grant `
 **Delete** (`POST /spark/po/delete`, `IDatabaseAccess.DeletePersistentObjectAsync`) sets
 `IsDeleted = true`, `DeletedAt`, `DeletedBy` (the user **id**) and, through
 `ISparkSoftDelete.DeleteAsync(typeId, id, reason)`, `DeleteReason`. The document stays. Replication
-forwards a save, not a delete. The Actions class's `OnDeleteAsync` is **not** called — the
-replacement is decided in `IDatabaseAccess` before it (so an override cannot defeat it);
-`OnBeforeDeleteAsync` still runs.
+forwards a save, not a delete. The replacement is an `IDeleteReplacement` (#482): the framework
+decides it before any before-delete interceptor runs, so nothing can turn it back into a hard delete, and
+every `IBeforeDelete` interceptor still runs (and sees `context.IsReplaced`).
 
 **Hidden everywhere** a row policy applies — lists, detail, custom queries, sub-queries, distinct
 values, streams, breadcrumbs, reference pickers, edit/delete gates, custom-action selections. The
@@ -98,12 +98,12 @@ nothing but the four fields changes. Refused with 403 when the Actions class's
 `OnDisableActionsAsync` withholds `Restore`, `Edit` or `Save` on the row.
 
 **Purge** — `POST /spark/po/purge { objectTypeId, id }` → 204. Needs `Purge/T`; the row must already
-be deleted. The document is deleted (this time the Actions class's `OnDeleteAsync` **is** called),
+be deleted. The document is deleted (the before-delete interceptors run, with `IsPurge` set),
 then every revision of it, force-created ones included. Refused with 403 when the hook withholds
 `Purge` or `Delete`. Cannot be undone. See [Purge needs database-admin](#purge-needs-database-admin).
 
 **A refused delete leaves nothing behind.** The mark is set on the request session's copy of the
-row; if a later interceptor (a lock, say) refuses the delete, `IDatabaseAccess` evicts that copy, so
+row; if a before-delete interceptor (a lock, say) refuses the delete, `IDatabaseAccess` evicts that copy, so
 no later save in the same request writes the half-made delete.
 
 Every refusal — no right, a live row, a missing id, an id of another collection, a type that is not
@@ -159,19 +159,31 @@ row, and a `deleted` field in its body widens nothing.
 Core ng-spark understands `?deleted=` on both pages even without this entry point: the entry point
 only adds the controls. The server stays the gate, and a widening from a non-holder is ignored.
 
-## Observers
+## Reacting to deletes, restores and purges
+
+`ISoftDeleteObserver` is gone (#482): use the framework's durable after-commit interceptors, which run once
+the write committed, even across a crash, with Messaging's retries
+([guide](../../../docs/guide-interceptors.md#5a-durable-after-commit-interceptors)).
 
 ```csharp
-public sealed class OrderAudit : ISoftDeleteObserver
+public sealed class OrderAudit : IAfterDeleteCommitted<Order>, IAfterSaveCommitted<Order>
 {
-    public ValueTask OnDeletedAsync(SoftDeleteEvent e) { /* e.EntityType, e.Id, e.UserId, e.Reason */ return default; }
-    public ValueTask OnRestoredAsync(SoftDeleteEvent e) => default;
-    public ValueTask OnPurgedAsync(SoftDeleteEvent e) => default;
+    public Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken ct)
+    {
+        // change.IsReplaced: soft-deleted; change.IsPurge: purged. change.Id, change.UserId, change.Reason
+        return Task.CompletedTask;
+    }
+
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken ct)
+    {
+        // change.Operation == PersistentObjectOperation.Restore: restored
+        return Task.CompletedTask;
+    }
 }
 ```
 
-Called in-process after the write committed, for every path through the Spark pipeline. An exception
-reaches the caller but does not undo the write.
+SoftDelete records the stored delete reason as `SparkFacts.Reason`, so `change.Reason` is set for a
+delete through `ISparkSoftDelete.DeleteAsync` as well as a bulk delete with a reason.
 
 ## Startup checks
 
@@ -180,10 +192,7 @@ a public read/write property of the interface's type — the filter is rebound b
 RavenDB stores only public properties, so an explicit implementation would be stored nowhere and
 every row would look live.
 
-It warns when:
-- a soft-deletable type's Actions class overrides `OnDeleteAsync` (it now runs only for a purge —
-  move delete-time logic to `OnBeforeDeleteAsync` or an observer);
-- an index over a soft-deletable collection has a projection without `IsDeleted` (the filter falls
+It installs the raw-delete guard (see [Limits](#limits)), and warns when an index over a soft-deletable collection has a projection without `IsDeleted` (the filter falls
   back to filtering after materialization), or a Map that never mentions `IsDeleted` (a pushed-down
   `IsDeleted != true` matches every index entry; rows are dropped only on the reload, and pages come
   back short). Emit `IsDeleted` in the Map and the projection.
@@ -199,7 +208,7 @@ operation (deleting a document is not). On a secured server the client certifica
 with must therefore have **Admin** access to that database (the certificate's per-database access
 level), or no purge can finish.
 
-A purge **fails safe** without it: before the document is deleted, the interceptor runs the same
+A purge **fails safe** without it: before the document is deleted, the before-delete interceptor runs the same
 operation on an id that names nothing (no effect, same authorization). If that is refused, the purge
 is refused — the caller gets a 500, the log says why, and the document and its revisions are
 untouched. A success is remembered for the process, so the probe costs one request per process.
@@ -209,7 +218,10 @@ Unsecured servers (development, the embedded test server) need nothing.
 
 - Revisions of *other* documents that embed the purged row's data are not touched (GDPR guidance:
   that content is the app's to handle).
-- An Actions class that overrides `OnDeleteAsync` without deleting makes a purge fail (the document
-  and its revisions are kept, the caller gets a 500) rather than wiping the history of a live row.
-- An `OnLoadAsync` / `OnSaveAsync` override that skips the base implementation skips row policies
-  and interceptors for its type — soft deletion included (D1, documented core behaviour).
+- A raw session delete of a soft-deletable document (`session.Delete(id)` or `session.Delete(entity)`)
+  is refused when the session commits, unless the framework issued it (a purge) or the code runs inside
+  `using (SparkRawWrites.Allow()) { … await session.SaveChangesAsync(); }` (a migration, a test
+  fixture). A delete by id is recognised by the collection prefix of the id; patches and delete-by-query
+  raise no session event and are not covered (#467, D32).
+- An `OnLoadAsync` override that skips the base implementation skips row policies for its type —
+  soft deletion included (D1, documented core behaviour). Writes have no such gap since #482.

@@ -11,16 +11,19 @@ namespace MintPlayer.Spark.Abstractions.Authorization;
 public class SecurityConfiguration
 {
     /// <summary>
-    /// Map of group ID (GUID string) to group name.
-    /// Example: { "a76a9b99-225d-4b3c-8985-cd29a9ddbd4e": {"en": "Admins"} }
+    /// Map of group ID (GUID string) to the group's untranslated NAME (#467, D24).
+    /// Example: { "a76a9b99-225d-4b3c-8985-cd29a9ddbd4e": "Administrators" }
     /// </summary>
-    public Dictionary<string, TranslatedString> Groups { get; set; } = new();
+    /// <remarks>
+    /// The name is the group's identity for group claims and <c>[SparkAuthorize(Group = …)]</c>,
+    /// matched case-insensitively and never against a translation, so translation text cannot change
+    /// authorization. Its displayed label is the <c>translations.json</c> key
+    /// <c>security.groups.{name}.label</c> (<see cref="LabelKey"/>). Rights keep referring to the id.
+    /// </remarks>
+    public Dictionary<string, string> Groups { get; set; } = new();
 
-    /// <summary>
-    /// Optional descriptions for groups.
-    /// Key is the group ID, value is a human-readable description.
-    /// </summary>
-    public Dictionary<string, TranslatedString>? GroupComments { get; set; }
+    /// <summary>The <c>translations.json</c> key of a group's displayed label (#467, D24).</summary>
+    public static string LabelKey(string groupName) => $"security.groups.{groupName}.label";
 
     /// <summary>
     /// Declares which group id plays each of Spark's well-known roles. The only recognised keys are

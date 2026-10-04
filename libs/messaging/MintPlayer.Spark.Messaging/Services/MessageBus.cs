@@ -5,11 +5,12 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 using Newtonsoft.Json;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
-internal partial class MessageBus : IMessageBus
+internal partial class MessageBus : IMessageBus, IMessageOutbox
 {
     /// <summary>
     /// Longest readable prefix kept from a deduplication key. The hash guarantees uniqueness, so the
@@ -43,24 +44,7 @@ internal partial class MessageBus : IMessageBus
             throw new ArgumentException("A deduplication key must not be blank.", nameof(broadcastOptions));
 
         var messageType = typeof(TMessage);
-        var queueName = ResolveQueue(messageType, broadcastOptions.Queue);
-        var queueOptions = Options.QueueOptionsFor(queueName);
-        var now = DateTime.UtcNow;
-
-        var sparkMessage = new SparkMessage
-        {
-            QueueName = queueName,
-            MessageType = messageType.AssemblyQualifiedName!,
-            PayloadJson = JsonConvert.SerializeObject(message),
-            CreatedAtUtc = now,
-            NextAttemptAtUtc = broadcastOptions.Delay is { } delay ? now + delay : null,
-            Priority = (int)Options.PriorityFor(queueName),
-            AttemptCount = 0,
-            MaxAttempts = broadcastOptions.MaxAttempts ?? queueOptions?.MaxAttempts ?? Options.MaxAttempts,
-            Status = EMessageStatus.Pending,
-            ExpiresAtUtc = broadcastOptions.ExpiresAtUtc,
-            ScrubPayloadOnTerminal = broadcastOptions.ScrubPayloadOnTerminal,
-        };
+        var sparkMessage = CreateMessage(message, broadcastOptions);
 
         using var session = documentStore.OpenAsyncSession();
 
@@ -92,6 +76,44 @@ internal partial class MessageBus : IMessageBus
         {
             // Already enqueued by a concurrent caller. That is the requested behaviour.
         }
+    }
+
+    public async Task EnqueueAsync<TMessage>(IAsyncDocumentSession session, TMessage message, BroadcastOptions? broadcastOptions = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        broadcastOptions ??= new BroadcastOptions();
+
+        // Never the deduplication path: it turns on optimistic concurrency for the whole session, so a
+        // duplicate would roll back the caller's own write along with the message (#467, S13).
+        if (broadcastOptions.DeduplicationKey is not null)
+            throw new ArgumentException(
+                "EnqueueAsync stores into the caller's session and cannot deduplicate; use BroadcastOnceAsync.", nameof(broadcastOptions));
+
+        // A fresh id: no existing document can be overwritten, and nothing about the session changes.
+        await session.StoreAsync(CreateMessage(message, broadcastOptions), $"SparkMessages/{Guid.NewGuid():N}", cancellationToken);
+    }
+
+    private SparkMessage CreateMessage<TMessage>(TMessage message, BroadcastOptions broadcastOptions)
+    {
+        var messageType = typeof(TMessage);
+        var queueName = ResolveQueue(messageType, broadcastOptions.Queue);
+        var queueOptions = Options.QueueOptionsFor(queueName);
+        var now = DateTime.UtcNow;
+
+        return new SparkMessage
+        {
+            QueueName = queueName,
+            MessageType = messageType.AssemblyQualifiedName!,
+            PayloadJson = JsonConvert.SerializeObject(message),
+            CreatedAtUtc = now,
+            NextAttemptAtUtc = broadcastOptions.Delay is { } delay ? now + delay : null,
+            Priority = (int)Options.PriorityFor(queueName),
+            AttemptCount = 0,
+            MaxAttempts = broadcastOptions.MaxAttempts ?? queueOptions?.MaxAttempts ?? Options.MaxAttempts,
+            Status = EMessageStatus.Pending,
+            ExpiresAtUtc = broadcastOptions.ExpiresAtUtc,
+            ScrubPayloadOnTerminal = broadcastOptions.ScrubPayloadOnTerminal,
+        };
     }
 
     /// <summary>

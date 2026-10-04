@@ -149,7 +149,7 @@ public class ContributionsHiddenVisibilityTests : SparkTestDriver
 
         host.Identity.Id = Moderator;
         (await RevertAsync(host, ContributionId("en", "Latn", Bob))).Should().Be(HttpStatusCode.OK);
-        await host.Client.DeletePersistentObjectAsync(ContributionTypeId, ContributionId("en", "Latn", Alice));
+        await host.Client.DeleteAsLoadedAsync(ContributionTypeId, ContributionId("en", "Latn", Alice));
 
         host.Identity.Id = Dave;
         await EditTextAsync(host, "en/Latn", "dave's text");

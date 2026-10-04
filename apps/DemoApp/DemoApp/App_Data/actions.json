@@ -1,0 +1,8 @@
+{
+  "CopyCarsToCompany": {
+    "icon": "Copy",
+    "showedOn": "both",
+    "selectionRule": ">=1",
+    "refreshOnCompleted": true
+  }
+}

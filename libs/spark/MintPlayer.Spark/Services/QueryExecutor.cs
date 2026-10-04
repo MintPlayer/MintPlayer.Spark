@@ -388,7 +388,7 @@ internal partial class QueryExecutor : IQueryExecutor
             return new QueryResult
             {
                 Columns = authorColumns,
-                Items = QueryResultProjector.ToItems(allResults, authorColumns, query.Name),
+                Items = await QueryResultProjector.ToItemsAsync(session, allResults, authorColumns, query.Name, cancellationToken),
                 TotalItems = authorTotal,
                 Skip = skip,
                 Take = take,
@@ -432,7 +432,7 @@ internal partial class QueryExecutor : IQueryExecutor
         return new QueryResult
         {
             Columns = columns,
-            Items = QueryResultProjector.ToItems(paged, columns, query.Name),
+            Items = await QueryResultProjector.ToItemsAsync(session, paged, columns, query.Name, cancellationToken),
             TotalItems = totalItems,
             Skip = skip,
             Take = take,

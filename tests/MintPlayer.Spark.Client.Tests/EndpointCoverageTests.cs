@@ -210,19 +210,21 @@ public class EndpointCoverageTests
     // ------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task Listing_custom_actions_keeps_the_name_the_definition_does_not_carry()
+    public async Task Listing_actions_reads_the_name_and_the_resolved_texts()
     {
         var handler = new ScriptedHttpHandler();
         handler.Enqueue(Json(
-            """[{"name":"MarkStolen","displayName":{"en":"Mark stolen"},"showedOn":"both","variant":"danger","offset":10}]"""));
+            """[{"name":"MarkStolen","label":{"en":"Mark stolen"},"confirmation":{"en":"Mark {count} car(s) stolen?"},"showedOn":"both","variant":"danger","offset":10}]"""));
 
         using (var client = NewClient(handler))
         {
             var actions = await client.ListCustomActionsAsync("Car");
 
-            // `name` is the field a caller needs in order to invoke anything, and it is exactly the
-            // field the server's own CustomActionDefinition does not have.
+            // `name` is the field a caller needs in order to invoke anything; the texts arrive
+            // resolved (#467, D26).
             actions.Single().Name.Should().Be("MarkStolen");
+            actions.Single().Label!.GetValue("en").Should().Be("Mark stolen");
+            actions.Single().Confirmation!.GetValue("en").Should().Contain("{count}");
             actions.Single().Variant.Should().Be("danger");
         }
 

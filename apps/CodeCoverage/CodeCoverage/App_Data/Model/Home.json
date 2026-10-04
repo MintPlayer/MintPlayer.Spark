@@ -23,11 +23,6 @@
       {
         "id": "1db89eca-02af-45ec-a093-161a8ec5438e",
         "name": "Title",
-        "label": {
-          "en": "",
-          "fr": "",
-          "nl": ""
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -41,11 +36,6 @@
       {
         "id": "641cd307-8cba-4ed5-adcd-7fa8300f04ad",
         "name": "Subtitle",
-        "label": {
-          "en": "About",
-          "fr": "À propos",
-          "nl": "Over"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -58,11 +48,6 @@
       {
         "id": "49fd3545-3fdb-4dd0-a8ee-cf3e3e6b7fa5",
         "name": "AccountCount",
-        "label": {
-          "en": "Accounts",
-          "fr": "Comptes",
-          "nl": "Accounts"
-        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -75,11 +60,6 @@
       {
         "id": "d107ebb1-1ab2-4e98-b114-0bba908ff1ad",
         "name": "RepoCount",
-        "label": {
-          "en": "Repositories",
-          "fr": "Dépôts",
-          "nl": "Repositories"
-        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,

@@ -1,7 +1,7 @@
 {
   "name": "@mintplayer/ng-spark-auth",
   "private": false,
-  "version": "22.16.0",
+  "version": "22.17.0",
   "description": "Angular authentication library for MintPlayer.Spark",
   "repository": {
     "type": "git",
@@ -17,7 +17,7 @@
     "@angular/common": "^22.0.0",
     "@angular/router": "^22.0.0",
     "@angular/forms": "^22.0.0",
-    "@mintplayer/ng-bootstrap": "^22.20.0",
+    "@mintplayer/ng-bootstrap": "^22.21.0",
     "@mintplayer/ng-spark": "^22.8.0",
     "rxjs": "~7.8.0"
   },

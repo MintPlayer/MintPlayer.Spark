@@ -130,18 +130,19 @@ Inject `IMessageBus` into your Actions class (or any other service) and call `Br
 ```csharp
 using MintPlayer.Spark.Messaging.Abstractions;
 
-public partial class PersonActions : DefaultPersistentObjectActions<Person>
+public partial class PersonActions : DefaultPersistentObjectActions<Person>, IAfterSave<Person>, IAfterDelete<Person>
 {
     [Inject] private readonly IMessageBus messageBus;
 
-    public override async Task OnAfterSaveAsync(PersistentObject obj, Person entity)
+    // After the commit (persistence interceptors, #482): never announce a write that may still be refused.
+    public async ValueTask OnAfterSaveAsync(Person entity, SaveContext context)
     {
         // Immediate: processed as soon as possible
         await messageBus.BroadcastAsync(
             new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));
     }
 
-    public override async Task OnBeforeDeleteAsync(Person entity)
+    public async ValueTask OnAfterDeleteAsync(Person entity, DeleteContext context)
     {
         await messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
     }
@@ -218,6 +219,27 @@ rather than handled late.
 `SparkMessagingOptions.Queues`; anything else throws at publish. An undeclared name would produce
 documents no worker ever selects, whereas a declared queue is known to both sides (in
 `SubscriptionPerQueue` mode it gets its own worker).
+
+#### Publishing inside your own transaction (outbox)
+
+`BroadcastAsync` saves the message in a session of its own, so "the data changed" and "the follow-up
+is queued" are two commits, and a crash between them loses one. `IMessageOutbox.EnqueueAsync` stores
+the message in **your** session instead; it commits with your `SaveChangesAsync`, or not at all:
+
+```csharp
+await session.StoreAsync(order);
+await outbox.EnqueueAsync(session, new OrderPlaced(order.Id!), new BroadcastOptions { Delay = TimeSpan.FromMinutes(1) });
+await session.SaveChangesAsync(); // the order and its message, together
+```
+
+It only stores, under a fresh id, and leaves the session's settings alone. Every option applies except
+`DeduplicationKey`, which is refused: deduplication needs optimistic concurrency on the whole session,
+and a duplicate would then roll back your own write.
+
+Spark's durable after-commit interceptors (`IAfterSaveCommitted` / `IAfterDeleteCommitted`, see the
+[interceptors guide](../../../docs/guide-interceptors.md#5a-durable-after-commit-interceptors)) are built on it:
+`AddMessaging()` registers the outbox the framework writes them through, and the recipient that runs
+them. A durable interceptor registered without `AddMessaging()` is a startup error.
 
 ## How It Works
 
@@ -598,6 +620,10 @@ You can query message status directly in RavenDB Studio for observability. Compl
 |--------|-------------|
 | `spark.AddMessaging(Action<SparkMessagingOptions>?)` | Register messaging services and deploy the `SparkMessages/ByQueue` index |
 
+| Type (`MintPlayer.Spark.Messaging`) | Description |
+|------|-------------|
+| `IMessageOutbox` | `EnqueueAsync<T>(IAsyncDocumentSession, message, BroadcastOptions?)` — store in the caller's session; commits with it |
+
 ### Source-Generated
 
 | Method | Description |
@@ -613,7 +639,7 @@ See the DemoApp for a working example:
 - `../apps/DemoApp/Recipients/LogPersonDeleted.cs` -- simple `IRecipient<T>` handler
 - `../apps/DemoApp/Recipients/LogCompanyUpdated.cs` -- demonstrates per-handler retry isolation
 - `../apps/DemoApp/Recipients/NotifyEmployeesRecipient.cs` -- `ICheckpointRecipient<T>` with batch progress tracking
-- `../apps/DemoApp/Actions/PersonActions.cs` -- broadcasting messages from lifecycle hooks
+- `../apps/DemoApp/Actions/PersonActions.cs` -- broadcasting messages from durable after-commit interceptors
 - `../apps/DemoApp/Actions/CompanyActions.cs` -- broadcasting batch messages with employee IDs
 - `../apps/DemoApp/Program.cs` -- service registration
 

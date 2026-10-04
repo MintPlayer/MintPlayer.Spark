@@ -12,33 +12,62 @@ changes one rule (section 7).
 ## 1. What the server checks
 
 Every persistent object a read returns carries an `etag`: RavenDB's change vector for the document as
-it was read (`PersistentObject.Etag`). The client echoes it back on save, and the save is refused when
-the document has changed since.
+it was read (`PersistentObject.Etag`). So does every query row (`QueryResultItem.Etag`, the
+**document's** change vector, also for an index projection). The client echoes it back on save and on
+delete, and the request is refused when the document has changed since.
+
+**The etag is required (#467, D14/D16).** Over HTTP:
+
+| Request | Without an etag | Changed since | Deleted since |
+|---|---|---|---|
+| `POST /spark/po/update` (`persistentObject.etag`) | 400 | 409 `changed` | 409 `deleted` |
+| `POST /spark/po/delete` (`etag`) | 400 | 409 `changed` | 404 |
+| `POST /spark/po/delete-many` (`items: [{ id, etag }]`) | 400 | 409 `changed`, naming the rows | 404 |
+
+A create posts no etag. A create whose natural id another row already holds (`IHasNaturalId`) used to
+become an edit of that row; it is now a 409 `exists`, because an edit must say which version it
+overwrites and a create has none.
+
+An update of an object that was deleted — or soft-deleted, or is no longer one the caller may see —
+since it was loaded is a 409 `deleted`, never a resurrection (D15). One answer for all three, so it
+tells nothing a 404 would not.
+
+**`IDatabaseAccess` keeps the etag optional.** A caller that never showed the row to anyone (a job, a
+sync, an import) may update or delete without one: the internal overwrite. No HTTP request reaches it,
+because every endpoint refuses a missing etag first. With an etag, `IDatabaseAccess` applies the same
+rules as above — `SavePersistentObjectAsync` of a loaded object whose document is gone throws the 409,
+and `DeletePersistentObjectAsync(type, id, operation, etag)` /
+`SparkBulkDeleteContext.Etags` check and write with it.
 
 The check happens twice, for different reasons:
 
 - **Early, in `DatabaseAccess`.** A posted etag that differs from the stored change vector answers
-  409 before any hook, interceptor or business rule runs. It also protects an `OnSaveAsync` override
-  that never calls the base.
-- **At the write, in `DefaultPersistentObjectActions.OnSaveAsync`.** The early check reads in a
-  separate session and cannot see a write that lands after it, so the base save writes with the
-  expected change vector:
+  409 before any interceptor or business rule runs.
+- **At the write, which the framework owns (#482).** The early check reads in a separate session and
+  cannot see a write that lands after it, so the framework writes with the expected change vector:
 
   ```csharp
   await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
   ```
 
-  The expected change vector is the client's etag when it posted one, and otherwise the version this
-  save loaded. A concurrent write in between makes `SaveChangesAsync` throw RavenDB's
-  `ConcurrencyException`, which `DatabaseAccess` turns into the same 409. A create writes without
-  one, so a create under a caller-chosen id keeps its usual behaviour.
+  The expected change vector is the client's etag when it posted one, and otherwise (an internal
+  caller) the version this save loaded. A concurrent write in between makes `SaveChangesAsync` throw
+  RavenDB's `ConcurrencyException`, which `DatabaseAccess` turns into the same 409. An object posted
+  with an etag whose document is gone is refused there too, rather than rebuilt from the posted
+  values. A create writes without one, so an internal create under a caller-chosen id keeps its usual
+  behaviour.
 
 The second check is what makes it safe. Before it existed, a save with or without an etag could
 silently overwrite a write that landed between the check and the save (`ConcurrentWriteRaceTests`).
 
-**A save without an etag is protected too:** it is checked against the version it loaded. The
-consequence is that a client, a replication sync or a restore that races another write now gets a 409
-where it used to get last-write-wins.
+**Deletes work the same way.** `DatabaseAccess` compares the etag after every gate, then deletes (or
+stores the soft-delete replacement) with it (`session.Delete(id, expectedChangeVector)`), so an edit
+landing after the check is a 409 as well. No interceptor and no Actions class can skip that: deleting is the
+framework's, and an interceptor that asks for confirmation first (Fleet's `CarActions`) runs before it.
+
+**An internal save without an etag is protected too:** it is checked against the version it loaded.
+The consequence is that a replication sync or a restore that races another write gets a 409 where it
+used to get last-write-wins.
 
 The same mapping applies to `POST /spark/po/create`, single and bulk delete, a soft delete (the
 replaced delete is a save), SoftDelete's restore, History's revert and Contributions' endpoints.
@@ -46,12 +75,16 @@ replaced delete is a save), SoftDelete's restore, History's revert and Contribut
 ## 2. The 409 says nothing on purpose
 
 ```json
-{ "error": "Concurrency conflict" }
+{ "error": "Concurrency conflict", "reason": "changed", "message": null }
 ```
 
-That is the whole body. RavenDB's own message contains change vectors, which tell a caller about
-document versions it may have no business knowing, so they stay in the inner exception, for logs only.
-The client does not need them: it re-fetches the object (section 3).
+That is the whole body. `reason` is `changed`, `deleted` (the object went since it was loaded) or
+`exists` (a natural-id create collision). `message` is set only by a bulk delete, where it names the
+rows that changed since the list loaded (every one of them readable, so naming them discloses
+nothing). RavenDB's own message contains change vectors, which tell a caller about document versions
+it may have no business knowing, so they stay in the inner exception, for logs only. The client does
+not need them: it re-fetches the object (section 3), or, for a `deleted` 409, says so and keeps the
+form as typed.
 
 A refused save leaves nothing behind. The entity, and every document an interceptor stored, changed
 or deleted during that save (a contribution, an audit row), is evicted from the request session, so a
@@ -67,14 +100,19 @@ try
 }
 catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
 {
-    return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);   // the same 409 envelope
+    return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);   // the same 409 envelope
 }
 ```
 
 ## 3. What the edit page does with a 409
 
-The edit page (`spark-po-edit`, `@mintplayer/ng-spark/po-edit`) keeps the form as it is, shows "Somebody
-else changed this record while you were editing it", and then:
+For a 409 `deleted` the edit page keeps the form as it is, shows "Somebody else deleted this record
+while you were editing it. Your changes have not been saved." (`common.deletedByAnotherUser`), and
+stops: there is nothing to merge against, and it offers no "recreate". The list's bulk delete shows a
+409's `message`, which names the rows to reload.
+
+For any other 409 the edit page (`spark-po-edit`, `@mintplayer/ng-spark/po-edit`) keeps the form as
+it is, shows "Somebody else changed this record while you were editing it", and then:
 
 1. **Re-fetches the object** with a normal read. Read rights and row security apply, so the merge
    never sees more than the user may read. If the read fails (the row is gone, or no longer

@@ -28,13 +28,14 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
         return GetReplicatedAttribute(entityType) != null;
     }
 
-    public async Task HandleSaveAsync(Type entityType, PersistentObject obj)
+    public async Task HandleSaveAsync(Type entityType, PersistentObject obj, bool isNew)
     {
         var attr = GetReplicatedAttribute(entityType)
             ?? throw new InvalidOperationException($"Type {entityType.Name} is not a replicated entity.");
 
         var collection = attr.SourceCollection ?? InferCollectionName(attr.OriginalType ?? entityType);
-        var actionType = obj.Id == null ? SyncActionType.Insert : SyncActionType.Update;
+        // Stated by the caller: obj already carries its generated id (#467, D15).
+        var actionType = isNew ? SyncActionType.Insert : SyncActionType.Update;
 
         // These attributes come from the client, so an [IgnoreProperty] name could be posted
         // even though it is not part of the model. Drop it here rather than trusting the input:
@@ -84,14 +85,14 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
             actionType, collection, obj.Id ?? "(new)", changedProperties.Length, attr.SourceModule);
     }
 
-    public async Task HandleSaveAsync(object entity, string? documentId)
+    public async Task HandleSaveAsync(object entity, string? documentId, bool isNew)
     {
         var entityType = entity.GetType();
         var attr = GetReplicatedAttribute(entityType)
             ?? throw new InvalidOperationException($"Type {entityType.Name} is not a replicated entity.");
 
         var collection = attr.SourceCollection ?? InferCollectionName(attr.OriginalType ?? entityType);
-        var actionType = documentId == null ? SyncActionType.Insert : SyncActionType.Update;
+        var actionType = isNew || documentId == null ? SyncActionType.Insert : SyncActionType.Update;
 
         // Auto-populate Properties from the replicated entity type (all properties, no change tracking)
         var properties = GetPropertyNames(entityType);

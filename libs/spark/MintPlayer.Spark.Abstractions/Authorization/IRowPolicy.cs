@@ -22,9 +22,10 @@ namespace MintPlayer.Spark.Abstractions.Authorization;
 /// <para>
 /// ⚠️ Every path that asks row security applies policies — list, detail, custom queries, sub-queries,
 /// distinct values, streams, breadcrumbs, the edit/delete gates, custom-action selections and the
-/// after-save WITH CHECK. The known exception is an Actions class that overrides <c>OnLoadAsync</c> or
-/// <c>OnSaveAsync</c> without calling the base: that override takes over the row gate and WITH CHECK
-/// for its type, policies included (D1 — documented, not fixed).
+/// after-save WITH CHECK. The known exception is an Actions class that overrides <c>OnLoadAsync</c>
+/// without calling the base: that override takes over the read gate for its type, policies included
+/// (D1 — documented, not fixed). The write side has no such gap since #482: the framework owns every
+/// write, and WITH CHECK cannot be skipped.
 /// </para>
 /// </remarks>
 public interface IRowPolicy

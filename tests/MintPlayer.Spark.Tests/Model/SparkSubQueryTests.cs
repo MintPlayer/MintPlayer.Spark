@@ -16,14 +16,14 @@ public class SparkSubQueryTests
     public void A_bare_alias_and_an_object_entry_both_read()
     {
         var entries = JsonSerializer.Deserialize<SparkSubQuery[]>(
-            """["company-cars", { "query": "company-people", "selectionMode": "single", "parentReference": "CompanyId" }]""",
+            """["company-cars", { "query": "company-people", "selectionMode": "none", "parentReference": "CompanyId" }]""",
             Options)!;
 
         entries[0].Query.Should().Be("company-cars");
         entries[0].SelectionMode.HasValue.Should().BeFalse();
         entries[0].IsBare.Should().BeTrue();
         entries[1].Query.Should().Be("company-people");
-        entries[1].SelectionMode.Should().Be(SparkSelectionMode.Single);
+        entries[1].SelectionMode.Should().Be(SparkSelectionMode.None);
         entries[1].ParentReference.Should().Be("CompanyId");
     }
 
@@ -41,6 +41,16 @@ public class SparkSubQueryTests
     public void An_object_entry_without_a_query_is_refused()
     {
         var read = () => JsonSerializer.Deserialize<SparkSubQuery[]>("""[{ "selectionMode": "none" }]""", Options);
+        read.Should().Throw<JsonException>();
+    }
+
+    /// <summary>#467 D10: <c>single</c> is gone, with no backward compatibility.</summary>
+    [Fact]
+    public void Single_is_no_longer_a_selection_mode()
+    {
+        var read = () => JsonSerializer.Deserialize<SparkSubQuery[]>(
+            """[{ "query": "company-people", "selectionMode": "single" }]""", Options);
+
         read.Should().Throw<JsonException>();
     }
 

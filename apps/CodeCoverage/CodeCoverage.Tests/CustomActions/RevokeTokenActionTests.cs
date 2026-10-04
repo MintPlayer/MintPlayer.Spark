@@ -88,15 +88,10 @@ public class RevokeTokenActionTests : CoverageRavenTest
         await session.SaveChangesAsync();
     }
 
-    private static CustomActionArgs ArgsFor(string? tokenId) => new()
+    /// <summary>The rows ticked on the account's upload-token card (#467, D22: a query action).</summary>
+    private static CustomActionArgs ArgsFor(params string?[] tokenIds) => new()
     {
-        Parent = tokenId is null ? null : new PersistentObject
-        {
-            Id = tokenId,
-            Name = "ApiToken",
-            ObjectTypeId = Guid.Empty,
-            Attributes = [],
-        },
+        SelectedItems = [.. tokenIds.Where(id => id is not null).Select(id => new QueryResultItem { Id = id!, Values = [] })],
     };
 
     private static async Task<DateTime?> RevokedAtAsync(IDocumentStore store)
@@ -205,6 +200,50 @@ public class RevokeTokenActionTests : CoverageRavenTest
         harness.Client.ReceivedWithAnyArgs().Notify(default(string)!, default);
     }
 
+    /// <summary>
+    /// A selection is revoked entirely or not at all: one token of an account the caller does not
+    /// manage refuses the whole request, so the token they do manage keeps working too.
+    /// </summary>
+    [Fact]
+    public async Task One_token_the_caller_does_not_manage_refuses_the_whole_selection()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        const string foreignToken = "ApiTokens/2-A";
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new ApiToken { Description = "theirs", Account = OtherAccount, Scope = "Account" }, foreignToken);
+            await seed.SaveChangesAsync();
+        }
+
+        using (var session = store.OpenAsyncSession())
+            await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId, foreignToken));
+
+        Assert.Null(await RevokedAtAsync(store));
+        using var verify = store.OpenAsyncSession();
+        Assert.Null((await verify.LoadAsync<ApiToken>(foreignToken)).RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task Every_selected_token_the_caller_manages_is_revoked()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        const string secondToken = "ApiTokens/3-A";
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new ApiToken { Description = "second", Account = OwnerAccount, Scope = "Account" }, secondToken);
+            await seed.SaveChangesAsync();
+        }
+
+        using (var session = store.OpenAsyncSession())
+            await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId, secondToken));
+
+        Assert.NotNull(await RevokedAtAsync(store));
+        using var verify = store.OpenAsyncSession();
+        Assert.NotNull((await verify.LoadAsync<ApiToken>(secondToken)).RevokedAtUtc);
+    }
+
     [Fact]
     public async Task No_token_in_context_is_reported_rather_than_ignored()
     {
@@ -214,7 +253,7 @@ public class RevokeTokenActionTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             harness = CreateAction(session, canManageOwner: true);
-            await harness.Action.ExecuteAsync(ArgsFor(null));
+            await harness.Action.ExecuteAsync(ArgsFor());
         }
 
         harness.Client.ReceivedWithAnyArgs().Notify(default(string)!, default);

@@ -60,8 +60,10 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
     {
         foreach (var group in config.ProgramUnitGroups)
         {
+            group.Name = ResolveName(group.Name, $"Program unit group '{group.Id}'");
             foreach (var unit in group.ProgramUnits)
             {
+                unit.Name = ResolveName(unit.Name, $"Program unit '{unit.Id}'");
                 unit.Type = unit.Type switch
                 {
                     _ when string.Equals(unit.Type, TypeQuery, StringComparison.OrdinalIgnoreCase) => TypeQuery,
@@ -86,6 +88,20 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// A menu entry's <c>name</c> is a <c>translations.json</c> key (#467, D1), e.g.
+    /// <c>"programUnits.cars"</c>; its last segment, humanized, is shown when no layer translates it.
+    /// </summary>
+    private static TranslatedString ResolveName(TranslatedString? name, string owner)
+    {
+        if (name?.Key is not { Length: > 0 } key)
+            throw new SparkProgramUnitsConfigurationException(name is { Translations.Count: > 0 }
+                ? $"{owner} embeds translated text in its 'name' (\"{name.GetDefaultValue()}\"). " +
+                  "Move it into translations.json and set 'name' to that key, e.g. \"programUnits.cars\"."
+                : $"{owner} has no 'name'. Set it to a translations.json key, e.g. \"programUnits.cars\".");
+        return SparkText.Resolve(name, key, key)!;
     }
 
     public ProgramUnitsConfiguration GetProgramUnits()

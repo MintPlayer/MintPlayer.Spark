@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "a1c8e3f0-9d2b-4f6a-b5e7-3c4d8f2a1b0e",
     "name": "Address",
-    "description": {
-      "en": "Address",
-      "fr": "Adresse",
-      "nl": "Adres"
-    },
     "clrType": "HR.Entities.Address",
     "breadcrumb": "{Crumb}",
     "tabs": [],
@@ -15,16 +10,6 @@
       {
         "id": "f6a7b8c9-d0e1-4f2a-b3c4-5d6e7f8091a2",
         "name": "City",
-        "label": {
-          "en": "City",
-          "fr": "Ville",
-          "nl": "Stad"
-        },
-        "description": {
-          "en": "Town or city the address is in.",
-          "fr": "Commune ou ville où se trouve l'adresse.",
-          "nl": "Gemeente of stad waar het adres ligt."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -36,11 +21,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "City must be at least 2 characters.",
-              "fr": "La ville doit contenir au moins 2 caractères.",
-              "nl": "Stad moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Address.attributes.City.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -51,16 +32,6 @@
       {
         "id": "e1858faa-b516-4043-ad7d-3b3ab822e810",
         "name": "Description",
-        "label": {
-          "en": "Description",
-          "fr": "Description",
-          "nl": "Beschrijving"
-        },
-        "description": {
-          "en": "Optional label and notes for this address, such as Head office or delivery instructions.",
-          "fr": "Libellé et notes facultatifs pour cette adresse, comme Siège social ou des instructions de livraison.",
-          "nl": "Optioneel label en notities voor dit adres, zoals Hoofdkantoor of leveringsinstructies."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -74,16 +45,6 @@
       {
         "id": "e5f6a7b8-c9d0-4e1f-b2a3-4c5d6e7f8091",
         "name": "PostalCode",
-        "label": {
-          "en": "Postal Code",
-          "fr": "Code postal",
-          "nl": "Postcode"
-        },
-        "description": {
-          "en": "Postal code as the carrier prints it, e.g. 9000 for Ghent.",
-          "fr": "Code postal tel que le transporteur l'imprime, p. ex. 9000 pour Gand.",
-          "nl": "Postcode zoals de vervoerder ze afdrukt, bv. 9000 voor Gent."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -95,11 +56,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "Postal Code must be at least 2 characters.",
-              "fr": "Le code postal doit contenir au moins 2 caractères.",
-              "nl": "Postcode moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Address.attributes.PostalCode.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -110,16 +67,6 @@
       {
         "id": "d4e5f6a7-b8c9-4d0e-a1f2-3b4c5d6e7f80",
         "name": "Street",
-        "label": {
-          "en": "Street",
-          "fr": "Rue",
-          "nl": "Straat"
-        },
-        "description": {
-          "en": "Street name and house number, e.g. Korenmarkt 12.",
-          "fr": "Nom de rue et numéro de maison, p. ex. Korenmarkt 12.",
-          "nl": "Straatnaam en huisnummer, bv. Korenmarkt 12."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -131,11 +78,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "Street must be at least 2 characters.",
-              "fr": "La rue doit contenir au moins 2 caractères.",
-              "nl": "Straat moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Address.attributes.Street.rules.minLength"
           },
           {
             "type": "maxLength",

@@ -135,11 +135,11 @@ In `App_Data/programUnits.json`, add an `alias` to each program unit. This alias
   "programUnitGroups": [
     {
       "id": "990e8400-e29b-41d4-a716-446655440000",
-      "name": {"en": "Master Data"},
+      "name": "programUnits.groups.masterData",
       "programUnits": [
         {
           "id": "990e8400-e29b-41d4-a716-446655440001",
-          "name": {"en": "People"},
+          "name": "programUnits.people",
           "icon": "bi-people",
           "type": "query",
           "queryId": "880e8400-e29b-41d4-a716-446655440000",
@@ -148,7 +148,7 @@ In `App_Data/programUnits.json`, add an `alias` to each program unit. This alias
         },
         {
           "id": "990e8400-e29b-41d4-a716-446655440002",
-          "name": {"en": "Cars"},
+          "name": "programUnits.cars",
           "icon": "bi-car-front-fill",
           "type": "query",
           "queryId": "bc696815-2abb-4e7c-98a1-ac86b4352105",

@@ -79,7 +79,7 @@ export class SparkSoftDeleteActionsComponent {
     if (!confirm(this.lang.t('softDelete.confirmPurge'))) return;
     const ctx = this.context();
     await this.run(async () => {
-      await this.softDelete.purge(ctx.type, ctx.id);
+      await this.softDelete.purge(ctx.type, ctx.id, ctx.item.etag ?? '');
       // The row no longer exists: back to the recycle bin it was opened from — the recorded list, else
       // the type's list in `?deleted=only`. Never "the previous page", which may be anything.
       await this.returnNavigation.returnToList(ctx.entityType?.name, { deletedView: true });

@@ -17,7 +17,7 @@ namespace QnA.Interceptors;
 /// refuses an answer pointing at a question that does not exist. It deliberately answers a question the
 /// caller cannot see (a draft) the same way as a missing one, so the refusal reveals nothing.
 /// </remarks>
-public sealed partial class ClosedQuestionInterceptor : IPersistentObjectInterceptor
+public sealed partial class ClosedQuestionInterceptor : IBeforeSave
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly Services.QnAAccess access;

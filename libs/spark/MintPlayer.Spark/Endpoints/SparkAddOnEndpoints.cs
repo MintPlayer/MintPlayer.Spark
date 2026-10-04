@@ -66,8 +66,21 @@ public static class SparkAddOnEndpoints
     public static bool IsConcurrencyConflict(Exception exception) => exception is SparkConcurrencyException;
 
     /// <summary>The 409 <c>POST /spark/po/update</c> answers a concurrency conflict with, in the envelope.</summary>
-    public static IResult ConcurrencyConflict(IClientAccessor client)
-        => ClientResult.Envelope(client, new { error = "Concurrency conflict" }, StatusCodes.Status409Conflict);
+    /// <remarks>
+    /// Pass the caught exception: the body then says whether the row <c>changed</c> or was
+    /// <c>deleted</c> since it was loaded (#467, D15), and carries the message naming the rows of a bulk
+    /// refusal (D18). Never the exception's own message, which carries change vectors.
+    /// </remarks>
+    public static IResult ConcurrencyConflict(IClientAccessor client, Exception? exception = null)
+    {
+        var conflict = exception as SparkConcurrencyException;
+        return ClientResult.Envelope(client, new
+        {
+            error = "Concurrency conflict",
+            reason = conflict?.Reason ?? SparkConcurrencyException.Changed,
+            message = conflict?.UserMessage,
+        }, StatusCodes.Status409Conflict);
+    }
 
     /// <summary>
     /// Carries a request's <c>deleted: exclude|include|only</c> field to row policies

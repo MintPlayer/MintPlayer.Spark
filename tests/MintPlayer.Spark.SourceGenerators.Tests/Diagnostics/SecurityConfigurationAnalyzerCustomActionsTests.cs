@@ -3,7 +3,7 @@ using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 namespace MintPlayer.Spark.SourceGenerators.Tests.Diagnostics;
 
 /// <summary>
-/// SPARK011 against a right whose action is a custom action declared in <c>customActions.json</c>.
+/// SPARK011 against a right whose action is a custom action declared in <c>actions.json</c>.
 /// The analyzer reads that file's root keys, and it must read them however the file is indented:
 /// it used to match <c>^\s{2}"</c>, so a tab- or four-space-indented file made every custom right
 /// read as a typo.
@@ -35,7 +35,7 @@ public class SecurityConfigurationAnalyzerCustomActionsTests
     private static string CustomActions(string indent) =>
         "{\n"
         + $"{indent}\"CarCopy\": {{\n"
-        + $"{indent}{indent}\"displayName\": {{ \"en\": \"Copy \\\"car\\\" {{now}}\" }},\n"
+        + $"{indent}{indent}\"icon\": \"Copy \\\"car\\\" {{now}}\",\n"
         + $"{indent}{indent}\"tags\": [\"a\", \"b\"]\n"
         + $"{indent}}},\n"
         + $"{indent}\"Archive\": {{}}\n"
@@ -48,7 +48,7 @@ public class SecurityConfigurationAnalyzerCustomActionsTests
             additionalTexts:
             [
                 ("C:\\app\\App_Data\\security.json", SecurityJson(resource)),
-                ("C:\\app\\App_Data\\customActions.json", customActions),
+                ("C:\\app\\App_Data\\actions.json", customActions),
                 ("C:\\app\\App_Data\\Model\\Person.json", ModelJson),
             ]);
 
@@ -72,9 +72,9 @@ public class SecurityConfigurationAnalyzerCustomActionsTests
     [MemberData(nameof(Layouts))]
     public async Task A_nested_key_is_not_mistaken_for_a_custom_action(string customActions)
     {
-        // Depth, not indentation, decides what is a root key — so `displayName` stays a property of
+        // Depth, not indentation, decides what is a root key — so `icon` stays a property of
         // CarCopy even in a minified file where every key sits on the same line.
-        var diagnostics = await RunAsync("displayName/Person", customActions);
+        var diagnostics = await RunAsync("icon/Person", customActions);
 
         diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK011");
     }

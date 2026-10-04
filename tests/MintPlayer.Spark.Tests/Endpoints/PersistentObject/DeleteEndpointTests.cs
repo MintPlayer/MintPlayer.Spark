@@ -31,7 +31,7 @@ public class DeleteEndpointTests : SparkTestDriver
     public async Task Delete_throws_404_when_entity_type_is_unknown()
     {
         var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.DeletePersistentObjectAsync(Guid.NewGuid(), "people/1"));
+            () => _client.DeleteAsLoadedAsync(Guid.NewGuid(), "people/1"));
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -40,7 +40,7 @@ public class DeleteEndpointTests : SparkTestDriver
     public async Task Delete_throws_404_when_id_does_not_exist()
     {
         var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => _client.DeletePersistentObjectAsync(PersonTypeId, "people/does-not-exist"));
+            () => _client.DeleteAsLoadedAsync(PersonTypeId, "people/does-not-exist"));
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -54,7 +54,7 @@ public class DeleteEndpointTests : SparkTestDriver
             await session.SaveChangesAsync();
         }
 
-        await _client.DeletePersistentObjectAsync(PersonTypeId, "people/1");
+        await _client.DeleteAsLoadedAsync(PersonTypeId, "people/1");
 
         await Store.WaitForIndexingAsync();
         using var verify = Store.OpenAsyncSession();

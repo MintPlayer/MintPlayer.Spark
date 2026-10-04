@@ -12,16 +12,6 @@
       {
         "id": "f570d977-763a-4df2-b44f-2720507efc91",
         "name": "CarryForward",
-        "label": {
-          "en": "Carry Forward",
-          "fr": "Report",
-          "nl": "Overdracht"
-        },
-        "description": {
-          "en": "The tests behind this run passed, so unmeasured files may be filled in from the base.",
-          "fr": "Les tests derrière ce run ont réussi, donc les fichiers non mesurés peuvent être repris de la base.",
-          "nl": "De tests achter deze run zijn geslaagd, dus niet-gemeten bestanden mogen uit de basis overgenomen worden."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -34,16 +24,6 @@
       {
         "id": "b35409ca-47af-4d73-89be-088af06fa44f",
         "name": "CiRunAttempt",
-        "label": {
-          "en": "CI Attempt",
-          "fr": "Tentative CI",
-          "nl": "CI-poging"
-        },
-        "description": {
-          "en": "The attempt number of that workflow run.",
-          "fr": "Le numéro de tentative de cette exécution de workflow ; une réexécution de la même exécution crée un build distinct.",
-          "nl": "Het pogingsnummer van die workflow-run; een herhaling van dezelfde run maakt een aparte build aan."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -56,16 +36,6 @@
       {
         "id": "b31dad93-2418-4bc6-977d-02f4dfa52cdd",
         "name": "CiRunId",
-        "label": {
-          "en": "CI Run Id",
-          "fr": "Id du run CI",
-          "nl": "CI-run-id"
-        },
-        "description": {
-          "en": "The GitHub Actions workflow run id all uploads of this build came from.",
-          "fr": "L'id d'exécution du workflow GitHub Actions dont proviennent tous les envois de ce build.",
-          "nl": "De run-id van de GitHub Actions-workflow waaruit alle uploads van deze build afkomstig zijn."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -78,16 +48,6 @@
       {
         "id": "af396501-b50e-4364-aae9-7fa8385b487c",
         "name": "Commit",
-        "label": {
-          "en": "Commit",
-          "fr": "Commit",
-          "nl": "Commit"
-        },
-        "description": {
-          "en": "The commit this CI run measured coverage for.",
-          "fr": "Le commit pour lequel cette exécution CI a mesuré la couverture.",
-          "nl": "De commit waarvoor deze CI-run de dekking gemeten heeft."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -102,16 +62,6 @@
       {
         "id": "e0182f5d-9906-423a-9b6b-ed0d2dda14ef",
         "name": "Coverage",
-        "label": {
-          "en": "Coverage",
-          "fr": "Couverture",
-          "nl": "Dekking"
-        },
-        "description": {
-          "en": "Whole-build line and branch totals; empty while the build is open.",
-          "fr": "Totaux de lignes et de branches de tout le build ; vide tant que le build est ouvert.",
-          "nl": "Totalen van regels en branches voor het hele build; leeg zolang het build open staat."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -126,16 +76,6 @@
       {
         "id": "85919c63-245b-4954-876a-10a59165ff46",
         "name": "CreatedAtUtc",
-        "label": {
-          "en": "Created",
-          "fr": "Créé",
-          "nl": "Aangemaakt"
-        },
-        "description": {
-          "en": "When the first upload of this run created the build (UTC).",
-          "fr": "Moment où le premier envoi de cette exécution a créé le build (UTC).",
-          "nl": "Wanneer de eerste upload van deze run de build heeft aangemaakt (UTC)."
-        },
         "dataType": "datetime",
         "isRequired": true,
         "isVisible": true,
@@ -149,16 +89,6 @@
       {
         "id": "c5a98666-1fb2-4a2e-8e64-1000a1e363e7",
         "name": "DeclaredBaseSha",
-        "label": {
-          "en": "Declared Base Sha",
-          "fr": "Sha de base déclaré",
-          "nl": "Aangegeven basis-sha"
-        },
-        "description": {
-          "en": "The base sha the uploader's affected-computation ran against.",
-          "fr": "Le sha de base contre lequel le calcul « affected » de l'uploader a tourné.",
-          "nl": "De basis-sha waartegen de affected-berekening van de uploader gelopen heeft."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -171,16 +101,6 @@
       {
         "id": "d3af4b5b-41b8-4f54-ae60-2431a2c505d4",
         "name": "EventName",
-        "label": {
-          "en": "Event",
-          "fr": "Événement",
-          "nl": "Gebeurtenis"
-        },
-        "description": {
-          "en": "The GitHub event that triggered the run.",
-          "fr": "L'événement GitHub qui a déclenché l'exécution, p. ex. push ou pull_request.",
-          "nl": "De GitHub-gebeurtenis die de run getriggerd heeft, bv. push of pull_request."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -193,16 +113,6 @@
       {
         "id": "d287dc72-bdb5-48b2-82a7-6ad74309dcde",
         "name": "Feedback",
-        "label": {
-          "en": "Feedback",
-          "fr": "Retour",
-          "nl": "Feedback"
-        },
-        "description": {
-          "en": "Check-run outbox; empty until the first publish attempt is enqueued.",
-          "fr": "File d'envoi des check-runs ; null tant que la première tentative de publication n'est pas mise en file.",
-          "nl": "Outbox voor check-runs; null totdat de eerste publicatiepoging in de wachtrij staat."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -216,16 +126,6 @@
       {
         "id": "bce5895b-a41f-4911-90ad-b44e555a8feb",
         "name": "FeedbackNextAttemptAtUtc",
-        "label": {
-          "en": "Next Feedback Attempt",
-          "fr": "Prochaine tentative de retour",
-          "nl": "Volgende feedbackpoging"
-        },
-        "description": {
-          "en": "Queryable mirror of NextAttemptAtUtc.",
-          "fr": "Miroir interrogeable de NextAttemptAtUtc.",
-          "nl": "Bevraagbare spiegel van NextAttemptAtUtc."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -238,16 +138,6 @@
       {
         "id": "2ce95585-bb56-465d-b495-d6d1674360f4",
         "name": "FeedbackState",
-        "label": {
-          "en": "Feedback State",
-          "fr": "État du retour",
-          "nl": "Feedbackstatus"
-        },
-        "description": {
-          "en": "Queryable mirror of State — the sweep cron's filter.",
-          "fr": "Miroir interrogeable de State — le filtre du cron de balayage.",
-          "nl": "Bevraagbare spiegel van State — het filter van de opruimcron."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -260,16 +150,6 @@
       {
         "id": "dc719560-c154-4ca6-9b8b-0529593560c0",
         "name": "FinalizedAtUtc",
-        "label": {
-          "en": "Finalized",
-          "fr": "Finalisé",
-          "nl": "Gefinaliseerd"
-        },
-        "description": {
-          "en": "When the build was closed and its coverage computed; empty while still open.",
-          "fr": "Moment où le build a été clôturé et sa couverture calculée (UTC) ; null tant qu'il est ouvert.",
-          "nl": "Wanneer de build afgesloten is en zijn dekking berekend werd (UTC); null zolang hij nog open is."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -283,16 +163,6 @@
       {
         "id": "cdb97b1f-5b8a-4079-8e41-313781aa056e",
         "name": "FinalizeReason",
-        "label": {
-          "en": "Finalize Reason",
-          "fr": "Motif de finalisation",
-          "nl": "Reden van finalisering"
-        },
-        "description": {
-          "en": "\"Explicit\" | \"Debounce\" | \"Timeout\"",
-          "fr": "« Explicit » | « Debounce » | « Timeout »",
-          "nl": "\"Explicit\" | \"Debounce\" | \"Timeout\""
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -305,16 +175,6 @@
       {
         "id": "7831aaa9-ded8-41be-96c7-9ee956790931",
         "name": "FlagCoverage",
-        "label": {
-          "en": "Flag Coverage",
-          "fr": "Couverture par flag",
-          "nl": "Dekking per flag"
-        },
-        "description": {
-          "en": "Per-flag totals, keyed by flag name.",
-          "fr": "Totaux par flag, indexés par nom de flag.",
-          "nl": "Totalen per flag, gesleuteld op flagnaam."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -327,16 +187,6 @@
       {
         "id": "5e3d9442-d45c-4498-8e39-b6ea6a9905a5",
         "name": "GateSnapshot",
-        "label": {
-          "en": "Gate Snapshot",
-          "fr": "Instantané du seuil",
-          "nl": "Momentopname van de poort"
-        },
-        "description": {
-          "en": "The effective gate this build was judged by.",
-          "fr": "Le seuil effectif selon lequel ce build a été jugé.",
-          "nl": "De effectieve poort waarop dit build beoordeeld is."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -350,16 +200,6 @@
       {
         "id": "b061f85f-d080-49fb-9efd-feebe38c0d78",
         "name": "LastUploadAtUtc",
-        "label": {
-          "en": "Last Upload",
-          "fr": "Dernier envoi",
-          "nl": "Laatste upload"
-        },
-        "description": {
-          "en": "When the most recent upload arrived.",
-          "fr": "Moment d'arrivée de l'envoi le plus récent (UTC) ; la finalisation par debounce compte à partir d'ici.",
-          "nl": "Wanneer de meest recente upload aangekomen is (UTC); de debounce-finalisering telt vanaf hier."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -373,16 +213,6 @@
       {
         "id": "7d5c2b4f-7c9a-4c87-a480-eaf933a6f821",
         "name": "Partial",
-        "label": {
-          "en": "Partial",
-          "fr": "Partiel",
-          "nl": "Gedeeltelijk"
-        },
-        "description": {
-          "en": "This run measured only a subset of the workspace.",
-          "fr": "Ce run n'a mesuré qu'une partie de l'espace de travail.",
-          "nl": "Deze run heeft maar een deel van de workspace gemeten."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -395,16 +225,6 @@
       {
         "id": "8a7f538b-2c64-445e-8612-fd801a981db9",
         "name": "Patch",
-        "label": {
-          "en": "Patch",
-          "fr": "Patch",
-          "nl": "Patch"
-        },
-        "description": {
-          "en": "Added-lines coverage vs the diff base; empty when no diff was obtainable.",
-          "fr": "Couverture des lignes ajoutées par rapport à la base du diff ; null lorsqu'aucun diff n'a pu être obtenu.",
-          "nl": "Dekking van de toegevoegde regels ten opzichte van de diff-basis; null wanneer er geen diff verkrijgbaar was."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -418,12 +238,6 @@
       {
         "id": "3f0866de-6144-4059-beff-df39c1909480",
         "name": "ReportsReapedAtUtc",
-        "label": {
-          "en": "Reports Reaped At Utc"
-        },
-        "description": {
-          "en": "When the uploaded report attachments were deleted by the retention sweep, or null while they are still held.\nRaw reports are inert once parsed — nothing reads them again, and the coverage they described is fully materialised into FileCoverage — so they are the cheapest thing to drop as the database grows. The filelist attachment is NOT reaped: BuildComparer and CommitAssembler still read it when this build serves as a comparison base.\nThis marker exists because a reaped build, unlike a deleted document, stays in every query that found it — without it the sweep would revisit the same builds forever. It also lets a future reprocess-from-attachments job say \"this build cannot be replayed\" instead of silently finding nothing."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -436,16 +250,6 @@
       {
         "id": "9f2e7d10-4b8c-4e35-a1d6-7c3b9e04f512",
         "name": "Run",
-        "label": {
-          "en": "Run",
-          "fr": "Exécution",
-          "nl": "Run"
-        },
-        "description": {
-          "en": "The workflow run this build came from, as \"runId.attempt\".",
-          "fr": "Le run de workflow dont provient ce build, sous la forme « runId.tentative ».",
-          "nl": "De workflow-run waaruit dit build komt, als \"runId.poging\"."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -458,16 +262,6 @@
       {
         "id": "a8c2e25f-432a-4e5b-b46c-2d5b3f90213c",
         "name": "Sessions",
-        "label": {
-          "en": "Sessions",
-          "fr": "Sessions",
-          "nl": "Sessies"
-        },
-        "description": {
-          "en": "The individual uploads (one per action invocation) merged into this build.",
-          "fr": "Les envois individuels (un par invocation de l'action) fusionnés dans ce build.",
-          "nl": "De afzonderlijke uploads (één per aanroep van de action) die in deze build zijn samengevoegd."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -482,16 +276,6 @@
       {
         "id": "0b98f18b-683a-4599-b52b-7dae6708bcc3",
         "name": "Status",
-        "label": {
-          "en": "Status",
-          "fr": "Statut",
-          "nl": "Status"
-        },
-        "description": {
-          "en": "\"Open\" while uploads may still arrive; \"Finalized\" once closed.",
-          "fr": "« Open » tant que des envois peuvent encore arriver ; « Finalized » une fois clôturé.",
-          "nl": "\"Open\" zolang er nog uploads kunnen binnenkomen; \"Finalized\" zodra afgesloten."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -504,16 +288,6 @@
       {
         "id": "61e10589-fdec-4983-b6bc-42292634c0eb",
         "name": "WorkflowName",
-        "label": {
-          "en": "Workflow",
-          "fr": "Workflow",
-          "nl": "Workflow"
-        },
-        "description": {
-          "en": "The GitHub Actions workflow that produced this build.",
-          "fr": "Nom du workflow GitHub Actions qui a produit ce build (p. ex. CI).",
-          "nl": "Naam van de GitHub Actions-workflow die deze build heeft voortgebracht (bv. CI)."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -530,11 +304,6 @@
     {
       "id": "8b5d0c41-6e3f-4a92-8d78-4f9c2b7e1a32",
       "name": "Commit_Builds",
-      "description": {
-        "en": "Builds",
-        "fr": "Builds",
-        "nl": "Builds"
-      },
       "source": "Custom.Commit_Builds",
       "alias": "commit-builds",
       "sortColumns": [

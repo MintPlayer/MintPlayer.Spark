@@ -1,3 +1,4 @@
+using CodeCoverage.Tests._Infrastructure;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -329,7 +330,7 @@ public class ReadRowFilterTests : CoverageRavenTest
             ],
         };
 
-        await actions.OnBeforeSaveAsync(BoardObject(), board);
+        await actions.BeforeSaveAsync(BoardObject(), board);
 
         board.EventMappings.Select(m => m.Id).Should().Equal("PullRequestOpened", "");
     }
@@ -349,7 +350,7 @@ public class ReadRowFilterTests : CoverageRavenTest
             ],
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => actions.OnBeforeSaveAsync(BoardObject(), board));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => actions.BeforeSaveAsync(BoardObject(), board));
 
         ex.Message.Should().Contain("more than once");
     }

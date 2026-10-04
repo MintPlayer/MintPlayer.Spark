@@ -301,6 +301,11 @@ public partial class SparkClient : IDisposable
     /// (notify / navigate / refresh) are passed to <paramref name="onOperation"/> (or the client-wide
     /// handler); with neither, they are dropped. An operation this SDK does not know — including
     /// an older server's removed <c>disableAction</c> — arrives as <see cref="SparkUnknownOperation"/>.
+    /// <para>
+    /// A server interceptor that cancels the create (answering a prompt with Cancel) makes the server answer
+    /// 204 with nothing created; this method then throws <see cref="SparkClientException"/> with
+    /// <c>StatusCode = HttpStatusCode.NoContent</c>.
+    /// </para>
     /// </remarks>
     public Task<PersistentObject> CreatePersistentObjectAsync(
         PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
@@ -310,10 +315,10 @@ public partial class SparkClient : IDisposable
     }
 
     /// <summary>
-    /// Updates an existing PersistentObject. The instance's <see cref="PersistentObject.Id"/> is
-    /// required; <see cref="PersistentObject.Etag"/> is echoed back to the server for the
-    /// optimistic-concurrency check — a stale etag surfaces as <see cref="SparkClientException"/>
-    /// with <c>StatusCode = HttpStatusCode.Conflict</c>.
+    /// Updates an existing PersistentObject. The instance's <see cref="PersistentObject.Id"/> and
+    /// <see cref="PersistentObject.Etag"/> (from the load) are required (#467, D16); the etag is the
+    /// version being edited — a stale one surfaces as <see cref="SparkClientException"/> with
+    /// <c>StatusCode = HttpStatusCode.Conflict</c>, as does an object deleted since it was loaded.
     /// </summary>
     public Task<PersistentObject> UpdatePersistentObjectAsync(
         PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
@@ -321,14 +326,33 @@ public partial class SparkClient : IDisposable
         ArgumentNullException.ThrowIfNull(obj);
         if (string.IsNullOrEmpty(obj.Id))
             throw new ArgumentException("PersistentObject must have an Id for update.", nameof(obj));
+        if (string.IsNullOrEmpty(obj.Etag))
+            throw new ArgumentException("PersistentObject must have the Etag it was loaded with for update.", nameof(obj));
         return SendPersistentObjectAsync("/spark/po/update", obj.ObjectTypeId.ToString(), obj.Id, obj, onRetry, onOperation, cancellationToken);
     }
 
+    /// <summary>Deletes an object as it was loaded: its id, at the version its <see cref="PersistentObject.Etag"/> names.</summary>
     public Task DeletePersistentObjectAsync(
-        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
-        => PostConversationAsync<object?>(
+        PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
+    {
+        ArgumentNullException.ThrowIfNull(obj);
+        var row = SparkRowVersion.Of(obj);
+        return DeletePersistentObjectAsync(obj.ObjectTypeId, row.Id, row.Etag, cancellationToken, onRetry, onOperation);
+    }
+
+    /// <summary>
+    /// Deletes one object. <paramref name="etag"/> is the version being deleted — the
+    /// <see cref="PersistentObject.Etag"/> of the load, or the row's <c>Etag</c> in a query result.
+    /// Required (#467, D14): a row changed since surfaces as a <see cref="SparkClientException"/> with
+    /// <c>StatusCode = HttpStatusCode.Conflict</c>.
+    /// </summary>
+    public Task DeletePersistentObjectAsync(
+        Guid objectTypeId, string id, string etag, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(etag);
+        return PostConversationAsync<object?>(
             "/spark/po/delete",
-            new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId.ToString(), ["id"] = id },
+            new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId.ToString(), ["id"] = id, ["etag"] = etag },
             requiresAntiforgery: true,
             async (response, ct) =>
             {
@@ -341,35 +365,49 @@ public partial class SparkClient : IDisposable
             onRetry,
             onOperation,
             cancellationToken);
+    }
 
     /// <summary>
     /// Deletes several objects of one type in one request — the default <c>Delete</c> action on a
     /// query's selection (<c>POST /spark/po/delete-many</c>, #460 D18). All or nothing: one row that is
     /// missing, denied or whose hook withholds Delete refuses the lot.
     /// </summary>
-    /// <param name="queryId">The query the rows were selected in, for the disabled-action hook.</param>
+    /// <param name="rows">
+    /// The rows, each with the version the caller saw — the <c>Etag</c> of its query result row.
+    /// Required (#467, D14): a row changed since refuses the lot with a 409 that names it.
+    /// </param>
+    /// <param name="queryId">
+    /// The query the rows were selected in. Required (#467, D12): the server fetches the rows through
+    /// it — a row it does not return refuses the lot — and applies its <c>OnDisableActionsAsync</c> decision.
+    /// </param>
     /// <param name="parentId">The sub-query's container, when deleting from a sub-query.</param>
     /// <param name="parentType">The container's type.</param>
+    /// <param name="reason">One reason for the whole batch, recorded on every soft-deleted row (#467, D20).</param>
     public Task DeletePersistentObjectsAsync(
         Guid objectTypeId,
-        IReadOnlyList<string> ids,
-        string? queryId = null,
+        IReadOnlyList<SparkRowVersion> rows,
+        string queryId,
         string? parentId = null,
         string? parentType = null,
         CancellationToken cancellationToken = default,
         SparkRetryHandler? onRetry = null,
-        SparkOperationHandler? onOperation = null)
+        SparkOperationHandler? onOperation = null,
+        string? reason = null)
     {
-        ArgumentNullException.ThrowIfNull(ids);
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentException.ThrowIfNullOrEmpty(queryId);
+        if (rows.Any(row => string.IsNullOrEmpty(row.Etag)))
+            throw new ArgumentException("Every row must carry the etag of the version it deletes.", nameof(rows));
         return PostConversationAsync<object?>(
             "/spark/po/delete-many",
             new Dictionary<string, object?>
             {
                 ["objectTypeId"] = objectTypeId.ToString(),
-                ["ids"] = ids,
+                ["items"] = rows.Select(row => new Dictionary<string, object?> { ["id"] = row.Id, ["etag"] = row.Etag }).ToArray(),
                 ["queryId"] = queryId,
                 ["parentId"] = parentId,
                 ["parentType"] = parentType,
+                ["reason"] = reason,
             },
             requiresAntiforgery: true,
             async (response, ct) =>
@@ -651,6 +689,11 @@ public partial class SparkClient : IDisposable
         // of this action's own type. Appended after the token so existing positional calls keep
         // compiling; every caller in the repo passes by name anyway.
         //
+        // ⚠️ A selection requires queryId (#467, D12): the server refuses one without it with a 400,
+        // because the rows are resolved through that query and its OnDisableActionsAsync decision applies.
+        if (selectedItemIds is { Count: > 0 } && string.IsNullOrEmpty(queryId))
+            throw new ArgumentException("A selection must name the query its rows were selected in.", nameof(queryId));
+        //
         // ⚠️ queryId is what makes a grid invocation reproducible. The server re-runs the named query
         // narrowed to selectedItemIds and hands the action the rows the grid actually rendered; with
         // no query named it falls back to loading each id, which is a different code path with
@@ -927,8 +970,11 @@ public partial class SparkClient : IDisposable
             async (response, ct) =>
             {
                 await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
-                return await ReadEnvelopeResultAsync<PersistentObject>(response, onOperation, ct)
-                    ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
+                var result = await ReadEnvelopeResultAsync<PersistentObject>(response, onOperation, ct);
+                // A server interceptor cancelled the create (#482, SparkCancelException): nothing was created.
+                if (result is null && response.StatusCode == System.Net.HttpStatusCode.NoContent)
+                    throw new SparkClientException(response.StatusCode, responseBody: null, "Cancelled: a server interceptor chose not to write; nothing was created.");
+                return result ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
             },
             onRetry,
             onOperation,

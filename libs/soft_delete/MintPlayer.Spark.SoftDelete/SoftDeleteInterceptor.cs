@@ -14,22 +14,23 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.SoftDelete;
 
 /// <summary>
-/// Turns a delete of an <see cref="ISoftDeletable"/> into setting its fields, owns those fields on
-/// every other write, refuses references to deleted rows, finishes a purge by deleting the row's
-/// revisions, and tells <see cref="ISoftDeleteObserver"/>s.
+/// The SoftDelete interceptors (#482; "interceptor" is the older name): turns a delete of an
+/// <see cref="ISoftDeletable"/> into setting its fields, owns those fields on every other write,
+/// refuses references to deleted rows, and finishes a purge by deleting the row's revisions.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Runs in <c>IDatabaseAccess</c> (D1), so an Actions class's <c>OnDeleteAsync</c> override cannot
-/// defeat the replacement: for a soft-deletable type that override is not called on a delete — only
-/// on a purge (the startup check warns about such overrides).
+/// The replacement is an <see cref="IDeleteReplacement"/>, decided by the framework before any
+/// before-delete interceptor runs, so nothing — no Actions class, no other interceptor — can turn it back into a
+/// hard delete; only a purge deletes.
 /// </para>
 /// <para>
-/// A <c>Sync</c> (a write replicated from the owner module) passes through untouched: the owner
+/// A <c>Sync</c> (a write replicated from the owner module) never reaches these interceptors: the owner
 /// already decided, and its soft delete arrives here as a save.
 /// </para>
 /// </remarks>
-internal sealed partial class SoftDeleteInterceptor : IPersistentObjectInterceptor
+internal sealed partial class SoftDeleteInterceptor
+    : IDeleteReplacement, IBeforeDelete, IAfterDelete, IBeforeSave, INaturalIdCollision
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly ISparkCurrentUser currentUser;
@@ -37,16 +38,30 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly SoftDeleteRequestState state;
     [Inject] private readonly ISoftDeleteRevisions revisions;
-    [Inject] private readonly IEnumerable<ISoftDeleteObserver> observers;
     [Inject] private readonly ILogger<SoftDeleteInterceptor> logger;
     [Inject] private readonly TimeProvider? timeProvider;
-
-    /// <summary>First (contributions F5): a delete becomes a replacement before any other interceptor sees it.</summary>
-    public int Order => PersistentObjectInterceptorOrder.SoftDelete;
 
     public bool AppliesTo(Type entityType) => typeof(ISoftDeletable).IsAssignableFrom(entityType);
 
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
+
+    public ValueTask<bool> ReplaceAsync(DeleteContext context)
+    {
+        // Only a caller's delete is softened.
+        if (context.Operation != PersistentObjectOperation.Delete || context.Entity is not ISoftDeletable entity)
+            return ValueTask.FromResult(false);
+
+        // Marked on the request session's tracked entity; if an interceptor refuses the delete, the framework
+        // evicts the entity, so the mark is never written by a later save (M7 fix).
+        entity.IsDeleted = true;
+        entity.DeletedAt = Now;
+        entity.DeletedBy = currentUser.Id;
+        entity.DeleteReason = context.Reason ?? state.PendingReason;
+        // For the durable after-commit interceptors, which see a payload, not the entity.
+        if (entity.DeleteReason is { } reason)
+            context.Facts[SparkFacts.Reason] = reason;
+        return ValueTask.FromResult(true);
+    }
 
     public async ValueTask OnBeforeDeleteAsync(DeleteContext context)
     {
@@ -54,46 +69,14 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
         // admin operation. Prove it will be allowed BEFORE the document goes, so a client certificate
         // without database-admin refuses the purge instead of leaving the history of a row that no
         // longer exists (#460, M6 finding).
-        if (context.Operation == PersistentObjectOperation.Purge)
-        {
+        if (context.IsPurge)
             await revisions.EnsureCanDeleteAsync();
-            return;
-        }
-
-        // A module sync is the owner's decision. Only a caller's delete is softened.
-        if (context.Operation != PersistentObjectOperation.Delete || context.Entity is not ISoftDeletable entity)
-            return;
-
-        // Marked on the request session's tracked entity; if a later interceptor refuses the delete,
-        // DatabaseAccess evicts the entity, so the mark is never written by a later save (M7 fix).
-        entity.IsDeleted = true;
-        entity.DeletedAt = Now;
-        entity.DeletedBy = currentUser.Id;
-        entity.DeleteReason = state.PendingReason;
-        context.Replace();
     }
 
     public async ValueTask OnAfterDeleteAsync(DeleteContext context)
     {
-        if (context.WasReplaced)
-        {
-            var entity = (ISoftDeletable)context.Entity;
-            await NotifyAsync(context.EntityType, context.Id, entity.DeleteReason, static (o, e) => o.OnDeletedAsync(e));
-            return;
-        }
-
         if (!context.IsPurge)
             return;
-
-        // An Actions class whose OnDeleteAsync override did not actually delete (it soft-deleted by
-        // hand, say) must not have the history of a row that still exists wiped.
-        using (var check = documentStore.OpenAsyncSession())
-        {
-            if (await check.Advanced.ExistsAsync(context.Id))
-                throw new InvalidOperationException(
-                    $"Purge of '{context.Id}' did not delete the document: the {context.EntityType.Name} Actions class " +
-                    "overrides OnDeleteAsync without deleting it. Its revisions were kept.");
-        }
 
         // After the document, never before: deleting revisions first and the document second writes a
         // fresh delete revision (measured, #460 spike H1). Force-created revisions only go with the flag.
@@ -101,12 +84,11 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
         logger.LogInformation("Purged {EntityType} {Id} and {Revisions} revision(s).", context.EntityType.Name, context.Id, deleted);
 
         state.Purged.Add(context.Id);
-        await NotifyAsync(context.EntityType, context.Id, null, static (o, e) => o.OnPurgedAsync(e));
     }
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context)
     {
-        if (context.Operation == PersistentObjectOperation.Sync || context.Entity is not ISoftDeletable entity)
+        if (context.Entity is not ISoftDeletable entity)
             return;
 
         if (context.Operation == PersistentObjectOperation.Restore)
@@ -133,13 +115,7 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
             entity.DeleteReason = null;
         }
 
-        await RefuseReferencesToDeletedRowsAsync(context, context.Entity!);
-    }
-
-    public async ValueTask OnAfterSaveAsync(SaveContext context)
-    {
-        if (context.Operation == PersistentObjectOperation.Restore && context.PersistentObject.Id is { } id)
-            await NotifyAsync(context.EntityType, id, null, static (o, e) => o.OnRestoredAsync(e));
+        await RefuseReferencesToDeletedRowsAsync(context, context.Entity);
     }
 
     public async ValueTask OnNaturalIdCollisionAsync(NaturalIdCollisionContext context)
@@ -213,22 +189,6 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
         return loaded.Where(pair => pair.Value is ISoftDeletable { IsDeleted: true }).Select(pair => pair.Key).ToList();
     }
 
-    private async Task NotifyAsync(Type entityType, string id, string? reason, Func<ISoftDeleteObserver, SoftDeleteEvent, ValueTask> call)
-    {
-        SoftDeleteEvent? e = null;
-        foreach (var observer in observers)
-        {
-            e ??= new SoftDeleteEvent
-            {
-                EntityType = entityType,
-                Id = id,
-                UserId = currentUser.Id,
-                Reason = reason,
-                OccurredAt = Now,
-            };
-            await call(observer, e);
-        }
-    }
 }
 
 /// <summary>The <c>[Reference]</c> properties of a type that point at a soft-deletable type.</summary>

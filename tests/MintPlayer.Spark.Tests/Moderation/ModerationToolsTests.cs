@@ -44,15 +44,15 @@ public class ModerationToolsTests : SparkTestDriver
         await using var host = await StartAsync();
         var post = await host.SeedPostAsync(Alice, "original");
         // A revision to revert to, made before the lock by the author.
-        (await host.SendAsync("/spark/po/update", MoHost.UpdateBody(post, ("Title", "second")), Alice)).Status.Should().Be(HttpStatusCode.OK);
+        (await host.SendAsync("/spark/po/update", MoHost.UpdateBody(post, await host.EtagAsync(post), ("Title", "second")), Alice)).Status.Should().Be(HttpStatusCode.OK);
         var (_, revisions) = await host.SendAsync("/spark/po/revisions", Wire.Typed(MoHost.PostTypeId, id: post), Alice);
         var oldest = revisions.GetProperty("result").EnumerateArray().Last().GetProperty("changeVector").GetString();
         await LockAsync(host, post);
 
         // PO save.
-        ShouldBeLocked(await host.SendAsync("/spark/po/update", MoHost.UpdateBody(post, ("Title", "edited")), Alice), "update");
+        ShouldBeLocked(await host.SendAsync("/spark/po/update", MoHost.UpdateBody(post, await host.EtagAsync(post), ("Title", "edited")), Alice), "update");
         // AsDetail parent: adding / removing a row is a save of the parent.
-        ShouldBeLocked(await host.SendAsync("/spark/po/update", MoHost.UpdateBody(post, ("Lines", new[] { new { Text = "row" } })), Alice), "AsDetail parent");
+        ShouldBeLocked(await host.SendAsync("/spark/po/update", MoHost.UpdateBody(post, await host.EtagAsync(post), ("Lines", new[] { new { Text = "row" } })), Alice), "AsDetail parent");
         // Custom action saving through IDatabaseAccess.
         ShouldBeLocked(await host.SendAsync("/spark/actions/execute", Wire.Action(MoHost.PostTypeId, "MoTouch", new
         {
@@ -62,12 +62,12 @@ public class ModerationToolsTests : SparkTestDriver
         // Revert (History).
         ShouldBeLocked(await host.SendAsync("/spark/po/revert", Wire.Typed(MoHost.PostTypeId, new { changeVector = oldest }, post), Alice), "revert");
         // Delete.
-        ShouldBeLocked(await host.SendAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: post), Alice), "delete");
+        ShouldBeLocked(await host.SendAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: post, etag: await host.EtagAsync(post)), Alice), "delete");
 
         // Restore and purge (SoftDelete): the moderator deletes (exempt), the author may not undo or purge.
-        (await host.ModeratorAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: post))).Status.Should().Be(HttpStatusCode.NoContent);
+        (await host.ModeratorAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: post, etag: await host.EtagAsync(post)))).Status.Should().Be(HttpStatusCode.NoContent);
         ShouldBeLocked(await host.SendAsync("/spark/po/restore", Wire.Typed(MoHost.PostTypeId, id: post), Alice), "restore");
-        ShouldBeLocked(await host.SendAsync("/spark/po/purge", Wire.Typed(MoHost.PostTypeId, id: post), Alice), "purge");
+        ShouldBeLocked(await host.SendAsync("/spark/po/purge", Wire.Typed(MoHost.PostTypeId, id: post, etag: await host.EtagAsync(post)), Alice), "purge");
         (await host.ModeratorAsync("/spark/po/restore", Wire.Typed(MoHost.PostTypeId, id: post))).Status.Should().Be(HttpStatusCode.OK, "moderators are exempt");
 
         var stored = await host.LoadAsync<MoPost>(post);
@@ -100,7 +100,7 @@ public class ModerationToolsTests : SparkTestDriver
 
         // Unlocked: the author edits again.
         (await host.ModeratorAsync("/spark/moderation/unlock", Wire.Typed(MoHost.PostTypeId, id: post))).Status.Should().Be(HttpStatusCode.OK);
-        (await host.SendAsync("/spark/po/update", MoHost.UpdateBody(post, ("Title", "after")), Alice)).Status.Should().Be(HttpStatusCode.OK);
+        (await host.SendAsync("/spark/po/update", MoHost.UpdateBody(post, await host.EtagAsync(post), ("Title", "after")), Alice)).Status.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class ModerationToolsTests : SparkTestDriver
         (await host.SendAsync("/spark/moderation/suspend", new { userId = Bob, days = 3 }, Carol)).Status.Should().Be(HttpStatusCode.NotFound, "Suspend/Moderation only");
         (await host.ModeratorAsync("/spark/moderation/suspend", new { userId = Bob, days = 3, reason = "ring" })).Status.Should().Be(HttpStatusCode.OK);
 
-        var update = await host.SendAsync("/spark/po/update", MoHost.UpdateBody(bobsPost, ("Title", "x")), Bob);
+        var update = await host.SendAsync("/spark/po/update", MoHost.UpdateBody(bobsPost, await host.EtagAsync(bobsPost), ("Title", "x")), Bob);
         update.Status.Should().Be(HttpStatusCode.BadRequest);
         update.Body.GetRawText().Should().Contain("suspended");
         // The README's rule: voting while suspended is 400 and says why — checked before the right, which
@@ -190,7 +190,7 @@ public class ModerationToolsTests : SparkTestDriver
 
         // A timed suspension ends by itself.
         host.Clock.Advance(TimeSpan.FromDays(3) + TimeSpan.FromMinutes(1));
-        (await host.SendAsync("/spark/po/update", MoHost.UpdateBody(bobsPost, ("Title", "x")), Bob)).Status.Should().Be(HttpStatusCode.OK);
+        (await host.SendAsync("/spark/po/update", MoHost.UpdateBody(bobsPost, await host.EtagAsync(bobsPost), ("Title", "x")), Bob)).Status.Should().Be(HttpStatusCode.OK);
     }
 
     // ---- new-account throttle --------------------------------------------------------------------
@@ -228,13 +228,37 @@ public class ModerationToolsTests : SparkTestDriver
         await host.VoteAsync(Bob, removed, 1);
         await host.VoteAsync(Bob, withdrawn, 1);
 
-        (await host.ModeratorAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: removed))).Status.Should().Be(HttpStatusCode.NoContent);
-        (await host.SendAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: withdrawn), Alice)).Status.Should().Be(HttpStatusCode.NoContent);
+        (await host.ModeratorAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: removed, etag: await host.EtagAsync(removed)))).Status.Should().Be(HttpStatusCode.NoContent);
+        (await host.SendAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: withdrawn, etag: await host.EtagAsync(withdrawn)), Alice)).Status.Should().Be(HttpStatusCode.NoContent);
 
+        await host.DrainAsync();
         var alice = await host.EventsForAsync(Alice);
         alice.Should().ContainSingle(e => e.Kind == ReputationEventKinds.Reversal).Which.RuleId.Should().Be("content-deleted");
         alice.Single(e => e.Kind == ReputationEventKinds.Reversal).TargetId.Should().Be(removed);
         await host.CreditAsync();
         (await host.SummaryAsync(Alice)).Total.Should().Be(10, "the author's own delete keeps what the post earned");
+    }
+
+    [Fact]
+    public async Task A_moderator_purging_someone_elses_post_reverses_its_votes()
+    {
+        // Guards a regression caught in M7b review: the reversal moved to a durable interceptor decided in the
+        // before-delete interceptor, and its first draft skipped purges. The author deletes (no reversal), then a
+        // moderator purges: that purge must reverse what the post earned.
+        await using var host = await StartAsync(o => o.Fraud.CreditDelayHours = 0);
+        var post = await host.SeedPostAsync(Alice, "purged");
+        await host.VoteAsync(Bob, post, 1);
+        (await host.SendAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: post, etag: await host.EtagAsync(post)), Alice)).Status.Should().Be(HttpStatusCode.NoContent);
+        await host.DrainAsync();
+        (await host.EventsForAsync(Alice)).Should().NotContain(e => e.Kind == ReputationEventKinds.Reversal, "the author's own delete reverses nothing");
+
+        string? etag;
+        using (var session = host.Store.OpenAsyncSession())
+            etag = session.Advanced.GetChangeVectorFor(await session.LoadAsync<MoPost>(post));
+        (await host.ModeratorAsync("/spark/po/purge", Wire.Typed(MoHost.PostTypeId, new { etag }, id: post))).Status.Should().Be(HttpStatusCode.NoContent);
+
+        await host.DrainAsync();
+        (await host.EventsForAsync(Alice)).Should().ContainSingle(e => e.Kind == ReputationEventKinds.Reversal)
+            .Which.TargetId.Should().Be(post);
     }
 }

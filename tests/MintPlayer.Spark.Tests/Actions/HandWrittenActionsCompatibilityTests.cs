@@ -32,16 +32,8 @@ public class HandWrittenActionsCompatibilityTests
         public Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
             => Task.FromResult<PersistentObject?>(null);
 
-        public Task<LegacyEntity> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
-            => Task.FromResult(new LegacyEntity());
-
-        public Task OnDeleteAsync(IAsyncDocumentSession session, string id) => Task.CompletedTask;
-
-        public Task OnBeforeSaveAsync(PersistentObject obj, LegacyEntity entity) => Task.CompletedTask;
-
-        public Task OnAfterSaveAsync(PersistentObject obj, LegacyEntity entity) => Task.CompletedTask;
-
-        public Task OnBeforeDeleteAsync(LegacyEntity entity) => Task.CompletedTask;
+        public Task<LegacyEntity> MapAsync(PersistentObject obj, LegacyEntity? existing)
+            => Task.FromResult(existing ?? new LegacyEntity());
 
         public Task OnRefreshAsync(SparkRefreshArgs<LegacyEntity> args) => Task.CompletedTask;
 

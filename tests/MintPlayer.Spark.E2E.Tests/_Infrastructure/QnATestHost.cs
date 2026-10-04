@@ -217,6 +217,7 @@ public sealed class StoredPost
     public bool IsDraft { get; set; }
     public bool IsClosed { get; set; }
     public bool IsDeleted { get; set; }
+    public string? DeleteReason { get; set; }
     public string? AuthorId { get; set; }
     public string? CreatedBy { get; set; }
     public string? ModifiedBy { get; set; }

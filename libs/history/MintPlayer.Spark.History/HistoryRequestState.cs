@@ -1,11 +1,8 @@
-using MintPlayer.Spark.Abstractions.Interceptors;
-
 namespace MintPlayer.Spark.History;
 
 /// <summary>
 /// Per-request hand-off inside the History package: the revision a revert is restoring (so the
-/// interceptor can make its values exact), and each in-flight write's previous change vector (read in
-/// the before-hook, reported in the after-hook).
+/// interceptor can make its values exact).
 /// </summary>
 internal sealed class HistoryRequestState
 {
@@ -17,11 +14,4 @@ internal sealed class HistoryRequestState
     /// not edit (a static attribute right) whose revision value differs (contributions M2c-2b).
     /// </summary>
     public bool RevertPartial { get; set; }
-
-    private readonly Dictionary<PersistentObjectInterceptorContext, string?> previous = new(ReferenceEqualityComparer.Instance);
-
-    public void SetPrevious(PersistentObjectInterceptorContext context, string? changeVector) => previous[context] = changeVector;
-
-    public string? TakePrevious(PersistentObjectInterceptorContext context)
-        => previous.Remove(context, out var changeVector) ? changeVector : null;
 }

@@ -64,7 +64,9 @@ public static class SparkModerationExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPersonalDataContributor<TUser>, ModerationPersonalDataContributor<TUser>>());
 
         builder.AddGroupMembershipProvider<ModerationPrivilegeProvider>();
-        builder.AddPersistentObjectInterceptor<ModerationInterceptor>();
+        builder.AddInterceptor<ModerationInterceptor>();
+        // Durable (#482, D17): needs spark.AddMessaging(), refused at startup without it.
+        builder.AddInterceptor<ModerationVoteReversal>();
         // The same suspension and lock checks for documents written on the caller's behalf that are not
         // PO saves (a contribution written while the caller saves its target, contributions M5).
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ISatelliteWriteGuard, ModerationSatelliteWriteGuard>());

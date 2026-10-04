@@ -4,7 +4,11 @@ public sealed class EntityTypeDefinition
 {
     public required Guid Id { get; set; }
     public required string Name { get; set; }
-    public TranslatedString? Description { get; set; }
+    /// <summary>
+    /// The type's display name (#467, D6; formerly <c>description</c>). In the model file an optional
+    /// translation key; resolved at load from <c>model.{Name}.label</c>, else the humanized name.
+    /// </summary>
+    public TranslatedString? Label { get; set; }
     /// <summary>
     /// The CLR type this definition maps to — the anchor of the entity pipeline (load, query,
     /// save, row security). <see langword="null"/> for a JSON-only virtual type: a page that
@@ -207,7 +211,7 @@ public sealed class EntityAttributeDefinition
     /// [i] tooltip beside the label (#348). Presentational: not part of the model hash, so it can be
     /// authored and translated by hand. The English text is seeded on synchronize from a
     /// <c>[Description]</c> attribute or the property's <c>///</c> summary when either exists; the
-    /// other languages are author-owned. Unlike <see cref="EntityTypeDefinition.Description"/>,
+    /// other languages are author-owned. Unlike <see cref="EntityTypeDefinition.Label"/>,
     /// which is the page heading, this is explanatory prose.
     /// </summary>
     public TranslatedString? Description { get; set; }

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Interceptors;
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -44,7 +45,7 @@ public static class SparkContributionsExtensions
         builder.Services.TryAddSingleton<ContributionCatalog>();
         builder.Services.TryAddScoped<IContributions, SparkContributions>();
         builder.Services.TryAddScoped<ContributionRequestState>();
-        builder.AddPersistentObjectInterceptor<ContributionsInterceptor>();
+        builder.AddInterceptor<ContributionsInterceptor>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ContributionShapeCheck>());
 
         // The generated contribution types' actions, which serve the generated contributions query

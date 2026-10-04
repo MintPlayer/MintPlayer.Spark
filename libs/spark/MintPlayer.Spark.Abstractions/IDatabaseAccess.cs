@@ -56,6 +56,16 @@ public interface IDatabaseAccess
     /// </summary>
     Task EnsureSaveAuthorizedAsync(PersistentObject persistentObject);
 
+    /// <summary>
+    /// Creates (no <see cref="PersistentObject.Id"/>) or updates an object.
+    /// <para>
+    /// An update with an <see cref="PersistentObject.Etag"/> edits that version: a row changed since is
+    /// a <c>409</c>, and a row deleted since is a <c>409</c> too — never recreated (#467, D15). An
+    /// update without one overwrites what is stored, or creates the object under its id when none is:
+    /// the internal overwrite, for callers that never showed the row to anyone. Every HTTP update
+    /// requires an etag (D16), so no request reaches it.
+    /// </para>
+    /// </summary>
     Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject);
 
     /// <summary>
@@ -90,23 +100,29 @@ public interface IDatabaseAccess
     /// refuses after an earlier hook changed the entity, the entity is evicted from the request
     /// session, so no later save in the request writes the half-made change.
     /// </summary>
-    Task DeletePersistentObjectAsync(Guid objectTypeId, string id, Interceptors.PersistentObjectOperation operation);
+    /// <param name="etag">
+    /// The version the caller saw (#467, D14). When given, a row changed since is refused with a 409
+    /// before any interceptor, and the delete is written with it, so a change landing after that check is a
+    /// 409 too. Null deletes whatever is stored: the internal overwrite, for callers that never showed
+    /// the row to anyone (a job, a sync). Every HTTP delete requires one.
+    /// </param>
+    Task DeletePersistentObjectAsync(Guid objectTypeId, string id, Interceptors.PersistentObjectOperation operation, string? etag = null);
 
     /// <summary>
     /// Deletes several objects of one type as <b>one unit of work</b> (#460, D18): all of them or none.
     /// <para>
     /// Every row goes through the single-row delete pipeline — <c>Delete/T</c>, the collection guard,
     /// the row gate, the disabled-action hook (asked about the query target, with its parent, and every
-    /// row; one refused row refuses the lot), <c>OnBeforeDeleteAsync</c>, the interceptors (so a
-    /// soft-deletable type is soft-deleted) and the Actions class's <c>OnDeleteAsync</c> — but every
-    /// gate runs before the first write, and the writes are committed by one <c>SaveChanges</c>. A
-    /// missing, foreign-collection or row-denied id refuses the whole request with
+    /// row; one refused row refuses the lot), the delete replacement (so a soft-deletable type is
+    /// soft-deleted) and the before-delete interceptors — but every gate runs before the first write, and the
+    /// framework commits every row with one <c>SaveChanges</c> (#482: no interceptor or Actions class can
+    /// commit early). A missing, foreign-collection or row-denied id refuses the whole request with
     /// <see cref="Authorization.SparkRowLevelAccessDeniedException"/>, never a silently shorter delete.
     /// </para>
     /// <para>
-    /// ⚠️ The base <c>OnDeleteAsync</c> defers its own <c>SaveChanges</c> while the batch is open. An
-    /// override that saves on its own commits its row early and breaks the all-or-nothing guarantee
-    /// (logged as a warning) — the D1 override gap, documented rather than closed.
+    /// An interceptor that refuses a row names it in the refusal; a <c>Retry.Action</c> prompt from an interceptor is
+    /// refused the same way (a per-row prompt in a bulk delete is unworkable), and a
+    /// <see cref="SparkCancelException"/> cancels the whole batch.
     /// </para>
     /// </summary>
     /// <param name="objectTypeId">The type of every row.</param>
@@ -127,4 +143,18 @@ public sealed class SparkBulkDeleteContext
 
     /// <summary>The container's entity type name.</summary>
     public string? ParentType { get; init; }
+
+    /// <summary>
+    /// The user's reason, applied to every row (#467, D20). A soft delete records it as the row's
+    /// <c>DeleteReason</c>; a hard delete ignores it.
+    /// </summary>
+    public string? Reason { get; init; }
+
+    /// <summary>
+    /// The version of each row the caller saw, by id (#467, D14). When given, it must name every row;
+    /// a row changed since refuses the batch with a 409 that names it (D18), and every delete is
+    /// written with its etag. Null deletes whatever is stored — the internal overwrite; the
+    /// <c>delete-many</c> endpoint always passes them.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Etags { get; init; }
 }

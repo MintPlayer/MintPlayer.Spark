@@ -264,5 +264,5 @@ See the Fleet and HR demo apps for a working example:
 - `Demo/HR/HR.Library/Replicated/Car.cs` -- replicated entity with `[Replicated]` attribute
 - `Demo/Fleet/Fleet.Library/Replicated/Person.cs` -- bidirectional replication
 - `Demo/HR/HR/Program.cs` -- replication service registration and startup
-- `MintPlayer.Spark.Replication/Services/SyncActionInterceptor.cs` -- write-back interceptor
+- `MintPlayer.Spark.Replication/Services/SyncActionInterceptor.cs` -- write-back dispatcher, called after every committed write of a `[Replicated]` type by `ReplicationInterceptor.cs` (a persistence interceptor, #482)
 - `MintPlayer.Spark.Replication/Workers/SyncActionSubscriptionWorker.cs` -- sync action delivery

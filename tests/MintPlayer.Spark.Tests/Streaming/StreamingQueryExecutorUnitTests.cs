@@ -20,7 +20,10 @@ namespace MintPlayer.Spark.Tests.Streaming;
 /// The class is internal + partial with [Inject] fields; the source generator emits a
 /// constructor taking the six services in declaration order.
 /// </summary>
-public class StreamingQueryExecutorUnitTests
+// A real (empty) database behind the substituted store: each batch reads its rows' etags from
+// document metadata (#467, D30a), which a substituted session cannot answer. The streamed rows are
+// never stored, so they carry no etag.
+public class StreamingQueryExecutorUnitTests : MintPlayer.Spark.Testing.SparkTestDriver
 {
     private readonly IDocumentStore _documentStore = Substitute.For<IDocumentStore>();
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
@@ -222,9 +225,13 @@ public class StreamingQueryExecutorUnitTests
         StubMapperToEcho();
 
         var opened = new List<Raven.Client.Documents.Session.IAsyncDocumentSession>();
+        // The connection session is a substitute (its cap is asserted below); the per-batch sessions are
+        // real, because each batch reads its rows' etags (#467, D30a).
         _documentStore.OpenAsyncSession().Returns(_ =>
         {
-            var s = Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>();
+            var s = opened.Count == 0
+                ? Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>()
+                : Store.OpenAsyncSession();
             opened.Add(s);
             return s;
         });
@@ -258,7 +265,7 @@ public class StreamingQueryExecutorUnitTests
                 Arg.Any<EntityTypeDefinition?>(),
                 Arg.Any<CancellationToken>())
             .Returns(BreadcrumbResult.Empty);
-        _documentStore.OpenAsyncSession().Returns(Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>());
+        _documentStore.OpenAsyncSession().Returns(_ => Store.OpenAsyncSession());
         _permissionService
             .EnsureAuthorizedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);

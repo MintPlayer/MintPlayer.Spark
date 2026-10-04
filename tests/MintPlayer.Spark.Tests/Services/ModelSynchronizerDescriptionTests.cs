@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
@@ -17,9 +18,9 @@ using Raven.Client.Documents.Linq;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// #348 — how C# text becomes an attribute's <c>description</c> on synchronize, and who owns it
-/// afterwards. The C# summary is a SEED: it fills <c>en</c> when the model file has nothing there,
-/// and JSON owns the value from then on, in every language including <c>en</c>.
+/// #348, moved by #467 (D5): how C# text becomes an attribute's description on synchronize, and who
+/// owns it afterwards. The C# summary is a SEED: it fills <c>en</c> in the app's translations.json
+/// when no layer defines the description key, and translations.json owns the value from then on.
 /// </summary>
 public sealed class ModelSynchronizerDescriptionTests : IDisposable
 {
@@ -74,215 +75,205 @@ public sealed class ModelSynchronizerDescriptionTests : IDisposable
         return (first, second);
     }
 
-    // ── AC1 ─────────────────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Hand_authored_description_survives_sync_unchanged_when_csharp_is_silent()
+    private const string TitleKey = "model.MSD_Widget.attributes.Title.description";
+    private const string NotesKey = "model.MSD_Widget.attributes.Notes.description";
+    private const string PlainKey = "model.MSD_Widget.attributes.Plain.description";
+
+    private string TranslationsFile => Path.Combine(_tempDir, "App_Data", "translations.json");
+
+    private void WriteTranslations(string json)
     {
-        SeedWidgetFile("""
-            {"id":"22222222-2222-2222-2222-222222222222","name":"Plain","dataType":"String",
-             "description":{"nl":"Handmatig.","en":"By hand.","fr":"À la main."}}
-            """);
-
-        var (first, second) = SyncTwice();
-
-        var description = Attribute("Plain").Description!.Translations;
-        description.Keys.Should().Equal("nl", "en", "fr");
-        description.Values.Should().Equal("Handmatig.", "By hand.", "À la main.");
-        second.Should().Be(first);
+        Directory.CreateDirectory(Path.GetDirectoryName(TranslationsFile)!);
+        File.WriteAllText(TranslationsFile, json);
     }
 
-    // ── AC2 ─────────────────────────────────────────────────────────────────────────────────────
+    /// <summary>The node at a dotted key, found nested or dotted, as the seeder finds it.</summary>
+    private JsonNode? Translation(string key)
+    {
+        if (!File.Exists(TranslationsFile)) return null;
+        return Find(JsonNode.Parse(File.ReadAllText(TranslationsFile))!.AsObject(), key);
+
+        static JsonNode? Find(JsonObject node, string key)
+        {
+            foreach (var (name, child) in node)
+            {
+                if (name == key) return child;
+                if (child is JsonObject obj && key.StartsWith(name + ".") && Find(obj, key[(name.Length + 1)..]) is { } found)
+                    return found;
+            }
+            return null;
+        }
+    }
+
+    private string? En(string key) => Translation(key)?["en"]?.GetValue<string>();
+
+    // ── #467 D5: the seed is written into the app's translations.json ───────────────────────────
 
     [Fact]
-    public void Description_attribute_seeds_en_on_a_new_attribute()
+    public void Seeds_en_into_translations_json_and_the_model_file_holds_no_text()
     {
         SyncTwice();
 
-        var description = Attribute("Title").Description!.Translations;
-        description.Keys.Should().Equal("en");
-        description["en"].Should().Be("Explicit text.");
+        En(TitleKey).Should().Be("Explicit text.");
+        En(NotesKey).Should().Be("From the summary.");
+        Translation(PlainKey).Should().BeNull();
+
+        var model = File.ReadAllText(ModelFile("MSD_Widget"));
+        model.Should().NotContain("\"description\"").And.NotContain("\"label\"");
     }
 
     [Fact]
-    public void Description_attribute_seeds_en_on_an_existing_attribute_and_preserves_other_languages()
+    public void A_seed_keeps_the_languages_the_app_file_already_has()
     {
-        SeedWidgetFile("""
-            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
-             "description":{"nl":"Nederlands."}}
+        WriteTranslations("""
+            {
+              "model": {
+                "MSD_Widget": {
+                  "attributes": {
+                    "Title": {
+                      "description": {
+                        "nl": "Nederlands."
+                      }
+                    }
+                  }
+                }
+              }
+            }
             """);
 
         SyncTwice();
 
-        var description = Attribute("Title").Description!.Translations;
-        description.Keys.Should().Equal("en", "nl");
-        description.Values.Should().Equal("Explicit text.", "Nederlands.");
+        Translation(TitleKey)!["nl"]!.GetValue<string>().Should().Be("Nederlands.");
+        En(TitleKey).Should().Be("Explicit text.");
     }
 
     [Fact]
     public void Csharp_never_replaces_an_en_that_is_already_written()
     {
-        // The C# summary is a seed, not an overwrite (#348 revised). A `///` comment
-        // is written for the next developer; a description is an [i] tooltip for the
-        // end user. Once somebody has written the user-facing text, C# stops having
-        // an opinion — even when its own summary has since changed.
-        SeedWidgetFile("""
-            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
-             "description":{"en":"Hand-written help.","nl":"Nederlands."}}
+        // The C# summary is a seed, not an overwrite (#348 revised). A `///` comment is written for
+        // the next developer; a description is an [i] tooltip for the end user. Once somebody has
+        // written the user-facing text, C# stops having an opinion.
+        WriteTranslations("""
+            {
+              "model.MSD_Widget.attributes.Title.description": {
+                "en": "Hand-written help."
+              }
+            }
             """);
 
         SyncTwice();
 
-        var description = Attribute("Title").Description!.Translations;
-        description.Keys.Should().Equal("en", "nl");
-        description.Values.Should().Equal("Hand-written help.", "Nederlands.");
+        En(TitleKey).Should().Be("Hand-written help.");
+        // Found dotted, so not written a second time nested.
+        File.ReadAllText(TranslationsFile).Should().NotContain("\"Title\"");
     }
 
     [Fact]
     public void A_blank_en_counts_as_missing_and_is_seeded()
     {
-        // "Present" means it has text. An empty or whitespace `en` is an absence
-        // wearing a key, so the seed still fills it.
-        SeedWidgetFile("""
-            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
-             "description":{"en":"   ","nl":"Nederlands."}}
+        WriteTranslations("""
+            {
+              "model.MSD_Widget.attributes.Title.description": {
+                "en": "   ",
+                "nl": "Nederlands."
+              }
+            }
             """);
 
         SyncTwice();
 
-        var description = Attribute("Title").Description!.Translations;
-        description.Keys.Should().Equal("en", "nl");
-        description.Values.Should().Equal("Explicit text.", "Nederlands.");
-    }
-
-    // ── AC3 / AC4 ───────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Generated_summary_row_seeds_en()
-    {
-        SyncTwice();
-
-        var description = Attribute("Notes").Description!.Translations;
-        description.Keys.Should().Equal("en");
-        description["en"].Should().Be("From the summary.");
+        En(TitleKey).Should().Be("Explicit text.");
+        Translation(TitleKey)!["nl"]!.GetValue<string>().Should().Be("Nederlands.");
     }
 
     [Fact]
-    public void Description_attribute_wins_over_the_generated_summary()
+    public void An_explicit_description_key_in_the_model_file_receives_the_seed()
     {
+        SeedWidgetFile("""
+            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
+             "description":"help.widgetTitle"}
+            """);
+
         SyncTwice();
 
-        Attribute("Title").Description!.Translations["en"].Should().Be("Explicit text.");
+        En("help.widgetTitle").Should().Be("Explicit text.");
+        Translation(TitleKey).Should().BeNull();
+        Attribute("Title").Description!.Key.Should().Be("help.widgetTitle");
     }
 
     [Fact]
-    public void Undocumented_property_gets_no_description()
+    public void A_seed_that_would_put_a_child_under_a_translation_is_skipped()
     {
-        SyncTwice();
+        const string original = """
+            {
+              "model.MSD_Widget.attributes.Title": {
+                "en": "A leaf"
+              }
+            }
+            """;
+        WriteTranslations(original);
 
-        Attribute("Plain").Description.Should().BeNull();
-        File.ReadAllText(ModelFile("MSD_Widget")).Should().NotContain("\"description\": null");
+        CreateSynchronizer().SynchronizeModels(typeof(MSD_Context));
+
+        Translation("model.MSD_Widget.attributes.Title")!["en"]!.GetValue<string>().Should().Be("A leaf");
+        En(TitleKey).Should().BeNull();
     }
 
     // ── AC5 ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Second_sync_pass_is_byte_identical_in_every_seeding_configuration()
+    public void Second_sync_pass_is_byte_identical_and_keeps_crlf_line_endings()
     {
-        SeedWidgetFile("""
-            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
-             "description":{"nl":"Nederlands."}},
-            {"id":"33333333-3333-3333-3333-333333333333","name":"Notes","dataType":"String",
-             "description":{"en":"Stale.","fr":"Français."}},
-            {"id":"44444444-4444-4444-4444-444444444444","name":"Plain","dataType":"String",
-             "description":{"nl":"Alleen JSON."}}
-            """);
+        WriteTranslations("{\r\n  \"common\": {\r\n    \"hello\": {\r\n      \"en\": \"Hello\"\r\n    }\r\n  }\r\n}\r\n");
 
-        var (first, second) = SyncTwice();
+        var (firstModel, secondModel) = SyncTwice();
+        var afterSecond = File.ReadAllText(TranslationsFile);
+        CreateSynchronizer().SynchronizeModels(typeof(MSD_Context));
 
-        second.Should().Be(first);
+        secondModel.Should().Be(firstModel);
+        File.ReadAllText(TranslationsFile).Should().Be(afterSecond);
+        afterSecond.Should().Contain("\r\n").And.NotMatchRegex("[^\r]\n");
+        afterSecond.Should().StartWith("{\r\n  \"common\": {\r\n    \"hello\"");
+        afterSecond.Should().EndWith("}\r\n");
     }
 
     // ── AC7 ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Drift_report_names_only_what_sync_would_fill_and_is_empty_afterwards()
+    public void Drift_report_names_only_what_sync_would_write_and_is_empty_afterwards()
     {
-        // Verify and synchronize must agree: drift is exactly what synchronize
-        // would write. A description that merely diverges from the C# summary is
-        // the user-facing wording and is not drift — reporting it would fail the
-        // build over text synchronize will never change.
+        // Verify and synchronize must agree (#467 D5): drift is exactly what synchronize would
+        // write. A description that diverges from the C# summary is the user-facing wording.
         SeedWidgetFile("""
-            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
-             "description":{"en":"Hand-written help.","nl":"Nederlands."}},
+            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String"},
             {"id":"33333333-3333-3333-3333-333333333333","name":"Notes","dataType":"String"},
-            {"id":"44444444-4444-4444-4444-444444444444","name":"Plain","dataType":"String",
-             "description":{"en":"   "}}
+            {"id":"44444444-4444-4444-4444-444444444444","name":"Plain","dataType":"String"}
+            """);
+        WriteTranslations("""
+            {
+              "model.MSD_Widget.attributes.Title.description": { "en": "Hand-written help." }
+            }
             """);
 
         var before = ModelSynchronizer.DescribeDescriptionDrift(typeof(MSD_Context), _tempDir);
 
-        // Title diverges from its C# text and is NOT reported; Plain is blank but has
-        // no C# text to seed from, so there is nothing to fill. Only Notes is drift.
+        // Title has an en and is NOT reported; Plain has no C# text. Only Notes is drift.
         before.Should().BeEquivalentTo(
         [
-            "MSD_Widget.Notes: description.en is absent on disk, C# says \"From the summary.\"",
+            $"{NotesKey}: no layer of translations.json defines 'en', C# says \"From the summary.\"",
         ]);
 
         CreateSynchronizer().SynchronizeModels(typeof(MSD_Context));
 
         ModelSynchronizer.DescribeDescriptionDrift(typeof(MSD_Context), _tempDir).Should().BeEmpty();
-        Attribute("Title").Description!.Translations["en"].Should().Be("Hand-written help.");
-    }
-
-    [Fact]
-    public void A_blank_en_with_csharp_text_behind_it_is_drift()
-    {
-        SeedWidgetFile("""
-            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
-             "description":{"en":"","nl":"Nederlands."}}
-            """);
-
-        ModelSynchronizer.DescribeDescriptionDrift(typeof(MSD_Context), _tempDir).Should().BeEquivalentTo(
-        [
-            "MSD_Widget.Title: description.en is blank on disk, C# says \"Explicit text.\"",
-        ]);
+        En(TitleKey).Should().Be("Hand-written help.");
     }
 
     [Fact]
     public void Drift_report_is_empty_without_a_model_directory()
     {
         ModelSynchronizer.DescribeDescriptionDrift(typeof(MSD_Context), _tempDir).Should().BeEmpty();
-    }
-
-    // ── Seeding rule in isolation ───────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void ApplyDescriptionSeed_fills_an_absent_or_blank_en_and_never_replaces_a_written_one()
-    {
-        var absent = new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "A" };
-        absent.Description = new TranslatedString { Translations = { ["nl"] = "N", ["fr"] = "F" } };
-        ModelSynchronizer.ApplyDescriptionSeed(absent, "E");
-        absent.Description.Translations.Keys.Should().Equal("en", "nl", "fr");
-
-        // Written by a human: left alone, key order untouched.
-        var present = new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "B" };
-        present.Description = new TranslatedString { Translations = { ["nl"] = "N", ["en"] = "old" } };
-        ModelSynchronizer.ApplyDescriptionSeed(present, "new");
-        present.Description.Translations.Keys.Should().Equal("nl", "en");
-        present.Description.Translations["en"].Should().Be("old");
-
-        // Blank is an absence wearing a key — filled in place, so a second pass is
-        // byte-identical.
-        var blank = new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "D" };
-        blank.Description = new TranslatedString { Translations = { ["nl"] = "N", ["en"] = "  " } };
-        ModelSynchronizer.ApplyDescriptionSeed(blank, "new");
-        blank.Description.Translations.Keys.Should().Equal("nl", "en");
-        blank.Description.Translations["en"].Should().Be("new");
-
-        var untouched = new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "C" };
-        ModelSynchronizer.ApplyDescriptionSeed(untouched, null);
-        untouched.Description.Should().BeNull();
     }
 
     // ── AC12 ────────────────────────────────────────────────────────────────────────────────────

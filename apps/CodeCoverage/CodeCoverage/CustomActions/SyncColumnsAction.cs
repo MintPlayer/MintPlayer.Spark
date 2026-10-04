@@ -21,7 +21,7 @@ namespace CodeCoverage.CustomActions;
 /// </para>
 /// <para>
 /// Operates on the board whose page it is on, through <c>args.Parent</c>, not on selected rows —
-/// hence <c>selectionRule "=0"</c> in <c>customActions.json</c>. It is offered on
+/// hence <c>selectionRule "=0"</c> in <c>actions.json</c>. It is offered on
 /// <c>GitHubProject</c> because <c>SyncColumns/GitHubProject</c> is the only grant: actions attach
 /// by <b>right</b>, not by declaration, and that file is evaluated against every type.
 /// </para>

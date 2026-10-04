@@ -38,7 +38,6 @@ In your entity's model JSON file (e.g. `App_Data/Model/Car.json`), add `renderer
   "attributes": [
     {
       "name": "PromoVideoUrl",
-      "label": { "en": "Promo Video", "nl": "Promotievideo" },
       "dataType": "string",
       "renderer": "video-player",
       "rendererOptions": {

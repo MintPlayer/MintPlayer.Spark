@@ -355,9 +355,9 @@ describe('SparkQueryListComponent', () => {
 
     it('the recycle bin (?deleted=only) renders none of New, Delete or the custom actions (#460)', async () => {
       const actions = [
-        { name: 'New', displayName: { en: 'New' }, showedOn: 'both', offset: 0, isDefault: true },
-        { name: 'Delete', displayName: { en: 'Delete' }, showedOn: 'both', selectionRule: '>0', offset: 0, isDefault: true },
-        { name: 'Archive', displayName: { en: 'Archive' }, showedOn: 'query', selectionRule: '>0', offset: 0 },
+        { name: 'New', label: { en: 'New' }, showedOn: 'both', offset: 0, isDefault: true },
+        { name: 'Delete', label: { en: 'Delete' }, showedOn: 'both', selectionRule: '>0', offset: 0, isDefault: true },
+        { name: 'Archive', label: { en: 'Archive' }, showedOn: 'query', selectionRule: '>0', offset: 0 },
       ];
       const shown = () => [...harness.fixture.nativeElement.querySelectorAll('.spark-actionbar [data-action]')]
         .map((b: Element) => b.getAttribute('data-action'));
@@ -375,7 +375,7 @@ describe('SparkQueryListComponent', () => {
 
     it('shows the caption from the resolved query', async () => {
       const { harness } = await setup({
-        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, description: { en: 'Everyone' } }),
+        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, label: { en: 'Everyone' } }),
       });
       await navigate(harness, '/query/q-all');
 
@@ -424,7 +424,7 @@ describe('SparkQueryListComponent', () => {
     });
 
     it('delegates custom actions and their enabled state to the grid, which holds the selection', async () => {
-      const action = { name: 'Archive', displayName: { en: 'Archive' }, showedOn: 'query', selectionRule: '=1', offset: 0 } as any;
+      const action = { name: 'Archive', label: { en: 'Archive' }, showedOn: 'query', selectionRule: '=1', offset: 0 } as any;
       const { harness, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([action]) });
       const c = await navigate(harness, '/query/q-all');
 

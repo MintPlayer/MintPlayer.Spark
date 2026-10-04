@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Extensions;
@@ -51,7 +52,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
             Store,
             [TestModels.Person(PersonTypeId)],
             configureServices: services => services.AddSingleton(_race),
-            configureSpark: spark => spark.AddPersistentObjectInterceptor<ConcurrentWriterInterceptor>());
+            configureSpark: spark => spark.AddInterceptor<ConcurrentWriterInterceptor>());
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
@@ -112,17 +113,40 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Save_without_etag_still_protects_the_load_to_write_window()
+    public async Task Internal_save_without_etag_still_protects_the_load_to_write_window()
     {
+        // #467, D16: over HTTP an update without an etag is a 400 (UpdateEndpointConcurrencyTests). An
+        // internal caller through IDatabaseAccess may still omit it — the internal overwrite — and then
+        // the write carries the version the save loaded, so a write landing after that load is a 409.
         var po = await SeedAndLoadAsync();
         po.Etag = null;
         SetAttribute(po, "FirstName", "Alicia");
 
         _race.ArmSave();
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.UpdatePersistentObjectAsync(po));
+        await using var scope = _factory.GetService<IServiceScopeFactory>().CreateAsyncScope();
+        var databaseAccess = scope.ServiceProvider.GetRequiredService<IDatabaseAccess>();
+        var ex = await Record.ExceptionAsync(() => databaseAccess.SavePersistentObjectAsync(po));
+
+        _race.Fired.Should().BeTrue();
+        ex.Should().BeOfType<MintPlayer.Spark.Exceptions.SparkConcurrencyException>();
+        var (stored, _) = await ReadStoredAsync();
+        stored.LastName.Should().Be("Concurrent", "the concurrent write survives");
+    }
+
+    [Fact]
+    public async Task Hard_delete_refuses_a_write_that_raced_past_the_etag_check()
+    {
+        // #467, D14: the delete is written with the etag the caller sent, so a write landing after the
+        // etag check — here, from a before-delete interceptor — still refuses it.
+        var po = await SeedAndLoadAsync();
+
+        _race.ArmDeleteRace();
+        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.DeletePersistentObjectAsync(po));
 
         _race.Fired.Should().BeTrue();
         await AssertConflictAsync(ex);
+        var (stored, _) = await ReadStoredAsync();
+        stored.LastName.Should().Be("Concurrent", "the row and the concurrent write survive");
     }
 
     [Fact]
@@ -145,7 +169,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         await SeedAndLoadAsync();
 
         _race.ArmDelete();
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.DeletePersistentObjectAsync(PersonTypeId, Id));
+        var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.DeleteAsLoadedAsync(PersonTypeId, Id));
 
         _race.Fired.Should().BeTrue();
         await AssertConflictAsync(ex);
@@ -157,7 +181,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         await SeedAndLoadAsync();
 
         _race.ReplaceDeletes = true;
-        await _client.DeletePersistentObjectAsync(PersonTypeId, Id);
+        await _client.DeleteAsLoadedAsync(PersonTypeId, Id);
 
         var (stored, _) = await ReadStoredAsync();
         stored.FirstName.Should().Be("[deleted]", "the replacement was written");
@@ -179,6 +203,9 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
             deleteArmed = true;
             ReplaceDeletes = true;
         }
+
+        /// <summary>A concurrent write during a delete that is NOT replaced: the hard-delete path.</summary>
+        public void ArmDeleteRace() => deleteArmed = true;
 
         public bool TakeSave()
         {
@@ -205,7 +232,7 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         }
     }
 
-    public sealed class ConcurrentWriterInterceptor(RaceSwitch race) : IPersistentObjectInterceptor
+    public sealed class ConcurrentWriterInterceptor(RaceSwitch race) : IBeforeSave, IBeforeDelete, IDeleteReplacement
     {
         public bool AppliesTo(Type entityType) => entityType == typeof(Person);
 
@@ -219,11 +246,13 @@ public class ConcurrentWriteRaceTests : SparkTestDriver
         {
             if (race.TakeDelete())
                 await race.WriteConcurrentlyAsync(context.Id);
+        }
+
+        public ValueTask<bool> ReplaceAsync(DeleteContext context)
+        {
             if (race.ReplaceDeletes)
-            {
                 ((Person)context.Entity).FirstName = "[deleted]";
-                context.Replace();
-            }
+            return ValueTask.FromResult(race.ReplaceDeletes);
         }
     }
 }

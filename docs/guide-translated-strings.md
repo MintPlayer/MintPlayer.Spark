@@ -70,122 +70,26 @@ The converter handles both reading and writing. On the read side, it iterates pr
 
 ## Where TranslatedString Is Used
 
-### Entity Descriptions
+Since #467 (D1), the `App_Data` configuration files carry **keys**, never text: model labels,
+attribute help texts, validation messages, query labels, program units, action texts, security group
+labels and language names all come from `translations.json` (see
+[Application Translations](#application-translations-translationsjson) for the keys). The wire still
+carries a resolved `TranslatedString`, so a client sees the same shape as before.
 
-Each entity type can have a `description` field used as a human-readable label for create/edit page headings:
+`TranslatedString` remains the type for **data**: an entity property of type `TranslatedString`
+(a product name in three languages, say) is stored, edited and indexed as one, as the sections below
+describe.
 
-```json
-{
-  "name": "Person",
-  "description": {"en": "Person", "fr": "Personne", "nl": "Persoon"},
-  "clrType": "DemoApp.Library.Entities.Person"
-}
-```
+### Labels and help texts are yours to edit
 
-### Attribute Descriptions
-
-An attribute can also carry a `description` — help text shown as an [i] tooltip beside its label.
-Its `en` is seeded on synchronize from a `[Description]` attribute or the property's `///` summary;
-the other languages are yours to write. See [Attribute descriptions](guide-attribute-descriptions.md).
-
-```json
-{
-  "name": "Company",
-  "label": {"en": "Company", "fr": "Entreprise", "nl": "Bedrijf"},
-  "description": {"en": "The Company this person works for.", "fr": "L'entreprise …", "nl": "Het bedrijf …"}
-}
-```
-
-### Attribute Labels
-
-Every attribute's `label` field is a `TranslatedString`:
-
-```json
-{
-  "name": "FirstName",
-  "label": {"en": "First Name", "fr": "Prenom", "nl": "Voornaam"},
-  "dataType": "string"
-}
-```
-
-**A label is yours to edit — synchronize seeds it once and never touches it again.** On the
-synchronize that *creates* an attribute, `label.en` is generated from the property name by
-splitting it on camel case (`FirstName` → `First Name`); the update path never reassigns `Label`,
-so every later synchronize leaves whatever is in the JSON. Hand-edit it freely.
-
-Two consequences worth knowing:
-
-- **Generated labels are a starting point, not a translation.** Camel-case splitting cannot know
-  that `GitHubId` is one word (it yields "Git Hub Id") or that `IsPrivate` reads better as
-  "Private" — and it only ever writes `en`, leaving `fr`/`nl` empty until someone fills them in.
-  A `Ci`/`Pr`/`Sha` prefix has the same problem.
-- **Edit all three languages together.** Nothing correlates them, so shortening `en` and leaving
-  `nl` alone is silent: an English reviewer sees a tidy grid while a Dutch user still gets the old
-  wording. The same applies to [descriptions](guide-attribute-descriptions.md), where it bites
-  harder because the text is longer.
-
-Labels are presentational: editing one never changes the model hash, so it cannot refuse startup.
-
-### Validation Messages
-
-Validation rule messages support translations:
-
-```json
-{
-  "type": "minLength",
-  "value": 2,
-  "message": {
-    "en": "First Name must be at least 2 characters.",
-    "fr": "Le prenom doit contenir au moins 2 caracteres.",
-    "nl": "Voornaam moet minstens 2 tekens bevatten."
-  }
-}
-```
-
-### Program Units (Navigation Menu)
-
-Program unit groups and items use `TranslatedString` for their names:
-
-```json
-{
-  "programUnitGroups": [
-    {
-      "name": {"en": "Fleet Management", "fr": "Gestion de flotte", "nl": "Wagenparkbeheer"},
-      "programUnits": [
-        {
-          "name": {"en": "Cars", "fr": "Voitures", "nl": "Auto's"},
-          "type": "query",
-          "queryId": "a20e8400-..."
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Query Descriptions
-
-Queries use `description` for translated page titles:
-
-```json
-{
-  "name": "GetCars",
-  "description": {"en": "Cars", "fr": "Voitures", "nl": "Auto's"},
-  "contextProperty": "Cars"
-}
-```
-
-### Security Group Names
-
-Group names in `security.json` support translations:
-
-```json
-{
-  "groups": {
-    "a1b2c3d4-...": {"en": "Administrators", "fr": "Administrateurs", "nl": "Beheerders"}
-  }
-}
-```
+- A label no layer translates shows the element's humanized name (`FirstName` → `First Name`).
+  Camel-case splitting cannot know that `GitHubId` is one word, so write the label you want.
+- An attribute's help text (`model.{Entity}.attributes.{Attribute}.description`) is seeded in `en`
+  from the property's `///` summary on synchronize. The other languages are yours to write. See
+  [Attribute descriptions](guide-attribute-descriptions.md).
+- **Edit all languages together.** Nothing correlates them, so shortening `en` and leaving `nl`
+  alone is silent: an English reviewer sees a tidy grid while a Dutch user still gets the old wording.
+- Labels are presentational: editing one never changes the model hash, so it cannot refuse startup.
 
 ## Indexing and sorting a TranslatedString
 
@@ -236,18 +140,16 @@ Create `App_Data/culture.json` to define the supported languages and default lan
 
 ```json
 {
-  "languages": {
-    "en": { "en": "English", "fr": "Anglais", "nl": "Engels" },
-    "fr": { "en": "French", "fr": "Francais", "nl": "Frans" },
-    "nl": { "en": "Dutch", "fr": "Neerlandais", "nl": "Nederlands" }
-  },
+  "languages": ["en", "fr", "nl"],
   "defaultLanguage": "en"
 }
 ```
 
-Each language entry is itself a `TranslatedString` -- its keys are language codes and its values are what to display when the UI is in that language. For example, when the UI is in French, `"nl"` displays as `"Neerlandais"`.
+The file lists language **codes** (#467, D25). Each name comes from the key `culture.languages.{code}`,
+which the core `translations.json` ships for en, fr, nl, de and es; a code no layer translates is shown
+as-is. The object form with inline names is refused.
 
-The C# model:
+The loader resolves the names, so the endpoint still serves this C# model:
 
 ```csharp
 public sealed class CultureConfiguration
@@ -268,29 +170,75 @@ Spark exposes `GET /spark/culture` which returns the culture configuration. The 
 
 ## Application Translations (translations.json)
 
-For UI strings that are not part of the data model (button labels, placeholder text, confirmation dialogs, etc.), create `App_Data/translations.json`:
+**Every localized string lives in `translations.json`** (#467, D1). No other `App_Data` file embeds
+text: model labels, actions, queries, program units, security group names and culture names are all
+looked up by **key**. A loader that finds inline text (`{ "en": "…" }` in a model file, a
+`programUnits.json` name that is not a key, …) refuses to start and names the key it belongs under.
+
+The file nests; a key is the dotted path to a `TranslatedString`:
 
 ```json
 {
-  "save": {
-    "en": "Save",
-    "fr": "Enregistrer",
-    "nl": "Opslaan"
+  "model": {
+    "Car": {
+      "label": { "en": "Car", "nl": "Wagen" },
+      "attributes": {
+        "LicensePlate": {
+          "label": { "en": "License plate", "nl": "Nummerplaat" },
+          "rules": { "regex": { "en": "Use the format 1-ABC-123" } }
+        }
+      }
+    }
   },
-  "cancel": {
-    "en": "Cancel",
-    "fr": "Annuler",
-    "nl": "Annuleren"
-  },
-  "confirmDelete": {
-    "en": "Are you sure you want to delete this item?",
-    "fr": "Etes-vous sur de vouloir supprimer cet element ?",
-    "nl": "Weet u zeker dat u dit item wilt verwijderen?"
+  "queries": { "Recent_Cars": { "label": { "en": "Recent cars" } } },
+  "actions": {
+    "CarCopy": {
+      "label": { "en": "Copy" },
+      "confirmation": { "en": "Copy {count} car(s)?" }
+    }
   }
 }
 ```
 
-Each key is a translation key used in the Angular app. The value is a `TranslatedString`.
+### Keys by convention
+
+A model element finds its text without naming a key (D4):
+
+| Element | Key |
+|---|---|
+| Entity label | `model.{Entity}.label` |
+| Attribute label / help text | `model.{Entity}.attributes.{Attribute}.label` / `.description` |
+| Validation message | `model.{Entity}.attributes.{Attribute}.rules.{type}` (an explicit key in the rule's `message`) |
+| Tab / group label | `model.{Entity}.tabs.{Tab}.label` / `model.{Entity}.groups.{Group}.label` |
+| Query label | `queries.{Query}.label` |
+| Action label / confirmation / description | `actions.{Name}.label` / `.confirmation` / `.description` |
+| Security group | `security.groups.{name}.label` (the group's untranslated name stays its identity for claims, D24) |
+| Language name | `culture.languages.{code}` |
+
+A model file may instead name a key to reuse one (`"label": "common.name"`). An element whose key no
+layer translates shows its humanized name (`CreatedBy` → `Created By`); a help text shows nothing.
+`programUnits.json` names are always explicit keys (`"programUnits.cars"`). Keys are resolved on the
+server when the model loads, so the client and server-side text (validation messages, breadcrumbs)
+receive the resolved `TranslatedString`.
+
+### Composition: libraries, then the app, per key and language (D2, D3, D23)
+
+Every library may ship a `translations.json` (the core one carries `common.*`, `validation.*`,
+`culture.languages.*` and the built-in actions). They are layered in a stable order, the app's file
+last, and they merge **per (key, language)**:
+
+- An app that adds `es` to a library key keeps the library's `en`/`fr`/`nl`.
+- An app that overrides `nl` for a key keeps the other languages.
+- An app's `""` counts as **not defined**: it never blanks a library value.
+- Only two *libraries* giving the same (key, language) different values is warned about, because
+  their order is an arbitrary tiebreak. An app overriding a library is silent.
+
+### Seeding and the missing-keys report
+
+`--spark-synchronize-model` never writes `translations.json`, with one exception (D5): an attribute
+description no layer defines is seeded as `en` from the property's `///` summary or `[Description]`
+into the **app's** file. It only adds; blanking the value asks for the seed again. Sync also prints
+an **Info** list of label keys that lack a translation in a language `culture.json` declares.
 
 ### Translations Endpoint
 
@@ -415,41 +363,28 @@ Spark uses two complementary approaches:
 
 | Mechanism | Source | Used for | Angular API |
 |---|---|---|---|
-| `resolveTranslation()` | Inline `TranslatedString` values from model JSON | Labels, descriptions, validation messages, menu items | `resolveTranslation(ts)` function |
+| `resolveTranslation()` | `TranslatedString` values on the wire: model labels, help texts, validation messages, menu items (resolved from `translations.json` keys on the server) and translated data | Labels, descriptions, validation messages, menu items, `TranslatedString` properties | `resolveTranslation(ts)` function |
 | `SparkLanguageService.t()` | `App_Data/translations.json` via `/spark/translations` | Button text, placeholders, confirmation dialogs, status messages | `'key' \| t` pipe or `langService.t('key')` |
 
-Use inline `TranslatedString` for data-model content that varies per entity. Use `translations.json` for shared UI strings that appear across the application.
+Both read the same `translations.json` layers; the first receives the text already resolved by the
+server, the second looks a key up in the browser.
 
 ## Adding a New Language
 
-1. Add the language to `App_Data/culture.json`:
+1. Add the code to `App_Data/culture.json`: `"languages": ["en", "de"]`.
+2. Add the `de` value to the keys in the app's `App_Data/translations.json`. Composition is per
+   language, so adding `de` to a library key keeps the library's other languages.
+3. Run synchronize: its Info list names the label keys still missing `de`.
 
-```json
-{
-  "languages": {
-    "en": { "en": "English", "de": "Englisch" },
-    "de": { "en": "German", "de": "Deutsch" }
-  },
-  "defaultLanguage": "en"
-}
-```
-
-2. Add translations to each model JSON file (entity descriptions, attribute labels, validation messages).
-
-3. Add translations to `App_Data/translations.json` for UI strings.
-
-4. Add translations to `App_Data/programUnits.json` for navigation menu items.
-
-No code changes or recompilation are required -- all translations are loaded from JSON files at runtime.
+No code changes or recompilation are required: the app's translations are loaded from JSON at runtime.
 
 ## Complete Example
 
 See the demo apps for working examples:
-- `Demo/Fleet/Fleet/App_Data/culture.json` -- culture configuration with en/fr/nl
-- `Demo/HR/HR/App_Data/culture.json` -- culture configuration with en/fr/nl
-- `Demo/DemoApp/DemoApp/App_Data/translations.json` -- application translations
-- `Demo/DemoApp/DemoApp/App_Data/Model/Person.json` -- model with translated labels
-- `node_packages/ng-spark/src/lib/models/translated-string.ts` -- Angular type and resolver
-- `node_packages/ng-spark/src/lib/services/spark-language.service.ts` -- SparkLanguageService
-- `node_packages/ng-spark/src/lib/pipes/translate-key.pipe.ts` -- TranslateKeyPipe
+- `apps/Fleet/Fleet/App_Data/culture.json` -- culture configuration with en/fr/nl
+- `apps/Fleet/Fleet/App_Data/translations.json` -- model, query, action and program-unit texts
+- `libs/spark/MintPlayer.Spark/App_Data/translations.json` -- the core layer (`common.*`, `validation.*`, built-in actions)
+- `libs/node_packages/ng-spark/models/src/translated-string.ts` -- Angular type and resolver
+- `libs/node_packages/ng-spark/services/src/spark-language.service.ts` -- SparkLanguageService
+- `libs/node_packages/ng-spark/pipes/src/translate-key.pipe.ts` -- TranslateKeyPipe
 - `MintPlayer.Spark.Abstractions/TranslatedString.cs` -- C# TranslatedString class with JSON converter

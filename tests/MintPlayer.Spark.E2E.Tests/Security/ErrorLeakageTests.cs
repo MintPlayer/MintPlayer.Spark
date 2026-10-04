@@ -67,7 +67,7 @@ public class ErrorLeakageTests
         // Unknown id → client returns null (404), no body surfaced to caller. Exercise via
         // the update path which DOES throw on 404 and preserves ResponseBody.
         var carTypeId = Guid.Parse("facb6829-f2a1-4ae2-a046-6ba506e8c0ce");
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.DeletePersistentObjectAsync(carTypeId, "{}"));
+        var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.DeleteAsLoadedAsync(carTypeId, "{}"));
         AssertNoLeakyTokens(ex.ResponseBody, "Delete with malformed id");
     }
 

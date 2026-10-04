@@ -1,4 +1,5 @@
 using System.Reflection;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 
 namespace MintPlayer.Spark.Services;
@@ -15,7 +16,7 @@ public sealed record SparkReservedAction(string Verb, Type DeclaringType, Assemb
 /// </summary>
 public static class SparkReservedActionRegistry
 {
-    private static readonly Lazy<IReadOnlyList<SparkReservedAction>> all = new(() => Discover(SparkAwareAssemblies()));
+    private static readonly Lazy<IReadOnlyList<SparkReservedAction>> all = new(() => Discover(SparkAssemblies.SparkAware()));
 
     /// <summary>
     /// Every verb declared by an assembly loaded in this process or referenced by a Spark-aware one.
@@ -77,56 +78,4 @@ public static class SparkReservedActionRegistry
                 string.Join(Environment.NewLine, problems)
                 + $"{Environment.NewLine}A reserved verb is a right Spark or a package asks for; an action of the same name would share it. Rename the action class.");
     }
-
-    /// <summary>
-    /// The loaded assemblies, plus — transitively — the references of every assembly that references
-    /// <c>MintPlayer.Spark.Abstractions</c>, since only those can declare a verb or pull in one that does.
-    /// </summary>
-    private static IEnumerable<Assembly> SparkAwareAssemblies()
-    {
-        var abstractionsName = typeof(SparkReservedActionsAttribute).Assembly.GetName().Name;
-        var seen = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
-        var queue = new Queue<Assembly>();
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            if (assembly.IsDynamic || assembly.GetName().Name is not { } name || !seen.TryAdd(name, assembly))
-                continue;
-            queue.Enqueue(assembly);
-        }
-
-        while (queue.Count > 0)
-        {
-            var assembly = queue.Dequeue();
-            AssemblyName[] references;
-            try { references = assembly.GetReferencedAssemblies(); }
-            catch { continue; }
-
-            if (!string.Equals(assembly.GetName().Name, abstractionsName, StringComparison.OrdinalIgnoreCase)
-                && !references.Any(r => string.Equals(r.Name, abstractionsName, StringComparison.OrdinalIgnoreCase)))
-                continue;
-
-            foreach (var reference in references)
-            {
-                if (reference.Name is not { } name || seen.ContainsKey(name) || IsPlatform(name))
-                    continue;
-                try
-                {
-                    var loaded = Assembly.Load(reference);
-                    seen[name] = loaded;
-                    queue.Enqueue(loaded);
-                }
-                catch
-                {
-                    seen[name] = null!; // Not loadable here; nothing it declares can be asked for either.
-                }
-            }
-        }
-
-        return seen.Values.Where(a => a is not null);
-    }
-
-    private static bool IsPlatform(string name)
-        => name.StartsWith("System", StringComparison.Ordinal)
-           || name.StartsWith("Microsoft.", StringComparison.Ordinal)
-           || name is "netstandard" or "mscorlib";
 }

@@ -2,19 +2,18 @@ using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
-using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
-using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// #460 item 1 — <see cref="IPersistentObjectInterceptor"/> in <c>DatabaseAccess</c>, including spike
-/// S4: a delete replacement decided where an <c>OnDeleteAsync</c> override cannot defeat it, and
-/// replication forwarding a save rather than a hard delete.
+/// #460 item 1 and #482 — persistence interceptors run by <c>DatabaseAccess</c>,
+/// including spike S4: a delete replacement nothing can defeat (now structural: the Actions class has
+/// no delete method), surfaced to every after-delete interceptor so replication forwards a save rather than a
+/// hard delete.
 /// </summary>
 public class PersistentObjectInterceptorTests : SparkTestDriver
 {
@@ -22,7 +21,7 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
 
     private SparkEndpointFactory<InterceptedContext> factory = null!;
     private readonly InterceptionLog log = new();
-    private readonly RecordingSyncInterceptor sync = new();
+    private readonly ReplicationLog sync = new();
 
     public override async Task InitializeAsync()
     {
@@ -33,12 +32,13 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
             configureServices: services =>
             {
                 services.AddSingleton(log);
-                services.AddSingleton<ISyncActionInterceptor>(sync);
+                services.AddSingleton(sync);
             },
             configureSpark: spark => spark
-                .AddPersistentObjectInterceptor<ReplacingDeleteInterceptor>()
-                .AddPersistentObjectInterceptor<StampingInterceptor>()
-                .AddPersistentObjectInterceptor<StampingInterceptor>());   // twice: a no-op
+                .AddInterceptor<ReplacingDeleteInterceptor>()
+                .AddInterceptor<StampingInterceptor>()
+                .AddInterceptor<StampingInterceptor>()     // twice: a no-op
+                .AddInterceptor<RecordingReplicationInterceptor>());
     }
 
     public override async Task DisposeAsync()
@@ -51,7 +51,7 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
         await session.StoreAsync(new InterceptedNote { Id = "InterceptedNotes/1", Title = "first" }));
 
     [Fact]
-    public async Task S4_a_replaced_delete_survives_an_OnDeleteAsync_override_and_replicates_as_a_save()
+    public async Task S4_a_replaced_delete_is_decided_first_and_replicates_as_a_save()
     {
         await SeedAsync();
         using (var scope = factory.CreateScope())
@@ -62,17 +62,16 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
 
         using var verify = Store.OpenAsyncSession();
         var stored = await verify.LoadAsync<InterceptedNote>("InterceptedNotes/1");
-        stored.Should().NotBeNull("the interceptor replaced the delete, so the document survives");
+        stored.Should().NotBeNull("the replacement kept the document");
         stored!.IsDeleted.Should().BeTrue("the replacement's changes to the tracked entity were saved");
 
-        log.Entries.Should().NotContain("actions.OnDeleteAsync",
-            "a replaced delete never reaches the Actions class's OnDeleteAsync — not even its override");
         log.Entries.Should().Equal(
-            "actions.OnBeforeDeleteAsync",
-            "replace.OnBeforeDeleteAsync",
-            "stamp.OnBeforeDeleteAsync",
-            "stamp.OnAfterDeleteAsync",
-            "replace.OnAfterDeleteAsync");
+            "replace.ReplaceAsync",
+            "replace.OnBeforeDeleteAsync:replaced",
+            "stamp.OnBeforeDeleteAsync:replaced",
+            "actions.OnBeforeDeleteAsync:replaced",
+            "replace.OnAfterDeleteAsync",
+            "stamp.OnAfterDeleteAsync");
 
         sync.Deletes.Should().BeEmpty("a soft delete must not reach the owner module as a hard delete");
         sync.Saves.Should().Equal("InterceptedNotes/1");
@@ -92,18 +91,17 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
         (await verify.LoadAsync<InterceptedNote>("InterceptedNotes/1")).Should().BeNull();
 
         log.Entries.Should().Equal(
-            "actions.OnBeforeDeleteAsync",
-            "replace.OnBeforeDeleteAsync",
-            "stamp.OnBeforeDeleteAsync",
-            "actions.OnDeleteAsync",
-            "stamp.OnAfterDeleteAsync",
-            "replace.OnAfterDeleteAsync");
+            "replace.OnBeforeDeleteAsync:deleted",
+            "stamp.OnBeforeDeleteAsync:deleted",
+            "actions.OnBeforeDeleteAsync:deleted",
+            "replace.OnAfterDeleteAsync",
+            "stamp.OnAfterDeleteAsync");
         sync.Deletes.Should().Equal("InterceptedNotes/1");
         sync.Saves.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task Save_hooks_run_after_the_actions_hook_in_order_and_after_hooks_in_reverse()
+    public async Task Save_interceptors_run_in_registration_order_with_the_actions_interceptor_last()
     {
         using (var scope = factory.CreateScope())
         {
@@ -115,15 +113,54 @@ public class PersistentObjectInterceptorTests : SparkTestDriver
         }
 
         log.Entries.Should().Equal(
-            "actions.OnBeforeSaveAsync",
             "replace.OnBeforeSaveAsync:New",
             "stamp.OnBeforeSaveAsync:New",
-            "stamp.OnAfterSaveAsync",
-            "replace.OnAfterSaveAsync");
+            "actions.OnBeforeSaveAsync",
+            "replace.OnAfterSaveAsync",
+            "stamp.OnAfterSaveAsync");
 
         using var verify = Store.OpenAsyncSession();
         var stored = await verify.Query<InterceptedNote>().Customize(c => c.WaitForNonStaleResults()).SingleAsync();
         stored.Stamp.Should().Be("stamped", "a before-save interceptor's mutation is what gets written");
+    }
+
+    [Fact]
+    public async Task A_failing_after_interceptor_neither_fails_the_committed_save_nor_skips_the_others()
+    {
+        log.FailAfterSave = true;
+        using (var scope = factory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IDatabaseAccess>();
+            var po = new PersistentObject { ObjectTypeId = NoteTypeId, Name = "InterceptedNote" };
+            po.AddAttribute(new PersistentObjectAttribute { Name = "Title", DataType = "string", Value = "kept", IsValueChanged = true });
+            var saved = await db.SavePersistentObjectAsync(po);
+            saved.Id.Should().NotBeNullOrEmpty();
+        }
+
+        log.Entries.Should().Contain("stamp.OnAfterSaveAsync", "the interceptor after the failing one still ran");
+        using var verify = Store.OpenAsyncSession();
+        (await verify.Query<InterceptedNote>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task A_cancel_writes_nothing_and_runs_no_after_interceptor()
+    {
+        await SeedAsync();
+        log.CancelDelete = true;
+        using (var scope = factory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IDatabaseAccess>();
+            var act = () => db.DeletePersistentObjectAsync(NoteTypeId, "InterceptedNotes/1");
+            await act.Should().ThrowAsync<SparkCancelException>();
+        }
+
+        using var verify = Store.OpenAsyncSession();
+        var stored = await verify.LoadAsync<InterceptedNote>("InterceptedNotes/1");
+        stored.Should().NotBeNull();
+        stored!.IsDeleted.Should().BeFalse("the replacement's mark was taken back with the cancel");
+        log.Entries.Should().NotContain(e => e.Contains("OnAfter"));
+        sync.Saves.Should().BeEmpty();
+        sync.Deletes.Should().BeEmpty();
     }
 
     [Fact]
@@ -148,41 +185,46 @@ public class InterceptedNote
     public string? Stamp { get; set; }
 }
 
-/// <summary>Overrides OnDeleteAsync WITHOUT calling the base — the case D1 says must not defeat a replacement.</summary>
-public class InterceptedNoteActions : DefaultPersistentObjectActions<InterceptedNote>
+/// <summary>An Actions class that is also its type's interceptor — run without registration, after the registered interceptors.</summary>
+public class InterceptedNoteActions : DefaultPersistentObjectActions<InterceptedNote>,
+    IBeforeSave<InterceptedNote>, IBeforeDelete<InterceptedNote>
 {
     private readonly InterceptionLog log;
 
     public InterceptedNoteActions(IEntityMapper entityMapper, InterceptionLog log) : base(entityMapper) => this.log = log;
 
-    public override Task OnBeforeSaveAsync(PersistentObject obj, InterceptedNote entity)
+    public ValueTask OnBeforeSaveAsync(InterceptedNote entity, SaveContext context)
     {
         log.Entries.Add("actions.OnBeforeSaveAsync");
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public override Task OnBeforeDeleteAsync(InterceptedNote entity)
+    public ValueTask OnBeforeDeleteAsync(InterceptedNote entity, DeleteContext context)
     {
-        log.Entries.Add("actions.OnBeforeDeleteAsync");
-        return Task.CompletedTask;
-    }
-
-    public override async Task OnDeleteAsync(IAsyncDocumentSession session, string id)
-    {
-        log.Entries.Add("actions.OnDeleteAsync");
-        session.Delete(id);
-        await session.SaveChangesAsync();
+        log.Entries.Add($"actions.OnBeforeDeleteAsync:{(context.IsReplaced ? "replaced" : "deleted")}");
+        if (log.CancelDelete)
+            throw new SparkCancelException();
+        return ValueTask.CompletedTask;
     }
 }
 
 public sealed class InterceptionLog
 {
     public List<string> Entries { get; } = [];
+    public bool FailAfterSave { get; set; }
+    public bool CancelDelete { get; set; }
 }
 
-public sealed class ReplacingDeleteInterceptor(InterceptionLog log) : IPersistentObjectInterceptor
+public sealed class ReplacingDeleteInterceptor(InterceptionLog log) : IDeleteReplacement, IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete
 {
     public bool AppliesTo(Type entityType) => entityType == typeof(InterceptedNote);
+
+    public ValueTask<bool> ReplaceAsync(DeleteContext context)
+    {
+        log.Entries.Add("replace.ReplaceAsync");
+        ((InterceptedNote)context.Entity).IsDeleted = true;
+        return ValueTask.FromResult(true);
+    }
 
     public ValueTask OnBeforeSaveAsync(SaveContext context)
     {
@@ -193,17 +235,14 @@ public sealed class ReplacingDeleteInterceptor(InterceptionLog log) : IPersisten
     public ValueTask OnAfterSaveAsync(SaveContext context)
     {
         log.Entries.Add("replace.OnAfterSaveAsync");
+        if (log.FailAfterSave)
+            throw new InvalidOperationException("after-interceptor failure");
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnBeforeDeleteAsync(DeleteContext context)
     {
-        log.Entries.Add("replace.OnBeforeDeleteAsync");
-        if (!context.IsPurge)
-        {
-            ((InterceptedNote)context.Entity).IsDeleted = true;
-            context.Replace();
-        }
+        log.Entries.Add($"replace.OnBeforeDeleteAsync:{(context.IsReplaced ? "replaced" : "deleted")}");
         return ValueTask.CompletedTask;
     }
 
@@ -214,14 +253,14 @@ public sealed class ReplacingDeleteInterceptor(InterceptionLog log) : IPersisten
     }
 }
 
-public sealed class StampingInterceptor(InterceptionLog log) : IPersistentObjectInterceptor
+public sealed class StampingInterceptor(InterceptionLog log) : IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete, IAfterLoad
 {
     public bool AppliesTo(Type entityType) => entityType == typeof(InterceptedNote);
 
     public ValueTask OnBeforeSaveAsync(SaveContext context)
     {
         log.Entries.Add($"stamp.OnBeforeSaveAsync:{context.Operation}");
-        ((InterceptedNote)context.Entity!).Stamp = "stamped";
+        ((InterceptedNote)context.Entity).Stamp = "stamped";
         return ValueTask.CompletedTask;
     }
 
@@ -233,7 +272,7 @@ public sealed class StampingInterceptor(InterceptionLog log) : IPersistentObject
 
     public ValueTask OnBeforeDeleteAsync(DeleteContext context)
     {
-        log.Entries.Add("stamp.OnBeforeDeleteAsync");
+        log.Entries.Add($"stamp.OnBeforeDeleteAsync:{(context.IsReplaced ? "replaced" : "deleted")}");
         return ValueTask.CompletedTask;
     }
 
@@ -250,29 +289,27 @@ public sealed class StampingInterceptor(InterceptionLog log) : IPersistentObject
     }
 }
 
-public sealed class RecordingSyncInterceptor : ISyncActionInterceptor
+public sealed class ReplicationLog
 {
     public List<string> Saves { get; } = [];
     public List<string> Deletes { get; } = [];
+}
 
-    public bool IsReplicated(Type entityType) => entityType == typeof(InterceptedNote);
+/// <summary>What the Replication package's interceptor forwards, recorded: a replaced delete as a save.</summary>
+public sealed class RecordingReplicationInterceptor(ReplicationLog sync) : IAfterSave, IAfterDelete
+{
+    public bool AppliesTo(Type entityType) => entityType == typeof(InterceptedNote);
 
-    public Task HandleSaveAsync(Type entityType, PersistentObject obj)
+    public ValueTask OnAfterSaveAsync(SaveContext context)
     {
-        Saves.Add(obj.Id ?? "(new)");
-        return Task.CompletedTask;
+        sync.Saves.Add(context.Id ?? "(new)");
+        return ValueTask.CompletedTask;
     }
 
-    public Task HandleSaveAsync(object entity, string? documentId)
+    public ValueTask OnAfterDeleteAsync(DeleteContext context)
     {
-        Saves.Add(documentId ?? "(new)");
-        return Task.CompletedTask;
-    }
-
-    public Task HandleDeleteAsync(Type entityType, string documentId)
-    {
-        Deletes.Add(documentId);
-        return Task.CompletedTask;
+        (context.IsReplaced ? sync.Saves : sync.Deletes).Add(context.Id);
+        return ValueTask.CompletedTask;
     }
 }
 

@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.Actions;
 /// The mirror of <see cref="SparkNewArgs{T}"/>, and subject to the same rule — nothing here is
 /// written. The row is spliced out of the client's collection and reaches the database only when
 /// the parent is saved, so a hook that wants to write something (an audit entry, a tombstone)
-/// writes it from <see cref="IPersistentObjectActions{T}.OnBeforeSaveAsync"/> on the parent.
+/// writes it from a before-save interceptor (<c>IBeforeSave</c>) of the parent.
 /// </para>
 /// </summary>
 /// <remarks>

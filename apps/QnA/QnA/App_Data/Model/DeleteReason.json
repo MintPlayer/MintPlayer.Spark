@@ -1,0 +1,24 @@
+{
+  "persistentObject": {
+    "id": "6c1d2e8a-5f47-4b3e-9a16-d84e0b7c3f52",
+    "name": "DeleteReason",
+    "breadcrumb": "{Reason}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "7d2e3f9b-6a58-4c4f-ab27-e95f1c8d4a63",
+        "name": "Reason",
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ]
+  },
+  "queries": []
+}

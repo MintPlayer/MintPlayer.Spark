@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Interceptors;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -22,7 +23,7 @@ public static class SparkHistoryExtensions
     /// Revision history: at startup each model type's <c>revisions</c> block is merged into the
     /// database's revisions configuration; <see cref="IAuditable"/> entities are stamped on every write;
     /// <c>POST /spark/po/revisions</c>, <c>/spark/po/revision</c> and <c>/spark/po/revert</c> are
-    /// mapped; <see cref="ISparkRevisionObserver"/>s are told about every write. Binds
+    /// mapped; edits to a type with revisions record their changed attributes for durable after-commit interceptors. Binds
     /// <c>Spark:History</c>, then applies <paramref name="configure"/> (code wins).
     /// </summary>
     /// <remarks>
@@ -41,7 +42,7 @@ public static class SparkHistoryExtensions
         if (section is not null)
             builder.Services.PostConfigure<SparkHistoryOptions>(options => ApplyRevisionConfiguration(section, options));
 
-        builder.Services.AddPersistentObjectInterceptor<HistoryInterceptor>();
+        builder.Services.AddSparkInterceptor<HistoryInterceptor>();
         builder.Services.TryAddScoped<HistoryRequestState>();
         builder.Services.TryAddScoped<ISparkHistory, SparkHistory>();
 
@@ -76,14 +77,6 @@ public static class SparkHistoryExtensions
                 options.Types[typeSection.Key] = type = new SparkRevisionTypeOptions();
             typeSection.Bind(type);
         }
-    }
-
-    /// <summary>Adds an <see cref="ISparkRevisionObserver"/>. Scoped, multi-registered; adding the same type twice is a no-op.</summary>
-    public static ISparkBuilder AddRevisionObserver<TObserver>(this ISparkBuilder builder)
-        where TObserver : class, ISparkRevisionObserver
-    {
-        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkRevisionObserver, TObserver>());
-        return builder;
     }
 
     /// <summary>Sets the <see cref="IHistoryUserNameResolver"/> revision lists use (scoped; replaces an earlier one).</summary>

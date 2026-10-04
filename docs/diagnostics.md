@@ -58,6 +58,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK033 | Warning | MintPlayer.Spark.SoftDelete is not referenced, so contributions are hard-deleted (PRD Q4) | `ContributionsAnalyzer` | — |
 | SPARK034 | Error | Unsupported `[Contribution]` declaration: owner generic or not a class; static/indexer property; unknown collection type; no setter on a non-`List`/`IList`/`ICollection` property; element not a non-abstract, non-generic class/record with a parameterless constructor; slot without a public getter and setter | `ContributionsAnalyzer` | — |
 | SPARK035 | Error | Contribution element clashes with generated members: a reserved name (`Key`, `Id`, `TargetId`, `ContributorId`, `ContributionId`, `UpdatedAt`, `ContributionCount`, `ContributorName`, the `ISoftDeletable` members), `[ValueKey]`, or `[ValueObject]` | `ContributionsAnalyzer` | — |
+| SPARK036 | Warning | Two referenced libraries state the same property of the same action differently in their `actions.json`; the later library by assembly name wins. State the property in the app's `actions.json` to choose (#467, D7) | `LibraryActionsConflictAnalyzer` | — |
 
 SPARK030 is an **MSBuild** warning, not a Roslyn diagnostic: it is raised before `Build` in a project
 that references `MintPlayer.Spark.Authorization`, has `EnableSparkAuthSpa=true` and a

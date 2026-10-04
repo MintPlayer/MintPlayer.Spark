@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -110,7 +111,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
                 services.AddScoped<VmItemActions>();
                 services.AddScoped<VmSongActions>();
                 services.AddScoped<VmLyricActions>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(new StubCustomActions(Ping));
+                services.AddSingleton(TestActions.LoaderWithCustom(Ping));
                 services.AddScoped<ICustomActionResolver>(sp => new StubActionResolver(Ping, sp.GetRequiredService<VmPingAction>()));
             },
             security: SparkTestSecurity.FromJson(Security(rules)));
@@ -220,7 +221,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
             "-Edit/VmItem/Name", "-Edit/VmItem/Code", "-QueryRead/VmItem/Code");
 
         var action = await spark.ExecuteActionAsync(ItemTypeId, Ping);
-        await spark.DeletePersistentObjectAsync(ItemTypeId, "vmitems/1");
+        await spark.DeleteAsLoadedAsync(ItemTypeId, "vmitems/1");
 
         action.StatusCode.Should().Be(200);
         (await LoadOrNullAsync<VmItem>("vmitems/1")).Should().BeNull();
@@ -232,7 +233,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
         var spark = await StartAsync("+QueryReadEditNew/VmItem", "+Edit/VmItem/Name", "+Edit/VmItem/Code");
 
         var action = await ActionRunsAsync(spark);
-        var deleted = await SucceedsAsync(() => spark.DeletePersistentObjectAsync(ItemTypeId, "vmitems/1"));
+        var deleted = await SucceedsAsync(() => spark.DeleteAsLoadedAsync(ItemTypeId, "vmitems/1"));
 
         action.Should().BeFalse();
         deleted.Should().BeFalse();
@@ -322,10 +323,10 @@ public class AttributeVerbMatrixTests : SparkTestDriver
                 [SparkWellKnownGroups.Anonymous] = SparkTestSecurity.AnonymousGroupId.ToString(),
                 [SparkWellKnownGroups.Authenticated] = SparkTestSecurity.AuthenticatedGroupId.ToString(),
             },
-            Groups = new Dictionary<string, TranslatedString>
+            Groups = new Dictionary<string, string>
             {
-                [SparkTestSecurity.AnonymousGroupId.ToString()] = TranslatedString.Create("Anonymous visitors"),
-                [SparkTestSecurity.AuthenticatedGroupId.ToString()] = TranslatedString.Create("Signed-in users"),
+                [SparkTestSecurity.AnonymousGroupId.ToString()] = "Anonymous visitors",
+                [SparkTestSecurity.AuthenticatedGroupId.ToString()] = "Signed-in users",
             },
             Rights = rights,
         });
@@ -380,16 +381,6 @@ public class AttributeVerbMatrixTests : SparkTestDriver
             ],
         },
     };
-
-    private sealed class StubCustomActions(string name) : ICustomActionsConfigurationLoader
-    {
-        public CustomActionsConfiguration GetConfiguration() => new()
-        {
-            [name] = new CustomActionDefinition { DisplayName = TranslatedString.Create(name), ShowedOn = "both" },
-        };
-
-        public void InvalidateCache() { }
-    }
 
     private sealed class StubActionResolver(string name, ICustomAction action) : ICustomActionResolver
     {

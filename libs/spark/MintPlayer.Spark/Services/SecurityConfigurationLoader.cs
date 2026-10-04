@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.Services;
 /// evaluator probes.
 /// </summary>
 /// <remarks>
-/// Structurally the twin of <see cref="CustomActionsConfigurationLoader"/> — same cache, same
+/// Structurally the twin of <see cref="ActionsCatalogueLoader"/> — same cache, same
 /// watcher, same fixed path — and deliberately so: both read one JSON file out of
 /// <c>App_Data</c> at startup and reload it when it changes. The path is not configurable for the
 /// same reason that one is not: a second place to put the file is a second place to fail to find

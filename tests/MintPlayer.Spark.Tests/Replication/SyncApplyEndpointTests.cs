@@ -113,7 +113,7 @@ public class SyncApplyEndpointTests
         var result = await NewEndpoint().HandleAsync(ctx);
 
         await _handler.DidNotReceive().HandleSaveAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Any<bool>());
         (await StatusAsync(result, ctx)).Should().Be((HttpStatusCode)207);
     }
 
@@ -121,7 +121,7 @@ public class SyncApplyEndpointTests
     public async Task Insert_with_data_saves_and_returns_200()
     {
         Cert(ModuleCertificateValidation.Ok);
-        _handler.HandleSaveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>())
+        _handler.HandleSaveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Any<bool>())
             .Returns(Task.FromResult<string?>("cars/generated"));
 
         var ctx = NewContext(new
@@ -139,7 +139,7 @@ public class SyncApplyEndpointTests
         // payload presence rather than an exact key name — the point is that the data
         // dictionary flowed through to the handler.
         await _handler.Received(1).HandleSaveAsync("Cars", null,
-            Arg.Is<Dictionary<string, object?>>(d => d.Count > 0), Arg.Any<string[]?>());
+            Arg.Is<Dictionary<string, object?>>(d => d.Count > 0), Arg.Any<string[]?>(), false);
         (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.OK);
     }
 

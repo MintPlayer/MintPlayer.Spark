@@ -1,3 +1,4 @@
+using CodeCoverage.Tests._Infrastructure;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
 using CodeCoverage.LookupReferences;
@@ -177,7 +178,7 @@ public class GateSettingsTests
         };
 
         await Assert.ThrowsAsync<SparkValidationException>(
-            () => Actions().OnBeforeSaveAsync(Po(), repository));
+            () => Actions().BeforeSaveAsync(Po(), repository));
     }
 
     [Fact]
@@ -196,7 +197,7 @@ public class GateSettingsTests
             },
         };
 
-        await Actions().OnBeforeSaveAsync(Po(), repository);
+        await Actions().BeforeSaveAsync(Po(), repository);
     }
 
     [Theory]
@@ -213,7 +214,7 @@ public class GateSettingsTests
             Gate = new GateSettings { ProjectMode = blank!, ProjectBasis = blank! },
         };
 
-        await Actions().OnBeforeSaveAsync(Po(), repository);
+        await Actions().BeforeSaveAsync(Po(), repository);
 
         Assert.Equal(ProjectComparison.Auto, repository.Gate!.ProjectMode);
         Assert.Equal(LookupReferences.ProjectBasis.Scoped, repository.Gate.ProjectBasis);
@@ -224,7 +225,7 @@ public class GateSettingsTests
     {
         // An absent gate means "every default", which is how most repositories sit. It must not be
         // dragged through the percentage checks.
-        await Actions().OnBeforeSaveAsync(
+        await Actions().BeforeSaveAsync(
             Po(), new Repository { OwnerLogin = "someone", Gate = null });
     }
 
@@ -240,7 +241,7 @@ public class GateSettingsTests
         };
 
         var ex = await Assert.ThrowsAsync<SparkValidationException>(
-            () => Actions().OnBeforeSaveAsync(Po(), repository));
+            () => Actions().BeforeSaveAsync(Po(), repository));
 
         Assert.Equal(nameof(GateSettings.ProjectTarget), ex.AttributeName);
     }

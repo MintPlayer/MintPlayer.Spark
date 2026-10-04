@@ -26,6 +26,12 @@ internal sealed class JsonString : JsonNode
 
 internal sealed class JsonNull : JsonNode { }
 
+/// <summary>A boolean or number, read only when the caller allows scalars.</summary>
+internal sealed class JsonScalar : JsonNode
+{
+    public string Raw { get; set; } = "";
+}
+
 internal sealed class JsonParseException : Exception
 {
     public JsonParseException(string message) : base(message) { }
@@ -33,25 +39,26 @@ internal sealed class JsonParseException : Exception
 
 internal static class MiniJson
 {
-    public static JsonNode Parse(string text)
+    /// <param name="allowScalars">Read booleans and numbers as <see cref="JsonScalar"/> (actions.json); translations.json refuses them.</param>
+    public static JsonNode Parse(string text, bool allowScalars = false)
     {
         var pos = 0;
         SkipWhitespace(text, ref pos);
-        var node = ParseValue(text, ref pos, "");
+        var node = ParseValue(text, ref pos, "", allowScalars);
         SkipWhitespace(text, ref pos);
         if (pos < text.Length)
             throw new JsonParseException($"Unexpected trailing content at offset {pos}.");
         return node;
     }
 
-    private static JsonNode ParseValue(string s, ref int pos, string path)
+    private static JsonNode ParseValue(string s, ref int pos, string path, bool allowScalars)
     {
         SkipWhitespace(s, ref pos);
         if (pos >= s.Length) throw new JsonParseException("Unexpected end of input.");
         var c = s[pos];
         switch (c)
         {
-            case '{': return ParseObject(s, ref pos, path);
+            case '{': return ParseObject(s, ref pos, path, allowScalars);
             case '"': return new JsonString { Value = ParseString(s, ref pos), Path = path };
             case 'n':
                 if (pos + 4 <= s.Length && s.Substring(pos, 4) == "null")
@@ -63,15 +70,31 @@ internal static class MiniJson
             case '[':
                 throw new JsonParseException($"Arrays are not allowed in translations.json (at '{path}').");
             case 't': case 'f':
+                if (allowScalars) return ParseScalar(s, ref pos, path);
                 throw new JsonParseException($"Booleans are not allowed in translations.json (at '{path}').");
             default:
+                if (allowScalars && (c == '-' || (c >= '0' && c <= '9')))
+                    return ParseScalar(s, ref pos, path);
                 if (c == '-' || (c >= '0' && c <= '9'))
                     throw new JsonParseException($"Numbers are not allowed in translations.json (at '{path}').");
                 throw new JsonParseException($"Unexpected character '{c}' at offset {pos}.");
         }
     }
 
-    private static JsonObject ParseObject(string s, ref int pos, string path)
+    /// <summary>A boolean or a number, kept as its raw text (<c>true</c>, <c>-1.5e3</c>).</summary>
+    private static JsonScalar ParseScalar(string s, ref int pos, string path)
+    {
+        var start = pos;
+        while (pos < s.Length && (char.IsLetterOrDigit(s[pos]) || s[pos] is '-' or '+' or '.'))
+            pos++;
+        var raw = s.Substring(start, pos - start);
+        if (raw is not ("true" or "false")
+            && !double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+            throw new JsonParseException($"Unexpected token '{raw}' at offset {start}.");
+        return new JsonScalar { Raw = raw, Path = path };
+    }
+
+    private static JsonObject ParseObject(string s, ref int pos, string path, bool allowScalars)
     {
         if (s[pos] != '{') throw new JsonParseException("Expected '{'.");
         pos++;
@@ -90,7 +113,7 @@ internal static class MiniJson
                 throw new JsonParseException($"Expected ':' after property name at offset {pos}.");
             pos++;
             var childPath = string.IsNullOrEmpty(path) ? key : path + "." + key;
-            var value = ParseValue(s, ref pos, childPath);
+            var value = ParseValue(s, ref pos, childPath, allowScalars);
             obj.Members.Add(new KeyValuePair<string, JsonNode>(key, value));
             SkipWhitespace(s, ref pos);
             if (pos >= s.Length) throw new JsonParseException("Unexpected end of object.");

@@ -44,11 +44,11 @@ internal sealed partial class SparkSoftDelete : ISparkSoftDelete
         return po.Etag;
     }
 
-    public async Task PurgeAsync(Guid objectTypeId, string id, CancellationToken cancellationToken = default)
+    public async Task PurgeAsync(Guid objectTypeId, string id, string? etag = null, CancellationToken cancellationToken = default)
     {
         RequireSoftDeletable(objectTypeId);
 
-        await databaseAccess.DeletePersistentObjectAsync(objectTypeId, id, PersistentObjectOperation.Purge);
+        await databaseAccess.DeletePersistentObjectAsync(objectTypeId, id, PersistentObjectOperation.Purge, etag);
 
         // DatabaseAccess returns quietly for a missing or foreign-collection id; only the interceptor's
         // after-hook knows a purge really happened.

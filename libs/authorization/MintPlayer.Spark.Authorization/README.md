@@ -508,11 +508,11 @@ The corresponding `security.json`:
     "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors" },
-    "a1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users" },
-    "a1b2c3d4-0000-0000-0000-000000000001": { "en": "Administrators" },
-    "a1b2c3d4-0000-0000-0000-000000000002": { "en": "Managers" },
-    "a1b2c3d4-0000-0000-0000-000000000003": { "en": "Viewers" }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "a1b2c3d4-0000-0000-0000-00000000000f": "Signed-in users",
+    "a1b2c3d4-0000-0000-0000-000000000001": "Administrators",
+    "a1b2c3d4-0000-0000-0000-000000000002": "Managers",
+    "a1b2c3d4-0000-0000-0000-000000000003": "Viewers"
   },
   "rights": [
     { "id": "...", "resource": "QueryRead/Company", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },

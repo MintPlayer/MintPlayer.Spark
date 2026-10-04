@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Actions;
 /// <summary>
 /// Default implementation of <see cref="IPersistentObjectActions{T}"/> providing standard CRUD behavior.
 /// Inherit from this class to customize specific operations while keeping default behavior for others.
-/// Entity mapping from PersistentObject to T happens inside OnSaveAsync.
+/// Entity mapping from PersistentObject to T happens in <see cref="MapAsync"/>; the framework owns the write (#482).
 /// </summary>
 /// <typeparam name="T">The entity type</typeparam>
 public partial class DefaultPersistentObjectActions<T> : IPersistentObjectActions<T>, IBatchedLoadActions where T : class
@@ -54,9 +54,9 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// return result;
     /// </code>
     /// ⚠️ <b>Not calling the base takes over ALL of the above</b> — including the collection
-    /// guard and row security — the read-side twin of the WITH CHECK caveat on
-    /// <see cref="OnSaveAsync"/>. The type-level <c>Read</c> right is checked by the framework
-    /// before this method runs and cannot be skipped here.
+    /// guard and row security. (The write side has no such gap: the framework owns every write,
+    /// #482.) The type-level <c>Read</c> right is checked by the framework before this method runs
+    /// and cannot be skipped here.
     /// </para>
     /// </summary>
     public virtual async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
@@ -123,7 +123,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         // Materialize interceptors (contributions F1) fill satellite properties before any gate or
         // the mapper reads the entities. Here rather than inside the virtual MaterializeAsync, so an
         // override of how entities are found cannot skip them.
-        if (services.GetService<IPersistentObjectInterceptorPipeline>() is { } pipeline)
+        if (services.GetService<ISparkInterceptorPipeline>() is { } pipeline)
             await pipeline.RunAfterMaterializeAsync(typeof(T), session, loaded.Values.Where(e => e is not null).Cast<object>(), Abstractions.Interceptors.MaterializeReason.Load);
 
         var collectionGuard = services.GetRequiredService<ICollectionGuard>();
@@ -253,124 +253,19 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     }
 
     /// <inheritdoc />
-    public virtual async Task<T> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
+    /// <remarks>
+    /// The default merges the posted values onto <paramref name="existing"/>, so fields absent from
+    /// the object (server-managed metadata, untouched TranslatedString languages) survive; a creation
+    /// builds a fresh instance. Override to shape the mapping; the framework still runs every interceptor,
+    /// check and the write around it.
+    /// </remarks>
+    public virtual async Task<T> MapAsync(PersistentObject obj, T? existing)
     {
-        // Update path: load the existing entity and merge the PO's values onto it. Fields
-        // absent from the PO (server-managed metadata, untouched TranslatedString languages,
-        // etc.) survive — ToEntity's always-new-instance flow wiped them. Create path
-        // (Id is null/empty, or Raven returned null for an unknown Id) falls through to
-        // ToEntity which builds a fresh instance from the PO.
-        T entity;
-        // The change vector the write must still find (contributions F7). The etag check in
-        // DatabaseAccess compares in a side session and cannot see a write that lands after it, so
-        // the write itself carries the expectation: the client's etag when it posted one, otherwise
-        // the version this session loaded. A concurrent write in between fails SaveChangesAsync with
-        // RavenDB's ConcurrencyException, which DatabaseAccess turns into the 409.
-        // Null for a create — New keeps its semantics, including a create under a caller-chosen id.
-        string? expectedChangeVector = null;
-        if (!string.IsNullOrEmpty(obj.Id))
-        {
-            var existing = await session.LoadAsync<T>(obj.Id);
-            if (existing is not null)
-            {
-                expectedChangeVector = !string.IsNullOrEmpty(obj.Etag)
-                    ? obj.Etag
-                    : session.Advanced.GetChangeVectorFor(existing);
-                // Satellite properties are filled before the posted values are merged (contributions
-                // F1), so an edited hydrated row maps as an Edit, not a New plus a Delete. Idempotent:
-                // an instance the Update pre-read already hooked is not hooked again.
-                if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } materializePipeline)
-                    await materializePipeline.RunAfterMaterializeAsync(typeof(T), session, [existing], Abstractions.Interceptors.MaterializeReason.SaveReload);
-                // Through the framework, IDatabaseAccess already dropped every attribute the caller may
-                // not write (contributions M2c-2b, IAttributeWriteShield). Constructed by hand, outside
-                // it, the class's own per-row hook is all there is to honour.
-                if (serviceProvider is null)
-                    await ShieldProtectedAttributesAsync(obj, existing);
-                await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
-                entity = existing;
-            }
-            else
-            {
-                entity = entityMapper.ToEntity<T>(obj);
-            }
-        }
-        else
-        {
-            entity = entityMapper.ToEntity<T>(obj);
-        }
+        if (existing is null)
+            return entityMapper.ToEntity<T>(obj);
 
-        await OnBeforeSaveAsync(obj, entity);
-        // Before-save interceptors (#460): after the Actions class's own hook, before WITH CHECK, so
-        // what they stamp is what the row check judges and what gets written.
-        if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } pipeline)
-            await pipeline.RunBeforeSaveAsync(obj, entity);
-        await EnsureRowSaveAllowedAsync(obj, entity);
-        if (expectedChangeVector is not null)
-            await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
-        else
-            await session.StoreAsync(entity);
-        await session.SaveChangesAsync();
-        await OnAfterSaveAsync(obj, entity);
-        return entity;
-    }
-
-    /// <summary>
-    /// The write half of row-level security — SQL RLS's <c>WITH CHECK</c> to the read paths'
-    /// <c>USING</c>. Judged against the entity's <b>resulting</b> state, after mapping and
-    /// <see cref="OnBeforeSaveAsync"/> (so ownership stamping has happened): a create must produce
-    /// a row its caller could see, and an edit must not move a row <em>into</em> someone else's
-    /// scope. Without this, nothing stops an authenticated caller creating a document stamped with
-    /// another tenant's owner. Skipped for the system context (module sync, background work) —
-    /// row rules scope viewers, and infrastructure has none. Overriding <see cref="OnSaveAsync"/>
-    /// without calling the base implementation takes over this responsibility.
-    /// <para>
-    /// Judged through row security (#460, D1), so it is the same rule every read path applies: this
-    /// class's <see cref="GetRowFilterAsync"/> and <see cref="IsAllowedAsync"/> AND every applicable
-    /// row policy — and a policy that opts out of the system-context exemption applies to the system
-    /// here too.
-    /// </para>
-    /// </summary>
-    private async Task EnsureRowSaveAllowedAsync(PersistentObject obj, T entity)
-    {
-        var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
-
-        if (serviceProvider?.GetService<IRowSecurity>() is { } rowSecurity)
-        {
-            if (!await rowSecurity.IsAllowedAsync(typeof(T), action, entity))
-                throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
-            return;
-        }
-
-        // Constructed by hand, outside the framework: no row security to ask, so the class's own rule.
-        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
-            return;
-
-        var filter = await GetRowFilterAsync(action);
-        if (filter is not null && !filter.Compile()(entity))
-            throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
-
-        if (!await IsAllowedAsync(action, entity))
-            throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
-    }
-
-    /// <inheritdoc />
-    public virtual async Task OnDeleteAsync(IAsyncDocumentSession session, string id)
-    {
-        var entity = await session.LoadAsync<T>(id);
-        if (entity != null)
-        {
-            // When interceptors govern this type, DatabaseAccess already ran OnBeforeDeleteAsync (it
-            // must, to decide a replacement after it) — run it once, not twice.
-            if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is not { } pipeline
-                || !pipeline.ConsumeBeforeDeleteHandled(entity))
-                await OnBeforeDeleteAsync(entity);
-            session.Delete(entity);
-
-            // A bulk delete commits every row with ONE SaveChanges (#460, D18), so while its batch is
-            // open the save is the caller's. An override that saves here itself breaks that guarantee.
-            if (serviceProvider?.GetService<ISparkWriteBatch>() is not { IsDeferring: true })
-                await session.SaveChangesAsync();
-        }
+        await entityMapper.PopulateObjectValuesAsync(obj, existing, RequireServices().GetRequiredService<IAsyncDocumentSession>());
+        return existing;
     }
 
     /// <summary>
@@ -550,37 +445,6 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// <param name="action">Same vocabulary as <see cref="IsAllowedAsync"/>.</param>
     public virtual Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, T entity)
         => Task.FromResult<IReadOnlyCollection<string>?>(null);
-
-    /// <summary>
-    /// Write-back safety for redaction when the class is constructed by hand, outside the framework
-    /// (through it, <c>IAttributeWriteShield</c> in <c>IDatabaseAccess</c> covers every attribute kind
-    /// and static rights too): a client that received a blanked attribute and submits the form back
-    /// would silently clobber the stored secret — and a malicious client could overwrite it
-    /// deliberately. Protected top-level attributes are dropped from the posted object before the
-    /// merge, so the merge leaves the stored value alone (and nothing echoes it back). Skipped for the
-    /// system context (sync replicates full values).
-    /// </summary>
-    private async Task ShieldProtectedAttributesAsync(PersistentObject obj, T existing)
-    {
-        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
-            return;
-
-        var protectedNames = await GetProtectedAttributesAsync("Edit", existing);
-        if (protectedNames is not { Count: > 0 })
-            return;
-
-        var drop = new HashSet<string>(protectedNames, StringComparer.OrdinalIgnoreCase);
-        obj.RetainAttributes(a => !drop.Contains(a.Name));
-    }
-
-    /// <inheritdoc />
-    public virtual Task OnBeforeSaveAsync(PersistentObject obj, T entity) => Task.CompletedTask;
-
-    /// <inheritdoc />
-    public virtual Task OnAfterSaveAsync(PersistentObject obj, T entity) => Task.CompletedTask;
-
-    /// <inheritdoc />
-    public virtual Task OnBeforeDeleteAsync(T entity) => Task.CompletedTask;
 
     /// <summary>
     /// Called when the value of an attribute declaring <c>"triggersRefresh": "Auto"</c> (or any other

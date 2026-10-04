@@ -10,16 +10,6 @@
       {
         "id": "3b06bdf2-cb33-4d5d-a2b4-ab3e959f9d95",
         "name": "Blocking",
-        "label": {
-          "en": "Blocking",
-          "fr": "Bloquant",
-          "nl": "Blokkerend"
-        },
-        "description": {
-          "en": "Whether a failing gate blocks the pull request.",
-          "fr": "Si un seuil non atteint bloque la pull request.",
-          "nl": "Of een niet-gehaalde poort de pull request blokkeert."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -32,16 +22,6 @@
       {
         "id": "286762e1-3aec-41c4-8abb-b48711db114f",
         "name": "PatchTarget",
-        "label": {
-          "en": "Patch target (%)",
-          "fr": "Cible du patch (%)",
-          "nl": "Patchdoel (%)"
-        },
-        "description": {
-          "en": "Percent target for patch coverage; null disables the patch gate.",
-          "fr": "Cible en pourcentage pour la couverture du patch ; null désactive le seuil du patch.",
-          "nl": "Doelpercentage voor patchdekking; null schakelt de patchpoort uit."
-        },
         "dataType": "decimal",
         "isRequired": false,
         "isVisible": true,
@@ -54,16 +34,6 @@
       {
         "id": "5eefcb9a-8e51-427c-9388-77734c4e45d8",
         "name": "PatchThreshold",
-        "label": {
-          "en": "Patch tolerance (points)",
-          "fr": "Tolérance du patch (points)",
-          "nl": "Patchtolerantie (punten)"
-        },
-        "description": {
-          "en": "Allowed shortfall in percentage points below PatchTarget.",
-          "fr": "Écart autorisé, en points de pourcentage, sous PatchTarget.",
-          "nl": "Toegestane achterstand in procentpunten onder PatchTarget."
-        },
         "dataType": "decimal",
         "isRequired": true,
         "isVisible": true,
@@ -76,16 +46,6 @@
       {
         "id": "d0787d45-ba35-499f-af7f-5abd13236ebe",
         "name": "ProjectBasis",
-        "label": {
-          "en": "Partial builds judge",
-          "fr": "Base des builds partiels",
-          "nl": "Beoordeling van gedeeltelijke builds"
-        },
-        "description": {
-          "en": "Which number a partial build's project status judges.",
-          "fr": "Quel chiffre le statut projet d'un build partiel évalue.",
-          "nl": "Welk cijfer de projectstatus van een gedeeltelijk build beoordeelt."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -99,16 +59,6 @@
       {
         "id": "05f886ae-0e4a-4a7e-8cb8-3ff6e2a7cb34",
         "name": "ProjectMode",
-        "label": {
-          "en": "Project comparison",
-          "fr": "Comparaison du projet",
-          "nl": "Projectvergelijking"
-        },
-        "description": {
-          "en": "\"auto\" ratchets against the resolved base; \"fixed\" compares to ProjectTarget and needs no base at all.",
-          "fr": "« auto » se cale sur la base résolue ; « fixed » compare à ProjectTarget et n'a besoin d'aucune base.",
-          "nl": "\"auto\" schuift mee met de opgeloste basis; \"fixed\" vergelijkt met ProjectTarget en heeft helemaal geen basis nodig."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -123,16 +73,6 @@
       {
         "id": "1a8a15ca-d094-4e07-8942-6a6092073afb",
         "name": "ProjectTarget",
-        "label": {
-          "en": "Project target (%)",
-          "fr": "Cible du projet (%)",
-          "nl": "Projectdoel (%)"
-        },
-        "description": {
-          "en": "Percent target for fixed mode (e.g. 80 = 80%).",
-          "fr": "Cible en pourcentage pour le mode fixed (p. ex. 80 = 80 %).",
-          "nl": "Doelpercentage voor de modus fixed (bv. 80 = 80%)."
-        },
         "dataType": "decimal",
         "isRequired": false,
         "isVisible": true,
@@ -145,16 +85,6 @@
       {
         "id": "bd7fd258-18cb-498e-9fa7-97f362f2b243",
         "name": "ProjectThreshold",
-        "label": {
-          "en": "Allowed drop (points)",
-          "fr": "Baisse autorisée (points)",
-          "nl": "Toegestane daling (punten)"
-        },
-        "description": {
-          "en": "Allowed drop in percentage points before the project status fails.",
-          "fr": "Baisse autorisée, en points de pourcentage, avant que le statut du projet n'échoue.",
-          "nl": "Toegestane daling in procentpunten voordat de projectstatus faalt."
-        },
         "dataType": "decimal",
         "isRequired": true,
         "isVisible": true,

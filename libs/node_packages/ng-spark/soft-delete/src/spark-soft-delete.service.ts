@@ -22,7 +22,7 @@ export class SparkSoftDeleteService {
    * `POST /spark/po/purge` → 204. Requires `Purge/T` and a deleted row. Removes the document and
    * every revision of it; it cannot be undone.
    */
-  async purge(type: string, id: string): Promise<void> {
-    await this.spark.postEnvelope<void>('/po/purge', { objectTypeId: type, id });
+  async purge(type: string, id: string, etag: string): Promise<void> {
+    await this.spark.postEnvelope<void>('/po/purge', { objectTypeId: type, id, etag });
   }
 }

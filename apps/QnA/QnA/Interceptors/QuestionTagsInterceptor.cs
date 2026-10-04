@@ -6,10 +6,10 @@ namespace QnA.Interceptors;
 
 /// <summary>
 /// Normalises a question's tags on every save (#460 M2): lower-case, trimmed, de-duplicated, at most
-/// five. It runs after the Actions class's <c>OnBeforeSaveAsync</c> and after the interceptors
-/// registered before it, so it sees the entity as it will be stored.
+/// five, before the entity is checked and written. Its order among the other before-save interceptors is
+/// irrelevant: none of them writes Tags.
 /// </summary>
-public sealed class QuestionTagsInterceptor : IPersistentObjectInterceptor
+public sealed class QuestionTagsInterceptor : IBeforeSave
 {
     public const int MaxTags = 5;
 

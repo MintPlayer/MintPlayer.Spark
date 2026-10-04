@@ -19,7 +19,13 @@ public interface ISyncActionInterceptor
     /// </summary>
     /// <param name="entityType">The resolved CLR entity type</param>
     /// <param name="obj">The PersistentObject with attribute metadata</param>
-    Task HandleSaveAsync(Type entityType, PersistentObject obj);
+    /// <param name="isNew">
+    /// Whether the local save created the object. Sent as an Insert or an Update: the owner applies an
+    /// Update only to a row it still has, so an edit of a row the owner deleted is refused there rather
+    /// than recreating it (#467, D15). Stated by the caller because the object already carries its
+    /// generated id by the time it is forwarded.
+    /// </param>
+    Task HandleSaveAsync(Type entityType, PersistentObject obj, bool isNew);
 
     /// <summary>
     /// Forwards a save (insert or update) operation to the owner module via the message bus.
@@ -27,8 +33,9 @@ public interface ISyncActionInterceptor
     /// All writable properties are sent since change tracking is not available.
     /// </summary>
     /// <param name="entity">The entity to save</param>
-    /// <param name="documentId">The document ID (null for inserts)</param>
-    Task HandleSaveAsync(object entity, string? documentId);
+    /// <param name="documentId">The document ID</param>
+    /// <param name="isNew">Whether the local save created the document; see the overload above.</param>
+    Task HandleSaveAsync(object entity, string? documentId, bool isNew);
 
     /// <summary>
     /// Forwards a delete operation to the owner module via the message bus.

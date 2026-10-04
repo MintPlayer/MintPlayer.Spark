@@ -87,14 +87,20 @@ export interface QueryColumn extends SparkCellColumn {
 /**
  * One row: an id, a display string, and a value per column.
  *
- * Deliberately too weak to act on — no attribute metadata, no `can` block, no etag, because none
- * of those can be trusted from a projection.
+ * Deliberately too weak to act on — no attribute metadata, no `can` block, because neither can be
+ * trusted from a projection. It does carry its document's `etag` (#467, D14), a version rather than
+ * a judgement, so a delete from the list says which version it removes.
  */
 export interface QueryResultItem {
   /** Never null and unique within a result; the server refuses anything else. */
   id: string;
   /** What to show when the row is named rather than tabulated (a reference picker's value). */
   breadcrumb?: string;
+  /**
+   * The document's change vector when the list loaded (#467, D14). A delete sends it back; a row
+   * changed since is a 409. Absent for a row with no document behind it.
+   */
+  etag?: string;
   values: QueryResultItemValue[];
   /** Presentation hints for the whole row. Keys arrive lower-cased. */
   typeHints?: Record<string, string>;

@@ -5,6 +5,7 @@ using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Services.Breadcrumb;
 using MintPlayer.Spark.Streaming;
 using MintPlayer.Spark.Tests._Infrastructure;
+using MintPlayer.Spark.Testing;
 using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -26,7 +27,10 @@ namespace MintPlayer.Spark.Tests.Streaming;
 /// disclosing every new one for as long as the client stays connected.
 /// </para>
 /// </summary>
-public class StreamingRowSecurityTests
+// A real (empty) database behind the substituted store: each batch reads its rows' etags from
+// document metadata (#467, D30a), which a substituted session cannot answer. The streamed rows are
+// never stored, so they carry no etag.
+public class StreamingRowSecurityTests : SparkTestDriver
 {
     private static readonly Guid TypeId = Guid.Parse("7d3e11aa-11aa-11aa-11aa-7d3e11aa11aa");
 
@@ -86,7 +90,7 @@ public class StreamingRowSecurityTests
         modelLoader.GetEntityTypeByName("StreamedDoc").Returns(definition);
         permissionService.IsAllowedAsync("Query", "StreamedDoc").Returns(true);
         actionsResolver.ResolveForType(typeof(StreamedDoc)).Returns(new StreamedDocActions());
-        documentStore.OpenAsyncSession().Returns(_ => Substitute.For<IAsyncDocumentSession>());
+        documentStore.OpenAsyncSession().Returns(_ => Store.OpenAsyncSession());
 
         entityMapper
             .ToPersistentObject(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult>())
@@ -182,7 +186,7 @@ public class StreamingRowSecurityTests
 
         documentStore.OpenAsyncSession().Returns(_ =>
         {
-            var session = Substitute.For<IAsyncDocumentSession>();
+            var session = Store.OpenAsyncSession();
             sessions.Add(session);
             return session;
         });

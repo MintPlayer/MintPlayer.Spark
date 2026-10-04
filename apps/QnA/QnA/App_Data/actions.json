@@ -1,0 +1,17 @@
+{
+  "CloseQuestion": {
+    "icon": "Lock",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "ReopenQuestion": {
+    "icon": "Unlock",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "DuplicateAnswer": {
+    "showedOn": "query",
+    "selectionRule": "=1",
+    "refreshOnCompleted": true
+  }
+}

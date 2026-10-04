@@ -1,23 +1,19 @@
 <div class="d-flex flex-column h-100">
   <div class="spark-actionbar py-2 flex-shrink-0" [class.spark-actionbar-wide]="isVirtualScrolling()">
     <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
-      <!-- The grid's toolbar model (#460, M15): New, Delete and the custom actions — the list the
-           sub-query card renders too. Disabled, not hidden: hiding makes the affordance
-           undiscoverable and reflows the priority nav on every selection change. The server
-           enforces the same rules. -->
+      <!-- The grid's toolbar model (#460 M15, #467 R3): New, Edit, Delete and the custom actions —
+           the list the sub-query card renders too, labels and icons from the action catalogue.
+           Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
+           priority nav on every selection change. The server enforces the same rules. -->
       @for (action of toolbarActions(); track action.name) {
         @if (action.kind !== 'custom' || showCustomActions()) {
           <button *bsPriorityNavItem="action.priority" type="button" [class]="toolbarActionClass(action)"
                   [attr.data-action]="action.name"
                   [disabled]="!isToolbarActionEnabled(action)" (click)="runToolbarAction(action)">
-            @if (action.kind === 'new') {
-              <spark-icon name="plus-lg" /> {{ 'common.new' | t }}
-            } @else {
-              @if (action.definition.icon && action.kind === 'delete') {
-                <spark-icon [name]="action.definition.icon" />
-              }
-              {{ action.definition.displayName | resolveTranslation }}
+            @if (action.definition.icon && action.kind !== 'custom') {
+              <spark-icon [name]="action.definition.icon" />
             }
+            {{ action.definition.label | resolveTranslation }}
           </button>
         }
       }
@@ -38,7 +34,7 @@
   </div>
 
   <h2 class="mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
-    {{ (query()?.description | resolveTranslation) || query()?.name || ('common.loading' | t) }}
+    {{ (query()?.label | resolveTranslation) || query()?.name || ('common.loading' | t) }}
     @if (isStreaming()) {
       <bs-badge [type]="colors.success" class="ms-2 align-middle spark-live-badge">LIVE</bs-badge>
     }
@@ -111,6 +107,7 @@
         [deleted]="deletedMode()"
         [reloadToken]="gridReloadToken()"
         [rowRoute]="rowRoute()"
+        [selectionModeSetting]="selectionMode()"
         (rowClicked)="rowClicked.emit($event)"
         (customActionExecuted)="customActionExecuted.emit($event)" />
   } @else {

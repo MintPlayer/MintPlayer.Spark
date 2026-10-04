@@ -69,13 +69,13 @@ public sealed class ModelHashFile
 
     /// <summary>
     /// Structural hashes of the App_Data config files outside the Model directory —
-    /// <c>customActions.json</c> and <c>programUnits.json</c>.
+    /// <c>actions.json</c> and <c>programUnits.json</c>.
     /// </summary>
     /// <remarks>
     /// These had no integrity gate of any kind: the model hash globs <c>App_Data/Model/*.json</c>,
     /// and <c>security.json</c> is covered by its own posture baseline, so these two were covered by
     /// nothing at all — while both carry decisions the runtime enforces. An action absent from
-    /// <c>customActions.json</c> cannot run, and its <c>selectionRule</c> bounds how many rows an
+    /// <c>actions.json</c> cannot run, and its <c>selectionRule</c> bounds how many rows an
     /// action may be handed.
     /// <para>
     /// Absent from an older hash file, which is why it is optional rather than required: a file

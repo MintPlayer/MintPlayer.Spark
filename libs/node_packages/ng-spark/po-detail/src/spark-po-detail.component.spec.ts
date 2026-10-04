@@ -44,6 +44,7 @@ const personType: EntityType = {
 const existingItem: PersistentObject = {
   id: 'people/1',
   name: 'Alice',
+  etag: 'A:1',
   objectTypeId: 't-person',
   attributes: [
     { id: 'a-first', name: 'FirstName', value: 'Alice' } as any,
@@ -52,7 +53,7 @@ const existingItem: PersistentObject = {
 
 const customAction: CustomActionDefinition = {
   name: 'Archive',
-  displayName: { en: 'Archive' } as any,
+  label: { en: 'Archive' } as any,
   showedOn: 'detail',
   refreshOnCompleted: false,
   offset: 0,
@@ -61,13 +62,23 @@ const customAction: CustomActionDefinition = {
 const customActionWithConfirm: CustomActionDefinition = {
   ...customAction,
   name: 'Delete',
-  confirmationMessageKey: 'confirmDelete',
+  confirmation: { en: 'confirmDelete' },
 };
 
 const customActionRefresh: CustomActionDefinition = {
   ...customAction,
   name: 'Refresh',
   refreshOnCompleted: true,
+};
+
+/** The core catalogue's Edit and Delete (#467 D7/D8), as `/spark/actions/list` lists them for a caller with the rights. */
+const builtInEdit: CustomActionDefinition = {
+  name: 'Edit', label: { en: 'Edit' }, icon: 'pencil', showedOn: 'both', selectionRule: '=1',
+  refreshOnCompleted: false, offset: 0, isDefault: true,
+};
+const builtInDelete: CustomActionDefinition = {
+  name: 'Delete', label: { en: 'Delete' }, icon: 'trash', showedOn: 'both', selectionRule: '>0', variant: 'danger',
+  confirmation: { en: 'Delete {count} item(s)?' }, refreshOnCompleted: false, offset: 0, isDefault: true,
 };
 
 const routes: Routes = [
@@ -82,7 +93,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}, renderers: an
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     get: vi.fn().mockResolvedValue(existingItem),
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true }),
-    getCustomActions: vi.fn().mockResolvedValue([customAction]),
+    getCustomActions: vi.fn().mockResolvedValue([customAction, builtInEdit, builtInDelete]),
     executeCustomAction: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
     getLookupReference: vi.fn().mockResolvedValue({ name: 'dummy', values: [] } as any),
@@ -160,6 +171,41 @@ describe('SparkPoDetailComponent', () => {
 
     expect(c.canEdit()).toBe(true);
     expect(c.canDelete()).toBe(false);
+  });
+
+  /** #467 D8: the buttons are the catalogue's entries; an app that removes or moves one removes the button. */
+  it('offers Edit and Delete only when the catalogue lists them for the detail side', async () => {
+    const { harness } = await setup({
+      getCustomActions: vi.fn().mockResolvedValue([{ ...builtInEdit, showedOn: 'query' }]),
+    } as Partial<SparkService>);
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.canEdit()).toBe(false); // Edit is query-only
+    expect(c.canDelete()).toBe(false); // Delete was removed ("Delete": null), so it is not listed
+  });
+
+  it("renders Edit and Delete with the catalogue's label and icon", async () => {
+    const { harness } = await setup({
+      getCustomActions: vi.fn().mockResolvedValue([{ ...builtInEdit, label: { en: 'Modify' } }, builtInDelete]),
+    } as Partial<SparkService>);
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    harness.fixture.detectChanges();
+
+    expect(c.editAction()?.label).toEqual({ en: 'Modify' });
+    expect(harness.fixture.nativeElement.textContent).toContain('Modify');
+  });
+
+  it("onDelete asks the catalogue's Delete confirmation with a count of one", async () => {
+    confirmSpy.mockReturnValueOnce(false);
+    const { harness } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    await c.onDelete();
+
+    expect(confirmSpy).toHaveBeenCalledWith('Delete 1 item(s)?');
   });
 
   it('resolves entity type via id OR alias', async () => {
@@ -258,7 +304,7 @@ describe('SparkPoDetailComponent', () => {
     await c.onDelete();
     await navigated;
 
-    expect(service.delete).toHaveBeenCalledWith('person', 'people/1');
+    expect(service.delete).toHaveBeenCalledWith('person', 'people/1', 'A:1');
     expect(deleted).toHaveBeenCalled();
     expect(TestBed.inject(Router).url).toBe('/');
   });

@@ -10,16 +10,6 @@
       {
         "id": "e42efb15-0dc0-4a42-9897-7bd35f0c4cdc",
         "name": "Error",
-        "label": {
-          "en": "Error",
-          "fr": "Erreur",
-          "nl": "Fout"
-        },
-        "description": {
-          "en": "Why parsing this session's reports failed; null unless the parse status is Failed.",
-          "fr": "Pourquoi l'analyse des rapports de cette session a échoué ; null sauf si le statut d'analyse est Failed.",
-          "nl": "Waarom het parseren van de rapporten van deze sessie mislukt is; null tenzij de parseerstatus Failed is."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -32,16 +22,6 @@
       {
         "id": "df0396ff-d019-43a6-8dd6-415d2fd31a86",
         "name": "FilesCount",
-        "label": {
-          "en": "Files",
-          "fr": "Fichiers",
-          "nl": "Bestanden"
-        },
-        "description": {
-          "en": "Number of source files this session's reports contained coverage for.",
-          "fr": "Nombre de fichiers sources pour lesquels les rapports de cette session contenaient de la couverture.",
-          "nl": "Aantal bronbestanden waarvoor de rapporten van deze sessie dekking bevatten."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -54,16 +34,6 @@
       {
         "id": "97ddf8ee-2c96-4a55-8097-4ebdbd9ff325",
         "name": "Flags",
-        "label": {
-          "en": "Flags",
-          "fr": "Flags",
-          "nl": "Flags"
-        },
-        "description": {
-          "en": "Flags the uploader tagged this session with (e.g. a project or test suite name); each flag gets its own per-flag coverage totals.",
-          "fr": "Flags avec lesquels l'émetteur a étiqueté cette session (p. ex. un nom de projet ou de suite de tests) ; chaque flag obtient ses propres totaux de couverture.",
-          "nl": "Flags waarmee de uploader deze sessie heeft getagd (bv. een project- of testsuitenaam); elke flag krijgt zijn eigen dekkingstotalen."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -76,16 +46,6 @@
       {
         "id": "4385debf-84d2-47e1-9e70-e9d20769bcdb",
         "name": "JobName",
-        "label": {
-          "en": "Job",
-          "fr": "Job",
-          "nl": "Job"
-        },
-        "description": {
-          "en": "Name of the CI job that produced this upload, as reported by the action.",
-          "fr": "Nom du job CI qui a produit cet envoi, tel que rapporté par l'action.",
-          "nl": "Naam van de CI-job die deze upload heeft voortgebracht, zoals gemeld door de action."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -98,16 +58,6 @@
       {
         "id": "fc2e5c12-a99c-4e57-897c-5753552c5d85",
         "name": "ParseStatus",
-        "label": {
-          "en": "Parse Status",
-          "fr": "Statut d'analyse",
-          "nl": "Parseerstatus"
-        },
-        "description": {
-          "en": "\"Pending\" | \"Parsed\" | \"Failed\"",
-          "fr": "« Pending » | « Parsed » | « Failed »",
-          "nl": "\"Pending\" | \"Parsed\" | \"Failed\""
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -120,16 +70,6 @@
       {
         "id": "8fb49001-c7d4-400f-ba5a-8afb3e71e050",
         "name": "RawFileNames",
-        "label": {
-          "en": "Raw Files",
-          "fr": "Fichiers bruts",
-          "nl": "Ruwe bestanden"
-        },
-        "description": {
-          "en": "Attachment names on the Build document holding this session's raw report files.",
-          "fr": "Noms des pièces jointes sur le document Build contenant les fichiers de rapport bruts de cette session.",
-          "nl": "Namen van de bijlagen op het Build-document met de ruwe rapportbestanden van deze sessie."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -142,12 +82,6 @@
       {
         "id": "03922e7f-a112-435a-80ee-a54fa429f763",
         "name": "Reports",
-        "label": {
-          "en": "Reports"
-        },
-        "description": {
-          "en": "What happened to each uploaded report file — parsed, or rejected with a named reason (#417). One entry per attachment, so a session that ingested five of six reports says so instead of resolving to an anonymous failure. Empty on sessions ingested before this existed."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -161,16 +95,6 @@
       {
         "id": "88021ff7-e093-44a7-b9f8-d3b43a9b06d2",
         "name": "RootDir",
-        "label": {
-          "en": "Root Dir",
-          "fr": "Répertoire racine",
-          "nl": "Hoofdmap"
-        },
-        "description": {
-          "en": "The CI workspace root (GITHUB_WORKSPACE), for stripping absolute report paths.",
-          "fr": "La racine de l'espace de travail CI (GITHUB_WORKSPACE), pour retirer les chemins absolus des rapports.",
-          "nl": "De hoofdmap van de CI-workspace (GITHUB_WORKSPACE), om absolute rapportpaden weg te knippen."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -183,16 +107,6 @@
       {
         "id": "38a4a4dd-a653-4cf9-ae3f-49ab422648d6",
         "name": "SessionId",
-        "label": {
-          "en": "Session Id",
-          "fr": "Id de session",
-          "nl": "Sessie-id"
-        },
-        "description": {
-          "en": "Unique id of this upload within the build, assigned when the action's report files are received.",
-          "fr": "Id unique de cet envoi au sein du build, attribué à la réception des fichiers de rapport de l'action.",
-          "nl": "Unieke id van deze upload binnen de build, toegekend wanneer de rapportbestanden van de action ontvangen worden."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -205,16 +119,6 @@
       {
         "id": "5c9d6ce5-4b25-434b-bc96-7f92c95ab4fd",
         "name": "UploadedAtUtc",
-        "label": {
-          "en": "Uploaded",
-          "fr": "Envoyé",
-          "nl": "Geüpload"
-        },
-        "description": {
-          "en": "When this session's report files were received (UTC).",
-          "fr": "Moment de réception des fichiers de rapport de cette session (UTC).",
-          "nl": "Wanneer de rapportbestanden van deze sessie ontvangen zijn (UTC)."
-        },
         "dataType": "datetime",
         "isRequired": true,
         "isVisible": true,

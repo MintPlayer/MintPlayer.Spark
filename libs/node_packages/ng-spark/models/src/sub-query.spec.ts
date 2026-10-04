@@ -5,13 +5,13 @@ import { defaultQueryActions, filterDetailActions, filterQueryActions } from './
 import { CustomActionDefinition } from './custom-action';
 
 const action = (name: string, showedOn: string, selectionRule?: string, isDefault?: boolean) =>
-  ({ name, displayName: { en: name }, showedOn, selectionRule, refreshOnCompleted: false, offset: 0, isDefault }) as CustomActionDefinition;
+  ({ name, label: { en: name }, showedOn, selectionRule, refreshOnCompleted: false, offset: 0, isDefault }) as CustomActionDefinition;
 
 describe('sub-query entries (#460 M15, D17)', () => {
   it('reads a bare alias and the object form alike', () => {
     expect(normalizeSubQuery('company-cars')).toEqual({ query: 'company-cars' });
-    expect(normalizeSubQuery({ query: 'company-people', selectionMode: 'single' }))
-      .toEqual({ query: 'company-people', selectionMode: 'single' });
+    expect(normalizeSubQuery({ query: 'company-people', selectionMode: 'none' }))
+      .toEqual({ query: 'company-people', selectionMode: 'none' });
   });
 
   it('lists a type\'s sub-queries in object form, and none for a type without', () => {
@@ -27,14 +27,17 @@ describe('selectionModeFor with a declared mode', () => {
   it('a declared mode wins outright', () => {
     expect(selectionModeFor(gated, 'none')).toBe('none');
     expect(selectionModeFor([], 'multiple')).toBe('multiple');
-    expect(selectionModeFor([], 'single')).toBe('single');
   });
 
-  it('auto and absent derive from the actions, as before', () => {
+  it('auto and absent derive from the actions (#467 R1): any rule accepting a row gives multiple', () => {
     expect(selectionModeFor(gated, 'auto')).toBe('multiple');
     expect(selectionModeFor(gated)).toBe('multiple');
-    expect(selectionModeFor([action('One', 'query', '=1')], null)).toBe('single');
+    expect(selectionModeFor([action('One', 'query', '=1')], null)).toBe('multiple');
+    expect(selectionModeFor([action('Delete', 'both', '>0', true)])).toBe('multiple');
     expect(selectionModeFor([action('Refresh', 'query')])).toBe('none');
+    // =0 accepts no row, so it never makes a list selectable (S2).
+    expect(selectionModeFor([action('Scatter', 'query', '=0')])).toBe('none');
+    expect(selectionModeFor([action('Big', 'query', '>500')])).toBe('none');
   });
 });
 

@@ -15,5 +15,538 @@
       "fr": "Sélectionnez un élément du menu latéral pour commencer.",
       "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
     }
+  },
+  "model": {
+    "Car": {
+      "label": {
+        "en": "Car",
+        "fr": "Voiture",
+        "nl": "Auto"
+      },
+      "attributes": {
+        "Brand": {
+          "label": {
+            "en": "Brand",
+            "fr": "Marque",
+            "nl": "Merk"
+          },
+          "description": {
+            "en": "Manufacturer brand of the vehicle, chosen from the list of known car brands.",
+            "fr": "Marque du constructeur du véhicule, choisie dans la liste des marques automobiles connues.",
+            "nl": "Merk van de fabrikant van het voertuig, gekozen uit de lijst met bekende automerken."
+          }
+        },
+        "Color": {
+          "label": {
+            "en": "Color",
+            "fr": "Couleur",
+            "nl": "Kleur"
+          },
+          "description": {
+            "en": "Exterior paint colour of the vehicle.",
+            "fr": "Couleur de la peinture extérieure du véhicule.",
+            "nl": "Kleur van de buitenlak van het voertuig."
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created By",
+            "fr": "Créé par",
+            "nl": "Aangemaakt door"
+          },
+          "description": {
+            "en": "User id of the account that created the record. Set on create by CarActions; used by the row-level auth hook to restrict non-admin callers to their own cars. Demo field: wouldn't necessarily live on the entity in a production app (could be a metadata field), but keeping it on the entity is the simplest illustration.",
+            "fr": "Id utilisateur du compte qui a créé l'enregistrement. Défini à la création par CarActions ; utilisé par le hook d'autorisation au niveau des lignes pour limiter les appelants non administrateurs à leurs propres voitures. Champ de démonstration : il ne résiderait pas nécessairement sur l'entité dans une application de production (ce pourrait être un champ de métadonnées), mais le conserver sur l'entité est l'illustration la plus simple.",
+            "nl": "Gebruikers-id van het account dat het record heeft aangemaakt. Bij aanmaken gezet door CarActions; gebruikt door de row-level auth-hook om niet-beheerders tot hun eigen wagens te beperken. Demoveld: in een productieapp zou het niet noodzakelijk op de entiteit leven (het kon een metadataveld zijn), maar het op de entiteit houden is de eenvoudigste illustratie."
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          },
+          "description": {
+            "en": "Free-text description maintained in multiple languages. Exercises the inverse-path TranslatedString per-language merge behavior — a partial update that carries only { en: \"…\" } must preserve the existing fr / nl entries rather than overwriting the whole value.",
+            "fr": "Description en texte libre gérée en plusieurs langues. Met à l'épreuve le comportement de fusion par langue de TranslatedString sur le chemin inverse — une mise à jour partielle ne portant que { en: « … » } doit préserver les entrées fr / nl existantes plutôt que d'écraser la valeur entière.",
+            "nl": "Vrije-tekstomschrijving die in meerdere talen wordt bijgehouden. Test het per-taal-samenvoeggedrag van TranslatedString op het inverse pad — een gedeeltelijke update die alleen { en: \"…\" } meedraagt moet de bestaande fr/nl-vermeldingen behouden in plaats van de hele waarde te overschrijven."
+          }
+        },
+        "Description_en": {
+          "label": {
+            "en": "Description_en",
+            "fr": "Description_en",
+            "nl": "Description_en"
+          }
+        },
+        "Description_fr": {
+          "label": {
+            "en": "Description_fr",
+            "fr": "Description_fr",
+            "nl": "Description_fr"
+          }
+        },
+        "Description_nl": {
+          "label": {
+            "en": "Description_nl",
+            "fr": "Description_nl",
+            "nl": "Description_nl"
+          }
+        },
+        "InteriorColor": {
+          "label": {
+            "en": "Interior Color",
+            "fr": "Couleur intérieure",
+            "nl": "Interieurkleur"
+          },
+          "description": {
+            "en": "Colour of the vehicle's interior upholstery and trim.",
+            "fr": "Couleur de la sellerie et des garnitures intérieures du véhicule.",
+            "nl": "Kleur van de bekleding en afwerking binnenin het voertuig."
+          }
+        },
+        "LicensePlate": {
+          "label": {
+            "en": "License Plate",
+            "fr": "Plaque d'immatriculation",
+            "nl": "Nummerplaat"
+          },
+          "description": {
+            "en": "SearchAttribute makes this full-text searchable AND gives it a LicensePlateSort companion. Both, from one attribute: an analyzed field is tokenized, so ordering on it is meaningless, and the companion is the repair.",
+            "fr": "SearchAttribute rend ce champ recherchable en texte intégral ET lui adjoint un compagnon LicensePlateSort. Les deux, à partir d'un seul attribut : un champ analysé est tokenisé, si bien qu'y appliquer un tri n'a aucun sens, et le compagnon est le remède.",
+            "nl": "SearchAttribute maakt dit veld full-text doorzoekbaar ÉN geeft het een LicensePlateSort-begeleider. Beide, uit één attribuut: een geanalyseerd veld wordt getokeniseerd, waardoor erop sorteren betekenisloos is, en de begeleider is de reparatie."
+          },
+          "rules": {
+            "minLength": {
+              "en": "License Plate must be at least 2 characters.",
+              "fr": "La plaque d'immatriculation doit contenir au moins 2 caractères.",
+              "nl": "Nummerplaat moet minstens 2 tekens bevatten."
+            },
+            "regex": {
+              "en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.",
+              "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.",
+              "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten."
+            }
+          }
+        },
+        "Manager": {
+          "label": {
+            "en": "Manager",
+            "fr": "Gestionnaire",
+            "nl": "Beheerder"
+          },
+          "description": {
+            "en": "Id of the Person (replicated from HR) acting as fleet manager for this vehicle. Demo field — exercises the inverse-path reference round-trip end-to-end: client sets the id, round-trip re-fetch resolves the breadcrumb via the Person replication collection.",
+            "fr": "Id de la Person (répliquée depuis HR) faisant office de gestionnaire de flotte pour ce véhicule. Champ de démonstration — met à l'épreuve l'aller-retour des références sur le chemin inverse de bout en bout : le client définit l'id, et la relecture de l'aller-retour résout le fil d'Ariane via la collection de réplication Person.",
+            "nl": "Id van de Person (gerepliceerd vanuit HR) die als wagenparkbeheerder voor dit voertuig optreedt. Demoveld — test de referentie-round-trip op het inverse pad van begin tot eind: de client zet de id, en het ophalen bij de round-trip lost de breadcrumb op via de Person-replicatiecollectie."
+          }
+        },
+        "Model": {
+          "label": {
+            "en": "Model",
+            "fr": "Modèle",
+            "nl": "Model"
+          },
+          "description": {
+            "en": "Searchable, and the reason the companion exists: model names contain spaces.",
+            "fr": "Recherchable, et la raison d'être du champ compagnon : les noms de modèle contiennent des espaces.",
+            "nl": "Doorzoekbaar, en de reden dat het begeleidende veld bestaat: modelnamen bevatten spaties."
+          },
+          "rules": {
+            "minLength": {
+              "en": "Model must be at least 2 characters.",
+              "fr": "Le modèle doit contenir au moins 2 caractères.",
+              "nl": "Model moet minstens 2 tekens bevatten."
+            }
+          }
+        },
+        "PoliceReportNumber": {
+          "label": {
+            "en": "Police Report Number",
+            "fr": "Numéro du procès-verbal de police",
+            "nl": "Nummer van het politieverslag"
+          },
+          "description": {
+            "en": "Police report reference, demanded once the vehicle is reported stolen.\nHidden and optional in the model; CarActions.OnRefreshAsync reveals it and makes it required when Status becomes Stolen. That is the whole point of the sample — the model declares the resting shape, the hook declares how the shape responds.\nIgnoreForIndexAttribute because no grid filters or sorts on it, matching Manager and CreatedBy.",
+            "fr": "Référence du procès-verbal de police, exigée dès que le véhicule est déclaré volé.\nMasqué et facultatif dans le modèle ; CarActions.OnRefreshAsync le révèle et le rend obligatoire lorsque Status passe à Stolen. C'est tout l'intérêt de l'exemple — le modèle déclare la forme au repos, le hook déclare comment cette forme réagit.\nIgnoreForIndexAttribute parce qu'aucune grille ne filtre ni ne trie dessus, à l'instar de Manager et CreatedBy.",
+            "nl": "Referentie van het politieverslag, vereist zodra het voertuig als gestolen is opgegeven.\nVerborgen en optioneel in het model; CarActions.OnRefreshAsync maakt het zichtbaar en verplicht wanneer Status Stolen wordt. Dat is de hele bedoeling van het voorbeeld — het model verklaart de vorm in rust, de hook verklaart hoe die vorm reageert.\nIgnoreForIndexAttribute omdat geen enkel grid erop filtert of sorteert, net als bij Manager en CreatedBy."
+          }
+        },
+        "PromoVideoUrl": {
+          "label": {
+            "en": "Promo Video",
+            "fr": "Vidéo promotionnelle",
+            "nl": "Promotievideo"
+          },
+          "description": {
+            "en": "Link to a promotional video of the vehicle; hidden while the vehicle is reported stolen.",
+            "fr": "Lien vers une vidéo promotionnelle du véhicule ; masqué tant que le véhicule est déclaré volé.",
+            "nl": "Link naar een promotievideo van het voertuig; verborgen zolang het voertuig als gestolen is opgegeven."
+          }
+        },
+        "RegisteredAt": {
+          "description": {
+            "en": "When the vehicle was registered, in the registering country's local time. The offset is data, not presentation: a Brussels registration is +02:00 and a Seattle one is -08:00, and losing that loses which country's morning it was.\nDemonstrates the DateTimeOffset treatment. No attribute is needed — the type is its own trigger. The generator emits a RegisteredAtRaw wrapper into VCar because RavenDB flattens a DateTimeOffset to its UTC equivalent whenever it becomes a scalar index field, and a projection would otherwise hand back +00:00. Ordering still runs on the real field, where the UTC-normalised instant is exactly what makes a sort across mixed offsets chronological."
+          }
+        },
+        "ServiceEntries": {
+          "description": {
+            "en": "The vehicle's maintenance history — the sample for the server-side row lifecycle (#386)."
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          },
+          "description": {
+            "en": "Current fleet status of the vehicle: InUse, OnParking, InMaintenance or Stolen.",
+            "fr": "Statut actuel du véhicule dans la flotte : InUse, OnParking, InMaintenance ou Stolen.",
+            "nl": "Huidige wagenparkstatus van het voertuig: InUse, OnParking, InMaintenance of Stolen."
+          }
+        },
+        "Year": {
+          "label": {
+            "en": "Year",
+            "fr": "Année",
+            "nl": "Jaar"
+          },
+          "description": {
+            "en": "Model year of the vehicle, as stated on its registration.",
+            "fr": "Millésime du véhicule, tel qu'indiqué sur son certificat d'immatriculation.",
+            "nl": "Modeljaar van het voertuig, zoals vermeld op het inschrijvingsbewijs."
+          }
+        }
+      }
+    },
+    "Company": {
+      "label": {
+        "en": "Company",
+        "fr": "Entreprise",
+        "nl": "Bedrijf"
+      },
+      "attributes": {
+        "EmployeeCount": {
+          "label": {
+            "en": "Employee Count",
+            "fr": "Nombre d'employés",
+            "nl": "Aantal werknemers"
+          },
+          "description": {
+            "en": "Number of employees the company has, as maintained in HR.",
+            "fr": "Nombre d'employés de l'entreprise, tel que géré dans HR.",
+            "nl": "Aantal werknemers van het bedrijf, zoals bijgehouden in HR."
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          },
+          "description": {
+            "en": "Legal or trading name of the company, replicated read-only from HR.",
+            "fr": "Raison sociale ou nom commercial de l'entreprise, répliqué en lecture seule depuis HR.",
+            "nl": "Juridische of handelsnaam van het bedrijf, alleen-lezen gerepliceerd vanuit HR."
+          },
+          "rules": {
+            "minLength": {
+              "en": "Company Name must be at least 2 characters.",
+              "fr": "Le nom de l'entreprise doit contenir au moins 2 caractères.",
+              "nl": "Bedrijfsnaam moet minstens 2 tekens bevatten."
+            }
+          }
+        },
+        "Website": {
+          "label": {
+            "en": "Website",
+            "fr": "Site web",
+            "nl": "Website"
+          },
+          "description": {
+            "en": "Public website address of the company, replicated read-only from HR.",
+            "fr": "Adresse du site web public de l'entreprise, répliquée en lecture seule depuis HR.",
+            "nl": "Adres van de publieke website van het bedrijf, alleen-lezen gerepliceerd vanuit HR."
+          }
+        }
+      }
+    },
+    "ConfirmDeleteCar": {
+      "label": {
+        "en": "Confirm car deletion",
+        "fr": "Confirmer la suppression",
+        "nl": "Verwijdering bevestigen"
+      },
+      "attributes": {
+        "LicensePlate": {
+          "label": {
+            "en": "License Plate",
+            "fr": "Plaque d'immatriculation",
+            "nl": "Nummerplaat"
+          }
+        },
+        "Confirmation": {
+          "label": {
+            "en": "Type the plate to confirm",
+            "fr": "Saisissez la plaque pour confirmer",
+            "nl": "Typ de nummerplaat om te bevestigen"
+          }
+        }
+      }
+    },
+    "Person": {
+      "label": {
+        "en": "Person",
+        "fr": "Personne",
+        "nl": "Persoon"
+      },
+      "attributes": {
+        "Email": {
+          "label": {
+            "en": "Email",
+            "fr": "E-mail",
+            "nl": "E-mail"
+          },
+          "description": {
+            "en": "Work e-mail address of the person, replicated read-only from HR.",
+            "fr": "Adresse e-mail professionnelle de la personne, répliquée en lecture seule depuis HR.",
+            "nl": "Professioneel e-mailadres van de persoon, alleen-lezen gerepliceerd vanuit HR."
+          }
+        },
+        "FirstName": {
+          "label": {
+            "en": "First Name",
+            "fr": "Prénom",
+            "nl": "Voornaam"
+          },
+          "description": {
+            "en": "Given name of the person, replicated read-only from HR.",
+            "fr": "Prénom de la personne, répliqué en lecture seule depuis HR.",
+            "nl": "Voornaam van de persoon, alleen-lezen gerepliceerd vanuit HR."
+          },
+          "rules": {
+            "minLength": {
+              "en": "First Name must be at least 2 characters.",
+              "fr": "Le prénom doit contenir au moins 2 caractères.",
+              "nl": "Voornaam moet minstens 2 tekens bevatten."
+            }
+          }
+        },
+        "LastName": {
+          "label": {
+            "en": "Last Name",
+            "fr": "Nom de famille",
+            "nl": "Achternaam"
+          },
+          "description": {
+            "en": "Family name of the person, replicated read-only from HR.",
+            "fr": "Nom de famille de la personne, répliqué en lecture seule depuis HR.",
+            "nl": "Familienaam van de persoon, alleen-lezen gerepliceerd vanuit HR."
+          },
+          "rules": {
+            "minLength": {
+              "en": "Last Name must be at least 2 characters.",
+              "fr": "Le nom de famille doit contenir au moins 2 caractères.",
+              "nl": "Achternaam moet minstens 2 tekens bevatten."
+            }
+          }
+        }
+      }
+    },
+    "ServiceEntry": {
+      "attributes": {
+        "Cost": {
+          "description": {
+            "en": "Amount charged, in euro."
+          }
+        },
+        "Description": {
+          "description": {
+            "en": "What was done at this visit."
+          }
+        },
+        "IsInvoiced": {
+          "description": {
+            "en": "Whether the visit has been billed. Once it has, the entry is an accounting record and ServiceEntryActions.OnDeleteRowAsync refuses to let it be removed."
+          }
+        },
+        "Odometer": {
+          "description": {
+            "en": "Odometer reading at the visit, in kilometres."
+          }
+        },
+        "PerformedOn": {
+          "description": {
+            "en": "Date the work was carried out. Defaulted to today by ServiceEntryActions.OnNewAsync."
+          }
+        }
+      }
+    }
+  },
+  "queries": {
+    "GetCars": {
+      "label": {
+        "en": "Cars",
+        "fr": "Voitures",
+        "nl": "Auto's"
+      }
+    },
+    "Recent_Cars": {
+      "label": {
+        "en": "Recent Cars",
+        "fr": "Voitures récentes",
+        "nl": "Recente auto's"
+      }
+    },
+    "Registrations": {
+      "label": {
+        "en": "Registrations",
+        "fr": "Immatriculations",
+        "nl": "Inschrijvingen"
+      }
+    },
+    "Stolen_Cars": {
+      "label": {
+        "en": "Stolen Cars",
+        "fr": "Voitures volées",
+        "nl": "Gestolen auto's"
+      }
+    },
+    "GetCompanies": {
+      "label": {
+        "en": "Companies",
+        "fr": "Entreprises",
+        "nl": "Bedrijven"
+      }
+    },
+    "StreamCompanies": {
+      "label": {
+        "en": "Companies (Live)",
+        "fr": "Entreprises (En direct)",
+        "nl": "Bedrijven (Live)"
+      }
+    },
+    "GetPeople": {
+      "label": {
+        "en": "People",
+        "fr": "Personnes",
+        "nl": "Personen"
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "fleetManagement": {
+        "en": "Fleet Management",
+        "fr": "Gestion de flotte",
+        "nl": "Wagenparkbeheer"
+      }
+    },
+    "cars": {
+      "en": "Cars",
+      "fr": "Voitures",
+      "nl": "Auto's"
+    },
+    "people": {
+      "en": "People",
+      "fr": "Personnes",
+      "nl": "Personen"
+    },
+    "companies": {
+      "en": "Companies",
+      "fr": "Entreprises",
+      "nl": "Bedrijven"
+    },
+    "stolenCars": {
+      "en": "Stolen Cars",
+      "fr": "Voitures volées",
+      "nl": "Gestolen auto's"
+    },
+    "recentCars": {
+      "en": "Recent Cars",
+      "fr": "Voitures récentes",
+      "nl": "Recente auto's"
+    },
+    "registrations": {
+      "en": "Registrations",
+      "fr": "Immatriculations",
+      "nl": "Inschrijvingen"
+    }
+  },
+  "security": {
+    "groups": {
+      "Anonymous visitors": {
+        "label": {
+          "en": "Anonymous visitors",
+          "fr": "Visiteurs anonymes",
+          "nl": "Anonieme bezoekers"
+        }
+      },
+      "Signed-in users": {
+        "label": {
+          "en": "Signed-in users",
+          "fr": "Utilisateurs connectés",
+          "nl": "Aangemelde gebruikers"
+        }
+      },
+      "Administrators": {
+        "label": {
+          "en": "Administrators",
+          "fr": "Administrateurs",
+          "nl": "Beheerders"
+        }
+      },
+      "Fleet managers": {
+        "label": {
+          "en": "Fleet managers",
+          "fr": "Gestionnaires de flotte",
+          "nl": "Wagenparkbeheerders"
+        }
+      },
+      "Viewers": {
+        "label": {
+          "en": "Viewers",
+          "fr": "Lecteurs",
+          "nl": "Lezers"
+        }
+      },
+      "Module:HR": {
+        "label": {
+          "en": "Module:HR",
+          "fr": "Module:HR",
+          "nl": "Module:HR"
+        }
+      },
+      "Machine:FleetApi": {
+        "label": {
+          "en": "Machine:FleetApi",
+          "fr": "Machine:FleetApi",
+          "nl": "Machine:FleetApi"
+        }
+      }
+    }
+  },
+  "actions": {
+    "CarCopy": {
+      "label": {
+        "en": "Copy Car",
+        "fr": "Copier la voiture",
+        "nl": "Auto kopiëren"
+      },
+      "description": {
+        "en": "Creates a copy of the selected car"
+      }
+    },
+    "ScatterRegistrationOffsets": {
+      "label": {
+        "en": "Scatter registration offsets",
+        "fr": "Disperser les décalages horaires",
+        "nl": "Tijdzones verspreiden"
+      },
+      "description": {
+        "en": "Stamps every car with a random registration timestamp carrying a different, non-zero, mixed-sign timezone offset — so the Registered column shows offsets that could not have survived by accident."
+      }
+    }
   }
 }

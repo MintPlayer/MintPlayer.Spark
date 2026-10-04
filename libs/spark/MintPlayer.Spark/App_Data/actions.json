@@ -1,0 +1,18 @@
+{
+  "New": {
+    "icon": "plus-lg",
+    "showedOn": "query",
+    "variant": "primary"
+  },
+  "Edit": {
+    "icon": "pencil",
+    "showedOn": "both",
+    "selectionRule": "=1"
+  },
+  "Delete": {
+    "icon": "trash",
+    "showedOn": "both",
+    "selectionRule": ">0",
+    "variant": "danger"
+  }
+}

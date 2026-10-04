@@ -4,6 +4,7 @@ using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Queries;
@@ -12,7 +13,8 @@ using Raven.Client.Documents.Session;
 
 namespace DemoApp.Actions;
 
-public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISparkOwnsRowSecurity
+public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISparkOwnsRowSecurity,
+    IBeforeSave<Person>, IAfterSaveCommitted<Person>, IAfterDeleteCommitted<Person>
 {
     /// <inheritdoc />
     public string RowSecurityRationale =>
@@ -21,7 +23,7 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISp
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IAsyncDocumentSession session;
 
-    public override Task OnBeforeSaveAsync(PersistentObject obj, Person entity)
+    public ValueTask OnBeforeSaveAsync(Person entity, SaveContext context)
     {
         if (!string.IsNullOrEmpty(entity.Email))
         {
@@ -31,19 +33,26 @@ public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISp
         entity.FirstName = entity.FirstName?.Trim() ?? string.Empty;
         entity.LastName = entity.LastName?.Trim() ?? string.Empty;
 
-        return Task.CompletedTask;
+        // The durable interceptor below gets a payload, not the entity: what it announces is recorded here.
+        context.Facts[NameFact] = $"{entity.FirstName} {entity.LastName}";
+        return ValueTask.CompletedTask;
     }
 
-    public override async Task OnAfterSaveAsync(PersistentObject obj, Person entity)
+    private const string NameFact = "DemoApp.Name";
+
+    // Durable (#482, D17): written in the save's own commit and delivered by Messaging, so a committed
+    // save is always announced and a refused one never is.
+    public async Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"[PersonActions] Person saved: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
-        await messageBus.BroadcastAsync(new PersonCreatedMessage(entity.Id!, $"{entity.FirstName} {entity.LastName}"));
+        var name = change.Facts.GetValueOrDefault(NameFact, string.Empty);
+        Console.WriteLine($"[PersonActions] Person saved: {name} (ID: {change.Id})");
+        await messageBus.BroadcastAsync(new PersonCreatedMessage(change.Id, name), cancellationToken);
     }
 
-    public override async Task OnBeforeDeleteAsync(Person entity)
+    public async Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"[PersonActions] Person being deleted: {entity.FirstName} {entity.LastName} (ID: {entity.Id})");
-        await messageBus.BroadcastAsync(new PersonDeletedMessage(entity.Id!));
+        Console.WriteLine($"[PersonActions] Person deleted (ID: {change.Id})");
+        await messageBus.BroadcastAsync(new PersonDeletedMessage(change.Id), cancellationToken);
     }
 
     /// <summary>

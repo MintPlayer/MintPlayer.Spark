@@ -18,10 +18,10 @@ namespace CodeCoverage.CustomActions;
 /// TTL, and the same work <c>POST /api/me/accounts/resync</c> does.
 /// </summary>
 /// <remarks>
-/// Operates on the caller, not on rows: <c>selectionRule "=0"</c> in <c>customActions.json</c>,
+/// Operates on the caller, not on rows: <c>selectionRule "=0"</c> in <c>actions.json</c>,
 /// and <c>SelectedItems</c> is never read. It is offered on <c>Home</c> because
 /// <c>Resync/Home</c> is the only grant — actions attach by right, not by declaration, and
-/// <c>customActions.json</c> is evaluated against every type.
+/// <c>actions.json</c> is evaluated against every type.
 /// <para>
 /// The result is a set of client operations rather than a return value: invalidating the cache
 /// changes nothing the caller is looking at until the things derived from it are told to
