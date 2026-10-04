@@ -94,7 +94,17 @@ public class QnAContentTests
         var (live, _) = await moderator.PostAsync("/spark/po/purge", new { objectTypeId = AnswerTypeId.ToString(), id = answer.Id, etag = await host.EtagAsync(answer.Id!) });
         live.Should().NotBe(200, "only a deleted row can be purged");
 
+        // Removing someone else's answer asks why (QnA's DeleteReasonInterceptor, #467 D20); the
+        // moderator answers the retry with a reason, which is kept on the soft-deleted answer.
+        moderator.RetryHandler = (prompt, _) =>
+        {
+            var form = prompt.PersistentObject ?? throw new InvalidOperationException($"'{prompt.Title}' carries no form");
+            form["Reason"].Value = "Off-topic";
+            form["Reason"].IsValueChanged = true;
+            return Task.FromResult<RetryAnswer?>(RetryAnswer.Choose("Delete", form));
+        };
         await moderator.DeleteAsLoadedAsync(AnswerTypeId, answer.Id!);
+        (await host.LoadAsync<StoredPost>(answer.Id!))!.DeleteReason.Should().Be("Off-topic");
         await moderator.PostJsonAsync("/spark/po/purge", new { objectTypeId = AnswerTypeId.ToString(), id = answer.Id, etag = await host.EtagAsync(answer.Id!) });
 
         (await host.LoadAsync<StoredPost>(answer.Id!)).Should().BeNull();

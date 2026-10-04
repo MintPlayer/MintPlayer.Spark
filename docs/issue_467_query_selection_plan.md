@@ -71,7 +71,7 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [x] `programUnits.json`, `security.json` group names, `culture.json` names → keys.
 - [x] Migrate all apps and the libraries' own files (814 inline strings). **Back up before the bulk edit.** Done by `tools/migrate-467-translations.mjs` (D25); `customActions.json` text moves with M3. Test fixtures that embed the old shapes are fixed in the M9 sweep.
       The core library's hand-aligned `translations.json` is never written by sync, so it keeps its layout.
-- [ ] (M9 sweep) `--spark-verify-model` and the CI-only gates (`reference_ci_only_gates_spark`) pass.
+- [x] (M9 sweep) `--spark-verify-model` and the CI-only gates (`reference_ci_only_gates_spark`) pass (CI run 37167756494).
 
 ### M3 — `actions.json` composition, built-in Edit, Revoke (D7, D8, D22, R2)
 - [x] Per S12: a library `App_Data/actions.json` is an AdditionalFile, and a new generator emits

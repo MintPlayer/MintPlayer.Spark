@@ -581,6 +581,22 @@
           }
         }
       }
+    },
+    "DeleteReason": {
+      "label": {
+        "en": "Removal reason",
+        "fr": "Motif de suppression",
+        "nl": "Reden van verwijdering"
+      },
+      "attributes": {
+        "Reason": {
+          "label": {
+            "en": "Reason",
+            "fr": "Motif",
+            "nl": "Reden"
+          }
+        }
+      }
     }
   },
   "queries": {

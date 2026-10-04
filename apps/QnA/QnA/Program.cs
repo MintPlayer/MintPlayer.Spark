@@ -62,11 +62,12 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // Translator names come from QnAUserNames through AddHistoryUserNameResolver above.
     spark.AddContributions();
 
-    // M2: QnA's own rules through the core seams — a row policy and three interceptors (AddInterceptors above
+    // QnA's own rules through the core seams — a row policy and four interceptors (AddInterceptors above
     // registers them too; listed here so the setup reads in one place).
     spark.AddSparkRowPolicy<DraftQuestionPolicy>();
     spark.AddInterceptor<QuestionTagsInterceptor>();
     spark.AddInterceptor<ClosedQuestionInterceptor>();
+    spark.AddInterceptor<DeleteReasonInterceptor>();
     // A translator who is not the question's author sees its own attributes read-only (a UI hint;
     // QuestionActions.GetProtectedAttributesAsync is the enforcement).
     spark.AddInterceptor<QuestionTranslatorFormInterceptor>();

@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "modelHash": "ce4382039cd76f8d29272c0e920168008f677fa45961ab2954fbd1e3cad869d8",
+  "modelHash": "2bda0d706a8c6c4c8f672f5345e75f885766734519dce3ec3cbd724501ddded6",
   "contextRoots": "9099816a4937704d31a0f5356772deaed6e16029fadfd929187179bfb8f7d560",
-  "modelFiles": "8fec78cd8f3d6eb49d3891e361dcfe1cdde80034069d6c4a9f8e6ae4f5586d1a",
+  "modelFiles": "a820970decbe4c4df506c99a671934b3c3ce2e05bb905a932afbd8078a1c03f8",
   "files": {
     "Answer.json": "e497d75d71fe251abffb21fab673f621507cc145d4c8604e030f27a0e5a4836f",
+    "DeleteReason.json": "69246f4f164eb0922b6bf2863435362dc3625d1fe7e9fe8dda71ab5e018bf04d",
     "Question.json": "e6f43f4c4341b1cf8d4da5078797df8e1aad8663be8835ff0d7b8c2808cc1d71",
     "QuestionTranslation.json": "d50ef6fc848c2b4ef8479fdf0cb8f4bd38bb9cbb4ec16e0728f316b708fb7c53",
     "QuestionTranslationsContribution.json": "ec69361aefe1529fdba6d847911e23f506a49a01407b339dfc98f006bbf4ccb4",
