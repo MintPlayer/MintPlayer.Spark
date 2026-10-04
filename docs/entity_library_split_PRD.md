@@ -164,12 +164,25 @@ to one library and watch the build fail. Neither a clean grep nor a green build 
   generated code emits `using MintPlayer.Spark.Abstractions;` plus unqualified names
   (`HostTranslationsAggregatorGenerator.Producer.cs:28,35,45,47,62`). The one assembly-keyed check,
   `GenerateIndexGenerator.cs:512-526`, derives the assembly from the resolved symbol.
-- **R4. Persistence.** None. Raven stores CLR type names in `@metadata.Raven-Clr-Type` as
-  `Namespace.Type, Assembly`, but the moved types are values and DTOs, not document roots. `SparkUser`
-  **is** a document root, so its stored `Raven-Clr-Type` names the `MintPlayer.Spark.Authorization` assembly.
-  - Verify how the user store loads it: `LoadAsync<SparkUser>` typed loads ignore the stored CLR type;
-    untyped loads would not.
-  - Prove it with a test that loads a user document whose metadata names the old assembly.
+- **R4. Persistence: stored `SparkUser`/`SparkRole` documents need a migration** (owner decision
+  2026-10-04: "existing SparkUser documents will need to be migrated with a new RavenMigration").
+  - Raven stores `@metadata.Raven-Clr-Type` as `Namespace.Type, Assembly`. The model types are
+    values and DTOs, not document roots, so nothing changes for them.
+  - `SparkUser` and `SparkRole` **are** document roots. Their stored metadata names the
+    `MintPlayer.Spark.Authorization` assembly, which after the move no longer holds them.
+  - Typed loads (`LoadAsync<SparkUser>`) ignore the stored type, but Spark's untyped loads do not:
+    `RowSecurity.cs:64,600` and `BreadcrumbResolver.cs:202,636` fall back to a `JObject` when
+    `@Raven-Clr-Type` does not resolve.
+  - Affected apps store plain `SparkUser` (`AddAuthentication<SparkUser>`): CodeCoverage (production,
+    `Program.cs:118`), HR (`:34`) and QnA (`:38`). An app's own subclass (`AppUser : SparkUser`)
+    records the app's assembly and is unaffected.
+  - **Fix:** a `RavenMigration` (`ISparkMigration`) that rewrites `Raven-Clr-Type` on `SparkUsers`
+    and `SparkRoles` documents whose value names the old assembly.
+    - Shipped by the framework, not by each app. Today no `libs/` package ships a migration; the
+      generated `AddMigrations()` discovers only the app's own project (`libs/migrations/…/README.md:28-34`).
+      So this needs spike S1 (plan).
+    - Tests: red/green on a document whose metadata names the old assembly. After the migration it
+      loads untyped as `SparkUser`, not `JObject`. Run it twice to prove it is idempotent.
 - **R5. `SparkUser`'s `cref`s.** Moved doc comments referencing web types (`SparkUser.cs:36` mentions
   `UserManager` in a `<c>`) must not become `<see cref>` to types the new package cannot see. The same
   applies to `TranslatedString.cs:14`, whose `<see cref="SparkText"/>` becomes `<c>`.
@@ -189,7 +202,8 @@ to one library and watch the build fail. Neither a clean grep nor a green build 
   extended with a library that uses `TransientLookupReference` and `TranslatedString`, compiled against
   Attributes and Model only. This exercises exactly the shape that broke at #382.
 - **R1 runtime test:** the registry discovers Moderation, Contributions, History, SoftDelete and the core verbs.
-- **R4 test:** a `SparkUser` document written with the old assembly name loads.
+- **R4 migration test:** a `SparkUser`/`SparkRole` document written with the old assembly name loads
+  untyped as its CLR type after the migration (and as a `JObject` before it), and a second run is a no-op.
 - **`dotnet pack` of the solution:** `MintPlayer.Spark.Abstractions.nupkg` does not contain
   `TranslatedString`, and `Model.nupkg` does.
 - **Local sweep:** `npm run test:affected`.

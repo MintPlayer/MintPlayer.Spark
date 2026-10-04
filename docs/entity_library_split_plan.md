@@ -2,7 +2,7 @@
 
 PRD: [entity_library_split_PRD.md](entity_library_split_PRD.md) · PR: [#484](https://github.com/MintPlayer/MintPlayer.Spark/pull/484)
 (branch `fix/bs-select-full-width`).
-Status 2026-10-04: **M0 done** (ng-bootstrap 22.21.1 bump, `b899cbea` on the branch); M1–M8 not started.
+Status 2026-10-04: **M0 done** (ng-bootstrap 22.21.1 bump, `b899cbea` on the branch); spikes S1–S3 and M1–M8 not started.
 
 Rules for this work:
 - **Commit per milestone; run tests only at the end (M8).** Intermediate milestones are checked by
@@ -15,6 +15,26 @@ Rules for this work:
 ### M0: ng-bootstrap 22.21.1 ✅
 `<bs-select class="w-100">` renders full width (MintPlayer/mintplayer-ng-bootstrap#424). Root
 `package.json` + lockfile only.
+
+### Spikes (before M1; throwaway code, findings go into the PRD)
+- **S1. A migration shipped by a framework package (PRD R4).**
+  - Today only apps ship `ISparkMigration`s, and the generated `AddMigrations()` scans only the app project.
+  - Find out how `AddAuthentication<TUser>` can register the Authorization package's migration into
+    `SparkMigrationRegistry` (`AddMigration<T>`) so that it runs in every app that stores users:
+    1. Does Authorization then have to reference `MintPlayer.Spark.Migrations`?
+    2. What happens in an app that never calls `AddMigrations()` (QnA)? Does registering enable the
+       runner, or must auth require it?
+    3. How does a framework migration's `Version` avoid colliding with app versions? Apps use
+       `yyyyMMddHHmm` timestamps.
+  - Write the answer as a PRD decision before writing M2b.
+- **S2. netstandard2.0 (PRD §3.4).** Throwaway: Attributes + Model + Messaging.Abstractions +
+  DemoApp.Library with `netstandard2.0` added, plus PolySharp. List every compile error, especially in
+  the generator output. Decide whether M6 stays as planned.
+- **S3. Build-guard mechanism (PRD §3.5).** Find out whether a transitive `Microsoft.AspNetCore.App`
+  framework reference is observable in a *referencing* plain-SDK project during its build: the
+  `FrameworkReference` items after `ResolvePackageAssets`/`ResolveFrameworkReferences`, or
+  `project.assets.json`'s `frameworkReferences`. Find the target to hook, and prove it fires on HR.Library
+  today, before any move.
 
 ### M1: `MintPlayer.Spark.Model`
 1. Create `libs/model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj`: `Microsoft.NET.Sdk`,
@@ -44,6 +64,16 @@ Rules for this work:
 4. Check `InternalsVisibleTo`: if Authorization or the tests use `internal` members of the moved
    types, the new assembly needs the same `InternalsVisibleTo` entries as `Authorization.csproj`.
 5. Check: solution build.
+
+### M2b: migrate stored `SparkUser`/`SparkRole` documents (PRD R4, owner decision)
+1. In Authorization: an `ISparkMigration` that patches `@metadata.Raven-Clr-Type` on `SparkUsers` and
+   `SparkRoles`. It only touches values that name the old `MintPlayer.Spark.Authorization` assembly
+   and the type `MintPlayer.Spark.Authorization.Identity.SparkUser`/`SparkRole`, and leaves app
+   subclasses alone. Use a set-based patch by query (`from SparkUsers where …`) rather than loading
+   every user; wait for the operation to finish inside `UpAsync`.
+2. Register it as S1 decided.
+3. Write the red/green test (run in M8): before the migration the document loads untyped as a
+   `JObject`; afterwards it loads as `SparkUser`. A second run changes nothing.
 
 ### M3: the `SparkAware` trap (PRD R1) and an audit of assembly-name scans
 1. `SparkAssemblies.SparkAware()` (`SparkAssemblies.cs:17-37`) treats a reference to any of
@@ -109,8 +139,7 @@ Rules for this work:
 ### M8: verification (the only test run)
 1. Extend `ReferencedAssemblyEntityTests` with a library using `TransientLookupReference` and
    `TranslatedString`, compiled against Attributes and Model only (no Abstractions in its references).
-2. Write the R4 test: a `SparkUser` document whose `Raven-Clr-Type` names the old
-   `MintPlayer.Spark.Authorization` assembly loads through the user store.
+2. Run the M2b migration test (written in M2b).
 3. Run `dotnet pack` locally and inspect the nupkgs: Abstractions no longer contains the moved types;
    Model, Authorization.Abstractions and History.Abstractions do.
 4. Run `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected > <scratchpad>/sweep.log 2>&1`.
