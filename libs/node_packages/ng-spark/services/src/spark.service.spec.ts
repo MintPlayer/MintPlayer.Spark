@@ -190,24 +190,24 @@ describe('SparkService', () => {
   });
 
   it('update unwraps the envelope and names its target in the body', async () => {
-    const promise = service.update('Person', 'p/1', { name: 'Bob' });
+    const promise = service.update('Person', 'p/1', { name: 'Bob', etag: 'A:1' });
 
     const req = httpTesting.expectOne(r => r.method === 'POST' && r.url === '/spark/po/update');
     // `p/1` was `p%2F1` in a catch-all route segment, for no reason other than that a Raven id
     // contains a slash. In a body it is just the id.
-    expect(req.request.body).toEqual({ objectTypeId: 'Person', id: 'p/1', persistentObject: { name: 'Bob' } });
+    expect(req.request.body).toEqual({ objectTypeId: 'Person', id: 'p/1', persistentObject: { name: 'Bob', etag: 'A:1' } });
 
     req.flush({ result: { id: 'p/1', name: 'Bob' }, operations: [] });
     await expect(promise).resolves.toMatchObject({ id: 'p/1' });
   });
 
   it('delete names its target in the body like every other call', async () => {
-    const promise = service.delete('Person', 'p/1');
+    const promise = service.delete('Person', 'p/1', 'A:1');
 
     // It used to be a DELETE that attached a body only once there were retry answers to send, and
     // a server that sniffed Content-Type to decide whether to read one. Both are gone.
     const req = httpTesting.expectOne(r => r.method === 'POST' && r.url === '/spark/po/delete');
-    expect(req.request.body).toEqual({ objectTypeId: 'Person', id: 'p/1' });
+    expect(req.request.body).toEqual({ objectTypeId: 'Person', id: 'p/1', etag: 'A:1' });
 
     req.flush({ result: undefined, operations: [] });
     await expect(promise).resolves.toBeUndefined();

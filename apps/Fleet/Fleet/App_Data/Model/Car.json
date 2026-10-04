@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "facb6829-f2a1-4ae2-a046-6ba506e8c0ce",
     "name": "Car",
-    "description": {
-      "en": "Car",
-      "fr": "Voiture",
-      "nl": "Auto"
-    },
     "clrType": "Fleet.Entities.Car",
     "queryType": "Fleet.Indexes.VCar",
     "indexName": "Cars_Overview",
@@ -17,16 +12,6 @@
       {
         "id": "50b7dffd-aff1-4568-b4b0-4dfa7048ff31",
         "name": "Brand",
-        "label": {
-          "en": "Brand",
-          "fr": "Marque",
-          "nl": "Merk"
-        },
-        "description": {
-          "en": "Manufacturer brand of the vehicle, chosen from the list of known car brands.",
-          "fr": "Marque du constructeur du véhicule, choisie dans la liste des marques automobiles connues.",
-          "nl": "Merk van de fabrikant van het voertuig, gekozen uit de lijst met bekende automerken."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -40,16 +25,6 @@
       {
         "id": "7ef75362-971f-4c14-bfb4-e92a237da057",
         "name": "Color",
-        "label": {
-          "en": "Color",
-          "fr": "Couleur",
-          "nl": "Kleur"
-        },
-        "description": {
-          "en": "Exterior paint colour of the vehicle.",
-          "fr": "Couleur de la peinture extérieure du véhicule.",
-          "nl": "Kleur van de buitenlak van het voertuig."
-        },
         "dataType": "color",
         "isRequired": false,
         "isVisible": true,
@@ -63,16 +38,6 @@
       {
         "id": "b8a4d2f1-1c3e-4a7b-9d5e-6c8f2a4b3d1e",
         "name": "CreatedBy",
-        "label": {
-          "en": "Created By",
-          "fr": "Créé par",
-          "nl": "Aangemaakt door"
-        },
-        "description": {
-          "en": "User id of the account that created the record. Set on create by CarActions; used by the row-level auth hook to restrict non-admin callers to their own cars. Demo field: wouldn't necessarily live on the entity in a production app (could be a metadata field), but keeping it on the entity is the simplest illustration.",
-          "fr": "Id utilisateur du compte qui a créé l'enregistrement. Défini à la création par CarActions ; utilisé par le hook d'autorisation au niveau des lignes pour limiter les appelants non administrateurs à leurs propres voitures. Champ de démonstration : il ne résiderait pas nécessairement sur l'entité dans une application de production (ce pourrait être un champ de métadonnées), mais le conserver sur l'entité est l'illustration la plus simple.",
-          "nl": "Gebruikers-id van het account dat het record heeft aangemaakt. Bij aanmaken gezet door CarActions; gebruikt door de row-level auth-hook om niet-beheerders tot hun eigen wagens te beperken. Demoveld: in een productieapp zou het niet noodzakelijk op de entiteit leven (het kon een metadataveld zijn), maar het op de entiteit houden is de eenvoudigste illustratie."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -86,16 +51,6 @@
       {
         "id": "3f29e4b0-7c1a-4d86-9e0b-5b7c8d93f402",
         "name": "Description",
-        "label": {
-          "en": "Description",
-          "fr": "Description",
-          "nl": "Omschrijving"
-        },
-        "description": {
-          "en": "Free-text description maintained in multiple languages. Exercises the inverse-path TranslatedString per-language merge behavior — a partial update that carries only { en: \"…\" } must preserve the existing fr / nl entries rather than overwriting the whole value.",
-          "fr": "Description en texte libre gérée en plusieurs langues. Met à l'épreuve le comportement de fusion par langue de TranslatedString sur le chemin inverse — une mise à jour partielle ne portant que { en: « … » } doit préserver les entrées fr / nl existantes plutôt que d'écraser la valeur entière.",
-          "nl": "Vrije-tekstomschrijving die in meerdere talen wordt bijgehouden. Test het per-taal-samenvoeggedrag van TranslatedString op het inverse pad — een gedeeltelijke update die alleen { en: \"…\" } meedraagt moet de bestaande fr/nl-vermeldingen behouden in plaats van de hele waarde te overschrijven."
-        },
         "dataType": "TranslatedString",
         "isRequired": false,
         "isVisible": true,
@@ -109,11 +64,6 @@
       {
         "id": "5572b5f2-ee85-4c34-b3fc-f3b5f4a3a444",
         "name": "Description_en",
-        "label": {
-          "en": "Description_en",
-          "fr": "Description_en",
-          "nl": "Description_en"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -127,11 +77,6 @@
       {
         "id": "7a80393d-12c0-40d5-b1f0-c5ffa5e0fc97",
         "name": "Description_fr",
-        "label": {
-          "en": "Description_fr",
-          "fr": "Description_fr",
-          "nl": "Description_fr"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -145,11 +90,6 @@
       {
         "id": "634d96ca-f1c6-4fd8-b1d0-1edb260f2dac",
         "name": "Description_nl",
-        "label": {
-          "en": "Description_nl",
-          "fr": "Description_nl",
-          "nl": "Description_nl"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -163,16 +103,6 @@
       {
         "id": "a3c1e8f7-5b42-4d19-9e6a-1f8d3c7b2a05",
         "name": "InteriorColor",
-        "label": {
-          "en": "Interior Color",
-          "fr": "Couleur intérieure",
-          "nl": "Interieurkleur"
-        },
-        "description": {
-          "en": "Colour of the vehicle's interior upholstery and trim.",
-          "fr": "Couleur de la sellerie et des garnitures intérieures du véhicule.",
-          "nl": "Kleur van de bekleding en afwerking binnenin het voertuig."
-        },
         "dataType": "color",
         "isRequired": false,
         "isVisible": true,
@@ -187,16 +117,6 @@
       {
         "id": "cb321818-3574-44ee-9488-2b2567b56605",
         "name": "LicensePlate",
-        "label": {
-          "en": "License Plate",
-          "fr": "Plaque d'immatriculation",
-          "nl": "Nummerplaat"
-        },
-        "description": {
-          "en": "SearchAttribute makes this full-text searchable AND gives it a LicensePlateSort companion. Both, from one attribute: an analyzed field is tokenized, so ordering on it is meaningless, and the companion is the repair.",
-          "fr": "SearchAttribute rend ce champ recherchable en texte intégral ET lui adjoint un compagnon LicensePlateSort. Les deux, à partir d'un seul attribut : un champ analysé est tokenisé, si bien qu'y appliquer un tri n'a aucun sens, et le compagnon est le remède.",
-          "nl": "SearchAttribute maakt dit veld full-text doorzoekbaar ÉN geeft het een LicensePlateSort-begeleider. Beide, uit één attribuut: een geanalyseerd veld wordt getokeniseerd, waardoor erop sorteren betekenisloos is, en de begeleider is de reparatie."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -209,11 +129,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "License Plate must be at least 2 characters.",
-              "fr": "La plaque d'immatriculation doit contenir au moins 2 caractères.",
-              "nl": "Nummerplaat moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Car.attributes.LicensePlate.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -222,27 +138,13 @@
           {
             "type": "regex",
             "value": "^[A-Z0-9 -]+$",
-            "message": {
-              "en": "License Plate must contain only uppercase letters, digits, spaces and hyphens.",
-              "fr": "La plaque d'immatriculation ne doit contenir que des majuscules, des chiffres, des espaces et des tirets.",
-              "nl": "Nummerplaat mag alleen hoofdletters, cijfers, spaties en streepjes bevatten."
-            }
+            "message": "model.Car.attributes.LicensePlate.rules.regex"
           }
         ]
       },
       {
         "id": "9f4d17a2-3c81-4b6a-8e52-2a7b1d0c4e93",
         "name": "Manager",
-        "label": {
-          "en": "Manager",
-          "fr": "Gestionnaire",
-          "nl": "Beheerder"
-        },
-        "description": {
-          "en": "Id of the Person (replicated from HR) acting as fleet manager for this vehicle. Demo field — exercises the inverse-path reference round-trip end-to-end: client sets the id, round-trip re-fetch resolves the breadcrumb via the Person replication collection.",
-          "fr": "Id de la Person (répliquée depuis HR) faisant office de gestionnaire de flotte pour ce véhicule. Champ de démonstration — met à l'épreuve l'aller-retour des références sur le chemin inverse de bout en bout : le client définit l'id, et la relecture de l'aller-retour résout le fil d'Ariane via la collection de réplication Person.",
-          "nl": "Id van de Person (gerepliceerd vanuit HR) die als wagenparkbeheerder voor dit voertuig optreedt. Demoveld — test de referentie-round-trip op het inverse pad van begin tot eind: de client zet de id, en het ophalen bij de round-trip lost de breadcrumb op via de Person-replicatiecollectie."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -258,16 +160,6 @@
       {
         "id": "260f5024-5dff-4b2d-b233-9933d16dc4a7",
         "name": "Model",
-        "label": {
-          "en": "Model",
-          "fr": "Modèle",
-          "nl": "Model"
-        },
-        "description": {
-          "en": "Searchable, and the reason the companion exists: model names contain spaces.",
-          "fr": "Recherchable, et la raison d'être du champ compagnon : les noms de modèle contiennent des espaces.",
-          "nl": "Doorzoekbaar, en de reden dat het begeleidende veld bestaat: modelnamen bevatten spaties."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -279,11 +171,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "Model must be at least 2 characters.",
-              "fr": "Le modèle doit contenir au moins 2 caractères.",
-              "nl": "Model moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Car.attributes.Model.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -294,16 +182,6 @@
       {
         "id": "e4e94390-49dd-46aa-ac4a-386e29ca51b8",
         "name": "PoliceReportNumber",
-        "label": {
-          "en": "Police Report Number",
-          "fr": "Numéro du procès-verbal de police",
-          "nl": "Nummer van het politieverslag"
-        },
-        "description": {
-          "en": "Police report reference, demanded once the vehicle is reported stolen.\nHidden and optional in the model; CarActions.OnRefreshAsync reveals it and makes it required when Status becomes Stolen. That is the whole point of the sample — the model declares the resting shape, the hook declares how the shape responds.\nIgnoreForIndexAttribute because no grid filters or sorts on it, matching Manager and CreatedBy.",
-          "fr": "Référence du procès-verbal de police, exigée dès que le véhicule est déclaré volé.\nMasqué et facultatif dans le modèle ; CarActions.OnRefreshAsync le révèle et le rend obligatoire lorsque Status passe à Stolen. C'est tout l'intérêt de l'exemple — le modèle déclare la forme au repos, le hook déclare comment cette forme réagit.\nIgnoreForIndexAttribute parce qu'aucune grille ne filtre ni ne trie dessus, à l'instar de Manager et CreatedBy.",
-          "nl": "Referentie van het politieverslag, vereist zodra het voertuig als gestolen is opgegeven.\nVerborgen en optioneel in het model; CarActions.OnRefreshAsync maakt het zichtbaar en verplicht wanneer Status Stolen wordt. Dat is de hele bedoeling van het voorbeeld — het model verklaart de vorm in rust, de hook verklaart hoe die vorm reageert.\nIgnoreForIndexAttribute omdat geen enkel grid erop filtert of sorteert, net als bij Manager en CreatedBy."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -317,16 +195,6 @@
       {
         "id": "d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
         "name": "PromoVideoUrl",
-        "label": {
-          "en": "Promo Video",
-          "fr": "Vidéo promotionnelle",
-          "nl": "Promotievideo"
-        },
-        "description": {
-          "en": "Link to a promotional video of the vehicle; hidden while the vehicle is reported stolen.",
-          "fr": "Lien vers une vidéo promotionnelle du véhicule ; masqué tant que le véhicule est déclaré volé.",
-          "nl": "Link naar een promotievideo van het voertuig; verborgen zolang het voertuig als gestolen is opgegeven."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -346,12 +214,6 @@
       {
         "id": "6406f3df-5e06-429f-97c6-835cb1f26060",
         "name": "RegisteredAt",
-        "label": {
-          "en": "Registered At"
-        },
-        "description": {
-          "en": "When the vehicle was registered, in the registering country's local time. The offset is data, not presentation: a Brussels registration is +02:00 and a Seattle one is -08:00, and losing that loses which country's morning it was.\nDemonstrates the DateTimeOffset treatment. No attribute is needed — the type is its own trigger. The generator emits a RegisteredAtRaw wrapper into VCar because RavenDB flattens a DateTimeOffset to its UTC equivalent whenever it becomes a scalar index field, and a projection would otherwise hand back +00:00. Ordering still runs on the real field, where the UTC-normalised instant is exactly what makes a sort across mixed offsets chronological."
-        },
         "dataType": "datetime",
         "isRequired": true,
         "isVisible": true,
@@ -364,12 +226,6 @@
       {
         "id": "225b8df2-3887-4e17-8145-26c57d1b9441",
         "name": "ServiceEntries",
-        "label": {
-          "en": "Service Entries"
-        },
-        "description": {
-          "en": "The vehicle's maintenance history — the sample for the server-side row lifecycle (#386)."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -384,16 +240,6 @@
       {
         "id": "78cc91e9-6158-4172-8663-8a5b0b0b65c5",
         "name": "Status",
-        "label": {
-          "en": "Status",
-          "fr": "Statut",
-          "nl": "Status"
-        },
-        "description": {
-          "en": "Current fleet status of the vehicle: InUse, OnParking, InMaintenance or Stolen.",
-          "fr": "Statut actuel du véhicule dans la flotte : InUse, OnParking, InMaintenance ou Stolen.",
-          "nl": "Huidige wagenparkstatus van het voertuig: InUse, OnParking, InMaintenance of Stolen."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -408,16 +254,6 @@
       {
         "id": "ee84192a-dd42-4224-9bbb-9a4328083ef0",
         "name": "Year",
-        "label": {
-          "en": "Year",
-          "fr": "Année",
-          "nl": "Jaar"
-        },
-        "description": {
-          "en": "Model year of the vehicle, as stated on its registration.",
-          "fr": "Millésime du véhicule, tel qu'indiqué sur son certificat d'immatriculation.",
-          "nl": "Modeljaar van het voertuig, zoals vermeld op het inschrijvingsbewijs."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -440,11 +276,6 @@
     {
       "id": "a20e8400-e29b-41d4-a716-446655440001",
       "name": "GetCars",
-      "description": {
-        "en": "Cars",
-        "fr": "Voitures",
-        "nl": "Auto's"
-      },
       "source": "Database.Cars",
       "sortColumns": [
         {
@@ -460,11 +291,6 @@
     {
       "id": "a20e8400-e29b-41d4-a716-446655440011",
       "name": "Recent_Cars",
-      "description": {
-        "en": "Recent Cars",
-        "fr": "Voitures récentes",
-        "nl": "Recente auto's"
-      },
       "source": "Custom.Recent_Cars",
       "alias": "recent-cars",
       "sortColumns": [
@@ -475,16 +301,12 @@
       ],
       "renderMode": "Pagination",
       "entityType": "Car",
-      "isStreamingQuery": false
+      "isStreamingQuery": false,
+      "selectionMode": "none"
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440012",
       "name": "Registrations",
-      "description": {
-        "en": "Registrations",
-        "fr": "Immatriculations",
-        "nl": "Inschrijvingen"
-      },
       "source": "Database.Cars",
       "alias": "registrations",
       "sortColumns": [
@@ -501,11 +323,6 @@
     {
       "id": "a20e8400-e29b-41d4-a716-446655440010",
       "name": "Stolen_Cars",
-      "description": {
-        "en": "Stolen Cars",
-        "fr": "Voitures volées",
-        "nl": "Gestolen auto's"
-      },
       "source": "Custom.Stolen_Cars",
       "alias": "stolen-cars",
       "sortColumns": [

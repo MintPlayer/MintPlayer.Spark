@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "5a990917-387b-4f1e-8434-befc64da1958",
     "name": "Company",
-    "description": {
-      "en": "Company",
-      "fr": "Entreprise",
-      "nl": "Bedrijf"
-    },
     "clrType": "HR.Entities.Company",
     "breadcrumb": "{Name} · {Sector}",
     "tabs": [],
@@ -15,16 +10,6 @@
       {
         "id": "c8f35b2d-ae49-4e67-9d23-4f6b8cae2f15",
         "name": "AccentColor",
-        "label": {
-          "en": "Accent Color",
-          "fr": "Couleur d'accent",
-          "nl": "Accentkleur"
-        },
-        "description": {
-          "en": "Secondary brand colour of the company as a hex code, used alongside the primary colour.",
-          "fr": "Couleur secondaire de la marque de l'entreprise sous forme de code hexadécimal, utilisée aux côtés de la couleur principale.",
-          "nl": "Secundaire merkkleur van het bedrijf als hexcode, gebruikt naast de primaire kleur."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -37,16 +22,6 @@
       {
         "id": "b7e24a1c-9f38-4d56-8c12-3e5a7b9d1f04",
         "name": "BrandColor",
-        "label": {
-          "en": "Brand Color",
-          "fr": "Couleur de marque",
-          "nl": "Merkkleur"
-        },
-        "description": {
-          "en": "Primary brand colour of the company as a hex code, e.g. #0d6efd.",
-          "fr": "Couleur principale de la marque de l'entreprise sous forme de code hexadécimal, p. ex. #0d6efd.",
-          "nl": "Primaire merkkleur van het bedrijf als hexcode, bv. #0d6efd."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -59,16 +34,6 @@
       {
         "id": "d49b5ac5-62c8-4900-a391-9282c9623594",
         "name": "EmployeeCount",
-        "label": {
-          "en": "Employee Count",
-          "fr": "Nombre d'employés",
-          "nl": "Aantal werknemers"
-        },
-        "description": {
-          "en": "Approximate number of people the company employs.",
-          "fr": "Nombre approximatif de personnes employées par l'entreprise.",
-          "nl": "Bij benadering het aantal mensen dat het bedrijf tewerkstelt."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -87,16 +52,6 @@
       {
         "id": "a1784ded-7fec-468d-b181-2aa24b5d34b0",
         "name": "Name",
-        "label": {
-          "en": "Name",
-          "fr": "Nom",
-          "nl": "Naam"
-        },
-        "description": {
-          "en": "Legal or trading name of the company.",
-          "fr": "Raison sociale ou nom commercial de l'entreprise.",
-          "nl": "Juridische of handelsnaam van het bedrijf."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -108,11 +63,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "Company Name must be at least 2 characters.",
-              "fr": "Le nom de l'entreprise doit contenir au moins 2 caractères.",
-              "nl": "Bedrijfsnaam moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Company.attributes.Name.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -123,16 +74,6 @@
       {
         "id": "09086eed-8001-45f3-8a4a-7cdf59300cad",
         "name": "Sector",
-        "label": {
-          "en": "Sector",
-          "fr": "Secteur",
-          "nl": "Sector"
-        },
-        "description": {
-          "en": "The profession that best describes the sector the company operates in.",
-          "fr": "La profession qui décrit le mieux le secteur dans lequel l'entreprise opère.",
-          "nl": "Het beroep dat de sector waarin het bedrijf actief is het best omschrijft."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -147,16 +88,6 @@
       {
         "id": "fbe3da33-f8db-4eb2-9307-eaf38f59ef71",
         "name": "Website",
-        "label": {
-          "en": "Website",
-          "fr": "Site web",
-          "nl": "Website"
-        },
-        "description": {
-          "en": "Public website of the company, including the scheme, e.g. https://example.com.",
-          "fr": "Site web public de l'entreprise, schéma inclus, p. ex. https://example.com.",
-          "nl": "Publieke website van het bedrijf, inclusief het schema, bv. https://example.com."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -179,11 +110,6 @@
     {
       "id": "b20e8400-e29b-41d4-a716-446655440002",
       "name": "GetCompanies",
-      "description": {
-        "en": "Companies",
-        "fr": "Entreprises",
-        "nl": "Bedrijven"
-      },
       "source": "Database.Companies",
       "sortColumns": [
         {

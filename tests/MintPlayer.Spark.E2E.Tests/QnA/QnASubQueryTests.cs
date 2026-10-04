@@ -48,7 +48,7 @@ public class QnASubQueryTests
         var (author, questionId, answers) = await QuestionWithAnswersAsync("bulk-api", 3);
         using var _ = author;
 
-        await author.Client.DeletePersistentObjectsAsync(AnswerTypeId, [answers[0], answers[1]],
+        await author.Client.DeletePersistentObjectsAsync(AnswerTypeId, await author.Client.AsListedAsync(AnswerTypeId, answers[0], answers[1]),
             queryId: QuestionAnswersQueryId.ToString(), parentId: questionId, parentType: "Question");
 
         (await Host.LoadAsync<StoredPost>(answers[0]))!.IsDeleted.Should().BeTrue("QnA's answers are soft-deletable");
@@ -65,10 +65,14 @@ public class QnASubQueryTests
         using var other = await Host.CreateUserAsync("bulk-other");
         var foreign = await other.Client.AnswerAsync(questionId, "Not the author's to delete");
 
-        var delete = () => author.Client.DeletePersistentObjectsAsync(AnswerTypeId, [answers[0], foreign.Id!]);
+        var listed = await author.Client.AsListedAsync(AnswerTypeId, answers[0], foreign.Id!);
+        var delete = () => author.Client.DeletePersistentObjectsAsync(AnswerTypeId, listed,
+            queryId: QuestionAnswersQueryId.ToString(), parentId: questionId, parentType: "Question");
 
-        (await delete.Should().ThrowAsync<SparkClientException>()).Which.StatusCode.Should().Be(HttpStatusCode.NotFound,
-            "the row rule refuses the other user's answer, which refuses the lot like a missing row");
+        // #467 D18: the other user's answer is readable, so the refusal names it rather than
+        // pretending it is missing (only an unreadable row counts as missing, D11).
+        (await delete.Should().ThrowAsync<SparkClientException>()).Which.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+            "the Delete row rule refuses the other user's answer, which refuses the lot");
         (await Host.LoadAsync<StoredPost>(answers[0]))!.IsDeleted.Should().BeFalse("all or nothing");
         (await Host.LoadAsync<StoredPost>(foreign.Id!))!.IsDeleted.Should().BeFalse();
     }

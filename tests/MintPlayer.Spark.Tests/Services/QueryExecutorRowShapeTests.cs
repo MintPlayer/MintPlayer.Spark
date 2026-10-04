@@ -3,6 +3,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Services.Breadcrumb;
 using MintPlayer.Spark.Tests._Infrastructure;
+using MintPlayer.Spark.Testing;
 using NSubstitute;
 using Raven.Client.Documents.Session;
 
@@ -16,9 +17,11 @@ namespace MintPlayer.Spark.Tests.Services;
 /// are pinned here rather than left to the integration suite: the failure mode is "looks fine".
 /// </para>
 /// </summary>
-public class QueryExecutorRowShapeTests
+// A real (empty) database: every query page now reads its rows' etags from document metadata
+// (#467, D30a), which a substituted session cannot answer. The rows here are never stored, so they
+// carry no etag; the shape is what is under test.
+public class QueryExecutorRowShapeTests : SparkTestDriver
 {
-    private readonly IAsyncDocumentSession _session = Substitute.For<IAsyncDocumentSession>();
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly ISparkContextResolver _contextResolver = Substitute.For<ISparkContextResolver>();
@@ -29,7 +32,7 @@ public class QueryExecutorRowShapeTests
     private readonly IBreadcrumbResolver _breadcrumbResolver = Substitute.For<IBreadcrumbResolver>();
 
     private QueryExecutor CreateExecutor() => new(
-        _session, _entityMapper, _modelLoader, _contextResolver,
+        Store.OpenAsyncSession(), _entityMapper, _modelLoader, _contextResolver,
         _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
         new PermissiveRowSecurity(),
         TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper));

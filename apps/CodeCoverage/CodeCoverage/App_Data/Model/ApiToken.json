@@ -12,12 +12,6 @@
       {
         "id": "c71d2efd-081a-4ffc-98b8-723996c48500",
         "name": "Account",
-        "label": {
-          "en": "Account"
-        },
-        "description": {
-          "en": "The account this token uploads for: the Account document id, Accounts/{provider}/{id}."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -32,12 +26,6 @@
       {
         "id": "2e38b951-d090-4ed3-9bb7-f020b2721c5d",
         "name": "AccountLogin",
-        "label": {
-          "en": "Account Login"
-        },
-        "description": {
-          "en": "Owner login this token uploads for, when Scope is \"Account\". Display only — a login is renameable and a repository can be transferred out from under it, so authorizing on this string means a token keeps working for an account that no longer owns the repository, and stops working for the one that does. AccountId is the authorization key."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -51,12 +39,6 @@
       {
         "id": "b7d78081-ce41-47c5-b43c-97faf802808b",
         "name": "AccountOwnerKey",
-        "label": {
-          "en": "Account Owner Key"
-        },
-        "description": {
-          "en": "The owning account as provider:login — what the row filter compares."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -70,12 +52,6 @@
       {
         "id": "19e3a2c9-b12c-4c10-b536-3a4b08b2e6be",
         "name": "CreatedAtUtc",
-        "label": {
-          "en": "Created At Utc"
-        },
-        "description": {
-          "en": "When the token was created (UTC)."
-        },
         "dataType": "datetime",
         "isRequired": true,
         "isVisible": true,
@@ -88,12 +64,6 @@
       {
         "id": "b61a69db-681b-4b81-85cb-8c2bad2e18a2",
         "name": "CreatedByUserId",
-        "label": {
-          "en": "Created By User Id"
-        },
-        "description": {
-          "en": "The signed-in user who created this token."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -107,12 +77,6 @@
       {
         "id": "e951c859-4995-4089-a41c-cf36ed3f7c26",
         "name": "Description",
-        "label": {
-          "en": "Description"
-        },
-        "description": {
-          "en": "Free-text label telling you where this token is used, e.g. the CI workflow it was created for."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -125,12 +89,6 @@
       {
         "id": "a763b2d6-5a8a-47c0-b9f8-ee952ba7ffa2",
         "name": "Provider",
-        "label": {
-          "en": "Provider"
-        },
-        "description": {
-          "en": "The forge of the owning account."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -144,12 +102,6 @@
       {
         "id": "bf276ab8-026d-4e46-a943-10a29c3e6168",
         "name": "RepositoryIds",
-        "label": {
-          "en": "Repository Ids"
-        },
-        "description": {
-          "en": "Document ids of the repositories this token may upload for. Empty means the token is account-scoped and covers every repository of AccountId."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -164,12 +116,6 @@
       {
         "id": "2f5256a7-689f-4b9b-a439-2eb7dc55e65e",
         "name": "RevokedAtUtc",
-        "label": {
-          "en": "Revoked At Utc"
-        },
-        "description": {
-          "en": "When the token was revoked (UTC); null while it is still valid for uploads."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -182,12 +128,6 @@
       {
         "id": "59dc88b6-43ac-4a6f-891f-2aae9da7313d",
         "name": "Scope",
-        "label": {
-          "en": "Scope"
-        },
-        "description": {
-          "en": "\"Account\" (all repos of a user/org) or \"Repository\" (one repo)."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -205,11 +145,6 @@
     {
       "id": "9b1f4c7e-2a63-4d05-8f19-6c40b7e2a913",
       "name": "Account_UploadTokens",
-      "description": {
-        "en": "Upload tokens",
-        "fr": "Jetons d'envoi",
-        "nl": "Upload-tokens"
-      },
       "source": "Custom.Account_UploadTokens",
       "alias": "account-upload-tokens",
       "sortColumns": [

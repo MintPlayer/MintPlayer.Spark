@@ -38,7 +38,7 @@
               @if (action.definition.icon && action.kind !== 'custom') {
                 <spark-icon [name]="action.definition.icon" />
               }
-              {{ action.definition.displayName | resolveTranslation }}
+              {{ action.definition.label | resolveTranslation }}
             </button>
           }
         </bs-priority-nav>

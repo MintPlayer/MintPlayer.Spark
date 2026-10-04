@@ -119,7 +119,7 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
                 services.AddScoped<AttrVaultActions>();
                 services.AddScoped<AttrKeeperActions>();
                 services.AddScoped<AttrVaultEchoAction>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(new StubCustomActions(Echo));
+                services.AddSingleton(TestActions.LoaderWithCustom(Echo));
                 services.AddScoped<ICustomActionResolver>(sp => new StubActionResolver(Echo, sp.GetRequiredService<AttrVaultEchoAction>()));
             },
             security: SparkTestSecurity.Empty
@@ -352,16 +352,6 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
             ],
         },
     };
-
-    private sealed class StubCustomActions(string name) : ICustomActionsConfigurationLoader
-    {
-        public CustomActionsConfiguration GetConfiguration() => new()
-        {
-            [name] = new CustomActionDefinition { DisplayName = TranslatedString.Create(name), ShowedOn = "both" },
-        };
-
-        public void InvalidateCache() { }
-    }
 
     private sealed class StubActionResolver(string name, ICustomAction action) : ICustomActionResolver
     {

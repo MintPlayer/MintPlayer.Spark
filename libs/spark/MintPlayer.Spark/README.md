@@ -223,33 +223,33 @@ Entities that don't implement the interface are unaffected and keep the generate
 
 ### Actions Classes
 
-Customization hooks for entity-specific business logic. Inherit from `DefaultPersistentObjectActions<T>` to add validation or custom behavior:
+Customization interceptors for entity-specific business logic. Inherit from `DefaultPersistentObjectActions<T>`; for save and delete logic, implement the persistence interceptor interfaces on the same class (or on a separate interceptor class — see [the interceptors guide](../../../docs/guide-interceptors.md)):
 
 ```csharp
-public class PersonActions : DefaultPersistentObjectActions<Person>
+public class PersonActions : DefaultPersistentObjectActions<Person>, IBeforeSave<Person>, IAfterSave<Person>
 {
-    public override Task OnBeforeSaveAsync(PersistentObject obj, Person entity)
+    public ValueTask OnBeforeSaveAsync(Person entity, SaveContext context)
     {
         if (string.IsNullOrEmpty(entity.FirstName))
             throw new SparkValidationException("FirstName is required");
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    public override Task OnAfterSaveAsync(PersistentObject obj, Person entity)
+    public ValueTask OnAfterSaveAsync(Person entity, SaveContext context)
     {
-        // Post-save logic (notifications, logging, etc.)
-        return Task.CompletedTask;
+        // After the commit: notifications, logging, etc.
+        return ValueTask.CompletedTask;
     }
 }
 ```
 
+The framework owns every write (#482): it loads, maps, runs the interceptors, checks the row (WITH CHECK), writes with the expected change vector and commits once. Nothing on the Actions class can skip that.
+
 Available hooks:
 - `OnLoadAsync` - Customize single entity loading
-- `OnSaveAsync` - Customize save operation
-- `OnDeleteAsync` - Customize delete operation
-- `OnBeforeSaveAsync` - Pre-save validation/logic
-- `OnAfterSaveAsync` - Post-save logic
-- `OnBeforeDeleteAsync` - Pre-delete logic
+- `MapAsync(obj, existing)` - Customize how the posted object maps onto the entity a save writes
+- `IBeforeSave<T>` / `IAfterSave<T>` - Pre-save validation/stamping/prompts, and post-commit follow-ups
+- `IBeforeDelete<T>` / `IAfterDelete<T>` - Pre-delete validation/prompts, and post-commit follow-ups (cancel with `throw new SparkCancelException()`)
 - `GetRowFilterAsync(string action)` - **Row-level security** (preferred): the row rule as a
   `Task<Expression<Func<T,bool>>?>` the framework pushes into the RavenDB query, so a list over a
   row-scoped type reads only the caller's rows. **Construction can `await`** (fetch an allow-list);
@@ -504,7 +504,6 @@ A generated model JSON file looks like this:
     {
       "id": "660e8400-e29b-41d4-a716-446655440001",
       "name": "Name",
-      "label": { "en": "Company Name", "fr": "Nom de l'entreprise", "nl": "Bedrijfsnaam" },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -547,7 +546,6 @@ A reference attribute is represented like this:
 {
   "id": "880e8400-e29b-41d4-a716-446655440001",
   "name": "GetCompanies",
-  "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
   "contextProperty": "Companies",
   "sortBy": "Name",
   "sortDirection": "asc"
@@ -555,6 +553,7 @@ A reference attribute is represented like this:
 ```
 
 - `contextProperty` -- maps to the SparkContext property name
+- Labels are not in these files: they come from `translations.json` by convention (`model.{Entity}.attributes.{Attribute}.label`, `queries.{Query}.label`; see `docs/guide-translated-strings.md`, #467)
 - `sortBy` / `sortDirection` -- default sort order for list views
 
 ### Program Units (App_Data/programUnits.json)

@@ -12,16 +12,6 @@
       {
         "id": "dff2e520-5b02-4e18-aed3-1d0b6d9ccd0d",
         "name": "AssemblyCompleteness",
-        "label": {
-          "en": "Assembly Completeness",
-          "fr": "Complétude de l'assemblage",
-          "nl": "Volledigheid van de assemblage"
-        },
-        "description": {
-          "en": "Whether the commit's coverage is complete or partial.",
-          "fr": "Si la couverture du commit est complète ou partielle.",
-          "nl": "Of de dekking van het commit volledig of gedeeltelijk is."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -35,16 +25,6 @@
       {
         "id": "77203692-9b28-495d-913f-c8b34f038564",
         "name": "AuthoredAt",
-        "label": {
-          "en": "Authored",
-          "fr": "Rédigé",
-          "nl": "Geschreven"
-        },
-        "description": {
-          "en": "When the commit was authored; empty for commits only seen through an upload.",
-          "fr": "Moment de rédaction du commit, d'après la charge utile du webhook ; null pour les commits vus uniquement via un envoi.",
-          "nl": "Wanneer de commit geschreven is, uit de webhookpayload; null voor commits die enkel via een upload gezien zijn."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -58,16 +38,6 @@
       {
         "id": "eee6f50d-e887-4c84-9697-c479730de0b0",
         "name": "Branch",
-        "label": {
-          "en": "Branch",
-          "fr": "Branche",
-          "nl": "Branch"
-        },
-        "description": {
-          "en": "The branch the commit was pushed to or the PR head branch, when known.",
-          "fr": "La branche sur laquelle le commit a été poussé, ou la branche head de la PR, lorsqu'elle est connue.",
-          "nl": "De branch waarnaar de commit gepusht is of de head-branch van de PR, wanneer bekend."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -80,12 +50,6 @@
       {
         "id": "e7ef3cbf-0c66-4b68-b440-23303108af97",
         "name": "ContributedFromFork",
-        "label": {
-          "en": "Contributed From Fork"
-        },
-        "description": {
-          "en": "True when this commit's coverage was contributed from a fork, by a caller holding no credential for this repository."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -98,16 +62,6 @@
       {
         "id": "98971124-8b79-43ed-951c-29110c46577f",
         "name": "Coverage",
-        "label": {
-          "en": "Coverage",
-          "fr": "Couverture",
-          "nl": "Dekking"
-        },
-        "description": {
-          "en": "The commit's headline coverage.",
-          "fr": "La couverture de référence du commit.",
-          "nl": "De hoofddekking van het commit."
-        },
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
@@ -122,16 +76,6 @@
       {
         "id": "6a1f3c2e-8b4d-4e5f-9a70-1c2d3e4f5a6b",
         "name": "CoverageDeltaVsDefaultBranch",
-        "label": {
-          "en": "Δ base branch",
-          "fr": "Δ branche de base",
-          "nl": "Δ basisbranch"
-        },
-        "description": {
-          "en": "Percentage-point change versus the default branch — what merging would do.",
-          "fr": "Écart en points face à la branche par défaut — ce que la fusion changerait.",
-          "nl": "Verschil in procentpunten t.o.v. de standaardbranch — wat mergen zou doen."
-        },
         "dataType": "decimal",
         "isRequired": false,
         "isVisible": true,
@@ -145,16 +89,6 @@
       {
         "id": "b8d4f2a1-7c39-4e60-9d18-2f5a6b0c3e77",
         "name": "CoverageDeltaVsParent",
-        "label": {
-          "en": "Δ parent",
-          "fr": "Δ parent",
-          "nl": "Δ ouder"
-        },
-        "description": {
-          "en": "Percentage-point change versus the git first parent.",
-          "fr": "Écart en points face au premier parent git.",
-          "nl": "Verschil in procentpunten t.o.v. de eerste git-ouder."
-        },
         "dataType": "decimal",
         "isRequired": false,
         "isVisible": true,
@@ -168,14 +102,6 @@
       {
         "id": "4e7b2c90-1a6d-4f83-9b25-8c0d7a3e5f14",
         "name": "Date",
-        "label": {
-          "en": "Date",
-          "fr": "Date",
-          "nl": "Datum"
-        },
-        "description": {
-          "en": "AuthoredAt coalesced with FirstSeenAtUtc, so an upload-only commit — which never gets a webhook timestamp — still sorts chronologically instead of clustering at one end."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -189,16 +115,6 @@
       {
         "id": "3f8a2c61-9d54-4b0e-8f1a-6cd2e07b5a94",
         "name": "FirstSeenAtUtc",
-        "label": {
-          "en": "First Seen",
-          "fr": "Vu pour la première fois",
-          "nl": "Eerst gezien"
-        },
-        "description": {
-          "en": "When this commit was first seen, by webhook or by upload.",
-          "fr": "Quand ce commit a été vu pour la première fois, par webhook ou par envoi.",
-          "nl": "Wanneer dit commit eerst gezien is, via webhook of via upload."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -212,16 +128,6 @@
       {
         "id": "c1b18792-3a93-4b1b-a590-802beb91ba99",
         "name": "LatestBuildId",
-        "label": {
-          "en": "Latest Build Id",
-          "fr": "Id du dernier build",
-          "nl": "Id van de laatste build"
-        },
-        "description": {
-          "en": "The build whose coverage is shown for this commit.",
-          "fr": "Le build dont la couverture est affichée pour ce commit.",
-          "nl": "Het build waarvan de dekking voor dit commit getoond wordt."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -236,16 +142,6 @@
       {
         "id": "28215491-4f8b-44e6-8b58-52c03fee7b3c",
         "name": "Message",
-        "label": {
-          "en": "Message",
-          "fr": "Message",
-          "nl": "Bericht"
-        },
-        "description": {
-          "en": "The commit message, as delivered by the push or pull-request webhook.",
-          "fr": "Le message de commit, tel que livré par le webhook push ou pull request.",
-          "nl": "Het commitbericht, zoals afgeleverd door de push- of pull-request-webhook."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -259,16 +155,6 @@
       {
         "id": "c4fbe030-4e29-420f-903b-a72b0be54505",
         "name": "ParentLookupAttemptedAtUtc",
-        "label": {
-          "en": "Parent Lookup",
-          "fr": "Recherche du parent",
-          "nl": "Ouder opgezocht"
-        },
-        "description": {
-          "en": "When the server last asked GitHub for the parent.",
-          "fr": "Quand le serveur a demandé le parent à GitHub pour la dernière fois.",
-          "nl": "Wanneer de server de ouder het laatst bij GitHub opgevraagd heeft."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -282,16 +168,6 @@
       {
         "id": "70fecd30-b3d9-43d2-ad29-113dbc6fd4ab",
         "name": "ParentSha",
-        "label": {
-          "en": "Parent Sha",
-          "fr": "Sha du parent",
-          "nl": "Sha van de ouder"
-        },
-        "description": {
-          "en": "Sha of the git first parent, the reference for the delta-vs-parent.",
-          "fr": "Sha du premier parent git, la référence de l'écart face au parent.",
-          "nl": "Sha van de eerste git-ouder, de referentie voor het verschil met de ouder."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -304,16 +180,6 @@
       {
         "id": "11af8c16-15e9-42bd-b147-778cc8cf84db",
         "name": "ParentShaSource",
-        "label": {
-          "en": "Parent Sha Source",
-          "fr": "Source du sha du parent",
-          "nl": "Bron van de ouder-sha"
-        },
-        "description": {
-          "en": "Who set the parent sha: the upload's claim, or GitHub's API.",
-          "fr": "Qui a fixé le sha du parent : la déclaration de l'envoi, ou l'API GitHub.",
-          "nl": "Wie de ouder-sha gezet heeft: de claim van de upload, of de GitHub-API."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -327,16 +193,6 @@
       {
         "id": "fd21d714-4337-4ca2-a4b5-4d09b5dacd9d",
         "name": "PullRequestBaseRef",
-        "label": {
-          "en": "PR Base Ref",
-          "fr": "Réf. de base PR",
-          "nl": "PR-basisref"
-        },
-        "description": {
-          "en": "The branch the pull request targets, not its head branch.",
-          "fr": "La branche que la pull request cible, pas sa branche source.",
-          "nl": "De branch waarop de pull request mikt, niet zijn eigen branch."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -349,16 +205,6 @@
       {
         "id": "4dac107e-4ff4-4022-b9fe-e1806b0d2bfe",
         "name": "PullRequestBaseSha",
-        "label": {
-          "en": "PR Base Sha",
-          "fr": "Sha de base PR",
-          "nl": "PR-basis-sha"
-        },
-        "description": {
-          "en": "Tip of the target branch as of the PR's last synchronise.",
-          "fr": "Le sommet de la branche cible lors de la dernière synchronisation de la PR.",
-          "nl": "De top van de doelbranch bij de laatste synchronisatie van de PR."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -371,16 +217,6 @@
       {
         "id": "de160dcb-97ee-4254-aab4-4d70cc2aa5db",
         "name": "PullRequestNumber",
-        "label": {
-          "en": "PR",
-          "fr": "PR",
-          "nl": "PR"
-        },
-        "description": {
-          "en": "Number of the pull request this commit was seen on; empty for plain pushes.",
-          "fr": "Numéro de la pull request sur laquelle ce commit a été vu ; null pour de simples pushes.",
-          "nl": "Nummer van de pull request waarop deze commit gezien is; null bij gewone pushes."
-        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -393,16 +229,6 @@
       {
         "id": "71ba0b8b-834e-4ebe-bb23-301ec8655791",
         "name": "Repository",
-        "label": {
-          "en": "Repository",
-          "fr": "Dépôt",
-          "nl": "Repository"
-        },
-        "description": {
-          "en": "The repository this commit belongs to.",
-          "fr": "Le dépôt auquel appartient ce commit.",
-          "nl": "De repository waartoe deze commit behoort."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
@@ -417,16 +243,6 @@
       {
         "id": "5ceeda88-3885-4697-9cb4-000d51c15b1b",
         "name": "Sha",
-        "label": {
-          "en": "Commit",
-          "fr": "Commit",
-          "nl": "Commit"
-        },
-        "description": {
-          "en": "The full 40-character git commit sha.",
-          "fr": "Le sha de commit git complet, de 40 caractères.",
-          "nl": "De volledige git-commit-sha van 40 tekens."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -464,11 +280,6 @@
     {
       "id": "6c1f8a52-9d3e-4b70-8e21-5a7d4c9b0e63",
       "name": "Repository_Commits",
-      "description": {
-        "en": "Commits",
-        "fr": "Commits",
-        "nl": "Commits"
-      },
       "source": "Custom.Repository_Commits",
       "alias": "repository-commits",
       "sortColumns": [

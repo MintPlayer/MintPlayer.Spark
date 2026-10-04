@@ -7,7 +7,7 @@ Spark lets you define server-side actions that users can trigger from entity det
 A custom action has three parts:
 
 1. **C# implementation** -- a class that implements `ICustomAction` (or extends `SparkCustomAction`)
-2. **JSON configuration** -- an entry in `App_Data/customActions.json` defining display metadata
+2. **JSON configuration** -- an entry in `App_Data/actions.json` (icon, where it shows, selection rule), with its texts in `translations.json`
 3. **Authorization** (optional) -- entries in `App_Data/security.json` controlling who can execute the action
 
 ## Step 1: Create the Action Class
@@ -122,36 +122,81 @@ every read path — return a purpose-built shape.
 
 You can either extend `SparkCustomAction` (convenience base class) or implement `ICustomAction` directly. Both approaches work identically. The base class currently provides the same abstract method, but in a future phase it will add helper methods for navigation and notifications (same mechanism as PersistentObject Actions classes).
 
-## Step 2: Configure customActions.json
+## Step 2: Configure actions.json
 
-Create `App_Data/customActions.json` in your application. Each key is the action name (must match the C# class name minus the `Action` suffix).
+Add the action to `App_Data/actions.json` in your application. Each key is the action name (must match the C# class name minus the `Action` suffix).
 
 ```json
 {
   "CarCopy": {
-    "displayName": { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
     "icon": "Copy",
-    "description": "Creates a copy of the selected car",
     "showedOn": "both",
     "selectionRule": "=1",
-    "refreshOnCompleted": true,
-    "confirmationMessageKey": "AreYouSure"
+    "refreshOnCompleted": true
   }
 }
 ```
 
+The file holds no translated text (#467, D1). The label, the description and the confirmation live in
+`translations.json`, under conventional keys:
+
+```json
+{
+  "actions": {
+    "CarCopy": {
+      "label":        { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
+      "description":  { "en": "Creates a copy of the selected car" },
+      "confirmation": { "en": "Copy {count} car(s)?" }
+    }
+  }
+}
+```
+
+An untranslated label shows the humanized name (`CarCopy` → `Car Copy`). The confirmation is asked
+only when `actions.{Name}.confirmation` is translated, or when the file names a `confirmation` key;
+`{count}` is replaced with the number of rows the action is about to act on. The file refuses
+embedded text, and the pre-#467 `displayName` and `confirmationMessageKey` properties, with a
+message naming the key to use.
+
 ### Configuration Properties
 
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `displayName` | TranslatedString | Yes | The button/menu label shown to the user |
-| `icon` | string | No | Icon name (displayed next to the action label) |
-| `description` | string | No | Human-readable description (for documentation/tooltips) |
-| `showedOn` | string | No | Where the action appears: `"detail"`, `"query"`, or `"both"` (default: `"both"`) |
-| `selectionRule` | string | No | For query views: how many items must be selected. See below. |
-| `refreshOnCompleted` | boolean | No | Whether the UI should refresh after successful execution |
-| `confirmationMessageKey` | string | No | Translation key for a confirmation dialog shown before execution |
-| `offset` | number | No | Display order (lower values appear first). Default: `0` |
+| Property | Type | Description |
+|---|---|---|
+| `label` | string | An explicit translation key for the label, instead of `actions.{Name}.label` |
+| `description` | string | An explicit translation key for the description, instead of `actions.{Name}.description` |
+| `confirmation` | string or `false` | An explicit translation key for the confirmation, instead of `actions.{Name}.confirmation`; `false` never asks |
+| `icon` | string | Icon name (displayed next to the action label) |
+| `showedOn` | string | Where the action appears: `"detail"`, `"query"`, or `"both"` (default: `"both"`) |
+| `selectionRule` | string | For query views: how many items must be selected. See below. |
+| `refreshOnCompleted` | boolean | Whether the UI should refresh after successful execution |
+| `variant` | string | `"primary"`, `"secondary"`, `"danger"`, `"warning"`: presentation only |
+| `offset` | number | Display order (lower values appear first). Default: `0` |
+
+### Layers: the libraries' actions.json and yours (#467, D7)
+
+`actions.json` is composed in layers. The core library ships the first one, with the built-in New,
+Edit and Delete; any library may ship its own; your application's file composes on top **per
+property**:
+
+- A property your file states replaces the inherited one; one it leaves out keeps it.
+- A property set to `null` resets it to the default.
+- `"Edit": null` removes the inherited action from every page. Removal is presentation: rights still
+  decide who may run what.
+- A name no library declares adds an action.
+
+Two libraries that state the same property of the same action differently get warning SPARK036 at
+build time and a warning in the log at startup; the later library by assembly name wins, and your
+file decides by stating the property. Run the application with `--spark-print-effective-actions`
+to print the composed catalogue, with the layer each property came from.
+
+A library ships its layer by marking the file for the source generator, which compiles it into the
+assembly:
+
+```xml
+<AdditionalFiles Include="App_Data\actions.json" SparkActionsLayer="library" />
+<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SparkActionsLayer" />
+<Content Remove="App_Data\actions.json" />
+```
 
 ### Selection Rules
 
@@ -164,7 +209,7 @@ is `1<X<5`), and a number-first term is mirrored (`0<X` means `>0`).
 
 | Rule | Meaning |
 |---|---|
-| omitted / `""` | No requirement |
+| omitted / `null` | No requirement |
 | `"=0"` | Exactly zero — the action is **disabled once anything is selected** |
 | `"=1"` | Exactly one |
 | `">0"` / `">=1"` | One or more |
@@ -175,8 +220,8 @@ is `1<X<5`), and a number-first term is mirrored (`0<X` means `>0`).
 Operators are `<=`, `>=`, `<`, `>`, `!=`, `=`.
 
 **A malformed rule is refused when the configuration loads, not silently permitted.** `"1-5"`,
-`"*"` and `"=abc"` are all rejected, and every offender in the file is named at once. The load is
-lazy, so this surfaces the first time custom actions are read rather than at process start. (Vidyano, where this syntax comes from, treats anything
+`"*"` and `"=abc"` are all rejected, and every offender in the catalogue is named at once. The
+catalogue is composed at startup, so this refuses to start rather than failing on a click. (Vidyano, where this syntax comes from, treats anything
 unparseable as "always true" — safe for a greyed-out button, wrong for a server-side gate, where it
 would let any selection through.)
 
@@ -190,7 +235,7 @@ caller can always POST directly.
 
 ### File Watching
 
-The `customActions.json` file is cached in memory and watched for changes using `FileSystemWatcher`. When the file is modified, the cache is automatically invalidated. No restart is needed to pick up configuration changes.
+Your `actions.json` is cached in memory and watched with `FileSystemWatcher` (written, created, renamed or deleted). A change invalidates the cache; no restart is needed. The library layers are compiled in and change only with a rebuild.
 
 ## Step 3: Authorization (Optional)
 
@@ -199,8 +244,8 @@ If your application uses Spark Authorization, add entries to `App_Data/security.
 ```json
 {
   "groups": {
-    "a1b2c3d4-0000-0000-0000-000000000001": {"en": "Administrators"},
-    "a1b2c3d4-0000-0000-0000-000000000002": {"en": "Fleet managers"}
+    "a1b2c3d4-0000-0000-0000-000000000001": "Administrators",
+    "a1b2c3d4-0000-0000-0000-000000000002": "FleetManagers"
   },
   "rights": [
     {
@@ -237,65 +282,89 @@ top-level list or a sub-query on a parent's detail page. That is the Vidyano mod
 parts that were missing: the built-in `New` and `Delete` as catalogue entries, a declared selection
 mode, and a toolbar and row menu shared by both grids.
 
-### New and Delete are catalogue entries (D18)
+### New, Edit and Delete are catalogue entries (#460 D18, #467 D7)
 
-`/spark/actions/list` now also returns the framework's two built-in actions. Each is marked
-`"isDefault": true` and appears only when the caller holds the ordinary right, `New/T` or `Delete/T`:
+`/spark/actions/list` also returns the framework's three built-in actions, which the core library's
+`actions.json` declares. Each is marked `"isDefault": true` and appears only when the caller holds
+the ordinary right, `New/T`, `Edit/T` or `Delete/T`:
 
 | Name | `showedOn` | `selectionRule` | Runs through |
 |---|---|---|---|
-| `New` | `both` | none | the create page → `POST /spark/po/new` → `POST /spark/po/create` |
-| `Delete` | `both` | `>0` | `POST /spark/po/delete-many` |
+| `New` | `query` | none | the create page → `POST /spark/po/new` → `POST /spark/po/create` |
+| `Edit` | `both` | `=1` | the edit page → `POST /spark/po/update` |
+| `Delete` | `both` | `>0` | `POST /spark/po/delete-many` (a query), `POST /spark/po/delete` (the detail page) |
 
-**To override either one**, add an entry with the same name to `customActions.json`. It needs no C#
-class, and it may leave `displayName` out; a custom action may not.
-- A field the entry states replaces the default. A field it leaves out keeps the default.
-- `showedOn` and `offset` always come from the entry. Their file defaults equal the built-in ones.
-- To drop Delete's rule, write `"selectionRule": ""`.
+The detail page's Edit and Delete buttons are these entries (D8): an app that removes `Edit` or
+moves it to `"showedOn": "query"` removes the detail page's button too. The row's own `can.edit` /
+`can.delete` (row security) must also allow it, and the selection rule does not apply there.
+
+**To override one**, state the properties to change in your `actions.json`; it needs no C# class.
+The texts are `actions.New.label`, `actions.Edit.label`, `actions.Delete.label` and
+`actions.Delete.confirmation` (with `{count}`), which your `translations.json` may override per
+language.
 
 ```json
 {
-  "Delete": { "selectionRule": "=1", "confirmationMessageKey": "DeleteOneAnswer" }
+  "Delete": { "selectionRule": "=1" },
+  "Edit": null
 }
 ```
 
-An `ICustomAction` class named `New` or `Delete` is never executed: `/spark/actions/execute` answers
-404 for both names.
+An `ICustomAction` class named `New`, `Edit` or `Delete` is never executed: `/spark/actions/execute`
+answers 404 for those names.
 
 ### The bulk Delete
 
 ```
 POST /spark/po/delete-many
-{ "objectTypeId": "Answer", "ids": ["answers/1-A", "answers/2-A"],
+{ "objectTypeId": "Answer",
+  "items": [{ "id": "answers/1-A", "etag": "A:12-…" }, { "id": "answers/2-A", "etag": "A:15-…" }],
   "queryId": "question-answers", "parentId": "questions/1-A", "parentType": "Question" }
 ```
 
+Each row carries the `etag` the list showed it with (#467, D14): the delete removes *that version*.
+A row someone changed or deleted since the list loaded refuses the whole request with **409**, and
+the grid asks the user to reload and tick again. A row is never removed in a version its user did
+not see. The single `/spark/po/delete` and `/spark/po/purge` take an `etag` the same way.
+
 One request runs every row through the ordinary delete pipeline, in this order:
-1. The **200-row cap** and the `Delete` entry's **rule** are checked first. Either failure is a 400,
-   and nothing touches the database.
-2. The `Delete/T` right.
-3. The sub-query's container, loaded through its own gated read.
-4. The collection guard and the row gate, on every row.
+1. The **200-row cap**, the `Delete` entry's **rule**, a **`queryId`** and an **`etag` on every row**
+   are checked first. Any failure is a 400, and nothing touches the database. `queryId` is required
+   (#467, D12).
+2. The sub-query's container, loaded through its own gated read.
+3. The rows are fetched **through the named query** — its right, filter, row filter and parent — and
+   must all be **readable**: the `Read` right and the `Read` row rule (#467, D11). A row the query does
+   not return, or the caller cannot read, refuses the lot exactly like a missing id (404, M-3).
+   Naming another query of the same type therefore cannot dodge a query's own decisions.
+4. The `Delete/T` right, the collection guard and the `Delete` row rule.
 5. `OnDisableActionsAsync` is asked about the query target (with the parent) and about every row, in
    one batched call. **One row that withholds `Delete` refuses the whole request with 403.**
-6. `OnBeforeDeleteAsync` and the interceptors run for each row, so a soft-deletable type is
-   soft-deleted.
-7. Every write is committed by **one `SaveChanges`**: all rows or none.
+6. The delete replacement and the before-delete interceptors run for each row, so a soft-deletable type is
+   soft-deleted, with the request's one `reason` on every row (#467, D20).
+7. Every write is committed by **one `SaveChanges`**, each row at the version its etag names: all
+   rows or none (a stale row is the 409 above).
 
-A row that is missing, belongs to another collection or is denied by the row rule refuses the lot,
-with the same answer a missing row gets. The server never deletes 198 of 200 and says nothing.
+**One refusal names every row that failed (#467, D18).** A row the `Delete` rule refuses, a row whose
+interceptor withholds `Delete`, and a row a before-delete interceptor refuses (a Moderation lock) are listed by breadcrumb
+— with the reason, when there is one — so the user knows what to untick: "These items cannot be
+deleted: Re: pricing (This post is locked)." Every row named passed the Read gate, so naming it
+discloses nothing; a row that is missing or unreadable is never named. The server never deletes 198
+of 200 and says nothing.
 
-⚠️ The base `OnDeleteAsync` defers its own `SaveChanges` while a bulk delete is open. An override that
-saves on its own commits its row early and breaks the guarantee. That is the D1 override gap: it is
-logged as a warning, not prevented. Put per-row logic in `OnBeforeDeleteAsync` instead.
+A custom action on a selection follows the same rules: with ids and no parent it needs `queryId`
+(400 otherwise), and its rows come through that query and must be readable.
+
+No interceptor and no Actions class can commit a row early (#482): the framework owns the single commit. A
+before-delete interceptor that prompts with `Retry.Action` refuses its row instead (a per-row prompt across a
+selection is unworkable), and one that throws `SparkCancelException` cancels the whole batch.
 
 There is no bulk Purge. A purge deletes revisions with an admin operation that cannot join the
 transaction, so it stays one row at a time through `/spark/po/purge`.
 
 ### Selection mode (D17)
 
-A query declares `"selectionMode": "auto" | "none" | "single" | "multiple"`. The parent type's
-`queries` entry can override it for one parent:
+A query declares `"selectionMode": "auto" | "none" | "multiple"` (`single` was removed in #467, D10).
+The parent type's `queries` entry can override it for one parent:
 
 ```json
 "persistentObject": {
@@ -310,26 +379,41 @@ A query declares `"selectionMode": "auto" | "none" | "single" | "multiple"`. The
 - An entry is a bare alias, as before, or an object.
 - Model sync writes a bare alias back for an entry without overrides, so existing model files do not
   change.
-- `auto`, the default, derives the mode from the **custom** actions offered, exactly as before:
-  - checkboxes appear only when some action has a rule;
-  - `single` when every rule wants exactly one row.
-- The default Delete does not widen `auto`, so selection is opt-in.
+- `auto`, the default, derives the mode from the actions the caller can use **on this list**
+  (#467, R1). An action counts when all of these hold:
+  1. the caller holds its right (the list endpoint only returns those);
+  2. its `showedOn` includes the query;
+  3. the result does not withhold it (`disabledActions`; Edit also not when `Save` is), and the
+     recycle bin does not hide it;
+  4. its `selectionRule` accepts at least one row (`=0` does not).
+- Built-in Edit and Delete count like any other action. One counting action gives `multiple`;
+  none gives `none`, so a read-only user sees a list without checkboxes.
+- The mode is recomputed when `disabledActions` or the deleted mode changes, and the selection is
+  cleared when it becomes `none`.
+- There is no single selection: a selectable list always has the checkbox column, and an action
+  whose rule does not match the count is disabled (Edit with two rows ticked), never trimmed (D10).
+- A row click always opens the row; only the checkbox cell selects (D9).
 - Selection is presentation only. Every action that takes rows still enforces its own rule at submit.
 
 ### The toolbar, the chip and the row menu
 
 The grid builds one toolbar model, and both hosts render it: the sub-query card's header and the
 query-list page's action bar.
-- **Toolbar:** `New`, `Delete` and the custom actions. Each is enabled live from the selection count.
+- **Toolbar:** `New`, `Edit`, `Delete` and the custom actions, with the catalogue's labels and
+  icons. Each is enabled live from the selection count.
   - `New` needs the right, and a result that does not withhold `New`.
-  - `Delete` is shown only while rows can be selected.
+  - `Edit` (`=1`) opens the ticked row's edit page, with the list as the return state. It is
+    withheld when the result withholds `Edit` or `Save`.
+  - `Edit` and `Delete` are shown whenever they count; a list declared `none` leaves them to the
+    row menu.
   - The card puts its caption on the left and the actions on the right, with the overflow in the
     priority nav under the translated "More" label (`common.more`), as on the list and detail pages.
-- **Selection bar:** an "N selected" chip while rows are selected. There is no select-all (with
-  paged, lazy or virtual-scrolled rows it could only tick the loaded rows); the datatable's header
-  checkbox is the deselect-all, shown only while a row is selected. Single selection has no
-  checkbox column, so there the chip carries a ⊗ that clears the selection.
-- **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Delete. It
+- **Selection bar:** an "N selected" chip while rows are selected. The selection survives paging
+  and virtual scroll (D19), so the chip counts every ticked row, says how many are on other pages
+  ("7 selected · 4 on other pages"), and its ⊗ clears them all. Actions receive exactly what the
+  chip counts. Search, a column filter and a deleted-mode change clear the selection. There is no
+  select-all (with paged, lazy or virtual-scrolled rows it could only tick the loaded rows).
+- **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Edit and Delete. It
   runs on that row only and leaves the checkbox selection alone. An action without a rule acts on the
   query, not on a row, so it is not in the menu.
 - **Search box:** the card's header ends with `<spark-search-box>` (`@mintplayer/ng-spark/grid`), the
@@ -408,13 +492,13 @@ Returns the list of custom actions available for the given entity type. Only act
 [
   {
     "name": "CarCopy",
-    "displayName": { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
+    "label": { "en": "Copy Car", "fr": "Copier la voiture", "nl": "Auto kopiëren" },
     "icon": "Copy",
-    "description": "Creates a copy of the selected car",
+    "description": { "en": "Creates a copy of the selected car" },
     "showedOn": "both",
     "selectionRule": "=1",
     "refreshOnCompleted": true,
-    "confirmationMessageKey": "AreYouSure",
+    "confirmation": { "en": "Are you sure?", "fr": "Êtes-vous sûr ?", "nl": "Weet u het zeker?" },
     "offset": 0
   }
 ]
@@ -473,7 +557,7 @@ The resolved name may not be a reserved verb (`Edit`, `Delete`, `Restore`, `Reve
 the action would share that verb's right. SPARK023 refuses it at build time and `UseSpark()` at
 startup; see [reserved verbs](guide-authorization.md#reserved-verbs).
 
-The JSON key in `customActions.json` must match this resolved name. Only actions that have both a C# implementation **and** a JSON configuration entry are returned by the list endpoint.
+The key in `actions.json` must match this resolved name. A custom action is listed only when it has both a C# implementation **and** a catalogue entry.
 
 ## Angular Integration
 
@@ -482,25 +566,28 @@ On the Angular side, the `CustomActionDefinition` model represents an action:
 ```typescript
 export interface CustomActionDefinition {
   name: string;
-  displayName: TranslatedString;
+  label: TranslatedString;
   icon?: string;
-  description?: string;
+  description?: TranslatedString;
   showedOn: string;
   selectionRule?: string;
   refreshOnCompleted: boolean;
-  confirmationMessageKey?: string;
+  confirmation?: TranslatedString;
+  variant?: string;
   offset: number;
+  isDefault?: boolean;
 }
 ```
 
-The frontend fetches available actions via `POST /spark/actions/list`, renders buttons or menu items based on `showedOn`, evaluates `selectionRule` against the current selection, shows a confirmation dialog if `confirmationMessageKey` is set, and executes via `POST /spark/actions/execute`. Both name the type — and the second also the action — in the request body: every Spark path is literal, with no route variables at all.
+The frontend fetches available actions via `POST /spark/actions/list`, renders buttons or menu items based on `showedOn`, evaluates `selectionRule` against the current selection, shows the `confirmation` (with `{count}` substituted) when there is one, and executes via `POST /spark/actions/execute`. Both name the type — and the second also the action — in the request body: every Spark path is literal, with no route variables at all.
 
 ## Complete Example
 
 See the Fleet demo app for a working example:
-- `Demo/Fleet/Fleet/CustomActions/CarCopyAction.cs` -- C# implementation
-- `Demo/Fleet/Fleet/App_Data/customActions.json` -- action metadata
-- `Demo/Fleet/Fleet/App_Data/security.json` -- authorization entries
+- `apps/Fleet/Fleet/CustomActions/CarCopyAction.cs` -- C# implementation
+- `apps/Fleet/Fleet/App_Data/actions.json` -- action metadata
+- `apps/Fleet/Fleet/App_Data/translations.json` -- the `actions.CarCopy.*` texts
+- `apps/Fleet/Fleet/App_Data/security.json` -- authorization entries
 - `MintPlayer.Spark.Abstractions/Actions/ICustomAction.cs` -- interface definition
 - `MintPlayer.Spark/Actions/SparkCustomAction.cs` -- base class
 - `MintPlayer.Spark/Models/CustomActionDefinition.cs` -- metadata model
@@ -554,6 +641,14 @@ not would offer a button that then refuses. Two consequences:
 - There are no rows in scope for a query target (the hook runs before the query does), so "hide the
   action when the result is empty" cannot be expressed — deliberately, because it could never be
   re-derived at submit.
+
+**Object level or query level? (#467, D13)** Forbid an action on an *object* at the object target:
+that decision is enforced wherever the action runs. The query target controls what that *list
+offers*. For a bulk call the two coincide — delete-many and a custom action on a selection fetch their
+rows through the named query, so its decision always applies. **Edit** is the exception: it runs only
+as the object's update, where the object target decides. A query-level "Edit disabled" hides Edit
+from that list and has no execution of its own to block, so put "this row may not be edited" on the
+object target.
 
 For a large selection, override the **batched** form `OnDisableActionsAsync(IReadOnlyList<DisableActionsItem>)`
 — every target of one request in one call — to answer with one round-trip instead of one per row. The
@@ -638,7 +733,7 @@ Rarely needed at all now: a readable `Id` of any type narrows without a hook, ma
 
 ### Three shapes fall back to a document load
 
-A query owning its own paging (`SparkQueryPage<T>`), a streaming query, and a request naming no query
+A query owning its own paging (`SparkQueryPage<T>`) and a streaming query
 cannot be re-run. Those selections are materialized by id instead, and **lose index-computed column
 values** -- the column is present, the value is null.
 

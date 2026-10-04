@@ -49,10 +49,7 @@ public sealed class CultureLoaderTests : IDisposable
         WriteCulture("""
             {
               "defaultLanguage": "nl",
-              "languages": {
-                "en": { "en": "English" },
-                "nl": { "en": "Dutch", "nl": "Nederlands" }
-              }
+              "languages": ["en", "nl"]
             }
             """);
         var loader = CreateLoader();
@@ -60,8 +57,21 @@ public sealed class CultureLoaderTests : IDisposable
         var config = loader.GetCulture();
 
         config.DefaultLanguage.Should().Be("nl");
-        config.Languages.Should().ContainKeys("en", "nl");
-        config.Languages["nl"].Translations["nl"].Should().Be("Nederlands");
+        config.Languages.Keys.Should().Equal("en", "nl");
+        // The name is the translations.json key culture.languages.{code} (#467, D1). This project
+        // compiles no translations, so the untranslated code itself is shown.
+        config.Languages["nl"].GetValue("nl").Should().Be("nl");
+    }
+
+    [Fact]
+    public void GetCulture_refuses_the_pre_467_object_form_that_embedded_language_names()
+    {
+        WriteCulture("""{ "languages": { "en": { "en": "English" } } }""");
+        var loader = CreateLoader();
+
+        var act = () => loader.GetCulture();
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*culture.languages*");
     }
 
     [Fact]
@@ -92,13 +102,13 @@ public sealed class CultureLoaderTests : IDisposable
     [Fact]
     public void GetCulture_is_cached_so_disk_changes_after_first_call_are_not_seen()
     {
-        WriteCulture("""{ "defaultLanguage": "en", "languages": { "en": { "en": "English" } } }""");
+        WriteCulture("""{ "defaultLanguage": "en", "languages": ["en"] }""");
         var loader = CreateLoader();
 
         var first = loader.GetCulture();
 
         // Mutate disk — the cached Lazy<T> keeps returning the original instance.
-        WriteCulture("""{ "defaultLanguage": "fr", "languages": { "fr": { "fr": "Français" } } }""");
+        WriteCulture("""{ "defaultLanguage": "fr", "languages": ["fr"] }""");
 
         var second = loader.GetCulture();
 

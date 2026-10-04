@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents.Indexes;
-using Raven.Client.Documents.Session;
+
 
 namespace MintPlayer.Spark.SoftDelete;
 
@@ -16,8 +16,9 @@ namespace MintPlayer.Spark.SoftDelete;
 /// <para><b>Errors</b> (refuse startup): a model type implementing <see cref="ISoftDeletable"/>
 /// whose four members are not public read/write instance properties of the interface's types. The
 /// filter is rebound by member name, and RavenDB stores only public properties.</para>
-/// <para><b>Warnings</b>: an Actions class of a soft-deletable type that overrides
-/// <c>OnDeleteAsync</c> (not called on a delete any more — only on a purge); an index over a
+/// <para>Installs the raw-delete guard (<see cref="SoftDeleteRawDeleteGuard"/>).</para>
+/// <para><b>Warnings</b>:
+/// an index over a
 /// soft-deletable collection whose projection lacks <c>IsDeleted</c> (the filter falls back to
 /// filtering after materialization) or whose Map never mentions <c>IsDeleted</c> (a pushed-down
 /// <c>IsDeleted != true</c> matches every row of the index, deleted ones included, and the rows are
@@ -51,19 +52,9 @@ internal static class SoftDeleteStartupCheck
                 "Soft deletion cannot govern these types:" + Environment.NewLine
                 + string.Join(Environment.NewLine, problems.Select(p => "  - " + p)));
 
-        using (var scope = services.CreateScope())
-        {
-            var actionsResolver = scope.ServiceProvider.GetService<IActionsResolver>();
-            foreach (var type in softDeletable)
-            {
-                if (actionsResolver is not null && OverridesOnDelete(actionsResolver, type) is { } actionsType)
-                    logger.LogWarning(
-                        "{ActionsType} overrides OnDeleteAsync, but {EntityType} is ISoftDeletable: a delete is replaced by " +
-                        "a soft delete before the Actions class is asked, so the override runs only for a purge. Move " +
-                        "delete-time logic to OnBeforeDeleteAsync or an ISoftDeleteObserver.",
-                        actionsType.Name, type.Name);
-            }
-        }
+        // A raw session delete of a soft-deletable row would skip the replacement (#467, D32).
+        if (services.GetService<Raven.Client.Documents.IDocumentStore>() is { } store)
+            SoftDeleteRawDeleteGuard.Install(store, softDeletable);
 
         if (services.GetService<IIndexCatalog>() is { } catalog)
         {
@@ -100,25 +91,6 @@ internal static class SoftDeleteStartupCheck
             else if (!property.CanRead || !property.CanWrite || property.GetMethod?.IsPublic != true || property.SetMethod?.IsPublic != true)
                 yield return $"{type.FullName}.{name} must have a public getter and setter.";
         }
-    }
-
-    private static Type? OverridesOnDelete(IActionsResolver resolver, Type entityType)
-    {
-        object actions;
-        try
-        {
-            actions = resolver.ResolveForType(entityType);
-        }
-        catch
-        {
-            return null;
-        }
-
-        var method = actions.GetType().GetMethod("OnDeleteAsync", [typeof(IAsyncDocumentSession), typeof(string)]);
-        var declaring = method?.DeclaringType;
-        if (declaring is null || (declaring.IsGenericType && declaring.GetGenericTypeDefinition() == typeof(MintPlayer.Spark.Actions.DefaultPersistentObjectActions<>)))
-            return null;
-        return actions.GetType();
     }
 
     private static bool MapMentionsIsDeleted(Type indexType)

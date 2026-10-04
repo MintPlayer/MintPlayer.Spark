@@ -26,7 +26,7 @@ public class SparkClientWarmupTests
         using var client = NewClient(handler);
 
         var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id"));
+            () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1"));
 
         ex.Message.Should().Contain("XSRF-TOKEN");
     }
@@ -39,7 +39,7 @@ public class SparkClientWarmupTests
         using var client = NewClient(handler);
 
         var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id"));
+            () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1"));
 
         ex.Message.Should().Contain("XSRF-TOKEN");
     }
@@ -54,7 +54,7 @@ public class SparkClientWarmupTests
             .EnqueueStatus(HttpStatusCode.OK);  // the DELETE that follows warmup
         using var client = NewClient(handler);
 
-        await client.DeletePersistentObjectAsync(Guid.NewGuid(), "my-id");
+        await client.DeletePersistentObjectAsync(Guid.NewGuid(), "my-id", "A:1");
 
         // First request: the warmup GET.
         handler.Requests.Should().HaveCount(2);
@@ -83,8 +83,8 @@ public class SparkClientWarmupTests
             .EnqueueStatus(HttpStatusCode.OK);
         using var client = NewClient(handler);
 
-        await client.DeletePersistentObjectAsync(Guid.NewGuid(), "id-a");
-        await client.DeletePersistentObjectAsync(Guid.NewGuid(), "id-b");
+        await client.DeletePersistentObjectAsync(Guid.NewGuid(), "id-a", "A:1");
+        await client.DeletePersistentObjectAsync(Guid.NewGuid(), "id-b", "A:1");
 
         // 1 warmup + 2 deletes — no second warmup call.
         handler.Requests.Should().HaveCount(3);

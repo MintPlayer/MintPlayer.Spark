@@ -33,8 +33,8 @@ public class SecurityPostureReporterTests
         {
             Groups =
             {
-                [AnonymousId.ToString()] = TranslatedString.Create("Public"),
-                [AdminsId.ToString()] = TranslatedString.Create("Admins"),
+                [AnonymousId.ToString()] = "Public",
+                [AdminsId.ToString()] = "Admins",
             },
             WellKnown = new() { ["anonymous"] = AnonymousId.ToString() },
             Rights =
@@ -81,7 +81,7 @@ public class SecurityPostureReporterTests
     {
         var config = new SecurityConfiguration
         {
-            Groups = { [AdminsId.ToString()] = TranslatedString.Create("Admins") },
+            Groups = { [AdminsId.ToString()] = "Admins" },
             Rights = [new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = "QueryRead/Person" }],
         };
 

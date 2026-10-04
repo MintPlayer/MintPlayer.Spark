@@ -10,16 +10,6 @@
       {
         "id": "fc9b1e2a-4450-4411-9261-92a06109666d",
         "name": "Description",
-        "label": {
-          "en": "Description",
-          "fr": "Description",
-          "nl": "Omschrijving"
-        },
-        "description": {
-          "en": "Name of the profession as shown to users, e.g. Software engineer.",
-          "fr": "Nom de la profession tel qu'il est affiché aux utilisateurs, p. ex. ingénieur logiciel.",
-          "nl": "Naam van het beroep zoals getoond aan gebruikers, bv. software-ingenieur."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -32,16 +22,6 @@
       {
         "id": "d6ef20fd-91c3-4e23-beb2-c1a0e08e33a2",
         "name": "Regime",
-        "label": {
-          "en": "Regime",
-          "fr": "Régime",
-          "nl": "Regime"
-        },
-        "description": {
-          "en": "Employment regime under which the profession is exercised, e.g. Employee or Freelance.",
-          "fr": "Régime d'emploi sous lequel la profession est exercée, p. ex. salarié ou indépendant.",
-          "nl": "Arbeidsregime waaronder het beroep wordt uitgeoefend, bv. werknemer of freelance."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,

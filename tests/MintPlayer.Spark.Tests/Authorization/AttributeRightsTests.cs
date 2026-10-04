@@ -27,8 +27,8 @@ public class AttributeRightsTests
     {
         Groups =
         {
-            [ContributorsId.ToString()] = TranslatedString.Create("Contributors"),
-            [EditorsId.ToString()] = TranslatedString.Create("Editors"),
+            [ContributorsId.ToString()] = "Contributors",
+            [EditorsId.ToString()] = "Editors",
         },
         Rights = [.. rights],
     };

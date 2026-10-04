@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
@@ -174,7 +175,7 @@ public class DisableActionsTests : SparkTestDriver
                 services.AddScoped<DisProbeRunAction>();
                 services.AddScoped<DisProbeExportAction>();
                 services.AddScoped<DisProbeTouchAction>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(new StubCustomActions(Run, Export, Touch));
+                services.AddSingleton(TestActions.LoaderWithCustom(Run, Export, Touch));
                 services.AddScoped<ICustomActionResolver>(sp => new StubActionResolver(new Dictionary<string, ICustomAction>
                 {
                     [Run] = sp.GetRequiredService<DisProbeRunAction>(),
@@ -236,7 +237,7 @@ public class DisableActionsTests : SparkTestDriver
     {
         var locked = await SeedAsync("L-1", "Locked");
 
-        var (status, body) = await SendAsync("/spark/po/update", UpdateBody(locked.Id!, "changed"));
+        var (status, body) = await SendAsync("/spark/po/update", UpdateBody(locked.Id!, await EtagAsync(locked.Id!), "changed"));
 
         status.Should().Be(HttpStatusCode.Forbidden);
         body.GetProperty("result").GetProperty("action").GetString().Should().Be("Edit");
@@ -252,7 +253,7 @@ public class DisableActionsTests : SparkTestDriver
     {
         var open = await SeedAsync("O-1", "Open");
 
-        var (status, _) = await SendAsync("/spark/po/update", UpdateBody(open.Id!, "changed"));
+        var (status, _) = await SendAsync("/spark/po/update", UpdateBody(open.Id!, await EtagAsync(open.Id!), "changed"));
 
         status.Should().Be(HttpStatusCode.OK);
         (await LoadAsync(open.Id!))!.Reference.Should().Be("changed");
@@ -263,7 +264,7 @@ public class DisableActionsTests : SparkTestDriver
     {
         var locked = await SeedAsync("L-1", "Locked");
 
-        var (status, body) = await SendAsync("/spark/po/delete", Wire.Typed(ProbeTypeId, id: locked.Id));
+        var (status, body) = await SendAsync("/spark/po/delete", Wire.Typed(ProbeTypeId, id: locked.Id, etag: await EtagAsync(locked.Id!)));
 
         status.Should().Be(HttpStatusCode.Forbidden);
         body.GetProperty("result").GetProperty("action").GetString().Should().Be("Delete");
@@ -295,23 +296,24 @@ public class DisableActionsTests : SparkTestDriver
     }
 
     /// <summary>
-    /// The #453 lesson: a row the caller may not see is a 404 whatever the hook would say about it —
-    /// the disabled-action gate runs only after the row gate passed, so a 403 never confirms a row.
+    /// The #453 lesson: a row the caller may not see is never confirmed, whatever the hook would say about
+    /// it — the disabled-action gate runs only after the row gate passed, so a 403 never confirms a row.
+    /// An update answers 409 <c>deleted</c> (#467, D30c), exactly as for a row that is gone.
     /// </summary>
     [Fact]
-    public async Task A_hidden_row_is_404_even_when_it_would_withhold_the_action()
+    public async Task A_hidden_row_is_never_confirmed_even_when_it_would_withhold_the_action()
     {
         var hidden = await SeedAsync("hidden", "Locked");
 
-        var (updateStatus, _) = await SendAsync("/spark/po/update", UpdateBody(hidden.Id!, "changed"));
-        var (deleteStatus, _) = await SendAsync("/spark/po/delete", Wire.Typed(ProbeTypeId, id: hidden.Id));
+        var (updateStatus, _) = await SendAsync("/spark/po/update", UpdateBody(hidden.Id!, await EtagAsync(hidden.Id!), "changed"));
+        var (deleteStatus, _) = await SendAsync("/spark/po/delete", Wire.Typed(ProbeTypeId, id: hidden.Id, etag: await EtagAsync(hidden.Id!)));
         var (actionStatus, _) = await SendAsync("/spark/actions/execute", Wire.Action(ProbeTypeId, Run, new
         {
             selectedItemIds = new[] { hidden.Id },
             queryId = ProbesQueryId.ToString(),
         }));
 
-        updateStatus.Should().Be(HttpStatusCode.NotFound);
+        updateStatus.Should().Be(HttpStatusCode.Conflict);
         deleteStatus.Should().Be(HttpStatusCode.NotFound);
         actionStatus.Should().Be(HttpStatusCode.NotFound);
         Recorder.Contexts.Should().NotContain(c => c.Phase == DisableActionsPhase.Submit && c.Id == hidden.Id);
@@ -437,7 +439,7 @@ public class DisableActionsTests : SparkTestDriver
         }));
         var (tooMany, tooManyBody) = await SendAsync("/spark/actions/execute", Wire.Action(ProbeTypeId, Run, new
         {
-            selectedItemIds = Enumerable.Range(0, 201).Select(i => $"DisProbes/{i}").ToArray(),
+            selectedItemIds = Enumerable.Range(0, 201).Select(i => $"DisProbes/{i}").ToArray(), queryId = ProbesQueryId.ToString(),
         }));
         var (disabled, disabledBody) = await SendAsync("/spark/actions/execute", Wire.Action(ProbeTypeId, Run, new
         {
@@ -462,7 +464,7 @@ public class DisableActionsTests : SparkTestDriver
         (await StatusOfAsync(() => client.ExecuteActionAsync(ProbeTypeId, Run,
             selectedItemIds: [hidden.Id!], queryId: ProbesQueryId.ToString()))).Should().Be(HttpStatusCode.NotFound);
         (await StatusOfAsync(() => client.ExecuteActionAsync(ProbeTypeId, Run,
-            selectedItemIds: [.. Enumerable.Range(0, 201).Select(i => $"DisProbes/{i}")]))).Should().Be(HttpStatusCode.BadRequest);
+            selectedItemIds: [.. Enumerable.Range(0, 201).Select(i => $"DisProbes/{i}")], queryId: ProbesQueryId.ToString()))).Should().Be(HttpStatusCode.BadRequest);
 
         var forbidden = await Assert.ThrowsAsync<SparkClientException>(() => client.ExecuteActionAsync(ProbeTypeId, Run, parent));
         forbidden.StatusCode.Should().Be(HttpStatusCode.Forbidden);
@@ -554,16 +556,19 @@ public class DisableActionsTests : SparkTestDriver
         attributes = Array.Empty<object>(),
     };
 
-    private static object UpdateBody(string id, string reference) => Wire.Typed(ProbeTypeId, new
+    private static object UpdateBody(string id, string etag, string reference) => Wire.Typed(ProbeTypeId, new
     {
         persistentObject = new
         {
             id,
+            etag,
             name = "DisProbe",
             objectTypeId = ProbeTypeId.ToString(),
             attributes = new[] { new { name = "Reference", value = reference, isValueChanged = true } },
         },
     }, id);
+
+    private Task<string> EtagAsync(string id) => StoredEtag.OfAsync(Store, id);
 
     private async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload)
     {
@@ -598,25 +603,6 @@ public class DisableActionsTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         return await Raven.Client.Documents.LinqExtensions.CountAsync(
             session.Query<DisProbe>().Customize(c => c.WaitForNonStaleResults()));
-    }
-
-    private sealed class StubCustomActions(params string[] names) : ICustomActionsConfigurationLoader
-    {
-        public CustomActionsConfiguration GetConfiguration()
-        {
-            var configuration = new CustomActionsConfiguration();
-            foreach (var name in names)
-            {
-                configuration[name] = new CustomActionDefinition
-                {
-                    DisplayName = TranslatedString.Create(name),
-                    ShowedOn = "both",
-                };
-            }
-            return configuration;
-        }
-
-        public void InvalidateCache() { }
     }
 
     private sealed class StubActionResolver(IReadOnlyDictionary<string, ICustomAction> actions) : ICustomActionResolver

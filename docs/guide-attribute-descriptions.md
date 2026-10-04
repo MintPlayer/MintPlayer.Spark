@@ -1,29 +1,40 @@
 # Attribute descriptions
 
-An attribute in a model file can carry a `description`: help text the client shows as an **[i]**
-beside the attribute's label, with the text in a tooltip. It appears on the edit and create form,
-the detail page, query grid column headers, AsDetail sub-table headers and the reference picker.
-Custom attribute renderers get it for free — they replace the value cell, and the host still
-renders the label.
+An attribute can carry a **description**: help text the client shows as an **[i]** beside the
+attribute's label, with the text in a tooltip. It appears on the edit and create form, the detail
+page, query grid column headers, AsDetail sub-table headers and the reference picker. Custom
+attribute renderers get it for free — they replace the value cell, and the host still renders the
+label.
+
+Since #467 (D1, D5) the text lives in `translations.json`, never in the model file, under the key
+`model.{Entity}.attributes.{Attribute}.description`:
 
 ```jsonc
+// App_Data/translations.json
 {
-  "name": "Company",
-  "label":       { "en": "Company", "fr": "Entreprise", "nl": "Bedrijf" },
-  "description": {
-    "en": "The Company this person works for. Pick from the companies list; leave empty for freelancers.",
-    "fr": "L'entreprise pour laquelle cette personne travaille. …",
-    "nl": "Het bedrijf waarvoor deze persoon werkt. …"
-  },
-  "dataType": "Reference"
+  "model": {
+    "Person": {
+      "attributes": {
+        "Company": {
+          "description": {
+            "en": "The Company this person works for. Pick from the companies list; leave empty for freelancers.",
+            "fr": "L'entreprise pour laquelle cette personne travaille. …",
+            "nl": "Het bedrijf waarvoor deze persoon werkt. …"
+          }
+        }
+      }
+    }
+  }
 }
 ```
 
-`description` is a [`TranslatedString`](guide-translated-strings.md) like `label`. It is
-**presentational**: adding, editing or translating one never changes the model hash, so it never
-refuses startup, and `--spark-synchronize-model` preserves whatever you wrote.
+A model file may name another key instead (`"description": "common.freelancerHint"`); inline text
+there is refused at startup. A description is **presentational**: adding, editing or translating one
+never changes the model hash, so it never refuses startup. Like every key, it composes per language
+across the libraries' and the app's `translations.json` ([Translated strings](guide-translated-strings.md)).
+An attribute without one shows no [i].
 
-Do not confuse it with the entity-level `description` one level up, which is the page heading.
+Do not confuse it with the entity's label (`model.{Entity}.label`), which is the page heading.
 
 ## Three ways to author the English text
 
@@ -41,17 +52,18 @@ Precedence on synchronize: `[Description]` beats the summary; either beats nothi
 
 ### The summary is a seed, not a source of truth
 
-**The C# summary fills `description.en` when the model file has nothing there — key absent, or
-present but blank. Once it has text, JSON owns it, in every language including `en`.**
+**The C# summary fills the key's `en` in the app's `translations.json` when no layer defines it —
+key absent, or present but blank. Once it has text, JSON owns it, in every language including
+`en`.** This is the one write synchronize makes to `translations.json` (#467, D5); it only adds.
 
 The two are written for different readers. A `///` comment explains the property to the next
 developer; a description is an [i] tooltip shown to the end user. Once somebody has written the
 user-facing wording, a developer-facing comment is the wrong thing to overwrite it with.
 
-- Add a `<summary>` to a property whose attribute already exists in the model file: the next
-  synchronize writes `description.en` (first key), keeping any `fr`/`nl` already there.
+- Add a `<summary>` to a property whose attribute already exists: the next
+  synchronize writes the description's `en`, keeping any `fr`/`nl` already there.
 - Edit the summary: **nothing happens** to an attribute that already has a description. To change
-  what users read, edit `description.en` in the model file.
+  what users read, edit the `en` in `translations.json`.
 - Hand-edit `en`: it stays. `--spark-verify-model` does not care that it differs from the summary,
   because synchronize would not change it either — the two commands always agree.
 - Blank it out (`""` or whitespace): that counts as missing, so the next synchronize re-seeds it
@@ -116,7 +128,7 @@ The synchronizer reads those rows by reflection — the same path it uses for `[
 `[Sortable]` — so there is no file to locate and nothing to configure at run time.
 
 `SparkAttributeDescriptionAttribute` is `[Conditional("DEBUG")]`. **A Release build of the entity
-assembly contains none of these rows.** Descriptions are development-time input to the model JSON,
+assembly contains none of these rows.** Descriptions are development-time input to `translations.json`,
 which is the production artefact; nothing about them ships. Every path that writes the model in
 this repository builds Debug (`dotnet run` without `-c`, the IDE "Synchronize" profiles, the
 `--spark-verify-model` step in CI). If you synchronize against a Release build, the assembly looks

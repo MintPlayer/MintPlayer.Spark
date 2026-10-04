@@ -313,6 +313,7 @@ public class RetryConversationTests
             {
                 Id = "people/1",
                 Name = "Alice",
+                Etag = "A:1",
                 ObjectTypeId = Guid.NewGuid(),
                 Attributes = [],
             });
@@ -350,13 +351,13 @@ public class RetryConversationTests
 
         using (client)
         {
-            var po = new PersistentObject { Id = "people/1", Name = "Alice", ObjectTypeId = Guid.NewGuid(), Attributes = [] };
+            var po = new PersistentObject { Id = "people/1", Name = "Alice", ObjectTypeId = Guid.NewGuid(), Etag = "A:1", Attributes = [] };
             Func<Task> call = endpoint switch
             {
                 "load" => () => client.GetPersistentObjectAsync("person", "people/1"),
                 "update" => () => client.UpdatePersistentObjectAsync(po),
                 "create" => () => client.CreatePersistentObjectAsync(po),
-                "delete" => () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "people/1"),
+                "delete" => () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "people/1", "A:1"),
                 "query" => () => client.ExecuteQueryAsync("allpeople"),
                 _ => throw new ArgumentOutOfRangeException(nameof(endpoint)),
             };

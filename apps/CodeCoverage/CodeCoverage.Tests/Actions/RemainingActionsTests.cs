@@ -1,3 +1,4 @@
+using CodeCoverage.Tests._Infrastructure;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
@@ -391,9 +392,9 @@ public class RemainingActionsTests : CoverageRavenTest
         var po = Page("ApiToken");
         po.Parent = new PersistentObject { Id = accountId, Name = nameof(Account), ObjectTypeId = Guid.NewGuid() };
 
-        await actions.OnBeforeSaveAsync(po, token);
-        await actions.OnAfterSaveAsync(po, token);
-        await actions.OnAfterSaveAsync(po, token);
+        await actions.BeforeSaveAsync(po, token);
+        await actions.AfterSaveAsync(po, token);
+        await actions.AfterSaveAsync(po, token);
 
         token.Hash.Should().NotBeNullOrEmpty();
         token.Account.Should().Be(accountId);

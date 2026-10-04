@@ -25,7 +25,7 @@ public class SecurityConfigurationValidatorTests
         params Right[] rights)
         => new()
         {
-            Groups = (groups ?? []).ToDictionary(g => g.Key.ToString(), g => TranslatedString.Create(g.Value)),
+            Groups = (groups ?? []).ToDictionary(g => g.Key.ToString(), g => g.Value),
             WellKnown = wellKnown,
             Rights = [.. rights],
         };

@@ -100,16 +100,21 @@ public class UpdateEndpointConcurrencyTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Put_with_no_etag_skips_concurrency_check_and_succeeds()
+    public async Task Put_with_no_etag_is_400_and_writes_nothing()
     {
         var po = await SeedAndLoadAsync("people/1", "Alice", "Smith");
 
-        // Opt-in by presence, and it stays that way: a create has no etag by definition, and a
-        // non-browser caller that does not track one must still be able to write.
+        // #467, D16: an update says which version it edits. It used to be opt-in by presence, which
+        // let a caller that tracks no etag overwrite whatever was stored. A create still has none.
         po.Etag = null;
         SetAttribute(po, "FirstName", "Alicia");
-        var saved = await _client.UpdatePersistentObjectAsync(po);
 
-        saved.Should().NotBeNull();
+        var clientRefusal = await Record.ExceptionAsync(() => _client.UpdatePersistentObjectAsync(po));
+        clientRefusal.Should().BeOfType<ArgumentException>("the .NET client does not send an update without an etag");
+
+        var (status, body) = await RawSparkPost.UpdateAsync(_factory, po);
+        status.Should().Be(HttpStatusCode.BadRequest, body);
+        using var session = Store.OpenAsyncSession();
+        (await session.LoadAsync<Person>("people/1")).FirstName.Should().Be("Alice");
     }
 }

@@ -10,11 +10,6 @@
       {
         "id": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "name": "General",
-        "label": {
-          "en": "General",
-          "fr": "Général",
-          "nl": "Algemeen"
-        },
         "order": 1
       }
     ],
@@ -22,44 +17,24 @@
       {
         "id": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582",
         "name": "Identity",
-        "label": {
-          "en": "Identity",
-          "fr": "Identité",
-          "nl": "Identiteit"
-        },
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 1
       },
       {
         "id": "c5f39a1b-6e08-42d7-b134-8d0a25c7e963",
         "name": "Installation",
-        "label": {
-          "en": "Installation",
-          "fr": "Installation",
-          "nl": "Installatie"
-        },
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 2
       },
       {
         "id": "e4b7205c-8f31-4a9d-b6e2-71c05f3a8d19",
         "name": "Connection",
-        "label": {
-          "en": "Connection",
-          "fr": "Connexion",
-          "nl": "Verbinding"
-        },
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 3
       },
       {
         "id": "d8a1e46f-2b93-4c07-95fe-3a6b18d2c740",
         "name": "Defaults",
-        "label": {
-          "en": "Defaults for this account",
-          "fr": "Valeurs par défaut du compte",
-          "nl": "Standaardinstellingen van dit account"
-        },
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 4
       }
@@ -68,16 +43,6 @@
       {
         "id": "f6c2f843-1be2-4af2-902f-1547077bff03",
         "name": "AvatarUrl",
-        "label": {
-          "en": "Avatar",
-          "fr": "Avatar",
-          "nl": "Avatar"
-        },
-        "description": {
-          "en": "URL of the account's GitHub avatar image, shown next to the login.",
-          "fr": "URL de l'image d'avatar GitHub du compte, affichée à côté du login.",
-          "nl": "URL van de GitHub-avatarafbeelding van het account, getoond naast de login."
-        },
         "dataType": "image",
         "isRequired": false,
         "isVisible": true,
@@ -91,12 +56,6 @@
       {
         "id": "5edc4d64-35ee-476d-89e7-41618672bd44",
         "name": "Connection",
-        "label": {
-          "en": "Connection"
-        },
-        "description": {
-          "en": "Whether we can still act on this account's repositories."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -110,14 +69,6 @@
       {
         "id": "317fcf1b-886e-4de3-ba90-bcb93a5deae4",
         "name": "DeleteBranchOnPrClose",
-        "label": {
-          "en": "Delete branch on merge",
-          "fr": "Supprimer la branche à la fusion",
-          "nl": "Branch verwijderen bij mergen"
-        },
-        "description": {
-          "en": "Account-wide default: delete a merged pull request's head branch, in every repository of this account that does not decide for itself."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -131,12 +82,6 @@
       {
         "id": "bebedc41-cc23-4296-8341-1529056db3af",
         "name": "DisconnectedAtUtc",
-        "label": {
-          "en": "Disconnected At Utc"
-        },
-        "description": {
-          "en": "When the account was last disconnected (UTC); null while connected."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -150,12 +95,6 @@
       {
         "id": "6dc56c67-ce60-4cb1-a882-ab1341c9e75e",
         "name": "DisconnectedReason",
-        "label": {
-          "en": "Disconnected Reason"
-        },
-        "description": {
-          "en": "Why the account is disconnected, from DisconnectedReasons; null while connected."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -169,16 +108,6 @@
       {
         "id": "f9c18430-234a-4ca4-b21d-9fca03049bf7",
         "name": "GitHubId",
-        "label": {
-          "en": "GitHub Id",
-          "fr": "Id GitHub",
-          "nl": "GitHub-id"
-        },
-        "description": {
-          "en": "GitHub's numeric id for this user or organization; stable even when the login is renamed.",
-          "fr": "Id numérique GitHub de cet utilisateur ou de cette organisation ; stable même lorsque le login est renommé.",
-          "nl": "GitHub's numerieke id voor deze gebruiker of organisatie; stabiel zelfs wanneer de login hernoemd wordt."
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": false,
@@ -192,16 +121,6 @@
       {
         "id": "01dfdc3b-b185-4044-a15e-9fb7c2ce119b",
         "name": "InstallationId",
-        "label": {
-          "en": "Installation Id",
-          "fr": "Id d'installation",
-          "nl": "Installatie-id"
-        },
-        "description": {
-          "en": "GitHub App installation on this account, when the app is installed.",
-          "fr": "Installation de l'application GitHub sur ce compte, lorsque l'application est installée.",
-          "nl": "Installatie van de GitHub App op dit account, wanneer de app geïnstalleerd is."
-        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": false,
@@ -215,16 +134,6 @@
       {
         "id": "ec42fca3-2c2c-4f8d-b022-a9db0aa8978d",
         "name": "Login",
-        "label": {
-          "en": "Login",
-          "fr": "Identifiant",
-          "nl": "Login"
-        },
-        "description": {
-          "en": "The GitHub login (user name or organization slug) of this account.",
-          "fr": "Le login GitHub (nom d'utilisateur ou slug d'organisation) de ce compte.",
-          "nl": "De GitHub-login (gebruikersnaam of organisatieslug) van dit account."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -238,12 +147,6 @@
       {
         "id": "7e09b4a3-5b0c-4725-93d1-1b37bd44902a",
         "name": "OwnerKey",
-        "label": {
-          "en": "Owner Key"
-        },
-        "description": {
-          "en": "Provider and Login as one comparable value, github:acme."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -257,12 +160,6 @@
       {
         "id": "cb7179a2-eb61-4290-ac91-66fd239e266a",
         "name": "Provider",
-        "label": {
-          "en": "Provider"
-        },
-        "description": {
-          "en": "The forge that hosts this account. Set on every document by the M6 re-key."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -276,16 +173,6 @@
       {
         "id": "47ee693b-379e-469b-ba29-22a472796297",
         "name": "Type",
-        "label": {
-          "en": "Type",
-          "fr": "Type",
-          "nl": "Type"
-        },
-        "description": {
-          "en": "\"User\" or \"Organization\".",
-          "fr": "« User » ou « Organization ».",
-          "nl": "\"User\" of \"Organization\"."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,

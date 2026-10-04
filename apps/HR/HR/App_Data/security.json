@@ -4,36 +4,12 @@
     "authenticated": "b1b2c3d4-0000-0000-0000-00000000000f"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": {
-      "en": "Anonymous visitors",
-      "fr": "Visiteurs anonymes",
-      "nl": "Anonieme bezoekers"
-    },
-    "b1b2c3d4-0000-0000-0000-00000000000f": {
-      "en": "Signed-in users",
-      "fr": "Utilisateurs connectés",
-      "nl": "Aangemelde gebruikers"
-    },
-    "b1b2c3d4-0000-0000-0000-000000000001": {
-      "en": "Administrators",
-      "fr": "Administrateurs",
-      "nl": "Beheerders"
-    },
-    "b1b2c3d4-0000-0000-0000-000000000002": {
-      "en": "HR managers",
-      "fr": "Responsables RH",
-      "nl": "HR-managers"
-    },
-    "b1b2c3d4-0000-0000-0000-000000000003": {
-      "en": "Viewers",
-      "fr": "Lecteurs",
-      "nl": "Lezers"
-    },
-    "b0000002-0000-0000-0000-000000000001": {
-      "en": "Module:Fleet",
-      "fr": "Module:Fleet",
-      "nl": "Module:Fleet"
-    }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "b1b2c3d4-0000-0000-0000-00000000000f": "Signed-in users",
+    "b1b2c3d4-0000-0000-0000-000000000001": "Administrators",
+    "b1b2c3d4-0000-0000-0000-000000000002": "HR managers",
+    "b1b2c3d4-0000-0000-0000-000000000003": "Viewers",
+    "b0000002-0000-0000-0000-000000000001": "Module:Fleet"
   },
   "rights": [
     {

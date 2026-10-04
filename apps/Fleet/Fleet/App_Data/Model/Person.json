@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "ff87918c-1e9f-4467-a47e-831d49c81f25",
     "name": "Person",
-    "description": {
-      "en": "Person",
-      "fr": "Personne",
-      "nl": "Persoon"
-    },
     "clrType": "Fleet.Replicated.Person",
     "breadcrumb": "{FirstName}",
     "tabs": [],
@@ -15,16 +10,6 @@
       {
         "id": "ad032070-86e7-4ed1-8b71-166010bc0ee8",
         "name": "Email",
-        "label": {
-          "en": "Email",
-          "fr": "E-mail",
-          "nl": "E-mail"
-        },
-        "description": {
-          "en": "Work e-mail address of the person, replicated read-only from HR.",
-          "fr": "Adresse e-mail professionnelle de la personne, répliquée en lecture seule depuis HR.",
-          "nl": "Professioneel e-mailadres van de persoon, alleen-lezen gerepliceerd vanuit HR."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -45,16 +30,6 @@
       {
         "id": "bb4cd209-a07a-4464-886a-a511606a18bd",
         "name": "FirstName",
-        "label": {
-          "en": "First Name",
-          "fr": "Prénom",
-          "nl": "Voornaam"
-        },
-        "description": {
-          "en": "Given name of the person, replicated read-only from HR.",
-          "fr": "Prénom de la personne, répliqué en lecture seule depuis HR.",
-          "nl": "Voornaam van de persoon, alleen-lezen gerepliceerd vanuit HR."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -66,11 +41,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "First Name must be at least 2 characters.",
-              "fr": "Le prénom doit contenir au moins 2 caractères.",
-              "nl": "Voornaam moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Person.attributes.FirstName.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -81,16 +52,6 @@
       {
         "id": "3513e68d-8b8f-4bc3-95d2-3d3b78f4f1cd",
         "name": "LastName",
-        "label": {
-          "en": "Last Name",
-          "fr": "Nom de famille",
-          "nl": "Achternaam"
-        },
-        "description": {
-          "en": "Family name of the person, replicated read-only from HR.",
-          "fr": "Nom de famille de la personne, répliqué en lecture seule depuis HR.",
-          "nl": "Familienaam van de persoon, alleen-lezen gerepliceerd vanuit HR."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -102,11 +63,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "Last Name must be at least 2 characters.",
-              "fr": "Le nom de famille doit contenir au moins 2 caractères.",
-              "nl": "Achternaam moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Person.attributes.LastName.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -121,11 +78,6 @@
     {
       "id": "a20e8400-e29b-41d4-a716-446655440002",
       "name": "GetPeople",
-      "description": {
-        "en": "People",
-        "fr": "Personnes",
-        "nl": "Personen"
-      },
       "source": "Database.People",
       "sortColumns": [
         {

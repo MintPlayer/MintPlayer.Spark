@@ -103,7 +103,6 @@ After model synchronization, Spark generates the model JSON automatically. The k
 ```json
 {
   "name": "Address",
-  "label": {"en": "Address", "fr": "Adresse", "nl": "Adres"},
   "dataType": "AsDetail",
   "asDetailType": "DemoApp.Library.Entities.Address",
   "isArray": false,
@@ -117,7 +116,6 @@ After model synchronization, Spark generates the model JSON automatically. The k
 ```json
 {
   "name": "Jobs",
-  "label": {"en": "Jobs"},
   "dataType": "AsDetail",
   "asDetailType": "HR.Entities.CarreerJob",
   "isArray": true,
@@ -143,14 +141,12 @@ The nested type needs its own model JSON file. Spark generates this automaticall
 ```json
 {
   "name": "Address",
-  "description": {"en": "Address", "fr": "Adresse", "nl": "Adres"},
   "clrType": "DemoApp.Library.Entities.Address",
   "displayFormat": "{Street}, {City} {State}",
   "displayAttribute": "Street",
   "attributes": [
     {
       "name": "Street",
-      "label": {"en": "Street", "fr": "Rue", "nl": "Straat"},
       "dataType": "string",
       "isRequired": true,
       "order": 1,
@@ -161,14 +157,12 @@ The nested type needs its own model JSON file. Spark generates this automaticall
     },
     {
       "name": "City",
-      "label": {"en": "City", "fr": "Ville", "nl": "Stad"},
       "dataType": "string",
       "isRequired": true,
       "order": 2
     },
     {
       "name": "State",
-      "label": {"en": "State"},
       "dataType": "string",
       "isRequired": true,
       "order": 3
@@ -476,7 +470,7 @@ Four things about this are worth knowing before you use it.
 
 **Neither hook writes anything.** Construction is not persistence and removal is not deletion: the
 row appears or disappears for real only when the parent is saved. A hook that touches the database is
-writing outside the parent's unit of work. Record things from the *parent's* `OnBeforeSaveAsync`.
+writing outside the parent's unit of work. Record things from a before-save interceptor of the *parent* ([interceptors guide](guide-interceptors.md)).
 
 **Use `SetOriginalValue` for defaults, not `SetValue`.** `SetValue` marks the attribute changed,
 which makes the object dirty before the user has typed anything — so adding a row and abandoning it

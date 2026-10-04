@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -85,16 +86,16 @@ public static class MoSecurity
                 [SparkWellKnownGroups.Anonymous] = SparkTestSecurity.AnonymousGroupId.ToString(),
                 [SparkWellKnownGroups.Authenticated] = SparkTestSecurity.AuthenticatedGroupId.ToString(),
             },
-            Groups = new Dictionary<string, TranslatedString>
+            Groups = new Dictionary<string, string>
             {
-                [SparkTestSecurity.AnonymousGroupId.ToString()] = TranslatedString.Create("Anonymous visitors"),
-                [SparkTestSecurity.AuthenticatedGroupId.ToString()] = TranslatedString.Create("Signed-in users"),
-                [Voters.ToString()] = TranslatedString.Create("MoVoters"),
-                [Downvoters.ToString()] = TranslatedString.Create("MoDownvoters"),
-                [Flaggers.ToString()] = TranslatedString.Create("MoFlaggers"),
-                [Reviewers.ToString()] = TranslatedString.Create("MoReviewers"),
-                [Moderators.ToString()] = TranslatedString.Create(ModeratorsName),
-                [Editors.ToString()] = TranslatedString.Create("MoEditors"),
+                [SparkTestSecurity.AnonymousGroupId.ToString()] = "Anonymous visitors",
+                [SparkTestSecurity.AuthenticatedGroupId.ToString()] = "Signed-in users",
+                [Voters.ToString()] = "MoVoters",
+                [Downvoters.ToString()] = "MoDownvoters",
+                [Flaggers.ToString()] = "MoFlaggers",
+                [Reviewers.ToString()] = "MoReviewers",
+                [Moderators.ToString()] = ModeratorsName,
+                [Editors.ToString()] = "MoEditors",
             },
             Rights = rights.Select((r, i) => new Right
             {
@@ -171,6 +172,12 @@ public sealed class MoHost : IAsyncDisposable
     public MoClock Clock { get; }
     public IDocumentStore Store => Factory.GetService<IDocumentStore>();
 
+    /// <summary>The etag of the stored version, which every update, delete and purge names (#467, D14).</summary>
+    public Task<string> EtagAsync(string id) => StoredEtag.OfAsync(Store, id);
+
+    /// <summary>Runs the durable after-commit interceptors of every committed write so far (#482, D17).</summary>
+    public Task<int> DrainAsync() => Factory.GetService<TestAfterCommitOutbox>().DrainAsync(Factory.GetService<IServiceProvider>());
+
     public static async Task<MoHost> StartAsync(
         IDocumentStore store,
         Action<SparkModerationOptions>? configure = null,
@@ -188,8 +195,10 @@ public sealed class MoHost : IAsyncDisposable
                 services.AddSingleton<TimeProvider>(clock);
                 services.AddScoped<MoTouchAction>();
                 services.AddScoped<MoPostActions>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(new MoCustomActions());
+                services.AddSingleton(TestActions.LoaderWithCustom("MoTouch"));
                 services.AddScoped<ICustomActionResolver, MoActionResolver>();
+                // Moderation's vote reversal is a durable after-commit interceptor (#482, D17); DrainAsync delivers it.
+                services.AddTestAfterCommitOutbox();
             },
             configureSpark: spark =>
             {
@@ -342,11 +351,12 @@ public sealed class MoHost : IAsyncDisposable
         return await scope.ServiceProvider.GetRequiredService<FraudDetector>().RunAsync();
     }
 
-    public static object UpdateBody(string id, params (string Name, object? Value)[] attributes) => Wire.Typed(PostTypeId, new
+    public static object UpdateBody(string id, string etag, params (string Name, object? Value)[] attributes) => Wire.Typed(PostTypeId, new
     {
         persistentObject = new
         {
             id,
+            etag,
             name = "MoPost",
             objectTypeId = PostTypeId.ToString(),
             attributes = attributes.Select(a => new { name = a.Name, value = a.Value, isValueChanged = true }).ToArray(),
@@ -454,16 +464,6 @@ public sealed class MoTouchAction(IDatabaseAccess databaseAccess) : ICustomActio
         po!["Title"].SetValue("touched");
         await databaseAccess.SavePersistentObjectAsync(po);
     }
-}
-
-internal sealed class MoCustomActions : ICustomActionsConfigurationLoader
-{
-    public CustomActionsConfiguration GetConfiguration() => new()
-    {
-        ["MoTouch"] = new CustomActionDefinition { DisplayName = TranslatedString.Create("Touch"), ShowedOn = "both" },
-    };
-
-    public void InvalidateCache() { }
 }
 
 internal sealed class MoActionResolver(MoTouchAction touch) : ICustomActionResolver

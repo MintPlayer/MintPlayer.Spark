@@ -19,15 +19,16 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// <remarks>
 /// <para>
 /// The same checks, in the same order, as a custom action on a selection: the 200-row cap and the
-/// <c>Delete</c> entry's selection rule first (400, no database work), then the Delete right, the
-/// sub-query's container through its own gated read, and then — in
+/// <c>Delete</c> entry's selection rule and the required <c>queryId</c> first (400, no database work),
+/// then the sub-query's container through its own gated read, then the rows fetched THROUGH that
+/// query and checked readable (#467 D11/D12, <see cref="ISparkSelectionResolver"/>), and then — in
 /// <see cref="IDatabaseAccess.DeletePersistentObjectsAsync"/> — the collection guard, the row gate,
 /// the disabled-action hook and the interceptors. A row that is missing or denied refuses the lot
 /// with the same answer as a missing row (M-3); a row whose hook withholds Delete refuses it with 403.
 /// </para>
 /// <para>
-/// Separate from <c>/po/delete</c>, which stays the detail page's single-row delete; that one keeps
-/// its quiet 204 for an already-gone row, which a bulk delete must not (never shrink silently).
+/// Separate from <c>/po/delete</c>, which stays the detail page's single-row delete. Both answer an
+/// already-gone row with 404; a bulk delete never shrinks silently to the rows that remain.
 /// </para>
 /// </remarks>
 [MemberOf<PersistentObjectGroup>]
@@ -43,7 +44,8 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IQueryLoader queryLoader;
-    [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
+    [Inject] private readonly ISparkSelectionResolver selectionResolver;
+    [Inject] private readonly IActionsCatalogueLoader catalogueLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<DeleteManyPersistentObjects> logger;
@@ -55,9 +57,19 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
         if (request is null || entityType is null)
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
 
-        var ids = request.Ids ?? [];
+        var items = request.Items ?? [];
+        var ids = items.Select(item => item.Id ?? string.Empty).ToArray();
 
         // Input validation first, as ExecuteCustomAction does: a violating request costs nothing.
+        // Every row says which version it removes (#467, D14): a row edited since the list loaded is
+        // a 409, not lost.
+        if (items.Any(item => string.IsNullOrEmpty(item.Etag)))
+        {
+            return ClientResult.Envelope(clientAccessor,
+                new { error = "Every row of a bulk delete must carry the etag of the version it removes." },
+                StatusCodes.Status400BadRequest);
+        }
+
         if (ids.Length > SparkDefaultActions.MaxSelectedItems)
         {
             return ClientResult.Envelope(clientAccessor,
@@ -65,8 +77,10 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
                 StatusCodes.Status400BadRequest);
         }
 
-        var definition = SparkDefaultActions.Resolve(SparkDefaultActions.Delete, configLoader.GetConfiguration());
-        if (!SparkDefaultActions.IsShowedOnQuery(definition.ShowedOn))
+        // The composed Delete (#467, D7): removed ("Delete": null) or not on queries, bulk delete is
+        // not offered, so it is not accepted either.
+        var definition = catalogueLoader.GetCatalogue().Find(SparkDefaultActions.Delete);
+        if (definition is not { IsShowedOnQuery: true })
         {
             return ClientResult.Envelope(clientAccessor,
                 new { error = "Delete is not offered on queries of this application." },
@@ -77,6 +91,16 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
         {
             return ClientResult.Envelope(clientAccessor,
                 new { error = $"Action 'Delete' requires a selection of '{definition.SelectionRule}'; {ids.Length} items were submitted." },
+                StatusCodes.Status400BadRequest);
+        }
+
+        // D12: the rows are fetched through the query they were selected in, so that query's own
+        // OnDisableActionsAsync decision, filter and row filter always apply. Without a query there is no
+        // such decision to consult, and omitting it used to skip the query-level gate entirely.
+        if (string.IsNullOrEmpty(request.QueryId))
+        {
+            return ClientResult.Envelope(clientAccessor,
+                new { error = "A bulk delete must name the query its rows were selected in (queryId)." },
                 StatusCodes.Status400BadRequest);
         }
 
@@ -108,21 +132,41 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
                 parentTypeName = parentType.Name;
             }
 
-            var query = string.IsNullOrEmpty(request.QueryId) ? null : queryLoader.ResolveQuery(request.QueryId);
+            var query = queryLoader.ResolveQuery(request.QueryId);
+            if (query is null)
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+
+            // D11/D12: through the named query, readable, all or nothing — a row the query does not
+            // return, or the caller cannot read, is missing, exactly like an id that names nothing.
+            var rows = await selectionResolver.ResolveAsync(entityType, query, parent, ids, httpContext.RequestAborted);
+            if (rows is null)
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
 
             await databaseAccess.DeletePersistentObjectsAsync(entityType.Id, ids, new SparkBulkDeleteContext
             {
                 Query = query,
                 Parent = parent,
                 ParentType = parentTypeName,
+                Reason = request.Reason,
+                // An id named twice keeps its first etag; the rows collapse the same way.
+                Etags = items
+                    .Where(item => !string.IsNullOrEmpty(item.Id))
+                    .DistinctBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(item => item.Id!, item => item.Etag!, StringComparer.OrdinalIgnoreCase),
             });
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
         }
-        catch (SparkConcurrencyException)
+        catch (SparkCancelException)
         {
-            // A replaced (soft) delete in the batch met a concurrent edit; the batch is atomic, so
-            // nothing was written (contributions F7). Generic body, as in Update (R2-M1).
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+            // An interceptor cancelled one row's delete (#482), which cancels the batch: nothing was deleted.
+            return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
+        }
+        catch (SparkConcurrencyException ex)
+        {
+            // A row changed since the list loaded (#467, D14): named in the message (D18). Or a write in
+            // the batch met a concurrent edit; the batch is atomic, so nothing was written
+            // (contributions F7). Never the exception's own message, as in Update (R2-M1).
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {
@@ -153,10 +197,16 @@ internal sealed class DeleteManyRequest : ISparkTypedRequest, IRetryableRequest
     /// <inheritdoc />
     public string? ObjectTypeId { get; set; }
 
-    /// <summary>The selected rows. Raven ids contain slashes, hence the body rather than a route.</summary>
-    public string[]? Ids { get; set; }
+    /// <summary>
+    /// The selected rows, each with the etag the list showed (#467, D14). Raven ids contain slashes,
+    /// hence the body rather than a route.
+    /// </summary>
+    public DeleteManyItem[]? Items { get; set; }
 
-    /// <summary>The query the rows were selected in, for the disabled-action hook.</summary>
+    /// <summary>
+    /// The query the rows were selected in. Required (#467, D12): the rows are fetched through it, and
+    /// its <c>OnDisableActionsAsync</c> decision applies.
+    /// </summary>
     public string? QueryId { get; set; }
 
     /// <summary>The sub-query's container id, when deleting from a sub-query.</summary>
@@ -165,6 +215,18 @@ internal sealed class DeleteManyRequest : ISparkTypedRequest, IRetryableRequest
     /// <summary>The container's entity type (name, alias or id).</summary>
     public string? ParentType { get; set; }
 
+    /// <summary>One reason for the whole batch, recorded on every soft-deleted row (#467, D20).</summary>
+    public string? Reason { get; set; }
+
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
+}
+
+/// <summary>One row of a <c>delete-many</c> request: its id and the version the caller saw.</summary>
+internal sealed class DeleteManyItem
+{
+    public string? Id { get; set; }
+
+    /// <summary>The row's <c>etag</c> from the query result. Required.</summary>
+    public string? Etag { get; set; }
 }

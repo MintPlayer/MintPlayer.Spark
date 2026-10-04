@@ -45,20 +45,27 @@ public class UpdateEndpointTests : SparkTestDriver
     {
         var po = NewPerson("people/1", "A", "B");
         po.ObjectTypeId = Guid.NewGuid();  // force unknown type
+        po.Etag = StoredEtag.ForMissingRow;
 
         var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.UpdatePersistentObjectAsync(po));
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    /// <summary>
+    /// The caller holds an etag, so it loaded the row once: a row that is gone is "deleted since you
+    /// loaded it", 409 <c>deleted</c> (#467, D30c), never a silent re-create.
+    /// </summary>
     [Fact]
-    public async Task Update_throws_404_when_id_does_not_exist()
+    public async Task Update_of_an_id_that_does_not_exist_is_409_deleted()
     {
         var po = NewPerson("people/does-not-exist", "A", "B");
+        po.Etag = StoredEtag.ForMissingRow;
 
         var ex = await Assert.ThrowsAsync<SparkClientException>(() => _client.UpdatePersistentObjectAsync(po));
 
-        ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        ex.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        ex.ResponseBody.Should().Contain("deleted");
     }
 
     [Fact]
@@ -70,7 +77,9 @@ public class UpdateEndpointTests : SparkTestDriver
             await session.SaveChangesAsync();
         }
 
-        var saved = await _client.UpdatePersistentObjectAsync(NewPerson("people/1", "Alicia", "Smith-Jones"));
+        var edit = NewPerson("people/1", "Alicia", "Smith-Jones");
+        edit.Etag = await StoredEtag.OfAsync(Store, "people/1");
+        var saved = await _client.UpdatePersistentObjectAsync(edit);
         saved.Should().NotBeNull();
 
         await Store.WaitForIndexingAsync();

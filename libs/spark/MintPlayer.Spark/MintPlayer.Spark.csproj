@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark</PackageId>
-		<Version>11.0.0-preview.93</Version>
+		<Version>11.0.0-preview.94</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
@@ -58,6 +58,15 @@
 		compiled into [assembly: SparkTranslations(...)] attributes and read at runtime.
 		-->
 		<Content Remove="App_Data\translations.json" />
+
+		<!--
+		The core layer of the action catalogue (New, Edit, Delete; #467 D7). SparkActionsLayer="library"
+		tells the generator to compile it into [assembly: SparkActions(...)]; an application's own
+		actions.json carries no such metadata, and is read from disk so it reloads while running.
+		-->
+		<AdditionalFiles Include="App_Data\actions.json" SparkActionsLayer="library" />
+		<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SparkActionsLayer" />
+		<Content Remove="App_Data\actions.json" />
 	</ItemGroup>
 
 	<ItemGroup>

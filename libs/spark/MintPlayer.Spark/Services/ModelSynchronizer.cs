@@ -29,6 +29,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// <summary>C#-side description seeds (#348); one instance per synchronize run so each assembly is read once.</summary>
     private readonly AttributeDescriptionCatalog descriptions = new();
 
+    /// <summary>Description seeds collected during the run, written into translations.json at its end (#467, D5).</summary>
+    private readonly List<(string Key, string Text)> seeds = new();
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -331,6 +334,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             Console.WriteLine($"Removed stale projection model file: {entry.ProjectionType.Name}.json");
         }
 
+        TranslationsSeeder.Apply(hostEnvironment.ContentRootPath, seeds);
+        ReportMissingTranslations();
+
         if (WouldCertifyAnEmptyModel(contextType, queryableProperties.Count, modelPath))
             return;
 
@@ -390,58 +396,27 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// and the value verified can never be produced by two different pieces of code.
     /// </summary>
     /// <summary>
-    /// Rule for who owns an attribute's <c>description</c> (#348, revised): the C# summary is a
-    /// SEED, never an overwrite. It fills <c>en</c> when the model file has nothing there — key
-    /// absent, or present but blank — and JSON owns the value from then on, in every language.
+    /// The <c>translations.json</c> key an attribute's description lives under (#467, D4): the
+    /// explicit key the model file names, else <c>model.{Entity}.attributes.{Attr}.description</c>.
+    /// </summary>
+    internal static string DescriptionKey(string entityName, EntityAttributeDefinition attribute)
+        => attribute.Description?.Key ?? $"model.{entityName}.attributes.{attribute.Name}.description";
+
+    /// <summary>
+    /// Who owns an attribute's description (#348, revised; moved to translations.json by #467, D5):
+    /// the C# summary is a SEED, never an overwrite. It fills <c>en</c> under the description key
+    /// when no layer defines it — absent, or present but blank — and translations.json owns the value
+    /// from then on, in every language.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// #348 originally had C# own <c>en</c> outright, on the reasoning that seeding only new
-    /// attributes would leave existing ones undescribed forever. That reasoning has expired — the
-    /// model has been seeded since — and the ownership was wrong in kind: a <c>///</c> comment is
-    /// written for the next developer, while a description renders as an [i] tooltip for the end
-    /// user. Those are different audiences, and the comment is the wrong source for the second once
-    /// somebody has written real help text.
-    /// </para>
-    /// <para>
-    /// The cost is accepted deliberately: a corrected summary no longer reaches a description that
-    /// already has text, so user-facing wording is changed by editing the model file. Synchronize
-    /// adds, it does not replace — the same stance <c>#253</c> takes for attributes it cannot
-    /// prove are stale.
-    /// </para>
-    /// <para>
-    /// Writes <c>en</c> first when it has to add the key, and in place when the key exists but is
-    /// blank, so a second synchronize produces byte-identical JSON (the converter serializes
-    /// insertion order).
-    /// </para>
+    /// A <c>///</c> comment is written for the next developer, while a description renders as an
+    /// [i] tooltip for the end user; the comment is the wrong source once somebody has written real
+    /// help text. So a corrected summary does not reach a description that already has text.
     /// </remarks>
-    internal static void ApplyDescriptionSeed(EntityAttributeDefinition attribute, string? seed)
+    private void CollectDescriptionSeed(string entityName, EntityAttributeDefinition attribute, string? seed)
     {
-        if (seed is null)
-            return;
-
-        if (attribute.Description is null)
-        {
-            attribute.Description = TranslatedString.Create(seed);
-            return;
-        }
-
-        var translations = attribute.Description.Translations;
-        if (translations.TryGetValue("en", out var existing))
-        {
-            // Present and non-blank means a human owns it — leave it, however stale
-            // the C# summary has become.
-            if (!string.IsNullOrWhiteSpace(existing))
-                return;
-
-            translations["en"] = seed;
-            return;
-        }
-
-        var reordered = new Dictionary<string, string> { ["en"] = seed };
-        foreach (var kvp in translations)
-            reordered[kvp.Key] = kvp.Value;
-        attribute.Description.Translations = reordered;
+        if (seed is not null)
+            seeds.Add((DescriptionKey(entityName, attribute), seed));
     }
 
     /// <summary>
@@ -470,7 +445,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         // Embedded (AsDetail) types have model files too; they live in the same assemblies.
         var assemblies = entityTypes.Select(t => t.Assembly).Append(contextType.Assembly).Distinct().ToList();
         var catalog = new AttributeDescriptionCatalog(_ => { });
-        var drift = new List<string>();
+        var seeds = new List<(string Key, string Text)>();
 
         foreach (var file in Directory.EnumerateFiles(modelPath, "*.json").OrderBy(f => f, StringComparer.Ordinal))
         {
@@ -501,25 +476,17 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     continue;
 
                 var seed = catalog.Seed(property);
-                if (seed is null)
-                    continue;
-
-                string? onDisk = null;
-                attribute.Description?.Translations.TryGetValue("en", out onDisk);
-
-                // Only what synchronize would actually write is drift. A description
-                // that merely differs from the C# summary is a human's wording and is
-                // left alone, so it must not fail verification either — otherwise the
-                // two commands disagree and the build blocks on text nothing will fix.
-                if (string.IsNullOrWhiteSpace(onDisk))
-                {
-                    drift.Add($"{definition.Name}.{attribute.Name}: description.en is " +
-                              $"{(onDisk is null ? "absent" : "blank")} on disk, C# says \"{seed}\"");
-                }
+                if (seed is not null)
+                    seeds.Add((DescriptionKey(definition.Name, attribute), seed));
             }
         }
 
-        return drift;
+        // Only what synchronize would actually write is drift (#467, D5: verify fails exactly when
+        // sync would write). A description that merely differs from the C# summary is a human's
+        // wording and is left alone, so it must not fail verification either.
+        return TranslationsSeeder.Pending(contentRootPath, seeds)
+            .Select(s => $"{s.Key}: no layer of translations.json defines 'en', C# says \"{s.Text}\"")
+            .ToList();
     }
 
     internal static ModelHashFile BuildModelHashes(Type contextType, IIndexCatalog indexCatalog, string contentRootPath)
@@ -928,7 +895,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     existingAttr.InQueryType = null;
                 }
 
-                ApplyDescriptionSeed(existingAttr, descriptionSeed);
+                CollectDescriptionSeed(entityTypeDef.Name, existingAttr, descriptionSeed);
                 newAttributes.Add(existingAttr);
             }
             else
@@ -938,8 +905,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 {
                     Id = Guid.NewGuid(),
                     Name = propertyName,
-                    Label = TranslatedString.Create(AddSpacesToCamelCase(propertyName)),
-                    Description = descriptionSeed is null ? null : TranslatedString.Create(descriptionSeed),
+                    // No label and no description in the model file (#467, D1/D4): the label is found
+                    // under model.{Entity}.attributes.{Attr}.label, else the humanized name, and the
+                    // description seed goes into translations.json.
                     DataType = dataType,
                     // A get-only property cannot be required: nothing can supply a value for it.
                     IsRequired = property.CanWrite
@@ -970,6 +938,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     if (newSeed.ShowedOn is { } seededShowedOn) newAttr.ShowedOn = seededShowedOn;
                     if (newSeed.IsVisible is { } seededVisible) newAttr.IsVisible = seededVisible;
                 }
+                CollectDescriptionSeed(entityTypeDef.Name, newAttr, descriptionSeed);
                 newAttributes.Add(newAttr);
             }
             order++;
@@ -1257,23 +1226,70 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
     private bool IsNullable(Type type) => SparkModelShape.IsNullable(type);
 
-    private string AddSpacesToCamelCase(string text)
+    /// <summary>
+    /// The info report D4 asks for (#467): every label key in the model that some language
+    /// <c>culture.json</c> declares has no translation for, in any layer. Informational only — the
+    /// runtime shows the humanized name — so it never fails synchronize or verify.
+    /// </summary>
+    private void ReportMissingTranslations()
     {
-        if (string.IsNullOrEmpty(text)) return text;
+        var missing = DescribeMissingTranslations(hostEnvironment.ContentRootPath);
+        if (missing.Count == 0) return;
 
-        var result = new System.Text.StringBuilder();
-        result.Append(text[0]);
+        Console.WriteLine($"Info: {missing.Count} label key(s) have no translation in every declared language " +
+                          "(the humanized name is shown instead). Add them to App_Data/translations.json:");
+        foreach (var line in missing)
+            Console.WriteLine($"  {line}");
+    }
 
-        for (int i = 1; i < text.Length; i++)
+    internal static IReadOnlyList<string> DescribeMissingTranslations(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath)) return [];
+
+        var cultureFile = Path.Combine(contentRootPath, "App_Data", "culture.json");
+        var languages = File.Exists(cultureFile)
+            ? JsonDocument.Parse(File.ReadAllText(cultureFile)).RootElement.EnumerateObject()
+                .Where(p => string.Equals(p.Name, "languages", StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind == JsonValueKind.Array)
+                .SelectMany(p => p.Value.EnumerateArray().Select(e => e.GetString() ?? ""))
+                .Where(c => c.Length > 0)
+                .ToList()
+            : ["en"];
+
+        var keys = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json").OrderBy(f => f, StringComparer.Ordinal))
         {
-            if (char.IsUpper(text[i]))
+            EntityTypeFile? model;
+            try
             {
-                result.Append(' ');
+                model = JsonSerializer.Deserialize<EntityTypeFile>(File.ReadAllText(file),
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
-            result.Append(text[i]);
+            catch (JsonException)
+            {
+                continue;
+            }
+            if (model?.PersistentObject is not { } definition) continue;
+
+            var prefix = $"model.{definition.Name}";
+            keys.Add(definition.Label?.Key ?? $"{prefix}.label");
+            keys.AddRange(definition.Attributes.Select(a => a.Label?.Key ?? $"{prefix}.attributes.{a.Name}.label"));
+            keys.AddRange(definition.Tabs.Select(t => t.Label?.Key ?? $"{prefix}.tabs.{t.Name}.label"));
+            keys.AddRange(definition.Groups.Select(g => g.Label?.Key ?? $"{prefix}.groups.{g.Name}.label"));
+            keys.AddRange(model.Queries.Select(q => q.Label?.Key ?? $"queries.{q.Name}.label"));
         }
 
-        return result.ToString();
+        var lines = new List<string>();
+        foreach (var key in keys.Distinct(StringComparer.Ordinal))
+        {
+            SparkTranslations.All.TryGetValue(key, out var translated);
+            var absent = languages
+                .Where(l => translated is null || !translated.Translations.TryGetValue(l, out var v) || string.IsNullOrWhiteSpace(v))
+                .ToList();
+            if (absent.Count > 0)
+                lines.Add($"{key} [{string.Join(", ", absent)}]");
+        }
+        return lines;
     }
 
     private string? GetDefaultSortProperty(EntityTypeDefinition entityType)

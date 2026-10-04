@@ -45,7 +45,10 @@ import {
   hasShowedOnFlag,
   EntityPermissions,
   SparkDeletedFilter,
+  builtInAction,
+  confirmationText,
   filterDetailActions,
+  isShowedOnDetail,
   subQueriesOf,
 } from '@mintplayer/ng-spark/models';
 import {
@@ -119,8 +122,12 @@ export class SparkPoDetailComponent {
   asDetailReferenceOptions = signal<Record<string, Record<string, QueryResultItem[]>>>({});
   type = '';
   id = '';
-  canEdit = signal(false);
-  canDelete = signal(false);
+  /** The catalogue's Edit (#467, D8) when this page offers it: listed for the caller, on the detail side, and allowed on this row. */
+  editAction = signal<CustomActionDefinition | null>(null);
+  /** The catalogue's Delete, on the same terms as {@link editAction}. */
+  deleteAction = signal<CustomActionDefinition | null>(null);
+  canEdit = computed(() => this.editAction() !== null);
+  canDelete = computed(() => this.deleteAction() !== null);
   customActions = signal<CustomActionDefinition[]>([]);
   /** Type-level rights, kept for the add-on context; null until loaded. */
   permissions = signal<EntityPermissions | null>(null);
@@ -302,9 +309,17 @@ export class SparkPoDetailComponent {
         // from the soft-delete entry point's detail action instead.
         const deletedView = this.isDeletedView();
         this.permissions.set(permissions);
-        this.canEdit.set(!deletedView && (can ? can.edit : permissions.canEdit) && !withheld.has('edit') && !withheld.has('save'));
-        this.canDelete.set(!deletedView && (can ? can.delete : permissions.canDelete) && !withheld.has('delete'));
-        // Custom actions only: the built-in New and Delete (#460, D18) are this page's own buttons.
+        // Edit and Delete come from the composed catalogue (#467, D8): listed only when the caller
+        // holds Edit/T or Delete/T, shown here when their showedOn includes the detail side (an app
+        // removes one with "Edit": null), and the row's `can` must allow it too. The selection rule
+        // does not apply: the page acts on the one object it shows.
+        const edit = builtInAction(actions, 'Edit');
+        const del = builtInAction(actions, 'Delete');
+        this.editAction.set(edit && isShowedOnDetail(edit.showedOn) && !deletedView
+          && (can ? can.edit : permissions.canEdit) && !withheld.has('edit') && !withheld.has('save') ? edit : null);
+        this.deleteAction.set(del && isShowedOnDetail(del.showedOn) && !deletedView
+          && (can ? can.delete : permissions.canDelete) && !withheld.has('delete') ? del : null);
+        // Custom actions only: the built-ins are rendered above as this page's Edit and Delete.
         this.customActions.set(deletedView ? [] : filterDetailActions(actions));
       }
     } catch (e) {
@@ -452,6 +467,14 @@ export class SparkPoDetailComponent {
    * a louder style. Restricted to a known set rather than interpolated, because the value arrives
    * from a JSON file and must not be able to put arbitrary classes on the button.
    */
+  /** Edit's and Delete's button classes: the catalogue's variant, else the look they always had. */
+  protected builtInActionClass(action: CustomActionDefinition, fallback: 'primary' | 'danger'): string {
+    const variant = action.variant?.toLowerCase();
+    return ['danger', 'warning', 'primary', 'secondary', 'success'].includes(variant ?? '')
+      ? `btn btn-${variant}`
+      : `btn btn-${fallback}`;
+  }
+
   protected customActionClass(action: CustomActionDefinition): string {
     const variant = action.variant?.toLowerCase();
     switch (variant) {
@@ -482,10 +505,8 @@ export class SparkPoDetailComponent {
     // host component driving this method directly would otherwise bypass the check.
     if (this.runningAction()) return;
 
-    if (action.confirmationMessageKey) {
-      const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
-      if (!confirm(message)) return;
-    }
+    const message = confirmationText(action, 1);
+    if (message && !confirm(message)) return;
 
     this.runningAction.set(action.name);
     try {
@@ -518,8 +539,12 @@ export class SparkPoDetailComponent {
   }
 
   async onDelete(): Promise<void> {
-    if (confirm(this.lang.t('common.confirmDelete'))) {
-      await this.sparkService.delete(this.type, this.id);
+    // The version on screen is the one deleted (#467, D14): a row changed since is a 409.
+    const etag = this.item()?.etag;
+    if (!etag) return;
+    const message = confirmationText(this.deleteAction(), 1);
+    if (!message || confirm(message)) {
+      await this.sparkService.delete(this.type, this.id, etag);
       this.deleted.emit();
       // Back to the list the row was opened from (else the type's list), not the start page.
       await this.returnNavigation.returnToList(this.entityType()?.name);

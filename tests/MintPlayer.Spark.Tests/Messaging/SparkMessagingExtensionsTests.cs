@@ -16,15 +16,17 @@ namespace MintPlayer.Spark.Tests.Messaging;
 public class SparkMessagingExtensionsTests
 {
     [Fact]
-    public void AddSparkMessaging_registers_IMessageBus_as_scoped()
+    public void AddSparkMessaging_registers_IMessageBus_and_IMessageOutbox_as_aliases_for_one_scoped_MessageBus()
     {
         var services = new ServiceCollection();
 
         services.AddSparkMessaging();
 
-        var descriptor = services.Single(d => d.ServiceType == typeof(IMessageBus));
-        descriptor.Lifetime.Should().Be(ServiceLifetime.Scoped);
-        descriptor.ImplementationType.Should().Be<MessageBus>();
+        // One MessageBus per request serves both: IMessageOutbox (#482, D34) enqueues in the caller's
+        // session, IMessageBus broadcasts. The aliases use factory delegates.
+        services.Should().Contain(d => d.ServiceType == typeof(MessageBus) && d.ImplementationType == typeof(MessageBus) && d.Lifetime == ServiceLifetime.Scoped);
+        services.Single(d => d.ServiceType == typeof(IMessageBus)).Lifetime.Should().Be(ServiceLifetime.Scoped);
+        services.Single(d => d.ServiceType == typeof(IMessageOutbox)).Lifetime.Should().Be(ServiceLifetime.Scoped);
     }
 
     [Fact]

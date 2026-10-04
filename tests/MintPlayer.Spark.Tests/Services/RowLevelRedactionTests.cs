@@ -220,41 +220,6 @@ public class RowLevelRedactionTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_redacted_attribute_cannot_be_written_back_over_the_secret()
-    {
-        string repoId;
-        using (var session = Store.OpenAsyncSession())
-        {
-            var repo = new Repo { Name = "public", Owner = "bob", BadgeToken = "the-secret" };
-            await session.StoreAsync(repo);
-            await session.SaveChangesAsync();
-            repoId = repo.Id!;
-        }
-
-        var actions = new RepoActions(new EntityMapper(CreateModelLoader()));
-        var po = new PersistentObject
-        {
-            Id = repoId,
-            ObjectTypeId = RepoTypeId,
-            Name = "Repo",
-            Attributes =
-            [
-                new() { Name = "Name", DataType = "string", Value = "renamed", IsValueChanged = true },
-                new() { Name = "Owner", DataType = "string", Value = "bob", IsValueChanged = false },
-                new() { Name = "BadgeToken", DataType = "string", Value = "hijacked", IsValueChanged = true },
-            ],
-        };
-
-        using var editSession = Store.OpenAsyncSession();
-        var saved = await actions.OnSaveAsync(editSession, po);
-
-        saved.BadgeToken.Should().Be("the-secret",
-            "a client that received a redacted value (or a malicious one) must not clobber the "
-            + "stored secret on write-back");
-        saved.Name.Should().Be("renamed", "unprotected attributes still merge normally");
-    }
-
-    [Fact]
     public async Task The_system_context_sees_full_values()
     {
         var context = new DefaultHttpContext

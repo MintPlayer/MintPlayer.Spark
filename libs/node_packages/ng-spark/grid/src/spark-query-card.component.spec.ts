@@ -44,11 +44,11 @@ const personType: EntityType = {
 const carsQuery = {
   id: 'q-cars', name: 'GetCars', source: 'Database.People', alias: 'cars',
   entityType: 'Person', sortColumns: [], isStreamingQuery: false,
-  description: { en: 'All the cars' },
+  label: { en: 'All the cars' },
 } as any;
 
 const exportAction = {
-  name: 'Export', displayName: { en: 'Export' }, offset: 0,
+  name: 'Export', label: { en: 'Export' }, offset: 0,
   showedOn: 'query', selectionRule: undefined, refreshOnCompleted: false,
 } as any;
 

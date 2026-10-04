@@ -2,13 +2,13 @@
   "programUnitGroups": [
     {
       "id": "a10e8400-e29b-41d4-a716-446655440000",
-      "name": {"en": "Fleet Management", "fr": "Gestion de flotte", "nl": "Wagenparkbeheer"},
+      "name": "programUnits.groups.fleetManagement",
       "icon": "bi-truck",
       "order": 1,
       "programUnits": [
         {
           "id": "a10e8400-e29b-41d4-a716-446655440001",
-          "name": {"en": "Cars", "fr": "Voitures", "nl": "Auto's"},
+          "name": "programUnits.cars",
           "icon": "bi-car-front-fill",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440001",
@@ -17,7 +17,7 @@
         },
         {
           "id": "a10e8400-e29b-41d4-a716-446655440002",
-          "name": {"en": "People", "fr": "Personnes", "nl": "Personen"},
+          "name": "programUnits.people",
           "icon": "bi-people",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440002",
@@ -26,7 +26,7 @@
         },
         {
           "id": "a10e8400-e29b-41d4-a716-446655440003",
-          "name": {"en": "Companies", "fr": "Entreprises", "nl": "Bedrijven"},
+          "name": "programUnits.companies",
           "icon": "bi-building",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440003",
@@ -35,7 +35,7 @@
         },
         {
           "id": "a10e8400-e29b-41d4-a716-446655440004",
-          "name": {"en": "Stolen Cars", "fr": "Voitures volées", "nl": "Gestolen auto's"},
+          "name": "programUnits.stolenCars",
           "icon": "bi-exclamation-triangle",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440010",
@@ -44,7 +44,7 @@
         },
         {
           "id": "a10e8400-e29b-41d4-a716-446655440005",
-          "name": {"en": "Recent Cars", "fr": "Voitures récentes", "nl": "Recente auto's"},
+          "name": "programUnits.recentCars",
           "icon": "bi-calendar-check",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440011",
@@ -53,7 +53,7 @@
         },
         {
           "id": "a10e8400-e29b-41d4-a716-446655440006",
-          "name": {"en": "Registrations", "fr": "Immatriculations", "nl": "Inschrijvingen"},
+          "name": "programUnits.registrations",
           "icon": "bi-clock-history",
           "type": "query",
           "queryId": "a20e8400-e29b-41d4-a716-446655440012",

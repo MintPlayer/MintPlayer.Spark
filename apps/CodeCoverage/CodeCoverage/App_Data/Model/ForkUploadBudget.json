@@ -10,9 +10,6 @@
       {
         "id": "b4a0880f-f3b9-4360-af36-e8e0bd6aa6f2",
         "name": "Count",
-        "label": {
-          "en": "Count"
-        },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
@@ -25,9 +22,6 @@
       {
         "id": "14bbf90c-3d2f-405b-99c9-51fac45bf2e9",
         "name": "WindowStartedUtc",
-        "label": {
-          "en": "Window Started Utc"
-        },
         "dataType": "datetime",
         "isRequired": true,
         "isVisible": true,

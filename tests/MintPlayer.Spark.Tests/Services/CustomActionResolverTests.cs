@@ -94,7 +94,7 @@ public class CustomActionResolverTests
     /// This test previously pinned the opposite, and the opposite was a trap. Null means "no such
     /// action" to the only caller that constructs one (<c>ExecuteCustomAction</c>), so a dependency
     /// the container could not satisfy was reported to the client as a 404 saying the action does
-    /// not exist. That sends whoever is debugging to the action name and to customActions.json,
+    /// not exist. That sends whoever is debugging to the action name and to actions.json,
     /// neither of which is wrong, while the actual cause -- a missing registration -- was written
     /// only to the log, which nobody reading a 404 has any reason to open.
     /// </para>

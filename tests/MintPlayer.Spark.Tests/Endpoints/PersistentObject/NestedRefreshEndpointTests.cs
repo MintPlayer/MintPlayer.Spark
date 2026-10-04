@@ -264,6 +264,7 @@ public class NestedRefreshEndpointTests(NestedRefreshEndpointTests.Host host)
 
         var edited = PolicyWithGate("fixed", 90);
         edited.Id = created.Id;
+        edited.Etag = created.Etag;
         await _client.UpdatePersistentObjectAsync(edited);
 
         using var session = Store.OpenAsyncSession();

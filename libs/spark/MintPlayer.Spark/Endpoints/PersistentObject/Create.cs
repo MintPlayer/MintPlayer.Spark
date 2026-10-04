@@ -109,11 +109,16 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
             var presented = await saveResponse.PresentAsync(entityType, result, isNew: true, httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, presented, 201);
         }
-        catch (SparkConcurrencyException)
+        catch (SparkCancelException)
         {
-            // A creation whose natural id is already held becomes a save of that row, and that
-            // write can meet a concurrent one (contributions F7). Generic body, as in Update (R2-M1).
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+            // An interceptor cancelled the create (#482): nothing was created, and nothing went wrong.
+            return ClientResult.Envelope(clientAccessor, null, 204);
+        }
+        catch (SparkConcurrencyException ex)
+        {
+            // A creation whose natural id is already held by a row the caller may edit: "exists"
+            // (#467, D16), never an overwrite. Generic body, as in Update (R2-M1).
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkSaveValidationException ex)
         {

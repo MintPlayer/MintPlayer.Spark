@@ -112,11 +112,11 @@ public class QnAContributionsTests
         reverted.ContributorId.Should().Be(first.Id);
         reverted.Title.Should().Be("Erste", "the reverted-to version keeps its text and its author");
 
-        var (memberRemove, _) = await first.Client.PostAsync("/spark/po/delete", new { objectTypeId = TranslationCurrentTypeId.ToString(), id = currentId });
+        var (memberRemove, _) = await first.Client.PostAsync("/spark/po/delete", new { objectTypeId = TranslationCurrentTypeId.ToString(), id = currentId, etag = await host.EtagAsync(currentId) });
         memberRemove.Should().NotBe(200, "removing a whole version is a moderator's right");
         (await host.LoadAsync<StoredTranslation>(currentId)).Should().NotBeNull();
 
-        await moderator.PostJsonAsync("/spark/po/delete", new { objectTypeId = TranslationCurrentTypeId.ToString(), id = currentId });
+        await moderator.PostJsonAsync("/spark/po/delete", new { objectTypeId = TranslationCurrentTypeId.ToString(), id = currentId, etag = await host.EtagAsync(currentId) });
         (await host.LoadAsync<StoredTranslation>(currentId)).Should().BeNull("every visible version of de/Latn was hidden");
         (await host.LoadAsync<StoredTranslationVersion>(firstVersion))!.IsDeleted.Should().BeTrue("hidden, not destroyed: a moderator can restore it");
     }

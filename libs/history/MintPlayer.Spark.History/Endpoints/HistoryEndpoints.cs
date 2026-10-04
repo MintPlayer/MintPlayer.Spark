@@ -143,6 +143,7 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly ISparkHistory history;
+    [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IClientAccessor clientAccessor;
 
@@ -157,9 +158,15 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint
             var reverted = await history.RevertAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
             return SparkAddOnEndpoints.Envelope(clientAccessor, reverted, StatusCodes.Status200OK);
         }
+        catch (SparkCancelException)
+        {
+            // An interceptor cancelled the revert (#482): nothing was written; answered with the row as stored.
+            return SparkAddOnEndpoints.Envelope(clientAccessor,
+                await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id), StatusCodes.Status200OK);
+        }
         catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
         {
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {

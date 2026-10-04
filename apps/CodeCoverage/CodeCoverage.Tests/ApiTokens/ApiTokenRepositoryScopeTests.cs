@@ -1,3 +1,4 @@
+using CodeCoverage.Tests._Infrastructure;
 using CodeCoverage.Forge;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
@@ -151,7 +152,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20));
 
-        var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
+        var act = async () => await actions.BeforeSaveAsync(Po(), token);
 
         await act.Should().ThrowAsync<SparkValidationException>();
     }
@@ -169,7 +170,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 20));
 
-        var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
+        var act = async () => await actions.BeforeSaveAsync(Po(), token);
 
         await act.Should().ThrowAsync<SparkValidationException>();
     }
@@ -187,9 +188,9 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
 
         var unknown = await Record.ExceptionAsync(() =>
-            actions.OnBeforeSaveAsync(Po(), NewToken("Repositories/999999")));
+            actions.BeforeSaveAsync(Po(), NewToken("Repositories/999999")));
         var foreignId = await Record.ExceptionAsync(() =>
-            actions.OnBeforeSaveAsync(Po(), NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20))));
+            actions.BeforeSaveAsync(Po(), NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20))));
 
         unknown.Should().BeOfType<SparkValidationException>();
         foreignId.Should().BeOfType<SparkValidationException>();
@@ -205,7 +206,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 11));
 
-        await actions.OnBeforeSaveAsync(Po(), token);
+        await actions.BeforeSaveAsync(Po(), token);
 
         token.RepositoryIds.Should().HaveCount(2);
         token.Scope.Should().Be("Repository");
@@ -220,7 +221,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken();
 
-        await actions.OnBeforeSaveAsync(Po(), token);
+        await actions.BeforeSaveAsync(Po(), token);
 
         token.Scope.Should().Be("Account");
     }
@@ -235,7 +236,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 10));
 
-        await actions.OnBeforeSaveAsync(Po(), token);
+        await actions.BeforeSaveAsync(Po(), token);
 
         token.RepositoryIds.Should().Equal(Repository.DocumentId(EForgeProvider.GitHub, 10));
     }
@@ -257,7 +258,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         existing.Hash = "already-minted";   // an edit: the credential exists
         existing.Account = ManagedAccount;
 
-        var act = async () => await actions.OnBeforeSaveAsync(Po(), existing);
+        var act = async () => await actions.BeforeSaveAsync(Po(), existing);
 
         await act.Should().ThrowAsync<SparkValidationException>();
     }
@@ -276,7 +277,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 30));
 
-        var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
+        var act = async () => await actions.BeforeSaveAsync(Po(), token);
 
         await act.Should().ThrowAsync<SparkValidationException>();
         token.Hash.Should().BeEmpty();
@@ -296,7 +297,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var po = Po();
         po.Parent!.Id = ForeignAccount;
 
-        var act = async () => await actions.OnBeforeSaveAsync(po, NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20)));
+        var act = async () => await actions.BeforeSaveAsync(po, NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20)));
 
         await act.Should().ThrowAsync<SparkValidationException>();
     }

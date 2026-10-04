@@ -7,9 +7,10 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Contributions;
 
 /// <summary>
-/// The contributions runtime as a persistent-object interceptor (PRD T6), ordered last
-/// (<see cref="PersistentObjectInterceptorOrder.Contributions"/>): SoftDelete has replaced a delete,
-/// and Moderation has refused a suspended or locked caller, before anything here writes.
+/// The contributions runtime as persistence interceptors (PRD T6; #482, "interceptor" is the older name).
+/// SoftDelete's replacement is decided before any before-delete interceptor (<see cref="DeleteContext.IsReplaced"/>
+/// is final here), and a refusal by any other interceptor — Moderation's suspension or lock — evicts what
+/// these interceptors wrote, so their relative order does not matter.
 /// </summary>
 /// <remarks>
 /// Applies to every target type that declares a <see cref="ContributionAttribute"/> property and to
@@ -21,7 +22,7 @@ internal sealed class ContributionsInterceptor(
     IAsyncDocumentSession session,
     ISparkCurrentUser currentUser,
     ContributionRequestState state,
-    IServiceProvider services) : IPersistentObjectInterceptor
+    IServiceProvider services) : IAfterMaterialize, IAfterLoad, IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete
 {
     /// <summary>The contributor id of a system-context write (a migration, a sync) that has no user.</summary>
     internal const string SystemContributorId = "system";
@@ -29,7 +30,8 @@ internal sealed class ContributionsInterceptor(
     /// <summary>The audit action of a removed version (Delete on the current type).</summary>
     internal const string RemoveVersionAuditAction = "RemoveContributionVersion";
 
-    public int Order => PersistentObjectInterceptorOrder.Contributions;
+    /// <summary>A module sync moves a slot's current and removes a deleted owner's contributions too.</summary>
+    public bool HandlesSync => true;
 
     public bool AppliesTo(Type entityType)
         => catalog.ForTarget(entityType).Count > 0
@@ -87,9 +89,6 @@ internal sealed class ContributionsInterceptor(
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context)
     {
-        if (context.Entity is null)
-            return;
-
         // Only an edit or a create carries contribution rows. A revert and a sync never post them (F2),
         // a restore posts nothing, and diffing those would read "every row removed".
         if (context.Operation is PersistentObjectOperation.New or PersistentObjectOperation.Save)
@@ -133,7 +132,7 @@ internal sealed class ContributionsInterceptor(
     {
         // The owner really goes (a hard delete or a purge, not SoftDelete's replacement): its
         // contributions and current documents go with it, in the same commit.
-        if (!context.WasReplaced)
+        if (!context.IsReplaced)
             foreach (var handler in catalog.ForTarget(context.EntityType))
                 await handler.OnOwnerDeletedAsync(context.Id, session);
 
@@ -183,9 +182,9 @@ internal sealed class ContributionsInterceptor(
         if (!string.IsNullOrEmpty(context.PersistentObject.Id))
             return context.PersistentObject.Id;
 
-        // A create: the contribution ids need the target's. Storing it now is what the base OnSaveAsync
-        // does next anyway (its StoreAsync of a tracked entity is a no-op); a refusal evicts it.
-        var entity = context.Entity!;
+        // A create: the contribution ids need the target's. Storing it now is what the
+        // framework does next anyway (its StoreAsync of a tracked entity is a no-op); a refusal evicts it.
+        var entity = context.Entity;
         var id = session.Advanced.GetDocumentId(entity);
         if (string.IsNullOrEmpty(id))
         {

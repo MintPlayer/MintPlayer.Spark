@@ -65,6 +65,12 @@ internal sealed class PersistentObjectReferenceRequest : ISparkTypedRequest, IRe
     /// </summary>
     public SparkDeletedFilter? Deleted { get; set; }
 
+    /// <summary>
+    /// <c>delete</c> only (ignored by <c>load</c>), and required there (#467, D14): the version of the
+    /// row the caller saw. A delete without one is a 400; a row changed since is a 409.
+    /// </summary>
+    public string? Etag { get; set; }
+
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
 }

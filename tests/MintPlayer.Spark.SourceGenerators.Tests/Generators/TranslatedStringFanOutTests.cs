@@ -21,11 +21,7 @@ public class TranslatedStringFanOutTests
 
     private const string CultureJson = """
         {
-          "languages": {
-            "en": { "en": "English" },
-            "fr": { "en": "French" },
-            "nl": { "en": "Dutch" }
-          },
+          "languages": ["en", "fr", "nl"],
           "defaultLanguage": "en"
         }
         """;
@@ -162,13 +158,11 @@ public class TranslatedStringFanOutTests
     {
         var generated = Run(TranslatedCar, cultureJson: """
             {
-              "languages": {
-                "nl": { "en": "Dutch" },
-                "en": { "en": "English" }
-              }
+              "languages": ["nl", "en"]
             }
             """).GeneratedSources[0].Source;
 
+        generated.IndexOf("Description_nl {", StringComparison.Ordinal).Should().BeGreaterThanOrEqualTo(0);
         generated.IndexOf("Description_nl {", StringComparison.Ordinal)
             .Should().BeLessThan(generated.IndexOf("Description_en {", StringComparison.Ordinal));
     }

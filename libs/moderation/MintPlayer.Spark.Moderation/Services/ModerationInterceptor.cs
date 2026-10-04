@@ -13,8 +13,8 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Moderation.Services;
 
 /// <summary>
-/// Moderation's hold on the write pipeline (runs in <c>IDatabaseAccess</c>, D1, so an Actions-class
-/// override cannot skip it):
+/// Moderation's interceptors on the write pipeline (#482, run by the framework, so nothing can
+/// skip them):
 /// <list type="bullet">
 /// <item>a suspended account cannot write anything (immediate, read from the suspension document);</item>
 /// <item><see cref="IModeratable.AuthorId"/> / <see cref="IModeratable.PostedAt"/> are stamped on create and immutable after;</item>
@@ -27,7 +27,7 @@ namespace MintPlayer.Spark.Moderation.Services;
 /// <remarks>
 /// A module <c>Sync</c> and the system context pass untouched: the owner module already decided.
 /// </remarks>
-internal sealed partial class ModerationInterceptor : IPersistentObjectInterceptor
+internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete, IAfterLoad
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IAsyncDocumentSession session;
@@ -35,16 +35,11 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ModerationUserState userState;
-    [Inject] private readonly ReputationLedger ledger;
     [Inject] private readonly ModerationAudit audit;
     [Inject] private readonly IOptions<SparkModerationOptions> options;
     [Inject] private readonly TimeProvider timeProvider;
-    [Inject] private readonly ILogger<ModerationInterceptor> logger;
 
     /// <summary>Every type: the suspension write block is not limited to moderatable content.</summary>
-    /// <summary>After SoftDelete and History (contributions F5), before Contributions.</summary>
-    public int Order => PersistentObjectInterceptorOrder.Moderation;
-
     public bool AppliesTo(Type entityType) => true;
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
@@ -86,8 +81,16 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
 
         await RefuseSuspendedAsync();
 
-        if (context.Entity is IModeratable)
-            await RefuseLockedAsync(context.EntityType, context.Id);
+        if (context.Entity is not IModeratable entity)
+            return;
+
+        await RefuseLockedAsync(context.EntityType, context.Id);
+
+        // "Content deleted by a moderator reverses its votes" (§3.12): decided here, where the author
+        // and the actor are known, and done durably after the commit (ModerationVoteReversal).
+        var actor = currentUser.IsAuthenticated ? currentUser.Id : null;
+        if (actor is not null && actor != entity.AuthorId && options.Value.ReverseVotesOnModeratorDelete)
+            context.Facts[ModerationVoteReversal.ReverseVotesFact] = "true";
     }
 
     public async ValueTask OnAfterSaveAsync(SaveContext context)
@@ -113,27 +116,11 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
 
         var typeName = TypeName(context.EntityType);
         await audit.WriteAsync(context.IsPurge ? "purge" : "delete", context.Id, typeName, entity.AuthorId);
-
-        // "Content deleted by a moderator reverses its votes" (§3.12). The delete is committed by now;
-        // the reversal is idempotent per entry, so a retry after a failure here repeats nothing.
-        if (byOther && options.Value.ReverseVotesOnModeratorDelete)
-        {
-            try
-            {
-                var voteIds = await VotesOnAsync(context.Id);
-                if (voteIds.Count > 0)
-                    await ledger.ReverseVotesAsync(voteIds, "content-deleted", null);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogError(ex, "Could not reverse the votes on deleted {TargetId}; the delete stands, re-run the reversal.", context.Id);
-            }
-        }
     }
 
     public async ValueTask OnAfterLoadAsync(LoadContext context)
     {
-        // A UI hint only — enforcement is the before-hooks above. A locked post shows no Edit/Delete
+        // A UI hint only — enforcement is the before-interceptors above. A locked post shows no Edit/Delete
         // to those the lock binds.
         if (context.IsSystemContext || context.PersistentObject.Id is not { Length: > 0 } id)
             return;
@@ -196,17 +183,6 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
         counter.Count++;
         await session.StoreAsync(counter, counterId);
         session.Advanced.GetMetadataFor(counter)["@expires"] = now.Date.AddDays(2).ToString("O");
-    }
-
-    private async Task<IReadOnlyList<string>> VotesOnAsync(string targetId)
-    {
-        using var read = documentStore.OpenAsyncSession();
-        return await read.Query<ModerationVote>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-            .Where(v => v.TargetId == targetId && v.Direction != 0)
-            .Select(v => v.Id!)
-            .Take(10_000)
-            .ToListAsync();
     }
 
     private string TypeName(Type entityType)

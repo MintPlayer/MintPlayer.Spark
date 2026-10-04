@@ -80,7 +80,7 @@ public static class SparkSecurityInitExtensions
             "",
             "A RIGHT is '{action}/{target}', for example 'QueryRead/Person'.",
               "actions:  Query (list rows), Read (open one), Edit, New, Delete,",
-              "          plus any custom action name from customActions.json.",
+              "          plus any action name from actions.json.",
               "combined: QueryRead, ReadEdit, EditNew, NewDelete, EditNewDelete, ReadEditNew,",
               "          ReadEditNewDelete, QueryReadEdit, QueryReadEditNew, QueryReadEditNewDelete.",
               "          These expand, on denials exactly as on grants.",
@@ -101,8 +101,9 @@ public static class SparkSecurityInitExtensions
             "A right both an anonymous visitor and a signed-in user should have is TWO grants.",
             "Neither role can be claimed: they are decided from authentication state, so no",
             "identity provider can hand a caller 'authenticated' by naming a group.",
-            "Every other group is matched by NAME against the caller's group claims, in any",
-            "translation -- so display names are load-bearing.",
+            "Every other group is matched by its NAME (the value below, never translated) against",
+            "the caller's group claims. Its display label is security.groups.<name>.label in",
+            "translations.json.",
             "",
             "A right looks like this:",
             "  { \"id\": \"<new guid>\", \"resource\": \"QueryRead/Person\",",
@@ -116,8 +117,8 @@ public static class SparkSecurityInitExtensions
           },
 
           "groups": {
-            "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors" },
-            "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users" }
+            "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+            "00000000-0000-0000-0000-000000000001": "Signed-in users"
           },
 
           "rights": []

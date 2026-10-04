@@ -26,9 +26,9 @@ writes a starting file. It grants nothing, and it carries the whole grammar in c
     "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors" },
-    "a1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users" },
-    "a1b2c3d4-0000-0000-0000-000000000001": { "en": "Administrators" }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "a1b2c3d4-0000-0000-0000-00000000000f": "Signed-in users",
+    "a1b2c3d4-0000-0000-0000-000000000001": "Administrators"
   },
   "rights": [
     { "id": "…", "resource": "QueryRead/Car", "groupId": "…000000f", "isDenied": false },
@@ -37,6 +37,11 @@ writes a starting file. It grants nothing, and it carries the whole grammar in c
 }
 ```
 
+A group's value is its **name**, untranslated, and the name is its identity: group claims and
+`[SparkAuthorize(Group = …)]` match it (case-insensitively), never a translation (#467, D24). The
+label users see is the key `security.groups.{name}.label` in `translations.json`. Rights reference
+groups by id.
+
 A **right** is `{action}/{target}`.
 
 | Actions | |
@@ -44,7 +49,7 @@ A **right** is `{action}/{target}`.
 | `Query` | list rows in a grid |
 | `Read` | open one row's detail page |
 | `New`, `Edit`, `Delete` | the obvious three |
-| *any custom action name* | from `customActions.json`, e.g. `SyncColumns/GitHubProject` |
+| *any custom action name* | from `actions.json`, e.g. `SyncColumns/GitHubProject` |
 
 | Combined | expands to |
 |---|---|
@@ -141,8 +146,8 @@ attribute right when the rule does not depend on the row.
 
 A save never refuses because of an attribute right — a refusal would tell the caller which attributes
 exist and which they may not write. Instead the server **drops** every posted attribute the caller may
-not write, before anything maps, hooks or intercepts the object (`OnBeforeSaveAsync`, the
-before-save interceptors and an `OnSaveAsync` override all see the shielded object):
+not write, before anything maps or intercepts the object (`MapAsync` and every before-save interceptor see the
+shielded object):
 
 | Save | Dropped | What the entity keeps |
 |---|---|---|

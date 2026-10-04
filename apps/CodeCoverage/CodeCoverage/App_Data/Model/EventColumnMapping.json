@@ -10,16 +10,6 @@
       {
         "id": "3f1c07a2-6b84-4d0e-9a51-7c2e5f0d84b6",
         "name": "AutoAddToBoard",
-        "label": {
-          "en": "Add To Board",
-          "fr": "Ajouter au tableau",
-          "nl": "Aan bord toevoegen"
-        },
-        "description": {
-          "en": "Add an item to the board when this rule has to move it and it is not on the board yet.",
-          "fr": "Ajouter un élément au tableau lorsque cette règle doit le déplacer et qu'il n'y figure pas encore.",
-          "nl": "Een item aan het bord toevoegen wanneer deze regel het moet verplaatsen en het er nog niet op staat."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -32,16 +22,6 @@
       {
         "id": "c34a5d57-7a16-4d47-99f6-b182cc9a9d3c",
         "name": "Enabled",
-        "label": {
-          "en": "Enabled",
-          "fr": "Activé",
-          "nl": "Ingeschakeld"
-        },
-        "description": {
-          "en": "Turns this one rule off without deleting it.",
-          "fr": "Désactive cette seule règle sans la supprimer.",
-          "nl": "Zet deze ene regel uit zonder ze te verwijderen."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -54,16 +34,6 @@
       {
         "id": "728bea88-bcb6-441a-8173-8a2e02e756f0",
         "name": "EventType",
-        "label": {
-          "en": "Event",
-          "fr": "Événement",
-          "nl": "Gebeurtenis"
-        },
-        "description": {
-          "en": "Which GitHub event this rule reacts to.",
-          "fr": "L'événement GitHub auquel cette règle réagit.",
-          "nl": "De GitHub-gebeurtenis waarop deze regel reageert."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -77,16 +47,6 @@
       {
         "id": "92046158-4eea-4573-8ebf-4915a46f89d7",
         "name": "LastError",
-        "label": {
-          "en": "Error",
-          "fr": "Erreur",
-          "nl": "Fout"
-        },
-        "description": {
-          "en": "Why this rule last failed, or empty if its last attempt succeeded.",
-          "fr": "Pourquoi cette règle a échoué la dernière fois, ou vide si sa dernière tentative a réussi.",
-          "nl": "Waarom deze regel de laatste keer mislukt is, of leeg als de laatste poging gelukt is."
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -99,16 +59,6 @@
       {
         "id": "bc6ca3fd-88a5-42f2-8dfc-168cad2d04de",
         "name": "LastErrorAtUtc",
-        "label": {
-          "en": "Failed At",
-          "fr": "Échoué le",
-          "nl": "Mislukt op"
-        },
-        "description": {
-          "en": "When the last failure happened; empty when the rule is healthy.",
-          "fr": "Moment où LastError a été enregistrée (UTC) ; null lorsque la règle est saine.",
-          "nl": "Wanneer LastError vastgelegd is (UTC); null wanneer de regel gezond is."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -121,16 +71,6 @@
       {
         "id": "2b78066c-dc46-4fe8-a3f9-0177e5a51090",
         "name": "LastFiredAtUtc",
-        "label": {
-          "en": "Last Fired",
-          "fr": "Dernier déclenchement",
-          "nl": "Laatst afgevuurd"
-        },
-        "description": {
-          "en": "When this rule last moved a card, or empty if it never has.",
-          "fr": "Quand cette règle a déplacé une carte pour la dernière fois, ou vide si jamais.",
-          "nl": "Wanneer deze regel het laatst een kaart verplaatst heeft, of leeg als dat nooit gebeurd is."
-        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -143,16 +83,6 @@
       {
         "id": "e1dd93fd-5c88-41d5-921c-ad225a06eb6b",
         "name": "MoveLinkedIssues",
-        "label": {
-          "en": "Move Linked Issues",
-          "fr": "Déplacer les tickets liés",
-          "nl": "Gekoppelde issues verplaatsen"
-        },
-        "description": {
-          "en": "Also move the cards of the issues a pull request closes, alongside the PR's own card. Ignored for issue events.",
-          "fr": "Déplacer aussi les cartes des tickets qu'une pull request clôture, en plus de celle de la PR. Ignoré pour les événements de ticket.",
-          "nl": "Ook de kaarten verplaatsen van de issues die een pull request sluit, naast die van de PR zelf. Genegeerd voor issue-gebeurtenissen."
-        },
         "dataType": "boolean",
         "isRequired": true,
         "isVisible": true,
@@ -165,16 +95,6 @@
       {
         "id": "9002c9b3-e961-45b5-b875-c4d5bee7634c",
         "name": "TargetColumnOptionId",
-        "label": {
-          "en": "Target Column",
-          "fr": "Colonne cible",
-          "nl": "Doelkolom"
-        },
-        "description": {
-          "en": "The board column this rule moves the card to.",
-          "fr": "La colonne du tableau vers laquelle cette règle déplace la carte.",
-          "nl": "De bordkolom waarnaar deze regel de kaart verplaatst."
-        },
         "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,

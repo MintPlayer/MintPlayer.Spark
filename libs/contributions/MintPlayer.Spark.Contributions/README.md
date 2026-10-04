@@ -93,8 +93,8 @@ it: `spark.AddContributions(typeof(Song).Assembly)`.
 
 ## Runtime behaviour
 
-Everything below runs in a persistent-object interceptor ordered **after** SoftDelete, History and
-Moderation (`PersistentObjectInterceptorOrder.Contributions`), inside the request session, so it
+Everything below runs in persistence interceptors (#482), inside the request session,
+after SoftDelete has decided whether a delete is replaced, so it
 commits atomically with the save or delete that caused it, and a refused save writes none of it.
 
 - **Load.** Every load of a target for persistent-object work (GET, refresh, the save's reload, the
@@ -128,9 +128,9 @@ commits atomically with the save or delete that caused it, and a refused save wr
   version this session loaded, create → must not exist, delete → the loaded version. A contributor
   racing another one on the same slot gets **409**, and nothing of the refused save is written (the
   contribution and the current document commit together or not at all). There is no in-pipeline
-  retry: the commit is the base `OnSaveAsync`'s single `SaveChangesAsync`, after every hook, so the
+  retry: the commit is the framework's single `SaveChangesAsync`, after every interceptor, so the
   client's conflict flow (re-fetch, merge, save) is the retry.
-- **Moderation.** Contributions are not PO saves, so Moderation's interceptor never sees them. Before
+- **Moderation.** Contributions are not PO saves, so Moderation's interceptors never see them. Before
   writing or withdrawing a contribution, the runtime asks every registered `ISatelliteWriteGuard`
   (Spark core contract); Moderation registers one that refuses a suspended account and a locked
   contribution (`IModeratable`, for those the lock binds). Not for the system context.
@@ -235,7 +235,7 @@ A target whose `Edit` is owner-only (a row rule) takes contributions from nobody
 contributor needs `Edit` on the target **row**. Open the row rule for `Edit` and keep the target's own
 attributes to its owner with `GetProtectedAttributesAsync("Edit", entity)` — every attribute but the
 contribution property. The save drops them silently, and the edit form leaves out what the loaded
-object marks read-only (an `OnAfterLoadAsync` interceptor can mark them). QnA does exactly this
+object marks read-only (an `IAfterLoad` interceptor can mark them). QnA does exactly this
 (`QuestionActions`, `QuestionTranslatorFormInterceptor`).
 
 A contribution is reachable exactly when its target is: the generated actions judge every row of the

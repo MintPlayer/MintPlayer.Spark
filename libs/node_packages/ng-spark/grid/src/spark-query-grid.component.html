@@ -34,30 +34,32 @@
     The selection bar (#460, M15): the "N selected" chip, only while rows are selected, and part
     of the grid rather than of a host, so the query card and the query-list page show the same
     thing. There is deliberately no select-all (owner decision, 2026-09-29): with paged, lazy or
-    virtual-scrolled rows it could only tick the rows loaded so far. Deselect-all is the
-    datatable's own header checkbox, which it shows only while a row is selected; the chip does
-    not repeat it. Single selection has no checkbox column, so no header checkbox either, and a
-    row click only ever selects: there the chip's ⊗ is the deselect. The bar keeps its height
-    while empty, so ticking the first row does not push the table down under the pointer.
+    virtual-scrolled rows it could only tick the rows loaded so far. The selection survives paging
+    (#467, D19), so the chip counts every ticked row — exactly what an action receives — and says how
+    many are on other pages; its ⊗ drops them all, since the header checkbox only sees this page.
+    The bar keeps its height while empty, so ticking the first row does not push the table down
+    under the pointer.
   -->
   @if (selectionMode() !== 'none') {
     <div class="spark-selection-bar d-flex align-items-center gap-2 mb-2" style="min-height: 1.5rem">
       @if (selection().length) {
         <bs-badge [type]="colors.primary" class="spark-selection-chip">
           {{ selection().length }} {{ 'common.selected' | t }}
-          @if (selectionMode() === 'single') {
-            <button type="button" class="spark-selection-clear"
-                    [attr.aria-label]="'common.clearSelection' | t" (click)="clearSelection()">
-              <spark-icon name="x-circle" />
-            </button>
+          @if (offPageCount()) {
+            <span class="spark-selection-off-page">· {{ offPageCount() }} {{ 'common.onOtherPages' | t }}</span>
           }
+          <button type="button" class="spark-selection-clear"
+                  [attr.aria-label]="'common.clearSelection' | t" (click)="clearSelection()">
+            <spark-icon name="x-circle" />
+          </button>
         </bs-badge>
       }
     </div>
   }
 
+  <!-- 'checkbox' (#467, D9): only the checkbox cell selects; a row click opens the row. -->
   <bs-datatable
-      [selectionMode]="selectionMode()"
+      [selectionMode]="selectionMode() === 'multiple' ? 'checkbox' : 'none'"
       [(selection)]="selection"
       [virtualScroll]="isVirtualScrolling()"
       [itemSize]="40"
@@ -67,7 +69,6 @@
       [distincts]="distinctsFn"
       (filterChange)="onFilterChange($event)"
       (rowClick)="onRowClick($event)"
-      (rowDblClick)="onRowDblClick($event)"
       [(settings)]="settings">
     @for (col of visibleColumns(); track col.name) {
       <!--
@@ -167,7 +168,7 @@
                 @for (action of rowActions(); track action.name) {
                   <li bsDropdownItem class="spark-row-action" [attr.data-action]="action.name"
                       (click)="chooseRowAction(action, row)">
-                    {{ action.definition.displayName | resolveTranslation }}
+                    {{ action.definition.label | resolveTranslation }}
                   </li>
                 }
               </bs-dropdown-menu>

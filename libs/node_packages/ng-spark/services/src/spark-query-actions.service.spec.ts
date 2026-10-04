@@ -17,7 +17,7 @@ const carsQuery = { id: 'q-cars', name: 'AllCars', source: 'Database.Cars', enti
 const carType = { id: 'type-car', name: 'Car', alias: 'car', attributes: [] } as any;
 const personType = { id: 'type-person', name: 'Person', alias: 'person', attributes: [] } as any;
 
-const action = (name: string, showedOn: string) => ({ name, displayName: { en: name }, showedOn } as any);
+const action = (name: string, showedOn: string) => ({ name, label: { en: name }, showedOn } as any);
 
 function setup(overrides: Record<string, unknown> = {}) {
   const service = {

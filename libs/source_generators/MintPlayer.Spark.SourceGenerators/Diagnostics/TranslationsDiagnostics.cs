@@ -40,8 +40,8 @@ internal static class TranslationsDiagnostics
 
     public static readonly DiagnosticDescriptor ConflictingKey = new(
         id: "SPARK_TRANS_005",
-        title: "Conflicting translation key across assemblies",
-        messageFormat: "Translation key '{0}' is defined by multiple assemblies. The value from '{1}' wins; the value from '{2}' is ignored.",
+        title: "Two libraries translate the same key differently",
+        messageFormat: "Libraries '{2}' and '{3}' both translate '{0}' into '{1}', with different values. '{2}' wins (libraries apply alphabetically). Define '{0}' in the app's translations.json to choose.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);

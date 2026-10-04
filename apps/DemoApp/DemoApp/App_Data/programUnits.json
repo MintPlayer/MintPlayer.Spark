@@ -2,13 +2,13 @@
   "programUnitGroups": [
     {
       "id": "990e8400-e29b-41d4-a716-446655440100",
-      "name": {"en": "Getting started", "fr": "Premiers pas", "nl": "Aan de slag"},
+      "name": "programUnits.groups.gettingStarted",
       "icon": "bi-house",
       "order": 0,
       "programUnits": [
         {
           "id": "990e8400-e29b-41d4-a716-446655440101",
-          "name": {"en": "Start", "fr": "Accueil", "nl": "Start"},
+          "name": "programUnits.startpage",
           "icon": "bi-house-door",
           "type": "persistentObject",
           "persistentObjectId": "7f3a5b21-9c4e-4d6a-b8f2-1e5d7a9c3b60",
@@ -18,7 +18,7 @@
         },
         {
           "id": "990e8400-e29b-41d4-a716-446655440102",
-          "name": {"en": "Spark on GitHub", "fr": "Spark sur GitHub", "nl": "Spark op GitHub"},
+          "name": "programUnits.sparkOnGitHub",
           "icon": "bi-github",
           "type": "url",
           "url": "https://github.com/MintPlayer/MintPlayer.Spark",
@@ -28,13 +28,13 @@
     },
     {
       "id": "990e8400-e29b-41d4-a716-446655440000",
-      "name": {"en": "Master Data", "fr": "Données de base", "nl": "Stamgegevens"},
+      "name": "programUnits.groups.masterData",
       "icon": "bi-database",
       "order": 1,
       "programUnits": [
         {
           "id": "990e8400-e29b-41d4-a716-446655440001",
-          "name": {"en": "People", "fr": "Personnes", "nl": "Personen"},
+          "name": "programUnits.people",
           "icon": "bi-people",
           "type": "query",
           "queryId": "880e8400-e29b-41d4-a716-446655440000",
@@ -43,7 +43,7 @@
         },
         {
           "id": "990e8400-e29b-41d4-a716-446655440002",
-          "name": {"en": "Companies", "fr": "Entreprises", "nl": "Bedrijven"},
+          "name": "programUnits.companies",
           "icon": "bi-building",
           "type": "query",
           "queryId": "880e8400-e29b-41d4-a716-446655440001",
@@ -52,7 +52,7 @@
         },
         {
           "id": "990e8400-e29b-41d4-a716-446655440003",
-          "name": {"en": "Cars", "fr": "Voitures", "nl": "Auto's"},
+          "name": "programUnits.cars",
           "icon": "bi-car-front-fill",
           "type": "query",
           "queryId": "bc696815-2abb-4e7c-98a1-ac86b4352105",
@@ -61,7 +61,7 @@
         },
         {
           "id": "990e8400-e29b-41d4-a716-446655440004",
-          "name": {"en": "Stock Market", "fr": "Bourse", "nl": "Beurs"},
+          "name": "programUnits.stocks",
           "icon": "bi-graph-up-arrow",
           "type": "query",
           "queryId": "f7a1b2c3-d4e5-6789-abcd-ef0123456789",

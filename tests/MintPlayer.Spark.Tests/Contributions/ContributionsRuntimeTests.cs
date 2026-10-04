@@ -73,10 +73,11 @@ public class ContributionsRuntimeTests : SparkTestDriver
             configureSpark: spark =>
             {
                 spark.AddSoftDelete();
+                // Interceptors of a phase run in registration order (#482): the probes bracket Contributions' materialize.
+                spark.AddInterceptor<CoProbeBefore>();
                 spark.AddContributions(typeof(CoSong).Assembly);
-                spark.AddPersistentObjectInterceptor<CoProbeBefore>();
-                spark.AddPersistentObjectInterceptor<CoProbeAfter>();
-                spark.AddPersistentObjectInterceptor<CoRaceInterceptor>();
+                spark.AddInterceptor<CoProbeAfter>();
+                spark.AddInterceptor<CoRaceInterceptor>();
             });
         factories.Add(factory);
         var client = new SparkClient(factory.CreateClient(), ownsClient: true);
@@ -375,7 +376,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
 
         // A moderator hides Bob's contribution: a soft delete through the contribution type's own PO.
         host.Identity.Id = "users/moderator";
-        await host.Client.DeletePersistentObjectAsync(ContributionTypeId, ContributionId("en", "Latn", Bob));
+        await host.Client.DeleteAsLoadedAsync(ContributionTypeId, ContributionId("en", "Latn", Bob));
 
         (await ReadAsync<CoSongLyricsContribution>(ContributionId("en", "Latn", Bob)))!.IsDeleted.Should().BeTrue();
         var current = await ReadAsync<CoSongLyricsCurrent>(CurrentId("en", "Latn"));
@@ -445,7 +446,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         await AddAsync(host, "ko", "Kore", "b");
         await RemoveAsync(host, "ko/Kore");
 
-        await host.Client.DeletePersistentObjectAsync(SongTypeId, SongId);
+        await host.Client.DeleteAsLoadedAsync(SongTypeId, SongId);
 
         (await ReadAsync<CoSong>(SongId)).Should().BeNull();
         (await IdsStartingWithAsync(SongId + "/")).Should().BeEmpty("withdrawn and live contributions and every current document go with the song");
@@ -632,9 +633,8 @@ public sealed class CoProbe
     }
 }
 
-public sealed class CoProbeBefore(CoProbe probe) : IPersistentObjectInterceptor
+public sealed class CoProbeBefore(CoProbe probe) : IAfterMaterialize
 {
-    public int Order => PersistentObjectInterceptorOrder.Contributions - 1;
     public bool AppliesTo(Type entityType) => entityType == typeof(CoSong);
 
     public ValueTask OnAfterMaterializeAsync(MaterializeContext context)
@@ -645,9 +645,8 @@ public sealed class CoProbeBefore(CoProbe probe) : IPersistentObjectInterceptor
     }
 }
 
-public sealed class CoProbeAfter(CoProbe probe) : IPersistentObjectInterceptor
+public sealed class CoProbeAfter(CoProbe probe) : IAfterMaterialize
 {
-    public int Order => PersistentObjectInterceptorOrder.Contributions + 1;
     public bool AppliesTo(Type entityType) => entityType == typeof(CoSong);
 
     public ValueTask OnAfterMaterializeAsync(MaterializeContext context)
@@ -689,9 +688,8 @@ public sealed class CoRace(IDocumentStore store)
     }
 }
 
-public sealed class CoRaceInterceptor(CoRace race) : IPersistentObjectInterceptor
+public sealed class CoRaceInterceptor(CoRace race) : IBeforeSave
 {
-    public int Order => PersistentObjectInterceptorOrder.Contributions + 10;
     public bool AppliesTo(Type entityType) => entityType == typeof(CoSong);
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context) => await race.FireIfArmedAsync(context.PersistentObject.Id);

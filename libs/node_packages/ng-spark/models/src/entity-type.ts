@@ -103,7 +103,8 @@ export interface AttributeGroup {
 export interface EntityType {
   id: string;
   name: string;
-  description?: TranslatedString;
+  /** The type's display name, resolved by the server (#467, D6; formerly `description`). */
+  label?: TranslatedString;
   /**
    * The backing CLR type, or absent for a JSON-only virtual type (#325).
    *

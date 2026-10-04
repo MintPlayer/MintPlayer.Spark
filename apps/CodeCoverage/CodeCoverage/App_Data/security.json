@@ -4,16 +4,8 @@
     "authenticated": "00000000-0000-0000-0000-000000000001"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": {
-      "en": "Anonymous visitors",
-      "fr": "Visiteurs anonymes",
-      "nl": "Anonieme bezoekers"
-    },
-    "00000000-0000-0000-0000-000000000001": {
-      "en": "Signed-in users",
-      "fr": "Utilisateurs connectés",
-      "nl": "Aangemelde gebruikers"
-    }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "00000000-0000-0000-0000-000000000001": "Signed-in users"
   },
   "rights": [
     {

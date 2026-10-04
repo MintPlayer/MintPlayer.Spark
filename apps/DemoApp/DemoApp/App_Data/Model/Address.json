@@ -2,11 +2,6 @@
   "persistentObject": {
     "id": "e9b59b38-ab69-4915-8e16-1acb8fcab7a3",
     "name": "Address",
-    "description": {
-      "en": "Address",
-      "fr": "Adresse",
-      "nl": "Adres"
-    },
     "clrType": "DemoApp.Library.Entities.Address",
     "breadcrumb": "{Street}, {City} {State}",
     "tabs": [],
@@ -15,16 +10,6 @@
       {
         "id": "3ed09bf2-617f-4847-8b7a-ae2465821d8c",
         "name": "City",
-        "label": {
-          "en": "City",
-          "fr": "Ville",
-          "nl": "Stad"
-        },
-        "description": {
-          "en": "City or town the address is located in.",
-          "fr": "Ville ou commune où se situe l'adresse.",
-          "nl": "Stad of gemeente waar het adres ligt."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -36,11 +21,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "City must be at least 2 characters.",
-              "fr": "La ville doit contenir au moins 2 caractères.",
-              "nl": "Stad moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Address.attributes.City.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -51,16 +32,6 @@
       {
         "id": "7b146de0-2609-4b58-8418-a8304e6b93f2",
         "name": "State",
-        "label": {
-          "en": "State",
-          "fr": "État",
-          "nl": "Staat"
-        },
-        "description": {
-          "en": "State, province or region the city belongs to.",
-          "fr": "État, province ou région dont dépend la ville.",
-          "nl": "Staat, provincie of regio waartoe de stad behoort."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -72,11 +43,7 @@
           {
             "type": "minLength",
             "value": 2,
-            "message": {
-              "en": "State must be at least 2 characters.",
-              "fr": "L'état doit contenir au moins 2 caractères.",
-              "nl": "Staat moet minstens 2 tekens bevatten."
-            }
+            "message": "model.Address.attributes.State.rules.minLength"
           },
           {
             "type": "maxLength",
@@ -87,16 +54,6 @@
       {
         "id": "6e4891d9-78ce-40b3-a99d-866886563181",
         "name": "Street",
-        "label": {
-          "en": "Street",
-          "fr": "Rue",
-          "nl": "Straat"
-        },
-        "description": {
-          "en": "Street name and house number, for example Main Street 12.",
-          "fr": "Nom de rue et numéro de maison, par exemple Main Street 12.",
-          "nl": "Straatnaam en huisnummer, bijvoorbeeld Main Street 12."
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -108,11 +65,7 @@
           {
             "type": "minLength",
             "value": 3,
-            "message": {
-              "en": "Street must be at least 3 characters.",
-              "fr": "La rue doit contenir au moins 3 caractères.",
-              "nl": "Straat moet minstens 3 tekens bevatten."
-            }
+            "message": "model.Address.attributes.Street.rules.minLength"
           },
           {
             "type": "maxLength",

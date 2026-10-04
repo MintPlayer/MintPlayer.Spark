@@ -1,8 +1,8 @@
 {
-  "languages": {
-    "en": { "en": "English", "fr": "Anglais", "nl": "Engels" },
-    "fr": { "en": "French", "fr": "Français", "nl": "Frans" },
-    "nl": { "en": "Dutch", "fr": "Néerlandais", "nl": "Nederlands" }
-  },
+  "languages": [
+    "en",
+    "fr",
+    "nl"
+  ],
   "defaultLanguage": "en"
 }

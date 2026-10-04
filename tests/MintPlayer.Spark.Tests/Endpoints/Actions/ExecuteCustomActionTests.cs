@@ -32,19 +32,16 @@ public class ExecuteCustomActionTests
     private readonly ICustomActionResolver _actionResolver = Substitute.For<ICustomActionResolver>();
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
     private readonly IDatabaseAccess _databaseAccess = Substitute.For<IDatabaseAccess>();
-    private readonly ICustomActionsConfigurationLoader _configLoader = Substitute.For<ICustomActionsConfigurationLoader>();
+    private readonly IActionsCatalogueLoader _catalogueLoader = Substitute.For<IActionsCatalogueLoader>();
     private readonly ClientAccessor _sharedClientAccessor = new();
     private readonly RetryAccessor _retryAccessor;
 
     public ExecuteCustomActionTests()
     {
         _retryAccessor = new RetryAccessor(_sharedClientAccessor);
-        // Default: the action is declared in customActions.json (the M3 config gate). Tests that
+        // Default: the action is declared in actions.json (the M3 config gate). Tests that
         // probe the gate itself override this.
-        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration
-        {
-            ["Archive"] = new() { DisplayName = new TranslatedString { Translations = new() { ["en"] = "Archive" } } },
-        });
+        _catalogueLoader.GetCatalogue().Returns(TestActions.WithCustom("Archive"));
 
         // These two used to be left unstubbed, and that was doing more than it looked like. An
         // unresolved clrType did not merely make row security permissive — it made the endpoint skip
@@ -54,7 +51,24 @@ public class ExecuteCustomActionTests
         // runs for real against the permissive rule below.
         _typeResolver.Resolve(CarType.ClrType!).Returns(typeof(CarEntity));
         _typeResolver.Resolve(CompanyType.ClrType!).Returns(typeof(CompanyEntity));
+
+        // D11 (#467): a selection is acted on only by a caller who may read the type.
+        _permissions.IsAllowedAsync("Read", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        // D12 (#467): a selection always names its query. Tests about dispatch rather than the query
+        // name LoadedCarsQuery (NewContext fills it in), which cannot be re-run (streaming), so the
+        // selection takes the row-gated batched load these tests stub.
+        _queryLoader.ResolveQuery(LoadedCarsQuery.Id.ToString()).Returns(LoadedCarsQuery);
     }
+
+    private static readonly SparkQuery LoadedCarsQuery = new()
+    {
+        Id = Guid.Parse("eeee1111-2222-3333-4444-555566667777"),
+        Name = "StreamedCars",
+        Source = "Database.Cars",
+        EntityType = "Car",
+        IsStreamingQuery = true,
+    };
 
     /// <summary>Stand-ins for the Fleet types the model definitions name; only their identity matters.</summary>
     private sealed class CarEntity { public string? Id { get; set; } }
@@ -129,17 +143,59 @@ public class ExecuteCustomActionTests
     }
 
     [Fact]
-    public async Task An_action_absent_from_customActions_json_is_404_even_if_a_class_exists()
+    public async Task An_action_absent_from_actions_json_is_404_even_if_a_class_exists()
     {
         // Security sweep M3: an ICustomAction present in a loaded assembly but not declared in
-        // customActions.json must not be executable — execution agrees with the listing.
+        // actions.json must not be executable — execution agrees with the listing.
         var action = Substitute.For<ICustomAction>();
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
         _actionResolver.Resolve("Archive").Returns(action);
-        _configLoader.GetConfiguration().Returns(new CustomActionsConfiguration()); // empty config
+        _catalogueLoader.GetCatalogue().Returns(TestActions.Catalogue()); // no app layer
 
         var endpoint = NewEndpoint();
         var context = NewContext(CarType.Id.ToString(), "Archive", body: new CustomActionRequest());
+
+        var result = await endpoint.HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
+        await action.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
+    }
+
+    /// <summary>
+    /// R4: a custom action's composed selection rule is enforced on a query invocation, before any
+    /// database work and before the action runs.
+    /// </summary>
+    [Fact]
+    public async Task A_selection_the_composed_rule_refuses_is_a_400_and_the_action_never_runs()
+    {
+        var action = Substitute.For<ICustomAction>();
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve("Archive").Returns(action);
+        _catalogueLoader.GetCatalogue().Returns(TestActions.Catalogue("""{ "Archive": { "selectionRule": "=1" } }"""));
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(CarType.Id.ToString(), "Archive",
+            body: new CustomActionRequest { SelectedItemIds = ["cars/1", "cars/2"] }, authenticated: true);
+
+        var result = await endpoint.HandleAsync(context);
+
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.BadRequest);
+        await action.DidNotReceiveWithAnyArgs().ExecuteAsync(default!, default);
+    }
+
+    /// <summary>New, Edit and Delete belong to the framework: a class of that name never runs here.</summary>
+    [Theory]
+    [InlineData("New")]
+    [InlineData("Edit")]
+    [InlineData("Delete")]
+    public async Task A_reserved_name_is_404_even_with_a_class_of_that_name(string name)
+    {
+        var action = Substitute.For<ICustomAction>();
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        _actionResolver.Resolve(name).Returns(action);
+
+        var endpoint = NewEndpoint();
+        var context = NewContext(CarType.Id.ToString(), name, body: new CustomActionRequest(), authenticated: true);
 
         var result = await endpoint.HandleAsync(context);
 
@@ -624,7 +680,9 @@ public class ExecuteCustomActionTests
     private readonly IQueryExecutor _queryExecutor = Substitute.For<IQueryExecutor>();
 
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader, _queryLoader, _queryExecutor, new NothingDisabled());
+        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _catalogueLoader, _queryLoader,
+            new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session, NullLogger<SparkSelectionResolver>.Instance),
+            new NothingDisabled());
 
     /// <summary>
     /// These tests exercise dispatch, not the D13 gate (#460), which has its own tests against the
@@ -671,6 +729,8 @@ public class ExecuteCustomActionTests
         // refuses. `body: null` here still means "no parent, no selection", which is what the cases
         // that pass it are about; it no longer means "no request".
         var request = body ?? new CustomActionRequest();
+        if (request.SelectedItemIds is { Length: > 0 } && request.QueryId is null)
+            request.QueryId = LoadedCarsQuery.Id.ToString();
         request.ObjectTypeId = objectTypeId;
         request.ActionName = actionName;
 
@@ -1068,28 +1128,25 @@ public class ExecuteCustomActionTests
     }
 
     [Fact]
-    public async Task A_request_naming_no_query_falls_back_to_the_load()
+    public async Task A_selection_naming_no_query_is_a_400_and_the_action_never_runs()
     {
-        // A direct POST, or a caller predating the field. Still works, still all-or-nothing.
+        // D12 (#467): the query's OnDisableActionsAsync decision must apply, so a selection names the
+        // query it was ticked in. A direct POST without one used to fall back to the document load.
         var action = Substitute.For<ICustomAction>();
-        var selected = new MintPlayer.Spark.Abstractions.PersistentObject
-        { Id = "cars/1", Name = "A car", ObjectTypeId = CarType.Id, Attributes = [] };
-
         _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
-        _databaseAccess.GetPersistentObjectsByIdAsync(CarType.Id, Arg.Any<IReadOnlyList<string>>())
-            .Returns(new List<MintPlayer.Spark.Abstractions.PersistentObject> { selected });
         _actionResolver.Resolve("Archive").Returns(action);
 
         var endpoint = NewEndpoint();
         var context = NewContext(
             CarType.Id.ToString(), "Archive",
-            body: new CustomActionRequest { SelectedItemIds = ["cars/1"] });
+            body: new CustomActionRequest { SelectedItemIds = ["cars/1"], QueryId = string.Empty });
 
         var result = await endpoint.HandleAsync(context);
 
-        await _databaseAccess.Received(1).GetPersistentObjectsByIdAsync(
-            CarType.Id, Arg.Any<IReadOnlyList<string>>());
-        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
+        await action.DidNotReceive().ExecuteAsync(Arg.Any<CustomActionArgs>(), Arg.Any<CancellationToken>());
+        await _databaseAccess.DidNotReceive().GetPersistentObjectsByIdAsync(
+            Arg.Any<Guid>(), Arg.Any<IReadOnlyList<string>>());
+        (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.BadRequest);
     }
 
 }

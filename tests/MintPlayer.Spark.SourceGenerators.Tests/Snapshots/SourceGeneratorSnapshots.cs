@@ -166,7 +166,7 @@ public class SourceGeneratorSnapshots
         const string libSource = """
             using MintPlayer.Spark.Abstractions;
             [assembly: SparkTranslations(0, 2, "{\"greeting\":{\"en\":\"Hello\",\"nl\":\"Hallo\"}}")]
-            [assembly: SparkTranslations(1, 2, "{\"shared\":{\"en\":\"FromLib\"}}")]
+            [assembly: SparkTranslations(1, 2, "{\"shared\":{\"en\":\"FromLib\",\"nl\":\"VanLib\"}}")]
             """;
 
         var libRef = GeneratorHarness.CompileToMetadataReference(
@@ -174,7 +174,8 @@ public class SourceGeneratorSnapshots
             sources: [libSource],
             referenceTypes: [typeof(SparkTranslationsAttribute)]);
 
-        // Host's own translations.json overrides "shared" — host wins, conflict reported.
+        // The host overrides only "shared"/en: composition is per (key, language) (#467, D2), so the
+        // library's nl survives, and an app override is never reported as a conflict (D3).
         const string hostTranslations = """
             {
               "shared": { "en": "FromHost" },

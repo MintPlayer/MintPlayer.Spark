@@ -257,6 +257,9 @@ public static class SparkExtensions
             app.ApplicationServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<SparkDataProtectionOptions>>().Value,
             app.ApplicationServices.GetRequiredService<IHostEnvironment>());
 
+        // #482, D17: a durable after-commit interceptor with nothing to deliver it is refused at startup.
+        Services.SparkCommittedInterceptorsStartupCheck.Run(app.ApplicationServices);
+
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
         // Middleware that must reject a request before the cost of authenticating it is paid — a rate
@@ -439,6 +442,11 @@ public static class SparkExtensions
         VerifySparkSecurityConfiguration(app);
 
         VerifySparkReservedActions();
+
+        // Compose the action catalogue now (#467, D7): an invalid actions.json layer refuses startup
+        // in its own words, and a conflict between two libraries is logged, instead of either
+        // surfacing on the first request that lists actions.
+        app.ApplicationServices.GetRequiredService<IActionsCatalogueLoader>().GetCatalogue();
 
         ReportSecurityPosture(app);
 

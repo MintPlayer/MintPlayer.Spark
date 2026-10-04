@@ -23,11 +23,6 @@
       {
         "id": "7aa00d13-06e7-472e-9d1f-1accf7281172",
         "name": "AvatarUrl",
-        "label": {
-          "en": "Avatar",
-          "fr": "Avatar",
-          "nl": "Avatar"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
@@ -41,11 +36,6 @@
       {
         "id": "3f1c9d52-7e44-4a6b-8d0f-2c5a91b7e604",
         "name": "Provider",
-        "label": {
-          "en": "Forge",
-          "fr": "Forge",
-          "nl": "Forge"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -59,11 +49,6 @@
       {
         "id": "0589f77f-8a4e-4289-9549-38b6aca0f7af",
         "name": "Login",
-        "label": {
-          "en": "Account",
-          "fr": "Compte",
-          "nl": "Account"
-        },
         "dataType": "string",
         "isRequired": true,
         "isVisible": true,
@@ -77,11 +62,6 @@
       {
         "id": "f0072f4c-6756-4b4f-9e08-1694834841ad",
         "name": "Type",
-        "label": {
-          "en": "Type",
-          "fr": "Type",
-          "nl": "Type"
-        },
         "dataType": "string",
         "isRequired": false,
         "isVisible": false,
@@ -95,11 +75,6 @@
       {
         "id": "44aaf1d2-3a82-49c7-a785-11b3c4e356ff",
         "name": "RepoCount",
-        "label": {
-          "en": "Repositories",
-          "fr": "Dépôts",
-          "nl": "Repositories"
-        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -112,11 +87,6 @@
       {
         "id": "c9766b00-77b2-44b5-9913-c4ccc452d126",
         "name": "AggregateCoverage",
-        "label": {
-          "en": "Coverage",
-          "fr": "Couverture",
-          "nl": "Dekking"
-        },
         "dataType": "number",
         "isRequired": false,
         "isVisible": true,
@@ -130,11 +100,6 @@
       {
         "id": "b0ba053b-3218-4e17-a3c1-97c38ffedaee",
         "name": "IsConnected",
-        "label": {
-          "en": "Connected",
-          "fr": "Connecte",
-          "nl": "Verbonden"
-        },
         "dataType": "boolean",
         "isRequired": false,
         "isVisible": true,
@@ -155,11 +120,6 @@
     {
       "id": "b772a610-b935-4a32-a277-90d2bccd3442",
       "name": "MyAccounts",
-      "description": {
-        "en": "Your accounts",
-        "fr": "Vos comptes",
-        "nl": "Jouw accounts"
-      },
       "source": "Custom.MyAccounts",
       "alias": "my-accounts",
       "sortColumns": [

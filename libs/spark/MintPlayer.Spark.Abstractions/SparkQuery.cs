@@ -6,7 +6,11 @@ public sealed class SparkQuery
 {
     public required Guid Id { get; set; }
     public required string Name { get; set; }
-    public TranslatedString? Description { get; set; }
+    /// <summary>
+    /// The query's display name (#467; formerly <c>description</c>). In the model file an optional
+    /// translation key; resolved at load from <c>queries.{Name}.label</c>, else the humanized name.
+    /// </summary>
+    public TranslatedString? Label { get; set; }
 
     /// <summary>
     /// Query data source. Two formats supported:

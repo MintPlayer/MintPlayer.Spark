@@ -20,4 +20,11 @@ public sealed class SparkActionDisabledException : Exception
     {
         ActionName = actionName;
     }
+
+    /// <summary>A refusal with its own message — a bulk call naming the rows that refused (#467, D18).</summary>
+    public SparkActionDisabledException(string actionName, string message)
+        : base(message)
+    {
+        ActionName = actionName;
+    }
 }

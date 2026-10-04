@@ -26,7 +26,7 @@ function detailContext(overrides: Partial<SparkDetailContext> = {}): SparkDetail
   return {
     type: 'person',
     id: 'people/1',
-    item: { id: 'people/1', attributes: [] } as any,
+    item: { id: 'people/1', etag: 'A:1', attributes: [] } as any,
     entityType: { id: 't', name: 'Person' } as any,
     permissions: { canRestore: true, canPurge: true } as any,
     deleted: 'only',
@@ -61,9 +61,9 @@ describe('soft-delete entry point (#460)', () => {
   it('service posts restore and purge with the id in the body', async () => {
     const service = TestBed.inject(SparkSoftDeleteService);
     await service.restore('person', 'people/1');
-    await service.purge('person', 'people/1');
+    await service.purge('person', 'people/1', 'A:1');
     expect(spark.postEnvelope).toHaveBeenNthCalledWith(1, '/po/restore', { objectTypeId: 'person', id: 'people/1' });
-    expect(spark.postEnvelope).toHaveBeenNthCalledWith(2, '/po/purge', { objectTypeId: 'person', id: 'people/1' });
+    expect(spark.postEnvelope).toHaveBeenNthCalledWith(2, '/po/purge', { objectTypeId: 'person', id: 'people/1', etag: 'A:1' });
   });
 
   describe('SparkDeletedToggleComponent', () => {
@@ -141,7 +141,7 @@ describe('soft-delete entry point (#460)', () => {
       expect(spark.postEnvelope).not.toHaveBeenCalled();
 
       await fixture.componentInstance.purge();
-      expect(spark.postEnvelope).toHaveBeenCalledWith('/po/purge', { objectTypeId: 'person', id: 'people/1' });
+      expect(spark.postEnvelope).toHaveBeenCalledWith('/po/purge', { objectTypeId: 'person', id: 'people/1', etag: 'A:1' });
       expect(returnToList).toHaveBeenCalledWith('Person', { deletedView: true });
       expect(back).not.toHaveBeenCalled();
     });

@@ -89,9 +89,9 @@ anti-forgery gate and no useful message.
 |---|---|
 | `GetPersistentObjectAsync(type, id)` | `POST /spark/po/load` |
 | `CreatePersistentObjectAsync(obj)` | `POST /spark/po/create` |
-| `UpdatePersistentObjectAsync(obj)` | `POST /spark/po/update` |
-| `DeletePersistentObjectAsync(type, id)` | `POST /spark/po/delete` |
-| `DeletePersistentObjectsAsync(type, ids, queryId, parentId, parentType)` | `POST /spark/po/delete-many` |
+| `UpdatePersistentObjectAsync(obj)` — `obj.Etag` from the load is required | `POST /spark/po/update` |
+| `DeletePersistentObjectAsync(type, id, etag)`, or `DeletePersistentObjectAsync(obj)` for a loaded object | `POST /spark/po/delete` |
+| `DeletePersistentObjectsAsync(type, rows, queryId, parentId, parentType, reason)` — `rows` are `SparkRowVersion(id, etag)`, e.g. `SparkRowVersion.Of(queryRow)` | `POST /spark/po/delete-many` |
 | `ExecuteQueryAsync(query, skip, take, search, parentId, parentType, sortColumns, columns)` | `POST /spark/queries/execute` |
 | `GetDistinctValuesAsync(query, column, search, columns, parentId, parentType, …, deleted, querySearch, parentDeleted)` | `POST /spark/queries/distinct-values` (`search` narrows the listed values; `querySearch` is the grid's search, applied as `/execute` applies `search`) |
 | `GetQueryAsync(query)` / `ListQueriesAsync()` | `POST /spark/queries/get`, `GET /spark/queries` |

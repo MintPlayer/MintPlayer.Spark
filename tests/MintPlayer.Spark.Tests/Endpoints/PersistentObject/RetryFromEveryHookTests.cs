@@ -84,7 +84,8 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
         => SparkValueObjects.Register(typeof(RetryProbeLine), "Id", row => ((RetryProbeLine)row).Id.ToString());
 
     /// <summary>Raises one retry from every hook it overrides, once each.</summary>
-    public class RetryProbeActions : DefaultPersistentObjectActions<RetryProbe>, ISparkOwnsRowSecurity
+    public class RetryProbeActions : DefaultPersistentObjectActions<RetryProbe>, ISparkOwnsRowSecurity,
+        MintPlayer.Spark.Abstractions.Interceptors.IBeforeSave<RetryProbe>, MintPlayer.Spark.Abstractions.Interceptors.IBeforeDelete<RetryProbe>
     {
         private readonly IRetryAccessor retry;
         public RetryProbeActions(IEntityMapper mapper, IRetryAccessor retry) : base(mapper) => this.retry = retry;
@@ -98,16 +99,16 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
                 retry.Action(title, ["Yes", "No"], defaultOption: "No", message: "Confirm?");
         }
 
-        public override Task OnBeforeSaveAsync(Po obj, RetryProbe entity)
+        public ValueTask OnBeforeSaveAsync(RetryProbe entity, MintPlayer.Spark.Abstractions.Interceptors.SaveContext context)
         {
             PromptOnce("Save?");
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public override Task OnBeforeDeleteAsync(RetryProbe entity)
+        public ValueTask OnBeforeDeleteAsync(RetryProbe entity, MintPlayer.Spark.Abstractions.Interceptors.DeleteContext context)
         {
             PromptOnce("Delete?");
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
         public override Task OnRefreshAsync(SparkRefreshArgs<RetryProbe> args)
@@ -166,7 +167,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
     /// <summary>A custom action that prompts before doing anything.</summary>
     /// <remarks>
     /// Registered by name through a stubbed configuration loader and resolver below, because the real
-    /// ones read <c>App_Data/customActions.json</c> from the content root — a file this fixture has no
+    /// ones read <c>App_Data/actions.json</c> from the content root — a file this fixture has no
     /// reason to own.
     /// </remarks>
     public class RetryProbeConfirmAction : MintPlayer.Spark.Abstractions.Actions.ICustomAction
@@ -238,8 +239,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
                 // an implementation. Both come from files/assembly scanning in production; here they
                 // are stubbed so the fixture owns no App_Data.
                 services.AddScoped<RetryProbeConfirmAction>();
-                services.AddSingleton<ICustomActionsConfigurationLoader>(
-                    new StubCustomActions("RetryProbeConfirm"));
+                services.AddSingleton(TestActions.LoaderWithCustom("RetryProbeConfirm"));
                 services.AddScoped<ICustomActionResolver>(sp =>
                     new StubActionResolver("RetryProbeConfirm", sp.GetRequiredService<RetryProbeConfirmAction>()));
             },
@@ -263,7 +263,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
     {
         var probe = await SeedAsync();
         await AssertEmitsRetryAsync(
-            HttpMethod.Post, "/spark/po/delete", Wire.Typed(ProbeTypeId, id: probe.Id), "Delete?");
+            HttpMethod.Post, "/spark/po/delete", Wire.Typed(ProbeTypeId, id: probe.Id, etag: await StoredEtag.OfAsync(Store, probe.Id!)), "Delete?");
     }
 
     [Fact]
@@ -505,20 +505,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
 
     private static readonly Guid ReadQueryId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000004");
 
-    /// <summary>Stands in for <c>App_Data/customActions.json</c>, declaring exactly one action.</summary>
-    private sealed class StubCustomActions(string actionName) : ICustomActionsConfigurationLoader
-    {
-        public CustomActionsConfiguration GetConfiguration() => new()
-        {
-            [actionName] = new CustomActionDefinition
-            {
-                DisplayName = TranslatedString.Create(actionName),
-                ShowedOn = "both",
-            },
-        };
-
-        public void InvalidateCache() { }
-    }
+    /// <summary>Stands in for <c>App_Data/actions.json</c>, declaring exactly one action.</summary>
 
     /// <summary>Stands in for the assembly scan, resolving exactly one action.</summary>
     private sealed class StubActionResolver(string actionName, MintPlayer.Spark.Abstractions.Actions.ICustomAction action)

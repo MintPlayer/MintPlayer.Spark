@@ -143,7 +143,7 @@ export class SparkQueryCardComponent {
   /** The caption the card renders unless a slot replaces it. */
   protected readonly caption = computed(() => {
     const q = this.query();
-    return (q?.description ? this.lang.resolve(q.description) : '') || q?.name || '';
+    return (q?.label ? this.lang.resolve(q.label) : '') || q?.name || '';
   });
 
   protected readonly customActions = computed(() => this.grid()?.visibleCustomActions() ?? []);

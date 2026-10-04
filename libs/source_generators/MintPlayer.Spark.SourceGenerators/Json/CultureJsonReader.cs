@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 namespace MintPlayer.Spark.SourceGenerators.Json;
 
@@ -7,8 +8,9 @@ namespace MintPlayer.Spark.SourceGenerators.Json;
 /// <para>
 /// A generator has no DI, so it cannot ask <c>CultureLoader</c> — the singleton that reads this file at
 /// runtime — which languages exist. The file therefore has to arrive as an <c>AdditionalFiles</c> item and be
-/// parsed here. Only the keys of the <c>languages</c> object are needed; their values are
-/// <c>TranslatedString</c> objects describing each language's own display name, which the generator ignores.
+/// parsed here. <c>languages</c> is an array of codes (#467, D1); each language's display name is the
+/// <c>translations.json</c> key <c>culture.languages.{code}</c>, which the generator does not need.
+/// MiniJson (built for translations.json) refuses arrays, so the array is read by pattern.
 /// </para>
 /// </summary>
 internal static class CultureJsonReader
@@ -19,46 +21,33 @@ internal static class CultureJsonReader
     /// </summary>
     public const string DefaultLanguage = "en";
 
+    private static readonly Regex LanguagesArray = new(
+        "\"languages\"\\s*:\\s*\\[(?<items>[^\\]]*)\\]", RegexOptions.IgnoreCase);
+
+    private static readonly Regex QuotedString = new("\"(?<v>[^\"]*)\"");
+
     /// <summary>
-    /// Language codes in declaration order, or <c>["en"]</c> when the file is absent, unparsable, or declares
-    /// no languages.
+    /// Language codes in declaration order, or <c>["en"]</c> when the file is absent or declares no languages.
     /// <para>Declaration order matters: it decides the order of the generated per-language properties, and a
     /// reordering would otherwise churn the emitted source and the model for no reason.</para>
+    /// <para>A malformed culture.json is the app's problem, reported by <c>CultureLoader</c> at runtime. Failing
+    /// the build here would block work on an unrelated part of the project.</para>
     /// </summary>
     public static List<string> ReadLanguages(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
             return [DefaultLanguage];
 
-        try
+        var array = LanguagesArray.Match(json!);
+        if (!array.Success)
+            return [DefaultLanguage];
+
+        var codes = new List<string>();
+        foreach (Match code in QuotedString.Matches(array.Groups["items"].Value))
         {
-            if (MiniJson.Parse(json!) is not JsonObject root)
-                return [DefaultLanguage];
-
-            foreach (var member in root.Members)
-            {
-                if (!string.Equals(member.Key, "languages", System.StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                if (member.Value is not JsonObject languages)
-                    break;
-
-                var codes = new List<string>();
-                foreach (var language in languages.Members)
-                {
-                    if (!string.IsNullOrWhiteSpace(language.Key))
-                        codes.Add(language.Key);
-                }
-
-                return codes.Count > 0 ? codes : [DefaultLanguage];
-            }
+            if (!string.IsNullOrWhiteSpace(code.Groups["v"].Value))
+                codes.Add(code.Groups["v"].Value);
         }
-        catch (JsonParseException)
-        {
-            // A malformed culture.json is the app's problem, reported by CultureLoader at runtime. Failing the
-            // build here would block work on an unrelated part of the project.
-        }
-
-        return [DefaultLanguage];
+        return codes.Count > 0 ? codes : [DefaultLanguage];
     }
 }

@@ -114,8 +114,8 @@ public class DenyAllEndpointMirrorTests(DenyAllHost host)
     {
         { "POST", "/spark/po/load", Wire.Typed(DocTypeId, id: "docs/1") },
         { "POST", "/spark/po/create", Wire.Typed(DocTypeId, new { persistentObject = new { name = "GuardedDoc" } }) },
-        { "POST", "/spark/po/update", Wire.Typed(DocTypeId, new { persistentObject = new { name = "GuardedDoc" } }, id: "docs/1") },
-        { "POST", "/spark/po/delete", Wire.Typed(DocTypeId, id: "docs/1") },
+        { "POST", "/spark/po/update", Wire.Typed(DocTypeId, new { persistentObject = new { name = "GuardedDoc", etag = StoredEtag.ForMissingRow } }, id: "docs/1") },
+        { "POST", "/spark/po/delete", Wire.Typed(DocTypeId, id: "docs/1", etag: StoredEtag.ForMissingRow) },
         { "POST", "/spark/queries/get", Wire.Query(AllDocsQueryId) },
         { "POST", "/spark/queries/execute", Wire.Query(AllDocsQueryId) },
         { "POST", "/spark/queries/distinct-values", Wire.Query(AllDocsQueryId) },

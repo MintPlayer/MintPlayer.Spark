@@ -21,6 +21,7 @@ import {
   QueryColumnFilter,
   QueryResultItem,
   SparkDeletedFilter,
+  type SparkSelectionModeSetting,
 } from '@mintplayer/ng-spark/models';
 import { NgComponentOutlet } from '@angular/common';
 import {
@@ -67,6 +68,12 @@ export class SparkQueryListComponent {
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
   showCustomActions = input(true);
+
+  /**
+   * Overrides the query's own `selectionMode` (#467, R3), as the sub-query card's input does: for a
+   * host that embeds this page and wants, say, `'none'` on a list the actions would make selectable.
+   */
+  selectionMode = input<SparkSelectionModeSetting | null>(null);
 
   /**
    * Forwarded to the grid, so a query PAGE can replace its row links — the same reason the card

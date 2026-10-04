@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Interceptors;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -34,7 +35,7 @@ public static class SparkSoftDeleteExtensions
         });
 
         builder.Services.AddSparkRowPolicy<SoftDeleteRowPolicy>();
-        builder.Services.AddPersistentObjectInterceptor<SoftDeleteInterceptor>();
+        builder.Services.AddSparkInterceptor<SoftDeleteInterceptor>();
         builder.Services.TryAddScoped<SoftDeleteRequestState>();
         builder.Services.TryAddScoped<ISparkSoftDelete, SparkSoftDelete>();
         builder.Services.TryAddSingleton<ISoftDeleteRevisions, RavenSoftDeleteRevisions>();
@@ -44,21 +45,5 @@ public static class SparkSoftDeleteExtensions
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkSoftDeleteEndpoints());
 
         return builder;
-    }
-
-    /// <summary>Adds an <see cref="ISoftDeleteObserver"/>. Scoped, multi-registered; adding the same type twice is a no-op.</summary>
-    public static ISparkBuilder AddSoftDeleteObserver<TObserver>(this ISparkBuilder builder)
-        where TObserver : class, ISoftDeleteObserver
-    {
-        builder.Services.AddSoftDeleteObserver<TObserver>();
-        return builder;
-    }
-
-    /// <inheritdoc cref="AddSoftDeleteObserver{TObserver}(ISparkBuilder)" />
-    public static IServiceCollection AddSoftDeleteObserver<TObserver>(this IServiceCollection services)
-        where TObserver : class, ISoftDeleteObserver
-    {
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISoftDeleteObserver, TObserver>());
-        return services;
     }
 }

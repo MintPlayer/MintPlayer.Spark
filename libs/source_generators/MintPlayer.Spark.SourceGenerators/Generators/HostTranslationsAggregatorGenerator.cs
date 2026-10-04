@@ -114,16 +114,17 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
                 return (Aggregate: aggregate, RootNamespace: settings.RootNamespace ?? "GeneratedCode");
             });
 
-        // Diagnostics: conflicts between assemblies (host vs libraries or libraries vs libraries).
+        // Diagnostics: two LIBRARIES giving the same (key, language) different values (#467, D3).
+        // The host overriding a library is the intended way to customize, so it is never reported.
         context.RegisterSourceOutput(combined, static (spc, data) =>
         {
             if (!data.Aggregate.ShouldEmit) return;
-            var merge = MergeTranslations(data.Aggregate, out var conflicts);
+            MergeTranslations(data.Aggregate, out var conflicts);
             foreach (var c in conflicts)
             {
                 spc.ReportDiagnostic(Diagnostic.Create(
                     TranslationsDiagnostics.ConflictingKey, Location.None,
-                    c.Key, c.WinnerAssembly, c.LoserAssembly));
+                    c.Key, c.Language, c.WinnerAssembly, c.LoserAssembly));
             }
         });
 
@@ -137,9 +138,11 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
         TranslationsAggregateInfo info,
         out List<TranslationsConflict> conflicts)
     {
-        // Host-wins merge: apply libraries (alphabetical) first, host last.
-        // Tracks provenance for conflict reporting.
-        var merged = new Dictionary<string, (string Owner, List<KeyValuePair<string, string>> Langs)>(System.StringComparer.Ordinal);
+        // Composition per (key, language) (#467, D2): libraries (alphabetical) first, host last. A later
+        // layer replaces only the languages it defines, so an app adding `es` keeps the libraries' en/fr/nl
+        // and an app overriding `nl` keeps the rest. Each language remembers the assembly that set it, for
+        // conflict reporting.
+        var merged = new Dictionary<string, List<(string Language, string Value, string Owner)>>(System.StringComparer.Ordinal);
         conflicts = new List<TranslationsConflict>();
 
         foreach (var asm in info.Assemblies)
@@ -153,14 +156,14 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
 
         var result = new Dictionary<string, List<KeyValuePair<string, string>>>(System.StringComparer.Ordinal);
         foreach (var kvp in merged)
-            result[kvp.Key] = kvp.Value.Langs;
+            result[kvp.Key] = kvp.Value.Select(l => new KeyValuePair<string, string>(l.Language, l.Value)).ToList();
         return result;
     }
 
     private static void ApplyAssembly(
         TranslationsAssemblyInfo asm,
         bool isHost,
-        Dictionary<string, (string Owner, List<KeyValuePair<string, string>> Langs)> merged,
+        Dictionary<string, List<(string Language, string Value, string Owner)>> merged,
         List<TranslationsConflict> conflicts)
     {
         var reassembled = ReassembleChunks(asm);
@@ -176,24 +179,43 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
         {
             var key = entry.Key;
             if (entry.Value is not JsonObject langObj) continue;
-            var langs = new List<KeyValuePair<string, string>>();
-            foreach (var lang in langObj.Members)
+
+            if (!merged.TryGetValue(key, out var langs))
             {
-                if (lang.Value is JsonString js)
-                    langs.Add(new KeyValuePair<string, string>(lang.Key, js.Value));
+                langs = new List<(string Language, string Value, string Owner)>();
+                merged[key] = langs;
             }
 
-            if (merged.TryGetValue(key, out var existing))
+            foreach (var lang in langObj.Members)
             {
-                // New value wins (last-write). Record the overwritten one as the conflict loser.
-                conflicts.Add(new TranslationsConflict
+                if (lang.Value is not JsonString js) continue;
+                // The app's "" means "not translated yet", never "blank it out" (#467, D23).
+                if (isHost && js.Value.Length == 0) continue;
+
+                var index = langs.FindIndex(l => string.Equals(l.Language, lang.Key, System.StringComparison.Ordinal));
+                if (index < 0)
                 {
-                    Key = key,
-                    WinnerAssembly = asm.AssemblyName,
-                    LoserAssembly = existing.Owner,
-                });
+                    // Appended, never inserted: TranslatedString.GetValue falls back to the FIRST language,
+                    // so a layer adding a language must not change which one that is.
+                    langs.Add((lang.Key, js.Value, asm.AssemblyName));
+                    continue;
+                }
+
+                var existing = langs[index];
+                if (!isHost && !string.Equals(existing.Value, js.Value, System.StringComparison.Ordinal))
+                {
+                    conflicts.Add(new TranslationsConflict
+                    {
+                        Key = key,
+                        Language = lang.Key,
+                        WinnerAssembly = asm.AssemblyName,
+                        LoserAssembly = existing.Owner,
+                    });
+                }
+                langs[index] = (lang.Key, js.Value, asm.AssemblyName);
             }
-            merged[key] = (asm.AssemblyName, langs);
+
+            if (langs.Count == 0) merged.Remove(key);
         }
     }
 

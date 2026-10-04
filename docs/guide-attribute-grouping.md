@@ -23,7 +23,7 @@ Attributes that don't reference any group, and groups that don't reference any t
 
 Add a `tabs` array to your entity's model JSON file. Each tab needs a unique `id` (GUID), a `name`, an optional `label` (translated string), and an `order` for sorting.
 
-From `Demo/HR/HR/App_Data/Model/Person.json`:
+From `apps/HR/HR/App_Data/Model/Person.json`:
 
 ```json
 {
@@ -31,26 +31,20 @@ From `Demo/HR/HR/App_Data/Model/Person.json`:
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000001",
       "name": "General",
-      "label": {
-        "en": "General",
-        "fr": "Général",
-        "nl": "Algemeen"
-      },
       "order": 1
     },
     {
       "id": "a1b2c3d4-0001-0001-0001-000000000002",
       "name": "Employment",
-      "label": {
-        "en": "Employment",
-        "fr": "Emploi",
-        "nl": "Loopbaan"
-      },
       "order": 2
     }
   ]
 }
 ```
+
+A tab's label is the key `model.{Entity}.tabs.{Name}.label` in `translations.json`, and a group's is
+`model.{Entity}.groups.{Name}.label` (#467): `model.Person.tabs.General.label` here. Without a
+translation, the humanized name is shown. See [Translated strings](guide-translated-strings.md#keys-by-convention).
 
 ## Step 2: Define Groups in the Model JSON
 
@@ -62,33 +56,18 @@ Add a `groups` array. Each group references its parent tab by the tab's `id` via
     {
       "id": "b1b2c3d4-0002-0002-0002-000000000001",
       "name": "Personal",
-      "label": {
-        "en": "Personal Information",
-        "fr": "Informations personnelles",
-        "nl": "Persoonlijke gegevens"
-      },
       "tab": "a1b2c3d4-0001-0001-0001-000000000001",
       "order": 1
     },
     {
       "id": "b1b2c3d4-0002-0002-0002-000000000002",
       "name": "Contact",
-      "label": {
-        "en": "Contact",
-        "fr": "Contact",
-        "nl": "Contact"
-      },
       "tab": "a1b2c3d4-0001-0001-0001-000000000001",
       "order": 2
     },
     {
       "id": "b1b2c3d4-0002-0002-0002-000000000003",
       "name": "Career",
-      "label": {
-        "en": "Career",
-        "fr": "Carrière",
-        "nl": "Carrière"
-      },
       "tab": "a1b2c3d4-0001-0001-0001-000000000002",
       "order": 1
     }
@@ -109,7 +88,6 @@ On each attribute, set the `group` field to the GUID of the group it belongs to:
       "id": "bf869c13-0807-4fe1-b82a-777ba92ce9ff",
       "name": "FirstName",
       "group": "b1b2c3d4-0002-0002-0002-000000000001",
-      "label": { "en": "First Name", "fr": "Prénom", "nl": "Voornaam" },
       "dataType": "string",
       "isRequired": true,
       "order": 1,
@@ -119,7 +97,6 @@ On each attribute, set the `group` field to the GUID of the group it belongs to:
       "id": "1211e36c-664f-45ec-9fb3-17dfda75e21a",
       "name": "Email",
       "group": "b1b2c3d4-0002-0002-0002-000000000002",
-      "label": { "en": "Email", "fr": "E-mail", "nl": "E-mail" },
       "dataType": "string",
       "order": 3,
       "showedOn": "Query, PersistentObject"
@@ -128,7 +105,6 @@ On each attribute, set the `group` field to the GUID of the group it belongs to:
       "id": "6364e69b-615c-4f2d-8a9b-76aaccc97254",
       "name": "Company",
       "group": "b1b2c3d4-0002-0002-0002-000000000003",
-      "label": { "en": "Company", "fr": "Entreprise", "nl": "Bedrijf" },
       "dataType": "Reference",
       "referenceType": "HR.Entities.Company",
       "query": "GetCompanies",
@@ -340,7 +316,7 @@ The backward-compatible behavior activates when:
 ## Complete Example
 
 See the HR demo app for a working example:
-- `Demo/HR/HR/App_Data/Model/Person.json` -- model JSON with tabs, groups, and group-assigned attributes
+- `apps/HR/HR/App_Data/Model/Person.json` -- model JSON with tabs, groups, and group-assigned attributes
 - `node_packages/ng-spark/src/lib/components/po-form/spark-po-form.component.html` -- form template with tab/group rendering
 - `node_packages/ng-spark/src/lib/components/po-detail/spark-po-detail.component.html` -- detail template with tab/group rendering
 - `node_packages/ng-spark/src/lib/models/entity-type.ts` -- TypeScript interfaces for `AttributeTab`, `AttributeGroup`

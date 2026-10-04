@@ -172,6 +172,7 @@ public class DateTimeOffsetRoundTripTests
         => new()
         {
             Id = existing.Id,
+            Etag = existing.Etag,
             Name = existing.Name,
             ObjectTypeId = existing.ObjectTypeId,
             Attributes = [.. existing.Attributes.Select(a => a.Name == RegisteredAt

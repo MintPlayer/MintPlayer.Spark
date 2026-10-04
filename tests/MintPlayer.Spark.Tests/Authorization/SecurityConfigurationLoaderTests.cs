@@ -53,7 +53,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
     private const string ValidJson = """
         {
           "groups": {
-            "11111111-1111-1111-1111-111111111111": { "en": "Admins" }
+            "11111111-1111-1111-1111-111111111111": "Admins"
           },
           "rights": [
             {
@@ -102,7 +102,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
     [Fact]
     public void GetConfiguration_is_case_insensitive_for_property_names()
     {
-        WriteConfig("""{ "Groups": { "aaaa0000-0000-0000-0000-000000000002": { "en": "Users" } }, "Rights": [] }""");
+        WriteConfig("""{ "Groups": { "aaaa0000-0000-0000-0000-000000000002": "Users" }, "Rights": [] }""");
         using var loader = CreateLoader();
 
         var config = loader.GetConfiguration();
@@ -246,7 +246,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
 
     private static string AttributeRightJson(string resource) => $$"""
         {
-          "groups": { "11111111-1111-1111-1111-111111111111": { "en": "Admins" } },
+          "groups": { "11111111-1111-1111-1111-111111111111": "Admins" },
           "rights": [
             { "id": "aaaa0000-0000-0000-0000-000000000001", "resource": "Edit/Song", "groupId": "11111111-1111-1111-1111-111111111111" },
             { "id": "aaaa0000-0000-0000-0000-000000000002", "resource": "{{resource}}", "groupId": "11111111-1111-1111-1111-111111111111", "isDenied": true }

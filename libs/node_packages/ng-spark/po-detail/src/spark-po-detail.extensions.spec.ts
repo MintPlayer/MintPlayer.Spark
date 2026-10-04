@@ -53,7 +53,11 @@ async function setup(permissions: Record<string, boolean> = {}) {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     get: vi.fn().mockResolvedValue(item),
     getPermissions: vi.fn().mockResolvedValue({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true, ...permissions }),
-    getCustomActions: vi.fn().mockResolvedValue([{ name: 'Archive', displayName: { en: 'Archive' }, showedOn: 'detail', offset: 0 }]),
+    getCustomActions: vi.fn().mockResolvedValue([
+      { name: 'Archive', label: { en: 'Archive' }, showedOn: 'detail', offset: 0 },
+      { name: 'Edit', label: { en: 'Edit' }, showedOn: 'both', selectionRule: '=1', offset: 0, isDefault: true },
+      { name: 'Delete', label: { en: 'Delete' }, showedOn: 'both', selectionRule: '>0', offset: 0, isDefault: true },
+    ]),
     getLookupReference: vi.fn(),
     executeQueryByName: vi.fn(),
   };

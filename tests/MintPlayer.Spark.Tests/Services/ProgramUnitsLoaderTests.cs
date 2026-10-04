@@ -39,13 +39,13 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
           "programUnitGroups": [
             {
               "id": "11111111-1111-1111-1111-111111111111",
-              "name": { "en": "Fleet" },
+              "name": "programUnits.groups.fleet",
               "icon": "car",
               "order": 1,
               "programUnits": [
                 {
                   "id": "22222222-2222-2222-2222-222222222222",
-                  "name": { "en": "Cars" },
+                  "name": "programUnits.cars",
                   {{typeAndTarget}},
                   "order": 1
                 }
@@ -82,6 +82,37 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
         var group = config.ProgramUnitGroups.Should().ContainSingle().Which;
         group.Icon.Should().Be("car");
         group.ProgramUnits.Should().ContainSingle().Which.Type.Should().Be("query");
+    }
+
+    /// <summary>
+    /// #467 D1: a menu entry's name is a translations.json key. Untranslated (this project compiles
+    /// no translations), its last segment is shown humanized.
+    /// </summary>
+    [Fact]
+    public void A_name_is_a_translation_key_shown_humanized_when_untranslated()
+    {
+        WriteUnits(UnitJson("""
+            "type": "query",
+            "queryId": "33333333-3333-3333-3333-333333333333"
+            """));
+
+        var group = CreateLoader().GetProgramUnits().ProgramUnitGroups.Single();
+
+        group.Name.GetValue("en").Should().Be("Fleet");
+        group.ProgramUnits.Single().Name.GetValue("en").Should().Be("Cars");
+    }
+
+    [Fact]
+    public void Throws_when_a_name_embeds_translated_text()
+    {
+        WriteUnits("""
+            { "programUnitGroups": [{ "id": "11111111-1111-1111-1111-111111111111",
+              "name": { "en": "Fleet" }, "order": 1, "programUnits": [] }] }
+            """);
+
+        var act = () => CreateLoader().GetProgramUnits();
+
+        act.Should().Throw<SparkProgramUnitsConfigurationException>().WithMessage("*translations.json*");
     }
 
     [Fact]
@@ -161,7 +192,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
 
         WriteUnits("""
             { "programUnitGroups": [{ "id": "00000000-0000-0000-0000-000000000001",
-              "name": { "en": "X" }, "order": 1 }] }
+              "name": "programUnits.x", "order": 1 }] }
             """);
 
         var second = loader.GetProgramUnits();

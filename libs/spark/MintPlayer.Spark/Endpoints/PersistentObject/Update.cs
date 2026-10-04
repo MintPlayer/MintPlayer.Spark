@@ -35,6 +35,19 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
+        // A body without the object is malformed: refused like one, not a 500.
+        if (request.PersistentObject is not { } obj)
+        {
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+        }
+
+        // An update says which version it edits (#467, D16): without one it would overwrite whatever
+        // is stored now. Before any read, so the answer says nothing about the row.
+        if (string.IsNullOrEmpty(obj.Etag))
+        {
+            return ClientResult.Envelope(clientAccessor, new { error = "An update must carry the etag of the version it edits." }, 400);
+        }
+
         try
         {
             // No UnescapeDataString: the id is a JSON string now, not a path segment, so it arrives
@@ -42,15 +55,12 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             // contains a '%'.
             var existingObj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
 
+            // The caller loaded this object (it holds an etag) and it is gone — deleted, soft-deleted,
+            // or no longer theirs to see: "deleted by another user" (#467, D15), never a resurrection.
+            // One answer for all three, so it tells nothing a 404 would not (M-3).
             if (existingObj is null)
             {
-                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-            }
-
-            // A body without the object is malformed: refused like one, not a 500.
-            if (request.PersistentObject is not { } obj)
-            {
-                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+                return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, SparkConcurrencyException.DeletedSinceLoaded(obj.Etag));
             }
 
             RetryScope.Accept(retryAccessor, request);
@@ -71,21 +81,31 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             // caller may write, since the others keep their stored value whatever was posted.
             saveValidation.Request(obj, httpContext.RequestAborted);
 
-            var result = await databaseAccess.SavePersistentObjectAsync(obj);
+            Abstractions.PersistentObject result;
+            try
+            {
+                result = await databaseAccess.SavePersistentObjectAsync(obj);
+            }
+            catch (SparkCancelException)
+            {
+                // An interceptor cancelled the save (#482): nothing was written, so the answer is the object as
+                // stored — a 200, never an error.
+                result = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id) ?? existingObj;
+            }
 
             // Re-presented as a load presents it (contributions M2c-2b, leak 2): never the posted
             // object, which is the client's values plus whatever the save hooks wrote into it.
             var presented = await saveResponse.PresentAsync(entityType, result, isNew: false, httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, presented, 200);
         }
-        catch (SparkConcurrencyException)
+        catch (SparkConcurrencyException ex)
         {
             // R2-M1: SparkConcurrencyException.Message contains the server-side
             // change vector — useful for the legitimate optimistic-concurrency
             // recovery flow, but it leaks document-version state that an
-            // attacker can use as a side channel. Return a generic 409; clients
-            // know to re-fetch on 409 regardless of the body content.
-            return ClientResult.Envelope(clientAccessor, new { error = "Concurrency conflict" }, 409);
+            // attacker can use as a side channel. Return a generic 409 that says only
+            // whether the row changed or went; clients re-fetch on 409.
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkSaveValidationException ex)
         {

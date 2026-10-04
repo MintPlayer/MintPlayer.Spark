@@ -24,10 +24,12 @@ namespace MintPlayer.Spark.Testing;
 public static class Wire
 {
     /// <summary>
-    /// The given body with <c>objectTypeId</c> (and optionally <c>id</c>) added as request parameters.
-    /// A null body becomes an object carrying only those.
+    /// The given body with <c>objectTypeId</c> (and optionally <c>id</c> and <c>etag</c>) added as request
+    /// parameters. A null body becomes an object carrying only those. <c>/po/delete</c> and <c>/po/purge</c>
+    /// refuse a request without the etag of the version it changes (#467, D14); an update carries its etag
+    /// on the posted <c>persistentObject</c> instead.
     /// </summary>
-    public static JsonNode Typed(object objectTypeId, object? body = null, string? id = null)
+    public static JsonNode Typed(object objectTypeId, object? body = null, string? id = null, string? etag = null)
     {
         var node = body is null
             ? new JsonObject()
@@ -36,6 +38,8 @@ public static class Wire
         node["objectTypeId"] = objectTypeId.ToString();
         if (id is not null)
             node["id"] = id;
+        if (etag is not null)
+            node["etag"] = etag;
 
         return node;
     }

@@ -8,10 +8,10 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.SoftDelete.Abstractions</PackageId>
-		<Version>11.0.0-preview.93</Version>
+		<Version>11.0.0-preview.94</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Contracts for MintPlayer.Spark soft deletion: ISoftDeletable for domain entities, ISparkSoftDelete (delete with a reason, restore, purge) and ISoftDeleteObserver. Reference this from Domain/Library projects; the host references MintPlayer.Spark.SoftDelete.</Description>
+		<Description>Contracts for MintPlayer.Spark soft deletion: ISoftDeletable for domain entities, ISparkSoftDelete (delete with a reason, restore, purge). Reference this from Domain/Library projects; the host references MintPlayer.Spark.SoftDelete.</Description>
 		<PackageTags>soft-delete;recycle-bin;gdpr;ravendb;spark</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>

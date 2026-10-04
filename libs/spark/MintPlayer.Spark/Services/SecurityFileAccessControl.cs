@@ -159,10 +159,10 @@ internal partial class SecurityFileAccessControl : IAccessControl
 
         foreach (var groupName in groupNames)
         {
-            // Find group by name (case-insensitive, matches against any translation)
+            // Find group by its untranslated name, case-insensitively (#467, D24). A translation
+            // never takes part, so translations.json cannot change who belongs to a group.
             var matchingGroup = config.Groups
-                .FirstOrDefault(g => g.Value.Translations.Values
-                    .Any(v => string.Equals(v, groupName, StringComparison.OrdinalIgnoreCase)));
+                .FirstOrDefault(g => string.Equals(g.Value, groupName, StringComparison.OrdinalIgnoreCase));
 
             if (string.IsNullOrEmpty(matchingGroup.Key) || !Guid.TryParse(matchingGroup.Key, out var groupId))
                 continue;
