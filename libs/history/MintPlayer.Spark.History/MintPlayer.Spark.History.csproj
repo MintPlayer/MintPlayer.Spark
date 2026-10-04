@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.History</PackageId>
-		<Version>11.0.0-preview.94</Version>
+		<Version>11.0.0-preview.95</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Revision history for MintPlayer.Spark: RavenDB revisions configured from the model, audit stamping (IAuditable, user ids only), revision list/read with row security and redaction (History/T), revert through the save pipeline (Revert/T), and in-process revision observers. Adds POST /spark/po/revisions, /spark/po/revision and /spark/po/revert.</Description>
