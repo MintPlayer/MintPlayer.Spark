@@ -70,12 +70,29 @@ export class SparkPoEditComponent {
    * is not the question's author edits only its translations; the server drops the rest from the
    * save anyway). Shared by the form and {@link getEditableAttributes}, so what is drawn, what is
    * initialised and what is saved agree. A refresh overlay can still lift it.
+   * <para>
+   * The same goes for where an attribute is drawn and whether it is required (#264, G5/G7): an action
+   * sets the runtime `showedOn`/`isRequired` in `OnLoadAsync` (a stolen car shows its police report
+   * number, required), and the form honours that from its first render rather than after a refresh.
+   * </para>
    */
   formEntityType = computed<EntityType | null>(() => {
     const type = this.entityType();
-    const readOnlyHere = new Set((this.item()?.attributes ?? []).filter(a => a.isReadOnly).map(a => a.name));
-    if (!type || readOnlyHere.size === 0) return type;
-    return { ...type, attributes: type.attributes.map(a => readOnlyHere.has(a.name) && !a.isReadOnly ? { ...a, isReadOnly: true } : a) };
+    const loaded = new Map((this.item()?.attributes ?? []).map(a => [a.name, a] as const));
+    if (!type || loaded.size === 0) return type;
+    let changed = false;
+    const attributes = type.attributes.map(a => {
+      const here = loaded.get(a.name);
+      if (!here) return a;
+      const isReadOnly = a.isReadOnly || here.isReadOnly === true;
+      const isRequired = here.isRequired ?? a.isRequired;
+      const showedOn = here.showedOn ?? a.showedOn;
+      if (isReadOnly === a.isReadOnly && isRequired === a.isRequired && sameShowedOn(showedOn, a.showedOn)) return a;
+      changed = true;
+      return { ...a, isReadOnly, isRequired, showedOn };
+    });
+    // The same object when nothing differs: the form's option loading is keyed on its identity.
+    return changed ? { ...type, attributes } : type;
   });
   type = '';
   id = '';
@@ -153,7 +170,7 @@ export class SparkPoEditComponent {
    */
   private formDataFrom(currentItem: PersistentObject | null): Record<string, any> {
     const data: Record<string, any> = {};
-    this.getEditableAttributes().forEach(attr => {
+    this.formDataAttributes().forEach(attr => {
       const itemAttr = currentItem?.attributes.find(a => a.name === attr.name);
       if (attr.dataType === 'Reference') {
         data[attr.name] = itemAttr?.value ?? null;
@@ -217,6 +234,20 @@ export class SparkPoEditComponent {
    * then dropped on the floor and refused by the server as missing — with no way out of the form.
    * The overlay is the form's, bound two-way, so the two halves cannot drift again.
    */
+  /**
+   * The attributes {@link formDataFrom} gives a slot: the editable ones, plus those the model makes editable
+   * but this object's load made read-only (#264). A refresh can lift a load-time `isReadOnly` (a stolen car's
+   * plate, once the car is back in use), and the control must then show the loaded value, not an empty
+   * required field. Only {@link getEditableAttributes} decides what is saved, so a slot alone sends nothing.
+   */
+  private formDataAttributes() {
+    const editable = this.getEditableAttributes();
+    const names = new Set(editable.map(a => a.name));
+    const lifted = (this.entityType()?.attributes ?? [])
+      .filter(a => !names.has(a.name) && a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject));
+    return [...editable, ...lifted];
+  }
+
   getEditableAttributes() {
     const overlay = this.refreshOverlay();
     return this.formEntityType()?.attributes
@@ -537,4 +568,10 @@ interface ChangedByRevision {
 function modifiedBy(po: PersistentObject): string | null {
   const by = po.attributes.find(a => a.name === 'ModifiedBy')?.value;
   return typeof by === 'string' && by !== '' ? by : null;
+}
+
+/** Whether two `showedOn` values (string or flags, as the wire and the model carry them) draw on the same pages. */
+function sameShowedOn(a: ShowedOn | string | undefined, b: ShowedOn | string | undefined): boolean {
+  return hasShowedOnFlag(a, ShowedOn.Query) === hasShowedOnFlag(b, ShowedOn.Query)
+    && hasShowedOnFlag(a, ShowedOn.PersistentObject) === hasShowedOnFlag(b, ShowedOn.PersistentObject);
 }

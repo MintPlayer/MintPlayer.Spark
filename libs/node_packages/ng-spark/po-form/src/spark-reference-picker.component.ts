@@ -10,7 +10,7 @@ import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirectiv
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { EntityType, QueryResultItem } from '@mintplayer/ng-spark/models';
+import { EntityType, QueryResultItem, ShowedOn, hasShowedOnFlag } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
@@ -62,9 +62,10 @@ export class SparkReferencePickerComponent {
   }));
   searchTerm = '';
 
+  /** The picker lists query rows, so its columns are the query's: `showedOn` includes Query (#264; not None). */
   visibleAttributes = computed(() => {
     return this.entityType()?.attributes
-      .filter(a => a.isVisible)
+      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
       .sort((a, b) => a.order - b.order) || [];
   });
 

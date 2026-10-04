@@ -807,6 +807,26 @@ public sealed class ModelSynchronizerTests : IDisposable
         BookAttribute("Secret").ShowedOn.Should().Be(EShowedOn.PersistentObject);
     }
 
+    [Theory]
+    [InlineData("Title")]   // on the entity and the projection
+    [InlineData("Secret")]  // on the entity only
+    public void An_explicit_None_survives_re_synchronize(string attribute)
+    {
+        // #264 G-Q4: None (drawn nowhere) is an author's choice, not an empty intersection to heal.
+        // Healing it would put the field back on a form whose action shows it only for some objects.
+        RegisterBookProjection(typeof(MS_ProjectedBookView));
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
+
+        TamperShowedOn("MS_ProjectedBook", attribute, "None");
+
+        sync.SynchronizeModels(typeof(ProjectedBookContext));
+
+        BookAttribute(attribute).ShowedOn.Should().Be(EShowedOn.None);
+        File.ReadAllText(ModelFile("MS_ProjectedBook")).Should().Contain("\"showedOn\": \"None\"",
+            "the file says None in words, so an author reading it sees the choice");
+    }
+
     [Fact]
     public void Adding_a_projection_to_an_existing_entity_still_narrows_single_sided_attributes()
     {

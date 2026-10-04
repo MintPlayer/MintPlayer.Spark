@@ -885,9 +885,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     // ShowedOn is presentation constrained by structure: projection/entity
                     // membership is the capability to appear on a side, the model author picks the
                     // subset. Strip sides that structurally disappeared, never re-add one (#274).
-                    // An empty result self-heals to the derived capability.
-                    var narrowedShowedOn = existingAttr.ShowedOn & showedOn;
-                    existingAttr.ShowedOn = narrowedShowedOn != 0 ? narrowedShowedOn : showedOn;
+                    // An empty result self-heals to the derived capability — unless the author wrote
+                    // `None` (#264, G-Q4): drawn nowhere is a choice, not an empty intersection, and an
+                    // action shows it per object through the runtime ShowedOn. An absent showedOn reads
+                    // as the default (both sides), so only that one is derived.
+                    if (existingAttr.ShowedOn != EShowedOn.None)
+                    {
+                        var narrowedShowedOn = existingAttr.ShowedOn & showedOn;
+                        existingAttr.ShowedOn = narrowedShowedOn != 0 ? narrowedShowedOn : showedOn;
+                    }
                 }
                 else
                 {

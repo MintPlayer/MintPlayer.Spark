@@ -325,7 +325,9 @@ public sealed class EntityAttributeDefinition
     public bool? InQueryType { get; set; }
     /// <summary>
     /// Controls on which pages the attribute should be displayed.
-    /// Query = shown in list views, PersistentObject = shown in detail/edit views.
+    /// Query = shown in list views, PersistentObject = shown in detail/edit views, None = drawn
+    /// nowhere (still shipped on the PersistentObject; an action can show it per object through the
+    /// runtime <see cref="PersistentObjectAttribute.ShowedOn"/>).
     /// Default is both (Query | PersistentObject).
     /// </summary>
     public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;

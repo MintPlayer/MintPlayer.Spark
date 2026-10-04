@@ -251,6 +251,42 @@ describe('SparkPoDetailComponent', () => {
     expect(names).toEqual(['FirstName']);
   });
 
+  // #264 G-Q3: the model says None (drawn nowhere), and OnLoadAsync shows the field for this object.
+  describe('the loaded object decides where an attribute is drawn (runtime showedOn)', () => {
+    const withReport = {
+      ...personType,
+      attributes: [
+        ...personType.attributes,
+        { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 3, showedOn: 'None' } as any,
+      ],
+    } as EntityType;
+
+    async function loadWith(report: Record<string, unknown>) {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withReport]),
+        get: vi.fn().mockResolvedValue({ ...existingItem, attributes: [...existingItem.attributes, { id: 'a-report', name: 'PoliceReport', value: 'PV-1', ...report }] }),
+      } as Partial<SparkService>);
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.fixture.whenStable();
+      return c;
+    }
+
+    it('draws an attribute the model shows nowhere when the loaded object shows it', async () => {
+      const c = await loadWith({ showedOn: 'PersistentObject' });
+      expect(c.visibleAttributes().map(a => a.name)).toEqual(['FirstName', 'PoliceReport']);
+    });
+
+    it('does not draw an attribute shown nowhere, although its value ships', async () => {
+      const c = await loadWith({ showedOn: 'None' });
+      expect(c.visibleAttributes().map(a => a.name)).toEqual(['FirstName']);
+    });
+
+    it('falls back to the model when the object says nothing', async () => {
+      const c = await loadWith({});
+      expect(c.visibleAttributes().map(a => a.name)).toEqual(['FirstName']);
+    });
+  });
+
   it('renders the [i] beside a described attribute label and not beside an undescribed one (#348)', async () => {
     const describedType: EntityType = {
       ...personType,

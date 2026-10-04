@@ -24,6 +24,7 @@ import {
   toDateInputValue,
   RefreshOverlay,
   applyOverlay,
+  overlayFromResponse,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -90,6 +91,13 @@ export class SparkPoCreateComponent {
 
     try {
       const po = await this.sparkService.newObject(this.type(), subQueryParent ?? undefined);
+      // What OnNewAsync decided about the form — the runtime showedOn, isRequired, isReadOnly — applies from
+      // the first render, exactly as a refresh's would (#264, G5/G7). Re-initialised, so an attribute the
+      // hook revealed gets its slot.
+      if (po) {
+        this.refreshOverlay.set(overlayFromResponse(po));
+        this.initFormData(entityType);
+      }
       const editable = new Map(this.getEditableAttributes(entityType).map(a => [a.name, a] as const));
       const data = { ...this.formData() };
       for (const attr of po?.attributes ?? []) {

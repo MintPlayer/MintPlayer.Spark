@@ -192,6 +192,66 @@ describe('SparkPoEditComponent', () => {
     expect(c.isSaving()).toBe(false);
   });
 
+  // #264 G5/G7: OnLoadAsync decides the form for this object (a stolen car: police report shown and required,
+  // plate read-only). The form applies it from the first render, not only after the first refresh.
+  describe('the loaded object shapes the form from the first render', () => {
+    const withReport = {
+      ...personType,
+      attributes: [
+        ...personType.attributes,
+        { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 4, showedOn: 'None' } as any,
+      ],
+    } as EntityType;
+    const loaded = (report: Record<string, unknown>, last: Record<string, unknown> = {}) => ({
+      ...existingItem,
+      attributes: [
+        existingItem.attributes[0],
+        { ...existingItem.attributes[1], ...last },
+        existingItem.attributes[2],
+        { id: 'a-report', name: 'PoliceReport', value: 'PV-1', ...report },
+      ],
+    });
+
+    it('draws, requires and prefills an attribute the model shows nowhere when the object shows it', async () => {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withReport]),
+        get: vi.fn().mockResolvedValue(loaded({ showedOn: 'PersistentObject', isRequired: true })),
+      });
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+
+      const report = c.getEditableAttributes().find(a => a.name === 'PoliceReport');
+      expect(report?.isRequired).toBe(true);
+      expect(c.formData()['PoliceReport']).toBe('PV-1');
+    });
+
+    it('leaves an attribute shown nowhere off the form', async () => {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withReport]),
+        get: vi.fn().mockResolvedValue(loaded({ showedOn: 'None' })),
+      });
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+
+      expect(c.getEditableAttributes().map(a => a.name)).not.toContain('PoliceReport');
+    });
+
+    it('keeps the loaded value of an attribute read-only at load, so a refresh that lifts it shows the value', async () => {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withReport]),
+        get: vi.fn().mockResolvedValue(loaded({ showedOn: 'None' }, { isReadOnly: true })),
+      });
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+
+      expect(c.getEditableAttributes().map(a => a.name)).not.toContain('LastName');
+      expect(c.formData()['LastName']).toBe('Smith');
+
+      c.refreshOverlay.set({ LastName: { isReadOnly: false } });
+      expect(c.getEditableAttributes().map(a => a.name)).toContain('LastName');
+    });
+  });
+
   // #264 G6: an error on an attribute the form does not draw has nowhere to appear next to its field, so it
   // is promoted to a form-level error (Vidyano shows it as a notification) instead of being swallowed.
   it('shows a 400 error on an attribute the form does not draw as a form-level error', async () => {

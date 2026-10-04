@@ -228,6 +228,45 @@ describe('SparkPoCreateComponent', () => {
       expect(c.formData()['Reason']).toBeUndefined();
     });
 
+    // #264 G5/G7: what OnNewAsync sets on the blank object shapes the form from the first render.
+    it('applies the runtime showedOn and isRequired the hook set on the blank object', async () => {
+      const withReport = {
+        ...personType,
+        attributes: [
+          ...personType.attributes,
+          { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.None } as any,
+        ],
+      } as EntityType;
+      const newObject = vi.fn().mockResolvedValue({
+        name: 'Person',
+        attributes: [{ name: 'PoliceReport', value: null, showedOn: 'PersistentObject', isRequired: true }],
+      });
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withReport]), newObject } as any);
+
+      const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+      await harness.fixture.whenStable();
+
+      const report = c.getEditableAttributes().find(a => a.name === 'PoliceReport');
+      expect(report?.isRequired).toBe(true);
+      expect('PoliceReport' in c.formData()).toBe(true);
+    });
+
+    it('leaves an attribute the model shows nowhere off the create form', async () => {
+      const withReport = {
+        ...personType,
+        attributes: [
+          ...personType.attributes,
+          { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.None } as any,
+        ],
+      } as EntityType;
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withReport]) });
+
+      const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+      await harness.fixture.whenStable();
+
+      expect(c.getEditableAttributes().map(a => a.name)).not.toContain('PoliceReport');
+    });
+
     it('asks /po/new without a parent for a standalone New', async () => {
       const newObject = vi.fn().mockResolvedValue({ name: 'Person', attributes: [] });
       const { harness } = await setup({ newObject } as any);

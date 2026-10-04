@@ -134,6 +134,24 @@ describe('spark-po-form — TriggersRefresh', () => {
       expect(named(component, 'PromoUrl')).toBeUndefined();
     });
 
+    // #264 G-Q3: the hook says where an attribute is drawn through the runtime showedOn.
+    it('draws and hides attributes by the showedOn the response carries', async () => {
+      const { fixture, component } = createComponent({
+        refresh: vi.fn().mockResolvedValue(response({
+          PoliceReport: { isVisible: true, showedOn: 'PersistentObject', isRequired: true },
+          PromoUrl: { showedOn: 'None' },
+        })),
+      } as any);
+      await mount(fixture, { Status: 'Stolen' });
+
+      component.onFieldChange(carType.attributes[0]);
+      await flush();
+      fixture.detectChanges();
+
+      expect(named(component, 'PoliceReport')?.isRequired).toBe(true);
+      expect(named(component, 'PromoUrl')).toBeUndefined();
+    });
+
     it('issues no additional service requests', async () => {
       // ★ The discriminator for the overlay design. Applying a refresh by setting a new EntityType
       // would re-run the option-loading effect and re-issue every reference query, every lookup

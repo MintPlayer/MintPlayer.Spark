@@ -249,6 +249,19 @@ describe('AsDetailColumnsPipe', () => {
     expect(result.map(c => c.name)).toEqual(['Street', 'City']);
   });
 
+  it('leaves out an attribute the row type shows nowhere (showedOn None, #264)', () => {
+    const types = {
+      addr: {
+        attributes: [
+          { name: 'Street', isVisible: true, order: 1, showedOn: 'PersistentObject' },
+          { name: 'Geo', isVisible: true, order: 2, showedOn: 'None' },
+          { name: 'Zip', isVisible: true, order: 3, showedOn: 0 },
+        ],
+      },
+    } as any;
+    expect(pipe.transform({ name: 'addr' } as any, types).map(c => c.name)).toEqual(['Street']);
+  });
+
   it('returns empty when type not found', () => {
     expect(pipe.transform({ name: 'addr' } as any, {})).toEqual([]);
   });
