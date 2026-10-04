@@ -25,7 +25,7 @@ public class MailSpikeM2Tests(ITestOutputHelper output)
     ];
 
     private static SparkMailRenderer Renderer() => new(new SparkMailTemplateResolver(
-        [new EmbeddedMailTemplateStore(new SparkMailTemplateAssembly(typeof(MintPlayer.Spark.Authorization.Identity.SparkUser).Assembly, "SparkMail/"))],
+        [new EmbeddedMailTemplateStore(new SparkMailTemplateAssembly(typeof(MintPlayer.Spark.Authorization.Identity.SparkAuthMailTemplates).Assembly, "SparkMail/"))],
         NullLogger<SparkMailTemplateResolver>.Instance));
 
     [Fact]

@@ -77,7 +77,7 @@ public class MailManagerTests : SparkTestDriver
         builder.AddMailManager();
         spark?.Invoke(builder);
         if (withAuthTemplates)
-            collection.AddSparkMailTemplates(typeof(SparkUser).Assembly, "SparkMail/");
+            collection.AddSparkMailTemplates(typeof(SparkAuthMailTemplates).Assembly, "SparkMail/");
         services?.Invoke(collection);
         return collection.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = validateScopes });
     }
