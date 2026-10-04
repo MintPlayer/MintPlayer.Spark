@@ -63,25 +63,18 @@ Two rules the server now enforces rather than tolerating: a row **must** have an
 (every null key compares equal), and duplicates rendered the same row repeatedly with a matching
 total.
 
-### `showedOn` decides the wire; `isVisible` decides the drawing
+### `showedOn` decides the columns, and every column is drawn
 
-A column is on the wire when its attribute's `showedOn` includes `Query` — the same flag the sort
-allow-list is checked against, so one rule governs both. `isVisible` is carried to the client and
-applied there.
+A column is on the wire when its attribute's `showedOn` includes `Query` (and the caller's `Query`
+right does not deny it), and **every column on the wire is drawn** — the same flag the sort
+allow-list is checked against, so one rule governs both.
 
-That split exists so an app can **ship a value without drawing it**:
-
-```jsonc
-{ "name": "IsPrivate", "dataType": "boolean", "showedOn": "Query", "isVisible": false }
-```
-
-The row carries `IsPrivate`, the grid renders no column for it, and a custom renderer on a *different*
-column can read it — a lock glyph beside a repository name, without spending a column on the fact.
-Before, the only way to get a value to a renderer was to make it a visible column, which is exactly
-the layout decision such an app is avoiding.
-
-Filtering on `isVisible` server-side would also have made an attribute marked `"showedOn": "Query",
-"isVisible": false` **sortable with no column** — the sort gate checks `showedOn` alone.
+The old "ship a value to the grid without drawing it" shape — `"showedOn": "Query"` plus
+`"isVisible": false` — is gone with `isVisible` (#264); a model file still saying
+`"isVisible": false` refuses startup. A value a grid renderer needs is either its own (narrow)
+column, as CodeCoverage's `Repository.IsPrivate` now is (a 🔒 renderer), or is folded server-side
+into a column that is drawn (CodeCoverage's `MyAccountRow` folds its type into the avatar cell). Like
+Vidyano, Spark ships no values for columns it does not draw.
 
 ### Type hints
 
@@ -319,12 +312,18 @@ Each query defines a default sort in its JSON file:
 {
   "name": "GetPeople",
   "contextProperty": "People",
-  "sortBy": "LastName",
+  "sortBy": "FullName",
   "sortDirection": "asc"
 }
 ```
 
 The `sortBy` value must match a property name on the type that the query returns. For index-based queries, this is the projection type (e.g. `VPerson`). For collection queries, this is the entity type.
+
+**Sort only on a column that is shown in the grid and carried by the index.** A sort on an attribute
+that is not a grid column is the ordering oracle [below](#a-sort-column-must-be-on-the-query-surface),
+and a sort on a field the index does not carry orders nothing. HR's `GetPeople` sorts by `FullName`
+(a shown, `[Search]` column whose `FullNameSort` companion the index carries), not by `LastName`,
+which is now `showedOn: PersistentObject` (#264, G-Q5).
 
 ### Runtime Sort Override
 

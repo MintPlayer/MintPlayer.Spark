@@ -1,0 +1,148 @@
+# Spark 11.0.0-preview.97 — `isVisible` is gone: rights decide who sees, `showedOn` decides where (#264)
+
+**Packages:** `MintPlayer.Spark`, `MintPlayer.Spark.Abstractions`, `MintPlayer.Spark.Model`,
+`MintPlayer.Spark.SourceGenerators`, `MintPlayer.Spark.Contributions` and
+`MintPlayer.Spark.Contributions.Abstractions` → `11.0.0-preview.97`. npm: `@mintplayer/ng-spark` →
+`22.28.0`. No other package changed. The majors do not move: the packages still target .NET 11 and
+Angular 22, and the breaking changes below ship as a minor.
+
+`isVisible` fused two things. It was layout (draw this attribute nowhere) **and** a write gate (refuse
+a posted value for it), and that fusion caused two live bugs: a stolen car's police report number,
+revealed by a refresh hook, was silently dropped on save; and HR's required `LastName`, hidden from
+the form, made a person impossible to create. Spark now follows Vidyano's split:
+
+- **who** may see or write a value is `security.json` (attribute rights) and `isReadOnly`;
+- **where** a value is drawn is `showedOn` in the model, and the runtime `ShowedOn` an action sets
+  per object.
+
+The decisions and their evidence are in `docs/remove_isvisible_PRD.md` (§0 and the `G-Q*` rows of §7)
+and `docs/remove_isvisible_plan.md`.
+
+---
+
+## ⚠️ Breaking changes
+
+No backward compatibility (preview). Each item says what to change.
+
+### 1. `IsVisible` is removed everywhere
+
+Removed: `EntityAttributeDefinition.IsVisible` (the model), `PersistentObjectAttribute.IsVisible`
+(the wire), `QueryColumn.IsVisible`, and `isVisible` on ng-spark's `EntityAttributeDefinition`,
+`PersistentObjectAttribute`, `QueryColumn` and the refresh `AttributeOverlay`. ng-spark's unused
+`visibleGridAttributes()` is deleted. `isVisible` is no longer part of the model hash.
+
+**A model file that still says `"isVisible": false` refuses startup** (and `--spark-synchronize-model`
+refuses it too). The message names each `Type.Attribute` and the replacement. Silently ignoring the
+flag would have made every hidden field writable. `"isVisible": true` (the old default) loads and is
+dropped by the next synchronize.
+
+**Migration** — pick by what the flag was doing:
+
+| `isVisible: false` was used to… | Now |
+|---|---|
+| hide a value from a group | an attribute deny in `security.json`: `{ "resource": "QueryRead/Employee/Salary", "groupId": "…", "isDenied": true }` |
+| hide a value from everyone | the same deny on **both** `wellKnown` groups (`anonymous` and `authenticated`); there is no "everyone" group |
+| keep an internal value nobody reads off the wire | `[IgnoreProperty]` on the property, or delete the attribute (⚠️ `[IgnoreProperty]` also drops it from a `[GenerateIndex]` index) |
+| ship a value the client code needs, drawn nowhere | `"showedOn": "None"` **plus** `"isReadOnly": true` (or an `Edit`/`New` deny) — `None` is layout, not protection |
+| keep a column off the grid but on the form | `"showedOn": "PersistentObject"` |
+| show an attribute only in some states (`IsVisible = …` in `OnRefreshAsync`) | the model says `"showedOn": "None"`; set the runtime `attr.ShowedOn` in `OnLoadAsync`, `OnNewAsync` **and** `OnRefreshAsync` (one shared helper) |
+| ship a grid value for a renderer without a column (`"showedOn": "Query", "isVisible": false`) | make it its own narrow column with a renderer, or fold it server-side into a column that is drawn — a grid row carries only drawn columns |
+
+### 2. Visibility is no longer a write gate
+
+`EntityMapper` no longer refuses a posted value because the attribute is hidden. The only
+model-level write gate is `isReadOnly`, plus `Edit`/`New` attribute rights and presence in the model.
+**An attribute you hid with `isVisible: false` and did not also mark `isReadOnly` becomes writable**
+once you migrate it to `showedOn: "None"` — add `isReadOnly: true` or a deny (the startup error in
+§1 makes you look at each one).
+
+### 3. `showedOn: "None"`
+
+`EShowedOn` (and ng-spark's `ShowedOn`) gain `None = 0`: shipped on the persistent object, drawn on no
+page (Vidyano's `Never`). Synchronize keeps an explicit `None`; only an absent `showedOn` is derived.
+There is no `QueryValue`: Spark ships no values for grid columns it does not draw.
+
+### 4. The new-attribute seed API is removed
+
+`SparkNewAttributeSeed` and `SparkModelSatellites.SeedNewAttribute` / `NewAttributeSeedFor` are gone,
+and with them the Contributions seeds that wrote `ContributorId` and the row `Key` as
+`showedOn: PersistentObject` + `isVisible: false`. Libraries no longer decide visibility: the
+**application's** model file decides how `ContributorId` and `Key` are shown (QnA: `showedOn: "None"`
++ `isReadOnly: true`, and the resolved `ContributorName` is shown).
+
+### 5. `SparkSelectionResolver` takes one more constructor parameter
+
+Its batched-load fallback now builds a selected row's columns from the caller's query surface, so it
+takes `IAttributeRightsEnforcement` as a new last constructor parameter (generated by `[Inject]`).
+The class is internal; only code that constructs it directly (tests) needs the extra argument.
+
+---
+
+## Runtime `ShowedOn`: state-dependent layout (Vidyano's `Visibility` pattern)
+
+```csharp
+public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+{
+    var po = await base.OnLoadAsync(id, parent);
+    if (po is not null) ShapeForStatus(po, refresh: false);
+    return po;
+}
+// … and the same helper from OnNewAsync and OnRefreshAsync
+
+private static void ShapeForStatus(PersistentObject obj, bool refresh)
+{
+    var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
+    obj[nameof(Car.PoliceReportNumber)].ShowedOn = stolen ? EShowedOn.PersistentObject : EShowedOn.None;
+    obj[nameof(Car.PoliceReportNumber)].IsRequired = stolen;
+}
+```
+
+**ng-spark applies the runtime `ShowedOn`, `IsRequired` and `IsReadOnly` from the first render** of a
+loaded or new object (`po-detail`, `po-edit`, `po-create`), not only after a refresh. Overriding
+`OnLoadAsync` opts the type out of batched selection loads, which is accepted for types shaped this
+way. See `docs/guide-triggers-refresh.md`.
+
+---
+
+## Attribute-rights gaps closed along the way
+
+- **`GET /spark/types/{id}?for=new|edit|read`.** The create form asks `for=new`, which leaves out
+  `New`-denied attributes (they used to be drawn, then refused on save) and does not apply an
+  `Edit`-only deny. Every purpose still removes `Read`-denied attributes; absent or unknown is the
+  edit shape, as before. ng-spark: `SparkService.getEntityType(id, purpose?)`.
+- **Custom-action selections** no longer carry a `Query`-denied attribute's value in the batched-load
+  fallback (§5 above).
+- **A validation error on an attribute the form does not draw** is shown as a form-level error on the
+  create and edit pages instead of being swallowed (Vidyano promotes it to a notification).
+- **SPARK024** now lists only attributes the model declares, as the runtime posture report always did.
+  A hand-authored model over a library type (`SparkUser.json` with 4 of ~24 properties) no longer
+  reports `PasswordHash` and the rest as "still readable".
+
+---
+
+## JSON schemas for the App_Data files, and `$schema`
+
+Spark now publishes strict JSON schemas for the six hand-edited files — `Model/*.json`,
+`security.json`, `programUnits.json`, `translations.json`, `culture.json`, `actions.json` — at
+
+```
+https://schemas.spark.mintplayer.com/v{n}/<file>.schema.json
+```
+
+`v{n}` is one global revision, tagged `schemas/v{n}` and released on GitHub whenever any generated
+schema changes. **`--spark-synchronize-model` now adds and maintains `"$schema"`** in those files: it
+adds the URL of the revision the installed package was built against, rewrites the `v{n}` segment of
+a hosted URL after an upgrade, and leaves any other value alone, touching only that one line. Editors
+then flag typos, unknown properties and a leftover `isVisible` while you type. Properties starting
+with `_` stay allowed as comments (a string in `translations.json`). `$schema` and `_` properties do
+not affect the model hash or what the loaders read. See `docs/guide-json-schemas.md`.
+
+---
+
+## Documentation
+
+- `docs/guide-authorization.md` — "Hide an attribute"; groups match the untranslated name only.
+- `docs/guide-triggers-refresh.md` — the runtime `ShowedOn` pattern.
+- `docs/guide-queries-and-sorting.md` — every shipped column is drawn; sort only on a column that is
+  shown and indexed.
+- `docs/guide-json-schemas.md` — new.

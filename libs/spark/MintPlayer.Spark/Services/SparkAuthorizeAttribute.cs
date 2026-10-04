@@ -157,7 +157,7 @@ internal sealed class SparkAuthorizeHandler(IServiceProvider serviceProvider)
     /// A name matches as it always has: case-insensitively against the names the providers return,
     /// whether or not <c>security.json</c> declares such a group. A provider-returned <b>id</b> —
     /// new, so there is no older answer to preserve — matches the attribute's value as the id itself
-    /// or as any translation of that group's name. The fallback, for a host that registers a provider
+    /// or as that group's untranslated name (#467, D24). The fallback, for a host that registers a provider
     /// but not Spark's membership service, is the old single-provider read.
     /// </remarks>
     private static async Task<bool> IsInGroupAsync(IServiceProvider scoped, string group)

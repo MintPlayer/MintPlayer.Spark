@@ -37,8 +37,13 @@ Model JSON is hand-editable by design, and synchronization preserves those edits
 following affects the hash:
 
 `label` and its translations · `description` · `breadcrumb` authored in JSON · `renderer` and
-`rendererOptions` · `group` and `tabs` · `editMode` · `referenceDisplayType` · `isVisible` · `order` ·
-`columnSpan` · generated `id` values · attribute ordering · indentation and line endings
+`rendererOptions` · `group` and `tabs` · `editMode` · `referenceDisplayType` · `showedOn` · `order` ·
+`columnSpan` · generated `id` values · attribute ordering · `$schema` and `_` comment properties ·
+indentation and line endings
+
+`isVisible` no longer exists (#264). It was hashed while it doubled as a write gate; the one
+model-level write gate is now `isReadOnly`, which is hashed. A model file still saying
+`"isVisible": false` refuses startup.
 
 Two CLR changes are also invisible, on purpose, because they generate a byte-identical model:
 `int` → `long` (both are `number`), and `List<string>` → `string[]`.

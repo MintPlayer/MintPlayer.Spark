@@ -310,8 +310,10 @@ except the contribution property. QnA does exactly this (`QuestionActions`,
 **A contribution is visible exactly when its target is.** The generated actions judge every
 contribution (load by id, the history query, a moderator action) by `Read` on the target type and the
 target's own row rule, so the history of a draft the caller may not see stays hidden. Hidden versions
-follow SoftDelete: only `ViewDeleted` holders see them. Raw `ContributorId`s are hidden in the history
-grid by default; the resolved `ContributorName` is shown instead.
+follow SoftDelete: only `ViewDeleted` holders see them. **The application decides how `ContributorId`
+and `Key` are shown** (#264, G-Q16: the library seeds no visibility; synchronize writes them with its
+usual defaults). QnA sets `ContributorId` to `showedOn: "None"` + `isReadOnly: true` and shows the
+resolved `ContributorName` instead; deny it in `security.json` to keep the raw id from a group.
 
 ---
 

@@ -40,10 +40,10 @@ public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
     var obj = args.PersistentObject;
     var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
 
-    obj[nameof(Car.PoliceReportNumber)].IsVisible = stolen;
+    obj[nameof(Car.PoliceReportNumber)].ShowedOn = stolen ? EShowedOn.PersistentObject : EShowedOn.None;
     obj[nameof(Car.PoliceReportNumber)].IsRequired = stolen;
     obj[nameof(Car.LicensePlate)].IsReadOnly = stolen;
-    obj[nameof(Car.PromoVideoUrl)].IsVisible = !stolen;
+    obj[nameof(Car.PromoVideoUrl)].ShowedOn = stolen ? EShowedOn.Query : EShowedOn.Query | EShowedOn.PersistentObject;
 
     return Task.CompletedTask;
 }
@@ -51,8 +51,8 @@ public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
 
 That is the whole feature. Two live samples:
 
-- `Demo/Fleet/Fleet/Actions/CarActions.cs` — a top-level trigger (`Car.Status`).
-- `Demo/HR/HR/Actions/CarreerJobActions.cs` — a trigger inside an inline detail grid.
+- `apps/Fleet/Fleet/Actions/CarActions.cs` — a top-level trigger (`Car.Status`).
+- `apps/HR/HR/Actions/CarreerJobActions.cs` — a trigger inside an inline detail grid.
 
 ---
 
@@ -62,7 +62,7 @@ That is the whole feature. Two live samples:
 |---|---|
 | `IsRequired` | make a field mandatory, or stop being mandatory |
 | `IsReadOnly` | freeze a field without hiding it |
-| `IsVisible` | show or hide |
+| `ShowedOn` | where it is drawn: `PersistentObject` (the form), `Query` (the grid), both, or `None` (show or hide — layout, not protection) |
 | `Rules` | add, remove or replace validation rules |
 | `Options` | replace what a dropdown offers |
 | `Value` | set a dependent value |
@@ -106,7 +106,67 @@ obj[nameof(Car.PoliceReportNumber)].IsRequired = stolen;
 ```
 
 If you shape the form on load too, share one private helper between the two paths so they cannot
-drift.
+drift — the next section does exactly that.
+
+---
+
+## Runtime `ShowedOn`: show an attribute only in some states
+
+There is no `isVisible` (removed in #264). An attribute that appears only in some states is
+**layout**, set by the action class at run time — Vidyano's `Visibility` pattern:
+
+1. The model says where it is drawn when nothing else is known — usually nowhere:
+   `"showedOn": "None"` (shipped on the object, drawn nowhere; synchronize keeps it).
+2. The action class sets the runtime `attr.ShowedOn` from the object's state in **`OnLoadAsync`**,
+   and also in **`OnNewAsync`** and **`OnRefreshAsync`** wherever the state can change on the form.
+   One private helper serves all three.
+
+Fleet's `CarActions` (`apps/Fleet/Fleet/Actions/CarActions.cs`):
+
+```csharp
+public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
+{
+    ShapeForStatus(args.PersistentObject, refresh: true);
+    return Task.CompletedTask;
+}
+
+public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+{
+    var po = await base.OnLoadAsync(id, parent);
+    if (po is not null)
+        ShapeForStatus(po, refresh: false);
+    return po;
+}
+
+public override Task OnNewAsync(SparkNewArgs<Car> args)
+{
+    ShapeForStatus(args.PersistentObject, refresh: false);
+    return base.OnNewAsync(args);
+}
+
+private static void ShapeForStatus(PersistentObject obj, bool refresh)
+{
+    var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
+
+    obj[nameof(Car.PoliceReportNumber)].ShowedOn = stolen ? EShowedOn.PersistentObject : EShowedOn.None;
+    obj[nameof(Car.PoliceReportNumber)].IsRequired = stolen;
+    // On load and new only ever tighten: a read-only that rights already set must not be lifted.
+    obj[nameof(Car.LicensePlate)].IsReadOnly = stolen || (!refresh && obj[nameof(Car.LicensePlate)].IsReadOnly);
+    obj[nameof(Car.PromoVideoUrl)].ShowedOn = stolen ? EShowedOn.Query : EShowedOn.Query | EShowedOn.PersistentObject;
+}
+```
+
+- **The client applies the runtime `ShowedOn`, `IsRequired` and `IsReadOnly` from the first render**
+  of a loaded or new object, not only after a refresh: a stolen car opens with its police report
+  number shown and required.
+- ⚠️ **`ShowedOn` is layout, never protection.** A value with `showedOn: None` is still on the wire,
+  and a client can still post it. Keep a value from a caller with a `security.json` deny; keep a
+  caller from writing it with `isReadOnly` or an `Edit`/`New` deny
+  ([Hide an attribute](guide-authorization.md#hide-an-attribute)).
+- ⚠️ A runtime `ShowedOn` cannot add or remove a **grid column** per row: a query's columns come from
+  the model. Use it for the form, and for AsDetail columns only as a whole-column decision.
+- Overriding `OnLoadAsync` opts the type out of batched selection loads (one load per selected row);
+  that is accepted for types shaped this way.
 
 ---
 
@@ -180,7 +240,7 @@ public partial class GateSettingsActions : DefaultPersistentObjectActions<GateSe
         var obj = args.PersistentObject;
         var isFixed = obj[nameof(GateSettings.ProjectMode)].GetValue<string>() == "fixed";
 
-        obj[nameof(GateSettings.ProjectTarget)].IsVisible = isFixed;
+        obj[nameof(GateSettings.ProjectTarget)].ShowedOn = isFixed ? EShowedOn.Query | EShowedOn.PersistentObject : EShowedOn.Query;
         obj[nameof(GateSettings.ProjectTarget)].IsRequired = isFixed;
         return Task.CompletedTask;
     }

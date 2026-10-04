@@ -163,7 +163,8 @@ public interface IPersistentObjectActions<T> where T : class
 
     /// <summary>
     /// The attributes of this specific row the current caller must not see. The framework nulls
-    /// their values, marks them invisible on every read path, and shields them from write-back.
+    /// their values on every read path (indistinguishably from an empty value: no flag, no marker),
+    /// and shields them from write-back.
     /// <see langword="null"/> or empty means nothing is redacted — the default, costing nothing.
     /// <para>
     /// A dotted name ("Jobs.Salary") reaches a column inside an AsDetail attribute's embedded rows.

@@ -16,14 +16,15 @@ public class Right
     /// <item><c>"Read/Person"</c> — read access to the Person entity</item>
     /// <item><c>"EditNewDelete/Person"</c> — a combined action covering all three</item>
     /// <item><c>"CarCopy/Car"</c> — a custom action defined on the Actions class</item>
+    /// <item><c>"QueryRead/Person/Salary"</c> — an attribute-level right, <c>{verb}/{Type}/{Attribute}</c></item>
     /// </list>
     /// Wildcards (<c>*</c>) are refused when the file loads — name every target.
     /// <para>
-    /// <b>There is no property-level form.</b> This comment used to advertise
-    /// <c>"Edit/Person/Salary"</c>, but matching is per-half and nothing in Spark ever builds a
-    /// three-segment resource — so such a right would parse, load, and silently never match
-    /// anything. Scope a single property through the Actions class instead
-    /// (a before-save interceptor to reject the change, or omit the attribute from the model).
+    /// <b>The attribute-level form</b> (since #465) takes only <c>Query</c>, <c>Read</c>, <c>Edit</c>,
+    /// <c>New</c> and the combined verbs made solely of them, and names an attribute the type's model
+    /// declares; anything else refuses the file. It composes over the type right and never unlocks
+    /// it. A deny is how an attribute is hidden from a group (#264: there is no <c>isVisible</c>);
+    /// a deny on both <c>wellKnown</c> groups hides it from everyone.
     /// </para>
     /// </summary>
     public string Resource { get; set; } = string.Empty;

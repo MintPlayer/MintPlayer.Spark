@@ -177,9 +177,44 @@ triggers the warning: whether a row protects an attribute is what that hook hide
 
 **The per-row hook blanks indistinguishably.** A protected attribute keeps its place and its model
 flags; only its value (and a reference's breadcrumb, an AsDetail attribute's rows) is emptied. There is
-no `isVisible: false` and no marker, so its JSON is byte-identical to a genuinely empty attribute's —
+no marker, so its JSON is byte-identical to a genuinely empty attribute's —
 the form renders it as an empty field. A persistent object in a **retry prompt** is presented the same
 way (static removal, then per-row blanking when it is a stored row).
+
+### Hide an attribute
+
+There is no model flag that hides an attribute (`isVisible` was removed in #264). *Who* may see a value
+is a right; *where* it is drawn is layout (`showedOn`). To keep a value from a group, deny the verb on
+that attribute — three segments, next to the type grant it narrows:
+
+```jsonc
+"rights": [
+  { "id": "…", "resource": "QueryRead/Employee",        "groupId": "<authenticated>" },
+  { "id": "…", "resource": "QueryRead/Employee/Salary", "groupId": "<authenticated>", "isDenied": true }
+]
+```
+
+- **From everyone** is a deny on **both** `wellKnown` groups, `anonymous` and `authenticated` — there
+  is no "everyone" group (see [Groups](#groups)). With both denies in place no caller receives the
+  value, administrators included, unless an important right says otherwise.
+- **An `isImportant` type grant also unlocks denied attributes.** The type right and the attribute
+  right are ranked together by [Precedence](#precedence), so an important `QueryRead/Employee` (tier 2)
+  beats an ordinary `QueryRead/Employee/Salary` deny (tier 3) for that group. Make the deny important
+  too when it must hold against a break-glass grant.
+- **Breadcrumbs and `po.Name` render a denied token blank** — `{FirstName} {Salary}` reads as
+  `Jane ` for that caller. Build breadcrumbs from attributes every reader may see.
+- **Only a model-declared attribute can be denied**, and only those reach the wire. A hand-authored
+  model over a library type (QnA's `SparkUser.json`) declares just the attributes it shows, never the
+  credential fields.
+- **SPARK024** warns about the attributes the deny does *not* mention (the stale-deny trap above). For a
+  deliberate one-attribute deny that list is the point of the warning: check it once.
+
+**`showedOn` is layout; protect with `isReadOnly` or a deny.** `showedOn: "None"` ships the attribute
+on the persistent object and draws it nowhere — a value the client code needs, not a secret, and
+not write-protected: a client can still post it. Make it `isReadOnly: true` (or deny `Edit`/`New`) when
+the caller must not change it, and deny `Read`/`Query` when the caller must not see it. State-dependent
+showing and hiding (Fleet shows `PoliceReportNumber` only on a stolen car) is the action class setting the runtime
+`ShowedOn` — see [triggers and refresh](guide-triggers-refresh.md#runtime-showedon-show-an-attribute-only-in-some-states).
 
 ---
 
@@ -266,9 +301,11 @@ Neither role is assertable. They are decided from authentication state, and thei
 excluded from claim-derived membership — so no identity provider, and no custom
 `IGroupMembershipProvider`, can hand a caller `authenticated` by naming a group.
 
-Every **other** group is matched by **name** against the caller's group claims, in any
-translation. Display names are therefore load-bearing: renaming a group in `security.json`
-without renaming the claim silently drops the membership.
+Every **other** group is matched by its **untranslated name** (the value in `groups`,
+case-insensitively) against the caller's group claims — never by a translation, so
+`translations.json` cannot change who belongs to a group (#467, D24). Names are therefore
+load-bearing: renaming a group in `security.json` without renaming the claim silently drops the
+membership.
 
 Replace where membership comes from with:
 
@@ -292,7 +329,7 @@ next to `IGroupMembershipProvider`; that is the unambiguous way, since a display
 string. Ids obey the same rules as names: a well-known id is dropped and an undeclared one grants
 nothing. All providers are asked **once per request**; the merged answer is cached for the rest of it
 and shared by `[SparkAuthorize(Group = …)]`, which matches a provider-returned id by the id itself or
-by any translation of that group's name.
+by that group's untranslated name.
 
 **The current user.** Code that needs *who* rather than *which groups* — audit stamping, moderation —
 injects `ISparkCurrentUser` (`Id`, `IsAuthenticated`), scoped, which reads the principal's

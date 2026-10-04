@@ -306,9 +306,12 @@ same cell, deriving what each shape expresses differently — a `PersistentObjec
 Type `item` as `SparkRow` and use `valueFor`. Indexing into `values`, `attributes` or the record by
 hand works for exactly one host and fails silently on the others.
 
-**To read a sibling value the grid does not draw**, mark its attribute `"showedOn": "Query",
-"isVisible": false`. It then ships on every row and no column is rendered for it. A value marked
-`"showedOn": "PersistentObject"` is not on the query wire at all and `valueFor` returns `undefined`
+**A grid row carries only the columns the grid draws** (#264: `isVisible` is gone, and with it the
+old `"showedOn": "Query", "isVisible": false` trick of shipping a value without a column). A sibling a
+renderer reads must therefore be a column itself — give it its own narrow renderer, as CodeCoverage
+does with `Repository.IsPrivate` (a 🔒 column) — or be folded server-side into the value the renderer
+already reads (CodeCoverage's `MyAccountRow` folds the account type into its avatar cell). A value
+marked `"showedOn": "PersistentObject"` (or `"None"`) is not on the query wire at all and `valueFor` returns `undefined`
 — that is the failure to check first when a renderer's sibling read comes back empty.
 
 ⚠️ **An option that names a sibling attribute only works if that attribute is on the query surface.**

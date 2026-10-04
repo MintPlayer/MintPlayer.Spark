@@ -427,8 +427,8 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
     /// <summary>
     /// Per-viewer attribute redaction. Names the attributes of this specific row that the current
-    /// caller must not see; the framework nulls their values and marks them invisible at mapping
-    /// time on every read path (detail, list, query, stream), and shields them from write-back on
+    /// caller must not see; the framework nulls their values at mapping time on every read path
+    /// (detail, list, query, stream), and shields them from write-back on
     /// updates. Null or empty means nothing is redacted — the default, costing nothing.
     ///
     /// A dotted name ("Jobs.Salary") redacts a column inside an AsDetail attribute's embedded
