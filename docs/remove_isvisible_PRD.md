@@ -2,7 +2,8 @@
 
 Issue: [#264](https://github.com/MintPlayer/MintPlayer.Spark/issues/264) · Plan: [remove_isvisible_plan.md](remove_isvisible_plan.md)
 
-**Status 2026-10-04 (v3, after the grill): design final (§0); not started.** §1–§3 below are the v2 analysis, kept for
+**Status 2026-10-05: implemented (M0–M9) on `feat/264-remove-isvisible`; see §10 for the record, findings,
+operator steps and verification.** Design final since the grill (§0). §1–§3 below are the v2 analysis, kept for
 evidence. Where they differ from §0, §0 and the `G-Q*` rows of §7 win.
 - **v1** of this PRD (same day) proposed new `showedOn` flags and keeping a runtime `IsVisible` flag on the wire.
   The owner rejected parts of v1 (§9), and v1 was superseded after a second investigation round. That round had
@@ -32,7 +33,7 @@ small and lean, and copy Vidyano's split**: rights decide who receives a value, 
 | Sorting | Unchanged engine: sort only on a grid column that the index carries. HR sorts by `FullName` (G-Q5); **D7 withdrawn** |
 | Legacy `"isVisible": false` | Startup error with the replacement in the message; `true` is stripped by sync (G-Q8) |
 | Library-created attributes | Libraries don't decide visibility; the seed API is deleted (G-Q16) |
-| Audit fields | The developer's choice. QnA shows `CreatedBy`/`ModifiedBy` as `SparkUser` references (`{UserName}`), with `Read/SparkUser` + attribute denies on everything but `UserName` for visitors (G-Q14/15) |
+| Audit fields | The developer's choice. QnA shows `CreatedBy`/`ModifiedBy` as `SparkUser` references (`{UserName}`). **No right on `SparkUser`** is needed: reference labels resolve through row security only (G-Q14/15, corrected in §10.3) |
 | CodeCoverage renderer inputs | `IsPrivate` → its own narrow 🔒 column; `MyAccountRow.Type` folded into the avatar cell server-side (G-Q4) |
 | **JSON schemas (new)** | Generated from the C# types (`JsonSchemaExporter`), strict with `^_` comment escape, for the 6 hand-edited files. **Build artifacts, never tracked in git.** A global revision is a git tag `schemas/v{n}` that CI applies automatically when the generated set differs from the latest release; each revision is a **GitHub release** (the archive), and `apps/SparkSchemas` (nginx, CORS `*`) rebuilds from all releases and serves `https://schemas.spark.mintplayer.com/v{n}/<file>.schema.json`. The package embeds `n`; sync writes and updates `$schema` to that URL. This repo's files reference unversioned, gitignored, locally generated `../../../schemas/<file>.schema.json` (G-Q9–Q13, G-Q17, G-Q19–Q21) |
 | Gaps fixed in the same PR | G1–G4 (New/Edit/Query metadata, selection columns), G5/G7 (load-time state), G6 (errors on undrawn attributes become a form-level error, as Vidyano promotes them to a notification) |
@@ -357,7 +358,7 @@ These are behaviours only; no code was copied. Vidyano runs **two independent me
 | G-Q12 | Schemas are **strict** (`additionalProperties: false`) with `patternProperties: { "^_": {} }`, so underscore properties stay allowed as comments (10× `_comment`, 1× `_aliasComment` in this repo). `isVisible` and typos are flagged in the editor | owner, grill 2026-10-04 ("A") | the server ignores unknown properties (System.Text.Json default) |
 | G-Q13 | Schemas for **every hand-edited file**: `Model/*.json`, `security.json`, `programUnits.json`, `translations.json`, `culture.json`, `actions.json`. Not for generated files (`modelHashes.json`, `oidc-signing-key.json`) | owner, grill 2026-10-04 ("B") | one generator, one exported type per file |
 | G-Q14 | Audit fields are the **developer's choice**, not a framework rule. QnA (the `IAuditable` demo) **shows** them, like a Q&A site; supersedes PRD §6.3 / the `[IgnoreProperty]` row for QnA | owner, grill 2026-10-04 | QnA is a non-deployed demo |
-| G-Q15 | QnA `CreatedBy`/`ModifiedBy` become `[Reference(typeof(SparkUser))]`, `showedOn: PersistentObject`, `isReadOnly: true`, rendered by the user's breadcrumb (`{UserName}`); `DeletedBy` → `showedOn: None`. Anonymous visitors get `Read/SparkUser` **plus attribute denies on everything but `UserName`**, using only shipped Spark mechanisms | owner, grill 2026-10-04 ("A - yes, fully use the shipped Spark mechanisms") | ids are stored (`Answer.cs:43`, `Question.cs:57`); `ApiToken.cs:130` precedent |
+| G-Q15 | QnA `CreatedBy`/`ModifiedBy` become `[Reference(typeof(SparkUser))]`, `showedOn: PersistentObject`, `isReadOnly: true`, rendered by the user's breadcrumb (`{UserName}`); `DeletedBy` → `showedOn: None`. Anonymous visitors get `Read/SparkUser` **plus attribute denies on everything but `UserName`**, using only shipped Spark mechanisms. **Corrected 2026-10-05 (§10.3):** no `SparkUser` right at all; reference labels resolve through row security only, and the grant is refused at startup | owner, grill 2026-10-04 ("A - yes, fully use the shipped Spark mechanisms") | ids are stored (`Answer.cs:43`, `Question.cs:57`); `ApiToken.cs:130` precedent |
 | G-Q16 | Libraries do not decide visibility; the application does. The Contributions seeds go, and with them the whole new-attribute seed API (`SparkNewAttributeSeed`, `SparkModelSatellites.SeedNewAttribute`/`NewAttributeSeedFor`, `ModelSynchronizer.cs:936-940`), whose only callers were `ContributionDescriptor.cs:273,280`. QnA's model decides how `ContributorId` / `Key` are shown | owner, grill 2026-10-04 ("It's up to the application to decide what's shown in the frontend - so I guess C") | public API removal → listed in the release notes (minor) |
 | G-Q16a | G-Q16 is documented where it applies: `libs/contributions/MintPlayer.Spark.Contributions/README.md:247` (seed paragraph → "the application decides how ContributorId/Key are shown"), the release notes (seed API removed), and the guide that covers model sync | owner, grill 2026-10-04 | — |
 | G-Q17 | `--spark-synchronize-model` manages `$schema` in all six file kinds: it adds the versioned URL when missing and updates the version on a `schemas.spark.mintplayer.com` URL, so **the URL always matches the installed Spark version**; any other `$schema` (this repo's relative `../../..` paths) is left alone. Only the `$schema` line is touched (formatting, key order and `_comment`s byte-for-byte) | owner, grill 2026-10-04 ("A - The schema url assigned by the synchronize tool will always be in-line with the Spark version") | Q10 |
@@ -423,3 +424,88 @@ client needs but does not draw.
     `AttributeTabGuardTests.cs:129`
   - the ng-spark specs for grid, po-form, po-edit, po-create, pipes and history
 - **Stale docs:** `Right.cs:22-27`, `model-hash.md:40`, `guide-row-security.md:180`, `guide-authorization.md:269-270`.
+  All fixed in M9 (`d4e485b2`).
+
+## 10. Implementation record (2026-10-04/05, branch `feat/264-remove-isvisible`)
+
+| Milestone | Commit | What landed |
+|---|---|---|
+| M0 | `41d85a73` | Tests that fail on master: Fleet stolen-car E2E (`Visibility/StolenCarPoliceReportTests`), **a new HR E2E host** (`HRTestHost`, `HRE2ECollection`; `HR` added to `E2E_APPS` in `tools/test-local.mjs`; hr-host coverage entry in `tools/verify-coverage-paths.mjs`) with `HRCreatePersonTests`, G6 specs in po-create/po-edit |
+| M1 | `545156a0` | Write gate deleted (`EntityMapper.IsWritableBySchema`). Guard `HiddenAttributesStayProtectedTests`: 22 must stay protected, 2 must be writable, plus a forward rule (`showedOn: None` ⇒ protected unless allow-listed). The test project's nx inputs now include the apps' model/security files. `AttributeRightsWellKnownGroupsTests` taken from `1f732374` (that file only) |
+| M2 | `f97a5425` | `EShowedOn.None`; sync keeps an explicit `None`; ng-spark draws from the runtime `showedOn` and applies load-time `showedOn`/`isRequired` from the first render (G5/G7). The runtime `ShowedOn` already reached responses, so no server pipeline change was needed |
+| M3 | `0c7e448b` | `IsVisible` deleted everywhere; seed API deleted; `ModelLoader.RefuseLegacyIsVisible` (startup and sync refuse `false`; sync strips `true`; `LegacyIsVisibleTests`); every shipped query column is drawn; Fleet `CarActions.ShapeForStatus` in OnLoad/OnNew/OnRefresh; HR migrated |
+| M4 | `1da60fef` | G1/G2 `ForFormAsync(definition, verb)` + `GET types/{id}?for=new\|edit\|read` (narrowing; unknown = edit), ng-spark `getEntityType(id, purpose)`; G3 `visibleGridAttributes` deleted (no users); G4 `SparkSelectionResolver` uses `ForQueryAsync` (new internal ctor parameter); G6 form-level errors for undrawn attributes |
+| M5 | `1ca1c92a`, `ce17e66e` | CodeCoverage and QnA migrated per §0 (details below) |
+| M6 | `8310cf56` | `tools/SchemaGenerator` (not packable), an incremental after-build target writing `/schemas/` (gitignored), `SparkSchemaRevision.Current`, `SparkSchemaGeneratorTests` (JsonSchema.Net 9.4.0) |
+| M7 | `4ddd72df` | `SparkSchemaReference` (line-level `$schema` management); 71 app files carry a relative `$schema`; loaders tolerate `$schema`/`_` comments |
+| M8 | `d0bc7ed7` | `schema-revision` job in `dotnet-build-master.yml`; `apps/SparkSchemas` (Dockerfile, `fetch-releases.sh`, nginx); `spark-schemas-deploy.yml`, `spark-schemas-image-check.yml`; the `SparkSchemaRevision` env is an nx input of `build:release` |
+| M9 | `35c43fb5`, `d33aa014`, `d4e485b2` | SPARK024 counts model-declared attributes (red→green `A_CLR_property_the_model_does_not_declare_is_not_listed`); every changed package bumped (NuGet `11.0.0-preview.97`, `@mintplayer/ng-spark` 22.28.0; no major moved); docs, a new `guide-json-schemas.md`, `release-notes-preview-97.md` |
+
+### 10.1 Findings during implementation (each verified in code)
+- **Plan premise wrong: the MyAccountRow id** is already `{provider}:{login}` (`MyAccountsService.cs:108-110`, pinned by
+  `MyAccountsProviderScopeTests`). The remark that said "Login" was stale and is corrected. The client splits the id on `:`; no id change.
+- **MyAccountRow.Provider/Type were removed from the model**, not denied: it is a hand-authored virtual type, so removal is leaner.
+  `Type` is folded into `AvatarUrl` as `icon:group` in `MyAccountRowActions.WithAvatarFallback`; `/api/me/accounts` still uses `Type`.
+- **Only declared attributes can be denied** (the validator refuses others). QnA therefore declares the SparkUser fields it denies
+  (`Email`, `CreatedAtUtc`, `PreferredCulture`) and never declares credential fields.
+- **⚠️ Privacy, owner to decide:** registration sets `UserName = email` (`SparkAccountEndpoints.cs:111`). With G-Q15,
+  anonymous QnA visitors see authors' email addresses. Implemented as decided (QnA is a non-deployed demo); not a pattern
+  to copy until UserName and email are separate.
+- **SPARK024 fires on every deliberate single-attribute deny** (22 warnings, all CodeCoverage). Its list is now correct
+  (M9). Whether a well-known-group deny should warn at all is an **open owner question**.
+- **Repo-relative `$schema` depth** is `../../../../schemas/` (App_Data) and `../../../../../schemas/` (App_Data/Model), not `../../../`.
+- **Schema types:** `translations.json` has no C# type, so its schema is a hand-written tree. The `culture`/`actions` loaders walk nodes,
+  so mirror types are kept in step by guard tests. `TranslatedString` is a key (string|null) because the loaders refuse inline text.
+- **CI:** a release created with `GITHUB_TOKEN` raises no `release` event, so the publish job dispatches the deploy workflow explicitly.
+- **Behaviour changes worth knowing:**
+  - the reference picker no longer lists PersistentObject-only attributes as columns (their cells were always empty)
+  - AsDetail columns are per row type, so a per-row runtime `showedOn` cannot add or remove a column
+  - `/po/new` still presents New-denied attributes as read-only (`New.cs:104`), while the `for=new` type omits them; the form draws from the type
+  - Repository now overrides `OnLoadAsync` (GateSettings shape) and so loses batched selection loads (accepted, G-Q2)
+- **Pre-existing bugs fixed on the way:**
+  - QnA's load-time read-only fields had no form slot, so a refresh lifting one showed an empty field (po-edit `formDataFrom`)
+  - GateSettings `ProjectTarget` showed on load in auto mode
+  - `guide-queries-and-sorting.md` documented the obsolete `sortBy`/`sortDirection` query shape (now `sortColumns`)
+  - `Spark-API-Specification.md` documented `showedOn` as an int (it's a string)
+- **Pre-existing, not changed:** sync rewrites model files from objects, so `_comment`s in a model file it regenerates are lost.
+
+### 10.2 Owner operator steps (not done by the implementation)
+1. VPS: `/var/www/spark-schemas/docker-compose.yml` with service **`spark-schemas`** (image `ghcr.io/mintplayer/spark-schemas:latest`,
+   port 80, Traefik route `schemas.spark.mintplayer.com` on the `web` network). The deploy refuses to run without it.
+2. GHCR: make the `spark-schemas` package public after its first push.
+3. Tag rule on `schemas/*` that lets GitHub Actions create tags (a bypass), or `gh release create` fails.
+4. Workflow permissions: allow workflows to request `contents: write` and `actions: write`.
+5. The first master run after merge publishes `schemas/v1`.
+
+### 10.3 Verification (2026-10-05)
+**Local sweep** (`npm run test:affected`, Developer licence, E2E included):
+1. **First run:** every project green except `MintPlayer.Spark.E2E.Tests:build`. Its second invocation failed with only
+   `Misconfigured remote cache endpoint: Unexpected response status: 499` (Nx remote cache, not a compile error; the
+   same target had built fine earlier in the run).
+2. **Second run:** E2E executed, **32 of 152 failed**:
+   - **31 QnA tests: the QnA host refused to start**, correctly. `security.json` granted `Read/SparkUser` to
+     `anonymous`, and Spark's startup check refuses that because `SparkUserActions` declares no row rule, which would
+     publish every user (`SparkMiddleware.cs:742`). **Fixed by removing the grant entirely:** a reference label is
+     resolved through row security on the target only (`BreadcrumbResolver.cs:210`), not through a type right, so the
+     `{UserName}` breadcrumb renders without anyone being able to load or list users. QnA's `SparkUser.json` now
+     declares only `UserName`; the denies and their translations are gone; the posture baseline was regenerated.
+     `QnAAuditFieldsTests` now asserts that visitors and other users **cannot** load a user, and that the breadcrumb
+     shows the author.
+   - **1 Fleet test:** `MassAssignmentTests.PUT_does_not_modify_isreadonly_attribute` targeted `Car.CreatedBy`, which
+     is `[IgnoreProperty]` now. It now forges a `CreatedBy` attribute the model does not declare, and checks the
+     **stored** document is unchanged (stronger than before).
+3. **Third run: exit 0, all 64 tasks green.** 61 came from the Nx cache of the earlier green runs; `MintPlayer.Spark.Tests`
+   and `MintPlayer.Spark.E2E.Tests` re-ran.
+
+**Browser** (playwright_node, Fleet `dotnet run`, car `1-AAL-329`, which is stored as Stolen):
+- **Detail page on load:** shows Police Report Number and no Promo Video (runtime `ShowedOn` from `OnLoad`, first render).
+- **Edit form on load:** "Police Report Number \*" is already required before any refresh (G7).
+- **Status → In use:** the police field is gone; Promo Video, License Plate and Manager are editable.
+- **→ Stolen:** the field reappears with its **stored** value `PV-264-SPIKE`, because it ships while hidden
+  (`showedOn: None`), so no refresh fill was needed.
+- **Saved `PV-264-FINAL`:** the RavenDB document holds `"PoliceReportNumber": "PV-264-FINAL"` and still has the hidden
+  promo URL. **§2.3 bug 1 is fixed.** Bug 2 (HR create) is covered by the browser-driven E2E test `HRCreatePersonTests`.
+
+**Correction to G-Q15:** `Read/SparkUser` for visitors is neither needed nor allowed (above). QnA shows authors with
+**no** rights on `SparkUser`. ⚠️ The label is still the email address, because registration sets `UserName = email`
+(owner to decide).

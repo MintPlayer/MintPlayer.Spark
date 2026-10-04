@@ -2,7 +2,8 @@
 
 PRD: [remove_isvisible_PRD.md](remove_isvisible_PRD.md), with the final design in **§0** and the decisions in §7 (`G-Q*`).
 Issue: [#264](https://github.com/MintPlayer/MintPlayer.Spark/issues/264)
-Status 2026-10-04 (v3, after the grill): **not started.**
+Status 2026-10-05: **M0–M10 done** (commits in PRD §10; sweep green and browser check in PRD §10.3). The schema site's VPS and
+repository-settings steps are the owner's (PRD §10.2).
 
 Rules:
 - **Commit per milestone; run tests only at the end (M10).** Check each intermediate milestone by building and reading
@@ -15,19 +16,19 @@ Rules:
   Everything else in them is superseded (G-Q3a, G-Q6).
 - Every decision taken during implementation goes into PRD §7 with its evidence.
 
-## M0: red tests for the live bugs
+## M0: red tests for the live bugs ✅
 - E2E Fleet: Stolen + police report → saved and stored; detail page on load shows the field only when Stolen.
   **Red on master.**
 - E2E HR: the create form shows LastName and a Person can be created. **Red on master.**
 - G6: a server validation error on an attribute that is not drawn is visible on the page. **Red on master.**
 
-## M1: write gate (G-Q7)
+## M1: write gate (G-Q7) ✅
 - Guard test first: every attribute that is `isVisible: false` on master is `isReadOnly`, `Edit`/`New`-denied,
   `[IgnoreProperty]` or deleted after M5.
 - Delete `!def.IsVisible` from `EntityMapper.IsWritableBySchema`. Rewrite `ModelFileShapeWriteGateTests.cs:57-100`.
 - Cherry-pick `AttributeRightsWellKnownGroupsTests`.
 
-## M2: `showedOn: None` + runtime `ShowedOn` (G-Q3, G-Q4)
+## M2: `showedOn: None` + runtime `ShowedOn` (G-Q3, G-Q4) ✅
 - `EShowedOn.None = 0` (C# + `showed-on.ts`); `ModelSynchronizer.cs:889-890` derives `showedOn` only when it is absent.
 - Server: the per-request `PersistentObjectAttribute.ShowedOn` set by actions survives into the response; on PO
   endpoints every received attribute already ships.
@@ -37,7 +38,7 @@ Rules:
 - Tests: `None` ships on the PO and draws nowhere; sync preserves `None`; a runtime `ShowedOn` set in `OnLoad` shows on
   the detail page and the edit form without a refresh.
 
-## M3: delete `IsVisible` everywhere (G-Q1/3, G-Q8, G-Q16)
+## M3: delete `IsVisible` everywhere (G-Q1/3, G-Q8, G-Q16) ✅
 - Model: `EntityAttributeDefinition.IsVisible`, the `ModelFileShape` structural field (+ remarks :40-46, :160-170),
   `ModelSynchronizer.cs:916`.
 - Seed API: `SparkNewAttributeSeed`, `SparkModelSatellites.SeedNewAttribute`/`NewAttributeSeedFor`,
@@ -48,13 +49,13 @@ Rules:
 - Loader: `"isVisible": false` → startup error naming the attribute and the replacement; `true` stripped by sync.
 - ng-spark: remove from the TS models and every reader (PRD §9.1); update the specs.
 
-## M4: attribute-rights gaps G1–G4, G6
+## M4: attribute-rights gaps G1–G4, G6 ✅
 - `ForFormAsync(verb)` + `types/{id}?for=new|edit|read` (narrowing only); the create form asks `for=new`.
 - Prune metadata by Query for the grid-column helper, or delete `visibleGridAttributes` if it is unused.
 - `SparkSelectionResolver.cs:94` builds columns from the pruned definition.
 - G6: validation errors on attributes that are not drawn become a form-level error.
 
-## M5: migrate the apps
+## M5: migrate the apps ✅
 - **Fleet:** `PoliceReportNumber` → `showedOn: None`; `CarActions` sets the runtime `ShowedOn` (+ `IsRequired`) in
   `OnLoad`/`OnNew`/`OnRefresh`. `PromoVideoUrl` likewise. `Car.CreatedBy` → `[IgnoreProperty]`.
 - **HR:** `LastName` → `showedOn: PersistentObject`; `GetPeople` sorts by `FullName`; breadcrumb `{FullName} @ {Company}`.
@@ -75,12 +76,14 @@ Rules:
 - **QnA:**
   - `CreatedBy`/`ModifiedBy` → `[Reference(typeof(SparkUser))]`, `showedOn: PersistentObject`, `isReadOnly: true`.
   - `DeletedBy` → `showedOn: None`.
-  - `security.json`: `Read/SparkUser` for `anonymous` + `authenticated`, and attribute denies on every SparkUser
-    attribute except `UserName`. Verify with a test that `/po/sparkuser/{id}` exposes nothing else.
+  - ~~`security.json`: `Read/SparkUser` for `anonymous` + `authenticated`, and attribute denies on every SparkUser
+    attribute except `UserName`. Verify with a test that `/po/sparkuser/{id}` exposes nothing else.~~
+    **Superseded (PRD §10.3):** no `SparkUser` right at all. The grant is refused at startup, and reference labels
+    need only row security; the test asserts that `/po/sparkuser/{id}` is refused.
   - The application's model decides how Contributions' `ContributorId`/`Key` are shown.
 - Run `--spark-synchronize-model` per app and commit the regenerated models (the model hash changes).
 
-## M6: schema generation (G-Q11, G-Q12, G-Q13, G-Q18a)
+## M6: schema generation (G-Q11, G-Q12, G-Q13, G-Q18a) ✅
 - A generator (a small console tool or test-driven step) runs `JsonSchemaExporter` over the deserialized types:
   `EntityTypeFile`, `SecurityConfiguration`, and the `programUnits`/`translations`/`culture`/`actions` file types.
   Settings:
@@ -100,7 +103,7 @@ Rules:
     validator in the test project)
   - the six schema types match what the loaders deserialize
 
-## M7: sync writes `$schema` (G-Q17)
+## M7: sync writes `$schema` (G-Q17) ✅
 - `--spark-synchronize-model` adds `"$schema": "https://schemas.spark.mintplayer.com/v{SparkSchemaRevision.Current}/<file>.schema.json"`
   when it is missing, and rewrites only the `v{n}` segment of an existing `schemas.spark.mintplayer.com` URL. Any other
   `$schema` (this repo's relative paths) is left alone.
@@ -111,7 +114,7 @@ Rules:
 - Confirm `$schema` does not affect the model hash or loading (System.Text.Json ignores it; `ModelFileShape` hashes
   structural fields only).
 
-## M8: revision tagging, releases, `apps/SparkSchemas` + deployment (G-Q9, G-Q19, G-Q21)
+## M8: revision tagging, releases, `apps/SparkSchemas` + deployment (G-Q9, G-Q19, G-Q21) ✅
 - **In the master publish workflow, before the NuGet pack**, with `concurrency` serialising master pushes:
   1. generate the set
   2. find the latest `schemas/v*` tag (none means `n = 0`)
@@ -130,7 +133,7 @@ Rules:
 - VPS: add the service to the server-managed `docker-compose.yml` and the reverse proxy for `schemas.spark.mintplayer.com`
   (DNS already points there). **This is an operator step; check with the owner before touching the VPS.**
 
-## M9: docs and release notes
+## M9: docs and release notes ✅
 - `guide-authorization.md`:
   - "Hide an attribute"
   - everyone = both `wellKnown` groups
@@ -149,7 +152,7 @@ Rules:
   - `showedOn: None`
   - the schemas and `$schema`
 
-## M10: sweep and browser check
+## M10: sweep and browser check ✅
 - `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`, E2E included.
 - playwright_node:
   - Fleet: stolen-car round trip
