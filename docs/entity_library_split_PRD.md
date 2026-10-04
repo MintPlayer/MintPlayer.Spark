@@ -6,7 +6,8 @@ Plan: [entity_library_split_plan.md](entity_library_split_plan.md).
 **Supersedes** `docs/prd/PRD-Entity-Library-Dependency-Split.md` and `docs/prd/plan-entity-library-dependency-split.md`
 (written at #382, before #460/#465/#466/#483). Their stale statements are listed in §8.
 
-Status 2026-10-04: **planned, not started.** Every claim below was re-verified against `master` @ `9e2f32bd`
+Status 2026-10-04: **implemented (M1–M8), local sweep pending.** Implementation findings are marked
+"Found during implementation" / "Built". Every planning claim below was re-verified against `master` @ `9e2f32bd`
 by three read-only investigations on that date.
 
 ## 1. Problem
@@ -75,6 +76,20 @@ declarations (`SparkCoreActions.cs:3-4`) move with the constants, into the Model
 `Attributes` keeps holding attributes only, as the issue asked. The owner confirmed on 2026-10-04 that
 the vocabulary goes into a new `MintPlayer.Spark.Model` package rather than into a wider Attributes package.
 
+**Found during implementation (2026-10-04): five more types had to move.** Each one was proven by a
+compile error, not predicted; the read-only investigations missed all of them.
+
+| Type(s) | Why | Evidence |
+|---|---|---|
+| `EShowedOn`; `SparkModelSatellites` + `SparkSatelliteModelType`, `SparkSatelliteQuery`, `SparkRendererSeed`, `SparkNewAttributeSeed` (namespace `…Abstractions.Model`) | Contributions.Abstractions registers its generated types as model satellites at run time (`ContributionDescriptor.cs:264-298`) | CS0234 building Contributions.Abstractions on Model |
+| `SparkQueryAliases.Derive` | `ContributionDescriptor.cs:42` derives the contributions query's alias. **Split:** `Derive` moves to Model under the same class name; `Index`, which needs `SparkQuery`, stays in Abstractions as `SparkQueryAliasIndex.Index` (2 callers: `QueryLoader.cs:37`, `SparkDevelopmentExtensions.cs:926`). The 10 `Derive` callers are unchanged | same |
+| `SparkValueObjects` (namespace `…Abstractions.Model`) | The library-side `[ValueObject]` key generator emits `SparkValueObjects.Register` into the entity library | CS0234 in `SparkValueObjectKeys.g.cs` of CodeCoverage/Fleet/HR.Library |
+| `IHasNaturalId` | The contributions generator emits an explicit `IHasNaturalId` implementation into QnA.Library | CS0538 in `QnA.Entities.QuestionTranslations.Contribution.g.cs` |
+
+Those are all the fully qualified Abstractions names the library-side generators
+(LibraryGenerators, Contributions.SourceGenerators) emit: `IHasNaturalId`, `SparkValueObjects.Register`
+and `ValueKey`, which is the attribute already in Attributes.
+
 ### 3.2 `MintPlayer.Spark.Authorization.Abstractions` (new, `libs/authorization/MintPlayer.Spark.Authorization.Abstractions`)
 
 This holds the Raven user/role **document model**, so that `[Reference(typeof(SparkUser))]` works
@@ -102,12 +117,12 @@ them would widen the package past what its name says.
 
 | Package | Change | Evidence |
 |---|---|---|
-| `Replication.Abstractions` | Drop the Abstractions `ProjectReference` (csproj :22). Its only use is `SyncAction.cs:2,99,103`: `GetCachedProperties()` and `AccessorCache.GetGetter`. Replace them with a private reflection cache in `SyncAction` | consumer investigation §2 |
+| `Replication.Abstractions` | Drop the Abstractions `ProjectReference` (csproj :22). Its only use is `SyncAction.cs:2,99,103`: `GetCachedProperties()`, `AccessorCache.GetGetter` and (missed by the investigation) `IsIgnoredForSparkModel()`, which is just "has `[IgnoreProperty]`". **Built:** references Attributes instead; `SyncAction<T>` keeps a static per-closed-type `PropertyInfo[]` (public, readable, non-indexer, no `[IgnoreProperty]`) and reads through `GetValue` | consumer investigation §2; build |
 | `Contributions.Abstractions`, `Moderation.Abstractions` | Reference `Model` instead of Abstractions (csproj :29 / :30) | §3.1 table |
 | **`MintPlayer.Spark.History.Abstractions`** (new, `libs/history/`) | Holds `IAuditable` (`libs/history/MintPlayer.Spark.History/IAuditable.cs:21`, namespace `MintPlayer.Spark.History` kept). `History` references it | QnA blocker |
-| `CodeCoverage.Library` | Swap Authorization for Authorization.Abstractions. Add an explicit `Microsoft.Extensions.Caching.Memory` PackageReference (a standalone NuGet, not the shared framework). Drop the unused `Newtonsoft.Json` reference only if nothing uses it after all (csproj :13) | consumer investigation §1 |
+| `CodeCoverage.Library` | Swap Authorization for Authorization.Abstractions. Add an explicit `Microsoft.Extensions.Caching.Memory` PackageReference (a standalone NuGet, not the shared framework). `Newtonsoft.Json` stays: it is used (`[JsonIgnore]`). **Found during implementation:** add an explicit `RavenDB.Client`. It used to arrive through Authorization, and without it `[GenerateIndex]` stops emitting the library's own copy of the indexes (gate at `GenerateIndexGenerator.cs:107-109`), which `CodeCoverage.GithubIntegration` aliases as `Indexes` (its csproj :24-34). CS0234 proved it | consumer investigation §1; build |
 | `QnA.Library` | Swap History for History.Abstractions. Add an explicit `Newtonsoft.Json` PackageReference for `Question.cs:78` | consumer investigation §1 |
-| All five libraries | Drop the Abstractions reference. Add explicit `Attributes`, plus `Model` where it is used (today they get Attributes transitively via `Abstractions.csproj:24`) | #388 S4 |
+| All five libraries | Drop the Abstractions reference. Add explicit `Attributes`, plus `Model` where it is used (today they get Attributes transitively via `Abstractions.csproj:24`). **Built:** HR.Library needs Model too, despite using no Model type in source: its generated `[ValueObject]` keys register into `SparkValueObjects` | #388 S4; build |
 | `Abstractions` | References `Model` (and keeps `Attributes`), so every existing consumer still sees every moved type | |
 | `Directory.Build.targets:2-5` | Unchanged: Abstractions and Authorization are still Web-SDK class libraries | |
 
@@ -162,6 +177,10 @@ An MSBuild target that runs for projects marked `<SparkEntityLibrary>true</Spark
   - Green on Attributes and Messaging.Abstractions.
 - After the move it must still be proven falsifiable: temporarily re-add the Abstractions reference
   to one library and watch the build fail. Neither a clean grep nor a green build proves anything on its own.
+- **Proven after the move (2026-10-04, `aa0f777e`):** with the Abstractions reference re-added to
+  HR.Library, `dotnet build` exits 1 with `error SPARKLIB001: HR.Library is an entity library
+  (SparkEntityLibrary=true) but depends on the ASP.NET Core shared framework …`. With the csproj
+  restored it exits 0. The whole solution builds with all five libraries marked.
 
 ### 3.6 Packages can ship migrations (needed for R4)
 
@@ -233,7 +252,11 @@ assemblies"):
   - a lockstep bump of every package to `11.0.0-preview.95`;
   - the existing PR gate `pull-request.yml:189-237`, which requires a `<Version>` bump in every
     changed `libs/` project;
-  - a new `dotnet pack` step on PRs, so package shape is exercised before master.
+  - a new `dotnet pack` step on PRs, so package shape is exercised before master. **Open, owner
+    decision (CI cost):** the PR workflow builds only *affected* projects in *Debug* through Nx
+    (`pull-request.yml:102-103`), so a solution-wide `dotnet pack --no-build` would fail there. A
+    pack step therefore means a full Release build on every PR run. Not added. The bump gate already
+    covers the `--skip-duplicate` hazard, and the lockstep bump (all 33 + 3 new at `.95`) is in this PR.
 - **R3. Generators.** They are safe: no code compares an assembly name to `"MintPlayer.Spark.Abstractions"`.
   `TranslatedString` is matched by name plus namespace (`SparkModelSymbols.cs:26,28,171-173`), and
   generated code emits `using MintPlayer.Spark.Abstractions;` plus unqualified names

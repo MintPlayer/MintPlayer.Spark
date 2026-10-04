@@ -2,7 +2,7 @@
 
 PRD: [entity_library_split_PRD.md](entity_library_split_PRD.md) · PR: [#484](https://github.com/MintPlayer/MintPlayer.Spark/pull/484)
 (branch `fix/bs-select-full-width`).
-Status 2026-10-04: **M0 done** (ng-bootstrap 22.21.1 bump, `b899cbea` on the branch); spikes S1–S3 resolved; M1–M8 (no M6) not started.
+Status 2026-10-04: **M0–M8 implemented** on `fix/bs-select-full-width` (M6 dropped); the local sweep is the last step. Nothing pushed.
 
 Rules for this work:
 - **Commit per milestone; run tests only at the end (M8).** Intermediate milestones are checked by
@@ -27,7 +27,7 @@ Rules for this work:
   and check `@(TransitiveFrameworkReference)`. It is red on today's HR.Library (exit code 1) and green
   on Attributes.
 
-### M1: `MintPlayer.Spark.Model`
+### M1: `MintPlayer.Spark.Model` ✅ `16de378b`
 1. Create `libs/model/MintPlayer.Spark.Model/MintPlayer.Spark.Model.csproj`: `Microsoft.NET.Sdk`,
    `net11.0`, `Version 11.0.0-preview.95`, package metadata copied from Attributes.
 2. `git mv` the following, keeping their namespaces:
@@ -44,7 +44,7 @@ Rules for this work:
 4. Abstractions gains a `ProjectReference` to Model. Add Model to `MintPlayer.Spark.slnx` next to Attributes.
 5. Check: `dotnet build MintPlayer.Spark.slnx`. Grep that no moved file is still in Abstractions.
 
-### M2: `MintPlayer.Spark.Authorization.Abstractions`
+### M2: `MintPlayer.Spark.Authorization.Abstractions` ✅ `7388b20d`
 1. Create `libs/authorization/MintPlayer.Spark.Authorization.Abstractions`: `Microsoft.NET.Sdk`,
    `net11.0`, `.95`, no references.
 2. `git mv` `Identity/SparkUser.cs`, `SparkUserClaim.cs`, `SparkUserLogin.cs`, `SparkUserPasskey.cs`,
@@ -56,7 +56,7 @@ Rules for this work:
    types, the new assembly needs the same `InternalsVisibleTo` entries as `Authorization.csproj`.
 5. Check: solution build.
 
-### M2a: packages can ship migrations (PRD §3.6)
+### M2a: packages can ship migrations (PRD §3.6) ✅ `948d4aaa`
 1. `MigrationRegistrationGenerator`: add a `CompilationProvider` branch that walks
    `SourceModule.ReferencedAssemblySymbols`. It only enters assemblies that reference
    `MintPlayer.Spark.Migrations`, collects public non-abstract `ISparkMigration` implementations into
@@ -69,7 +69,7 @@ Rules for this work:
 5. Add `spark.AddMigrations()` to QnA's `Program.cs`.
 6. Write the generator tests and the runtime marker test (run in M8).
 
-### M2b: migrate stored `SparkUser`/`SparkRole` documents (PRD R4, owner decision)
+### M2b: migrate stored `SparkUser`/`SparkRole` documents (PRD R4, owner decision) ✅ `948d4aaa`
 1. In Authorization: an `ISparkMigration` that patches `@metadata.Raven-Clr-Type` on `SparkUsers` and
    `SparkRoles`. It only touches values that name the old `MintPlayer.Spark.Authorization` assembly
    and the type `MintPlayer.Spark.Authorization.Identity.SparkUser`/`SparkRole`, and leaves app
@@ -80,7 +80,7 @@ Rules for this work:
 3. Write the red/green test (run in M8): before the migration the document loads untyped as a
    `JObject`; afterwards it loads as `SparkUser`. A second run changes nothing.
 
-### M3: the `SparkAware` trap (PRD R1) and an audit of assembly-name scans
+### M3: the `SparkAware` trap (PRD R1) and an audit of assembly-name scans ✅ `aa0f777e` (R6 in `948d4aaa`)
 1. `SparkAssemblies.SparkAware()` (`SparkAssemblies.cs:17-37`) treats a reference to any of
    `MintPlayer.Spark.Abstractions`, `.Model` or `.Attributes` as "Spark-aware". Name the three
    assemblies from types (`typeof(TranslatedString).Assembly`, …), never as string literals.
@@ -94,7 +94,7 @@ Rules for this work:
    - The R6 generator test: `SparkUser` visible without Authorization gives no `AddAuthentication`
      call; with Authorization it does.
 
-### M4: feature packages
+### M4: feature packages ✅ `aa0f777e` (five more types moved, PRD §3.1)
 1. `Replication.Abstractions`: drop the Abstractions reference (csproj :22). In `SyncAction.cs:99,103`,
    replace `GetCachedProperties()`/`AccessorCache.GetGetter` with a private static
    `ConcurrentDictionary<Type, PropertyInfo[]>` plus `PropertyInfo.GetValue`. This is a sync path,
@@ -105,7 +105,7 @@ Rules for this work:
    `MintPlayer.Spark.History`. History references it. Add it to the slnx.
 4. Check: solution build.
 
-### M5: the five entity libraries + the build guard
+### M5: the five entity libraries + the build guard ✅ `aa0f777e` (guard proven red/green)
 1. Each `*.Library.csproj`: remove the Abstractions reference, add explicit `Attributes` (+ `Model`
    where used), and set `<SparkEntityLibrary>true</SparkEntityLibrary>`.
    - **CodeCoverage:** Authorization → Authorization.Abstractions (remove the #388 comment at :21-28);
@@ -124,9 +124,9 @@ Rules for this work:
 
 ### ~~M6: netstandard2.0~~ (dropped, PRD §3.4)
 
-### M7: versions, CI, docs
-1. Bump **every** `libs/**` package from `11.0.0-preview.94` to `.95` in lockstep, like #382.
-   SocketExtensions has its own line (`11.0.1-preview.86` → `.87`). The new packages start at `.95`.
+### M7: versions, CI, docs ✅ `15d13bb1` (PR pack step: open owner decision, PRD R2)
+1. Bump **every** `MintPlayer.Spark*` package from `11.0.0-preview.94` to `.95` in lockstep (33 csproj).
+   `MintPlayer.Dotnet.SocketExtensions` stays unchanged, as in preview.94. The new packages start at `.95`.
 2. Add a `dotnet pack --no-build -c Release -o nupkgs` step to `pull-request.yml` after its release
    build, so package shape is exercised on every PR. Keep the cache-replay ordering note from
    `dotnet-build-master.yml:75-87` in mind.
@@ -136,7 +136,7 @@ Rules for this work:
    History.Abstractions, each stating that the namespace is deliberately not the package name, and why.
 5. ✅ The old `docs/prd/` PRD and plan carry a superseded banner (done with the PRD).
 
-### M8: verification (the only test run)
+### M8: verification (the only test run) — tests `2b262aac`; sweep running
 1. Extend `ReferencedAssemblyEntityTests` with a library using `TransientLookupReference` and
    `TranslatedString`, compiled against Attributes and Model only (no Abstractions in its references).
 2. Run the M2b migration test (written in M2b).
