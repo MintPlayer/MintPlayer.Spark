@@ -52,9 +52,9 @@ public static class ConfigFileShape
     public static SortedDictionary<string, string> ComputeFileHashes(
         string appDataPath, IReadOnlyList<SparkActionsLayer>? libraries = null)
     {
+        // No early return for a missing App_Data: the libraries' actions compose whether or not the
+        // application has the directory yet, so the hash must not depend on it existing (#467, D27).
         var results = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        if (!Directory.Exists(appDataPath))
-            return results;
 
         foreach (var fileName in FileNames)
         {

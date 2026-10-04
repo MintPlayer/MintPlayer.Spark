@@ -130,7 +130,7 @@ public class SoftDeleteTests : SparkTestDriver
         var host = await StartAsync();
         var note = await SeedNoteAsync("plain");
 
-        var (status, _) = await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id));
+        var (status, _) = await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id, etag: await EtagAsync(note.Id!)));
 
         status.Should().Be(HttpStatusCode.NoContent);
         var stored = await LoadAsync<SdNote>(note.Id!);
@@ -197,7 +197,7 @@ public class SoftDeleteTests : SparkTestDriver
         var host = await StartAsync();
         var note = await SeedNoteAsync("live");
 
-        var (status, _) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, ("IsDeleted", true), ("Title", "renamed")));
+        var (status, _) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, await EtagAsync(note.Id!), ("IsDeleted", true), ("Title", "renamed")));
 
         status.Should().Be(HttpStatusCode.OK);
         var stored = await LoadAsync<SdNote>(note.Id!);
@@ -280,12 +280,12 @@ public class SoftDeleteTests : SparkTestDriver
         var host = await StartAsync();
         await EnableRevisionsAsync();
         var note = await SeedNoteAsync("gone");
-        await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id));
+        await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id, etag: await EtagAsync(note.Id!)));
         await host.DrainAsync();
         (await RevisionCountAsync(note.Id!)).Should().BeGreaterThan(0);
         host.Recorder.Events.Clear();
 
-        var (status, _) = await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: note.Id));
+        var (status, _) = await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: note.Id, etag: await EtagAsync(note.Id!)));
 
         status.Should().Be(HttpStatusCode.NoContent);
         (await LoadAsync<SdNote>(note.Id!)).Should().BeNull();
@@ -306,10 +306,10 @@ public class SoftDeleteTests : SparkTestDriver
         var denied = await StartAsync(SparkTestSecurity.Permissive.Denying("Purge/SdNote"));
         var liveRevisions = await RevisionCountAsync(live.Id!);
 
-        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: live.Id))).Status.Should().Be(HttpStatusCode.NotFound);
-        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: person.Id))).Status.Should().Be(HttpStatusCode.NotFound);
-        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: "SdNotes/missing"))).Status.Should().Be(HttpStatusCode.NotFound);
-        (await denied.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: gone.Id))).Status.Should().Be(HttpStatusCode.NotFound);
+        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: live.Id, etag: await EtagAsync(live.Id!)))).Status.Should().Be(HttpStatusCode.NotFound);
+        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: person.Id, etag: await EtagAsync(person.Id!)))).Status.Should().Be(HttpStatusCode.NotFound);
+        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: "SdNotes/missing", etag: StoredEtag.ForMissingRow))).Status.Should().Be(HttpStatusCode.NotFound);
+        (await denied.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: gone.Id, etag: await EtagAsync(gone.Id!)))).Status.Should().Be(HttpStatusCode.NotFound);
 
         (await LoadAsync<SdNote>(live.Id!)).Should().NotBeNull();
         (await LoadAsync<SdPerson>(person.Id!)).Should().NotBeNull("a foreign-collection id is not found, not purged");
@@ -324,7 +324,7 @@ public class SoftDeleteTests : SparkTestDriver
         var host = await StartAsync();
         var kept = await SeedNoteAsync("keep", deleted: true);
 
-        var (status, body) = await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: kept.Id));
+        var (status, body) = await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: kept.Id, etag: await EtagAsync(kept.Id!)));
 
         status.Should().Be(HttpStatusCode.Forbidden);
         body.GetProperty("result").GetProperty("action").GetString().Should().Be("Delete", "the refusal names the withheld action that refused it");
@@ -342,9 +342,9 @@ public class SoftDeleteTests : SparkTestDriver
         var host = await StartAsync(SparkTestSecurity.Permissive.Denying("ViewDeleted/SdPerson"));
         var viewer = await StartAsync();
 
-        var (refused, body) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, ("AuthorId", deletedAuthor.Id!)));
-        var (allowedLive, _) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, ("AuthorId", liveAuthor.Id!)));
-        var (allowedHolder, _) = await viewer.SendAsync("/spark/po/update", UpdateBody(note.Id!, ("AuthorId", deletedAuthor.Id!)));
+        var (refused, body) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, await EtagAsync(note.Id!), ("AuthorId", deletedAuthor.Id!)));
+        var (allowedLive, _) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, await EtagAsync(note.Id!), ("AuthorId", liveAuthor.Id!)));
+        var (allowedHolder, _) = await viewer.SendAsync("/spark/po/update", UpdateBody(note.Id!, await EtagAsync(note.Id!), ("AuthorId", deletedAuthor.Id!)));
 
         refused.Should().Be(HttpStatusCode.BadRequest);
         body.GetRawText().Should().Contain("refers to a deleted SdPerson");
@@ -364,7 +364,7 @@ public class SoftDeleteTests : SparkTestDriver
         }
         var host = await StartAsync(SparkTestSecurity.Permissive.Denying("ViewDeleted/SdPerson"));
 
-        var (status, _) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, ("Title", "renamed")));
+        var (status, _) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, await EtagAsync(note.Id!), ("Title", "renamed")));
 
         status.Should().Be(HttpStatusCode.OK);
     }
@@ -470,7 +470,7 @@ public class SoftDeleteTests : SparkTestDriver
         var host = await StartAsync(services: s => s.Replace(ServiceDescriptor.Singleton<ISoftDeleteRevisions>(new SdRefusingRevisions())));
         await EnableRevisionsAsync();
         var note = await SeedNoteAsync("gone");
-        await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id));
+        await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id, etag: await EtagAsync(note.Id!)));
         var revisions = await RevisionCountAsync(note.Id!);
 
         Exception? refused = null;
@@ -496,7 +496,7 @@ public class SoftDeleteTests : SparkTestDriver
         var theirs = await SeedNoteAsync("not-mine", deleted: true);
 
         (await host.SendAsync("/spark/po/restore", Wire.Typed(NoteTypeId, id: theirs.Id))).Status.Should().Be(HttpStatusCode.NotFound);
-        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: theirs.Id))).Status.Should().Be(HttpStatusCode.NotFound);
+        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: theirs.Id, etag: await EtagAsync(theirs.Id!)))).Status.Should().Be(HttpStatusCode.NotFound);
 
         var stored = await LoadAsync<SdNote>(theirs.Id!);
         stored.Should().NotBeNull();
@@ -526,14 +526,18 @@ public class SoftDeleteTests : SparkTestDriver
         object ActionOn(string id, bool smuggleDeleted) => smuggleDeleted
             ? Wire.Action(NoteTypeId, SdTouchAction.Name, new { selectedItemIds = new[] { id }, queryId = NotesQueryId.ToString(), deleted = "only" })
             : Wire.Action(NoteTypeId, SdTouchAction.Name, new { selectedItemIds = new[] { id }, queryId = NotesQueryId.ToString() });
-        object DeleteMany(string id, bool smuggleDeleted) => smuggleDeleted
-            ? Wire.Typed(NoteTypeId, new { ids = new[] { id }, queryId = NotesQueryId.ToString(), deleted = "only" })
-            : Wire.Typed(NoteTypeId, new { ids = new[] { id }, queryId = NotesQueryId.ToString() });
+        async Task<object> DeleteMany(string id, bool smuggleDeleted)
+        {
+            var items = new[] { new { id, etag = await EtagAsync(id) } };
+            return smuggleDeleted
+                ? Wire.Typed(NoteTypeId, new { items, queryId = NotesQueryId.ToString(), deleted = "only" })
+                : Wire.Typed(NoteTypeId, new { items, queryId = NotesQueryId.ToString() });
+        }
 
         var (actionStatus, _) = await host.SendAsync("/spark/actions/execute", ActionOn(gone.Id!, smuggleDeleted: false));
         var (smuggledActionStatus, _) = await host.SendAsync("/spark/actions/execute", ActionOn(gone.Id!, smuggleDeleted: true));
-        var (deleteStatus, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany(gone.Id!, smuggleDeleted: false));
-        var (smuggledDeleteStatus, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany(gone.Id!, smuggleDeleted: true));
+        var (deleteStatus, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany(gone.Id!, smuggleDeleted: false));
+        var (smuggledDeleteStatus, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany(gone.Id!, smuggleDeleted: true));
 
         actionStatus.Should().Be(HttpStatusCode.NotFound);
         smuggledActionStatus.Should().Be(HttpStatusCode.NotFound);
@@ -547,7 +551,7 @@ public class SoftDeleteTests : SparkTestDriver
 
         // Control: the same requests on a live row go through.
         var (liveAction, _) = await host.SendAsync("/spark/actions/execute", ActionOn(live.Id!, smuggleDeleted: false));
-        var (liveDelete, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany(live.Id!, smuggleDeleted: false));
+        var (liveDelete, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany(live.Id!, smuggleDeleted: false));
 
         liveAction.Should().Be(HttpStatusCode.OK);
         liveDelete.Should().Be(HttpStatusCode.NoContent);
@@ -658,9 +662,10 @@ public class SoftDeleteTests : SparkTestDriver
             parentType = "SdPerson",
             parentDeleted = "include",
         });
+        var liveEtag = await EtagAsync(live.Id!);
         object DeleteManyUnder(string parentId) => Wire.Typed(NoteTypeId, new
         {
-            ids = new[] { live.Id },
+            items = new[] { new { id = live.Id, etag = liveEtag } },
             queryId = NotesByAuthorQueryId.ToString(),
             parentId,
             parentType = "SdPerson",
@@ -774,16 +779,20 @@ public class SoftDeleteTests : SparkTestDriver
         return await session.Advanced.Revisions.GetCountForAsync(id);
     }
 
-    private static object UpdateBody(string id, params (string Name, object Value)[] attributes) => Wire.Typed(NoteTypeId, new
+    private static object UpdateBody(string id, string etag, params (string Name, object Value)[] attributes) => Wire.Typed(NoteTypeId, new
     {
         persistentObject = new
         {
             id,
+            etag,
             name = "SdNote",
             objectTypeId = NoteTypeId.ToString(),
             attributes = attributes.Select(a => new { name = a.Name, value = a.Value, isValueChanged = true }).ToArray(),
         },
     }, id);
+
+    /// <summary>The etag of the stored version, which every update, delete and purge must name (#467, D14).</summary>
+    private Task<string> EtagAsync(string id) => StoredEtag.OfAsync(Store, id);
 
     private static EntityTypeFile NoteModel() => new()
     {

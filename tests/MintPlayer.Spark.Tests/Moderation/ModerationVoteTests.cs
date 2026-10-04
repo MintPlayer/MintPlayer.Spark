@@ -411,7 +411,7 @@ public class ModerationVoteTests : SparkTestDriver
         var id = body.GetProperty("result").GetProperty("id").GetString()!;
         (await host.LoadAsync<MoPost>(id))!.AuthorId.Should().Be(Alice);
 
-        (await host.SendAsync("/spark/po/update", MoHost.UpdateBody(id, ("Title", "edited"), ("AuthorId", Bob)), Alice)).Status.Should().Be(HttpStatusCode.OK);
+        (await host.SendAsync("/spark/po/update", MoHost.UpdateBody(id, await host.EtagAsync(id), ("Title", "edited"), ("AuthorId", Bob)), Alice)).Status.Should().Be(HttpStatusCode.OK);
         var stored = await host.LoadAsync<MoPost>(id);
         stored!.Title.Should().Be("edited");
         stored.AuthorId.Should().Be(Alice, "the author is the framework's");

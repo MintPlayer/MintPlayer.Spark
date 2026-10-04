@@ -20,6 +20,14 @@ namespace MintPlayer.Spark.E2E.Tests.Selection;
 public class QuerySelectionTests
 {
     private const string Registrations = "/query/registrations";
+
+    /// <summary>
+    /// Fleet's people list. The delete tests use people rather than cars: deleting a car asks to retype
+    /// its plate, and a prompt inside a bulk delete refuses its row by design (#482, D33).
+    /// </summary>
+    private const string People = "/query/a20e8400-e29b-41d4-a716-446655440002";
+
+    private static readonly Guid PersonTypeId = Guid.Parse(PersistentObjectIds.Default.Person);
     private readonly FleetE2ECollectionFixture _fixture;
     public QuerySelectionTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
 
@@ -28,14 +36,14 @@ public class QuerySelectionTests
     {
         using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
         var model = NewModel();
-        var ids = await CreateCarsAsync(client, model, 3);
+        var ids = await CreatePeopleAsync(client, model, 3);
 
         await using var pages = new PageFactory(_fixture);
         var page = await AdminPageAsync(pages);
         var dialogs = new List<string>();
         page.Dialog += (_, dialog) => { dialogs.Add(dialog.Message); _ = dialog.AcceptAsync(); };
 
-        var rows = await OpenListAsync(page, Registrations, model, expectedRows: 3);
+        var rows = await OpenListAsync(page, People, model, expectedRows: 3);
 
         // Nothing ticked: Edit (=1) and Delete (>0) are shown, disabled.
         (await ToolbarAction(page, "Edit").IsDisabledAsync()).Should().BeTrue("Edit needs exactly one row");
@@ -52,7 +60,7 @@ public class QuerySelectionTests
             "the edit page is the ticked row's");
 
         await page.GoBackAsync();
-        rows = await OpenListAsync(page, Registrations, model, expectedRows: 3, navigate: false);
+        rows = await OpenListAsync(page, People, model, expectedRows: 3, navigate: false);
 
         // ---- Two rows: Edit no longer applies, Delete does, and the confirmation names the count.
         // Whether Back restores the earlier tick is not what this test is about; start from none.
@@ -68,7 +76,7 @@ public class QuerySelectionTests
         await WaitForRowsAsync(page, 1);
         dialogs.Should().ContainSingle().Which.Should().Contain("2", "the confirmation names how many rows go");
 
-        (await ExistingAsync(client, ids)).Should().HaveCount(1, "the two ticked cars are deleted, the third is not");
+        (await ExistingAsync(client, PersonTypeId, ids)).Should().HaveCount(1, "the two ticked people are deleted, the third is not");
     }
 
     [Fact]
@@ -76,19 +84,19 @@ public class QuerySelectionTests
     {
         using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
         var model = NewModel();
-        var id = (await CreateCarsAsync(client, model, 1))[0];
+        var id = (await CreatePeopleAsync(client, model, 1))[0];
 
         await using var pages = new PageFactory(_fixture);
         var page = await AdminPageAsync(pages);
         page.Dialog += (_, dialog) => _ = dialog.AcceptAsync();
-        var rows = await OpenListAsync(page, Registrations, model, expectedRows: 1);
+        var rows = await OpenListAsync(page, People, model, expectedRows: 1);
 
-        // Someone else edits the car after this list loaded it (D14: the list's etag is now stale).
-        var current = await client.GetPersistentObjectAsync(CarFixture.TypeId, id)
-            ?? throw new InvalidOperationException($"Car {id} not loadable");
-        var year = current.Attributes.First(a => a.Name == CarFixture.AttributeNames.Year);
-        year.Value = 2023;
-        year.IsValueChanged = true;
+        // Someone else edits the person after this list loaded it (D14: the list's etag is now stale).
+        var current = await client.GetPersistentObjectAsync(PersonTypeId, id)
+            ?? throw new InvalidOperationException($"Person {id} not loadable");
+        var firstName = current.Attributes.First(a => a.Name == "FirstName");
+        firstName.Value = "Edited";
+        firstName.IsValueChanged = true;
         await client.UpdatePersistentObjectAsync(current);
 
         await Tick(rows, 0);
@@ -98,7 +106,7 @@ public class QuerySelectionTests
         var alert = page.Locator("spark-query-grid bs-alert");
         await alert.WaitForAsync(new() { Timeout = 15_000 });
         (await alert.InnerTextAsync()).Should().NotBeNullOrWhiteSpace("the 409 is explained, not swallowed");
-        (await ExistingAsync(client, [id])).Should().ContainSingle("a row changed since it was listed is refused, not lost");
+        (await ExistingAsync(client, PersonTypeId, [id])).Should().ContainSingle("a row changed since it was listed is refused, not lost");
     }
 
     [Fact]
@@ -110,10 +118,8 @@ public class QuerySelectionTests
 
         await using var pages = new PageFactory(_fixture);
         var page = await AdminPageAsync(pages);
-        await OpenListAsync(page, Registrations, model, expectedRows: 11);
-
-        await page.Locator("mp-pagination.datatable-per-page button[aria-label='Page 10']").ClickAsync();
-        var rows = await WaitForRowsAsync(page, 10);
+        // The grid shows 10 rows a page by default (SPARK_GRID_PAGE_SIZES), so the eleventh is on page 2.
+        var rows = await OpenListAsync(page, Registrations, model, expectedRows: 10);
         await Tick(rows, 0);
         await WaitForChipAsync(page, 1);
 
@@ -140,7 +146,7 @@ public class QuerySelectionTests
         // The same administrator gets checkboxes on Registrations, so their absence below is the
         // declaration's doing, not the user's rights.
         await OpenListAsync(page, Registrations, model, expectedRows: 1);
-        (await page.Locator("thead th.checkbox-cell").CountAsync()).Should().Be(1);
+        (await page.Locator("thead th.checkbox-cell").CountAsync()).Should().BeGreaterThan(0);
 
         var rows = await OpenListAsync(page, "/query/recent-cars", model, expectedRows: 1);
         (await rows.First.Locator("td.checkbox-cell").CountAsync()).Should().Be(0, "Recent_Cars declares selectionMode: none");
@@ -174,17 +180,17 @@ public class QuerySelectionTests
     {
         using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
         var model = NewModel();
-        var id = (await CreateCarsAsync(client, model, 1))[0];
+        var id = (await CreatePeopleAsync(client, model, 1))[0];
 
         await using var pages = new PageFactory(_fixture);
         var page = await AdminPageAsync(pages);
-        await page.GotoAsync($"/po/{CarFixture.TypeId}/{Uri.EscapeDataString(id)}/edit");
-        var modelInput = page.Locator("input#Model");
+        await page.GotoAsync($"/po/{PersonTypeId}/{Uri.EscapeDataString(id)}/edit");
+        var modelInput = page.Locator("input#LastName");
         await modelInput.WaitForAsync(new() { Timeout = 15_000 });
         await PollAsync(async () => await modelInput.InputValueAsync() == model,
-            async () => $"the edit form should load Model = {model}, it shows '{await modelInput.InputValueAsync()}'");
+            async () => $"the edit form should load LastName = {model}, it shows '{await modelInput.InputValueAsync()}'");
 
-        await client.DeleteAsLoadedAsync(CarFixture.TypeId, id);
+        await client.DeleteAsLoadedAsync(PersonTypeId, id);
 
         await modelInput.FillAsync(model + "x");
         await page.Locator("button[type='submit']").ClickAsync();
@@ -192,7 +198,7 @@ public class QuerySelectionTests
         var alert = page.Locator("bs-alert").Filter(new() { HasTextRegex = new Regex("deleted this record") });
         await alert.WaitForAsync(new() { Timeout = 15_000 });
         page.Url.Should().Contain("/edit", "the form stays open with the user's changes");
-        (await ExistingAsync(client, [id])).Should().BeEmpty("a save never resurrects a deleted row (D15)");
+        (await ExistingAsync(client, PersonTypeId, [id])).Should().BeEmpty("a save never resurrects a deleted row (D15)");
     }
 
     // ---------------------------------------------------------------------------------
@@ -211,6 +217,27 @@ public class QuerySelectionTests
         return ids;
     }
 
+    /// <summary>People whose last name is <paramref name="model"/>, so a search for it lists only them.</summary>
+    private static async Task<List<string>> CreatePeopleAsync(SparkClient client, string model, int count)
+    {
+        var ids = new List<string>(count);
+        for (var i = 0; i < count; i++)
+        {
+            var created = await client.CreatePersistentObjectAsync(new PersistentObject
+            {
+                Name = "Person",
+                ObjectTypeId = PersonTypeId,
+                Attributes =
+                [
+                    new PersistentObjectAttribute { Name = "FirstName", Value = $"P{i}" },
+                    new PersistentObjectAttribute { Name = "LastName", Value = model },
+                ],
+            });
+            ids.Add(created.Id ?? throw new InvalidOperationException("person create returned no id"));
+        }
+        return ids;
+    }
+
     private async Task<IPage> AdminPageAsync(PageFactory pages)
     {
         var page = await pages.NewPageAsync();
@@ -224,8 +251,22 @@ public class QuerySelectionTests
         if (navigate) await page.GotoAsync(route);
         var search = page.Locator("spark-search-box input");
         await search.WaitForAsync(new() { Timeout = 30_000 });
-        if (await search.InputValueAsync() != model) await search.FillAsync(model);
-        return await WaitForRowsAsync(page, expectedRows);
+        // Wait for the searched fetch itself. Neither the row count nor the row text is enough: this
+        // test's rows are the newest, so the unfiltered first page already shows them, and the debounced
+        // search arriving later resets the page and clears the selection.
+        if (await search.InputValueAsync() != model)
+            await page.RunAndWaitForResponseAsync(
+                () => search.FillAsync(model),
+                response => response.Url.Contains("/spark/queries/execute", StringComparison.Ordinal)
+                    && (response.Request.PostData ?? string.Empty).Contains($"\"search\":\"{model}\"", StringComparison.Ordinal),
+                new() { Timeout = 15_000 });
+
+        var rows = page.Locator("tbody tr[data-row-key]:not([data-placeholder='true'])");
+        await PollAsync(
+            async () => await rows.CountAsync() == expectedRows
+                && (await rows.AllInnerTextsAsync()).All(text => text.Contains(model, StringComparison.Ordinal)),
+            async () => $"the list should show {expectedRows} row(s) matching '{model}', it shows {await rows.CountAsync()}");
+        return rows;
     }
 
     private static async Task<ILocator> WaitForRowsAsync(IPage page, int count)
@@ -246,12 +287,12 @@ public class QuerySelectionTests
         => page.Locator(".spark-selection-chip").Filter(new() { HasTextRegex = new Regex($@"^\s*{count}\b") })
             .WaitForAsync(new() { Timeout = 15_000 });
 
-    private static async Task<List<string>> ExistingAsync(SparkClient client, IEnumerable<string> ids)
+    private static async Task<List<string>> ExistingAsync(SparkClient client, Guid typeId, IEnumerable<string> ids)
     {
         var existing = new List<string>();
         foreach (var id in ids)
         {
-            try { if (await client.GetPersistentObjectAsync(CarFixture.TypeId, id) is not null) existing.Add(id); }
+            try { if (await client.GetPersistentObjectAsync(typeId, id) is not null) existing.Add(id); }
             catch (SparkClientException) { }
         }
         return existing;

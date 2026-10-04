@@ -9,6 +9,7 @@ using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.SoftDelete;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
@@ -68,8 +69,9 @@ public class SubQueryActionsTests : SparkTestDriver
         return await session.LoadAsync<T>(id) is not null;
     }
 
-    private static object DeleteMany(params string[] ids)
-        => Wire.Typed(ChildTypeId, new { ids, queryId = ChildrenQueryId.ToString(), parentId = "BqParents/1", parentType = "BqParent" });
+    // D16 (#467): every row names the version it deletes.
+    private async Task<object> DeleteMany(params string[] ids)
+        => Wire.Typed(ChildTypeId, new { items = await StoredEtag.ItemsAsync(Store, ids), queryId = ChildrenQueryId.ToString(), parentId = "BqParents/1", parentType = "BqParent" });
 
     // ---- D18: default actions in the catalogue ---------------------------------------------------
 
@@ -133,7 +135,7 @@ public class SubQueryActionsTests : SparkTestDriver
         var host = await StartAsync();
         await SeedChildrenAsync("a", "b", "c");
 
-        var (status, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany("BqChildren/a", "BqChildren/b"));
+        var (status, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany("BqChildren/a", "BqChildren/b"));
 
         status.Should().Be(HttpStatusCode.NoContent);
         (await ExistsAsync<BqChild>("BqChildren/a")).Should().BeFalse();
@@ -145,7 +147,7 @@ public class SubQueryActionsTests : SparkTestDriver
     public async Task The_Delete_rule_refuses_an_empty_selection()
     {
         var host = await StartAsync();
-        var (status, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany());
+        var (status, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany());
         status.Should().Be(HttpStatusCode.BadRequest, "Delete is '>0'");
     }
 
@@ -160,11 +162,11 @@ public class SubQueryActionsTests : SparkTestDriver
         // The catalogue is composed at startup; the watcher would pick the file up a moment later.
         host.Factory.GetService<IActionsCatalogueLoader>().InvalidateCache();
 
-        var (two, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany("BqChildren/a", "BqChildren/b"));
+        var (two, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany("BqChildren/a", "BqChildren/b"));
         two.Should().Be(HttpStatusCode.BadRequest, "the override narrowed Delete to exactly one row");
         (await ExistsAsync<BqChild>("BqChildren/a")).Should().BeTrue();
 
-        var (one, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany("BqChildren/a"));
+        var (one, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany("BqChildren/a"));
         one.Should().Be(HttpStatusCode.NoContent);
     }
 
@@ -174,7 +176,7 @@ public class SubQueryActionsTests : SparkTestDriver
         var host = await StartAsync();
         var ids = Enumerable.Range(0, SparkDefaultActions.MaxSelectedItems + 1).Select(i => $"BqChildren/{i}").ToArray();
 
-        var (status, body) = await host.SendAsync("/spark/po/delete-many", DeleteMany(ids));
+        var (status, body) = await host.SendAsync("/spark/po/delete-many", await DeleteMany(ids));
 
         status.Should().Be(HttpStatusCode.BadRequest);
         body.ToString().Should().Contain("200");
@@ -186,7 +188,7 @@ public class SubQueryActionsTests : SparkTestDriver
         var host = await StartAsync();
         await SeedChildrenAsync("a");
 
-        var (status, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany("BqChildren/a", "BqChildren/missing"));
+        var (status, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany("BqChildren/a", "BqChildren/missing"));
 
         status.Should().Be(HttpStatusCode.NotFound, "never a silently shorter delete");
         (await ExistsAsync<BqChild>("BqChildren/a")).Should().BeTrue();
@@ -201,7 +203,7 @@ public class SubQueryActionsTests : SparkTestDriver
         // "a" is queued for deletion before "boom"'s OnBeforeDeleteAsync refuses: one SaveChanges
         // means "a" was never written.
         var (status, _) = await host.SendAsync("/spark/po/delete-many",
-            DeleteMany("BqChildren/a", "BqChildren/boom", "BqChildren/c"));
+            await DeleteMany("BqChildren/a", "BqChildren/boom", "BqChildren/c"));
 
         status.Should().Be(HttpStatusCode.BadRequest);
         (await ExistsAsync<BqChild>("BqChildren/a")).Should().BeTrue("all or nothing");
@@ -215,7 +217,7 @@ public class SubQueryActionsTests : SparkTestDriver
         var host = await StartAsync();
         await SeedChildrenAsync("a", "frozen");
 
-        var (status, body) = await host.SendAsync("/spark/po/delete-many", DeleteMany("BqChildren/a", "BqChildren/frozen"));
+        var (status, body) = await host.SendAsync("/spark/po/delete-many", await DeleteMany("BqChildren/a", "BqChildren/frozen"));
 
         status.Should().Be(HttpStatusCode.Forbidden);
         body.ToString().Should().Contain("Delete");
@@ -229,7 +231,7 @@ public class SubQueryActionsTests : SparkTestDriver
         var host = await StartAsync();
         await SeedChildrenAsync("a");
 
-        await host.SendAsync("/spark/po/delete-many", DeleteMany("BqChildren/a"));
+        await host.SendAsync("/spark/po/delete-many", await DeleteMany("BqChildren/a"));
 
         host.Recorder.QueryTargets.Should().Equal("bq-children|BqParents/1|BqParent");
     }
@@ -240,7 +242,7 @@ public class SubQueryActionsTests : SparkTestDriver
         var host = await StartAsync(SparkTestSecurity.Permissive.Denying("Delete/BqChild"));
         await SeedChildrenAsync("a");
 
-        var (status, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany("BqChildren/a"));
+        var (status, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany("BqChildren/a"));
 
         status.Should().NotBe(HttpStatusCode.NoContent);
         (await ExistsAsync<BqChild>("BqChildren/a")).Should().BeTrue();
@@ -256,7 +258,7 @@ public class SubQueryActionsTests : SparkTestDriver
             await session.StoreAsync(new BqSoft { Id = "BqSofts/2", Title = "two" });
         });
 
-        var (status, _) = await host.SendAsync("/spark/po/delete-many", Wire.Typed(SoftTypeId, new { ids = new[] { "BqSofts/1", "BqSofts/2" } }));
+        var (status, _) = await host.SendAsync("/spark/po/delete-many", Wire.Typed(SoftTypeId, new { items = await StoredEtag.ItemsAsync(Store, ["BqSofts/1", "BqSofts/2"]), queryId = "bq-softs" }));
 
         status.Should().Be(HttpStatusCode.NoContent);
         using var session = Store.OpenAsyncSession();
@@ -406,9 +408,17 @@ public class SubQueryActionsTests : SparkTestDriver
 
     private static EntityAttributeDefinition Str(string name) => new() { Id = Guid.NewGuid(), Name = name, DataType = "string" };
 
-    private static SparkQuery Query(string alias, string entityType, Guid? id = null) => new()
+    // A real source: delete-many and a custom action on a selection re-run the query the rows were
+    // ticked in (#467, D12), so the query must be executable.
+    private static readonly Dictionary<string, string> Collections = new()
     {
-        Id = id ?? Guid.NewGuid(), Name = alias, Alias = alias, Source = "Custom.None", EntityType = entityType,
+        ["BqParent"] = "Parents", ["BqChild"] = "Children", ["BqNoRef"] = "NoRefs", ["BqTwoRef"] = "TwoRefs",
+        ["BqNoBase"] = "NoBases", ["BqHelper"] = "Helpers", ["BqSoft"] = "Softs",
+    };
+
+    private static SparkQuery Query(string alias, string entityType, Guid? id = null, string? source = null) => new()
+    {
+        Id = id ?? Guid.NewGuid(), Name = alias, Alias = alias, Source = source ?? $"Database.{Collections[entityType]}", EntityType = entityType,
     };
 
     private static EntityTypeFile Model<T>(Guid id, EntityAttributeDefinition[] attributes, params SparkQuery[] queries) => new()
@@ -436,7 +446,7 @@ public class SubQueryActionsTests : SparkTestDriver
         return
         [
             parent,
-            Model<BqChild>(ChildTypeId, [Str("Title"), Ref("ParentId")], Query("bq-children", "BqChild", ChildrenQueryId)),
+            Model<BqChild>(ChildTypeId, [Str("Title"), Ref("ParentId")], Query("bq-children", "BqChild", ChildrenQueryId, source: "Custom.ChildrenOfParent")),
             Model<BqNoRef>(NoRefTypeId, [Str("Title")], Query("bq-norefs", "BqNoRef")),
             Model<BqTwoRef>(TwoRefTypeId, [Ref("FirstParentId"), Ref("SecondParentId")],
                 Query("bq-tworefs", "BqTwoRef"), Query("bq-tworefs-named", "BqTwoRef")),
@@ -517,9 +527,17 @@ public class BqSoft : ISoftDeletable
 }
 
 /// <summary>Refuses "boom" mid-batch, withholds Delete on "frozen", records the New and the query target.</summary>
-public class BqChildActions(IEntityMapper entityMapper, BqRecorder recorder) : DefaultPersistentObjectActions<BqChild>(entityMapper),
+public class BqChildActions(IEntityMapper entityMapper, BqRecorder recorder, Raven.Client.Documents.Session.IAsyncDocumentSession session)
+    : DefaultPersistentObjectActions<BqChild>(entityMapper),
     MintPlayer.Spark.Abstractions.Interceptors.IBeforeDelete<BqChild>
 {
+    /// <summary>The sub-query's rows, scoped to its parent: delete-many re-runs it (#467, D12).</summary>
+    public IRavenQueryable<BqChild> ChildrenOfParent(MintPlayer.Spark.Queries.CustomQueryArgs args)
+    {
+        ArgumentNullException.ThrowIfNull(args.Parent);
+        return session.Query<BqChild>().Where(c => c.ParentId == args.Parent!.Id);
+    }
+
     public ValueTask OnBeforeDeleteAsync(BqChild entity, MintPlayer.Spark.Abstractions.Interceptors.DeleteContext context)
         => entity.Title == "boom"
             ? throw new SparkValidationException("boom refuses")

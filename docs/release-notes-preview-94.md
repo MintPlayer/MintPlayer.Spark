@@ -15,7 +15,7 @@ Two themes:
   work that must not be lost goes through a Messaging outbox, in the same transaction as the write.
 
 The authoritative record, with every decision and its evidence, is
-`docs/issue_467_query_selection_PRD.md` (§7, D1–D35).
+`docs/issue_467_query_selection_PRD.md` (§7, D1–D36).
 
 ---
 

@@ -167,7 +167,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
     /// <summary>A custom action that prompts before doing anything.</summary>
     /// <remarks>
     /// Registered by name through a stubbed configuration loader and resolver below, because the real
-    /// ones read <c>App_Data/customActions.json</c> from the content root — a file this fixture has no
+    /// ones read <c>App_Data/actions.json</c> from the content root — a file this fixture has no
     /// reason to own.
     /// </remarks>
     public class RetryProbeConfirmAction : MintPlayer.Spark.Abstractions.Actions.ICustomAction
@@ -263,7 +263,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
     {
         var probe = await SeedAsync();
         await AssertEmitsRetryAsync(
-            HttpMethod.Post, "/spark/po/delete", Wire.Typed(ProbeTypeId, id: probe.Id), "Delete?");
+            HttpMethod.Post, "/spark/po/delete", Wire.Typed(ProbeTypeId, id: probe.Id, etag: await StoredEtag.OfAsync(Store, probe.Id!)), "Delete?");
     }
 
     [Fact]
@@ -505,7 +505,7 @@ public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
 
     private static readonly Guid ReadQueryId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000004");
 
-    /// <summary>Stands in for <c>App_Data/customActions.json</c>, declaring exactly one action.</summary>
+    /// <summary>Stands in for <c>App_Data/actions.json</c>, declaring exactly one action.</summary>
 
     /// <summary>Stands in for the assembly scan, resolving exactly one action.</summary>
     private sealed class StubActionResolver(string actionName, MintPlayer.Spark.Abstractions.Actions.ICustomAction action)

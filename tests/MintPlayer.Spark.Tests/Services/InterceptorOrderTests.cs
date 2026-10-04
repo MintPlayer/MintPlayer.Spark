@@ -31,8 +31,10 @@ public class InterceptorOrderTests(SparkSharedDatabase database)
         using var scope = factory.CreateScope();
         var pipeline = scope.ServiceProvider.GetRequiredService<ISparkInterceptorPipeline>();
 
+        // The type's Actions class implements IBeforeSave too: it runs after the registered interceptors of
+        // its own stage (Default), so still before the finalizer (#482, D33(c)).
         pipeline.For<IBeforeSave>(typeof(InterceptedNote)).Select(h => h.GetType().Name).Should().Equal(
-            nameof(OrdDefaultA), nameof(OrdDefaultB), nameof(OrdFinalize));
+            nameof(OrdDefaultA), nameof(OrdDefaultB), nameof(InterceptedNoteActions), nameof(OrdFinalize));
     }
 
     [Fact]

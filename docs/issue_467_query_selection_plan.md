@@ -1,11 +1,11 @@
 # Plan — Issue #467 (one pull request)
 
-Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D35 settled during implementation and follow-up grilling) and spike results live in
+Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D36 settled during implementation and follow-up grilling) and spike results live in
 [issue_467_query_selection_PRD.md](issue_467_query_selection_PRD.md) §7. This file is the order of work.
 Where the PRD's §2 and §7 disagree, §7 wins.
 
 **Rules for executing this plan**
-- One branch, one PR: `feat/467-query-selection`. Every decision D1–D35 lands in this PR; the PR also closes #482.
+- One branch, one PR: `feat/467-query-selection`. Every decision D1–D36 lands in this PR; the PR also closes #482.
 - Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
   One full sweep at the end (M9):
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
@@ -226,13 +226,13 @@ Design: issue #482, section "Interceptor interfaces". Lands in this PR (owner de
       "superseded in part by #467".
 
 ### M9 — Full verification and PR
-- [ ] Test call sites made stale by D12 (selections and delete-many without `queryId`): `ExecuteCustomActionTests` (fallback-path unit tests), `DisableActionsTests`, `ModerationToolsTests`, `SoftDeleteTests`, `SubQueryActionsTests`; and fixtures embedding pre-#467 shapes (see M2 note).
-- [ ] Test call sites made stale by D14/D16 (M6): raw posts to `/po/delete`, `/po/delete-many` (`ids` → `items`), `/po/purge` and `/po/update` without an etag — `DenyAllEndpointMirrorTests`, `DisableActionsTests`, `RetryFromEveryHookTests`, `SubQueryActionsTests`, `XsrfSurfaceTests`, `HistoryTests`, `ModerationToolsTests`, `SoftDeleteTests`, E2E `QnAContributionsTests`, `RetryActionDeleteTests`; any HTTP test asserting 404 for an update of a hidden row now gets 409 `deleted` (D30c); natural-id collision tests now get 409 `exists` (D30d). The typed client call sites already compile (they load first: `DeleteAsLoadedAsync` / `AsListedAsync` test helpers).
-- [ ] Expectations changed by M7 (#482, D33): after-interceptors run in registration order (not reverse) and are isolated; an Actions class's own interceptors run after the registered ones; a `Retry.Action` in a bulk delete refuses the row (`Issue467` S8, `I467PromptActions`); Fleet's plate mismatch is a 400 (E2E `RetryActionDeleteTests`); a raw `session.Delete` of an `ISoftDeletable` in a fixture now needs `SparkRawWrites.Allow()`; tests asserting `OnDeleteCalls` (now: committed hard deletes only).
-- [ ] Expectations changed by M7b (#482, D34): the vote reversal, the SoftDelete/History notifications (now durable interceptors) and the DemoApp broadcasts happen after delivery, not in the request — an E2E test asserting a reversal right after a moderator delete must wait for it (QnA runs Messaging); every host registering Moderation needs `AddMessaging()` or `AddTestAfterCommitOutbox()`.
-- [ ] S3: measure the D18 refusal message for a 200-row batch (breadcrumbs resolve in one batched call; confirm the cost).
+- [x] Test call sites made stale by D12 (selections and delete-many without `queryId`): `ExecuteCustomActionTests` (fallback-path unit tests), `DisableActionsTests`, `ModerationToolsTests`, `SoftDeleteTests`, `SubQueryActionsTests`; and fixtures embedding pre-#467 shapes (see M2 note).
+- [x] Test call sites made stale by D14/D16 (M6): raw posts to `/po/delete`, `/po/delete-many` (`ids` → `items`), `/po/purge` and `/po/update` without an etag — `DenyAllEndpointMirrorTests`, `DisableActionsTests`, `RetryFromEveryHookTests`, `SubQueryActionsTests`, `XsrfSurfaceTests`, `HistoryTests`, `ModerationToolsTests`, `SoftDeleteTests`, E2E `QnAContributionsTests`, `RetryActionDeleteTests`; any HTTP test asserting 404 for an update of a hidden row now gets 409 `deleted` (D30c); natural-id collision tests now get 409 `exists` (D30d). The typed client call sites already compile (they load first: `DeleteAsLoadedAsync` / `AsListedAsync` test helpers).
+- [x] Expectations changed by M7 (#482, D33): after-interceptors run in registration order (not reverse) and are isolated; an Actions class's own interceptors run after the registered ones; a `Retry.Action` in a bulk delete refuses the row (`Issue467` S8, `I467PromptActions`); Fleet's plate mismatch is a 400 (E2E `RetryActionDeleteTests`); a raw `session.Delete` of an `ISoftDeletable` in a fixture now needs `SparkRawWrites.Allow()`; tests asserting `OnDeleteCalls` (now: committed hard deletes only).
+- [x] Expectations changed by M7b (#482, D34): the vote reversal, the SoftDelete/History notifications (now durable interceptors) and the DemoApp broadcasts happen after delivery, not in the request — an E2E test asserting a reversal right after a moderator delete must wait for it (QnA runs Messaging); every host registering Moderation needs `AddMessaging()` or `AddTestAfterCommitOutbox()`.
+- [x] S3: measure the D18 refusal message for a 200-row batch — 3 requests for 2 rows and for 200, 74 ms, 42 KB (D36(h), `Issue467RefusalCostTests`).
 - [x] The `Spikes/Issue467` tests moved to `Endpoints/PersistentObject/Selection/` (namespace and seed path follow); the `Spikes` folder is gone. Green: CI decides.
-- [ ] Full sweep. First local run (2026-10-04): 9 source-generator failures, all stale fixtures (`customActions.json`, `culture.json` as an object), fixed in `37f22792`; nx then skipped the other suites. The owner stopped the second local run and asked for the PR, so **CI is the sweep**; fix what it reports, re-running single classes locally.
+- [ ] Full sweep. First local run (2026-10-04): 9 source-generator failures, all stale fixtures (`customActions.json`, `culture.json` as an object), fixed in `37f22792`; nx then skipped the other suites. The owner stopped the second local run and asked for the PR, so **CI is the sweep**; fix what it reports, re-running single classes locally. CI run 37162660355 reported 91 + 12 failures; every one is addressed (D36), each class re-run green locally.
 - [x] Versions: every `MintPlayer.Spark*` package `11.0.0-preview.93` → `11.0.0-preview.94` (33 csproj; `MintPlayer.Dotnet.SocketExtensions` unchanged);
       `@mintplayer/ng-spark` 22.26.0 → 22.27.0, `@mintplayer/ng-spark-auth` 22.16.0 → 22.17.0 (its ng-bootstrap peer moved to
       ^22.21.0); both need `@mintplayer/ng-bootstrap` 22.21.0 (published). Majors unchanged. Release notes aligned.

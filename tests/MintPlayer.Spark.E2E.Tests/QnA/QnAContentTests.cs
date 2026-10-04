@@ -91,11 +91,11 @@ public class QnAContentTests
         await asker.Client.EditAsync(AnswerTypeId, answer.Id!, "Body", "Something that has to go, edited.");
         (await host.RevisionCountAsync(answer.Id!)).Should().BeGreaterThan(0, "revisions are enabled from the model");
 
-        var (live, _) = await moderator.PostAsync("/spark/po/purge", new { objectTypeId = AnswerTypeId.ToString(), id = answer.Id });
+        var (live, _) = await moderator.PostAsync("/spark/po/purge", new { objectTypeId = AnswerTypeId.ToString(), id = answer.Id, etag = await host.EtagAsync(answer.Id!) });
         live.Should().NotBe(200, "only a deleted row can be purged");
 
         await moderator.DeleteAsLoadedAsync(AnswerTypeId, answer.Id!);
-        await moderator.PostJsonAsync("/spark/po/purge", new { objectTypeId = AnswerTypeId.ToString(), id = answer.Id });
+        await moderator.PostJsonAsync("/spark/po/purge", new { objectTypeId = AnswerTypeId.ToString(), id = answer.Id, etag = await host.EtagAsync(answer.Id!) });
 
         (await host.LoadAsync<StoredPost>(answer.Id!)).Should().BeNull();
         (await host.RevisionCountAsync(answer.Id!)).Should().Be(0, "a purge deletes the revisions too");

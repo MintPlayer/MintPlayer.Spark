@@ -135,7 +135,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         var (created, body) = await alice.SendAsync("/spark/po/create", CreateBody(("Title", "first"), ("CreatedBy", "users/mallory")));
         created.Should().Be(HttpStatusCode.Created);
         var id = body.GetProperty("result").GetProperty("id").GetString()!;
-        (await bob.SendAsync("/spark/po/update", UpdateBody(id, ("Title", "second"), ("CreatedBy", "users/mallory")))).Status.Should().Be(HttpStatusCode.OK);
+        (await bob.SendAsync("/spark/po/update", UpdateBody(id, await EtagAsync(id!), ("Title", "second"), ("CreatedBy", "users/mallory")))).Status.Should().Be(HttpStatusCode.OK);
 
         var stored = await LoadAsync<HiNote>(id);
         stored!.CreatedBy.Should().Be(Alice, "the creator is stamped, whatever was posted");
@@ -152,7 +152,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         var host = await StartAsync();
         var note = await SeedNoteAsync("v1");
 
-        var (status, body) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, ("Title", "v2")));
+        var (status, body) = await host.SendAsync("/spark/po/update", UpdateBody(note.Id!, await EtagAsync(note.Id!), ("Title", "v2")));
 
         status.Should().Be(HttpStatusCode.OK);
         var etag = body.GetProperty("result").GetProperty("etag").GetString();
@@ -169,7 +169,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         var bob = await StartAsync(Bob);
         var (_, created) = await alice.SendAsync("/spark/po/create", CreateBody(("Title", "one")));
         var id = created.GetProperty("result").GetProperty("id").GetString()!;
-        await bob.SendAsync("/spark/po/update", UpdateBody(id, ("Title", "two")));
+        await bob.SendAsync("/spark/po/update", UpdateBody(id, await EtagAsync(id!), ("Title", "two")));
 
         var (status, body) = await alice.SendAsync("/spark/po/revisions", Wire.Typed(NoteTypeId, id: id));
 
@@ -365,7 +365,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
     {
         var host = await StartAsync();
         var note = await SeedNoteAsync("v1");
-        (await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id))).Status.Should().Be(HttpStatusCode.NoContent);
+        (await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id, etag: await EtagAsync(note.Id!)))).Status.Should().Be(HttpStatusCode.NoContent);
         var deletedCv = await CurrentChangeVectorAsync(note.Id!);
         (await LoadAsync<HiNote>(note.Id!))!.IsDeleted.Should().BeTrue();
 
@@ -390,7 +390,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         var denied = await StartAsync(security: SparkTestSecurity.Permissive.Denying("ViewDeleted/HiNote"));
         var note = await SeedNoteAsync("v1");
         var v1 = await CurrentChangeVectorAsync(note.Id!);
-        (await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id))).Status.Should().Be(HttpStatusCode.NoContent);
+        (await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id, etag: await EtagAsync(note.Id!)))).Status.Should().Be(HttpStatusCode.NoContent);
 
         var (plain, _) = await host.SendAsync("/spark/po/revisions", Wire.Typed(NoteTypeId, id: note.Id));
         var (included, list) = await host.SendAsync("/spark/po/revisions", Wire.Typed(NoteTypeId, new { deleted = "include" }, note.Id));
@@ -418,9 +418,9 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         var (_, created) = await host.SendAsync("/spark/po/create", CreateBody(("Title", "one")));
         var id = created.GetProperty("result").GetProperty("id").GetString()!;
         var createdCv = created.GetProperty("result").GetProperty("etag").GetString();
-        var (_, updated) = await host.SendAsync("/spark/po/update", UpdateBody(id, ("Title", "two")));
+        var (_, updated) = await host.SendAsync("/spark/po/update", UpdateBody(id, await EtagAsync(id!), ("Title", "two")));
         var updatedCv = updated.GetProperty("result").GetProperty("etag").GetString();
-        await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: id));
+        await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: id, etag: await EtagAsync(id!)));
         await host.SendAsync("/spark/po/restore", Wire.Typed(NoteTypeId, id: id));
 
         host.Recorder.Events.Should().BeEmpty("nothing runs before the outbox delivers");
@@ -517,11 +517,15 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         },
     });
 
-    private static object UpdateBody(string id, params (string Name, object Value)[] attributes) => Wire.Typed(NoteTypeId, new
+    /// <summary>The etag of the stored version, which every update and delete names (#467, D14).</summary>
+    private Task<string> EtagAsync(string id) => StoredEtag.OfAsync(Store, id);
+
+    private static object UpdateBody(string id, string etag, params (string Name, object Value)[] attributes) => Wire.Typed(NoteTypeId, new
     {
         persistentObject = new
         {
             id,
+            etag,
             name = "HiNote",
             objectTypeId = NoteTypeId.ToString(),
             attributes = attributes.Select(a => new { name = a.Name, value = a.Value, isValueChanged = true }).ToArray(),

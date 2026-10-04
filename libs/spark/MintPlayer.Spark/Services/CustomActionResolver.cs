@@ -41,7 +41,7 @@ internal partial class CustomActionResolver : ICustomActionResolver
                 // Rethrow rather than return null. Null means "no such action" to every caller,
                 // which turns a dependency the container could not satisfy into a 404 saying the
                 // action does not exist -- pointing whoever is debugging at the action's name and
-                // at customActions.json, neither of which is wrong. The real cause was log-only,
+                // at actions.json, neither of which is wrong. The real cause was log-only,
                 // and an operator reading a 404 has no reason to go looking in the log at all.
                 //
                 // Surfacing it makes the failure a 500 that names the type and carries the

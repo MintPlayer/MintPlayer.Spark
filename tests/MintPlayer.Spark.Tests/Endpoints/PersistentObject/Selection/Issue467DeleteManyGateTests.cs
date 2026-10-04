@@ -1,5 +1,6 @@
 using System.Net;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject.Selection;
 
@@ -70,7 +71,8 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
         var (load, _) = await _host.SendAsync("/spark/po/load", Wire.Typed(I467Models.NoteTypeId, id: "I467Notes/bob-1"));
         load.Should().Be(HttpStatusCode.NotFound);
 
-        var (delete, _) = await _host.SendAsync("/spark/po/delete", Wire.Typed(I467Models.NoteTypeId, id: "I467Notes/bob-1"));
+        var (delete, _) = await _host.SendAsync("/spark/po/delete",
+            Wire.Typed(I467Models.NoteTypeId, id: "I467Notes/bob-1", etag: await StoredEtag.OfAsync(Store, "I467Notes/bob-1")));
         delete.Should().Be(HttpStatusCode.NotFound);
         (await ExistsAsync<I467Note>("I467Notes/bob-1")).Should().BeTrue();
     }
@@ -157,29 +159,25 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
         await session.StoreAsync(new I467Prompt { Id = "I467Prompts/2", Name = "two" });
     });
 
-    // S8: a retry raised by OnBeforeDeleteAsync inside a batch is a 449 that writes nothing; answered,
-    // the same request deletes every row.
+    // S8, decided in D33 (#482): a per-row prompt is unworkable in a batch, so a retry raised by a
+    // before-delete interceptor during delete-many refuses its row. One refusal names every such row and
+    // tells the user to delete it on its own, where the prompt works; nothing is deleted.
     [Fact]
-    public async Task S8_a_retry_from_a_before_delete_interceptor_inside_a_batch_asks_once_then_deletes_all()
+    public async Task S8_a_retry_from_a_before_delete_interceptor_inside_a_batch_refuses_those_rows_and_deletes_nothing()
     {
         await SeedPromptsAsync();
         var items = await ListedAsync("I467Prompts/1", "I467Prompts/2");
-        object Body(object? retryResults) => Wire.Typed(I467Models.PromptTypeId, new
+
+        var (status, body) = await _host.SendAsync("/spark/po/delete-many", Wire.Typed(I467Models.PromptTypeId, new
         {
             items,
             queryId = I467Models.PromptsQueryId.ToString(),
-            retryResults,
-        });
+        }));
 
-        var (asked, askedBody) = await _host.SendAsync("/spark/po/delete-many", Body(null));
-        ((int)asked).Should().Be(449, askedBody);
-        (await ExistsAsync<I467Prompt>("I467Prompts/1")).Should().BeTrue("nothing is written while the interceptor asks");
+        status.Should().Be(HttpStatusCode.BadRequest, body);
+        body.Should().Contain("one").And.Contain("two").And.Contain("delete it on its own");
+        (await ExistsAsync<I467Prompt>("I467Prompts/1")).Should().BeTrue("a refused batch deletes nothing");
         (await ExistsAsync<I467Prompt>("I467Prompts/2")).Should().BeTrue();
-
-        var (answered, answeredBody) = await _host.SendAsync("/spark/po/delete-many", Body(new[] { new { step = 0, option = "Yes" } }));
-        answered.Should().Be(HttpStatusCode.NoContent, answeredBody);
-        (await ExistsAsync<I467Prompt>("I467Prompts/1")).Should().BeFalse();
-        (await ExistsAsync<I467Prompt>("I467Prompts/2")).Should().BeFalse();
     }
 
     private Task SeedTasksAsync() => SeedAsync(async session =>

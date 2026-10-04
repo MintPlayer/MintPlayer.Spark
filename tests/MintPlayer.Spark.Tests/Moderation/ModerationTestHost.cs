@@ -172,6 +172,9 @@ public sealed class MoHost : IAsyncDisposable
     public MoClock Clock { get; }
     public IDocumentStore Store => Factory.GetService<IDocumentStore>();
 
+    /// <summary>The etag of the stored version, which every update, delete and purge names (#467, D14).</summary>
+    public Task<string> EtagAsync(string id) => StoredEtag.OfAsync(Store, id);
+
     /// <summary>Runs the durable after-commit interceptors of every committed write so far (#482, D17).</summary>
     public Task<int> DrainAsync() => Factory.GetService<TestAfterCommitOutbox>().DrainAsync(Factory.GetService<IServiceProvider>());
 
@@ -348,11 +351,12 @@ public sealed class MoHost : IAsyncDisposable
         return await scope.ServiceProvider.GetRequiredService<FraudDetector>().RunAsync();
     }
 
-    public static object UpdateBody(string id, params (string Name, object? Value)[] attributes) => Wire.Typed(PostTypeId, new
+    public static object UpdateBody(string id, string etag, params (string Name, object? Value)[] attributes) => Wire.Typed(PostTypeId, new
     {
         persistentObject = new
         {
             id,
+            etag,
             name = "MoPost",
             objectTypeId = PostTypeId.ToString(),
             attributes = attributes.Select(a => new { name = a.Name, value = a.Value, isValueChanged = true }).ToArray(),

@@ -348,6 +348,19 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     }
 
     /// <summary>
+    /// The stored version's change vector: the etag a raw <c>/po/delete</c> or <c>/po/purge</c> must name
+    /// (#467, D14). Read from the database, so it also works for a soft-deleted row.
+    /// </summary>
+    public async Task<string> EtagAsync(string documentId)
+    {
+        using var appStore = OpenAppStore();
+        using var session = appStore.OpenAsyncSession();
+        var document = await session.LoadAsync<object>(documentId)
+            ?? throw new InvalidOperationException($"'{documentId}' is not stored, so it has no etag.");
+        return session.Advanced.GetChangeVectorFor(document);
+    }
+
+    /// <summary>
     /// Waits for the app database's indexes to catch up.
     /// </summary>
     /// <remarks>

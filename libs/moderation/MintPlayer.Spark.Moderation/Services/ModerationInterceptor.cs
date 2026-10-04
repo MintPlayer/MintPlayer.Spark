@@ -27,7 +27,7 @@ namespace MintPlayer.Spark.Moderation.Services;
 /// <remarks>
 /// A module <c>Sync</c> and the system context pass untouched: the owner module already decided.
 /// </remarks>
-internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete
+internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, IBeforeDelete, IAfterDelete, IAfterLoad
 {
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IAsyncDocumentSession session;
@@ -120,7 +120,7 @@ internal sealed partial class ModerationInterceptor : IBeforeSave, IAfterSave, I
 
     public async ValueTask OnAfterLoadAsync(LoadContext context)
     {
-        // A UI hint only — enforcement is the before-hooks above. A locked post shows no Edit/Delete
+        // A UI hint only — enforcement is the before-interceptors above. A locked post shows no Edit/Delete
         // to those the lock binds.
         if (context.IsSystemContext || context.PersistentObject.Id is not { Length: > 0 } id)
             return;

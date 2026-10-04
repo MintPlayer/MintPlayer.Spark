@@ -443,23 +443,25 @@ public class SparkModelVerifyChecksTests
 
     // --- attribute descriptions --------------------------------------------
 
+    /// <summary>
+    /// Descriptions live in <c>translations.json</c> (#467, D1/D5), which the structural hash does not
+    /// cover. A seeded English description that is gone again is drift: synchronize would write it.
+    /// </summary>
     [Fact]
-    public void A_blanked_description_is_drift_even_though_the_hash_matches()
+    public void A_missing_description_is_drift_even_though_the_hash_matches()
     {
         using var scratch = new ScratchContentRoot();
         scratch.Synchronize<DescribedTestSparkContext>();
 
-        var path = Path.Combine(scratch.ModelPath, nameof(DescribedProbe) + ".json");
-        var file = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        foreach (var attribute in file["persistentObject"]!["attributes"]!.AsArray())
-            attribute!.AsObject().Remove("description");
-        File.WriteAllText(path, file.ToJsonString());
+        var translations = Path.Combine(Path.GetDirectoryName(scratch.ModelPath)!, "translations.json");
+        File.Exists(translations).Should().BeTrue("synchronize seeds the C# summary as the English description");
+        File.Delete(translations);
 
         var (exitCode, reported) = scratch.Verify<DescribedTestSparkContext>();
 
         exitCode.Should().Be(3);
         reported.Should().Contain("Spark attribute descriptions are out of date:");
-        reported.Should().Contain("DescribedProbe.Name: description.en is absent on disk, C# says \"What the probe is called.\"");
+        reported.Should().Contain("model.DescribedProbe.attributes.Name.description: no layer of translations.json defines 'en', C# says \"What the probe is called.\"");
     }
 
     // --- the generic overload and misconfiguration --------------------------

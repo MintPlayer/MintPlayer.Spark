@@ -237,8 +237,8 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
             // materialized at all — it would loop the page-compose hook and hand the action N copies
             // of the page object wearing row ids.
             //
-            // Falls back to the document load for the three shapes that cannot be re-run: a query
-            // owning its own paging, a streaming query, and a request naming no query.
+            // Falls back to the row-gated document load for the two shapes that cannot be re-run: a
+            // query owning its own paging and a streaming query. A selection naming no query was refused above (D12).
             var selectedItems = submittedIds.Count == 0
                 ? []
                 : await MaterializeSelectionAsync(request, entityType, submittedIds!, queryParent, httpContext);

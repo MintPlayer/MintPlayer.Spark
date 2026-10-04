@@ -639,7 +639,7 @@ See the DemoApp for a working example:
 - `../apps/DemoApp/Recipients/LogPersonDeleted.cs` -- simple `IRecipient<T>` handler
 - `../apps/DemoApp/Recipients/LogCompanyUpdated.cs` -- demonstrates per-handler retry isolation
 - `../apps/DemoApp/Recipients/NotifyEmployeesRecipient.cs` -- `ICheckpointRecipient<T>` with batch progress tracking
-- `../apps/DemoApp/Actions/PersonActions.cs` -- broadcasting messages from lifecycle hooks
+- `../apps/DemoApp/Actions/PersonActions.cs` -- broadcasting messages from durable after-commit interceptors
 - `../apps/DemoApp/Actions/CompanyActions.cs` -- broadcasting batch messages with employee IDs
 - `../apps/DemoApp/Program.cs` -- service registration
 

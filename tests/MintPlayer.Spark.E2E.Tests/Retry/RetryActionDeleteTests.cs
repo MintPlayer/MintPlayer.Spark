@@ -35,7 +35,7 @@ public class RetryActionDeleteTests
 
         // 1. First delete — server throws SparkRetryActionException, endpoint returns 449
         //    with a scaffolded ConfirmDeleteCar PO.
-        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created.Id!), requiresAntiforgery: true);
+        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created), requiresAntiforgery: true);
         ((int)first.StatusCode).Should().Be(449,
             $"first delete must surface the retry-action\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
 
@@ -53,7 +53,7 @@ public class RetryActionDeleteTests
         var second = await adminClient.SendAsync(
             HttpMethod.Post,
             DeleteUrl,
-            DeleteBody(created.Id!, new[] { new { step, option = "Delete", persistentObject = populated } }),
+            DeleteBody(created, new[] { new { step, option = "Delete", persistentObject = populated } }),
             requiresAntiforgery: true);
         second.StatusCode.Should().Be(HttpStatusCode.NoContent,
             $"retry delete with correct plate must succeed — response: {await second.Content.ReadAsStringAsync()}");
@@ -71,7 +71,7 @@ public class RetryActionDeleteTests
         var plate = CarFixture.RandomLicensePlate("RC");
         var created = await adminClient.CreatePersistentObjectAsync(CarFixture.New(plate));
 
-        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created.Id!), requiresAntiforgery: true);
+        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created), requiresAntiforgery: true);
         ((int)first.StatusCode).Should().Be(449);
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
         var retry = ExtractRetryOperation(payload);
@@ -82,7 +82,7 @@ public class RetryActionDeleteTests
         var second = await adminClient.SendAsync(
             HttpMethod.Post,
             DeleteUrl,
-            DeleteBody(created.Id!, new[] { new { step, option = "Cancel", persistentObject = po } }),
+            DeleteBody(created, new[] { new { step, option = "Cancel", persistentObject = po } }),
             requiresAntiforgery: true);
         second.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
@@ -97,7 +97,7 @@ public class RetryActionDeleteTests
         var plate = CarFixture.RandomLicensePlate("RW");
         var created = await adminClient.CreatePersistentObjectAsync(CarFixture.New(plate));
 
-        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created.Id!), requiresAntiforgery: true);
+        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created), requiresAntiforgery: true);
         ((int)first.StatusCode).Should().Be(449);
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
         var retry = ExtractRetryOperation(payload);
@@ -108,10 +108,10 @@ public class RetryActionDeleteTests
         var second = await adminClient.SendAsync(
             HttpMethod.Post,
             DeleteUrl,
-            DeleteBody(created.Id!, new[] { new { step, option = "Delete", persistentObject = populated } }),
+            DeleteBody(created, new[] { new { step, option = "Delete", persistentObject = populated } }),
             requiresAntiforgery: true);
         ((int)second.StatusCode).Should().BeGreaterThanOrEqualTo(400,
-            "mismatched confirmation must refuse the delete (500 from InvalidOperationException)");
+            "a mismatched confirmation refuses the delete (400 since #482, D33(j); it used to be a 500)");
 
         var refetch = await adminClient.GetPersistentObjectAsync(CarFixture.TypeId, created.Id!);
         refetch.Should().NotBeNull("car must survive a mismatched confirmation");
@@ -128,10 +128,11 @@ public class RetryActionDeleteTests
     /// the frontend did the same, and the endpoint sniffed <c>Content-Type</c> to decide whether to
     /// read one. That conditional is gone with the verb.
     /// </remarks>
-    private static HttpContent DeleteBody(string carId, object? retryResults = null)
+    /// <para>It names the version it deletes (#467, D14): the etag the create handed back.</para>
+    private static HttpContent DeleteBody(PersistentObject car, object? retryResults = null)
         => JsonContent.Create(retryResults is null
-            ? Wire.Typed(CarFixture.TypeId, id: carId)
-            : Wire.Typed(CarFixture.TypeId, new { retryResults }, id: carId));
+            ? Wire.Typed(CarFixture.TypeId, id: car.Id, etag: car.Etag)
+            : Wire.Typed(CarFixture.TypeId, new { retryResults }, id: car.Id, etag: car.Etag));
 
     /// <summary>
     /// Server wraps action responses in a <c>ClientOperationEnvelope</c> — the retry payload
