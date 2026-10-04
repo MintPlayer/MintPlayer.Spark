@@ -124,7 +124,7 @@ Rules for this work:
 
 ### ~~M6: netstandard2.0~~ (dropped, PRD §3.4)
 
-### M7: versions, CI, docs ✅ `15d13bb1` (PR pack step: open owner decision, PRD R2)
+### M7: versions, CI, docs ✅ `15d13bb1` (PR pack step: not added, owner decision, PRD R2)
 1. Bump **every** `MintPlayer.Spark*` package from `11.0.0-preview.94` to `.95` in lockstep (33 csproj).
    `MintPlayer.Dotnet.SocketExtensions` stays unchanged, as in preview.94. The new packages start at `.95`.
 2. Add a `dotnet pack --no-build -c Release -o nupkgs` step to `pull-request.yml` after its release

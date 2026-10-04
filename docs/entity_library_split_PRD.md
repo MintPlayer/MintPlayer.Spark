@@ -252,8 +252,8 @@ assemblies"):
   - a lockstep bump of every package to `11.0.0-preview.95`;
   - the existing PR gate `pull-request.yml:189-237`, which requires a `<Version>` bump in every
     changed `libs/` project;
-  - a new `dotnet pack` step on PRs, so package shape is exercised before master. **Open, owner
-    decision (CI cost):** the PR workflow builds only *affected* projects in *Debug* through Nx
+  - ~~a new `dotnet pack` step on PRs, so package shape is exercised before master.~~ **Not done,
+    owner decision 2026-10-04 ("leave as-is"), for CI cost:** the PR workflow builds only *affected* projects in *Debug* through Nx
     (`pull-request.yml:102-103`), so a solution-wide `dotnet pack --no-build` would fail there. A
     pack step therefore means a full Release build on every PR run. Not added. The bump gate already
     covers the `--skip-duplicate` hazard, and the lockstep bump (all 33 + 3 new at `.95`) is in this PR.
