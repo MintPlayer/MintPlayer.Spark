@@ -239,7 +239,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             if (model.Types.Count > 0)
             {
                 var groupNames = ModelNamesReader.ReadGroupNames(content);
-                foreach (var finding in staleDeny.Findings(model, end.Compilation))
+                foreach (var finding in staleDeny.Findings(model))
                 {
                     var groupName = groupNames.TryGetValue(finding.GroupId, out var n) ? n : finding.GroupId;
                     end.ReportDiagnostic(Diagnostic.Create(
@@ -427,7 +427,16 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             set.Add(attribute);
         }
 
-        public IEnumerable<StaleDenyFinding> Findings(ModelIndex model, Compilation compilation)
+        /// <remarks>
+        /// ⚠️ Counts the attributes the <b>model file</b> declares, not the CLR type's properties
+        /// (<see cref="KnownAttributes"/>): only a model-declared attribute can ever reach the wire, so a
+        /// property the model leaves out is not "still readable". A hand-authored model over a library
+        /// type (QnA's <c>SparkUser.json</c> declares 4 of <c>SparkUser</c>'s ~24 properties) otherwise
+        /// listed <c>PasswordHash</c> and the rest. This is the set the runtime posture report
+        /// (<c>StaleAttributeDenials</c>) uses, so build and runtime agree. A property added in this
+        /// build joins the list on the build after synchronize writes it, as it joins the runtime's.
+        /// </remarks>
+        public IEnumerable<StaleDenyFinding> Findings(ModelIndex model)
         {
             foreach (var pair in denied)
             {
@@ -435,7 +444,11 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                 if (!model.Types.TryGetValue(type, out var entry))
                     continue;
 
-                var all = KnownAttributes(entry, compilation);
+                // The denied attributes count too: one the CLR type has but the model does not yet is
+                // accepted (SPARK014 judges against KnownAttributes), and a total below the restricted
+                // count would read as nonsense.
+                var all = new HashSet<string>(entry.Attributes, StringComparer.OrdinalIgnoreCase);
+                all.UnionWith(pair.Value.Denied);
                 var seen = mentioned[pair.Key];
                 var unmentioned = all.Where(a => !seen.Contains(a)).OrderBy(a => a, StringComparer.Ordinal).ToList();
                 if (unmentioned.Count == 0)

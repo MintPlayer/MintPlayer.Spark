@@ -10,6 +10,8 @@ namespace MintPlayer.Spark.Services;
 /// <remarks>
 /// A finding, never an error: leaving an attribute on the type-level grant is legitimate. The point is
 /// that it should be so <em>on purpose</em>.
+/// Only the attributes the model declares are counted: nothing else can reach the wire. SPARK024 counts
+/// the same set (not the CLR type's properties), so build and runtime list the same attributes.
 /// </remarks>
 internal static class StaleAttributeDenials
 {
