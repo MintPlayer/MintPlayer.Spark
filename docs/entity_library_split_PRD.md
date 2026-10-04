@@ -1,0 +1,220 @@
+# PRD: an entity library should not depend on ASP.NET Core (#388)
+
+Issue: [#388](https://github.com/MintPlayer/MintPlayer.Spark/issues/388) · PR: [#484](https://github.com/MintPlayer/MintPlayer.Spark/pull/484)
+(branch `fix/bs-select-full-width`; #388 is the main issue, the ng-bootstrap 22.21.1 bump rides along).
+Plan: [entity_library_split_plan.md](entity_library_split_plan.md).
+**Supersedes** `docs/prd/PRD-Entity-Library-Dependency-Split.md` and `docs/prd/plan-entity-library-dependency-split.md`
+(written at #382, before #460/#465/#466/#483). Their stale statements are listed in §8.
+
+Status 2026-10-04: **planned, not started.** Every claim below was re-verified against `master` @ `9e2f32bd`
+by three read-only investigations on that date.
+
+## 1. Problem
+
+A project that declares nothing but entities still gets the ASP.NET Core shared framework. It
+cannot target `netstandard2.0`, and a host without that framework cannot load it. The reason is that
+`MintPlayer.Spark.Abstractions` is `Sdk="Microsoft.NET.Sdk.Web"`
+(`libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj:1`), and the framework
+reference flows transitively to everything that references it.
+
+The Web SDK is legitimate in Abstractions. **Six** of its files use ASP.NET Core or Microsoft.Extensions;
+the issue said five, and the sixth is new since:
+`Authentication/SparkSystemContext.cs:1,40-41`, `Builder/SparkModuleRegistry.cs:7,9,98,118,157,170`,
+`Builder/ISparkBuilder.cs:5-6`, `Authentication/SparkCompositeAuthenticationHandler.cs:2-3,43-44`,
+`Authentication/SparkCredentialSchemeExtensions.cs:1-2`, and `Interceptors/SparkBuilderInterceptorExtensions.cs:1,3,31,36`.
+The entity libraries are the ones paying for it.
+
+There are **five** entity libraries now (the issue said four: `QnA.Library` is new). This is
+everything each one pulls in that drags ASP.NET Core in:
+
+| Library | Abstractions types used | Other dependencies that drag ASP.NET Core in |
+|---|---|---|
+| `HR.Library` | none (attributes only) | `Replication.Abstractions` → Abstractions |
+| `DemoApp.Library` | `DynamicLookupReference`, `TransientLookupReference`, `ELookupDisplayType` | none (`Messaging.Abstractions` is clean) |
+| `Fleet.Library` | the above, plus `TranslatedString` (`Entities/Car.cs:99`) | `Replication.Abstractions` → Abstractions |
+| `CodeCoverage.Library` | `TransientLookupReference` (5 lookups), `DynamicLookupReference`, `ELookupDisplayType` | **`MintPlayer.Spark.Authorization`** (Web SDK) for `[Reference(typeof(SparkUser))]` (`Entities/ApiToken.cs:130`, csproj :21-29); **`MemoryCache`** (`Services/SourceContentCache.cs:1,42`) with no PackageReference, so it resolves only through the shared framework |
+| `QnA.Library` | none directly | **`MintPlayer.Spark.History`** (references the whole `MintPlayer.Spark`, csproj :38) for `IAuditable`; `Moderation.Abstractions` → Abstractions; `Contributions.Abstractions` → Abstractions; `[Newtonsoft.Json.JsonIgnore]` (`Question.cs:78`) with no PackageReference |
+
+Apart from the four model types, no entity library uses anything from Abstractions. Every public
+Abstractions type name was grepped against every library source; the only other hit is a comment,
+`ApiToken.cs:17`. No consumer gets Abstractions *only* through an entity library: every host app
+also references `MintPlayer.Spark` (§4 of the consumer investigation).
+
+## 2. Goal
+
+All five `apps/*/*.Library` projects build without the `Microsoft.AspNetCore.App` framework
+reference, directly or transitively. A build guard enforces this, so it cannot regress silently.
+At least one library targets `netstandard2.0`, which proves the dependency chain underneath it is
+really free.
+
+Owner decision 2026-10-04: **all five** libraries, in this PR. Freeing only DemoApp, Fleet and HR
+was the other option.
+
+## 3. Design
+
+Two new plain-`Microsoft.NET.Sdk` packages. Types move **by assembly only. Every namespace stays
+as it is.** That is the same technique #382 used for `MintPlayer.Spark.Attributes`, whose files declare
+`namespace MintPlayer.Spark.Abstractions;` (e.g. `ValueKeyAttribute.cs:1`).
+
+### 3.1 `MintPlayer.Spark.Model` (new, `libs/model/MintPlayer.Spark.Model`)
+
+This holds the vocabulary types an entity library, or a feature `*.Abstractions` package, actually uses:
+
+| Type(s) | From (Abstractions) | Why it has to move |
+|---|---|---|
+| `TranslatedString` + `TranslatedStringJsonConverter` | `TranslatedString.cs:6-7,59-113` | Fleet uses it. The converter is in the same file and is referenced by `[JsonConverter]` |
+| `TransientLookupReference`, `TransientLookupReference<TKey>` | `TransientLookupReference.cs:3,20` | used by DemoApp, Fleet and CodeCoverage |
+| `DynamicLookupReference`, plus `EmptyValue` and `LookupReferenceValue<TValue>` | `DynamicLookupReference.cs:3,5-11,13,17` | `EmptyValue` and `LookupReferenceValue<TValue>` are in its dependency closure, declared in the same file |
+| `ELookupDisplayType` | `ELookupDisplayType.cs:3` | plain enum |
+| `ValidationError` | `ValidationError.cs:3` (uses `TranslatedString`) | `Contributions.Abstractions` `IContributions.cs:37` |
+| `SparkCoreActions`, `SparkCombinedActions`, `SparkReservedActionsAttribute`, `SparkNotAnActionAttribute` (namespace `…Abstractions.Authorization`) | `Authorization/SparkCoreActions.cs`, `SparkCombinedActions.cs`, `SparkReservedActionsAttribute.cs:23,40` | `Moderation.Abstractions` `ModerationRights.cs:3,15,46,59`, `Contributions.Abstractions` `ContributionRights.cs:3` |
+
+The `[assembly: SparkReservedActions(typeof(SparkCoreActions))]` and `(typeof(SparkCombinedActions))`
+declarations (`SparkCoreActions.cs:3-4`) move with the constants, into the Model assembly. See R1.
+
+`Attributes` keeps holding attributes only, as the issue asked. The owner confirmed on 2026-10-04 that
+the vocabulary goes into a new `MintPlayer.Spark.Model` package rather than into a wider Attributes package.
+
+### 3.2 `MintPlayer.Spark.Authorization.Abstractions` (new, `libs/authorization/MintPlayer.Spark.Authorization.Abstractions`)
+
+This holds the Raven user/role **document model**, so that `[Reference(typeof(SparkUser))]` works
+without the Web SDK. The namespace stays `MintPlayer.Spark.Authorization.Identity`.
+
+| Type | Verified web-free |
+|---|---|
+| `SparkUser` | its only ASP.NET mention is a doc comment (`SparkUser.cs:36`) |
+| `SparkUserClaim`, `SparkUserLogin`, `SparkUserToken` | no ASP.NET references |
+| `SparkUserPasskey` | mirrors `UserPasskeyInfo` in doc comments only (`:6-8`); deliberately not `IdentityUserPasskey<TKey>` |
+| `SparkRole`, `SparkRoleClaim` | no ASP.NET references; moved so the whole user/role document model lives in one place |
+
+`MintPlayer.Spark.Authorization` references the new package and keeps everything that needs the
+Web SDK. That is 50 of its 63 files: `Endpoints/` (18), `Extensions/` (9), the Identity services
+(`UserStore`×3, `RoleStore`, `SparkUserManager`, `SparkSignInManager`, `SparkUserNameValidator`,
+`SparkExternalLoginLinker`, `SparkCredentialInventory`, `SparkUserBackfill`, `SparkAuthLinkBuilder`,
+`SparkAuthMail`, `SparkAccountMail`), and `Configuration/` options binding. Owner decision 2026-10-04:
+"an authorization abstractions package".
+
+Out of scope for this package: the other web-free contracts (`SparkAccountContracts`,
+`SparkRegistrationMethods`, `SparkPendingExternalLogin`, …). No entity library needs them, and moving
+them would widen the package past what its name says.
+
+### 3.3 Other package changes
+
+| Package | Change | Evidence |
+|---|---|---|
+| `Replication.Abstractions` | Drop the Abstractions `ProjectReference` (csproj :22). Its only use is `SyncAction.cs:2,99,103`: `GetCachedProperties()` and `AccessorCache.GetGetter`. Replace them with a private reflection cache in `SyncAction` | consumer investigation §2 |
+| `Contributions.Abstractions`, `Moderation.Abstractions` | Reference `Model` instead of Abstractions (csproj :29 / :30) | §3.1 table |
+| **`MintPlayer.Spark.History.Abstractions`** (new, `libs/history/`) | Holds `IAuditable` (`libs/history/MintPlayer.Spark.History/IAuditable.cs:21`, namespace `MintPlayer.Spark.History` kept). `History` references it | QnA blocker |
+| `CodeCoverage.Library` | Swap Authorization for Authorization.Abstractions. Add an explicit `Microsoft.Extensions.Caching.Memory` PackageReference (a standalone NuGet, not the shared framework). Drop the unused `Newtonsoft.Json` reference only if nothing uses it after all (csproj :13) | consumer investigation §1 |
+| `QnA.Library` | Swap History for History.Abstractions. Add an explicit `Newtonsoft.Json` PackageReference for `Question.cs:78` | consumer investigation §1 |
+| All five libraries | Drop the Abstractions reference. Add explicit `Attributes`, plus `Model` where it is used (today they get Attributes transitively via `Abstractions.csproj:24`) | #388 S4 |
+| `Abstractions` | References `Model` (and keeps `Attributes`), so every existing consumer still sees every moved type | |
+| `Directory.Build.targets:2-5` | Unchanged: Abstractions and Authorization are still Web-SDK class libraries | |
+
+### 3.4 `netstandard2.0` (#388 S5)
+
+`Attributes`, `Model`, `Messaging.Abstractions` and `DemoApp.Library` multi-target `netstandard2.0;net11.0`.
+DemoApp.Library is the proof candidate because its whole closure (Attributes, Model, Messaging.Abstractions)
+is new or reference-free. HR and Fleet would also drag `Replication.Abstractions` (STJ, Etl models)
+onto netstandard2.0.
+
+- `required` and `init` need `IsExternalInit`, `RequiredMemberAttribute` and `CompilerFeatureRequiredAttribute`
+  polyfills. These come from a compile-only `PolySharp` (`PrivateAssets=all`) rather than hand-written
+  copies, so nothing leaks into consumers.
+- `TranslatedString` needs the `System.Text.Json` package on netstandard2.0 only.
+- The library generators emit code into DemoApp.Library. If that code uses net-only APIs, the
+  generator output is fixed; the target is not dropped.
+
+### 3.5 Build guard
+
+An MSBuild target that runs for projects marked `<SparkEntityLibrary>true</SparkEntityLibrary>`
+(the five libraries) fails the build when the resolved `@(FrameworkReference)` contains
+`Microsoft.AspNetCore.App`. It must be proven falsifiable: temporarily re-add the Abstractions reference
+to one library and watch the build fail. Neither a clean grep nor a green build proves anything on its own.
+
+## 4. Risks
+
+- **R1. Silent loss of reserved actions and action layers. Found 2026-10-04; not in the issue.**
+  - `SparkAssemblies.SparkAware()` (`SparkAssemblies.cs:17-37`) only scans assemblies that reference
+    the assembly named `MintPlayer.Spark.Abstractions` (`:19`, `:36-37`). It feeds
+    `SparkReservedActionRegistry` (`MintPlayer.Spark/Services/SparkReservedActionRegistry.cs:19`) and
+    `SparkActionLayers` (`Abstractions/Actions/SparkActionLayers.cs:67`).
+  - Once Moderation.Abstractions and Contributions.Abstractions reference only `Model`, their
+    `[assembly: SparkReservedActions]` (`ModerationRights.cs:3`, `ContributionRights.cs:3`) would no
+    longer be discovered. The core verbs would also vanish, since their declaration moves into the
+    Model assembly.
+  - Nothing would error: verbs would just stop being reserved.
+  - **Fix:** `SparkAware` accepts a reference to any of `Abstractions`, `Model` or `Attributes`.
+    Every other assembly-name-keyed scan must be found and fixed the same way (plan M3 audit).
+  - Proven by a red/green runtime test: the registry contains `ModerationRights` and the core verbs.
+  - The compile-time reader (`ReservedActionsReader.cs:29,40`) walks every referenced assembly and
+    matches by metadata name, so it survives the move.
+- **R2. Publish hazard (#388).** Master packs the whole solution (`dotnet-build-master.yml:88-89`) and
+  pushes with `--skip-duplicate` (`:154-158`). If Abstractions were not bumped, it would keep the
+  old package, which still physically contains the moved types. A consumer then gets CS0433, and
+  `GetTypeByMetadataName` returns null on the duplicate (`GenerateIndexGenerator.cs:108`,
+  `HostTranslationsAggregatorGenerator.cs:29`, `ProjectionPropertyAnalyzer.cs:31,55`,
+  `AttributeDescriptionsGenerator.cs:79`), so generators switch off with no diagnostic. **Mitigations:**
+  - a lockstep bump of every package to `11.0.0-preview.95`;
+  - the existing PR gate `pull-request.yml:189-237`, which requires a `<Version>` bump in every
+    changed `libs/` project;
+  - a new `dotnet pack` step on PRs, so package shape is exercised before master.
+- **R3. Generators.** They are safe: no code compares an assembly name to `"MintPlayer.Spark.Abstractions"`.
+  `TranslatedString` is matched by name plus namespace (`SparkModelSymbols.cs:26,28,171-173`), and
+  generated code emits `using MintPlayer.Spark.Abstractions;` plus unqualified names
+  (`HostTranslationsAggregatorGenerator.Producer.cs:28,35,45,47,62`). The one assembly-keyed check,
+  `GenerateIndexGenerator.cs:512-526`, derives the assembly from the resolved symbol.
+- **R4. Persistence.** None. Raven stores CLR type names in `@metadata.Raven-Clr-Type` as
+  `Namespace.Type, Assembly`, but the moved types are values and DTOs, not document roots. `SparkUser`
+  **is** a document root, so its stored `Raven-Clr-Type` names the `MintPlayer.Spark.Authorization` assembly.
+  - Verify how the user store loads it: `LoadAsync<SparkUser>` typed loads ignore the stored CLR type;
+    untyped loads would not.
+  - Prove it with a test that loads a user document whose metadata names the old assembly.
+- **R5. `SparkUser`'s `cref`s.** Moved doc comments referencing web types (`SparkUser.cs:36` mentions
+  `UserManager` in a `<c>`) must not become `<see cref>` to types the new package cannot see. The same
+  applies to `TranslatedString.cs:14`, whose `<see cref="SparkText"/>` becomes `<c>`.
+
+## 5. Out of scope (genuinely not being done)
+
+- Moving `SparkAuthorizeAttribute`. It derives from ASP.NET Core's `AuthorizeAttribute`, and getting
+  its derivation wrong fails open (#388).
+- Splitting the six web-using Abstractions files into their own package (#388).
+- `[TypeForwardedTo]` shims (#388 S6). There is no backward-compatibility requirement (owner
+  preference), and #382 shipped the attribute split without them.
+
+## 6. Verification
+
+- **Build guard (§3.5):** green on all five libraries, red when an Abstractions reference is re-added.
+- **`ReferencedAssemblyEntityTests`** (`tests/MintPlayer.Spark.SourceGenerators.Tests/Generators/ReferencedAssemblyEntityTests.cs:18-37`):
+  extended with a library that uses `TransientLookupReference` and `TranslatedString`, compiled against
+  Attributes and Model only. This exercises exactly the shape that broke at #382.
+- **R1 runtime test:** the registry discovers Moderation, Contributions, History, SoftDelete and the core verbs.
+- **R4 test:** a `SparkUser` document written with the old assembly name loads.
+- **`dotnet pack` of the solution:** `MintPlayer.Spark.Abstractions.nupkg` does not contain
+  `TranslatedString`, and `Model.nupkg` does.
+- **Local sweep:** `npm run test:affected`.
+
+## 7. Docs
+
+- `docs/guide-translated-strings.md:17,390`: the class now lives in the `MintPlayer.Spark.Model` package.
+- `docs/guide-asdetail-attributes.md:215` and `docs/guide-attribute-descriptions.md:144`: a library
+  references `Attributes` + `Model`, not Abstractions.
+- `using` lines in `guide-reference-attributes.md` and `guide-asdetail-attributes.md` stay valid,
+  because the namespace is kept.
+- New `README.md` + `AGENTS.md` for Attributes, Model and Authorization.Abstractions, each stating
+  **"the namespace is deliberately not the package name"**, and why: about 40 metadata literals in the
+  generators, and `global::`/`using` emissions into generated code.
+
+## 8. Stale statements in the superseded docs
+
+| Old claim | Now |
+|---|---|
+| 5 web-using Abstractions files | 6 (`SparkBuilderInterceptorExtensions.cs`) |
+| 4 entity libraries | 5 (`QnA.Library`) |
+| 4 types move | 5 types plus a converter: `EmptyValue`, `LookupReferenceValue<T>`, `TranslatedStringJsonConverter`; also `ValidationError` and the action constants |
+| `GenerateIndexGenerator.cs:459/:497` resolver | `:512-526` |
+| `HostTranslationsAggregatorGenerator.cs:30`, `ProjectionPropertyAnalyzer.cs:30,54`, `AttributeDescriptionsGenerator.cs:82` | `:29`, `:31,55`, `:79` |
+| `dotnet-build-master.yml:82-83`, `:148-149` | `:88-89`, `:154-158` |
+| `ModelSynchronizer.cs:684-686` lookup reflection | around `:754` |
+| "88 source files" | 102 |
+| (not mentioned) | CodeCoverage needs Authorization; QnA needs History; `SparkAware` R1; the PR version-bump gate |

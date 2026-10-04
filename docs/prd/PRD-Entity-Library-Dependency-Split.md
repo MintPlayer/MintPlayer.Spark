@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-10-04** by [entity_library_split_PRD.md](../entity_library_split_PRD.md) and [entity_library_split_plan.md](../entity_library_split_plan.md). This text predates #460/#465/#466/#483; its line references and counts are stale (see the new PRD §8).
+
 # PRD — An entity library should not depend on ASP.NET Core
 
 **Status: NOT STARTED.** Depends on `MintPlayer.Spark.Attributes` existing, which
