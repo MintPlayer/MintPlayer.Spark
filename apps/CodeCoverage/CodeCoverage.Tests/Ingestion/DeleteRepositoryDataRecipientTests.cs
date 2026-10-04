@@ -264,7 +264,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         (await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId))).Should().NotBeNull();
-        (await CountUnderAsync(store, CommitPrefix(RepoId)) > 0).Should().BeTrue();
+        (await CountUnderAsync(store, CommitPrefix(RepoId))).Should().BeGreaterThan(0);
     }
 
     [Fact]

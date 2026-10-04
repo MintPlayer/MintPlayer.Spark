@@ -49,7 +49,7 @@ public class ForgeWebhookDocsTests
             .OrderBy(n => n)
             .ToArray();
 
-        (missing.Length == 0).Should().BeTrue("These events exist but the forge-webhook reference never mentions them, so a second "
+        missing.Should().BeEmpty("These events exist but the forge-webhook reference never mentions them, so a second "
             + "forge would not know to raise them:\n  " + string.Join("\n  ", missing));
     }
 
@@ -73,7 +73,7 @@ public class ForgeWebhookDocsTests
     {
         var doc = ReferenceDoc();
 
-        (doc.Length > 2000).Should().BeTrue("The reference looks truncated.");
+        doc.Length.Should().BeGreaterThan(2000, "The reference looks truncated.");
         doc.Should().Contain("IRecipient<ForgeWebhookMessage<");
     }
 }

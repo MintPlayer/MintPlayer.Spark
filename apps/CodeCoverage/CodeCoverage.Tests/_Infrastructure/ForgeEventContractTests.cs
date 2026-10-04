@@ -83,7 +83,7 @@ public class ForgeEventContractTests
         var consumed = ConsumedEvents().Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
         var orphans = NeutralEvents().Select(t => t.Name).Where(n => !consumed.Contains(n)).OrderBy(n => n).ToArray();
 
-        (orphans.Length == 0).Should().BeTrue("These neutral events are declared but nothing consumes them. A second forge raising one "
+        orphans.Should().BeEmpty("These neutral events are declared but nothing consumes them. A second forge raising one "
             + "would find it silently dropped:\n  " + string.Join("\n  ", orphans));
     }
 
@@ -93,7 +93,7 @@ public class ForgeEventContractTests
         var produced = ProducedEventNames();
         var orphans = NeutralEvents().Select(t => t.Name).Where(n => !produced.Contains(n)).OrderBy(n => n).ToArray();
 
-        (orphans.Length == 0).Should().BeTrue("These neutral events are declared but GitHub never raises one. Either the fact is being "
+        orphans.Should().BeEmpty("These neutral events are declared but GitHub never raises one. Either the fact is being "
             + "handled inline — which is what a second forge would have to reimplement — or the event "
             + "is dead weight:\n  " + string.Join("\n  ", orphans));
     }

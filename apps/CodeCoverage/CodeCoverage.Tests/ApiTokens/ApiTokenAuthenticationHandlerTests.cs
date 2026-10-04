@@ -90,7 +90,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var result = await handler.AuthenticateAsync();
 
         result.Succeeded.Should().BeFalse();
-        (result.Failure is not null).Should().BeFalse("an absent or foreign credential must be NoResult, not Fail");
+        result.Failure.Should().BeNull("an absent or foreign credential must be NoResult, not Fail");
     }
 
     [Fact]

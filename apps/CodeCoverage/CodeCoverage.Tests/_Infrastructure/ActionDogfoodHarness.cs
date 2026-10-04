@@ -65,7 +65,7 @@ public static class ActionDogfoodHarness
             ? Directory.GetFiles(directory, "CodeCoverage.dll", SearchOption.AllDirectories).FirstOrDefault()
             : null;
 
-        (assembly is not null).Should().BeTrue($"CodeCoverage.dll was not found under {directory}. Build the app before running this test.");
+        assembly.Should().NotBeNull($"CodeCoverage.dll was not found under {directory}. Build the app before running this test.");
         return assembly!;
     }
 
@@ -322,6 +322,6 @@ public static class ActionDogfoodHarness
         var stderr = process!.StandardError.ReadToEnd();
         process.StandardOutput.ReadToEnd();
         process.WaitForExit();
-        (process.ExitCode == 0).Should().BeTrue($"git {arguments} failed: {stderr}");
+        process.ExitCode.Should().Be(0, $"git {arguments} failed: {stderr}");
     }
 }

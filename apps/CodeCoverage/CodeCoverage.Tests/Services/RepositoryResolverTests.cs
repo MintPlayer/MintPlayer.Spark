@@ -102,7 +102,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         resolution.Repository.Should().NotBeNull();
         resolution.Repository!.GitHubId.Should().Be(1);
         resolution.Redirect.Should().BeFalse();
-        (github.AppClients > 0).Should().BeFalse();
+        github.AppClients.Should().Be(0);
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "some-stranger", "anything", _ => true);
 
         resolution.Repository.Should().BeNull();
-        (github.AppClients > 0).Should().BeFalse();
+        github.AppClients.Should().Be(0);
     }
 
     /// <summary>
@@ -223,7 +223,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "some-old-name", _ => true);
 
         resolution.Repository.Should().BeNull();
-        (github.AppClients > 0).Should().BeTrue("a stale name under a known owner is exactly what step three is for");
+        github.AppClients.Should().BeGreaterThan(0, "a stale name under a known owner is exactly what step three is for");
     }
 
     /// <summary>
@@ -254,7 +254,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         resolution.Repository.Should().NotBeNull();
         resolution.Repository!.GitHubId.Should().Be(expected);
         resolution.Repository.Provider.Should().Be(provider);
-        (github.AppClients > 0).Should().BeFalse();
+        github.AppClients.Should().Be(0);
     }
 
     /// <summary>
@@ -309,6 +309,6 @@ public class RepositoryResolverTests : CoverageRavenTest
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitLab, "acme", "unknown", _ => true);
 
         resolution.Repository.Should().BeNull();
-        (github.AppClients > 0).Should().BeFalse();
+        github.AppClients.Should().Be(0);
     }
 }

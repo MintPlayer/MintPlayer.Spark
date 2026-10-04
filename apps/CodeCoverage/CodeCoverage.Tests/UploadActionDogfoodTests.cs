@@ -76,7 +76,7 @@ public class UploadActionDogfoodTests : CoverageRavenTest
                 var (exitCode, log) = await ActionDogfoodHarness.RunActionAsync(
                     bundle, workspace.FullName, outputFile, baseUrl, token, RepoName, Sha, RunId);
 
-                (exitCode == 0).Should().BeTrue($"The action failed (exit {exitCode}):\n{log}\n--- server (last 40 lines) ---\n{ActionDogfoodHarness.Tail(serverOutput, 40)}");
+                exitCode.Should().Be(0, $"The action failed (exit {exitCode}):\n{log}\n--- server (last 40 lines) ---\n{ActionDogfoodHarness.Tail(serverOutput, 40)}");
                 // Proves the server accepted the multipart body and answered the shape the action
                 // expects -- a 202 whose JSON carries buildId and sessionId.
                 log.Should().Contain("Upload accepted");

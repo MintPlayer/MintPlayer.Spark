@@ -59,7 +59,7 @@ public class ForkDocumentIdCollisionTests
         fork.Length.Should().Be(firstParty.Length);
 
         var collisions = firstParty.Intersect(fork, StringComparer.Ordinal).ToArray();
-        (collisions.Length == 0).Should().BeTrue("These ids are produced by BOTH a fork and a first-party upload for the same commit, so "
+        collisions.Should().BeEmpty("These ids are produced by BOTH a fork and a first-party upload for the same commit, so "
             + "one would overwrite the other:\n  " + string.Join("\n  ", collisions));
     }
 

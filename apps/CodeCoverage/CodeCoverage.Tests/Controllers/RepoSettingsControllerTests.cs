@@ -98,7 +98,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
             first = (await read.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!.BadgeToken;
         }
 
-        string.IsNullOrWhiteSpace(first).Should().BeFalse();
+        first.Should().NotBeNullOrWhiteSpace();
 
         using (var session = store.OpenAsyncSession())
         {

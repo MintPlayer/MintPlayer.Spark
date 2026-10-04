@@ -33,7 +33,7 @@ public class ApiTokenRepositoryIdListMigrationTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var raw = await session.LoadAsync<Dictionary<string, object?>>("ApiTokens/modern");
         (raw["Scope"]?.ToString()).Should().Be("Account");
-        raw.ContainsKey("GithubRepositories").Should().BeFalse();
+        raw.Should().NotContainKey("GithubRepositories");
     }
 
     [Fact]
@@ -57,6 +57,6 @@ public class ApiTokenRepositoryIdListMigrationTests : CoverageRavenTest
         var raw = await session.LoadAsync<Dictionary<string, object?>>("ApiTokens/legacy");
         (raw["Scope"]?.ToString()).Should().Be("Repository");
         (raw["GithubRepositories"]?.ToString()).Should().Contain("Repositories/42");
-        raw.ContainsKey("RepositoryGitHubId").Should().BeFalse();
+        raw.Should().NotContainKey("RepositoryGitHubId");
     }
 }

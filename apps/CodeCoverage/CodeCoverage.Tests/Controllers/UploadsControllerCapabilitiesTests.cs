@@ -92,7 +92,7 @@ public class UploadsControllerCapabilitiesTests
         // A client treats a missing endpoint as contract 0, so the served value
         // must be at least 1 or an up-to-date server is indistinguishable from an
         // image that predates the endpoint entirely.
-        (response.Contract >= 1).Should().BeTrue();
+        response.Contract.Should().BeGreaterThanOrEqualTo(1);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class UploadsControllerCapabilitiesTests
 
         response.Features.Should().AllSatisfy(feature =>
         {
-            string.IsNullOrWhiteSpace(feature).Should().BeFalse();
+            feature.Should().NotBeNullOrWhiteSpace();
             // Lower-kebab, like the flag vocabulary — a client compares these as
             // literals, so casing drift is a silent mismatch.
             feature.Should().MatchRegex("^[a-z0-9-]+$");

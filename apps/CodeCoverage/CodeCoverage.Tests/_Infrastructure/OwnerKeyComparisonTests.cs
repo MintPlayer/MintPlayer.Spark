@@ -65,7 +65,7 @@ public class OwnerKeyComparisonTests
             }
         }
 
-        (offenders.Count == 0).Should().BeTrue("The allowed-owner set holds `provider:login` KEYS. Compare an OwnerKey, never a bare "
+        offenders.Should().BeEmpty("The allowed-owner set holds `provider:login` KEYS. Compare an OwnerKey, never a bare "
             + "login — \"acme\" is not \"github:acme\", so this matches nothing and fails CLOSED:\n  "
             + string.Join("\n  ", offenders));
     }
@@ -103,5 +103,5 @@ public class OwnerKeyComparisonTests
 
     [Fact]
     public void The_sweep_reads_a_substantial_number_of_files()
-        => (SourceFiles().Count() > 100).Should().BeTrue("Expected the sweep to walk the whole app.");
+        => SourceFiles().Should().HaveCountGreaterThan(100, "Expected the sweep to walk the whole app.");
 }

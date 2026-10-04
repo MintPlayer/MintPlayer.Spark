@@ -66,7 +66,7 @@ public class AbsentFieldPredicateTests
             }
         }
 
-        (offenders.Count == 0).Should().BeTrue("Use `x.Field != true`, never `!x.Field` — an absent JSON field does not satisfy an "
+        offenders.Should().BeEmpty("Use `x.Field != true`, never `!x.Field` — an absent JSON field does not satisfy an "
             + "equality in RavenDB, so the negation silently matches nothing:\n  "
             + string.Join("\n  ", offenders));
     }
@@ -158,5 +158,5 @@ public class AbsentFieldPredicateTests
     /// </summary>
     [Fact]
     public void The_sweep_reads_a_substantial_number_of_files()
-        => (SourceFiles().Count() > 100).Should().BeTrue("Expected the sweep to walk the whole app.");
+        => SourceFiles().Should().HaveCountGreaterThan(100, "Expected the sweep to walk the whole app.");
 }

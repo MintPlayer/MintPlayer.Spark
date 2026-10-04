@@ -145,7 +145,7 @@ public class DeleteDataActionTests : CoverageRavenTest
         repository!.Connection.Should().Be(RepositoryConnection.Connected);
 
         // The gate the action applies, spelled the way the action spells it.
-        (repository.Connection != RepositoryConnection.Disconnected).Should().BeTrue("a repository with no persisted Connection must be treated as connected, and therefore "
+        repository.Connection.Should().NotBe(RepositoryConnection.Disconnected, "a repository with no persisted Connection must be treated as connected, and therefore "
             + "must not be deletable until the reconciler has positively marked it disconnected");
     }
 
