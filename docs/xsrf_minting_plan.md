@@ -7,8 +7,38 @@ Core and this codebase that were not checked and turned out to be wrong, and two
 copied into production source comments. They are corrected in that table; the milestones below are
 what survives.
 
-Status: **M0 done** (coverage — the part that closes a real hole). **M1–M5 not started** (minting
-placement — ergonomics, one round trip).
+Status: **M0 done** (coverage — the part that closes a real hole). ~~**M1–M5 not started** (minting
+placement — ergonomics, one round trip).~~
+
+**Status 2026-10-04: M1 is in progress through #452 / PR #485** (branch `feat/452-adopt-xsrf-package`,
+commit `f8dd2fc1`). Spark's own mint was deleted and replaced by `UseAntiforgeryGenerator()` from
+`MintPlayer.AspNetCore.SpaServices.Xsrf` `11.0.0-rc.3`. The package already does everything M1 lists
+(mints in `OnStarting`, same flags, null guard, try/catch, snapshot and restore of the cache headers),
+plus `[SkipXsrfToken]`, which the coverage badge uses. What is still open:
+
+| | State | Evidence / next step |
+|---|---|---|
+| M1 position | ⚠️ **Open decision.** PR #485 kept the old position, *after* `UseSparkAntiforgery()`, as #452 instructed. M1 below says *above* it, so the gate's own 400 carries a fresh cookie (PRD §5, reason 2). In the current position that reason is **not delivered**: the gate returns 400 without calling `next`, so the generator never registers its callback. | Move `app.UseAntiforgeryGenerator()` above `app.UseSparkAntiforgery()` in `SparkMiddleware.cs`, and add a test: a stale token gets a 400 that carries a new `XSRF-TOKEN`. |
+| M1 reason 1 (sign-in) | ✅ | `XsrfMintingPlacementTests.Token_minted_on_the_sign_in_response_is_usable_immediately` drives the real package. |
+| M1 reason 3 (survives `UseExceptionHandler`) | Expected, **not measured.** `Response.Clear()` does not remove `OnStarting` callbacks. | Add a test, or measure it. |
+| M2 | ❌ Not done: no `XsrfEnforcementTests` case on the real Fleet host. ⚠️ PR #485 also **removed** the `BeforeHandler` arm from `XsrfMintingPlacementTests`, against the instruction in M2 below. The measurement is kept in the class remarks. | Decide whether to restore the arm. Add the Fleet case either way. |
+| M3 | ❌ Not done | `spark-auth.service.ts` `externalFlow` |
+| M4 | ❌ Not done | Browser run via the `playwright_node` MCP |
+| M5 | ❌ **CI is red on it.** The `Verify a changed package was version-bumped` gate failed on run `37215922818`, so no tests ran. Release notes are not written either. | Bump `libs/**` `<Version>`s following the previous bump (`git log -S"preview." -- 'libs/**/*.csproj'`), then write release notes. |
+
+Local verification so far: the Spark library builds against rc.3. CodeCoverage.Tests had 1090/1091
+passing; the failure was a bug in the new `BadgeHttpTests` (string comparison of `Cache-Control`), now
+fixed in `f8dd2fc1`, 3/3 green. MintPlayer.Spark.Tests, E2E and Client tests have **not
+run**: the local sweep was interrupted, and CI stopped at the version gate.
+
+**Also pending, same PR (owner proposal 2026-10-04):** convert the remaining 568 xUnit `Assert.*` calls
+in 83 files to MintPlayer.Assertions. By project: CodeCoverage.Tests 468, Spark.Tests 76, Client 13,
+E2E 11. Add `Microsoft.CodeAnalysis.BannedApiAnalyzers` with `T:Xunit.Assert` so new ones cannot appear.
+FluentAssertions is already gone; every test project references `MintPlayer.Assertions` `11.0.0-rc.5`.
+Traps: `Assert.Equal(expected, actual)` argument order; collection `Assert.Equal` is ordered, so it maps
+to `.Equal`, not `BeEquivalentTo`; `Assert.Contains(sub, str)` order; `Single`/`IsType`/`ThrowsAsync`
+map to `.Which`; precision `Equal` maps to `BeCloseTo`. Verify with identical per-test results before
+and after. Awaiting the owner's go.
 
 ---
 
