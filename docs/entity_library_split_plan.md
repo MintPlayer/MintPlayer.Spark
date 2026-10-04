@@ -110,7 +110,7 @@ Rules for this work:
    where used), and set `<SparkEntityLibrary>true</SparkEntityLibrary>`.
    - **CodeCoverage:** Authorization → Authorization.Abstractions (remove the #388 comment at :21-28);
      add a `Microsoft.Extensions.Caching.Memory` PackageReference at the version the solution already
-     resolves; drop `Newtonsoft.Json` (:13) only if a build without it is green.
+     resolves; drop `Newtonsoft.Json` (:13) only if a build without it is green. ✅ Dropped: unused, solution builds.
    - **QnA:** History → History.Abstractions; add an explicit `Newtonsoft.Json` PackageReference.
      Check the contributions `.targets` import (csproj :25) for anything Abstractions-dependent.
 2. Add the build guard to the root `Directory.Build.targets`, conditioned on `SparkEntityLibrary`.

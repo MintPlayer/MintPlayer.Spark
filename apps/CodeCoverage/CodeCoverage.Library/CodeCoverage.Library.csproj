@@ -9,9 +9,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<!-- [JsonIgnore] on transient entity properties: RavenDB serializes through
-		     Newtonsoft, so its attribute is what keeps a value out of the document. -->
-		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<!-- SourceContentCache's MemoryCache. Stated explicitly: it used to resolve only through the
 		     ASP.NET Core shared framework the Abstractions reference dragged in (#388). -->
 		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="11.0.0-rc.1.26425.128" />
