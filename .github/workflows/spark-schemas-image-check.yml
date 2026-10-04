@@ -1,0 +1,50 @@
+name: spark-schemas-image-check
+
+# Builds the SparkSchemas image on a pull request, without pushing it (#264).
+#
+# spark-schemas-deploy.yml builds this image only AFTER a merge (or a new schemas/v{n} release), so a
+# broken Dockerfile, nginx.conf or fetch script would surface first as a failed production deploy.
+# This builds the same Dockerfile with the same context before the merge. It never pushes, never
+# logs in to a registry, and never deploys. Before the first revision is published the image builds
+# empty, which is still a valid check of everything but the content.
+#
+# The paths MIRROR spark-schemas-deploy.yml's push filter (plus this file).
+
+on:
+  pull_request:
+    paths:
+      - 'apps/SparkSchemas/**'
+      - '.github/workflows/spark-schemas-image-check.yml'
+      - '.github/workflows/spark-schemas-deploy.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-image:
+    name: Build the SparkSchemas image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Build the image
+      uses: docker/build-push-action@v7
+      with:
+        context: ./apps/SparkSchemas
+        file: ./apps/SparkSchemas/Dockerfile
+        push: false
+        build-args: |
+          GITHUB_REPOSITORY=${{ github.repository }}
+          SCHEMAS_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
+        secrets: |
+          github_token=${{ github.token }}
