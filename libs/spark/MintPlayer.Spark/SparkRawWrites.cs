@@ -40,6 +40,14 @@ public static class SparkRawWrites
             return ids.Contains(id);
     }
 
+    /// <summary>
+    /// A library interceptor deletes <paramref name="id"/> as part of the framework's own write, in the
+    /// same session and the same commit: a cascade, such as Contributions removing the contributions of an
+    /// owner that is hard-deleted. It counts as issued by the framework, so a guard (SoftDelete) lets it
+    /// through; anything else stays refused.
+    /// </summary>
+    public static void Cascade(object session, string id) => IssuedByFramework(session, id);
+
     /// <summary>The persister is about to delete <paramref name="id"/> through <paramref name="session"/>.</summary>
     internal static void IssuedByFramework(object session, string id)
     {

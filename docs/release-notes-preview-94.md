@@ -108,7 +108,9 @@ See `docs/guide-concurrency.md`.
   fails a committed change. An interceptor that wants to cancel throws `SparkCancelException` (delete answers 204,
   update 200 as stored, create 204); a `Retry.Action` from an interceptor during a bulk delete refuses its row.
 - App interceptors skip `Sync` unless they opt in (`HandlesSync`).
-- A raw `session.Delete` of an `ISoftDeletable` document is refused outside `SparkRawWrites.Allow()`.
+- A raw `session.Delete` of an `ISoftDeletable` document is refused outside `SparkRawWrites.Allow()`. A
+  library interceptor that deletes documents as part of the framework's own write (a cascade) marks each
+  with `SparkRawWrites.Cascade(session, id)`; Contributions does.
 
 See `docs/guide-interceptors.md`.
 

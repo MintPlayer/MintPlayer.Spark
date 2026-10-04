@@ -221,14 +221,8 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         archive.Confirmation.Should().BeNull("nothing asks for one");
     }
 
-    [Fact]
-    public void The_core_texts_come_from_the_core_translations()
-    {
-        var catalogue = ActionsCatalogueLoader.Build(null, SparkActionLayers.Libraries);
-
-        catalogue.Find("Edit")!.Label.GetValue("nl").Should().Be("Bewerken");
-        catalogue.Find("Delete")!.Confirmation!.GetValue("en").Should().Contain("{count}");
-    }
+    // The_core_texts_come_from_the_core_translations lives in CoreActionTextsTests: it needs the
+    // process-wide translations registry, so it runs in a collection of its own.
 
     [Fact]
     public void An_explicit_untranslated_confirmation_key_still_asks_and_false_never_does()

@@ -329,7 +329,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
                 await session.StoreAsync(mine, changeVector, id);
             }
             else
-                session.Delete(mine);
+                CascadeDelete(session, mine);
 
             var now = await RecomputeAsync(session, targetId, key, new() { [id] = null });
             finalCurrents[key] = now;
@@ -456,7 +456,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         if (winner is null)
         {
             if (existing is not null)
-                session.Delete(id, session.Advanced.GetChangeVectorFor(existing));
+                CascadeDelete(session, id, session.Advanced.GetChangeVectorFor(existing));
             return null;
         }
 
@@ -605,7 +605,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
             await session.StoreAsync(contribution, changeVector, id);
         }
         else
-            session.Delete(id, session.Advanced.GetChangeVectorFor(contribution));
+            CascadeDelete(session, id, session.Advanced.GetChangeVectorFor(contribution));
     }
 
     public async Task<IReadOnlyList<IContribution>> ContributionsOfAsync(string targetId, IAsyncDocumentSession session, IServiceProvider services)
@@ -621,10 +621,29 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
 
     public async Task OnOwnerDeletedAsync(string targetId, IAsyncDocumentSession session)
     {
+        // A cascade of the owner's own hard delete, committed with it (see CascadeDelete).
         foreach (var c in await LoadPrefixAsync<TContribution>(session, d.ContributionPrefix(targetId)))
-            session.Delete(c);
+            CascadeDelete(session, c);
         foreach (var current in await LoadCurrentsAsync(session, targetId, lazily: false))
-            session.Delete(current);
+            CascadeDelete(session, current);
+    }
+
+    /// <summary>
+    /// Every delete Contributions issues runs inside the framework's write of the owner (its save or its
+    /// delete) and commits with it, so it is marked as the framework's: contributions and current documents
+    /// may be soft-deletable, and the SoftDelete raw-delete guard refuses any other hard delete (#482, D32).
+    /// </summary>
+    private static void CascadeDelete(IAsyncDocumentSession session, object document)
+    {
+        if (session.Advanced.GetDocumentId(document) is { } id)
+            SparkRawWrites.Cascade(session, id);
+        session.Delete(document);
+    }
+
+    private static void CascadeDelete(IAsyncDocumentSession session, string id, string? changeVector)
+    {
+        SparkRawWrites.Cascade(session, id);
+        session.Delete(id, changeVector);
     }
 
     // ---- rebuild --------------------------------------------------------------------------------------
@@ -654,7 +673,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
                 continue;
             var slotKey = d.SlotKeyOfCurrent(current);
             if (!bySlot.ContainsKey(slotKey) || !string.Equals(id, CurrentIdOf(targetId, slotKey), StringComparison.OrdinalIgnoreCase))
-                session.Delete(id, session.Advanced.GetChangeVectorFor(current));
+                CascadeDelete(session, id, session.Advanced.GetChangeVectorFor(current));
         }
     }
 
