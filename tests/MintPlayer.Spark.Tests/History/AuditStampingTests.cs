@@ -13,8 +13,8 @@ namespace MintPlayer.Spark.Tests.History;
 /// </summary>
 /// <remarks>
 /// Drives <c>HistoryInterceptor</c> directly: what is under test is the stamping decision, not the pipeline
-/// around it, which <see cref="HistoryTests"/> covers end to end. The session is a substitute, so every
-/// entity counts as changed.
+/// around it, which <see cref="HistoryTests"/> covers end to end. The session is a substitute that reports
+/// every entity as changed.
 /// </remarks>
 public class AuditStampingTests
 {
@@ -25,10 +25,23 @@ public class AuditStampingTests
         => new(
             currentUser: new HiUser(userId),
             modelLoader: Substitute.For<IModelLoader>(),
-            session: Substitute.For<IAsyncDocumentSession>(),
+            session: ChangedSession(),
             state: new HistoryRequestState(),
             timeProvider: new FixedTime(Now),
             syncInitiator: sync?.Initiator);
+
+    /// <summary>
+    /// A session that reports every entity as tracked and changed. NSubstitute's automatic stubs would
+    /// answer an empty change vector and HasChanged == false, and the interceptor would then skip a
+    /// save with a stored version as "nothing changed".
+    /// </summary>
+    private static IAsyncDocumentSession ChangedSession()
+    {
+        var session = Substitute.For<IAsyncDocumentSession>();
+        session.Advanced.GetChangeVectorFor(Arg.Any<object>()).Returns("A:1-test");
+        session.Advanced.HasChanged(Arg.Any<object>()).Returns(true);
+        return session;
+    }
 
     private static SaveContext Save(object entity, PersistentObjectOperation operation, object? before = null)
         => new()
