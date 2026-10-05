@@ -369,6 +369,7 @@ These are behaviours only; no code was copied. Vidyano runs **two independent me
 | G-Q21 | Revisions are **git tags `schemas/v{n}` (plain counter)**, applied automatically: CI on master generates the set, compares it with the release assets of the latest `schemas/v*` tag, and on any difference tags the commit `schemas/v{n+1}`, creates the GitHub release with the six files, deploys the site and builds the package with `n+1` embedded; otherwise the package embeds `n`. A workflow `concurrency` group serialises master pushes; local builds read `n` via `git describe --tags --match "schemas/v*"`; the first run bootstraps `v1`. The release is **required** (the image build downloads every `schemas/v*` release's assets, so the site is rebuildable from scratch). `schemas/*` tags get a tag-protection rule. Amends G-Q18a (counter state = tags, not committed folders) | owner, grill 2026-10-04 ("Can we use git-tags … automatically applied whenever a schema changes", then "A") | semver rejected: apps are pinned to an exact revision by sync, so a compatibility range has no consumer, and auto-classifying JSON Schema diffs is unreliable |
 | G-Q22 | **Email addresses are never shown or sent to the browser for another user.** `UserName` becomes a **public handle**: registration asks for it; a framework rule refuses any `UserName` containing `@`; an email change no longer rewrites `UserName` (`SparkUserManager.cs:50`); existing users whose `UserName` is an email get a generated handle through a one-time migration and can change it on the account page. Login keeps accepting email or user name. No new field | owner, 2026-10-05 ("email-addresses should never be shown/leaked to the browser"; chose "UserName = public handle") | QnA labels showed author emails (§10.3); registration set `UserName = email` |
 | G-Q23 | **SPARK024 is silent for a deny on both well-known groups** (the documented "hide from everyone" pattern); a deny on one group only still warns. Analyzer and runtime posture note agree | owner, 2026-10-05 | 22 warnings in CodeCoverage were all deliberate |
+| G-Q24 | **The application decides how users sign in**: `SparkAuthenticationOptions.SignInIdentifiers` (`[Flags] Email \| UserName`, default both). A disallowed identifier kind is refused exactly like an unknown account (same 401 body, no failed-attempt count). The capabilities endpoint publishes the allowed kinds, and the ng-spark-auth and OIDC login pages adapt their label, input type and autocomplete. The old email → user-name fallback is removed (dead since G-Q22) | owner, 2026-10-05: "username OR email - We cannot make this decision for the final application-developers" | §10.1c |
 | G-Q2 | No dedicated shape hook: the developer overrides `OnLoad` (and calls `RemoveAttributes`); losing batched selection loads (`SparkSelectionResolver.cs:93`, the only batched caller) for such types is accepted; `OnQuery` is not involved | owner, grill 2026-10-04 | `DefaultPersistentObjectActions.cs:76-87`; supersedes PRD §6.2 |
 | D9 | "Client needs it, not drawn" = `showedOn` (`QueryValue`, explicit `None`), never `security.json` | Claude, delegated by the owner, 2026-10-04; owner agreed ("Vidyano has the Visibility + the security.json") | owner: a deny strips TS-needed values; decompiled Vidyano keeps the two mechanisms separate (§3.7b) |
 
@@ -533,6 +534,35 @@ Hardened anyway:
 - **Rule recorded:** the rule is now in the repo's `CLAUDE.md`.
 - **Also fixed on the way** (`4271c2e8`): the verifier's dynamic query waits (bounded) for the auto-index it builds.
   The load-only `ForgeQualifiedIdVerifierTests` failure is proven fixed with 8 CPU burners (7/7).
+
+### 10.1c Sign-in identifiers (2026-10-05): commit `5d616aca`
+**Callers audited.** No path bypasses `SparkSignInManager.FindUserForSignInAsync`:
+- Identity API `/spark/auth/login` (cookie and bearer, via the overridden string `PasswordSignInAsync`)
+- OIDC `/connect/login` (the same virtual overload)
+- 2FA and recovery-code steps, which use the user the password step resolved
+- passkeys need no identifier
+- re-authentication works on the signed-in user
+- forgot/reset password and resend-confirmation stay **email-based by design**, because they are not sign-in
+
+**Startup:** with local credentials enabled, `SignInIdentifiers = 0` refuses startup.
+
+**Timing:** a disallowed kind returns before any lookup. It is slightly faster than an unknown account, which reveals
+only what the capabilities endpoint publishes anyway.
+
+**Tests:**
+- 3 settings × email or user name × cookie or bearer → 200 or an identical 401, with `AccessFailedCount` unchanged
+- an OIDC theory
+- capabilities cases
+- ng-spark-auth label, type and autocomplete specs
+- 49/49 server, 23/23 component
+
+**Version:** `MintPlayer.Spark.IdentityProvider` is bumped to `11.0.0-preview.97`, its first change on this branch.
+
+**Finding:** `FindByEmailAsync` reads a compare-exchange entry (`UserStore.cs:266`), not an index, so it is consistent
+right after a create. `FindByNameAsync` is an index query.
+
+**Note:** a not-yet-migrated `@`-shaped user name can no longer sign in *by that name*; its email still works. The
+migration renames those names at startup.
 
 ### 10.2 Operator steps (done 2026-10-05 with the owner's go-ahead, except where noted)
 1. ✅ VPS `root@188.245.190.60`: `/var/www/spark-schemas/docker-compose.yml`, service **`spark-schemas`** (image
