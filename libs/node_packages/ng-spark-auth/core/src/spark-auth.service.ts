@@ -91,8 +91,9 @@ export class SparkAuthService {
     await this.checkAuth();
   }
 
-  async register(email: string, password: string): Promise<void> {
-    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/register`, { email, password }));
+  /** `userName` is the public handle other users see; it is required and may not contain `@`. */
+  async register(email: string, password: string, userName: string): Promise<void> {
+    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/register`, { email, password, userName }));
   }
 
   async logout(): Promise<void> {

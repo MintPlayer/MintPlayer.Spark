@@ -22,10 +22,10 @@ namespace MintPlayer.Spark.Authorization.Identity;
 /// password against two accounts.
 /// </para>
 /// <para>
-/// The fallback is safe because of <see cref="SparkUserNameValidator{TUser}"/>: a user name that
-/// contains <c>@</c> must equal that user's own email, so "email of account A" and "user name of
-/// account B" cannot be the same string. The fallback exists only for accounts that predate the
-/// rule.
+/// The fallback is safe because of <see cref="SparkUserNameValidator{TUser}"/>: a user name never
+/// contains <c>@</c> (G-Q22), so "email of account A" and "user name of account B" cannot be the
+/// same string. The fallback exists only for accounts that predate the rule, until
+/// <see cref="Migrations.M_202610051200_UserNamesAreNotEmails"/> has given them a handle.
 /// </para>
 /// <para>
 /// Two-factor and recovery-code steps need nothing extra: the password step stores the

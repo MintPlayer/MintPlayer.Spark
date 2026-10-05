@@ -61,7 +61,7 @@ on `SparkClient`. That mirrors the server: authentication is optional there too,
 using MintPlayer.Spark.Client.Authorization;
 
 await client.LoginAsync(email, password);
-await client.RegisterAsync(email, password);
+await client.RegisterAsync(email, password, userName); // userName: the public handle, no '@'
 var me = await client.GetCurrentUserAsync();
 await client.LogoutAsync();
 ```

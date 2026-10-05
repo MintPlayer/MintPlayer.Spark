@@ -126,9 +126,12 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
 
             // #460 D7: a slug of the display name (john-doe, john-doe-2, …), never the email's local
             // part — unless the preset declares its name claim a unique handle the app relies on.
-            var userName = policy.UserName == SparkUserNameSource.ProviderHandle
-                ? providerHandle
-                : await UniqueSlugAsync(info.Principal.FindFirstValue(ClaimTypes.Name) ?? providerHandle);
+            // G-Q22: a name that is an email address is not used at all (the user name is public).
+            var userName = await UniqueUserNameAsync(policy.UserName == SparkUserNameSource.ProviderHandle
+                ? NotAnEmail(providerHandle)?.Trim()
+                : NotAnEmail(info.Principal.FindFirstValue(ClaimTypes.Name) ?? providerHandle) is { } displayName
+                    ? SparkExternalProviderPolicy.Slugify(displayName)
+                    : null);
 
             user = new TUser();
             await userManager.SetUserNameAsync(user, userName);
@@ -194,10 +197,23 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
         return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, error: null);
     }
 
-    /// <summary><c>slug</c>, else <c>slug-2</c>, <c>slug-3</c>, … — the first user name nobody holds.</summary>
-    private async Task<string> UniqueSlugAsync(string? displayName)
+    private static string? NotAnEmail(string? name)
+        => string.IsNullOrWhiteSpace(name) || name.Contains('@') ? null : name;
+
+    /// <summary>
+    /// <c>slug</c>, else <c>slug-2</c>, <c>slug-3</c>, … — the first user name nobody holds; a generated
+    /// <c>user-</c> handle when there is no usable name.
+    /// </summary>
+    private async Task<string> UniqueUserNameAsync(string? slug)
     {
-        var slug = SparkExternalProviderPolicy.Slugify(displayName);
+        if (string.IsNullOrEmpty(slug))
+        {
+            string generated;
+            do generated = SparkUserNames.NewHandle();
+            while (await userManager.FindByNameAsync(generated) is not null);
+            return generated;
+        }
+
         if (await userManager.FindByNameAsync(slug) is null)
             return slug;
 

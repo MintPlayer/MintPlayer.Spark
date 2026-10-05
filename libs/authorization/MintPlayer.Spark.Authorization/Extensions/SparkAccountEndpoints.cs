@@ -30,10 +30,11 @@ namespace MintPlayer.Spark.Authorization.Extensions;
 /// <b>Replacing Microsoft's.</b> <c>MapIdentityApi</c>'s <c>register</c>, <c>resendConfirmationEmail</c>,
 /// <c>confirmEmail</c>, <c>forgotPassword</c>, <c>resetPassword</c> and <c>POST manage/info</c> are
 /// filtered out (<see cref="LocalCredentialEndpointFilter"/>) and mapped here with the same request and
-/// response contracts. What changes: mailed links come from <see cref="ISparkAuthLinkBuilder"/>;
+/// response contracts, except that <c>register</c> also requires a <c>userName</c>
+/// (<see cref="SparkRegisterRequest"/>). What changes: mailed links come from <see cref="ISparkAuthLinkBuilder"/>;
 /// <c>forgotPassword</c> also sends to an unconfirmed address and a completed reset confirms the email
 /// (D6 — the reset link reached the mailbox, which is what confirming proves); a confirmed email change
-/// only moves a user name that was the old email. Microsoft's <c>login</c>, <c>refresh</c>,
+/// never touches the user name (G-Q22). Microsoft's <c>login</c>, <c>refresh</c>,
 /// <c>manage/2fa</c> and <c>GET manage/info</c> stay.
 /// </para>
 /// <para>
@@ -95,23 +96,29 @@ internal static class SparkAccountEndpoints
     #region Local-credential family (replacing MapIdentityApi's)
 
     private static async Task<Results<Ok, ValidationProblem>> RegisterAsync<TUser>(
-        [FromBody] RegisterRequest registration, HttpContext context, [FromServices] IServiceProvider services)
+        [FromBody] SparkRegisterRequest registration, HttpContext context, [FromServices] IServiceProvider services)
         where TUser : SparkUser, new()
     {
         var userManager = services.GetRequiredService<UserManager<TUser>>();
         var store = services.GetRequiredService<IUserStore<TUser>>();
         var email = registration.Email;
+        var userName = registration.UserName?.Trim();
 
         if (string.IsNullOrEmpty(email) || !EmailAddress.IsValid(email))
             return Problem(IdentityResult.Failed(userManager.ErrorDescriber.InvalidEmail(email)));
 
-        // Through the store, not UserManager.SetUserNameAsync: the manager would validate (and try to
-        // save) a user whose email is not set yet, which the '@' user-name rule refuses.
+        // G-Q22: the user name is the public handle, chosen here. It is never derived from the email
+        // (Microsoft's handler used the email, which then showed on every label naming the user).
+        if (string.IsNullOrEmpty(userName))
+            return Problem(IdentityResult.Failed(userManager.ErrorDescriber.InvalidUserName(userName)));
+
+        // Through the store, not UserManager.SetUserNameAsync: the manager would save immediately.
+        // CreateAsync below validates (uniqueness, characters, no '@') and saves once.
         var user = new TUser();
-        await store.SetUserNameAsync(user, email, CancellationToken.None);
+        await store.SetUserNameAsync(user, userName, CancellationToken.None);
         await ((IUserEmailStore<TUser>)store).SetEmailAsync(user, email, CancellationToken.None);
 
-        var result = await userManager.CreateAsync(user, registration.Password);
+        var result = await userManager.CreateAsync(user, registration.Password ?? string.Empty);
         if (!result.Succeeded)
             return Problem(result);
 
@@ -258,9 +265,8 @@ internal static class SparkAccountEndpoints
         if (!string.IsNullOrEmpty(changedEmail) && !EmailChangeEnabled(services))
             return invalid;
 
-        // A change goes through SparkUserManager.ChangeEmailAsync, which moves an email-shaped user
-        // name along in the same save. (Microsoft's handler set the user name to the new email
-        // unconditionally, overwriting a chosen handle.)
+        // A change moves the email only. (Microsoft's handler also set the user name to the new
+        // email, publishing the address as the handle; G-Q22.)
         return string.IsNullOrEmpty(changedEmail)
             ? await userManager.ConfirmEmailAsync(user, code)
             : await userManager.ChangeEmailAsync(user, changedEmail, code);
@@ -612,6 +618,17 @@ internal static class SparkAccountEndpoints
     }
 
     #endregion
+}
+
+/// <summary>
+/// Body of <c>POST /spark/auth/register</c>: Microsoft's <c>RegisterRequest</c> plus the required
+/// <see cref="UserName"/>, the public handle other users see (G-Q22). It may not contain <c>@</c>.
+/// </summary>
+public sealed class SparkRegisterRequest
+{
+    public string? Email { get; set; }
+    public string? Password { get; set; }
+    public string? UserName { get; set; }
 }
 
 /// <summary>Body of <c>POST /spark/auth/confirm-email</c>: the query of the mailed link.</summary>

@@ -310,6 +310,11 @@
       "fr": "Nom d'utilisateur",
       "nl": "Gebruikersnaam"
     },
+    "userNameHint": {
+      "en": "Shown to other users. Cannot contain '@'.",
+      "fr": "Visible par les autres utilisateurs. Ne peut pas contenir « @ ».",
+      "nl": "Zichtbaar voor andere gebruikers. Mag geen '@' bevatten."
+    },
     "continue": {
       "en": "Continue",
       "fr": "Continuer",

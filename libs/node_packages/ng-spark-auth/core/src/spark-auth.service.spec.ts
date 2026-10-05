@@ -157,12 +157,12 @@ describe('SparkAuthService', () => {
     await promise;
   });
 
-  it('register posts email and password', async () => {
-    const promise = service.register('new@example.com', 'pw');
+  it('register posts email, password and user name', async () => {
+    const promise = service.register('new@example.com', 'pw', 'newbie');
 
     const req = http.expectOne('/spark/auth/register');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ email: 'new@example.com', password: 'pw' });
+    expect(req.request.body).toEqual({ email: 'new@example.com', password: 'pw', userName: 'newbie' });
     req.flush(null);
 
     await promise;

@@ -64,16 +64,19 @@ public static class SparkClientAuthExtensions
     /// surface like every mutating account route, so the client warms up and attaches the
     /// X-XSRF-TOKEN header. Does not automatically sign the user in — call
     /// <see cref="LoginAsync"/> if that's the intent.
+    /// <paramref name="userName"/> is required: the public handle other users see, never an email
+    /// address (it may not contain <c>@</c>).
     /// </summary>
     public static async Task RegisterAsync(
         this SparkClient client,
         string email,
         string password,
+        string userName,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(client);
 
-        var content = JsonContent.Create(new { email, password }, options: JsonOptions);
+        var content = JsonContent.Create(new { email, password, userName }, options: JsonOptions);
         using var response = await client.SendAsync(
             HttpMethod.Post,
             "/spark/auth/register",
