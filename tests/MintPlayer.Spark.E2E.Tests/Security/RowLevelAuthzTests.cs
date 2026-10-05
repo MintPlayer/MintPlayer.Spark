@@ -30,7 +30,7 @@ public class RowLevelAuthzTests
         var userBPassword = _fixture.Host.AdminPass;
         await _fixture.Host.SeedUserAsync(userBEmail, userBPassword, "Fleet managers");
 
-        // Admin creates a car — CarActions stamps CreatedBy with the admin's id.
+        // Admin creates a car — History stamps CreatedBy (IAuditCreated, #271) with the admin's id.
         using (var adminClient = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host))
         {
             var created = await adminClient.CreatePersistentObjectAsync(

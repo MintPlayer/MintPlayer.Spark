@@ -49,6 +49,18 @@
             "nl": "Kleur van de buitenlak van het voertuig."
           }
         },
+        "CreatedAt": {
+          "label": {
+            "en": "Created At",
+            "fr": "Créé le",
+            "nl": "Aangemaakt op"
+          },
+          "description": {
+            "en": "When the record was created, stamped by History (IAuditCreated).",
+            "fr": "Date de création de l'enregistrement, apposée par History (IAuditCreated).",
+            "nl": "Wanneer het record werd aangemaakt, gezet door History (IAuditCreated)."
+          }
+        },
         "CreatedBy": {
           "label": {
             "en": "Created By",
@@ -56,9 +68,9 @@
             "nl": "Aangemaakt door"
           },
           "description": {
-            "en": "User id of the account that created the record. Set on create by CarActions; used by the row-level auth hook to restrict non-admin callers to their own cars. Demo field: wouldn't necessarily live on the entity in a production app (could be a metadata field), but keeping it on the entity is the simplest illustration.",
-            "fr": "Id utilisateur du compte qui a créé l'enregistrement. Défini à la création par CarActions ; utilisé par le hook d'autorisation au niveau des lignes pour limiter les appelants non administrateurs à leurs propres voitures. Champ de démonstration : il ne résiderait pas nécessairement sur l'entité dans une application de production (ce pourrait être un champ de métadonnées), mais le conserver sur l'entité est l'illustration la plus simple.",
-            "nl": "Gebruikers-id van het account dat het record heeft aangemaakt. Bij aanmaken gezet door CarActions; gebruikt door de row-level auth-hook om niet-beheerders tot hun eigen wagens te beperken. Demoveld: in een productieapp zou het niet noodzakelijk op de entiteit leven (het kon een metadataveld zijn), maar het op de entiteit houden is de eenvoudigste illustratie."
+            "en": "User id of the account that created the record, stamped by History on create (IAuditCreated). The row-level auth hook restricts non-admin callers to the cars they created.",
+            "fr": "Id utilisateur du compte qui a créé l'enregistrement, apposé par History à la création (IAuditCreated). Le hook d'autorisation au niveau des lignes limite les appelants non administrateurs aux voitures qu'ils ont créées.",
+            "nl": "Gebruikers-id van het account dat het record heeft aangemaakt, bij aanmaken gezet door History (IAuditCreated). De row-level auth-hook beperkt niet-beheerders tot de wagens die ze zelf hebben aangemaakt."
           }
         },
         "Description": {
@@ -168,9 +180,9 @@
             "nl": "Nummer van het politieverslag"
           },
           "description": {
-            "en": "Police report reference, demanded once the vehicle is reported stolen.\nHidden and optional in the model; CarActions.OnRefreshAsync reveals it and makes it required when Status becomes Stolen. That is the whole point of the sample — the model declares the resting shape, the hook declares how the shape responds.\nIgnoreForIndexAttribute because no grid filters or sorts on it, matching Manager and CreatedBy.",
-            "fr": "Référence du procès-verbal de police, exigée dès que le véhicule est déclaré volé.\nMasqué et facultatif dans le modèle ; CarActions.OnRefreshAsync le révèle et le rend obligatoire lorsque Status passe à Stolen. C'est tout l'intérêt de l'exemple — le modèle déclare la forme au repos, le hook déclare comment cette forme réagit.\nIgnoreForIndexAttribute parce qu'aucune grille ne filtre ni ne trie dessus, à l'instar de Manager et CreatedBy.",
-            "nl": "Referentie van het politieverslag, vereist zodra het voertuig als gestolen is opgegeven.\nVerborgen en optioneel in het model; CarActions.OnRefreshAsync maakt het zichtbaar en verplicht wanneer Status Stolen wordt. Dat is de hele bedoeling van het voorbeeld — het model verklaart de vorm in rust, de hook verklaart hoe die vorm reageert.\nIgnoreForIndexAttribute omdat geen enkel grid erop filtert of sorteert, net als bij Manager en CreatedBy."
+            "en": "Police report reference, demanded once the vehicle is reported stolen.\nHidden and optional in the model; CarActions.OnRefreshAsync reveals it and makes it required when Status becomes Stolen. That is the whole point of the sample — the model declares the resting shape, the hook declares how the shape responds.\nIgnoreForIndexAttribute because no grid filters or sorts on it, matching Manager.",
+            "fr": "Référence du procès-verbal de police, exigée dès que le véhicule est déclaré volé.\nMasqué et facultatif dans le modèle ; CarActions.OnRefreshAsync le révèle et le rend obligatoire lorsque Status passe à Stolen. C'est tout l'intérêt de l'exemple — le modèle déclare la forme au repos, le hook déclare comment cette forme réagit.\nIgnoreForIndexAttribute parce qu'aucune grille ne filtre ni ne trie dessus, à l'instar de Manager.",
+            "nl": "Referentie van het politieverslag, vereist zodra het voertuig als gestolen is opgegeven.\nVerborgen en optioneel in het model; CarActions.OnRefreshAsync maakt het zichtbaar en verplicht wanneer Status Stolen wordt. Dat is de hele bedoeling van het voorbeeld — het model verklaart de vorm in rust, de hook verklaart hoe die vorm reageert.\nIgnoreForIndexAttribute omdat geen enkel grid erop filtert of sorteert, net als bij Manager."
           }
         },
         "PromoVideoUrl": {
