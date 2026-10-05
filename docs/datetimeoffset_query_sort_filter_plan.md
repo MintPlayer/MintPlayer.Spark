@@ -28,7 +28,9 @@
 | M14 full sweep | ⏳ |
 | M14 IDE light-bulb check (owner, by hand) | ⏳ Comment out `Commits_ByRepository.cs:125` (`DateRaw = …`), expect the SPARK006 squiggle on `Date` and the "Map 'DateRaw' in the index" light bulb, apply it, then `git checkout` the file. No demo-app changes (PRD D20) |
 | Release notes | ✅ `docs/release-notes-preview-98.md` |
-| PR | ⏳ |
+| PR | ✅ #487 |
+| Sweep (wired caveat: run with `--skip-remote-cache`; the first run lost every .NET test to remote-cache `504`s) | Spark.Tests 3823/3824, CodeCoverage 1107/1108, E2E 150/155, SourceGenerators / Client / ng-spark green. CI on #487: everything green except the one below. The two other local failures are this machine under load: nx's plugin worker died while building Fleet (CrossModuleSync ×5), and an auto-index creation took over 15 s (UploadActionWindowsPaths). Both are green on CI |
+| Found by CI, fixed here | `ModelSynchronizerDescriptionTests.Second_sync_pass_is_byte_identical…` assumed no `"$schema"` line. The schema revision comes from the nearest `schemas/v*` git tag (0 = none written). Master's CI built before the deploy created `schemas/v1` and passed; every later build stamps the line. So master is latently red, not because of this branch. The test now expects what the build's revision writes, verified at revision 1 and with `-p:SparkSchemaRevision=0` |
 
 ## Baseline — red/green before any fix (measured 2026-10-05, one targeted run)
 
