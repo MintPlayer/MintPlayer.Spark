@@ -87,7 +87,8 @@ internal static class CodeFixHarness
         IEnumerable<FixtureProject> projects,
         IEnumerable<Type>? referenceTypes = null,
         string? generatorAssemblyName = null,
-        string? codeFixAssemblyName = null)
+        string? codeFixAssemblyName = null,
+        IReadOnlyCollection<string>? expectedCompileErrors = null)
         => RunAsync(
             compilation =>
             {
@@ -102,7 +103,7 @@ internal static class CodeFixHarness
 
                 return Task.FromResult(diagnostics);
             },
-            codeFixTypeName, diagnosticId, projects, referenceTypes, codeFixAssemblyName);
+            codeFixTypeName, diagnosticId, projects, referenceTypes, codeFixAssemblyName, expectedCompileErrors);
 
     private static async Task<CodeFixResult> RunAsync(
         Func<Compilation, Task<ImmutableArray<Diagnostic>>> produceDiagnostics,
@@ -110,7 +111,8 @@ internal static class CodeFixHarness
         string diagnosticId,
         IEnumerable<FixtureProject> projects,
         IEnumerable<Type>? referenceTypes,
-        string? codeFixAssemblyName)
+        string? codeFixAssemblyName,
+        IReadOnlyCollection<string>? expectedCompileErrors = null)
     {
         using var workspace = new AdhocWorkspace();
         var solution = BuildSolution(workspace, projects.ToList(), referenceTypes ?? []);
@@ -127,6 +129,9 @@ internal static class CodeFixHarness
         // all, and three of eight tests went green on an empty result. Fail loudly instead.
         var compileErrors = compilation.GetDiagnostics()
             .Where(d => d.Severity == DiagnosticSeverity.Error)
+            // Named by the caller: an error the fixture has by construction (SPARK038's non-partial type
+            // cannot implement its interface, CS0535), which the fix under test is what removes.
+            .Where(d => expectedCompileErrors is null || !expectedCompileErrors.Contains(d.Id))
             .ToList();
 
         if (compileErrors.Count > 0)

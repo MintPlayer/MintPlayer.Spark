@@ -131,7 +131,8 @@ public class ValueObjectCodeFixTests
             ],
             referenceTypes: [.. Refs, typeof(MintPlayer.Spark.History.IAuditable)],
             generatorAssemblyName: LibraryGeneratorsAssembly,
-            codeFixAssemblyName: LibraryGeneratorsAssembly);
+            codeFixAssemblyName: LibraryGeneratorsAssembly,
+            expectedCompileErrors: ["CS0535"]);
 
         var document = result.Document("Note.cs");
         document.Should().Contain("public partial class Outer");
