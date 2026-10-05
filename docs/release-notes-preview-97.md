@@ -192,6 +192,31 @@ not affect the model hash or what the loaders read. See `docs/guide-json-schemas
 
 ---
 
+## A request's own write is in its next query: writes wait for their indexes, after the commit
+
+**Behaviour change.** Every write `IDatabaseAccess` makes while serving an HTTP request — persistent
+object create, update and delete, the bulk delete, AsDetail rows, retries, `SaveDocumentUncheckedAsync`
+/ `DeleteDocumentUncheckedAsync`, and so every custom action that writes through it — now **commits
+first, then waits** until every index (static or auto) over a collection the commit wrote has
+processed it. Before, the query right after the user's own write could read a stale index under load:
+QnA's Answers card re-fetched after the row menu's Duplicate and showed the old row count, and a bulk
+delete's sub-query membership check missed a just-created answer and answered 404 instead of 403.
+
+- **After the commit, never failing it.** The commit's outcome is final and is what the request
+  answers. A wait that times out, or whose index is disposed under it (an auto-index merge, a
+  side-by-side swap, a reset, a delete), is logged as a warning and swallowed. (Raven's
+  `WaitForIndexesAfterSaveChanges` was rejected for this: it waits inside the commit request and
+  answered committed writes with HTTP 500 when an index was disposed during the wait.)
+- **Bounded at 15 s**, and normally milliseconds: one index-statistics request, and a waiting query
+  only for an index that is actually stale. A paused index costs each write to its collections the
+  full 15 s; the warning names it.
+- **Requests only.** Scopes without an `HttpContext` — message handlers and durable interceptors, cron
+  jobs, migrations, replication, hosted services — do not wait.
+- Code that calls `SaveChangesAsync` on a session itself does not wait; write through
+  `IDatabaseAccess` to get it (`docs/guide-custom-actions.md`). No new API.
+
+---
+
 ## Documentation
 
 - `docs/guide-authorization.md` — "Hide an attribute"; groups match the untranslated name only.
