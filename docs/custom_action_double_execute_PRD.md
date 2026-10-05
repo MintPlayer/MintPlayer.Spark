@@ -69,7 +69,7 @@ lets the flush happen in between.
 | S1 | Does the double reproduce, and does D1 alone fix it? | Yes / yes (§2, C1/C2), QnA Question detail page, `CloseQuestion`/`ReopenQuestion` with a temporary `RefreshQuery`. Reverted. |
 | S2 | When does Angular flush effects in these apps? | Zoneless; `notify` → `scheduleCallbackWithRafRace` (macrotask), `@angular/core/fesm2022/_pending_tasks-chunk.mjs:2412`. Bumps before the first real network await coalesce. |
 | S3 | Would ng-bootstrap's new `reload()` (mintplayer-ng-bootstrap#407, closed 2026-10-03, in 22.21.1) have absorbed the double? | No. `scheduleFetchReload` coalesces within one microtask; C1's two bumps are split by a network round trip. |
-| S4 | Can Playwright add an operation to the real `/spark/actions/execute` response, to drive the E2E test without app changes? | To verify in M4 (`route.FetchAsync` → patch JSON → `FulfillAsync`). |
+| S4 | Can Playwright add an operation to the real `/spark/actions/execute` response, to drive the E2E test without app changes? | Yes: `route.FetchAsync` → patch JSON → `FulfillAsync` (M4). |
 
 ## 6. Plan (red → green)
 
@@ -104,4 +104,8 @@ lets the flush happen in between.
 
 ## 8. Status
 
-- [ ] M1 red · [ ] M2 green · [ ] M3 · [ ] M4 · [ ] M5 sweep
+- [x] M1 red (3 specs failing for the right reasons: call order 161 > 159, unrelated key reloaded, `tokenFor` case 0 ≠ 1)
+- [x] M2 green (169/169 in the 5 touched spec files)
+- [x] M3 SparkTestDriver `RefreshQueryEnvelopeTests` 8/8; mutation (no `RefreshQuery`, `Ordinal` alias index) → 5/8 red
+- [x] M4 E2E `QnACustomActionRefreshTests`: pre-fix client **2, 2** `/execute` (alias, id) and 1 (no server refresh); fixed client **1, 1, 1**
+- [ ] M5 sweep
