@@ -100,12 +100,14 @@ public class SignInIdentifierTests : SparkTestDriver
     {
         // Every path goes through the validator, not only registration: here an update.
         await using var host = await AccountTestHost.StartAsync(Store);
-        await host.CreateUserAsync("renamer", "renamer@example.com");
+        var created = await host.CreateUserAsync("renamer", "renamer@example.com");
 
         var result = await host.WithScopeAsync(async sp =>
         {
             var users = sp.GetRequiredService<UserManager<SparkUser>>();
-            var user = (await users.FindByNameAsync("renamer"))!;
+            // By id: FindByName/FindByEmail query an index, and right after the create that index can
+            // still be stale under load (null user, seen in the #264 sweep). A load by id cannot be.
+            var user = (await users.FindByIdAsync(created.Id!))!;
             return await users.SetUserNameAsync(user, "renamer@example.com");
         });
 
@@ -164,19 +166,20 @@ public class SignInIdentifierTests : SparkTestDriver
     {
         // G-Q22: the email change used to rewrite an email-shaped user name; it never touches it now.
         await using var host = await AccountTestHost.StartAsync(Store);
-        await host.CreateUserAsync("handle", "handle-old@example.com");
+        var created = await host.CreateUserAsync("handle", "handle-old@example.com");
 
-        async Task<SparkUser> ChangeAsync(string from, string to) => await host.WithScopeAsync(async sp =>
+        async Task<SparkUser> ChangeAsync(string to) => await host.WithScopeAsync(async sp =>
         {
             var users = sp.GetRequiredService<UserManager<SparkUser>>();
-            var user = (await users.FindByEmailAsync(from))!;
+            // By id, not FindByEmail: an index query right after the create can be stale under load.
+            var user = (await users.FindByIdAsync(created.Id!))!;
             var token = await users.GenerateChangeEmailTokenAsync(user, to);
             var result = await users.ChangeEmailAsync(user, to, token);
             result.Succeeded.Should().BeTrue(string.Join("; ", result.Errors.Select(e => e.Code)));
             return user;
         });
 
-        var changed = await ChangeAsync("handle-old@example.com", "handle-new@example.com");
+        var changed = await ChangeAsync("handle-new@example.com");
 
         changed.UserName.Should().Be("handle");
         changed.Email.Should().Be("handle-new@example.com");
