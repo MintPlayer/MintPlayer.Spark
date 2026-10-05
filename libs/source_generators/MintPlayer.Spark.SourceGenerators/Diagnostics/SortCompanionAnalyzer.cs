@@ -76,21 +76,31 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
         // initializer would misjudge the `let`, ternary and helper-method shapes real indexes use.
         var mentioned = Mentioned(constructor);
 
-        foreach (var field in analyzedFields)
+        foreach (var (field, isExact) in analyzedFields)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
-            // ⚠️ "Search", not "Sort". The analyzed copy now lives on {Name}Search and the base field
-            // is left plain; the roles were swapped so that equality and ordering work on the name
-            // every path uses. SPARK005/006 still ask the same question — is there a companion, and is
-            // it assigned — because a hand-written index that declares a field Search without giving
-            // it a separate companion still destroys equality on the field it declared.
-            var companionName = field + "Search";
+            // Strings only. A DateTimeOffset (or any other non-string) indexes as one canonical term
+            // whatever its indexing and orders correctly without a companion — measured for default,
+            // Exact and Search on RavenDB 7.2.6, Corax and Lucene (docs/datetimeoffset_query_sort_filter_PRD.md,
+            // SP-270). A field that is not on the projection cannot be typed, and keeps the warning.
+            var fieldProperty = properties.FirstOrDefault(p => p.Name == field);
+            if (fieldProperty is not null && fieldProperty.Type.SpecialType != SpecialType.System_String)
+                continue;
+
+            // ⚠️ The companion depends on why the field needs one.
+            // - Search: "Search", not "Sort". The analyzed copy lives on {Name}Search and the base field
+            //   is left plain; the roles were swapped so that equality and ordering work on the name
+            //   every path uses. A hand-written index that declares a field Search without a separate
+            //   companion still destroys equality on the field it declared.
+            // - Exact: "Sort". The field is already one term, but ordered by ordinal; the remedy is a
+            //   plain copy that QueryExecutor.ResolveSortProperty orders by instead. Asking for a
+            //   {Name}Search here, as this rule once did, prescribed an analyzed copy that sorts nothing.
+            var companionName = field + (isExact ? "Sort" : "Search");
 
             if (!propertyNames.Contains(companionName))
             {
-                var target = properties.FirstOrDefault(p => p.Name == field);
-                var location = target?.Locations.FirstOrDefault(l => l.IsInSource)
+                var location = fieldProperty?.Locations.FirstOrDefault(l => l.IsInSource)
                     ?? indexEntity.Locations.FirstOrDefault(l => l.IsInSource);
 
                 // Never Location.None or a generated location: ConfigureGeneratedCodeAnalysis suppresses
@@ -195,12 +205,13 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
         => IndexConstructors(indexType, cancellationToken).FirstOrDefault();
 
     /// <summary>
-    /// Field names the index declares as analyzed or exact — the ones whose ordering needs a companion.
-    /// Matches <c>Index(nameof(VCar.Model), FieldIndexing.Search)</c> and the <c>Exact</c> form.
+    /// Field names the index declares as analyzed or exact — the ones whose ordering needs a companion —
+    /// and whether the declaration was <c>Exact</c>. Matches <c>Index(nameof(VCar.Model), FieldIndexing.Search)</c>
+    /// and the <c>Exact</c> form.
     /// </summary>
-    private static List<string> AnalyzedFields(ConstructorDeclarationSyntax constructor)
+    private static List<(string Field, bool IsExact)> AnalyzedFields(ConstructorDeclarationSyntax constructor)
     {
-        var fields = new List<string>();
+        var fields = new List<(string Field, bool IsExact)>();
 
         foreach (var invocation in constructor.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
@@ -221,12 +232,14 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
             // developer hand-declaring Exact on a string, where the warning is still earned: Exact
             // uses the keyword analyzer, so the field orders case-sensitively by ordinal ("ZZ Top"
             // before "Zeta One"), and a companion is what restores the case-insensitive ordering a
-            // grid almost always wants.
+            // grid almost always wants. A hand-declared Exact on a DateTimeOffset is filtered out by
+            // type in the caller: it orders by instant regardless (PRD SP-270).
             var indexing = invocation.ArgumentList.Arguments[1].Expression.ToString();
-            if (!indexing.EndsWith("Search") && !indexing.EndsWith("Exact")) continue;
+            var isExact = indexing.EndsWith("Exact");
+            if (!indexing.EndsWith("Search") && !isExact) continue;
 
             if (FieldNameOf(invocation.ArgumentList.Arguments[0].Expression) is { } field)
-                fields.Add(field);
+                fields.Add((field, isExact));
         }
 
         return fields;
