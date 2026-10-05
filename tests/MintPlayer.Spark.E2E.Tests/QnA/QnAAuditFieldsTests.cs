@@ -57,8 +57,10 @@ public class QnAAuditFieldsTests
         {
             var attribute = loaded[name];
             attribute.Value?.ToString().Should().Be(author.Id, $"{name} stores the user's id");
-            // Registration sets UserName to the email address (SparkAccountEndpoints).
-            attribute.Breadcrumb.Should().Be(author.Email, $"{name} is drawn by SparkUser's {{UserName}} breadcrumb");
+            attribute.Breadcrumb.Should().Be(author.UserName, $"{name} is drawn by SparkUser's {{UserName}} breadcrumb");
+            // G-Q22: the user name is a public handle, so another user's email never reaches the page.
+            attribute.Breadcrumb.Should().NotContain("@");
+            attribute.Breadcrumb.Should().NotBe(author.Email);
             attribute.IsReadOnly.Should().BeTrue();
         }
     }

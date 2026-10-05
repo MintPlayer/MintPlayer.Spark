@@ -26,7 +26,7 @@ public class AccountFlowTests : SparkTestDriver
         await using var host = await AccountTestHost.StartAsync(Store);
         using var client = host.Client();
 
-        (await client.PostAsJsonAsync("/spark/auth/register", new { email = "new@example.com", password = AccountTestHost.Password }))
+        (await client.PostAsJsonAsync("/spark/auth/register", new { email = "new@example.com", password = AccountTestHost.Password, userName = "newcomer" }))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         var confirmation = host.Mail.Sent.Should().ContainSingle().Which;
@@ -56,18 +56,38 @@ public class AccountFlowTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task Registration_requires_a_user_name_that_is_not_an_email_address()
+    {
+        // G-Q22: the user name is the public handle; registration used to set it to the email.
+        await using var host = await AccountTestHost.StartAsync(Store);
+        using var client = host.Client();
+
+        var missing = await client.PostAsJsonAsync("/spark/auth/register", new { email = "a@example.com", password = AccountTestHost.Password });
+        var blank = await client.PostAsJsonAsync("/spark/auth/register", new { email = "a@example.com", password = AccountTestHost.Password, userName = "  " });
+        var emailShaped = await client.PostAsJsonAsync("/spark/auth/register", new { email = "a@example.com", password = AccountTestHost.Password, userName = "a@example.com" });
+        var accepted = await client.PostAsJsonAsync("/spark/auth/register", new { email = "a@example.com", password = AccountTestHost.Password, userName = " alice " });
+
+        missing.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        blank.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        emailShaped.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await emailShaped.Content.ReadAsStringAsync()).Should().Contain(SparkUserNameValidator<SparkUser>.ErrorCode);
+        accepted.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await host.FindByEmailAsync("a@example.com"))!.UserName.Should().Be("alice");
+    }
+
+    [Fact]
     public async Task RequireConfirmedEmail_refuses_sign_in_until_the_mailed_link_is_posted_back()
     {
         await using var host = await AccountTestHost.StartAsync(Store, configure: o => o.RequireConfirmedEmail = true);
         using var client = host.Client();
 
-        await client.PostAsJsonAsync("/spark/auth/register", new { email = "gate@example.com", password = AccountTestHost.Password });
-        var before = await client.PostAsJsonAsync("/spark/auth/login", new { email = "gate@example.com", password = AccountTestHost.Password });
+        await client.PostAsJsonAsync("/spark/auth/register", new { email = "gate@example.com", password = AccountTestHost.Password, userName = "gatekeeper" });
+        var before = await client.PostAsJsonAsync("/spark/auth/login", new { email = "gate@example.com", password = AccountTestHost.Password, userName = "gatekeeper" });
 
         var link = host.Mail.Sent.Single();
         var badCode = await client.PostAsJsonAsync("/spark/auth/confirm-email", new { userId = link.Query("userId"), code = "bm90LWEtdG9rZW4" });
         var confirm = await client.PostAsJsonAsync("/spark/auth/confirm-email", new { userId = link.Query("userId"), code = link.Query("code") });
-        var after = await client.PostAsJsonAsync("/spark/auth/login", new { email = "gate@example.com", password = AccountTestHost.Password });
+        var after = await client.PostAsJsonAsync("/spark/auth/login", new { email = "gate@example.com", password = AccountTestHost.Password, userName = "gatekeeper" });
 
         before.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await before.Content.ReadAsStringAsync()).Should().Contain("NotAllowed");
@@ -526,7 +546,7 @@ public class AccountFlowTests : SparkTestDriver
         deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
         calls.Should().Equal(user.Id!);
         (await host.FindByEmailAsync("leaver@example.com")).Should().BeNull();
-        (await client.PostAsJsonAsync("/spark/auth/register", new { email = "leaver@example.com", password = AccountTestHost.Password }))
+        (await client.PostAsJsonAsync("/spark/auth/register", new { email = "leaver@example.com", password = AccountTestHost.Password, userName = "leaver-again" }))
             .StatusCode.Should().Be(HttpStatusCode.OK, "the email reservation was released");
     }
 

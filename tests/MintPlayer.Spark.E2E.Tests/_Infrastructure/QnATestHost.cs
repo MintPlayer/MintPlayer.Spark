@@ -111,12 +111,13 @@ public sealed class QnATestHost : SparkAppTestHost
     /// </summary>
     public async Task<QnAUser> CreateUserAsync(string name)
     {
-        var email = $"{name}-{Suffix}@qna.example";
+        var userName = $"{name}-{Suffix}";
+        var email = $"{userName}@qna.example";
         var password = $"Aa1!{Guid.NewGuid():N}";
-        var id = await SeedUserAsync(email, password, groupName: null);
+        var id = await SeedUserAsync(email, password, groupName: null, userName: userName);
         var client = NewClient();
         await client.LoginAsync(email, password);
-        return new QnAUser(id, email, password, client);
+        return new QnAUser(id, email, userName, password, client);
     }
 
     /// <summary>The seeded admin (a moderator), signed in.</summary>
@@ -224,7 +225,7 @@ public sealed class StoredPost
 }
 
 /// <summary>A signed-in QnA account. Disposing it disposes its client.</summary>
-public sealed record QnAUser(string Id, string Email, string Password, SparkClient Client) : IDisposable
+public sealed record QnAUser(string Id, string Email, string UserName, string Password, SparkClient Client) : IDisposable
 {
     public void Dispose() => Client.Dispose();
 }

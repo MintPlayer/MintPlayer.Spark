@@ -14,7 +14,8 @@
     "Only UserName is declared: an attribute that is not in the model cannot reach the wire, so",
     "credential material (PasswordHash, SecurityStamp, tokens, ...) never can.",
     "",
-    "⚠️ UserName is the email address at registration (SparkAccountEndpoints), so this label shows it."
+    "UserName is the public handle chosen at registration and never contains '@' (the framework refuses",
+    "it, G-Q22), so this label never shows an email address. Email is deliberately not declared."
   ],
   "persistentObject": {
     "id": "4e13c0de-0000-4000-8000-000000000001",

@@ -271,6 +271,10 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// <param name="roleName">
     /// An ASP.NET Identity <b>role</b> to grant as well as the group claim, or null for none.
     /// </param>
+    /// <param name="userName">
+    /// The public handle registration requires (G-Q22), or null for the email's local part (E2E local
+    /// parts are unique per run). Never the email itself: a user name cannot contain <c>@</c>.
+    /// </param>
     /// <remarks>
     /// ⚠️ The group claim and the role are not interchangeable, and which one a rule reads is not
     /// obvious from the outside. Fleet's <c>CarActions.CurrentUserIsAdmin</c> is
@@ -279,9 +283,9 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// an empty grid during setup, which reads like a broken query rather than a missing role.
     /// The seeded admin gets both, which is why it behaves as expected.
     /// </remarks>
-    public async Task<string> SeedUserAsync(string email, string password, string? groupName, string? roleName = null)
+    public async Task<string> SeedUserAsync(string email, string password, string? groupName, string? roleName = null, string? userName = null)
     {
-        await RegisterAsync(email, password, $"Seed register for '{email}'");
+        await RegisterAsync(email, password, userName ?? email[..email.IndexOf('@')], $"Seed register for '{email}'");
 
         using var appStore = OpenAppStore();
 
@@ -303,8 +307,6 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             ?? throw new InvalidOperationException($"Seeded user '{email}' not visible in '{TestDatabase}' after register.");
 
         user.EmailConfirmed = true;
-        user.UserName ??= email;
-        user.NormalizedUserName ??= email.ToUpperInvariant();
         if (groupName is not null && !user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == groupName))
             user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = groupName });
 
@@ -487,7 +489,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// antiforgery token like every mutating account route; a bare POST is refused with an empty 400.
     /// The client warms up for the token, as a browser holding the app would already have it.
     /// </summary>
-    private async Task RegisterAsync(string email, string password, string failurePrefix)
+    private async Task RegisterAsync(string email, string password, string userName, string failurePrefix)
     {
         var handler = new HttpClientHandler
         {
@@ -496,7 +498,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         using var client = new SparkClient(new HttpClient(handler) { BaseAddress = new Uri(AppUrl) }, ownsClient: true);
         try
         {
-            await client.RegisterAsync(email, password);
+            await client.RegisterAsync(email, password, userName);
         }
         catch (SparkClientException ex)
         {
@@ -508,7 +510,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     {
         // Register via the public endpoint so the password hash is compatible with whatever
         // PasswordHasher version the app's Identity is configured with.
-        await RegisterAsync(AdminEmail, _password, "Register");
+        await RegisterAsync(AdminEmail, _password, AdminUserName, "Register");
 
         // Now patch the stored user: mark email confirmed + add the admin group claim and role.
         using var appStore = OpenAppStore();
@@ -531,8 +533,6 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         }
 
         user.EmailConfirmed = true;
-        user.UserName ??= AdminUserName;
-        user.NormalizedUserName ??= AdminUserName.ToUpperInvariant();
         if (!user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == AdminGroup))
             user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = AdminGroup });
         if (!user.Roles.Contains(AdminGroup))

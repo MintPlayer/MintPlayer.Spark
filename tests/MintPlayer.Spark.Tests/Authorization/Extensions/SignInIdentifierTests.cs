@@ -78,18 +78,38 @@ public class SignInIdentifierTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_user_name_containing_an_at_sign_must_be_the_accounts_own_email()
+    public async Task A_user_name_never_contains_an_at_sign_not_even_the_accounts_own_email()
     {
+        // G-Q22: the user name is public (labels, history), so it may never be an email address.
         await using var host = await AccountTestHost.StartAsync(Store);
 
-        var refused = await host.WithScopeAsync(sp => sp.GetRequiredService<UserManager<SparkUser>>()
+        var foreign = await host.WithScopeAsync(sp => sp.GetRequiredService<UserManager<SparkUser>>()
             .CreateAsync(new SparkUser { UserName = "x@example.com", Email = "y@example.com" }, AccountTestHost.Password));
-        var accepted = await host.WithScopeAsync(sp => sp.GetRequiredService<UserManager<SparkUser>>()
-            .CreateAsync(new SparkUser { UserName = "Y@example.com", Email = "y@example.com" }, AccountTestHost.Password));
+        var own = await host.WithScopeAsync(sp => sp.GetRequiredService<UserManager<SparkUser>>()
+            .CreateAsync(new SparkUser { UserName = "y@example.com", Email = "y@example.com" }, AccountTestHost.Password));
+        var handle = await host.WithScopeAsync(sp => sp.GetRequiredService<UserManager<SparkUser>>()
+            .CreateAsync(new SparkUser { UserName = "y-handle", Email = "y@example.com" }, AccountTestHost.Password));
 
-        refused.Succeeded.Should().BeFalse();
-        refused.Errors.Select(e => e.Code).Should().Contain(SparkUserNameValidator<SparkUser>.ErrorCode);
-        accepted.Succeeded.Should().BeTrue("the rule compares case-insensitively");
+        foreign.Errors.Select(e => e.Code).Should().Contain(SparkUserNameValidator<SparkUser>.ErrorCode);
+        own.Errors.Select(e => e.Code).Should().Contain(SparkUserNameValidator<SparkUser>.ErrorCode);
+        handle.Succeeded.Should().BeTrue(string.Join("; ", handle.Errors.Select(e => e.Code)));
+    }
+
+    [Fact]
+    public async Task A_rename_to_an_email_address_is_refused()
+    {
+        // Every path goes through the validator, not only registration: here an update.
+        await using var host = await AccountTestHost.StartAsync(Store);
+        await host.CreateUserAsync("renamer", "renamer@example.com");
+
+        var result = await host.WithScopeAsync(async sp =>
+        {
+            var users = sp.GetRequiredService<UserManager<SparkUser>>();
+            var user = (await users.FindByNameAsync("renamer"))!;
+            return await users.SetUserNameAsync(user, "renamer@example.com");
+        });
+
+        result.Errors.Select(e => e.Code).Should().Contain(SparkUserNameValidator<SparkUser>.ErrorCode);
     }
 
     [Theory]
@@ -140,10 +160,10 @@ public class SignInIdentifierTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_confirmed_email_change_moves_an_email_shaped_user_name_and_leaves_a_handle_alone()
+    public async Task A_confirmed_email_change_keeps_the_user_name()
     {
+        // G-Q22: the email change used to rewrite an email-shaped user name; it never touches it now.
         await using var host = await AccountTestHost.StartAsync(Store);
-        await host.CreateUserAsync("old@example.com", "old@example.com");
         await host.CreateUserAsync("handle", "handle-old@example.com");
 
         async Task<SparkUser> ChangeAsync(string from, string to) => await host.WithScopeAsync(async sp =>
@@ -156,8 +176,10 @@ public class SignInIdentifierTests : SparkTestDriver
             return user;
         });
 
-        (await ChangeAsync("old@example.com", "new@example.com")).UserName.Should().Be("new@example.com");
-        (await ChangeAsync("handle-old@example.com", "handle-new@example.com")).UserName.Should().Be("handle");
+        var changed = await ChangeAsync("handle-old@example.com", "handle-new@example.com");
+
+        changed.UserName.Should().Be("handle");
+        changed.Email.Should().Be("handle-new@example.com");
     }
 
     [Fact]

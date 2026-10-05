@@ -116,6 +116,37 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
         (await host.FindByEmailAsync("local-part@example.com"))!.UserName.Should().NotContain("local-part");
     }
 
+    [Fact]
+    public async Task A_display_name_that_is_an_email_address_is_not_used_for_the_user_name()
+    {
+        // G-Q22: the user name is public. Slugging "jane@example.com" would publish it as jane-example-com.
+        await using var host = await StartAsync(policy: null);
+
+        await SignUpAsync(host, "jane@example.com", "jane@example.com", verified: true);
+
+        (await host.FindByEmailAsync("jane@example.com"))!.UserName.Should().MatchRegex("^user-[0-9a-f]{6}$");
+    }
+
+    [Fact]
+    public async Task A_provider_handle_is_used_verbatim_suffixed_when_taken_and_never_when_it_is_an_email()
+    {
+        await using var host = await StartAsync(new SparkExternalProviderPolicy
+        {
+            EmailVerification = _ => SparkEmailVerification.Verified,
+            UserName = SparkUserNameSource.ProviderHandle,
+        });
+        await host.CreateUserAsync("octocat", "local-octocat@example.com");
+        await WaitForIndexesAsync();
+
+        await SignUpAsync(host, "fresh@example.com", "monalisa", verified: true);
+        await SignUpAsync(host, "clash@example.com", "octocat", verified: true);
+        await SignUpAsync(host, "shaped@example.com", "shaped@example.com", verified: true);
+
+        (await host.FindByEmailAsync("fresh@example.com"))!.UserName.Should().Be("monalisa");
+        (await host.FindByEmailAsync("clash@example.com"))!.UserName.Should().Be("octocat-2");
+        (await host.FindByEmailAsync("shaped@example.com"))!.UserName.Should().MatchRegex("^user-[0-9a-f]{6}$");
+    }
+
     [Theory]
     [InlineData("Jöhn Doe", "john-doe")]
     [InlineData("  ---  ", "user")]

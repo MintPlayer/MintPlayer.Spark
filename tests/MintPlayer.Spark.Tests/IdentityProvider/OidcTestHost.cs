@@ -258,7 +258,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
 
         var user = new SparkUser
         {
-            UserName = email,
+            UserName = email.Replace('@', '-'), // a user name never contains '@' (G-Q22); sign-in is by email
             Email = email,
             EmailConfirmed = true,
         };
