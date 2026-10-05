@@ -21,7 +21,8 @@ public static class SparkHistoryExtensions
 
     /// <summary>
     /// Revision history: at startup each model type's <c>revisions</c> block is merged into the
-    /// database's revisions configuration; <see cref="IAuditable"/> entities are stamped on every write;
+    /// database's revisions configuration; <see cref="IAuditCreated"/> / <see cref="IAuditModified"/> entities
+    /// are stamped on every write (their members checked at startup);
     /// <c>POST /spark/po/revisions</c>, <c>/spark/po/revision</c> and <c>/spark/po/revert</c> are
     /// mapped; edits to a type with revisions record their changed attributes for durable after-commit interceptors. Binds
     /// <c>Spark:History</c>, then applies <paramref name="configure"/> (code wins).
@@ -46,6 +47,7 @@ public static class SparkHistoryExtensions
         builder.Services.TryAddScoped<HistoryRequestState>();
         builder.Services.TryAddScoped<ISparkHistory, SparkHistory>();
 
+        builder.Registry.AddMiddleware(app => AuditStartupCheck.Run(app.ApplicationServices));
         builder.Registry.AddMiddleware(app =>
         {
             var services = app.ApplicationServices;

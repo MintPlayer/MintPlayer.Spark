@@ -6,7 +6,10 @@ redaction, revert through the normal save pipeline, and the changed attributes o
 durable after-commit interceptors.
 
 - `IAuditable` — `CreatedBy`, `CreatedAt`, `ModifiedBy`, `ModifiedAt`, stamped on every write with
-  **user ids** (never names).
+  **user ids** (never names). It is the union of `IAuditCreated` (the created pair) and
+  `IAuditModified` (the modified pair); implement either half alone to keep only that pair.
+- The members are **generated** (#271): in a `partial` type of an entity library that references
+  `MintPlayer.Spark.LibraryGenerators`, declare the interface and nothing else.
 - `"revisions"` in a model file — the collection's RavenDB revisions settings, merged into the
   database at startup.
 - `POST /spark/po/revisions`, `/spark/po/revision`, `/spark/po/revert`.
@@ -25,16 +28,18 @@ builder.Services.AddSpark(spark =>
 ```
 
 ```csharp
-public class Article : IAuditable
+public partial class Article : IAuditable
 {
     public string? Id { get; set; }
     public string Title { get; set; } = "";
-    public string? CreatedBy { get; set; }
-    public DateTimeOffset? CreatedAt { get; set; }
-    public string? ModifiedBy { get; set; }
-    public DateTimeOffset? ModifiedAt { get; set; }
+    // CreatedBy, CreatedAt, ModifiedBy, ModifiedAt: generated, [ReadOnly(true)]; the user ids are
+    // [Reference(typeof(SparkUser))] when the library references MintPlayer.Spark.Authorization.Abstractions.
 }
 ```
+
+Without the generator, declare the four yourself as public read/write properties (`UseSpark()` refuses
+an explicit interface implementation, which RavenDB would never store). A member you declare is left
+alone, so you can also declare one to give it attributes of your own. See [docs/guide-auditing.md](../../../docs/guide-auditing.md).
 
 `App_Data/Model/Article.json`, hand-written (model synchronization keeps it):
 
@@ -107,12 +112,14 @@ certificate may not, set `Spark:History:ConfigureRevisions = false`.
 
 ## Stamping
 
-On every write through `IDatabaseAccess` to an `IAuditable` type: a create sets `CreatedBy`/`CreatedAt`
+On every write through `IDatabaseAccess` to an `IAuditable` type (each half on its own for `IAuditCreated` / `IAuditModified`): a create sets `CreatedBy`/`CreatedAt`
 and `ModifiedBy`/`ModifiedAt` from `ISparkCurrentUser` (the id; `null` for the system); every later
 save — edit, revert, restore — keeps the **stored** `CreatedBy`/`CreatedAt` whatever was posted (so
 authorship cannot be claimed by editing) and sets `ModifiedBy`/`ModifiedAt`. A soft delete stamps
-`Modified*` too. A module `Sync` keeps what the owner module stamped. Mark the four read-only in the
-model if they are attributes at all.
+`Modified*` too. A write a replica forwards (`Sync`) is stamped with the user the replica states
+(`SyncAction.InitiatorId`, #271), and left as sent when it states none. Generated members are
+`[ReadOnly(true)]`, so synchronization creates them read-only; mark hand-written ones read-only in the
+model yourself.
 
 Ids only (GDPR, D8): a name is resolved when a revision list is read, through an
 `IHistoryUserNameResolver` if one is registered; after an account is deleted its id resolves to

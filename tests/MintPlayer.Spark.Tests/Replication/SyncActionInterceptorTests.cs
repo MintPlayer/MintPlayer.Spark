@@ -56,6 +56,40 @@ public class SyncActionInterceptorTests : SparkTestDriver
         action.Data!["Plate"].Should().Be("ABC-123");
     }
 
+    /// <summary>
+    /// #271 F2: the owner applies the write under this module's certificate, which has no user id, so the
+    /// action itself must say who made the edit or the owner cannot stamp ModifiedBy.
+    /// </summary>
+    [Fact]
+    public async Task HandleSaveAsync_states_the_current_user_as_the_initiator()
+    {
+        var interceptor = new SyncActionInterceptor(Store, Options.Create(new SparkReplicationOptions
+        {
+            ModuleName = "Fleet",
+            ModuleUrl = "https://localhost:5001",
+        }), NullLogger<SyncActionInterceptor>.Instance, new StaticUser("users/alice"));
+        var po = new MintPlayer.Spark.Abstractions.PersistentObject
+        {
+            Id = "cars/1",
+            Name = "edit",
+            ObjectTypeId = Guid.NewGuid(),
+            Attributes = [new() { Name = "Plate", Value = "ABC-123", IsValueChanged = true }],
+        };
+
+        await interceptor.HandleSaveAsync(typeof(ReplicatedCarFromFleet), po, isNew: false);
+        await Store.WaitForIndexingAsync();
+
+        using var session = Store.OpenAsyncSession();
+        var stored = await session.Query<SparkSyncAction>().SingleAsync();
+        stored.Actions.Should().ContainSingle().Which.InitiatorId.Should().Be("users/alice");
+    }
+
+    private sealed class StaticUser(string? id) : MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser
+    {
+        public string? Id => id;
+        public bool IsAuthenticated => id is not null;
+    }
+
     [Fact]
     public async Task HandleSaveAsync_with_existing_Id_records_an_Update_action_carrying_the_Id_in_the_data()
     {

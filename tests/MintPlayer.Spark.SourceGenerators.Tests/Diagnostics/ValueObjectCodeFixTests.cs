@@ -105,6 +105,40 @@ public class ValueObjectCodeFixTests
     /// CS0267, so a fix that prepended instead of appended would produce code that does not compile
     /// — and the assertion above alone would not catch it.
     /// </summary>
+    /// <summary>
+    /// SPARK038 (#271): the audit-members fix adds <c>partial</c> to the type and every type containing
+    /// it, since the generator reopens all of them.
+    /// </summary>
+    [Fact]
+    public async Task SPARK038_declares_the_type_and_its_containers_partial()
+    {
+        var result = await CodeFixHarness.RunGeneratorFixAsync(
+            generatorTypeName: "AuditMembersGenerator",
+            codeFixTypeName: "AuditPartialCodeFixProvider",
+            diagnosticId: "SPARK038",
+            projects:
+            [
+                FixtureProject.Of("TestLib", ("Note.cs", """
+                    using MintPlayer.Spark.History;
+
+                    namespace TestLib;
+
+                    public class Outer
+                    {
+                        public sealed class Note : IAuditable { }
+                    }
+                    """)),
+            ],
+            referenceTypes: [.. Refs, typeof(MintPlayer.Spark.History.IAuditable)],
+            generatorAssemblyName: LibraryGeneratorsAssembly,
+            codeFixAssemblyName: LibraryGeneratorsAssembly,
+            expectedCompileErrors: ["CS0535"]);
+
+        var document = result.Document("Note.cs");
+        document.Should().Contain("public partial class Outer");
+        document.Should().Contain("public sealed partial class Note : IAuditable");
+    }
+
     [Fact]
     public async Task SPARK016_puts_partial_last_so_the_result_compiles()
     {

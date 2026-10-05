@@ -616,6 +616,51 @@ public sealed class ModelSynchronizerTests : IDisposable
         names.Should().Contain("Nickname", "a property that merely vanished is a different case");
     }
 
+    // --- framework-stamped members (#271) ---
+
+    /// <summary>
+    /// The audit-members generator marks what it emits <c>[ReadOnly(true)]</c>: the framework stamps the
+    /// value, so the attribute is created read-only (the server then drops a posted value), not required
+    /// (nobody filling in the form supplies it), and on the object page only.
+    /// </summary>
+    [Fact]
+    public void A_ReadOnly_member_is_created_read_only_not_required_and_on_the_object_page_only()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(StampedContext));
+
+        var attrs = Read<EntityTypeFile>(ModelFile("MS_StampedNote")).PersistentObject.Attributes;
+
+        var deleted = attrs.Should().ContainSingle(a => a.Name == "IsDeleted").Which;
+        deleted.IsReadOnly.Should().BeTrue();
+        deleted.IsRequired.Should().BeFalse("a non-nullable bool would otherwise be required");
+        deleted.ShowedOn.Should().Be(EShowedOn.PersistentObject);
+
+        var title = attrs.Should().ContainSingle(a => a.Name == "Title").Which;
+        title.IsReadOnly.Should().BeFalse("an unmarked property is unaffected");
+        title.ShowedOn.Should().Be(EShowedOn.Query | EShowedOn.PersistentObject);
+    }
+
+    /// <summary>Creation only, like IsReadOnly itself: an author who made it editable in the model keeps that.</summary>
+    [Fact]
+    public void A_ReadOnly_member_the_author_made_editable_stays_editable()
+    {
+        var sync = CreateSynchronizer();
+        sync.SynchronizeModels(typeof(StampedContext));
+
+        var path = ModelFile("MS_StampedNote");
+        var json = File.ReadAllText(path);
+        var tampered = System.Text.RegularExpressions.Regex.Replace(json,
+            "(\"name\": \"IsDeleted\"[\\s\\S]*?\"isReadOnly\": )true", "${1}false");
+        tampered.Should().NotBe(json, "the fixture must actually flip the flag");
+        File.WriteAllText(path, tampered);
+
+        sync.SynchronizeModels(typeof(StampedContext));
+
+        Read<EntityTypeFile>(path).PersistentObject.Attributes
+            .Should().ContainSingle(a => a.Name == "IsDeleted").Which.IsReadOnly.Should().BeFalse();
+    }
+
     // --- get-only computed properties (#253) ---
 
     [Fact]
@@ -1449,6 +1494,19 @@ public class IgnoredBreadcrumbContext : SparkContext
 }
 
 public class EmptyContext : SparkContext { }
+
+public class MS_StampedNote
+{
+    public string? Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    [System.ComponentModel.ReadOnly(true)]
+    public bool IsDeleted { get; set; }
+}
+
+public class StampedContext : SparkContext
+{
+    public IRavenQueryable<MS_StampedNote> Notes => Session.Query<MS_StampedNote>();
+}
 
 public class SinglePersonContext : SparkContext
 {

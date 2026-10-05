@@ -107,7 +107,8 @@ internal sealed partial class SyncApply : IPostEndpoint
 
                         var savedId = await syncActionHandler.HandleSaveAsync(
                             action.Collection, action.DocumentId, action.Data, action.Properties,
-                            mustExist: action.ActionType == SyncActionType.Update);
+                            mustExist: action.ActionType == SyncActionType.Update,
+                            initiatorId: action.InitiatorId);
 
                         results.Add(new SyncActionResult
                         {

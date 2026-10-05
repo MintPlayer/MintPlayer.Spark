@@ -13,6 +13,11 @@
 		<ProjectReference Include="..\..\..\libs\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
 		<ProjectReference Include="..\..\..\libs\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
 		<ProjectReference Include="..\..\..\libs\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
+		<!--
+		  Car : IAuditCreated (#271): LibraryGenerators emits CreatedBy/CreatedAt, History stamps them. No
+		  Authorization.Abstractions here, so CreatedBy stays a plain id string (SPARK040 says so).
+		-->
+		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History.Abstractions\MintPlayer.Spark.History.Abstractions.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). -->
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<!--

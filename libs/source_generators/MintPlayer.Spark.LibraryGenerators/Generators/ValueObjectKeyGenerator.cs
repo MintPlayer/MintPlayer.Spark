@@ -78,6 +78,7 @@ public class ValueObjectKeyGenerator : IncrementalGenerator
         {
             FullyQualifiedName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             Name = type.Name,
+            Header = PartialTypeHeader.For(type),
             PathSpec = type.GetPathSpec(ct),
             IsPartial = declarations.Length > 0
                 && declarations.All(d => d.Modifiers.Any(SyntaxKind.PartialKeyword)),

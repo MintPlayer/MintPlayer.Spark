@@ -11,7 +11,7 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.History;
 
 /// <summary>
-/// Stamps <see cref="IAuditable"/> entities, makes a revert exact, and records which attributes a
+/// Stamps <see cref="IAuditCreated"/> / <see cref="IAuditModified"/> entities, makes a revert exact, and records which attributes a
 /// write to a type with revisions changed (<see cref="SparkFacts.ChangedAttributes"/>), for the
 /// durable after-commit interceptors.
 /// </summary>
@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.History;
 /// Persistence interceptors (#482; "interceptor" is the older name), run by the framework on every write. The
 /// before-save interceptor runs in <see cref="InterceptorStage.Finalize"/>, after every interceptor that trims or stamps
 /// fields, so "did this edit change anything?" judges the entity as it will be written. It also runs
-/// for a module sync, to observe it; it stamps nothing there.
+/// for a module sync, to observe it, and stamps it with the user the replica states (#271, F2).
 /// </remarks>
 internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
 {
@@ -28,17 +28,22 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly HistoryRequestState state;
     [Inject] private readonly TimeProvider? timeProvider;
+    [Inject] private readonly ISparkSyncInitiator? syncInitiator = null;
 
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
 
-    /// <summary>A module sync is observed (its changed attributes are recorded); it is not stamped.</summary>
+    /// <summary>
+    /// A module sync is observed (its changed attributes are recorded), and stamped only with the user
+    /// the replica states (#271, F2).
+    /// </summary>
     public bool HandlesSync => true;
 
     /// <summary>After every interceptor that changes fields, so the no-change check sees the final entity.</summary>
     InterceptorStage IBeforeSave.Stage => InterceptorStage.Finalize;
 
     public bool AppliesTo(Type entityType)
-        => typeof(IAuditable).IsAssignableFrom(entityType) || RevisionsEnabled(entityType);
+        => typeof(IAuditCreated).IsAssignableFrom(entityType) || typeof(IAuditModified).IsAssignableFrom(entityType)
+            || RevisionsEnabled(entityType);
 
     public ValueTask OnBeforeSaveAsync(SaveContext context)
     {
@@ -53,9 +58,16 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
 
     private void Stamp(SaveContext context)
     {
-        // A module sync carries what the owner module stamped.
+        // A write a replica forwarded runs here under the replica's module certificate, which has no
+        // user id. The replica states the user it was made for (#271, F2); a sync that states none is
+        // left as the replica sent it, as before.
+        var userId = currentUser.Id;
         if (context.Operation == PersistentObjectOperation.Sync)
-            return;
+        {
+            if (syncInitiator?.UserId is not { } initiator)
+                return;
+            userId = initiator;
+        }
 
         if (context.Operation == PersistentObjectOperation.Revert && state.RevertSource is { } source && source.GetType() == context.Entity.GetType())
         {
@@ -70,27 +82,35 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
         // side documents): stamping it would rewrite the target, give it a revision and a new etag,
         // and name the contributor as its modifier — what Contributions promises not to do (R3).
         // Asked of the session before stamping, so the stamp itself is not the change it detects.
-        if (context.Entity is IAuditable && context.Operation == PersistentObjectOperation.Save
+        var created = context.Entity as IAuditCreated;
+        var modified = context.Entity as IAuditModified;
+        if (created is null && modified is null)
+            return;
+
+        if (context.Operation is PersistentObjectOperation.Save or PersistentObjectOperation.Sync
             && context.Before is not null && !HasChanged(context.Entity))
             return;
 
-        if (context.Entity is IAuditable audited)
+        if (created is not null)
         {
             // CreatedBy / CreatedAt are the stored values on every write but the first, whatever was
             // posted or reverted to (authorship cannot be claimed by editing).
-            if (context.Before is IAuditable stored)
+            if (context.Before is IAuditCreated stored)
             {
-                audited.CreatedBy = stored.CreatedBy;
-                audited.CreatedAt = stored.CreatedAt;
+                created.CreatedBy = stored.CreatedBy;
+                created.CreatedAt = stored.CreatedAt;
             }
             else
             {
-                audited.CreatedBy = currentUser.Id;
-                audited.CreatedAt = Now;
+                created.CreatedBy = userId;
+                created.CreatedAt = Now;
             }
+        }
 
-            audited.ModifiedBy = currentUser.Id;
-            audited.ModifiedAt = Now;
+        if (modified is not null)
+        {
+            modified.ModifiedBy = userId;
+            modified.ModifiedAt = Now;
         }
     }
 
@@ -101,7 +121,7 @@ internal sealed partial class HistoryInterceptor : IBeforeSave, IBeforeDelete
 
         // A soft delete (a replaced delete) writes a revision: it should say who deleted. A hard delete
         // discards the stamp with the document; a refused one is evicted by IDatabaseAccess.
-        if (context.Operation == PersistentObjectOperation.Delete && context.Entity is IAuditable audited)
+        if (context.Operation == PersistentObjectOperation.Delete && context.Entity is IAuditModified audited)
         {
             audited.ModifiedBy = currentUser.Id;
             audited.ModifiedAt = Now;

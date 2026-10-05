@@ -46,11 +46,11 @@ internal sealed partial class SparkHistory : ISparkHistory
         var vectors = metadata.Select(m => m.TryGetValue("@change-vector", out var cv) ? cv?.ToString() : null).ToList();
 
         // One request for the page's contents, for who wrote each revision.
-        var contents = typeof(IAuditable).IsAssignableFrom(entityType)
+        var contents = typeof(IAuditModified).IsAssignableFrom(entityType)
             ? await LoadRevisionsAsync(session, entityType, vectors.Where(v => v is not null).Cast<string>().ToList())
             : new Dictionary<string, object?>();
 
-        var userIds = contents.Values.OfType<IAuditable>().Select(a => a.ModifiedBy).Where(u => !string.IsNullOrEmpty(u)).Cast<string>().Distinct().ToList();
+        var userIds = contents.Values.OfType<IAuditModified>().Select(a => a.ModifiedBy).Where(u => !string.IsNullOrEmpty(u)).Cast<string>().Distinct().ToList();
         var names = userNames is not null && userIds.Count > 0
             ? await userNames.ResolveAsync(userIds, cancellationToken)
             : new Dictionary<string, string>();
@@ -62,7 +62,7 @@ internal sealed partial class SparkHistory : ISparkHistory
             if (changeVector is null)
                 continue;
 
-            var userId = contents.TryGetValue(changeVector, out var content) ? (content as IAuditable)?.ModifiedBy : null;
+            var userId = contents.TryGetValue(changeVector, out var content) ? (content as IAuditModified)?.ModifiedBy : null;
             var flags = metadata[i].TryGetValue("@flags", out var f) ? f?.ToString() ?? string.Empty : string.Empty;
             result.Add(new SparkRevision
             {
@@ -143,7 +143,7 @@ internal sealed partial class SparkHistory : ISparkHistory
 
     private static readonly HashSet<string> AuditFields = new(StringComparer.Ordinal)
     {
-        nameof(IAuditable.CreatedBy), nameof(IAuditable.CreatedAt), nameof(IAuditable.ModifiedBy), nameof(IAuditable.ModifiedAt),
+        nameof(IAuditCreated.CreatedBy), nameof(IAuditCreated.CreatedAt), nameof(IAuditModified.ModifiedBy), nameof(IAuditModified.ModifiedAt),
     };
 
     /// <summary>

@@ -51,7 +51,7 @@ public class ValueObjectKeyProducer : Producer
                 // Containing types come from the symbol, never the file path: namespace does not
                 // follow folder in most apps here, and several targets share a source file.
                 using var parents = writer.OpenPathSpec(valueObject.PathSpec);
-                using (writer.OpenBlock($"partial class {valueObject.Name}"))
+                using (writer.OpenBlock(valueObject.Header))
                 {
                     writer.WriteLine("/// <summary>");
                     writer.WriteLine("/// Identifies this row across saves, so the framework can tell an added row from a");

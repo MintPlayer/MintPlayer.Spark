@@ -20,6 +20,7 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IOptions<SparkReplicationOptions> optionsAccessor;
     [Inject] private readonly ILogger<SyncActionInterceptor> logger;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser? currentUser = null;
 
     private SparkReplicationOptions Options => optionsAccessor.Value;
 
@@ -76,6 +77,7 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
             DocumentId = obj.Id,
             Data = data,
             Properties = changedProperties,
+            InitiatorId = currentUser?.Id,
         };
 
         await DispatchAsync(attr.SourceModule, collection, syncAction);
@@ -113,6 +115,7 @@ internal partial class SyncActionInterceptor : ISyncActionInterceptor
             DocumentId = documentId,
             Data = data,
             Properties = properties,
+            InitiatorId = currentUser?.Id,
         };
 
         await DispatchAsync(attr.SourceModule, collection, syncAction);

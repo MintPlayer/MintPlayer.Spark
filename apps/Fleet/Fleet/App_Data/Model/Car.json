@@ -35,6 +35,28 @@
         "renderer": "color-swatch"
       },
       {
+        "id": "1e431b36-a32d-4b73-9e19-0352d6fdbe72",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e67ef827-5794-41ad-abda-193b0c6e29ca",
+        "name": "CreatedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "3f29e4b0-7c1a-4d86-9e0b-5b7c8d93f402",
         "name": "Description",
         "dataType": "TranslatedString",

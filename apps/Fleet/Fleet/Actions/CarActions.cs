@@ -113,10 +113,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
 
     public ValueTask OnBeforeSaveAsync(Car entity, SaveContext context)
     {
-        // Stamp the creator id on first save. Preserve it on subsequent updates so the
-        // row-level auth check stays consistent even if the owner changes password/email.
-        if (string.IsNullOrEmpty(entity.CreatedBy))
-            entity.CreatedBy = CurrentUserId;
+        // CreatedBy is History's (IAuditCreated, #271): stamped on create, kept on every later save.
 
         var statusAttr = context.PersistentObject.Attributes.FirstOrDefault(a => a.Name == nameof(Car.Status));
         if (statusAttr?.IsValueChanged == true && entity.Status == CarStatus.Stolen)
@@ -219,10 +216,10 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
     /// <summary>
     /// Custom query: cars from 2020 onward. The point of this demo query is that <b>row security
     /// composes onto it for free</b> — a non-admin sees only their own recent cars with no code
-    /// here, because the framework applies <c>GetRowFilterAsync</c> to every query surface. Since
-    /// <c>VCar</c> (the <c>Cars_Overview</c> projection) doesn't carry <c>CreatedBy</c>, the filter
-    /// can't push down here, so it's applied via the post-materialization fallback — still correct,
-    /// just not pushed into RQL.
+    /// here, because the framework applies <c>GetRowFilterAsync</c> to every query surface. Since #271
+    /// <c>CreatedBy</c> is a generated audit member (<c>IAuditCreated</c>) rather than an
+    /// <c>[IgnoreProperty]</c> field, <c>VCar</c> (the <c>Cars_Overview</c> projection) carries it and the
+    /// filter is pushed into RQL.
     /// <para>
     /// Deliberately <c>async</c>, and deliberately returning the queryable rather than a list: this
     /// is the shape that used to lose every capability the sync one keeps (#294). The query declares

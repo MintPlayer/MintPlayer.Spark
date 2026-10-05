@@ -16,10 +16,11 @@
       {
         "id": "154f7c93-faee-41ad-bd53-57c00ec5f8c1",
         "name": "AuthorId",
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isReadOnly": true,
         "order": 6,
+        "referenceType": "MintPlayer.Spark.Authorization.Identity.SparkUser",
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": [],
@@ -73,10 +74,11 @@
       {
         "id": "a3840186-f3df-45b8-9b56-b34f095827c6",
         "name": "DeletedBy",
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isReadOnly": true,
         "order": 23,
+        "referenceType": "MintPlayer.Spark.Authorization.Identity.SparkUser",
         "isArray": false,
         "showedOn": "None",
         "rules": []

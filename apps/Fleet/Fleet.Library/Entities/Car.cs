@@ -1,4 +1,5 @@
 using System.Drawing;
+using MintPlayer.Spark.History;
 using MintPlayer.Spark.Abstractions;
 
 namespace Fleet.Entities;
@@ -9,8 +10,13 @@ namespace Fleet.Entities;
 /// library. Nothing here references anything generated — that is what keeps the library free of index types,
 /// so it can be referenced for replication without dragging them along.
 /// </summary>
+/// <remarks>
+/// <see cref="IAuditCreated"/> (#271): <c>CreatedBy</c> and <c>CreatedAt</c> are generated into this partial
+/// type and stamped by History on create. The row-level auth hook in CarActions restricts non-admin callers
+/// to the cars they created by <c>CreatedBy</c>.
+/// </remarks>
 [GenerateIndex]
-public class Car
+public partial class Car : IAuditCreated
 {
     /// <summary>Unique identifier of this vehicle record, assigned automatically when it is created.</summary>
     public string? Id { get; set; }
@@ -65,7 +71,7 @@ public class Car
     /// sample — the model declares the resting shape, the hook declares how the shape responds.
     /// </para>
     /// <see cref="IgnoreForIndexAttribute"/> because no grid filters or sorts on it, matching
-    /// <see cref="Manager"/> and <see cref="CreatedBy"/>.
+    /// <see cref="Manager"/>.
     /// </summary>
     [IgnoreForIndex]
     public string? PoliceReportNumber { get; set; }
@@ -99,15 +105,6 @@ public class Car
     public TranslatedString? Description { get; set; }
 
     /// <summary>
-    /// User id of the account that created the record. Set on create by CarActions; used
-    /// by the row-level auth hook to restrict non-admin callers to their own cars.
-    /// Demo field: wouldn't necessarily live on the entity in a production app (could be
-    /// a metadata field), but keeping it on the entity is the simplest illustration.
-    /// </summary>
-    [IgnoreForIndex, IgnoreProperty]
-    public string? CreatedBy { get; set; }
-
-    /// <summary>
     /// ETag returned by the external vehicle-registry sync, stored so a later run can skip a
     /// record that hasn't changed upstream.
     /// <para>
@@ -125,8 +122,8 @@ public class Car
     /// The vehicle's maintenance history — the sample for the server-side row lifecycle (#386).
     /// </summary>
     /// <remarks>
-    /// <see cref="IgnoreForIndexAttribute"/> for the same reason as <see cref="Manager"/> and
-    /// <see cref="CreatedBy"/>: no grid filters or sorts on the history, so indexing an embedded
+    /// <see cref="IgnoreForIndexAttribute"/> for the same reason as <see cref="Manager"/>:
+    /// no grid filters or sorts on the history, so indexing an embedded
     /// collection would cost index size and re-indexing work to answer a question nobody asks.
     /// </remarks>
     [IgnoreForIndex]

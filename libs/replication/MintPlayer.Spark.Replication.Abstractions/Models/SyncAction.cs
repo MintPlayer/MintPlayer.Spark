@@ -48,6 +48,13 @@ public class SyncAction
     /// ensuring that only replicated fields are synced back to the owner.
     /// </summary>
     public string[]? Properties { get; set; }
+
+    /// <summary>
+    /// The user the replica made this edit for (its <c>ISparkCurrentUser.Id</c>), so the owner stamps
+    /// <c>ModifiedBy</c> with it (#271, F2). <see langword="null"/> for an anonymous or background write.
+    /// Used for stamping only, never for authorization.
+    /// </summary>
+    public string? InitiatorId { get; set; }
 }
 
 /// <summary>

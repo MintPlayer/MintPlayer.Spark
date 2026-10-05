@@ -3,6 +3,7 @@ using Fleet;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Extensions;
+using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -66,6 +67,10 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written
         // as an .eml file into Spark:Mail:PickupFolder (appsettings.json) instead of being sent.
         spark.AddMailManager();
+
+        // Stamps Car.CreatedBy / CreatedAt (IAuditCreated; the members are generated, #271). The row
+        // filter in CarActions scopes users to the cars they created by that stamp.
+        spark.AddHistory();
 
         // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
         // share Spark's pipeline — its authentication schemes, its antiforgery scope, and

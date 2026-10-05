@@ -22,6 +22,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Fleet.Library\Fleet.Library.csproj" />
+		<!-- Stamps Car's generated CreatedBy/CreatedAt (IAuditCreated, #271); SPARK039 warns without it. -->
+		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
 		<ProjectReference Include="..\..\..\libs\all_features\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />
 		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
 		<ProjectReference Include="..\..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />

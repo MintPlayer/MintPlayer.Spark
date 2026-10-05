@@ -30,29 +30,29 @@ public class MassAssignmentTests
             CarFixture.New(CarFixture.RandomLicensePlate("RO"), model: "RO1"));
         created.Id.Should().NotBeNullOrEmpty();
 
-        // CreatedBy is server-only since #264 ([IgnoreProperty]): it is not an attribute, so it never
-        // reaches the client. Read the stamped value from storage instead.
+        // Since #271 Car is IAuditCreated: History stamps CreatedBy, and the generated member is
+        // [ReadOnly(true)], so the model declares it read-only and it ships to the client as such.
         var originalCreatedBy = (await _fixture.Host.LoadAsync<StoredCar>(created.Id!))?.CreatedBy;
         originalCreatedBy.Should().NotBeNullOrEmpty("the server stamps CreatedBy on create");
 
         var fresh = await admin.GetPersistentObjectAsync(CarFixture.TypeId, created.Id!);
         fresh.Should().NotBeNull();
-        fresh!.Attributes.Should().NotContain(a => a.Name == "CreatedBy",
-            "a server-only field must not ship to the client");
+        var createdBy = fresh!.Attributes.FirstOrDefault(a => a.Name == "CreatedBy");
+        createdBy.Should().NotBeNull("the generated audit member is a model attribute");
+        createdBy!.IsReadOnly.Should().BeTrue("the framework stamps it, so the model declares it read-only");
 
-        // Client forges the attribute anyway — named, changed, and claiming to be writable.
+        // Client forges it anyway — changed, and claiming to be writable.
         var attemptedCreatedBy = "users/spoofed-id";
-        var forged = fresh.Attributes.First(a => a.Name == "Model").CloneAndAdd("CreatedBy");
-        forged.Value = attemptedCreatedBy;
-        forged.IsValueChanged = true;
-        forged.IsReadOnly = false;
+        createdBy.Value = attemptedCreatedBy;
+        createdBy.IsValueChanged = true;
+        createdBy.IsReadOnly = false;
 
         await admin.UpdatePersistentObjectAsync(fresh);
 
-        // The mapper writes only attributes the model declares, so the forged one is ignored.
+        // The mapper consults the model's IsReadOnly, not the client's, so the forged value is dropped.
         var reloadedCreatedBy = (await _fixture.Host.LoadAsync<StoredCar>(created.Id!))?.CreatedBy;
         reloadedCreatedBy.Should().Be(originalCreatedBy,
-            "a client-supplied attribute the model does not declare must be ignored by the entity mapper");
+            "a client-supplied value for a read-only attribute must be ignored by the entity mapper");
         reloadedCreatedBy.Should().NotBe(attemptedCreatedBy,
             "attacker's attempted value must NOT have landed in storage");
     }

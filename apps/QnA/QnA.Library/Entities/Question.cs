@@ -1,5 +1,4 @@
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Contributions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.Moderation;
@@ -11,7 +10,13 @@ namespace QnA.Entities;
 /// A question. Moderatable (votes, flags, locks), soft-deletable (restore / purge) and audited
 /// (revisions, revert) — the three #460 packages on one entity, each through its marker interface.
 /// </summary>
-public class Question : IModeratable, ISoftDeletable, IAuditable
+/// <remarks>
+/// The ten moderation, soft-delete and audit members are generated from the three interfaces (#271);
+/// <c>CreatedBy</c>, <c>ModifiedBy</c>, <c>DeletedBy</c> and <c>AuthorId</c> are references to <c>SparkUser</c>, so
+/// the page shows the user's <c>{UserName}</c>. Visitors may read <c>SparkUser</c>, but <c>security.json</c>
+/// denies them every user attribute except <c>UserName</c> (#264, G-Q15).
+/// </remarks>
+public partial class Question : IModeratable, ISoftDeletable, IAuditable
 {
     /// <summary>Unique identifier of the question, assigned automatically when it is posted.</summary>
     public string? Id { get; set; }
@@ -36,43 +41,6 @@ public class Question : IModeratable, ISoftDeletable, IAuditable
     /// <c>ModerationTallies/{id}</c>, so voting does not move this document's etag while its author edits it.
     /// </summary>
     public int Votes { get; set; }
-
-    /// <summary>Who asked the question. Stamped by Moderation on create, never changed afterwards.</summary>
-    public string? AuthorId { get; set; }
-
-    /// <summary>When the question was posted. Stamped by Moderation.</summary>
-    public DateTimeOffset? PostedAt { get; set; }
-
-    /// <summary>Whether the question was deleted. Deleted questions are hidden everywhere until restored.</summary>
-    public bool IsDeleted { get; set; }
-
-    /// <summary>When the question was deleted.</summary>
-    public DateTimeOffset? DeletedAt { get; set; }
-
-    /// <summary>Who deleted the question (a user id).</summary>
-    public string? DeletedBy { get; set; }
-
-    /// <summary>Why the question was deleted, when a reason was given.</summary>
-    public string? DeleteReason { get; set; }
-
-    /// <summary>Who created the question (a user id). Stamped by History.</summary>
-    /// <remarks>
-    /// A reference, so the page shows the user's name (SparkUser's <c>{UserName}</c> breadcrumb) rather
-    /// than an id. Visitors may read <c>SparkUser</c>, but <c>security.json</c> denies them every user
-    /// attribute except <c>UserName</c> (#264, G-Q15).
-    /// </remarks>
-    [Reference(typeof(SparkUser))]
-    public string? CreatedBy { get; set; }
-
-    /// <summary>When the question was created. Stamped by History.</summary>
-    public DateTimeOffset? CreatedAt { get; set; }
-
-    /// <summary>Who changed the question last (a user id). Stamped by History.</summary>
-    [Reference(typeof(SparkUser))]
-    public string? ModifiedBy { get; set; }
-
-    /// <summary>When the question was changed last. Stamped by History.</summary>
-    public DateTimeOffset? ModifiedAt { get; set; }
 
     /// <summary>
     /// The question in other languages, written by anyone signed in. Each language and script holds one

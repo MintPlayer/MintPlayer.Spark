@@ -19,6 +19,12 @@ public partial class ValueObjectInfo
     /// <summary>Bare type name, for the <c>partial class X</c> the generator reopens.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The reopening header: <c>partial record Line</c>, <c>partial class Box&lt;T&gt;</c> — never a
+    /// hard-coded <c>partial class</c>, which broke records and generic types (#271, F1).
+    /// </summary>
+    public string Header { get; set; } = string.Empty;
+
     /// <summary>Namespace and containing types, reconstructed from the symbol rather than the file path.</summary>
     public PathSpec? PathSpec { get; set; }
 

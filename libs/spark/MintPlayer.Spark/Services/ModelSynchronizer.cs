@@ -915,6 +915,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
             else
             {
+                // A member the framework stamps (#271: [ReadOnly(true)], which the audit-members generator
+                // emits) is created read-only, so the server refuses a posted value, and shown on the
+                // object page only. Creation only, like IsReadOnly itself: an author's later edit stands.
+                var stampedByFramework = property.GetCustomAttribute<System.ComponentModel.ReadOnlyAttribute>()?.IsReadOnly == true;
+                if (stampedByFramework && (showedOn & EShowedOn.PersistentObject) != 0)
+                    showedOn = EShowedOn.PersistentObject;
+
                 // Create new attribute
                 var newAttr = new EntityAttributeDefinition
                 {
@@ -925,13 +932,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     // description seed goes into translations.json.
                     DataType = dataType,
                     // A get-only property cannot be required: nothing can supply a value for it.
-                    IsRequired = property.CanWrite
+                    // Nor can a stamped one: the framework supplies it, never the person filling in the form.
+                    IsRequired = property.CanWrite && !stampedByFramework
                         && !IsNullable(property.PropertyType)
                         && property.PropertyType != typeof(string),
                     // Computed properties surface read-only rather than not at all. Only set on
                     // creation — the update branch never reassigns IsReadOnly, so a hand-set value
                     // survives re-synchronize.
-                    IsReadOnly = !property.CanWrite,
+                    IsReadOnly = !property.CanWrite || stampedByFramework,
                     Order = order,
                     Query = resolvedQuery,
                     ReferenceType = referenceType,
