@@ -237,6 +237,67 @@ public class SecurityConfigurationAnalyzerTests
             .And.Contain(m => m.Contains("restricts Read on 1 of 3"));
     }
 
+    private static Task<IReadOnlyList<Microsoft.CodeAnalysis.Diagnostic>> RunBothGroupsAsync(params (string Resource, string Group, bool Denied)[] rights)
+    {
+        var entries = string.Join(",\n", rights.Select((r, i) =>
+            $$"""{ "id": "22222222-2222-2222-2222-00000000000{{i}}", "resource": "{{r.Resource}}", "groupId": "{{r.Group}}", "isDenied": {{(r.Denied ? "true" : "false")}} }"""));
+        var security = $$"""
+            {
+              "wellKnown": {
+                "anonymous": "00000000-0000-0000-0000-000000000000",
+                "authenticated": "00000000-0000-0000-0000-000000000001"
+              },
+              "groups": {
+                "00000000-0000-0000-0000-000000000000": { "en": "Visitors" },
+                "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users" }
+              },
+              "rights": [
+                {{entries}}
+              ]
+            }
+            """;
+
+        return GeneratorHarness.RunAnalyzerAsync(
+            AnalyzerName,
+            ["class Placeholder { }"],
+            referenceTypes: ReservedVerbSources,
+            additionalTexts:
+            [
+                ("C:\\app\\App_Data\\security.json", security),
+                ("C:\\app\\App_Data\\Model\\Song.json", SongModelJson),
+            ]);
+    }
+
+    private const string Anonymous = "00000000-0000-0000-0000-000000000000";
+    private const string Authenticated = "00000000-0000-0000-0000-000000000001";
+
+    /// <summary>
+    /// #264 G-Q23: a deny on both well-known groups hides the attribute from everyone — the documented
+    /// pattern — and the rest of the type keeping its right is the point, not a forgotten attribute.
+    /// CodeCoverage carried 22 such warnings, all deliberate.
+    /// </summary>
+    [Fact]
+    public async Task A_deny_on_both_well_known_groups_is_not_reported()
+    {
+        var diagnostics = await RunBothGroupsAsync(
+            ("QueryRead/Song", Anonymous, false), ("QueryRead/Song", Authenticated, false),
+            ("QueryRead/Song/Lyrics", Anonymous, true), ("QueryRead/Song/Lyrics", Authenticated, true));
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_deny_on_one_well_known_group_only_is_still_reported()
+    {
+        var diagnostics = await RunBothGroupsAsync(
+            ("QueryRead/Song", Anonymous, false), ("QueryRead/Song", Authenticated, false),
+            ("Read/Song/Lyrics", Anonymous, true), ("Read/Song/Lyrics", Authenticated, true),
+            ("Read/Song/Genre", Anonymous, true));
+
+        diagnostics.Should().ContainSingle().Which.GetMessage().Should().Be(
+            "Group 'Visitors' restricts Read on 2 of 3 attributes of 'Song'; 'Title' is still readable through the type-level right — intended?");
+    }
+
     /// <summary>
     /// #264 (found migrating QnA): a hand-authored model over a library type declares a few of the CLR
     /// type's properties, and only those can reach the wire. SPARK024 listed every CLR property — QnA's

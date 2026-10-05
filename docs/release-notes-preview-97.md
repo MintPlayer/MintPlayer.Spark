@@ -144,6 +144,8 @@ way. See `docs/guide-triggers-refresh.md`.
 - **SPARK024** now lists only attributes the model declares, as the runtime posture report always did.
   A hand-authored model over a library type (`SparkUser.json` with 4 of ~24 properties) no longer
   reports `PasswordHash` and the rest as "still readable".
+- **SPARK024 is silent for a deny both `wellKnown` groups share** ("hide from everyone", G-Q23); the
+  runtime posture note agrees. A deny on one of the two groups only still warns.
 
 ---
 

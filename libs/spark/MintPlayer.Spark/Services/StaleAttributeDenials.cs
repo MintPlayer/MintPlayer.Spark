@@ -12,6 +12,8 @@ namespace MintPlayer.Spark.Services;
 /// that it should be so <em>on purpose</em>.
 /// Only the attributes the model declares are counted: nothing else can reach the wire. SPARK024 counts
 /// the same set (not the CLR type's properties), so build and runtime list the same attributes.
+/// A group whose every deny for a verb and type the other well-known group repeats (anonymous ↔
+/// authenticated: the attribute is hidden from everyone) is not reported, as in SPARK024 (#264, G-Q23).
 /// </remarks>
 internal static class StaleAttributeDenials
 {
@@ -65,11 +67,18 @@ internal static class StaleAttributeDenials
             }
         }
 
+        var counterparts = WellKnownCounterparts(config);
         var findings = new List<Finding>();
         foreach (var ((groupId, verb, type), deniedAttributes) in denied)
         {
             var definition = model.GetEntityTypeByName(type);
             if (definition is null || definition.Attributes.Length == 0)
+                continue;
+
+            // G-Q23: every deny repeated by the other well-known group hides the attribute from everyone.
+            if (counterparts.TryGetValue(groupId, out var counterpart)
+                && denied.TryGetValue((counterpart, verb, type), out var other)
+                && deniedAttributes.All(other.Contains))
                 continue;
 
             var seen = mentioned[(groupId, verb, type)];
@@ -97,6 +106,23 @@ internal static class StaleAttributeDenials
             .ThenBy(f => f.EntityType, StringComparer.Ordinal)
             .ThenBy(f => f.Verb, StringComparer.Ordinal)
             .ToList();
+    }
+
+    /// <summary>The <c>wellKnown</c> anonymous and authenticated group ids, each mapped to the other; empty unless both are declared.</summary>
+    private static Dictionary<Guid, Guid> WellKnownCounterparts(SecurityConfiguration config)
+    {
+        var result = new Dictionary<Guid, Guid>();
+        string? Id(string role) => config.WellKnown?
+            .FirstOrDefault(kv => string.Equals(kv.Key, role, StringComparison.OrdinalIgnoreCase)).Value;
+
+        if (!Guid.TryParse(Id(SparkWellKnownGroups.Anonymous), out var anonymous)
+            || !Guid.TryParse(Id(SparkWellKnownGroups.Authenticated), out var authenticated)
+            || anonymous == authenticated)
+            return result;
+
+        result[anonymous] = authenticated;
+        result[authenticated] = anonymous;
+        return result;
     }
 
     private static void Add(Dictionary<(Guid, string, string), HashSet<string>> map, (Guid, string, string) key, string attribute)

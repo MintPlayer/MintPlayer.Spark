@@ -206,7 +206,10 @@ that attribute — three segments, next to the type grant it narrows:
 - **Only a model-declared attribute can be denied**, and only those reach the wire. A hand-authored
   model over a library type (QnA's `SparkUser.json`) declares just the attributes it shows, never the
   credential fields.
-- **SPARK024** warns about the attributes the deny does *not* mention (the stale-deny trap above). For a
+- **SPARK024** warns about the attributes the deny does *not* mention (the stale-deny trap above), but
+  **not** for a deny both `wellKnown` groups share: hidden from everyone is the pattern above, and the
+  rest of the type keeping its right is the intent (#264, G-Q23). A deny on one of the two groups only
+  (or on any other group) still warns, and so does the startup posture note. For a
   deliberate one-attribute deny that list is the point of the warning: check it once.
 
 **`showedOn` is layout; protect with `isReadOnly` or a deny.** `showedOn: "None"` ships the attribute

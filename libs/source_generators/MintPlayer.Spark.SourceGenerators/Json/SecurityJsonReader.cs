@@ -70,6 +70,13 @@ internal static class SecurityJsonReader
     private static readonly Regex GroupsKey = new(
         @"""groups""\s*:\s*\{", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex WellKnownKey = new(
+        @"""wellKnown""\s*:\s*\{", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex WellKnownEntry = new(
+        @"""(?<k>anonymous|authenticated)""\s*:\s*""(?<v>[^""]*)""",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly Regex GuidKey = new(
         @"""(?<v>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})""\s*:",
         RegexOptions.Compiled);
@@ -100,6 +107,36 @@ internal static class SecurityJsonReader
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// The <c>wellKnown</c> block's two group ids, each mapped to the other (anonymous ↔ authenticated),
+    /// for SPARK024's "denied to both" rule. Empty unless both are declared.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> ReadWellKnownCounterparts(string text)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var key = string.IsNullOrEmpty(text) ? Match.Empty : WellKnownKey.Match(text);
+        if (!key.Success) return result;
+
+        var body = ExtractBracedBlock(text, key.Index + key.Length - 1);
+        if (body is null) return result;
+
+        string? anonymous = null, authenticated = null;
+        foreach (Match entry in WellKnownEntry.Matches(body))
+        {
+            if (string.Equals(entry.Groups["k"].Value, "anonymous", StringComparison.OrdinalIgnoreCase))
+                anonymous = entry.Groups["v"].Value;
+            else if (string.Equals(entry.Groups["k"].Value, "authenticated", StringComparison.OrdinalIgnoreCase))
+                authenticated = entry.Groups["v"].Value;
+        }
+
+        if (anonymous is null || authenticated is null || string.Equals(anonymous, authenticated, StringComparison.OrdinalIgnoreCase))
+            return result;
+
+        result[anonymous] = authenticated;
+        result[authenticated] = anonymous;
+        return result;
     }
 
     /// <summary>The group ids the file declares, for spotting a right that names one it does not.</summary>
