@@ -26,7 +26,9 @@
 | M13 runtime tests T37/T38 | ✅ `bd0675a9` (3/3) |
 | M14 docs, versions (preview.98, nupkg has no Workspaces) | ✅ committed with this table |
 | M14 full sweep | ⏳ |
-| M14 IDE light-bulb check (owner, by hand) | ⏳ after the sweep |
+| M14 IDE light-bulb check (owner, by hand) | ⏳ Comment out `Commits_ByRepository.cs:125` (`DateRaw = …`), expect the SPARK006 squiggle on `Date` and the "Map 'DateRaw' in the index" light bulb, apply it, then `git checkout` the file. No demo-app changes (PRD D20) |
+| Release notes | ✅ `docs/release-notes-preview-98.md` |
+| PR | ⏳ |
 
 ## Baseline — red/green before any fix (measured 2026-10-05, one targeted run)
 

@@ -4,8 +4,10 @@
 **Plan:** [datetimeoffset_query_sort_filter_plan.md](datetimeoffset_query_sort_filter_plan.md)
 **Status:** drafted 2026-10-05, after a three-agent code audit and three measured spikes (§3).
 Owner decisions are recorded in §8, and plan spikes SP1–SP4 were completed the same day (§3).
-**F1–F5 fixed and tested in `5116b09a`.** The red baseline is in the plan, and the full sweep is pending.
-Issue #270 was added to scope on 2026-10-05 (§9).
+**F1–F5 fixed and tested in `5116b09a`.** The red baseline is in the plan. Issue #270 was added to
+scope on 2026-10-05 and implemented the same day (§9: `456e593d`, `3fc64b81`, `bd0675a9`,
+`3b3984e1`). Release notes: `docs/release-notes-preview-98.md`. The open item is the owner's IDE
+light-bulb check (D18).
 **One PR.** The test coverage, and every defect the coverage work found, land together.
 
 ---
@@ -455,6 +457,22 @@ back from the index at offset +00:00` at `:40`. The file was then restored and r
 | T36 | D16 fix inserts the exact generator text for `DateTimeOffset` and `DateTimeOffset?` (nullability mirrored) and for a Search string; an unsupported map shape gets the diagnostic and **no** code action | `CodeFixHarness` |
 | T37 | **Runtime proof of §9.2** (SP5's assertions). A hand-written `RegCars_Overview` variant declares `RegisteredAtRaw` but does not map it. Through the executor it must show: <ul><li>every row `Offset == 0`, with the same `UtcTicks` as the fixture;</li><li>rows A, B, C, E and F failing `EqualsExact`;</li><li>sort order still `F G A B C D E`, so the defect is invisible from sorting.</li></ul>A search twin: `ModelSearch` declared and unmapped, searching "Volvo" gives 0 rows where the mapped control gives 3. The variant index needs `[DefaultIndex]` on the existing one. | `Spark.Tests`, reusing the §6 fixture |
 | T38 | A hand-written index with `Index(nameof(V.RegisteredAt), FieldIndexing.Exact)` sorts and filters by instant through the executor (SP-270 as a regression test for the D13 rationale) | `Spark.Tests` |
+
+### 9.4a No demo-app examples (decided 2026-10-05)
+
+**D20 — HR and Fleet stay unchanged.** The owner asked whether demo examples were needed. They are not:
+- **Runtime behaviour.** Fleet's `Car.RegisteredAt` behind `registrations` *is* the real example. The
+  E2E tests now sort, filter and multi-sort it over HTTP. §6's tests cover Fleet's index shape on every
+  execution path, and T37/T38 cover hand-written indexes.
+- **Code fixes.** A demo would have to ship a deliberately broken index (a warning in a clean build)
+  to show a light bulb. A correct hand-written index adds nothing over the guide. Every app index is
+  generator-backed, which is the recommended path.
+- **The real-app proof was done without committing anything.** Unmapping CodeCoverage's `DateRaw`
+  produced SPARK006 (§9.3).
+
+The one thing no automated test and no demo proves is that the IDE *offers* the fix (D18). That is
+the owner's manual check in plan M14: temporarily unmap `DateRaw` in `Commits_ByRepository.cs:125`,
+then confirm the SPARK006 light bulb in Visual Studio.
 
 ### 9.5 Out of scope (genuinely not being done)
 
