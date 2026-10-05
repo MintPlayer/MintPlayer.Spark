@@ -19,7 +19,9 @@
 | M8 E2E rewrite + HTTP filter + multi-column test | ✅ `5116b09a` (runs in the M9 sweep) |
 | M9 full sweep, docs, memory | ⏳ sweep running |
 | #270 investigation (3 agents + SP-270 measured) | ✅ 2026-10-05 → PRD §9 |
-| SP5–SP7, M10–M14 issue #270 | ⏳ (§ Issue #270 below) |
+| SP5–SP7 | ✅ 2026-10-05 → PRD §9.1; D15 = widen SPARK006 (Warning), D16 shapes from SP6 |
+| M9 sweep | ⏹ stopped by the owner mid-run (builds + ng-spark green); folded into the M14 sweep |
+| M10–M14 issue #270 | ⏳ (§ Issue #270 below) |
 
 ## Baseline — red/green before any fix (measured 2026-10-05, one targeted run)
 
@@ -295,11 +297,19 @@ For each, decide whether the target initializer is located unambiguously and whe
 - Confirm that the SourceGenerators package still packs only what it should (inspect the `.nupkg`
   contents: Workspaces must not be inside it).
 
-### M12 — "Companion never mapped" diagnostic + fix (D15, D16)
-- New rule in `SortCompanionAnalyzer.Rules.cs` with the id from SP7, implemented as a symbol action
-  on the projection type.
-- Fix provider: map assignment insertion, for the shapes SP6 supports.
+### M12 — Widen SPARK006 + its fix (D15, D16)
+- `SortCompanionAnalyzer`: SPARK006 covers every `{F}Search` and `{F}Raw` on a hand-written index's
+  projection, generated or hand-written, not only the fields found by the hand-written `Index(...)`
+  scan.
+  - Report location: `F`; fallback to a hand-written companion, then the projection type (SP7).
+  - Exempt indexes deriving from `SparkIndexCreationTask<T>`.
+  - Retitle "Sort companion" → "Index companion" and mention `{F}Raw` in the message.
+- Fix provider: map assignment insertion for exactly SP6's supported shapes. Port the prototype from
+  `scratchpad/sp6/MapShapeSpikeTests.cs`. Refused shapes get no code action.
 - T35, T36.
+- Docs: `docs/diagnostics.md:31`, `docs/guide-queries-and-sorting.md:607,613`, the
+  `release-notes-preview-53.md:111,124` entries (with the moved location noted), and the comment at
+  `GenerateIndexGenerator.HandWrittenProducer.cs:145`.
 
 ### M13 — Runtime tests (T37, T38)
 - In `RegCarQuerySortFilterTests`' folder: an unmapped-Raw index variant (T37) and an Exact-indexed
