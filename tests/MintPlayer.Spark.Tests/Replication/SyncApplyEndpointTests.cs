@@ -113,7 +113,7 @@ public class SyncApplyEndpointTests
         var result = await NewEndpoint().HandleAsync(ctx);
 
         await _handler.DidNotReceive().HandleSaveAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Any<bool>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Any<bool>(), Arg.Any<string?>());
         (await StatusAsync(result, ctx)).Should().Be((HttpStatusCode)207);
     }
 
@@ -121,7 +121,7 @@ public class SyncApplyEndpointTests
     public async Task Insert_with_data_saves_and_returns_200()
     {
         Cert(ModuleCertificateValidation.Ok);
-        _handler.HandleSaveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Any<bool>())
+        _handler.HandleSaveAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Any<bool>(), Arg.Any<string?>())
             .Returns(Task.FromResult<string?>("cars/generated"));
 
         var ctx = NewContext(new
@@ -138,8 +138,29 @@ public class SyncApplyEndpointTests
         // Key casing follows the wire JSON (serialized camelCase here), so assert on
         // payload presence rather than an exact key name — the point is that the data
         // dictionary flowed through to the handler.
-        await _handler.Received(1).HandleSaveAsync("Cars", null,
-            Arg.Is<Dictionary<string, object?>>(d => d.Count > 0), Arg.Any<string[]?>(), false);
+        await _handler.Received(1).HandleSaveAsync(Arg.Is("Cars"), Arg.Is<string?>(id => id == null),
+            Arg.Is<Dictionary<string, object?>>(d => d.Count > 0), Arg.Any<string[]?>(), Arg.Is(false), Arg.Any<string?>());
+        (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>#271 F2: the user the replica states reaches the owner's save, where History stamps it.</summary>
+    [Fact]
+    public async Task The_initiator_the_replica_states_reaches_the_handler()
+    {
+        Cert(ModuleCertificateValidation.Ok);
+        var ctx = NewContext(new
+        {
+            requestingModule = "HR",
+            actions = new[]
+            {
+                new { actionType = "Update", collection = "Cars", documentId = "cars/1", data = new { Plate = "ABC-123" }, initiatorId = "users/alice" },
+            },
+        });
+
+        var result = await NewEndpoint().HandleAsync(ctx);
+
+        await _handler.Received(1).HandleSaveAsync(
+            Arg.Is("Cars"), Arg.Is<string?>("cars/1"), Arg.Any<Dictionary<string, object?>>(), Arg.Any<string[]?>(), Arg.Is(true), Arg.Is<string?>("users/alice"));
         (await StatusAsync(result, ctx)).Should().Be(HttpStatusCode.OK);
     }
 

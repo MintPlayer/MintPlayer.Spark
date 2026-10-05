@@ -72,6 +72,10 @@
     <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
     <!-- ISoftDeletable: the contributions generator makes the contribution type ISoftDeletable when it is referenced (PRD Q4). -->
     <ProjectReference Include="..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete.Abstractions\MintPlayer.Spark.SoftDelete.Abstractions.csproj" />
+    <!-- IAuditCreated / IAuditModified / IAuditable: the audit-members generator's test inputs (#271). -->
+    <ProjectReference Include="..\..\libs\history\MintPlayer.Spark.History.Abstractions\MintPlayer.Spark.History.Abstractions.csproj" />
+    <!-- SPARK039's negative case: an application that does reference the stamping package. -->
+    <ProjectReference Include="..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
 
     <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />

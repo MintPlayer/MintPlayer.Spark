@@ -26,7 +26,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly ILogger<SyncActionHandler> logger;
-    [Inject] private readonly Abstractions.Authentication.ISparkSyncInitiator syncInitiator;
+    [Inject] private readonly Abstractions.Authentication.ISparkSyncInitiator? syncInitiator = null;
 
     // Cache: collection name → CLR entity type
     private static readonly ConcurrentDictionary<string, Type?> _collectionTypeCache = new(StringComparer.OrdinalIgnoreCase);

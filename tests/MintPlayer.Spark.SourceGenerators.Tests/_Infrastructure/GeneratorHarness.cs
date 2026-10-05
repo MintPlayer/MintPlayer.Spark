@@ -91,11 +91,12 @@ internal static class GeneratorHarness
         IEnumerable<string> sources,
         IEnumerable<Type>? referenceTypes = null,
         IEnumerable<(string Path, string Text)>? additionalTexts = null,
-        IEnumerable<MetadataReference>? additionalReferences = null)
+        IEnumerable<MetadataReference>? additionalReferences = null,
+        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary)
     {
         var analyzer = InstantiateAnalyzer(analyzerTypeName);
         var compilation = BuildCompilation(
-            sources, referenceTypes ?? Array.Empty<Type>(), additionalReferences: additionalReferences);
+            sources, referenceTypes ?? Array.Empty<Type>(), outputKind, additionalReferences: additionalReferences);
 
         var options = new AnalyzerOptions(
             System.Collections.Immutable.ImmutableArray.CreateRange(

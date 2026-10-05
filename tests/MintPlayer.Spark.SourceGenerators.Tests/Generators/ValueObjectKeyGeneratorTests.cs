@@ -295,4 +295,27 @@ public class ValueObjectKeyGeneratorTests
 
         result.GeneratedSources.Should().BeEmpty();
     }
+
+    /// <summary>
+    /// #271 F1: the key half used to be written as <c>partial class</c> whatever the type was, so a
+    /// <c>[ValueObject] record</c> failed with CS0261 in the consumer's build.
+    /// </summary>
+    [Fact]
+    public void A_record_value_object_is_reopened_as_a_record()
+    {
+        var result = Run("""
+            using MintPlayer.Spark.Abstractions;
+
+            namespace TestApp;
+
+            [ValueObject]
+            public partial record Line
+            {
+                public string Text { get; set; } = string.Empty;
+            }
+            """);
+
+        ShouldHaveNoErrors(result);
+        Combined(result).Should().Contain("partial record Line");
+    }
 }
