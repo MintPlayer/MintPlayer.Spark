@@ -65,17 +65,23 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
         var constructor = IndexConstructor(indexType, context.CancellationToken);
         if (constructor is null) return;
 
-        var analyzedFields = AnalyzedFields(constructor);
-        if (analyzedFields.Count == 0) return;
-
         var properties = indexEntity.GetMembers().OfType<IPropertySymbol>().ToList();
         var propertyNames = new HashSet<string>(properties.Select(p => p.Name), System.StringComparer.Ordinal);
 
-        // Every identifier mentioned anywhere in the index constructor. Deliberately coarse: a companion that
-        // appears nowhere in the constructor is definitely unassigned, whereas trying to parse only the map's
-        // initializer would misjudge the `let`, ternary and helper-method shapes real indexes use.
-        var mentioned = Mentioned(constructor);
+        var analyzedFields = AnalyzedFields(constructor);
 
+        ReportMissingCompanions(context, indexEntity, analyzedFields, properties, propertyNames);
+        ReportUnassignedCompanions(context, indexEntity, indexType, analyzedFields, properties);
+    }
+
+    /// <summary>SPARK005: a field the index declares Search or Exact has no companion at all.</summary>
+    private static void ReportMissingCompanions(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol indexEntity,
+        List<(string Field, bool IsExact)> analyzedFields,
+        List<IPropertySymbol> properties,
+        HashSet<string> propertyNames)
+    {
         foreach (var (field, isExact) in analyzedFields)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
@@ -88,6 +94,14 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
             if (fieldProperty is not null && fieldProperty.Type.SpecialType != SpecialType.System_String)
                 continue;
 
+            // The field IS the analyzed copy: `Index(nameof(V.ModelSearch), Search)` beside a plain
+            // `Model` is the convention itself — exactly what the generator emits, and what the SPARK005
+            // fix produces. Asking it for a 'ModelSearchSearch' was this rule flagging its own remedy;
+            // found by the fix tests re-analyzing their output (docs/datetimeoffset_query_sort_filter_PRD.md, T34).
+            if (!isExact && field.Length > "Search".Length && field.EndsWith("Search", System.StringComparison.Ordinal)
+                && propertyNames.Contains(field.Substring(0, field.Length - "Search".Length)))
+                continue;
+
             // ⚠️ The companion depends on why the field needs one.
             // - Search: "Search", not "Sort". The analyzed copy lives on {Name}Search and the base field
             //   is left plain; the roles were swapped so that equality and ordering work on the name
@@ -98,34 +112,120 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
             //   {Name}Search here, as this rule once did, prescribed an analyzed copy that sorts nothing.
             var companionName = field + (isExact ? "Sort" : "Search");
 
-            if (!propertyNames.Contains(companionName))
-            {
-                var location = fieldProperty?.Locations.FirstOrDefault(l => l.IsInSource)
-                    ?? indexEntity.Locations.FirstOrDefault(l => l.IsInSource);
+            if (propertyNames.Contains(companionName)) continue;
 
-                // Never Location.None or a generated location: ConfigureGeneratedCodeAnalysis suppresses
-                // diagnostics BY LOCATION, so either would be dropped without a trace.
-                if (location is not null)
-                {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        MissingSortCompanionRule, location, field, indexEntity.Name, companionName));
-                }
+            // Never Location.None or a generated location: ConfigureGeneratedCodeAnalysis suppresses
+            // diagnostics BY LOCATION, so either would be dropped without a trace.
+            var location = HandWritten(fieldProperty) ?? HandWritten(indexEntity);
+            if (location is null) continue;
 
-                continue;
-            }
-
-            if (!mentioned.Contains(companionName))
-            {
-                var companion = properties.First(p => p.Name == companionName);
-                var location = companion.Locations.FirstOrDefault(l => l.IsInSource);
-                if (location is not null)
-                {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        UnassignedSortCompanionRule, location, companionName, indexType.Name));
-                }
-            }
+            context.ReportDiagnostic(Diagnostic.Create(
+                MissingSortCompanionRule, location,
+                FixProperties(field, companionName, isExact ? CompanionKindSort : CompanionKindSearch),
+                field, indexEntity.Name, companionName));
         }
     }
+
+    /// <summary>
+    /// SPARK006: a companion the projection declares — hand-written, or generated onto a partial
+    /// projection — that no hand-written index constructor ever assigns.
+    /// </summary>
+    /// <remarks>
+    /// Widened 2026-10-05 (docs/datetimeoffset_query_sort_filter_PRD.md, D15). It used to look only at
+    /// companions of fields found by the hand-written <c>Index(...)</c> scan, and it reported at the
+    /// companion — which, when the generator declared it, is a generated location and was dropped. So
+    /// the rule never fired for the <c>[Search]</c>/<c>IndexSearchFields()</c> shape or for a
+    /// <c>{Name}Raw</c> at all. Measured cost of an unmapped companion (SP5): a <c>{Name}Raw</c> returns
+    /// every <c>DateTimeOffset</c> at <c>+00:00</c>, a <c>{Name}Search</c> makes search find nothing —
+    /// with a healthy index, correct sorting, and no warning anywhere.
+    /// </remarks>
+    private static void ReportUnassignedCompanions(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol indexEntity,
+        INamedTypeSymbol indexType,
+        List<(string Field, bool IsExact)> analyzedFields,
+        List<IPropertySymbol> properties)
+    {
+        // Every hand-written constructor counts: a companion assigned in any of them is assigned.
+        var mentioned = new HashSet<string>(System.StringComparer.Ordinal);
+        foreach (var constructor in IndexConstructors(indexType, context.CancellationToken))
+            mentioned.UnionWith(MentionedOutsideFieldOptions(constructor));
+
+        var declaredByIndexScan = new HashSet<string>(
+            analyzedFields.Select(f => f.Field + (f.IsExact ? "Sort" : "Search")), System.StringComparer.Ordinal);
+
+        foreach (var companion in properties)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+
+            if (CompanionOf(companion, properties, declaredByIndexScan) is not { } found) continue;
+            if (mentioned.Contains(companion.Name)) continue;
+            var (baseProperty, kind) = found;
+
+            // Report on the base field the author wrote, so a generated companion is still reachable.
+            var location = HandWritten(baseProperty) ?? HandWritten(companion) ?? HandWritten(indexEntity);
+            if (location is null) continue;
+
+            context.ReportDiagnostic(Diagnostic.Create(
+                UnassignedSortCompanionRule, location,
+                FixProperties(baseProperty.Name, companion.Name, kind),
+                companion.Name, indexType.Name, ConsequenceOf(kind, baseProperty.Name), baseProperty.Name));
+        }
+    }
+
+    internal const string FieldProperty = "Field";
+    internal const string CompanionProperty = "Companion";
+    internal const string KindProperty = "Kind";
+    internal const string CompanionKindSearch = "Search";
+    internal const string CompanionKindSort = "Sort";
+    internal const string CompanionKindRaw = "Raw";
+
+    private static ImmutableDictionary<string, string?> FixProperties(string field, string companion, string kind)
+        => ImmutableDictionary<string, string?>.Empty
+            .Add(FieldProperty, field)
+            .Add(CompanionProperty, companion)
+            .Add(KindProperty, kind);
+
+    private static string ConsequenceOf(string kind, string field) => kind switch
+    {
+        CompanionKindRaw => $"every '{field}' is read back from the index at offset +00:00",
+        CompanionKindSearch => "full-text search on it matches nothing",
+        _ => "ordering by it does nothing",
+    };
+
+    /// <summary>
+    /// The base property and kind when <paramref name="property"/> is an index companion: named
+    /// <c>{F}Search</c>, <c>{F}Sort</c> or <c>{F}Raw</c> with <c>F</c> also on the projection, and either
+    /// <c>[IgnoreProperty]</c> (as every generated companion is) or named by the index's own
+    /// <c>Index(...)</c> declarations. Anything else is a domain property that merely ends in one of
+    /// those words.
+    /// </summary>
+    private static (IPropertySymbol Base, string Kind)? CompanionOf(
+        IPropertySymbol property, List<IPropertySymbol> properties, HashSet<string> declaredByIndexScan)
+    {
+        foreach (var kind in new[] { CompanionKindSearch, CompanionKindSort, CompanionKindRaw })
+        {
+            if (property.Name.Length <= kind.Length || !property.Name.EndsWith(kind, System.StringComparison.Ordinal))
+                continue;
+
+            var baseName = property.Name.Substring(0, property.Name.Length - kind.Length);
+            var baseProperty = properties.FirstOrDefault(p => p.Name == baseName);
+            if (baseProperty is null) continue;
+
+            if (property.GetAttributes().Any(IsIgnoreProperty) || declaredByIndexScan.Contains(property.Name))
+                return (baseProperty, kind);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The first source location of <paramref name="symbol"/> that is not generated code — the only kind
+    /// a diagnostic survives at under <see cref="GeneratedCodeAnalysisFlags.None"/>.
+    /// </summary>
+    private static Location? HandWritten(ISymbol? symbol)
+        => symbol?.Locations.FirstOrDefault(l =>
+            l.IsInSource && !l.SourceTree!.FilePath.EndsWith(".g.cs", System.StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// SPARK018: the index has generated field options but no constructor applies them.
@@ -263,6 +363,45 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
             },
         _ => null,
     };
+
+    /// <summary>
+    /// The field-option calls whose arguments name a field without assigning it. A companion that only
+    /// appears in <c>Index(nameof(V.FRaw), FieldIndexing.No)</c> is declared, not mapped — measured in
+    /// SP5, where exactly that index deployed healthy and returned <c>+00:00</c> for every row.
+    /// </summary>
+    private static readonly HashSet<string> FieldOptionCalls = new(System.StringComparer.Ordinal)
+    {
+        "Index", "Store", "Analyze", "Suggestion", "TermVector", "Spatial", "IndexSearchFields",
+    };
+
+    /// <summary>
+    /// <see cref="Mentioned"/>, minus identifiers that only occur inside a field-option call's arguments.
+    /// </summary>
+    private static HashSet<string> MentionedOutsideFieldOptions(ConstructorDeclarationSyntax constructor)
+    {
+        var names = new HashSet<string>(System.StringComparer.Ordinal);
+
+        foreach (var token in constructor.DescendantTokens())
+        {
+            if (!token.IsKind(SyntaxKind.IdentifierToken)) continue;
+
+            var insideFieldOption = token.Parent?.AncestorsAndSelf()
+                .OfType<ArgumentListSyntax>()
+                .Any(args => args.Parent is InvocationExpressionSyntax invocation
+                    && invocation.Expression switch
+                    {
+                        IdentifierNameSyntax id => FieldOptionCalls.Contains(id.Identifier.Text),
+                        GenericNameSyntax generic => FieldOptionCalls.Contains(generic.Identifier.Text),
+                        MemberAccessExpressionSyntax member => FieldOptionCalls.Contains(member.Name.Identifier.Text),
+                        _ => false,
+                    }) ?? false;
+
+            if (!insideFieldOption)
+                names.Add(token.ValueText);
+        }
+
+        return names;
+    }
 
     private static HashSet<string> Mentioned(ConstructorDeclarationSyntax constructor)
     {
