@@ -1,5 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Migrations;
+using Raven.Client;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Queries;
@@ -73,17 +75,24 @@ public partial class M_202609230900_DisconnectedReasonsStopNamingGitHub : ISpark
             // One statement per collection, with every rename inside it — rather than one per
             // (collection, rename) pair — so the whole collection is scanned three times in total
             // instead of nine.
-            var script = string.Join(
-                "\n                        ",
-                Renames.Select(r => $"if (d.DisconnectedReason === '{r.From}') {{ d.DisconnectedReason = '{r.To}'; }}"));
-
+            //
+            // The old and new values travel as parameters rather than being spliced into the script
+            // as literals (#264); the loop applies them in order, exactly as the chain of `if`s it
+            // replaced did. Only the collection, an identifier, is spliced.
             var operation = await store.Operations.SendAsync(new PatchByQueryOperation(new IndexQuery
             {
                 Query = $$"""
-                    from {{collection}} as d update {
-                        {{script}}
+                    from {{RqlIdentifier.Collection(collection)}} as d update {
+                        for (var i = 0; i < $oldReasons.length; i++) {
+                            if (d.DisconnectedReason === $oldReasons[i]) { d.DisconnectedReason = $newReasons[i]; }
+                        }
                     }
                     """,
+                QueryParameters = new Parameters
+                {
+                    ["oldReasons"] = Renames.Select(r => r.From).ToArray(),
+                    ["newReasons"] = Renames.Select(r => r.To).ToArray(),
+                },
             },
             // Wait for the index rather than throw "Index is stale": a bulk operation on a stale index is refused outright.
             new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }), token: cancellationToken);

@@ -1,5 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Migrations;
+using Raven.Client;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Attachments;
@@ -373,8 +375,14 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
 
             var operation = await store.Operations.SendAsync(new DeleteByQueryOperation(new IndexQuery
             {
-                Query = $"from {collection} as d where startsWith(id(d), '{prefix}/') "
-                      + $"and not startsWith(id(d), '{prefix}/{Segment}/')",
+                // The prefixes are values, so parameters; only the collection is spliced (#264).
+                Query = $"from {RqlIdentifier.Collection(collection)} as d where startsWith(id(d), $legacy) "
+                      + "and not startsWith(id(d), $qualified)",
+                QueryParameters = new Parameters
+                {
+                    ["legacy"] = $"{prefix}/",
+                    ["qualified"] = $"{prefix}/{Segment}/",
+                },
 
                 // See IndexCatchUpBudget. Waiting, never AllowStale: a stale index here would let
                 // the delete work from a picture of the database taken before the put phase ran.
@@ -421,7 +429,7 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
     {
         using var session = store.OpenAsyncSession();
         var query = session.Advanced
-            .AsyncRawQuery<object>($"from {collection} as d where startsWith(id(d), $p) limit 0")
+            .AsyncRawQuery<object>($"from {RqlIdentifier.Collection(collection)} as d where startsWith(id(d), $p) limit 0")
             .AddParameter("p", prefix)
             // The guard above refuses to delete when this reads zero, so a stale count does not
             // merely report the wrong number — it decides whether the only copy gets destroyed.

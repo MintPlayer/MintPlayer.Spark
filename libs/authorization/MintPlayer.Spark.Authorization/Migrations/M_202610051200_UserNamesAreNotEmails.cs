@@ -1,4 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Migrations;
 using Raven.Client.Documents;
@@ -31,7 +32,9 @@ public partial class M_202610051200_UserNamesAreNotEmails : ISparkMigration
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {
-        var collection = store.Conventions.FindCollectionName(typeof(SparkUser));
+        // Spliced into the scan below, because RQL takes no parameter for a collection; validated,
+        // because an application can customise the convention to return anything (#264).
+        var collection = RqlIdentifier.Collection(store.Conventions.FindCollectionName(typeof(SparkUser)));
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var emailShaped = new List<string>();
 

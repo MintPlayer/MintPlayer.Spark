@@ -1,4 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Migrations;
 using Raven.Client;
@@ -39,7 +40,9 @@ public partial class M_202610041800_UserDocumentsMovedAssembly : ISparkMigration
 
     private async Task RewriteAsync(Type type, CancellationToken cancellationToken)
     {
-        var collection = store.Conventions.FindCollectionName(type);
+        // Spliced, because RQL takes no parameter for a collection; validated, because an application
+        // can customise the convention to return anything (#264). The type names are values: $old, $new.
+        var collection = RqlIdentifier.Collection(store.Conventions.FindCollectionName(type));
         var operation = await store.Operations.SendAsync(
             new PatchByQueryOperation(new IndexQuery
             {

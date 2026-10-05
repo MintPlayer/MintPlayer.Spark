@@ -1,4 +1,5 @@
 using MintPlayer.Spark;
+using MintPlayer.Spark.Abstractions;
 using CodeCoverage.Entities;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -143,7 +144,7 @@ public static class ForgeQualifiedIdVerifier
     {
         using var session = store.OpenAsyncSession();
         var query = session.Advanced
-            .AsyncRawQuery<object>($"from {collection} as d where startsWith(id(d), $p) limit 0")
+            .AsyncRawQuery<object>($"from {RqlIdentifier.Collection(collection)} as d where startsWith(id(d), $p) limit 0")
             .AddParameter("p", prefix);
 
         query.Statistics(out var statistics);
@@ -168,10 +169,15 @@ public static class ForgeQualifiedIdVerifier
     private static async Task<long> CountUnqualifiedReferenceAsync(
         IDocumentStore store, string collection, string field, string points, CancellationToken cancellationToken)
     {
+        // The collection and field are identifiers, which RQL cannot take as parameters, so they are
+        // spliced — from the constant tables above, and validated so that stays the only possibility.
+        // The prefix is a value and goes in $p.
+        var from = RqlIdentifier.Collection(collection);
+        var path = RqlIdentifier.FieldPath(field);
         using var session = store.OpenAsyncSession();
         var query = session.Advanced
             .AsyncRawQuery<object>(
-                $"from {collection} as d where d.{field} != null and not startsWith(d.{field}, $p) limit 0")
+                $"from {from} as d where d.{path} != null and not startsWith(d.{path}, $p) limit 0")
             .AddParameter("p", $"{points}/github/")
             // ⚠️ This dynamic query builds its auto-index on first use, so the first answer is stale by
             // construction, and a caller's "wait for indexing" beforehand cannot help: the index does not
