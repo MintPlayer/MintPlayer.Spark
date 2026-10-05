@@ -6,7 +6,8 @@ import { SparkReputationBadgeComponent } from '@mintplayer/ng-spark/moderation';
  * The `AuthorId` cell and field (renderer `qna-author`). A post stores its author's **id** only
  * (#460 D8: never a name, so a deleted account needs no rewrite), and an id is not worth reading —
  * so the cell shows the author's reputation badge (Moderation, M12) instead. Signed out the badge stays
- * empty: the reputation endpoint answers signed-in callers only.
+ * empty: the reputation endpoint answers an anonymous caller with no result (never a 401, which would
+ * send the whole app to the sign-in page).
  */
 @Component({
   selector: 'app-author-renderer',

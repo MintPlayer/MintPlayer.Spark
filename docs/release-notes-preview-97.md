@@ -159,6 +159,20 @@ way. See `docs/guide-triggers-refresh.md`.
 
 ---
 
+## Moderation: an anonymous visitor is no longer sent to the sign-in page
+
+`POST /spark/moderation/reputation` answered an anonymous caller 401. The reputation badge sits in
+every author cell of pages anyone may read (QnA's question list), and ng-spark-auth's interceptor
+navigates to the sign-in page on any 401 outside `/spark/auth`, so an anonymous visitor opening
+`/query/questions` landed on `/login`. The endpoint now answers an anonymous caller **200 with no
+result** (`result: null`): no reputation of their own, and still nobody else's, so nothing is
+disclosed that the 401 withheld. `/reputation/history` and the review-queue endpoints still answer
+401; they back pages where signing in is the answer. ng-spark: `SparkModerationService.reputation()`
+and `ownReputation()` now resolve to `ModerationReputation | null`; the badge and the review-queue
+link render nothing for `null`. MintPlayer.Spark.Moderation `11.0.0-preview.97`.
+
+---
+
 ## JSON schemas for the App_Data files, and `$schema`
 
 Spark now publishes strict JSON schemas for the six hand-edited files — `Model/*.json`,

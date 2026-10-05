@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using MintPlayer.Spark.Moderation;
 using MintPlayer.Spark.Moderation.Documents;
 using MintPlayer.Spark.Testing;
@@ -294,6 +295,29 @@ public class ModerationVoteTests : SparkTestDriver
         plain.GetProperty("result").GetProperty("canReview").GetBoolean().Should().BeFalse("Review needs 1000 reputation here");
         other.GetProperty("result").GetProperty("canReview").GetBoolean().Should().BeTrue("naming yourself is still your own reputation");
         asked.GetProperty("result").GetProperty("canReview").GetBoolean().Should().BeFalse("someone else's badge carries the number only");
+    }
+
+    [Fact]
+    public async Task An_anonymous_caller_gets_no_reputation_and_no_401()
+    {
+        // The badge sits in every author cell of pages anonymous visitors may read; a 401 sent the
+        // whole QnA app to the sign-in page (ng-spark-auth's interceptor). "None" is the honest answer,
+        // and it discloses nothing: not the caller's own (there is none), not anyone else's total.
+        await using var host = await StartAsync();
+        var post = await host.SeedPostAsync(Alice);
+        await host.VoteAsync(Bob, post, 1);
+
+        var (ownStatus, own) = await host.SendAsync("/spark/moderation/reputation", new { }, user: null);
+        var (otherStatus, other) = await host.SendAsync("/spark/moderation/reputation", new { userId = Alice }, user: null);
+        var (historyStatus, _) = await host.SendAsync("/spark/moderation/reputation/history", new { take = 50 }, user: null);
+
+        ownStatus.Should().Be(HttpStatusCode.OK);
+        own.GetProperty("result").ValueKind.Should().Be(JsonValueKind.Null);
+        otherStatus.Should().Be(HttpStatusCode.OK);
+        other.GetProperty("result").ValueKind.Should().Be(JsonValueKind.Null, "an anonymous caller is shown nobody's reputation");
+        // The ledger is a page of its own and stays refused (404 here: this host has no way to sign
+        // in, so SparkDenial does not promise that authenticating would help).
+        historyStatus.Should().Be(HttpStatusCode.NotFound);
     }
 
     // ---- fraud measure 2: diversity --------------------------------------------------------------
