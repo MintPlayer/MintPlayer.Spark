@@ -57,7 +57,7 @@ lets the flush happen in between.
 | D2 | The grid answers to **its own keys only**: `queryId` input ∪ `query().id` ∪ `query().alias`. It reloads only when one of those keys' counters **increases** past the value it last saw | Fixes F1. A "last seen per key" baseline is needed because the service is a root singleton whose counters survive navigation. A grid that mounts after earlier bumps, or that learns its query's id once `getQuery` resolves, must not reload for history. |
 | D3 | Keys are compared **case-insensitively**: the service lower-cases on both `request` and `tokenFor` | Fixes F2, mirroring `ResolveQuery` (Guid parse + `OrdinalIgnoreCase` aliases). |
 | D4 | Matching lives in the **grid**, not the service | Only the grid holds both forms of the key synchronously once its query has resolved. Canonicalising in the service would need an async alias→id lookup. Canonicalising on the server (rewriting `QueryId` to the Guid) would change what apps already send, and still leave a grid that holds an alias unmatched. |
-| D5 | Keep the `fetchFn` identity swap as the reload mechanism; **do not** switch to `BsDatatableComponent.reload()` in this PR | With D1+D2 there is one bump per click and no duplicate left to coalesce. `reload()` only coalesces within one microtask, so it would not have prevented C1 on its own (S3). Switching would be a behaviour change with no measured benefit. Not done, so it is listed under §7. |
+| D5 | ~~Keep the `fetchFn` identity swap~~ **Superseded (owner, 2026-10-05: "matter of modernizing"):** `reload()` goes through `BsDatatableComponent.reload()`, with the swap kept only as the fallback while the datatable is not rendered. A filter change passes `{ resetPage: true }`, because the `settings` binding reaches the element only after the reload already fetched | The swap disarmed the datatable's reload dedupe (mintplayer-ng-bootstrap#407, closed; in 22.21.1). This is not what fixes #319: `reload()` coalesces only within one microtask, and C1's two bumps are split by a network round trip (S3). The fetch closure reads search, filters and deleted at call time, so reusing it is safe. |
 | D6 | The 449-retry path is accepted as **two** fetches | Operations from the 449 response are dispatched before the prompt (`spark.service.ts:500-501`). The first refresh happens before the user answers, and the second after the action really ran. Those are two different states, so it is not a duplicate. |
 | D7 | Tests: vitest for the client mechanics, **SparkTestDriver** for the server contract the client relies on, and an **E2E** browser test for the end-to-end count | The bug is client-side and is only visible end to end. The server half (operation passes the key verbatim; a query resolves by id and alias in any case and reports both) is what makes D2/D3 correct, so it is pinned too. |
 | D8 | The E2E test injects the `refreshQuery` operation by **intercepting the real custom-action response** in Playwright, rather than changing QnA's `CloseQuestion` | No app ships the combination (F3). Adding a redundant `RefreshQuery` to a demo app only to create the bug would be app churn. The interception exercises the real dispatcher, service, grid and datatable. |
@@ -100,7 +100,7 @@ lets the flush happen in between.
 
 ## 7. Not done
 
-- Switching the grid's reload to `BsDatatableComponent.reload()` (D5). It has no measured benefit after this fix.
+- Nothing. D5 was first deferred, then done in this PR at the owner's request.
 
 ## 8. Status
 
@@ -109,3 +109,5 @@ lets the flush happen in between.
 - [x] M3 SparkTestDriver `RefreshQueryEnvelopeTests` 8/8; mutation (no `RefreshQuery`, `Ordinal` alias index) → 5/8 red
 - [x] M4 E2E `QnACustomActionRefreshTests`: pre-fix client **2, 2** `/execute` (alias, id) and 1 (no server refresh); fixed client **1, 1, 1**
 - [x] M5 `npm run test:affected -- --skip-remote-cache`: all 12 affected projects green, unit + E2E, 5m02s (the first attempt only failed on the remote cache answering 499 after successful builds)
+- [x] M6 D5: grid `reload()` via `BsDatatableComponent.reload()`, filters with `resetPage`; ng-spark 1057/1057
+- [x] M7 versions: ng-spark `22.28.1` → `22.29.0` (minor: `reload()` gained an option, and grids ignore refreshes for other queries); Spark, Abstractions, SourceGenerators, AllFeatures, Testing `11.0.0-preview.98` → `preview.99` (majors unchanged: Angular 22, .NET 11)

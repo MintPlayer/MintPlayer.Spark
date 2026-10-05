@@ -697,7 +697,7 @@ describe('SparkQueryGridComponent', () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      const before = c.fetchFn();
+      const tableReload = vi.spyOn((c as any).datatable(), 'reload');
       c.settings.set(new DatatableSettings({
         perPage: { values: [10, 25, 50], selected: 10 },
         page: { values: [1, 2, 3], selected: 3 },
@@ -714,9 +714,10 @@ describe('SparkQueryGridComponent', () => {
 
       // Page 1, because the old page number means nothing against a different result set.
       expect(c.settings().page.selected).toBe(1);
-      // A NEW fetch identity. The datatable dedupes reloads by (page, perPage, sort) — none of
-      // which a filter changes — so without this the request is silently never made.
-      expect(c.fetchFn()).not.toBe(before);
+      // A FORCED reload, from page 1. The datatable dedupes reloads by (page, perPage, sort) — none
+      // of which a filter changes — so without it the request is silently never made; and the
+      // settings binding reaches the datatable only after the reload already fetched.
+      expect(tableReload).toHaveBeenCalledWith({ resetPage: true });
     });
 
     it('sends excludes rather than a flag when the selection is inversed', async () => {
@@ -1008,14 +1009,14 @@ describe('SparkQueryGridComponent', () => {
         const { c, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([archive]) });
         const executed = vi.fn();
         c.customActionExecuted.subscribe(executed);
-        const before = c.fetchFn();
+        const tableReload = vi.spyOn((c as any).datatable(), 'reload');
 
         await c.onCustomAction({ ...archive, confirmation: { en: 'confirm.archive' }, refreshOnCompleted: true });
 
         expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
         expect(executed).toHaveBeenCalledTimes(1);
-        // A new fetch identity is what makes the datatable re-request the current page.
-        expect(c.fetchFn()).not.toBe(before);
+        // The datatable re-requests the current page; the fetch closure is reused, not swapped.
+        expect(tableReload).toHaveBeenCalledTimes(1);
       } finally {
         confirmSpy.mockRestore();
       }

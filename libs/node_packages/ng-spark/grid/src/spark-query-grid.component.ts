@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -344,6 +344,12 @@ export class SparkQueryGridComponent {
     return this.customActions().filter(action => !lowered.has(action.name.toLowerCase()));
   });
   fetchFn = signal<BsDatatableFetch<QueryResultItem> | null>(null);
+
+  /**
+   * The grid's own datatable, for {@link reload}. A `viewChild` is safe here: the `@if` concern above
+   * is about hosts holding this grid, while this is the grid's own template, read only on demand.
+   */
+  private readonly datatable = viewChild(BsDatatableComponent);
 
   /**
    * Why the component renders its own failure instead of only reporting one.
@@ -786,11 +792,20 @@ export class SparkQueryGridComponent {
    * Data-level on purpose: it re-seeds the fetch closure and nothing else. For a definition
    * change — new columns, a renamed query — the inputs themselves must change; that is the
    * expensive path. Inert when rows come from the host: there is nothing here to re-run.
+   *
+   * Through the datatable's own `reload()` (mintplayer-ng-bootstrap#407), which re-queries the
+   * current page and coalesces calls within a microtask. Swapping the `[fetch]` identity, the only
+   * way before it existed, also disarmed the datatable's reload dedupe. The swap stays as the
+   * fallback while the datatable is not rendered (loading), where a fresh closure is what counts.
    */
-  reload(): void {
+  reload(options?: { resetPage?: boolean }): void {
     if (this.hasExternalData()) return;
     const q = this.query();
-    if (q) this.fetchFn.set(this.makeFetch(q, this.parentId(), this.parentType()));
+    if (!q) return;
+
+    const datatable = this.datatable();
+    if (datatable && this.fetchFn()) datatable.reload(options);
+    else this.fetchFn.set(this.makeFetch(q, this.parentId(), this.parentType()));
   }
 
   private onSearchChanged(): void {
@@ -946,11 +961,13 @@ export class SparkQueryGridComponent {
   }
 
   /**
-   * Back to page 1 and a fresh fetch identity, exactly as a new search term does.
+   * Back to page 1 and a forced re-fetch.
    *
    * Both halves matter: the old page number means nothing against a different result set, and the
    * datatable dedupes reloads by `(page, perPage, sort)` — none of which a filter changes — so
-   * without a new fetch identity the request is silently never made.
+   * without forcing it the request is silently never made. `resetPage` makes the datatable fetch
+   * page 1 itself: the settings binding reaches it only on the next change detection, after the
+   * reload already fetched.
    */
   private onFilterChanged(): void {
     if (this.hasExternalData()) return;
@@ -960,7 +977,7 @@ export class SparkQueryGridComponent {
       page: { values: [1], selected: 1 },
       sortColumns: s.sortColumns,
     }));
-    this.reload();
+    this.reload({ resetPage: true });
   }
 
   /**
