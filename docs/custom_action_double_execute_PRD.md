@@ -108,4 +108,4 @@ lets the flush happen in between.
 - [x] M2 green (169/169 in the 5 touched spec files)
 - [x] M3 SparkTestDriver `RefreshQueryEnvelopeTests` 8/8; mutation (no `RefreshQuery`, `Ordinal` alias index) → 5/8 red
 - [x] M4 E2E `QnACustomActionRefreshTests`: pre-fix client **2, 2** `/execute` (alias, id) and 1 (no server refresh); fixed client **1, 1, 1**
-- [ ] M5 sweep
+- [x] M5 `npm run test:affected -- --skip-remote-cache`: all 12 affected projects green, unit + E2E, 5m02s (the first attempt only failed on the remote cache answering 499 after successful builds)
