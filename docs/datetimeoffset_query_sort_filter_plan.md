@@ -21,7 +21,12 @@
 | #270 investigation (3 agents + SP-270 measured) | ✅ 2026-10-05 → PRD §9 |
 | SP5–SP7 | ✅ 2026-10-05 → PRD §9.1; D15 = widen SPARK006 (Warning), D16 shapes from SP6 |
 | M9 sweep | ⏹ stopped by the owner mid-run (builds + ng-spark green); folded into the M14 sweep |
-| M10–M14 issue #270 | ⏳ (§ Issue #270 below) |
+| M10 narrow SPARK005 (strings only; Exact → `{F}Sort`) | ✅ `456e593d` (T33 red 4 → green) |
+| M11–M12 code fix for SPARK005 and SPARK006; SPARK006 widened | ✅ `3fc64b81`. 40/40. Solution build clean, and the clean result was falsified by unmapping CodeCoverage's `DateRaw` |
+| M13 runtime tests T37/T38 | ✅ `bd0675a9` (3/3) |
+| M14 docs, versions (preview.98, nupkg has no Workspaces) | ✅ committed with this table |
+| M14 full sweep | ⏳ |
+| M14 IDE light-bulb check (owner, by hand) | ⏳ after the sweep |
 
 ## Baseline — red/green before any fix (measured 2026-10-05, one targeted run)
 

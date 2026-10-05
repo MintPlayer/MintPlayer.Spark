@@ -604,14 +604,20 @@ than overwriting. The generator emits that guard for you.
 </details>
 
 A generator can add members to a partial class but cannot add statements to a constructor you wrote, so
-the **map assignments stay yours**; `SPARK006` flags a companion the map never assigns.
+the **map assignments stay yours**; `SPARK006` flags a companion the map never assigns — a `{Name}Search`, or a
+`DateTimeOffset`'s `{Name}Raw` wrapper — on the base property, and its code fix inserts the assignment exactly as the
+generator would write it. An unmapped `{Name}Raw` is easy to miss: the index is healthy and sorts correctly, but every
+value comes back at offset `+00:00` in the grid while the detail page shows the real one. Naming the companion in
+`Index(..., FieldIndexing.No)` declares it; it does not map it.
 
 Both classes must be `partial`: `SPARK_INDEX_001` if the index entity is not, `SPARK_INDEX_009` if the index is
 not.
 
 Hand-written indexes keep working and are still the answer for anything the generator does not cover — map/reduce,
 multi-map, `LoadDocument` and other cross-document maps. For those, `SPARK005` and `SPARK006` flag a missing or
-unmapped sort companion so the convention does not have to be remembered.
+unmapped companion so the convention does not have to be remembered, and both offer a code fix in the IDE.
+A `DateTimeOffset` never needs a sort companion, whatever its indexing: RavenDB indexes it as one UTC instant and
+orders by that (measured on Corax and Lucene, 2026-10).
 
 ### Several indexes over one entity
 
