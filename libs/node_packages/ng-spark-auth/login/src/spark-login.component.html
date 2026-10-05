@@ -11,12 +11,12 @@
       <bs-form>
         <form [formGroup]="form" (ngSubmit)="onSubmit()">
           <div class="mb-3">
-            <label for="email" class="form-label">{{ 'auth.emailOrUserName' | t }}</label>
+            <label for="email" class="form-label">{{ identifierField().label | t }}</label>
             <input
-              type="text"
+              [type]="identifierField().type"
               id="email"
               formControlName="email"
-              autocomplete="username"
+              [attr.autocomplete]="identifierField().autocomplete"
             />
           </div>
 

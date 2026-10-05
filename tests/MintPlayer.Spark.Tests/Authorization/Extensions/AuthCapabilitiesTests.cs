@@ -29,7 +29,8 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
     private async Task<IHost> StartAsync(
         SparkLocalCredentials mode,
         SparkEmailChange emailChange = SparkEmailChange.Disabled,
-        SparkExternalLoginLinking linking = SparkExternalLoginLinking.Disabled)
+        SparkExternalLoginLinking linking = SparkExternalLoginLinking.Disabled,
+        SparkSignInIdentifiers? identifiers = null)
     {
         return await new HostBuilder()
             .ConfigureWebHost(webHost => webHost
@@ -38,7 +39,13 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
-                    services.Configure<SparkAuthenticationOptions>(o => { o.EmailChange = emailChange; o.ExternalLoginLinking = linking; });
+                    services.Configure<SparkAuthenticationOptions>(o =>
+                    {
+                        o.EmailChange = emailChange;
+                        o.ExternalLoginLinking = linking;
+                        if (identifiers is { } value)
+                            o.SignInIdentifiers = value;
+                    });
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
 
                     // Two providers a human can click, plus one machine-only scheme that must not
@@ -80,6 +87,22 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
         var body = await GetCapabilitiesAsync(host);
 
         body.GetProperty("localCredentials").GetString().Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(SparkLocalCredentials.Full, null, "email,userName")] // the default: either
+    [InlineData(SparkLocalCredentials.Full, SparkSignInIdentifiers.Email, "email")]
+    [InlineData(SparkLocalCredentials.SignInOnly, SparkSignInIdentifiers.UserName, "userName")]
+    [InlineData(SparkLocalCredentials.Disabled, null, "")] // no password sign-in, nothing to type
+    public async Task Capabilities_reports_the_sign_in_identifiers(
+        SparkLocalCredentials mode, SparkSignInIdentifiers? identifiers, string expected)
+    {
+        using var host = await StartAsync(mode, identifiers: identifiers);
+
+        var body = await GetCapabilitiesAsync(host);
+
+        string.Join(",", body.GetProperty("signInIdentifiers").EnumerateArray().Select(e => e.GetString()))
+            .Should().Be(expected);
     }
 
     [Theory]

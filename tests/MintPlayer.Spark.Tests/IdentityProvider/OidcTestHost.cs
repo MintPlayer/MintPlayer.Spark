@@ -432,7 +432,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     /// <c>TestServer</c> does not do, and does not follow redirects, so a test can assert on
     /// the hop itself rather than on wherever it lands.
     /// </summary>
-    protected sealed class Browser(HttpClient client)
+    protected internal sealed class Browser(HttpClient client)
     {
         private readonly Dictionary<string, string> _cookies = new(StringComparer.Ordinal);
 
@@ -489,7 +489,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     protected Browser NewBrowser() => new(Client);
 
     /// <summary>The antiforgery token rendered into a <c>/connect</c> form.</summary>
-    protected static string AntiforgeryTokenFrom(string html)
+    protected internal static string AntiforgeryTokenFrom(string html)
     {
         var match = Regex.Match(html, "name=\"__RequestVerificationToken\" value=\"([^\"]+)\"");
         if (!match.Success)

@@ -4,6 +4,9 @@ export interface SparkExternalProvider {
   displayName: string;
 }
 
+/** An identifier kind password sign-in can accept. */
+export type SparkSignInIdentifier = 'email' | 'userName';
+
 /**
  * What `GET /spark/auth/capabilities` reports: how much of the local-credential surface this
  * application mounts, and which external providers are registered.
@@ -15,6 +18,13 @@ export interface SparkExternalProvider {
 export interface SparkAuthCapabilities {
   localCredentials: 'Full' | 'SignInOnly' | 'Disabled';
   externalProviders: SparkExternalProvider[];
+
+  /**
+   * What password sign-in accepts as the identifier — the server's `SignInIdentifiers`. Empty when
+   * `localCredentials` is `Disabled`. Optional: a server older than this client omits it, and absent
+   * reads as both, which is what such a server accepts.
+   */
+  signInIdentifiers?: SparkSignInIdentifier[];
 
   /**
    * Whether an anonymous visitor can sign in with a passkey — i.e. whether the server mounted the

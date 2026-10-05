@@ -43,6 +43,26 @@ public class SparkAuthenticationOptions
     public SparkLocalCredentials LocalCredentials { get; set; } = SparkLocalCredentials.Disabled;
 
     /// <summary>
+    /// What password sign-in accepts as the identifier: the email, the user name, or either.
+    /// Defaults to <c><see cref="SparkSignInIdentifiers.Email"/> | <see cref="SparkSignInIdentifiers.UserName"/></c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A disallowed kind is refused exactly like an unknown account — the same 401, and no lookup —
+    /// so the setting is invisible to someone probing for accounts. It is not a secret either:
+    /// <c>/spark/auth/capabilities</c> reports it, and ng-spark-auth's login page labels its field from
+    /// it.
+    /// </para>
+    /// <para>
+    /// ⚠️ A value allowing neither is rejected at startup whenever password sign-in is mounted: it
+    /// would be an application nobody can sign into with a password. Under
+    /// <see cref="SparkLocalCredentials.Disabled"/> there is no password sign-in and the value is not
+    /// read.
+    /// </para>
+    /// </remarks>
+    public SparkSignInIdentifiers SignInIdentifiers { get; set; } = SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName;
+
+    /// <summary>
     /// What to do when an external provider asserts an email that already belongs to an existing
     /// account. Defaults to <see cref="SparkExternalLoginLinking.Disabled"/>.
     /// </summary>

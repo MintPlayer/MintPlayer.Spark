@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -8,7 +8,7 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, sanitizeReturnUrl, passkeysSupported } from '@mintplayer/ng-spark-auth/models';
+import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, sanitizeReturnUrl, passkeysSupported, SparkSignInIdentifier } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark-auth/core';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
 
@@ -43,6 +43,20 @@ export class SparkLoginComponent {
   readonly passkeysAvailable = signal(false);
   readonly passkeyBusy = signal(false);
 
+  /**
+   * What the server's `SignInIdentifiers` accepts, which shapes the identifier field's label, input
+   * type and autocomplete. Both until the capabilities arrive, and when the server does not say.
+   */
+  private readonly signInIdentifiers = signal<SparkSignInIdentifier[]>(['email', 'userName']);
+  readonly identifierField = computed(() => {
+    const kinds = this.signInIdentifiers();
+    const email = kinds.includes('email');
+    const userName = kinds.includes('userName');
+    if (email && !userName) return { label: 'auth.email', type: 'email', autocomplete: 'email' };
+    if (userName && !email) return { label: 'auth.userName', type: 'text', autocomplete: 'username' };
+    return { label: 'auth.emailOrUserName', type: 'text', autocomplete: 'username' };
+  });
+
   constructor() {
     void this.loadCapabilities();
   }
@@ -51,6 +65,7 @@ export class SparkLoginComponent {
     try {
       const capabilities = await this.authService.capabilities();
       this.passkeysAvailable.set(capabilities.passkeys === true && passkeysSupported());
+      if (capabilities.signInIdentifiers?.length) this.signInIdentifiers.set(capabilities.signInIdentifiers);
     } catch {
       // A capability lookup that fails must not break password sign-in, which is this page's job.
       this.passkeysAvailable.set(false);

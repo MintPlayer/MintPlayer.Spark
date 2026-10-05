@@ -99,6 +99,16 @@ addresses that way. Email addresses are never shown to another user now (G-Q22):
   registered by the generated `AddMigrations()`) gives every stored user whose user name contains
   `@` a generated `user-xxxxxx` handle, `NormalizedUserName` included. Sign-in by email keeps
   working, and the user can pick a better handle on the account page.
+- **Sign-in no longer falls back from an email to a user name.** An identifier containing `@` is
+  looked up by email only; without `@`, by user name only. The fallback existed for `@`-shaped user
+  names, which the migration above removes — a leftover one cannot sign in by that name.
+- **New: `SparkAuthenticationOptions.SignInIdentifiers`** (`[Flags] SparkSignInIdentifiers`: `Email`,
+  `UserName`; default both, today's behaviour) lets an application accept only the email or only the
+  user name. A disallowed kind gets the same 401 as an unknown account. `/spark/auth/capabilities`
+  reports it as `signInIdentifiers`, and ng-spark-auth's login page and the OIDC `/connect/login`
+  page label their field from it ("Email", "User name" or "Email or user name"). A value allowing
+  neither is refused at startup unless `LocalCredentials` is `Disabled`. Password reset stays
+  email-based.
 
 **To do:** a client that posts to `/register` itself must send `userName`; code that set a user name
 to an email must pick a handle; a test that asserted a label equal to the email asserts the user name.

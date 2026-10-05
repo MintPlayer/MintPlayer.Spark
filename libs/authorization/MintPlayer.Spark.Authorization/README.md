@@ -110,9 +110,31 @@ exemption is Microsoft's bearer `/refresh` (its credential travels in the body).
 #### Sign-in identifier (#460 D4)
 
 `/login` and the OIDC `/connect/login` page share `SparkSignInManager<TUser>.FindUserForSignInAsync`:
-an identifier containing `@` is looked up as an email first and as a user name only when **no
-account** has that email; without `@` it is a user name. A wrong password never falls through to a
-second account. Two-factor and recovery codes work unchanged (the resolved user carries them).
+an identifier containing `@` is an email and is looked up by email only; without `@` it is a user
+name (a user name never contains `@`, see below). One lookup, so a wrong password never falls through
+to a second account. Two-factor and recovery codes work unchanged (the resolved user carries them).
+
+Which kinds are accepted is the application's choice, `SparkAuthenticationOptions.SignInIdentifiers`
+(the password is always required):
+
+```csharp
+spark.AddAuthentication<SparkUser>(auth =>
+{
+    auth.LocalCredentials = SparkLocalCredentials.Full;
+    auth.SignInIdentifiers = SparkSignInIdentifiers.Email;   // or UserName; default Email | UserName
+});
+```
+
+- A disallowed kind is refused **exactly like an unknown account** (same 401, no lookup, no failed
+  attempt counted), so it reveals nothing about accounts.
+- `/spark/auth/capabilities` reports it as `signInIdentifiers` (`["email"]`, `["userName"]` or both;
+  empty under `LocalCredentials = Disabled`). ng-spark-auth's login page labels its field from it —
+  "Email" (`type=email`, `autocomplete=email`), "User name" or "Email or user name"
+  (`autocomplete=username`) — and so does the OIDC `/connect/login` page.
+- A value allowing neither is refused at startup unless `LocalCredentials` is `Disabled`, where there
+  is no password sign-in to configure.
+- `forgotPassword`/`resetPassword` stay email-based in every setting — they are not sign-in, and the
+  link has to be mailed somewhere.
 
 #### The user name is a public handle (#264, G-Q22)
 
@@ -429,8 +451,9 @@ provideSparkAccountProfileFields(
 - **Mode restrictions.** Under `SparkLocalCredentials.Disabled`, `manage/password` and `manage/info`
   are not mapped. Exclude `changePassword` there (the account overview also hides it, and two-factor,
   from `/spark/auth/capabilities`).
-- **Login label.** The login form's identifier field is labelled "Email or user name"
-  (`auth.emailOrUserName`, D4).
+- **Login label.** The login form's identifier field follows the server's `signInIdentifiers`:
+  "Email or user name" (`auth.emailOrUserName`, D4, also when the server does not report it),
+  "Email" (`auth.email`) or "User name" (`auth.userName`).
 
 ### Customizing the Generated File
 

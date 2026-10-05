@@ -300,3 +300,33 @@ describe('SparkLoginComponent passkeys', () => {
     expect(component.passkeyBusy()).toBe(false);
   });
 });
+
+describe('SparkLoginComponent identifier field', () => {
+  async function open(signInIdentifiers: string[] | undefined) {
+    const { harness } = await setup({
+      capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [], signInIdentifiers }),
+    } as any);
+    await harness.navigateByUrl('/login', SparkLoginComponent);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    const root = harness.routeNativeElement!;
+    return {
+      label: root.querySelector('label[for="email"]')!.textContent!.trim(),
+      input: root.querySelector('input#email') as HTMLInputElement,
+    };
+  }
+
+  it.each([
+    [['email'], 'auth.email', 'email', 'email'],
+    [['userName'], 'auth.userName', 'text', 'username'],
+    [['email', 'userName'], 'auth.emailOrUserName', 'text', 'username'],
+    // A server older than the option omits it, and accepts both.
+    [undefined, 'auth.emailOrUserName', 'text', 'username'],
+  ])('labels the field from the server\'s sign-in identifiers %j', async (identifiers, label, type, autocomplete) => {
+    const field = await open(identifiers);
+
+    expect(field.label).toBe(label);
+    expect(field.input.type).toBe(type);
+    expect(field.input.getAttribute('autocomplete')).toBe(autocomplete);
+  });
+});
