@@ -101,6 +101,25 @@ sweep, which took 26.2 min **without** E2E. Per project:
 The wall time is now set by `MintPlayer.Spark.Tests` alone. Running projects in parallel does not
 make a single project faster: the suites compete for the same cores.
 
+## RavenDB queries: never splice strings into RQL
+
+Never build RQL or a patch script by interpolating a string, even when today's callers only pass
+constants. A helper that takes arbitrary strings becomes an injection the moment a caller passes
+request data. (Owner, 2026-10-05, on `ForgeQualifiedIdVerifier`: "Make sure nobody can inject malicious
+strings here. You're not escaping untrusted inputs here".)
+
+- **Values** (ids, prefixes, filters, search text) always go through query parameters:
+  `$p` + `AddParameter`, `IndexQuery.QueryParameters`, or patch-script `args`.
+- **Identifiers** (collection, field path, index name) can't be parameters in RQL. Validate them
+  against a strict allow-pattern before splicing, using the shared validator
+  `RqlIdentifier.Collection(name)` / `RqlIdentifier.FieldPath(path)`
+  (`libs/spark/MintPlayer.Spark.Abstractions/RqlIdentifier.cs`, public because apps and the
+  Authorization package splice identifiers too). It throws `ArgumentException` on anything else.
+  RavenDB's own escaper (`QueryFieldUtil`) is internal, so don't reach for it.
+- Subscription queries take no parameters. There, constrain the input with an allow-list first, as
+  the messaging queue names already are.
+- Review every new migration, verifier and query builder for this.
+
 ## Versioning: major version is locked to the targeted platform
 
 The major version of every published package in this repository is **not** a semver

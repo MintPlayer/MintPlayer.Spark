@@ -367,6 +367,8 @@ These are behaviours only; no code was copied. Vidyano runs **two independent me
 | G-Q19 | **Schemas are build artifacts, never tracked in git.** Each revision is published as a **GitHub release** (assets = the six files), which is the durable archive, and served by the `apps/SparkSchemas` image. **Supersedes G-Q18** (git-committed revisions) | owner, 2026-10-04: "They're build artifacts, and shouldn't be tracked. The docker-container and optionally a github-release should be satisfactory" | — |
 | G-Q20 | This repo's files reference **unversioned, gitignored, locally generated** schemas: the build (and sync) writes the current set to `schemas/` at the repo root (in `.gitignore`), and files use `"$schema": "../../../schemas/model.schema.json"`, so a PR validates against its own branch. Sync leaves relative paths alone (G-Q17); the guide says a model file copied from this repo needs its `$schema` line removed so sync adds the hosted URL | owner, grill 2026-10-04 ("A") | the hosted URL would make every file in a schema-changing PR (like this one) disagree until deploy |
 | G-Q21 | Revisions are **git tags `schemas/v{n}` (plain counter)**, applied automatically: CI on master generates the set, compares it with the release assets of the latest `schemas/v*` tag, and on any difference tags the commit `schemas/v{n+1}`, creates the GitHub release with the six files, deploys the site and builds the package with `n+1` embedded; otherwise the package embeds `n`. A workflow `concurrency` group serialises master pushes; local builds read `n` via `git describe --tags --match "schemas/v*"`; the first run bootstraps `v1`. The release is **required** (the image build downloads every `schemas/v*` release's assets, so the site is rebuildable from scratch). `schemas/*` tags get a tag-protection rule. Amends G-Q18a (counter state = tags, not committed folders) | owner, grill 2026-10-04 ("Can we use git-tags … automatically applied whenever a schema changes", then "A") | semver rejected: apps are pinned to an exact revision by sync, so a compatibility range has no consumer, and auto-classifying JSON Schema diffs is unreliable |
+| G-Q22 | **Email addresses are never shown or sent to the browser for another user.** `UserName` becomes a **public handle**: registration asks for it; a framework rule refuses any `UserName` containing `@`; an email change no longer rewrites `UserName` (`SparkUserManager.cs:50`); existing users whose `UserName` is an email get a generated handle through a one-time migration and can change it on the account page. Login keeps accepting email or user name. No new field | owner, 2026-10-05 ("email-addresses should never be shown/leaked to the browser"; chose "UserName = public handle") | QnA labels showed author emails (§10.3); registration set `UserName = email` |
+| G-Q23 | **SPARK024 is silent for a deny on both well-known groups** (the documented "hide from everyone" pattern); a deny on one group only still warns. Analyzer and runtime posture note agree | owner, 2026-10-05 | 22 warnings in CodeCoverage were all deliberate |
 | G-Q2 | No dedicated shape hook: the developer overrides `OnLoad` (and calls `RemoveAttributes`); losing batched selection loads (`SparkSelectionResolver.cs:93`, the only batched caller) for such types is accepted; `OnQuery` is not involved | owner, grill 2026-10-04 | `DefaultPersistentObjectActions.cs:76-87`; supersedes PRD §6.2 |
 | D9 | "Client needs it, not drawn" = `showedOn` (`QueryValue`, explicit `None`), never `security.json` | Claude, delegated by the owner, 2026-10-04; owner agreed ("Vidyano has the Visibility + the security.json") | owner: a deny strips TS-needed values; decompiled Vidyano keeps the two mechanisms separate (§3.7b) |
 
@@ -448,10 +450,10 @@ client needs but does not draw.
   `Type` is folded into `AvatarUrl` as `icon:group` in `MyAccountRowActions.WithAvatarFallback`; `/api/me/accounts` still uses `Type`.
 - **Only declared attributes can be denied** (the validator refuses others). QnA therefore declares the SparkUser fields it denies
   (`Email`, `CreatedAtUtc`, `PreferredCulture`) and never declares credential fields.
-- **⚠️ Privacy, owner to decide:** registration sets `UserName = email` (`SparkAccountEndpoints.cs:111`). With G-Q15,
+- **Privacy (resolved by G-Q22, §10.1a):** registration sets `UserName = email` (`SparkAccountEndpoints.cs:111`). With G-Q15,
   anonymous QnA visitors see authors' email addresses. Implemented as decided (QnA is a non-deployed demo); not a pattern
   to copy until UserName and email are separate.
-- **SPARK024 fires on every deliberate single-attribute deny** (22 warnings, all CodeCoverage). Its list is now correct
+- **SPARK024 fired on every deliberate single-attribute deny (resolved by G-Q23, §10.1a)** (22 warnings, all CodeCoverage). Its list is now correct
   (M9). Whether a well-known-group deny should warn at all is an **open owner question**.
 - **Repo-relative `$schema` depth** is `../../../../schemas/` (App_Data) and `../../../../../schemas/` (App_Data/Model), not `../../../`.
 - **Schema types:** `translations.json` has no C# type, so its schema is a hand-written tree. The `culture`/`actions` loaders walk nodes,
@@ -469,12 +471,83 @@ client needs but does not draw.
   - `Spark-API-Specification.md` documented `showedOn` as an int (it's a string)
 - **Pre-existing, not changed:** sync rewrites model files from objects, so `_comment`s in a model file it regenerates are lost.
 
-### 10.2 Owner operator steps (not done by the implementation)
-1. VPS: `/var/www/spark-schemas/docker-compose.yml` with service **`spark-schemas`** (image `ghcr.io/mintplayer/spark-schemas:latest`,
-   port 80, Traefik route `schemas.spark.mintplayer.com` on the `web` network). The deploy refuses to run without it.
-2. GHCR: make the `spark-schemas` package public after its first push.
-3. Tag rule on `schemas/*` that lets GitHub Actions create tags (a bypass), or `gh release create` fails.
-4. Workflow permissions: allow workflows to request `contents: write` and `actions: write`.
+### 10.1a G-Q22 / G-Q23 (2026-10-05): commits `0c39c341`, `39106610`, `99d6a40e`
+**G-Q22, email addresses never reach the browser for another user.** Where `UserName` was set:
+- registration: `SparkAccountEndpoints.cs:111`, which used `UserName = email`
+- the email-change rewrite: `SparkUserManager.cs:43-61`
+- external sign-up: `ExternalLoginCallback.cs:129`. A provider handle could contain `@`, and an email used as
+  display name became `jane-example-com`, which still exposes the address.
+
+Now:
+- **Rule:** `SparkUserNameValidator` refuses any `@` (`UserNameContainsAt`) on every save. It was chosen over
+  `AllowedUserNameCharacters` because an app's Identity options cannot switch it off.
+- **Registration:** `/register` takes `SparkRegisterRequest { email, password, userName }`. A missing or blank user
+  name is a 400. The ng-spark-auth register form gains a "User name" field (en/fr/nl).
+- **Email change:** `SparkUserManager<TUser>` is **deleted**; Identity's own manager is used, so an email change
+  never touches `UserName`.
+- **External sign-up:** never uses a name containing `@` (it gets `user-` plus six hex digits instead), and appends
+  `-2`, `-3`… on a collision. A collision used to fail the sign-up.
+- **Rename and login:** renaming already existed (`POST /manage/profile`). Login already accepts email or user name.
+- **Migration:** `M_202610051200_UserNamesAreNotEmails` (Authorization package) patches email-shaped names to unique
+  handles, `NormalizedUserName` included. It is idempotent.
+- **Supersedes #460 D4's rule** "a user name containing `@` must equal that user's own email" (marked in
+  `issue_460_PRD.md`).
+- **Breaking API:**
+  - `SparkUserManager<TUser>` removed
+  - `SparkClient.RegisterAsync(email, password, userName)`
+  - new `SparkRegisterRequest`
+
+  All three are in `release-notes-preview-97.md`.
+- **Versions:**
+  - `MintPlayer.Spark.Authorization`, `.Client` and `.Client.Authorization`: `11.0.0-preview.97`
+  - `@mintplayer/ng-spark-auth`: 22.19.0
+- **Leak audit:**
+  - No endpoint or DTO returns another user's email; the account page shows only the caller's own.
+  - QnA's author labels, history and contributor names (`QnAUserNames.cs:26`) all showed emails and now show the handle.
+  - CodeCoverage's `{UserName}` labels were already safe, because GitHub logins never contain `@`.
+  - ⚠️ **Not changed:** moderation's fraud notes name a shared email **domain** (not an address, webmail excluded),
+    `FraudDetector.cs:148-153`.
+
+**G-Q23.** SPARK024 (build) and the posture note (runtime) both skip a finding when the other well-known group
+denies the same attributes; they read the `wellKnown` block (`SecurityJsonReader.ReadWellKnownCounterparts`,
+`StaleAttributeDenials`). This is proven by 4 red→green tests. 22 CodeCoverage warnings became **3**, all deliberate
+one-group denies: Home on `anonymous` (Query, Read) and ForgeAccounts on `authenticated` (Read).
+
+### 10.1b RQL injection audit (2026-10-05): commits `4271c2e8`, `7df7272d`
+Owner, on `ForgeQualifiedIdVerifier`: "Make sure nobody can inject malicious strings here. You're not escaping untrusted
+inputs here".
+
+All 30 raw-RQL and patch-script sites in `libs/` and `apps/` were audited. **No request- or caller-controlled string
+reaches query text.** Spark's sort, filter and search go through LINQ with real properties and parameters.
+
+Hardened anyway:
+- **Values as parameters:**
+  - `M_202609210900` prefixes → `$legacy`/`$qualified`
+  - `M_202609230900` reasons → `$oldReasons`/`$newReasons`
+  - HR `M_202609091210` key suffix → `$suffix`
+- **Identifiers validated:** every spliced collection and field name now goes through the new public
+  `RqlIdentifier.Collection` / `FieldPath` (Abstractions). It is public because Spark, Authorization, CodeCoverage and HR
+  all splice identifiers, and RavenDB's `QueryFieldUtil` is internal.
+- **Tests:** `RqlIdentifierTests` rejects quotes, `;`, braces, comments, newlines, `x' or true or '` and
+  `") update { this.X = 1 } //`. The touched sites' tests are green (73 + 22).
+- **Rule recorded:** the rule is now in the repo's `CLAUDE.md`.
+- **Also fixed on the way** (`4271c2e8`): the verifier's dynamic query waits (bounded) for the auto-index it builds.
+  The load-only `ForgeQualifiedIdVerifierTests` failure is proven fixed with 8 CPU burners (7/7).
+
+### 10.2 Operator steps (done 2026-10-05 with the owner's go-ahead, except where noted)
+1. ✅ VPS `root@188.245.190.60`: `/var/www/spark-schemas/docker-compose.yml`, service **`spark-schemas`** (image
+   `ghcr.io/mintplayer/spark-schemas:latest`, Traefik router `Host(\`schemas.spark.mintplayer.com\`)`, `websecure`,
+   `letsencrypt`, port 80, external network `web`), modelled on `/var/www/karnaugh`. `docker compose config` validates.
+   DNS resolves to the VPS (IPv4 `188.245.190.60` and IPv6). The VPS is already logged in to GHCR.
+2. ⏳ GHCR: the `spark-schemas` package does not exist until the first image push, which only happens from `master`
+   (a workflow cannot be dispatched before it is on the default branch). The deploy's best-effort step tries to
+   make it public; verify after the first run and flip it in the package settings if needed.
+3. ✅ Repository ruleset **24486043** "Spark schema revisions (schemas/*)": tag rules `update` + `deletion` on
+   `refs/tags/schemas/*`, with a bypass for repository admins. **Creation is deliberately not restricted:** GitHub
+   refuses the GitHub Actions app as a bypass actor on a repository ruleset ("must be part of the ruleset source or
+   owner organization"). The history guarantee (a revision can be neither moved nor deleted) holds.
+4. ✅ Workflow permissions: the repository default is already `write` (`default_workflow_permissions: write`), so the
+   `schema-revision` job's `contents: write` / `actions: write` need no change.
 5. The first master run after merge publishes `schemas/v1`.
 
 ### 10.3 Verification (2026-10-05)
@@ -508,4 +581,4 @@ client needs but does not draw.
 
 **Correction to G-Q15:** `Read/SparkUser` for visitors is neither needed nor allowed (above). QnA shows authors with
 **no** rights on `SparkUser`. ⚠️ The label is still the email address, because registration sets `UserName = email`
-(owner to decide).
+(resolved by G-Q22: the label is now the public handle).
