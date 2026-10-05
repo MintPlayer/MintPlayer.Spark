@@ -47,7 +47,7 @@ public sealed class SparkRevision
     /// <summary>When the revision was written.</summary>
     public DateTimeOffset? LastModified { get; init; }
 
-    /// <summary>Who wrote it: the revision's <see cref="IAuditable.ModifiedBy"/>, when the type is auditable.</summary>
+    /// <summary>Who wrote it: the revision's <see cref="IAuditModified.ModifiedBy"/>, when the type is auditable.</summary>
     public string? UserId { get; init; }
 
     /// <summary>

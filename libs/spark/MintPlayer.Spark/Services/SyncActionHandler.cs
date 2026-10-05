@@ -26,11 +26,12 @@ internal partial class SyncActionHandler : ISyncActionHandler
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly ILogger<SyncActionHandler> logger;
+    [Inject] private readonly Abstractions.Authentication.ISparkSyncInitiator syncInitiator;
 
     // Cache: collection name → CLR entity type
     private static readonly ConcurrentDictionary<string, Type?> _collectionTypeCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties, bool mustExist = false)
+    public async Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties, bool mustExist = false, string? initiatorId = null)
     {
         var entityType = ResolveEntityType(collection)
             ?? throw new InvalidOperationException($"Cannot resolve entity type for collection '{collection}'.");
@@ -56,6 +57,9 @@ internal partial class SyncActionHandler : ISyncActionHandler
         // actions pipeline directly, so an authenticated module could insert, update or delete any
         // document in any collection — the certificate proved *which* module was calling and
         // nothing consulted what that module was allowed to touch.
+        // The replica's user, for the owner's stamping interceptors (#271, F2): the caller here is a
+        // module certificate, so ISparkCurrentUser has no id to give them.
+        using var initiator = (syncInitiator as SparkSyncInitiator)?.Begin(initiatorId);
         var saved = await databaseAccess.SavePersistentObjectAsync(po, Abstractions.Interceptors.PersistentObjectOperation.Sync);
 
         logger.LogInformation("Sync action: saved {Collection}/{DocumentId} ({PropertyMode})",

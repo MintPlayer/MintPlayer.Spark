@@ -23,8 +23,13 @@ public interface ISyncActionHandler
     /// version it has now, so an edit of a row deleted here is refused instead of recreating it, and a
     /// write landing meanwhile is a conflict rather than overwritten. An Insert passes false.
     /// </param>
+    /// <param name="initiatorId">
+    /// The user the replica made the edit for (<c>SyncAction.InitiatorId</c>), exposed to the save's
+    /// interceptors through <see cref="Authentication.ISparkSyncInitiator"/> so the owner stamps
+    /// <c>ModifiedBy</c> with it (#271, F2). <see langword="null"/> when the replica stated none.
+    /// </param>
     /// <returns>The document ID of the saved entity</returns>
-    Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties = null, bool mustExist = false);
+    Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties = null, bool mustExist = false, string? initiatorId = null);
 
     /// <summary>
     /// Deletes an entity from a sync action.
