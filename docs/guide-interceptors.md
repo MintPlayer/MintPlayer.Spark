@@ -190,6 +190,11 @@ A write that arrives from the owner module (`PersistentObjectOperation.Sync`) re
 opt in with `HandlesSync => true`. The owner already ran its own interceptors. The library interceptors that must
 see a sync (History, Contributions, Replication's own forwarder) opt in; app interceptors normally do not.
 
+A sync runs under the sending module's certificate, so `ISparkCurrentUser.Id` is `null` there. The user
+the replica made the edit for travels with the action (`SyncAction.InitiatorId`). During the save it is
+available as `ISparkSyncInitiator.UserId`, which History stamps `ModifiedBy` with (#271). Use it for
+stamping only, never to authorize.
+
 ## 8. Raw writes and SoftDelete
 
 With the Actions class's save and delete methods gone, the interceptors are the only path to the database

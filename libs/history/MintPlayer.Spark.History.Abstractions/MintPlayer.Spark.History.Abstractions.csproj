@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.History.Abstractions</PackageId>
-		<Version>11.0.0-preview.95</Version>
+		<Version>11.0.0-preview.100</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>The marker an entity implements to be audited by MintPlayer.Spark.History (IAuditable). Depends on nothing, so an entity library can opt in without referencing the framework or ASP.NET Core.</Description>

@@ -154,8 +154,14 @@ public class SyncAction
     public string? DocumentId { get; set; }                  // Required for Update/Delete
     public Dictionary<string, object?>? Data { get; set; }   // Property values
     public string[]? Properties { get; set; }                // Properties to merge (partial update)
+    public string? InitiatorId { get; set; }                 // The editing user's id (#271), for stamping
 }
 ```
+
+`InitiatorId` is set from the sending module's `ISparkCurrentUser` for writes that go through the
+interceptors. The owner stamps `ModifiedBy` (and `CreatedBy` on an insert) of an audited entity with it.
+Without it the owner would keep the previous editor, and replication would then copy that stale value
+back over the replica's own stamp. See [guide-auditing.md](guide-auditing.md).
 
 For type-safe construction, use `SyncAction<T>` and call `ToTransport()`:
 

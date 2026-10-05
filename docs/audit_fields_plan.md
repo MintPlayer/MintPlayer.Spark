@@ -11,16 +11,16 @@ reading the code.
 | Milestone | State |
 |---|---|
 | Investigation (3 agents) | ✅ 2026-10-05 → PRD §1, §4 |
-| Owner decisions | ✅ 2026-10-05 → PRD §7 (D1 keep names, D2 split, D5 always-`[Reference]`, D8 yes, D12 one PR) |
-| M0 spikes SP1–SP4, SP6 (SP5 dropped, D7 = no) | ⏳ |
-| M0b lean interfaces `IAuditCreated`/`IAuditModified` + History stamps by half, package deps | ⏳ |
-| M1 generator + SPARK038 + code fix | ⏳ |
-| M2 F1 ValueObject header | ⏳ |
-| M3 model defaults (`[ReadOnly]` in synchronize) + `IAuditable` startup check | ⏳ |
-| M4 SPARK039 (runtime package missing) | ⏳ |
-| M5 F2 write-back initiator / F3 packaging (only if confirmed) | ⏳ |
-| M6 QnA + Fleet conversions | ⏳ |
-| M7 docs, versions, release notes | ⏳ |
+| Owner decisions | ✅ 2026-10-05 → PRD §7 (D1 keep names, D2 split, D5 `[Reference]` when SparkUser resolves, D8 yes, D12 one PR) |
+| M0 spikes SP1–SP4, SP6 (SP5 dropped, D7 = no) | ✅ PRD §9: F2 confirmed, F3 not |
+| M0b lean interfaces `IAuditCreated`/`IAuditModified` + History stamps by half (no package deps, §5.3b) | ✅ with M5 F2 in one commit |
+| M1 generator + SPARK038 + SPARK040 + code fix | ✅ |
+| M2 F1 ValueObject header | ✅ records (generic value objects: PRD §9 deviation) |
+| M3 model defaults (`[ReadOnly]` in synchronize) + `IAuditable` startup check | ✅ |
+| M4 SPARK039 (runtime package missing) | ✅ |
+| M5 F2 write-back initiator / F3 packaging (only if confirmed) | ✅ F2 fixed; F3 not confirmed, no change |
+| M6 QnA + Fleet conversions | ✅ SP1 diff as expected |
+| M7 docs, versions (preview.100), release notes | ✅ `guide-auditing.md`, `release-notes-preview-100.md` |
 | M8 full sweep | ⏳ |
 
 ## M0 — Spikes

@@ -7,7 +7,8 @@ boilerplate (CreatedBy/CreatedOn/ModifiedBy/ModifiedOn)", postponed from #210 (N
 stamping and model pipeline) on `master` at `ee62764e`. **Owner decisions 2026-10-05:** D1 keep
 names, D2 delegated (decided: split `IAuditable` into `IAuditCreated` + `IAuditModified`), D5 overruled
 (the generator emits `[Reference(typeof(SparkUser))]` when the library can see `SparkUser`), D8 yes; the remaining decisions follow
-the recommendation (§7). Spikes SP1–SP6 (§6) are not run yet.
+the recommendation (§7). **Spikes run and everything implemented 2026-10-05** on `feat/271-audit-members`:
+results and deviations from this PRD are in §9, release notes in `docs/release-notes-preview-100.md`.
 **One PR.** The generator, the model defaults, the app migrations, and every defect found along the way
 (§5) land together.
 
@@ -283,7 +284,7 @@ earlier one.
 
 | App | Change | Constraint |
 |---|---|---|
-| QnA `Question`, `Answer` | Delete **all** hand-written audit, soft-delete and moderation members; the types become `partial`. The `QuestionTranslationsContribution` `IModeratable` members become generated too. | Only the expected diff (G4, SP1) |
+| QnA `Question`, `Answer` | Delete **all** hand-written audit, soft-delete and moderation members; the types become `partial`. ~~The `QuestionTranslationsContribution` `IModeratable` members become generated too.~~ Superseded (§9): they are explicit read-only views over the contribution, so the generator rightly leaves them. | Only the expected diff (G4, SP1) |
 | Fleet `Car` | Replace the `[IgnoreProperty] string? CreatedBy` (`Car.cs:106-108`) and its stamping in `CarActions.cs:114-119` with **`IAuditCreated`** plus `AddHistory()`. The row filter at `CarActions.cs:48` keeps reading `CreatedBy`. | Demo data; the model JSON gains 2 read-only attributes (D10) |
 | CodeCoverage | none (N3) | production |
 | DemoApp, HR | none (no audit fields) | — |
@@ -349,4 +350,29 @@ Each spike gets a written verdict in §9 before the milestone that depends on it
 
 ## 9. Spike results
 
-_(empty — filled in as SP1–SP6 run)_
+All run 2026-10-05.
+
+| # | Verdict | Evidence |
+|---|---|---|
+| **SP1** | ✅ The model diff from converting QnA is exactly the expected one: `AuthorId` and `DeletedBy` on `Question` and `Answer` become `Reference` → `SparkUser`. Nothing else in the model moved, including order, `isReadOnly`, `showedOn`, the `qna-author` renderer and `translations.json`. Generated `///` summaries do not reach `translations.json`, because existing descriptions are kept; rule 7 needs nothing more. | `--spark-synchronize-model` on QnA; the diff is in the QnA commit of this branch (`apps/QnA/QnA/App_Data/Model/{Question,Answer}.json`, `modelHashes.json`) |
+| **SP2** | ✅ Safe by an existing decision, with no code change. A reference label is resolved through **row security on the target** (`BreadcrumbResolver.cs:210`), plus attribute rights on the target (`:228`), not through a type right. So a `SparkUser` reference renders the user's `{UserName}` to anyone who can read the row. #264 made the user name a public handle (G-Q15/G-Q22), and QnA already ships exactly this, covered by `tests/MintPlayer.Spark.E2E.Tests/QnA/QnAAuditFieldsTests.cs`. A dangling id (deleted user) is skipped by the loader (`BreadcrumbResolver.cs:198`), so no label renders. The guide warns that an app with a more private `SparkUser` breadcrumb must fix the breadcrumb. | code reading + the existing E2E test |
+| **SP3** | ✅ A new `[ReadOnly(true)]` member is created `isReadOnly: true`, `isRequired: false`, `showedOn: PersistentObject`. Fleet `Car.CreatedBy`/`CreatedAt` came out exactly so. A forged value is dropped by `EntityMapper.IsWritableBySchema` (`EntityMapper.cs:590-597`), silently, before any interceptor runs, with or without History. | Fleet sync diff; `ModelSynchronizerTests.A_ReadOnly_member_…`; `MassAssignmentTests.PUT_does_not_modify_isreadonly_attribute` rewritten to forge the real attribute |
+| **SP4** | ✅ **F2 confirmed** by reading the code: the non-owner forwards only `IsValueChanged` PO attributes (`SyncActionInterceptor.cs:49-52`), the owner saves as `Sync` (`SyncActionHandler.cs`), and `HistoryInterceptor` returned early on `Sync`. **Fixed** in this PR: `SyncAction.InitiatorId`, `ISparkSyncInitiator`, and History stamping `Sync`. A two-module E2E was not built: the three hops are each covered by a unit test (`SyncActionInterceptorTests`, `SyncApplyEndpointTests`, `AuditStampingTests`). | code reading; tests named |
+| **SP5** | ⏹ Not run (D7 = no). | — |
+| **SP6** | ✅ **F3 not confirmed — no change.** The packed AllFeatures nupkg has no `MintPlayer.SourceGenerators.Tools.dll`, but a scratch consumer built from the local feed **does** run `LibraryGenerators` (it emitted `SparkValueObjectKeys.g.cs`). `Tools.dll` arrives transitively in `analyzers/dotnet/roslyn5.9/cs` of `MintPlayer.AspNetCore.Endpoints` 11.3.0-rc.0, which is fragile but working. Packing a second copy would risk the split-version problem (memory: split generator versions), so it was left alone. | `dotnet pack` + `dotnet build -p:EmitCompilerGeneratedFiles=true` of a scratch consumer; `obj/project.assets.json` |
+
+### Deviations from §5 found while implementing
+
+- **The header helper is local to LibraryGenerators** (`Generators/PartialTypeHeader.cs`), not linked
+  from Contributions. Contributions keeps its own copy, and the two share no project.
+- **A generic `[ValueObject]` is not fixed.** F1 fixes records. A generic value object also fails in the
+  *registry* (`typeof(Slot<TValue>)` in a non-generic class), which was never supported. That is not a
+  regression, and no app has one.
+- **Moderation does not stamp a `Sync` insert.** `ModerationInterceptor` runs no `Sync` write at all,
+  by design ("the owner module already decided"), and no replicated `IModeratable` exists. Its
+  `AuthorId` is therefore left as the replica sent it. History's `Sync` stamping does not depend on this.
+- **The SPARK039 fixture is the application only.** It scans the application and the non-framework
+  assemblies it references for implementers. A referenced runtime assembly counts as registered: whether
+  `Add…()` is called is not visible to an analyzer.
+- **`HistoryInterceptor` no-change check now covers `Sync` too**, so a write-back that changes nothing
+  is not stamped, the same as a `Save`.
