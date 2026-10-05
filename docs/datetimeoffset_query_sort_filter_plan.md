@@ -9,15 +9,38 @@
 | Milestone | State |
 |---|---|
 | SP1–SP4 spikes | ✅ 2026-10-05: results in PRD §3; F3 confirmed as a 500, D11 decided |
-| M1 test infrastructure + JSON fixture | ⏳ |
-| M2 write all server tests first (expected red recorded) | ⏳ |
-| M3 F1 importer fix | ⏳ |
-| M4 F2 shared DTO parse helper | ⏳ |
-| M5 F3 `ApplySorting` ordering flag | ⏳ |
-| M6 F5 reject unknown sort direction (F6: no change) | ⏳ |
-| M7 F4 ng-spark streaming comparator | ⏳ |
-| M8 E2E rewrite + HTTP filter test | ⏳ |
-| M9 full sweep, docs, memory | ⏳ |
+| M1 test infrastructure + JSON fixture | ✅ `5116b09a` |
+| M2 write all server tests first (expected red recorded) | ✅ baseline below |
+| M3 F1 importer fix | ✅ `5116b09a` |
+| M4 F2 shared DTO parse helper (`WireDateTimeOffset`) | ✅ `5116b09a` |
+| M5 F3 `ApplySorting` ordering flag | ✅ `5116b09a` |
+| M6 F5 reject unknown sort direction (endpoint 400 + `--spark-verify-model`); F6 no change | ✅ `5116b09a` |
+| M7 F4 ng-spark streaming comparator, 22.28.1 | ✅ `5116b09a`, specs red→green measured |
+| M8 E2E rewrite + HTTP filter + multi-column test | ✅ `5116b09a` (runs in the M9 sweep) |
+| M9 full sweep, docs, memory | ⏳ sweep running |
+| #270 investigation (3 agents + SP-270 measured) | ✅ 2026-10-05 → PRD §9 |
+| SP5–SP7, M10–M14 issue #270 | ⏳ (§ Issue #270 below) |
+
+## Baseline — red/green before any fix (measured 2026-10-05, one targeted run)
+
+`RegCarQuerySortFilterTests`, `RegCarLocalZoneFilterTests`, `JsonFixtureImporterTests`,
+`ExecuteQueryRequestValidationTests`, all against the unfixed code: **27 passed, 19 failed** (32.7 s).
+
+| Red | Cause | Fixed by |
+|---|---|---|
+| T0, T8, importer test ×5 (all but the `Z` case) | F1: the stored value was the machine-local clock with no offset | M3 |
+| T11, T12, T13, T18 | F1 as well, not a filter defect. The corrupted documents stored `"…T15:00:00.0000000"` with no offset, and RavenDB indexes that text as written, so a 15:00Z filter matched B (Brussels 15:00 = 14:00Z) | M3 |
+| T15, T16 | F2 (offset-less value read as Brussels time under the simulated zone) | M4 |
+| T22, T22b | F3: `IndexOutOfRangeException`, as SP1 predicted | M5 |
+| direction 400 ×3 | F5 | M6 |
+| T14 | **wrong expectation, not a defect.** A null filter cannot select an absent field: that limitation is already measured and pinned by `AbsentVersusNullFieldTests`. T14 now pins B and E only, and cross-references that test | test corrected |
+
+Green as expected: T1–T7, T9, T10, T17, T20, T21, both accepted-direction cases, every existing
+validation test, and the `Z` importer case.
+
+ng-spark (M7), run with the comparator change stashed: the three new specs were red and produced the
+text order (`c/10, c/100, c/9`, and so on). With the change: 118/118 green. T31 was green both
+times: the grid already passed every sort column through.
 
 Test-run discipline: **no suite runs per milestone.** One targeted run of the new test classes
 after M2 records the red baseline (the evidence that each fix is needed). Then one sweep at M9
@@ -214,4 +237,88 @@ out red is a new finding: stop and investigate, do not adjust the assertion.**
   and mark this plan's status table.
 - Memory: update `reference_raven_datetimeoffset_index_projection.md` with SP-A (ordering, ties,
   null vs absent per engine), and add one entry for F1 (importer) and F2 (filter vs write parse).
-- PR body: one PR, listing F1–F6 and the tests that prove each.
+- PR body: one PR, listing F1–F6 and the tests that prove each, plus the #270 work (M10–M14), and
+  `Closes #270`.
+
+---
+
+## Issue #270 — code fix for hand-written indexes (PRD §9)
+
+Same PR. The spikes come first; each writes its measured result into PRD §9.1. The test runs are
+batched into a second full sweep at M14 (the M9 sweep covers F1–F5 only).
+
+### SP5 — Runtime effect of an unmapped companion (dev RavenDB, localhost:8080)
+- Hand-written index plus a partial `[FromIndex]` projection with `RegisteredAtRaw` declared but not
+  assigned in the map; run it through the real executor (the throwaway-test approach of SP2).
+- Measure:
+  - Every `RegisteredAt` comes back `+00:00`?
+  - Is `ProjectedOffsetRestorer`'s warning silent, because the property exists?
+  - The same for an unmapped `ModelSearch`: does search return nothing?
+- **Decides** T37's assertions and whether D15 is a warning or an error.
+
+### SP6 — Which map shapes the D16 fix can edit safely
+Using the SourceGenerators test harness, build fixtures for:
+- query syntax `select new { … }`
+- query syntax `select new V { … }`
+- method syntax `.Select(x => new { … })`
+- `let` clauses
+- a ternary in the initializer
+- a helper-method projection
+- `AddMap` multi-map
+- map + reduce
+
+For each, decide whether the target initializer is located unambiguously and whether the edit compiles.
+- **Output:** the supported list for D16, recorded in PRD §9.3.
+- Unsupported shapes get the diagnostic with no code action (T36).
+
+### SP7 — Diagnostic id and SPARK006 overlap
+- Find the next free `SPARKnnn` id. Check `AnalyzerReleases.Unshipped.md`, if the repo tracks it, and
+  every `Rules.cs`.
+- Decide whether D15 **replaces** SPARK006 for the `Search`/`Raw` suffixes or sits beside it. Two
+  warnings for one cause is the outcome to avoid.
+- Record the choice as a decision in PRD §9.3.
+
+### M10 — Narrow SPARK005 (D13)
+- `SortCompanionAnalyzer.cs:201-252`: fire only for `FieldIndexing.Search` on a `string` property.
+  Drop `Exact`, and drop every `DateTimeOffset`.
+- Update the rule's message and description to name `{Name}Search`.
+- T33, written first, red before the change.
+
+### M11 — SPARK005 code fix (D12, D14)
+- `MintPlayer.Spark.SourceGenerators.csproj`: add `Microsoft.CodeAnalysis.CSharp.Workspaces` 5.9.0
+  `PrivateAssets="all" ExcludeAssets="runtime"`, with the explanatory comment copied from
+  `MintPlayer.Spark.LibraryGenerators.csproj:31-44`.
+- `MintPlayer.Spark.SourceGenerators/CodeFixes/SortCompanionCodeFixProvider.cs`: a solution-level
+  edit that adds the property, adds the map assignment, and retargets `Index`. Reuse the
+  syntax-editing approach of `LibraryGenerators/CodeFixes/ValueObjectSyntaxEditor.cs`.
+- T34 via `CodeFixHarness.RunAnalyzerFixAsync`.
+- Confirm that the SourceGenerators package still packs only what it should (inspect the `.nupkg`
+  contents: Workspaces must not be inside it).
+
+### M12 — "Companion never mapped" diagnostic + fix (D15, D16)
+- New rule in `SortCompanionAnalyzer.Rules.cs` with the id from SP7, implemented as a symbol action
+  on the projection type.
+- Fix provider: map assignment insertion, for the shapes SP6 supports.
+- T35, T36.
+
+### M13 — Runtime tests (T37, T38)
+- In `RegCarQuerySortFilterTests`' folder: an unmapped-Raw index variant (T37) and an Exact-indexed
+  variant (T38). Each gets its own `SharedSparkHost` and its own index names, so they never collide
+  with `RegCars_Overview`.
+
+### M14 — Docs, version, IDE check, second sweep
+- Stale-doc corrections (PRD D17):
+  - `docs/issue_210_PRD.md` R24/R26: add a dated superseded note, keeping the old text
+    ([[feedback-document-decisions-with-evidence]]);
+  - `release-notes-preview-53.md`;
+  - `docs/issue_298_…PRD.md`;
+  - `docs/issue_272_…PRD.md`.
+- Bump the `MintPlayer.Spark.SourceGenerators` minor version (D19). Also check whether
+  MintPlayer.Spark.AllFeatures repacks it and needs the same bump.
+- **IDE check (owner, by hand, D18):** open a scratch consumer in Visual Studio with a hand-written
+  index and confirm both light bulbs appear and apply cleanly. The automated harness cannot prove that
+  a fix is *offered*.
+- Second sweep: `npm run test:affected` (SourceGenerators.Tests, Spark.Tests).
+- Update PRD §9 with every red→green result. Update memory notes [[project-analyzer-code-fixes]] and
+  [[reference-codefix-needs-own-assembly]]: the trap is fixed in the harness, and fixes live in either
+  generator assembly (owner).

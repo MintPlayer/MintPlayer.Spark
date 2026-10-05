@@ -3,7 +3,9 @@
 **Branch:** `test/dto-query-sort-filter` off `master` (`ca068ea1`)
 **Plan:** [datetimeoffset_query_sort_filter_plan.md](datetimeoffset_query_sort_filter_plan.md)
 **Status:** drafted 2026-10-05, after a three-agent code audit and three measured spikes (§3).
-Owner decisions recorded in §8; plan spikes SP1–SP4 completed the same day (§3).
+Owner decisions are recorded in §8, and plan spikes SP1–SP4 were completed the same day (§3).
+**F1–F5 fixed and tested in `5116b09a`.** The red baseline is in the plan, and the full sweep is pending.
+Issue #270 was added to scope on 2026-10-05 (§9).
 **One PR.** The test coverage, and every defect the coverage work found, land together.
 
 ---
@@ -222,7 +224,7 @@ Fixture `Services/Data/reg-cars.json` with rows A–G (§3) plus `DeregisteredAt
 | T11 | `Includes` with another offset spelling of C's instant | matches C **and** D |
 | T12 | multiple `Includes` | union |
 | T13 | `Excludes` | complement |
-| T14 | `Includes [null]` on nullable column | explicit-null rows; pin absent-row behaviour as measured |
+| T14 | `Includes [null]` on nullable column | explicit-null rows **only** (B, E). The absent G is not selected: a known RavenDB limitation, already pinned by `AbsentVersusNullFieldTests` (there is no LINQ shape for "absent or null"). The first draft expected B, E, G and went red; corrected |
 | T15 | **offset-less** include `"2027-03-01T15:00:00"` | matches C and D (UTC, D2). Red before the fix under the simulated zone; **moved to its own class `RegCarLocalZoneFilterTests` in the `LocalZone` collection (D11)** |
 | T16 | date-only include `"2027-03-01"` | matches only an instant at `00:00Z` (no range semantics) — pins it |
 | T17 | unparseable include | zero rows, not 500 |
@@ -284,3 +286,113 @@ Fixture `Services/Data/reg-cars.json` with rows A–G (§3) plus `DeregisteredAt
    On Windows `TZ` is ignored, so every variant carries a **guard**: the test *fails* (not skips)
    when `TimeZoneInfo.Local` has a zero offset at the test instant. A vacuous run is then impossible
    anywhere.
+
+## 9. Issue #270: the code fix, for hand-written indexes only
+
+**Added to scope 2026-10-05.** [#270](https://github.com/MintPlayer/MintPlayer.Spark/issues/270)
+asks for an "Add Sort property" code fix for SPARK005. The owner's intent: the tests in §6 verify
+the correct sort and filter behaviour; the code fix is still needed, **but only for hand-written
+RavenDB indexes**. Generated indexes (`[GenerateIndex]`, `SparkIndexCreationTask<T>`) already get
+every companion from the generator.
+
+A three-agent investigation found most of #270's premises out of date (§9.1). It also found a
+gap that #270 did not name, and that matters more for this PR's subject (§9.2).
+
+### 9.1 Evidence
+
+**SP-270 — which hand-written index shapes need a companion (measured 2026-10-05, RavenDB 7.2.6,
+Corax and Lucene, 8 hand-written indexes, all `Normal`/0 errors; `scratchpad/sp270/`).**
+
+| Shape → ordered by | Corax | Lucene | Correct |
+|---|---|---|---|
+| `DateTimeOffset`, default indexing | by instant | by instant | ✅ |
+| `DateTimeOffset`, `FieldIndexing.Exact` | by instant | by instant | ✅ (term is canonical UTC `…Z`; Exact does **not** keep the offset; equality matches every offset spelling) |
+| `DateTimeOffset`, Exact + a `{Name}Sort` copy (`= x.P` or `= x.P.UtcDateTime`) | by instant | by instant | ✅, but no better than without it |
+| `DateTimeOffset`, `FieldIndexing.Search` | by instant | by instant | ✅ (Lucene tokenizes the text but sorts on its numeric date field) |
+| string, `FieldIndexing.Search` | **arbitrary** (`EBFAC`) | **arbitrary** (`CBFEA`), and the two engines disagree | ❌ |
+| string, Search, ordered by a plain copy `= x.Model` at default indexing | alphabetical | alphabetical | ✅ (case-insensitive) |
+| string, `FieldIndexing.Exact` | alphabetical | alphabetical | ✅ (ordinal, case-sensitive) |
+
+**Conclusion:** only a **Search-indexed string** needs a sort companion. No `DateTimeOffset`
+shape does.
+
+**Code read (two agents, file:line in their reports):**
+
+- **The convention changed after #270 was filed.** For `[Search]` the roles were swapped:
+  - The base field stays plain and sortable.
+  - The analyzed copy is `{Name}Search`, declared `FieldIndexing.Search` (`Naming/IndexNaming.cs:61-82`).
+  - `{Name}Sort` survives only for `[Breadcrumb]`.
+  - A `DateTimeOffset` gets a `{Name}Raw` wrapper (`:89`).
+  - So #270's title, `docs/issue_210_PRD.md` R24/R26 and `release-notes-preview-53.md:123,176` are stale.
+- **SPARK005** (`SortCompanionAnalyzer.cs`, in `MintPlayer.Spark.SourceGenerators`):
+  - Registered with `RegisterSymbolAction(NamedType)` (`:49`) and reported on the projection's own
+    property (`:92-101`). That satisfies both measured light-bulb prerequisites ([[project-analyzer-code-fixes]]).
+  - It fires on a hand-written `Index(f, Search | Exact)` in the index constructor when the projection
+    lacks `{f}Search` (`:52-118`, `:201-252`).
+  - **It never checks the field's type** (`:225-226`). So it also fires for `Exact` strings and for
+    `DateTimeOffset` with `Exact`, and for those it prescribes `{f}Search`, the wrong remedy. Both
+    are false positives (SP-270).
+- **The packaging premise is gone:**
+  - `GetTypes()` no longer throws: the shared test harness references a real
+    `Microsoft.CodeAnalysis.CSharp.Workspaces` 5.9.0
+    (`tests/MintPlayer.Spark.SourceGenerators.Tests/…csproj:14-26`).
+  - Code fixes ship today in `MintPlayer.Spark.LibraryGenerators/CodeFixes/` (SPARK016, SPARK017)
+    and `MintPlayer.Spark.Contributions.SourceGenerators/CodeFixes/` (SPARK029, SPARK031).
+  - Workspaces is referenced with `PrivateAssets="all" ExcludeAssets="runtime"`.
+  - Tests use `tests/…/_Infrastructure/CodeFixHarness.cs` (`RunAnalyzerFixAsync`, multi-project
+    `AdhocWorkspace`, real file paths, fails on a no-op fix).
+- **No app in `apps/` triggers SPARK005.** Every index there is a `SparkIndexCreationTask<T>` with
+  generated companions. The fix serves external consumers and the fixtures.
+
+### 9.2 The gap #270 did not name: a declared companion that the map never assigns
+
+For a **partial** hand-written pair, the generator declares the companion property and its
+`Index`/`Store` calls:
+- `[Search]` gives `{Name}Search`;
+- a `DateTimeOffset` gives `{Name}Raw` with `FieldIndexing.No`.
+
+It **cannot write the map assignment**, because a generator cannot edit an object initializer in
+someone else's constructor (`docs/issue_210_PRD.md` R31). **Nothing reports a missing
+assignment**:
+- SPARK006 only covers fields found by the hand-written `Index(...)` scan, so it is silent for the
+  `[Search]`/`IndexSearchFields()` shape.
+- `ProjectedOffsetRestorer` warns only when the `{Name}Raw` *property* is missing
+  (`ProjectedOffsetRestorer.cs:156-167`), not when it exists but is never mapped.
+
+The consequences are this PR's subject, on a hand-written index:
+- **an unmapped `{Name}Raw`** returns every `DateTimeOffset` in that column as `+00:00` in the grid
+  while the detail page shows the real offset. That is the defect T8 pins for the generated path.
+- **an unmapped `{Name}Search`** makes search silently find nothing.
+
+This is the diagnostic a #270 code fix belongs on.
+
+### 9.3 Decisions
+
+| # | Decision | Why |
+|---|---|---|
+| **D12** | Code fixes live in the generator assembly that hosts their diagnostic: `MintPlayer.Spark.SourceGenerators` or `MintPlayer.Spark.LibraryGenerators`. **Never a separate `.CodeFixes` assembly.** For SPARK005 and the new diagnostic that means `MintPlayer.Spark.SourceGenerators`, next to `SortCompanionAnalyzer`, with the Workspaces reference added as LibraryGenerators has it. | Owner, 2026-10-05: "codefixes can live in the MintPlayer.Spark.SourceGenerators and MintPlayer.Spark.LibraryGenerators". Only SourceGenerators reaches every consumer that can see SPARK005, including NuGet users of the standalone package; `CodeCoverage.Tests` references it alone. |
+| **D13** | **Narrow SPARK005 to Search-indexed strings.** `Exact` on any type, and every `DateTimeOffset`, stop firing. | Measured false positives (SP-270). A warning that prescribes the wrong property teaches people to suppress it. |
+| **D14** | **SPARK005 code fix ("Make Search a companion")**, for a hand-written `Index(nameof(V.F), FieldIndexing.Search)` on a string: <ul><li>add `[IgnoreProperty] public string? FSearch { get; set; }` to the projection (nullability mirrored, `= default!` when non-nullable);</li><li>add `FSearch = <same expression as F>` to the map's projection initializer;</li><li>retarget the `Index` call to `nameof(V.FSearch)`.</li></ul>One solution-level edit (`createChangedSolution`), because the index and the projection are usually in different documents. | Mirrors exactly what the generator emits (`GenerateIndexGenerator.cs:759-768`). Leaves `F` plain and sortable (SP-270: an Exact or default string sorts correctly). Adding only the property would trigger SPARK006, and a fix that leaves a diagnostic behind is worse than none ([[project-analyzer-code-fixes]]). |
+| **D15** | **New diagnostic (next free SPARK id), "companion declared but never assigned in the map"**, for hand-written indexes. It fires when the projection has a `{F}Search` or `{F}Raw` property (generated or hand-written) whose name appears nowhere in the index constructor. It reports on the projection's base property `F`, using `RegisterSymbolAction` like SPARK005. It subsumes SPARK006 for these two suffixes. | §9.2. It is the compile-time guard for the very defect T8 pins, on the path no test reaches. |
+| **D16** | **Code fix for D15:** insert the map assignment, `FSearch = <F's expression>` or `FRaw = new global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset[?]> { V = <F's expression> }`, exactly as the generator writes it (`GenerateIndexGenerator.cs:779-789`, pinned at `GenerateIndexGeneratorTests.cs:663-664`). Map shapes the fix cannot locate safely get **the diagnostic without a fix**. These are a method-syntax `Select` with a helper, `let`-heavy queries, multi-map (`AddMap`) and reduce; SP6 sets the exact supported list. | An unsafe edit inside someone's map is worse than a warning. The supported set is decided by measurement, not guessed. |
+| **D17** | Stale documentation is corrected in this PR: <ul><li>#270's premises in `docs/issue_210_PRD.md` R24/R26;</li><li>`release-notes-preview-53.md`;</li><li>the "own assembly" claims in `docs/issue_298_…PRD.md:168,416` and `docs/issue_272_…PRD.md:399`.</li></ul>The PR body explains the reframing and closes #270. | One PR (CLAUDE.md). A doc that tells the next person a CodeFixProvider cannot live in the analyzer assembly would cost them a day. |
+| **D18** | The code fixes are an **IDE-only affordance**: `dotnet build` gains nothing ([[project-analyzer-code-fixes]]). The light bulb is verified once by hand in Visual Studio (plan M14); the automated proof is `CodeFixHarness`. | Measured lesson: a diagnostic can squiggle perfectly and offer no fix. Only the IDE shows that. |
+| **D19** | `MintPlayer.Spark.SourceGenerators` gets a **minor** version bump (major stays `11` for net11.0, CLAUDE.md). | New analyzer behaviour and a new diagnostic. Not a platform change. |
+
+### 9.4 Tests
+
+| # | Test | Where |
+|---|---|---|
+| T33 | SPARK005 no longer fires for `Exact` strings, `DateTimeOffset` with `Exact`, or `DateTimeOffset` with `Search`; still fires for a Search string | `SortCompanionAnalyzerTests` (red before D13) |
+| T34 | D14 fix on a two-document fixture (index file + projection file): property added, map assignment added, `Index` retargeted; the result compiles and SPARK005 **and** SPARK006 are gone | `CodeFixHarness.RunAnalyzerFixAsync` |
+| T35 | D15 fires for an unmapped `{F}Raw` and an unmapped `{F}Search` (generated property on a partial pair, and hand-written); silent when mapped; silent for `SparkIndexCreationTask<T>` | analyzer test |
+| T36 | D16 fix inserts the exact generator text for `DateTimeOffset` and `DateTimeOffset?` (nullability mirrored) and for a Search string; an unsupported map shape gets the diagnostic and **no** code action | `CodeFixHarness` |
+| T37 | **Runtime proof of §9.2**: a hand-written `RegCars_Overview` variant that declares `RegisteredAtRaw` but does not map it returns `+00:00` for every row through the executor. Pins why D15 exists, and turns into a reminder if the runtime behaviour ever changes. | `Spark.Tests`, reusing the §6 fixture |
+| T38 | A hand-written index with `Index(nameof(V.RegisteredAt), FieldIndexing.Exact)` sorts and filters by instant through the executor (SP-270 as a regression test for the D13 rationale) | `Spark.Tests` |
+
+### 9.5 Out of scope (genuinely not being done)
+
+- **A light bulb for generated indexes.** They have nothing to fix: the generator writes the map.
+- **Rewriting arbitrary map shapes.** D16 covers the shapes SP6 proves safe; the rest keep the
+  diagnostic without an automatic fix. That is a limit of safe automation, not deferred work.
+
