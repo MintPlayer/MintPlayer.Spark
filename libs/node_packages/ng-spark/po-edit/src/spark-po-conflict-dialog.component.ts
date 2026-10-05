@@ -13,7 +13,9 @@ import {
   PersistentObject,
   QueryColumn,
   QueryResultItem,
+  ShowedOn,
   formValuesEqual,
+  hasShowedOnFlag,
   fromDateInputValue,
   isDateDataType,
   isReservedAsDetailKey,
@@ -263,7 +265,8 @@ export class SparkPoConflictDialogComponent {
     const row = value as Record<string, unknown>;
     const otherRow = typeof other === 'object' && other !== null && !Array.isArray(other) ? other as Record<string, unknown> : undefined;
     cell.fields = conflict.rowAttributes
-      .filter(a => a.isVisible !== false)
+      // Drawn nowhere (showedOn None) is not compared, as it is not on the form either.
+      .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.Query) || hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map(attribute => ({
         attribute,
@@ -287,7 +290,7 @@ export class SparkPoConflictDialogComponent {
       id: '', name: '', objectTypeId: '',
       attributes: [{
         id: attribute.id, name: attribute.name, dataType: attribute.dataType, isArray: attribute.isArray,
-        isRequired: false, isVisible: true, isReadOnly: true, order: 0, rules: [],
+        isRequired: false, isReadOnly: true, order: 0, rules: [],
         value: wire, breadcrumb, breadcrumbs,
       }],
     };

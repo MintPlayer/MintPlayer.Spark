@@ -11,7 +11,6 @@ export interface PersistentObjectAttribute {
   dataType: string;
   isArray?: boolean;
   isRequired: boolean;
-  isVisible: boolean;
   isReadOnly: boolean;
   order: number;
   query?: string;

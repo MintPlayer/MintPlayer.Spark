@@ -12,6 +12,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- #264 M6: validates the apps' App_Data files against the generated schemas (draft 2020-12). -->
+    <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
     <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.5" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="NSubstitute" Version="6.2.0" />
@@ -73,6 +75,8 @@
     <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />
     <ProjectReference Include="..\..\libs\client\MintPlayer.Spark.Client\MintPlayer.Spark.Client.csproj" />
     <ProjectReference Include="..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <!-- #264 M6: the schema generator, called in-process by the schema guard tests. -->
+    <ProjectReference Include="..\..\tools\SchemaGenerator\MintPlayer.Spark.SchemaGenerator.csproj" />
   </ItemGroup>
 
   <!--

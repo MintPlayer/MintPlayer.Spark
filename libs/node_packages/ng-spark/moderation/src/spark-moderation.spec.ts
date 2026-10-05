@@ -229,6 +229,25 @@ describe('moderation entry point (#460)', () => {
     expect(link.nativeElement.querySelector('a')?.getAttribute('href')).toBe('/moderation/review');
   });
 
+  it('signed out (the server answers no reputation) the badge and the review-queue link stay empty', async () => {
+    spark.postEnvelope.mockResolvedValue(null);
+    const link = TestBed.createComponent(SparkReviewQueueLinkComponent);
+    const own = TestBed.createComponent(SparkReputationBadgeComponent);
+    const author = TestBed.createComponent(SparkReputationBadgeComponent);
+    author.componentRef.setInput('userId', 'users/1');
+    link.detectChanges();
+    own.detectChanges();
+    author.detectChanges();
+    await flush();
+    link.detectChanges();
+    own.detectChanges();
+    author.detectChanges();
+
+    expect(link.nativeElement.querySelector('a')).toBeNull();
+    expect(own.nativeElement.querySelector('.spark-reputation-badge')).toBeNull();
+    expect(author.nativeElement.querySelector('.spark-reputation-badge')).toBeNull();
+  });
+
   it('the review queue names each case by its post and links to it', async () => {
     spark.postEnvelope.mockResolvedValue([
       { id: 'ModerationCases/flag/questions/1', kind: 'flag', status: 'open', targetId: 'questions/1', targetType: 'Question', accountIds: [], flagCount: 1, voteCount: 0, summary: 'Spam', openedAtUtc: '2026-09-29T05:00:00Z' },

@@ -37,8 +37,13 @@ public enum SparkUserNameSource
     /// <summary>
     /// The provider's own unique handle, verbatim (<see cref="ClaimTypes.Name"/>, falling back to
     /// <see cref="ClaimTypes.NameIdentifier"/>). For providers whose name claim <em>is</em> a unique
-    /// handle that the application relies on — GitHub's login.
+    /// handle that the application relies on — GitHub's login. Suffixed (<c>-2</c>, …) only when a
+    /// local account already holds it.
     /// </summary>
+    /// <remarks>
+    /// Under either source, a name that is an email address is never used (a user name is public and
+    /// cannot contain <c>@</c>, G-Q22); the account gets a generated <c>user-</c> handle instead.
+    /// </remarks>
     ProviderHandle,
 }
 

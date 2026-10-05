@@ -110,38 +110,41 @@ public class RemainingActionsTests : CoverageRavenTest
     // HomeActions
     // ------------------------------------------------------------------------------------------
 
+    /// <remarks>
+    /// The counts are not hidden here any more: <c>security.json</c> denies them to the anonymous
+    /// role, and the load endpoint drops denied attributes from whatever this hook returns (#264;
+    /// proven over HTTP by <c>AttributeDenialEndToEndTests</c>). The hook only skips computing them.
+    /// </remarks>
     [Fact]
-    public async Task An_anonymous_home_page_is_titled_prompts_to_sign_in_and_hides_the_counts()
+    public async Task An_anonymous_home_page_is_titled_prompts_to_sign_in_and_counts_nothing()
     {
-        var page = Page("Home", "Title", "Subtitle", "AccountCount", "RepoCount");
+        var page = Page("Home", "Subtitle", "AccountCount", "RepoCount");
         var myAccounts = MyAccounts(4);
         var actions = Create<HomeActions>(ManagerServing(page), myAccounts, English(), Signed(false),
             Translations(("app.welcomeTitle", "Coverage"), ("app.welcomeSubtitle", "Line coverage."), ("app.signInPrompt", "Sign in.")));
 
         var home = (await actions.OnLoadAsync("home", null))!;
 
-        home["Title"].Value.Should().Be("Coverage");
         home.Breadcrumb.Should().Be("Coverage");
         home["Subtitle"].Value.Should().Be("Line coverage. Sign in.");
-        home["AccountCount"].IsVisible.Should().BeFalse();
-        home["RepoCount"].IsVisible.Should().BeFalse();
+        home["AccountCount"].Value.Should().BeNull();
+        home["RepoCount"].Value.Should().BeNull();
         await myAccounts.DidNotReceiveWithAnyArgs().GetAsync(default);
     }
 
     [Fact]
     public async Task A_signed_in_home_page_counts_the_callers_accounts_and_repositories()
     {
-        var page = Page("Home", "Title", "Subtitle", "AccountCount", "RepoCount");
+        var page = Page("Home", "Subtitle", "AccountCount", "RepoCount");
         var actions = Create<HomeActions>(ManagerServing(page), MyAccounts(4, 6), English(), Signed(true),
             Translations(("app.welcomeSubtitle", "Line coverage.")));
 
         var home = (await actions.OnLoadAsync("home", null))!;
 
-        home["Title"].Value.Should().Be("", "a missing translation renders empty rather than throwing");
+        home.Breadcrumb.Should().Be("", "a missing translation renders empty rather than throwing");
         home["Subtitle"].Value.Should().Be("Line coverage.");
         home["AccountCount"].Value.Should().Be(2);
         home["RepoCount"].Value.Should().Be(10);
-        home["AccountCount"].IsVisible.Should().BeTrue();
     }
 
     // ------------------------------------------------------------------------------------------
@@ -161,7 +164,7 @@ public class RemainingActionsTests : CoverageRavenTest
     [InlineData(null, "GitLab")]
     public async Task A_forge_accounts_page_is_titled_from_the_template_or_the_forge_name(string? template, string expected)
     {
-        var page = Page("ForgeAccounts", "Provider", "Title", "AccountCount", "RepoCount");
+        var page = Page("ForgeAccounts", "Provider", "AccountCount", "RepoCount");
         var myAccounts = MyAccounts(3);
         var translations = template is null ? Translations() : Translations(("app.forgeAccountsTitle", template));
         var actions = Create<ForgeAccountsActions>(ManagerServing(page), myAccounts, English(), translations);
@@ -169,7 +172,6 @@ public class RemainingActionsTests : CoverageRavenTest
         var result = (await actions.OnLoadAsync("gitlab", null))!;
 
         result["Provider"].Value.Should().Be("gitlab");
-        result["Title"].Value.Should().Be(expected);
         result.Breadcrumb.Should().Be(expected);
         result["AccountCount"].Value.Should().Be(1);
         result["RepoCount"].Value.Should().Be(3);
@@ -214,6 +216,24 @@ public class RemainingActionsTests : CoverageRavenTest
         await myAccounts.Received(1).GetAsync(Arg.Any<CancellationToken>(), Arg.Any<bool>(), expected);
     }
 
+    /// <summary>
+    /// The account type no longer ships as a column nobody draws (#264, G-Q4): an organisation
+    /// without an avatar gets the group marker in its avatar cell, and every other row is untouched.
+    /// </summary>
+    [Theory]
+    [InlineData("Organization", null, MyAccountRowActions.GroupAvatar)]
+    [InlineData("group", "", MyAccountRowActions.GroupAvatar)]
+    [InlineData("WORKSPACE", null, MyAccountRowActions.GroupAvatar)]
+    [InlineData("Organization", "https://avatars.example.invalid/1", "https://avatars.example.invalid/1")]
+    [InlineData("User", null, null)]
+    [InlineData("Bot", null, null)]
+    public void An_organisation_without_an_avatar_gets_the_group_marker(string type, string? avatarUrl, string? expected)
+    {
+        var row = new MyAccountRow("github:acme", "acme", "github", type, avatarUrl, 0, null, true);
+
+        MyAccountRowActions.WithAvatarFallback(row).AvatarUrl.Should().Be(expected);
+    }
+
     /// <summary>Every class that opts out of framework row security must say why, in words a reviewer can check.</summary>
     [Fact]
     public void Every_self_securing_actions_class_states_its_rationale()
@@ -243,14 +263,16 @@ public class RemainingActionsTests : CoverageRavenTest
         return visibility;
     }
 
+    /// <summary>
+    /// The installation id is no longer withheld per row: it is <c>[IgnoreProperty]</c>, so it is in
+    /// no model and on no wire for anyone (#264), and the hook has nothing left to protect.
+    /// </summary>
     [Fact]
-    public async Task An_accounts_installation_id_is_withheld_from_anyone_who_does_not_manage_it()
+    public async Task An_account_protects_no_attribute_per_row()
     {
         var account = new Account { Login = "acme", InstallationId = 5 };
 
-        (await Create<AccountActions>(Managing("github:acme")).GetProtectedAttributesAsync("Read", account)).Should().BeNull();
-        (await Create<AccountActions>(Managing("github:other")).GetProtectedAttributesAsync("Read", account))
-            .Should().Equal(nameof(Account.InstallationId));
+        (await Create<AccountActions>(Managing("github:other")).GetProtectedAttributesAsync("Read", account)).Should().BeNull();
     }
 
     [Fact]

@@ -62,6 +62,28 @@ Key points:
 - Use `IDatabaseAccess` (or your own services) for data operations
 - Throw exceptions for errors -- they are caught and returned as 500 responses
 
+### Writing so the next query sees it
+
+The grid that ran the action re-fetches as soon as the action answers. A write through `IDatabaseAccess`
+(`SavePersistentObjectAsync`, `DeletePersistentObjectAsync`, `DeletePersistentObjectsAsync`,
+`SaveDocumentUncheckedAsync`, `DeleteDocumentUncheckedAsync`) commits, then waits — bounded at 15 s,
+never failing the committed write — for the indexes over the collections it wrote, so that re-fetch
+already contains the new or changed row
+([interceptors guide §1a](guide-interceptors.md#1a-the-callers-next-query-sees-the-write)).
+
+An action that calls `session.SaveChangesAsync()` on the injected `IAsyncDocumentSession` itself gets
+no such wait: under load the re-fetched grid can miss the row the action just wrote. To get the same
+behaviour, make the write through `IDatabaseAccess` instead — `SavePersistentObjectAsync` for a
+persistent object (the full pipeline: rights, interceptors, row rules), or
+`SaveDocumentUncheckedAsync(entity)` for a plain document the action has already authorized. Both
+commit everything else pending in the request session in the same `SaveChanges`, so side documents
+stored in that session first are covered too:
+
+```csharp
+await session.StoreAsync(auditEntry);              // pending in the request session
+await dbAccess.SaveDocumentUncheckedAsync(order);  // commits both, then waits for their indexes
+```
+
 ### The CustomActionArgs Class
 
 ```csharp

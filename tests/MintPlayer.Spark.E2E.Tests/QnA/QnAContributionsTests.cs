@@ -57,7 +57,7 @@ public class QnAContributionsTests
         using var anonymous = host.NewClient();
         var row = (await anonymous.GetPersistentObjectAsync(QuestionTypeId, question.Id!))!.Translations().Single();
         row.Id.Should().Be("nl/Latn");
-        (row["ContributorName"].Value?.ToString()).Should().Be(translator.Email, "QnAUserNames resolves the id to the account's name");
+        (row["ContributorName"].Value?.ToString()).Should().Be(translator.UserName, "QnAUserNames resolves the id to the account's name");
         Convert.ToInt32(row["ContributionCount"].Value?.ToString()).Should().Be(1);
 
         // And the history is readable without signing in, like the rest of the site.

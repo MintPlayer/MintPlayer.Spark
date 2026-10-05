@@ -143,10 +143,10 @@ describe('contributionAttribution row renderer', () => {
 describe('row renderers in AsDetail tables', () => {
   const lyrics = {
     id: 'l', name: 'Lyrics', attributes: [
-      { name: 'Language', isVisible: true, order: 1 },
-      { name: 'Text', isVisible: true, order: 3 },
-      { name: 'ContributorName', isVisible: true, order: 4, renderer: 'contributionAttribution', rendererOptions: attributionOptions },
-      { name: 'UpdatedAt', isVisible: true, order: 5, renderer: 'contributionAttribution', rendererOptions: attributionOptions },
+      { name: 'Language', order: 1 },
+      { name: 'Text', order: 3 },
+      { name: 'ContributorName', order: 4, renderer: 'contributionAttribution', rendererOptions: attributionOptions },
+      { name: 'UpdatedAt', order: 5, renderer: 'contributionAttribution', rendererOptions: attributionOptions },
     ],
   } as unknown as EntityType;
 

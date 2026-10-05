@@ -225,7 +225,17 @@ internal sealed partial class StatusEndpoint : IPostEndpoint
         });
 }
 
-/// <summary><c>POST /spark/moderation/reputation { userId? }</c> → a user's reputation (the caller's without one).</summary>
+/// <summary>
+/// <c>POST /spark/moderation/reputation { userId? }</c> → a user's reputation (the caller's without
+/// one); for an anonymous caller a 200 with no result.
+/// </summary>
+/// <remarks>
+/// ⚠️ Anonymous is answered, not refused: the reputation badge is a background widget on pages an
+/// anonymous visitor may read (every author cell of a question list), and ng-spark-auth's interceptor
+/// sends the whole app to the sign-in page on any 401 outside <c>/spark/auth</c>. An anonymous caller
+/// has no reputation of its own and is shown nobody else's, so the honest answer is "none" — the
+/// badge stays empty. Nothing is disclosed that the 401 withheld.
+/// </remarks>
 [MemberOf<ModerationGroup>]
 internal sealed partial class ReputationEndpoint : IPostEndpoint
 {
@@ -236,7 +246,9 @@ internal sealed partial class ReputationEndpoint : IPostEndpoint
     [Inject] private readonly IClientAccessor clientAccessor;
 
     public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.UntypedAsync(httpContext, clientAccessor, currentUser, async r =>
+        => !currentUser.IsAuthenticated
+            ? Task.FromResult(SparkAddOnEndpoints.Envelope(clientAccessor, null, StatusCodes.Status200OK))
+            : ModerationEndpoint.UntypedAsync(httpContext, clientAccessor, currentUser, async r =>
         {
             var userId = string.IsNullOrEmpty(r.UserId) ? currentUser.Id! : r.UserId;
             var reputation = await moderation.GetReputationAsync(userId, httpContext.RequestAborted);

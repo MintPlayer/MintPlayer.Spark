@@ -53,19 +53,6 @@ public sealed class QueryColumn
 {
     public required string Name { get; init; }
 
-    /// <summary>
-    /// Whether the grid should draw this column. <see langword="false"/> means <b>ship the value,
-    /// do not draw it</b> — the row carries it for a renderer to read, and the grid skips it.
-    /// </summary>
-    /// <remarks>
-    /// A presentation decision, so it is carried rather than applied server-side. What belongs on
-    /// the query surface at all is <c>showedOn</c>, which is the flag the sort allow-list is checked
-    /// against too — one rule, one place. Filtering here as well would make an attribute both
-    /// sortable and column-less, and would leave an app no way to give a renderer a sibling value
-    /// short of giving it a column.
-    /// </remarks>
-    public bool IsVisible { get; init; } = true;
-
     public TranslatedString? Label { get; init; }
     /// <summary>Help text for the column header's [i] tooltip (#348); carried from the attribute.</summary>
     public TranslatedString? Description { get; init; }

@@ -43,7 +43,7 @@ public class NotFoundVsForbiddenTests
         using var plainClient = SparkClientFactory.ForFleet(_fixture.Host);
         var email = $"plain-{Guid.NewGuid():N}@e2e.local";
         var pass = _fixture.Host.AdminPass;
-        try { await plainClient.RegisterAsync(email, pass); }
+        try { await plainClient.RegisterAsync(email, pass, email[..email.IndexOf('@')]); }
         catch (SparkClientException) { /* already-registered / validation edge-cases are tolerable */ }
         try { await plainClient.LoginAsync(email, pass); }
         catch (SparkClientException) { /* email-confirmation gate is out of scope for this test */ }

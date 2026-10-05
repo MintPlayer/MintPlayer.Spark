@@ -19,19 +19,19 @@ const personType: EntityType = {
   attributes: [
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
-      isRequired: true, isVisible: true, isReadOnly: false,
+      isRequired: true, isReadOnly: false,
       order: 1, showedOn: ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-last', name: 'LastName', dataType: 'string',
-      isRequired: false, isVisible: true, isReadOnly: false,
+      isRequired: false, isReadOnly: false,
       order: 2, showedOn: ShowedOn.PersistentObject,
     } as any,
     // Hidden as loaded. A refresh hook reveals it — see the overlay test below.
     {
       id: 'a-reason', name: 'Reason', dataType: 'string',
-      isRequired: false, isVisible: false, isReadOnly: false,
-      order: 3, showedOn: ShowedOn.PersistentObject,
+      isRequired: false, isReadOnly: false,
+      order: 3, showedOn: ShowedOn.None,
     } as any,
   ],
 } as any;
@@ -153,7 +153,7 @@ describe('SparkPoEditComponent', () => {
 
     // What the form does when a refresh response reveals it, and what its control does on first
     // keystroke: an in-place write into the shared formData object.
-    c.refreshOverlay.set({ Reason: { isVisible: true, isRequired: true } });
+    c.refreshOverlay.set({ Reason: { showedOn: ShowedOn.PersistentObject, isRequired: true } });
     c.formData()['Reason'] = 'Moved abroad';
 
     await c.onSave();
@@ -190,6 +190,91 @@ describe('SparkPoEditComponent', () => {
 
     expect(c.validationErrors()[0].attributeName).toBe('FirstName');
     expect(c.isSaving()).toBe(false);
+  });
+
+  // #264 G5/G7: OnLoadAsync decides the form for this object (a stolen car: police report shown and required,
+  // plate read-only). The form applies it from the first render, not only after the first refresh.
+  describe('the loaded object shapes the form from the first render', () => {
+    const withReport = {
+      ...personType,
+      attributes: [
+        ...personType.attributes,
+        { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isReadOnly: false, order: 4, showedOn: 'None' } as any,
+      ],
+    } as EntityType;
+    const loaded = (report: Record<string, unknown>, last: Record<string, unknown> = {}) => ({
+      ...existingItem,
+      attributes: [
+        existingItem.attributes[0],
+        { ...existingItem.attributes[1], ...last },
+        existingItem.attributes[2],
+        { id: 'a-report', name: 'PoliceReport', value: 'PV-1', ...report },
+      ],
+    });
+
+    it('draws, requires and prefills an attribute the model shows nowhere when the object shows it', async () => {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withReport]),
+        get: vi.fn().mockResolvedValue(loaded({ showedOn: 'PersistentObject', isRequired: true })),
+      });
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+
+      const report = c.getEditableAttributes().find(a => a.name === 'PoliceReport');
+      expect(report?.isRequired).toBe(true);
+      expect(c.formData()['PoliceReport']).toBe('PV-1');
+    });
+
+    it('leaves an attribute shown nowhere off the form', async () => {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withReport]),
+        get: vi.fn().mockResolvedValue(loaded({ showedOn: 'None' })),
+      });
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+
+      expect(c.getEditableAttributes().map(a => a.name)).not.toContain('PoliceReport');
+    });
+
+    it('keeps the loaded value of an attribute read-only at load, so a refresh that lifts it shows the value', async () => {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withReport]),
+        get: vi.fn().mockResolvedValue(loaded({ showedOn: 'None' }, { isReadOnly: true })),
+      });
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+
+      expect(c.getEditableAttributes().map(a => a.name)).not.toContain('LastName');
+      expect(c.formData()['LastName']).toBe('Smith');
+
+      c.refreshOverlay.set({ LastName: { isReadOnly: false } });
+      expect(c.getEditableAttributes().map(a => a.name)).toContain('LastName');
+    });
+  });
+
+  // #264 G6: an error on an attribute the form does not draw has nowhere to appear next to its field, so it
+  // is promoted to a form-level error (Vidyano shows it as a notification) instead of being swallowed.
+  it('shows a 400 error on an attribute the form does not draw as a form-level error', async () => {
+    const withUndrawn = {
+      ...personType,
+      attributes: [
+        ...personType.attributes,
+        { id: 'a-code', name: 'Code', dataType: 'string', isRequired: true, isReadOnly: false, order: 4, showedOn: ShowedOn.Query } as any,
+      ],
+    } as EntityType;
+    const error = new HttpErrorResponse({
+      status: 400,
+      error: { result: { errors: [{ attributeName: 'Code', errorMessage: { en: 'Code is required.' }, ruleType: 'required' }] }, operations: [] },
+    });
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withUndrawn]), update: vi.fn().mockRejectedValue(error) });
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+    harness.fixture.detectChanges();
+    await harness.fixture.whenStable();
+
+    expect((harness.routeNativeElement as HTMLElement).textContent).toContain('Code is required.');
   });
 
   it('a 409 for an object deleted since it was loaded says so, keeps the form and merges nothing', async () => {
@@ -427,7 +512,7 @@ describe('SparkPoEditComponent', () => {
     });
 
     it('gives the dialog the reference labels of both reads', async () => {
-      const owner = { id: 'a-owner', name: 'Owner', dataType: 'Reference', query: 'People', referenceType: 'Test.Person', isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.PersistentObject } as any;
+      const owner = { id: 'a-owner', name: 'Owner', dataType: 'Reference', query: 'People', referenceType: 'Test.Person', isReadOnly: false, order: 5, showedOn: ShowedOn.PersistentObject } as any;
       const typed: any = { ...personType, attributes: [...personType.attributes, owner] };
       const loaded: any = { ...existingItem, attributes: [...existingItem.attributes, { id: 'a-owner', name: 'Owner', dataType: 'Reference', value: 'people/7', breadcrumb: 'Ann' }] };
       const theirs: any = {
@@ -460,7 +545,7 @@ describe('SparkPoEditComponent', () => {
     const gateType: any = {
       id: 't-gate', name: 'Gate', clrType: 'Test.Gate',
       attributes: [
-        { id: 'g-mode', name: 'Mode', dataType: 'string', isVisible: true, isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject },
+        { id: 'g-mode', name: 'Mode', dataType: 'string', isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject },
       ],
     };
 
@@ -471,7 +556,7 @@ describe('SparkPoEditComponent', () => {
         ...personType.attributes,
         {
           id: 'a-gate', name: 'Gate', dataType: 'AsDetail', asDetailType: 'Test.Gate',
-          isArray: false, isVisible: true, isReadOnly: false, order: 4,
+          isArray: false, isReadOnly: false, order: 4,
           showedOn: ShowedOn.PersistentObject,
         },
       ],

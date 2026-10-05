@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Model</PackageId>
-		<Version>11.0.0-preview.95</Version>
+		<Version>11.0.0-preview.97</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>The MintPlayer.Spark model vocabulary an entity library uses besides attributes: TranslatedString, lookup references, EShowedOn, IHasNaturalId, the reserved action names and ValidationError. Depends on nothing web, so a library of entities need not reference ASP.NET Core.</Description>

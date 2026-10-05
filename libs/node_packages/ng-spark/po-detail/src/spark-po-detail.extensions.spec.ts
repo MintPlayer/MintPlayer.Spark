@@ -19,7 +19,7 @@ import { settle, StubComponent } from '../../src/test-utils';
 const personType: EntityType = {
   id: 't-person', name: 'Person', alias: 'person', clrType: 'Test.Person',
   attributes: [
-    { id: 'a-first', name: 'FirstName', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject } as any,
+    { id: 'a-first', name: 'FirstName', dataType: 'string', isRequired: false, isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject } as any,
   ],
 } as any;
 

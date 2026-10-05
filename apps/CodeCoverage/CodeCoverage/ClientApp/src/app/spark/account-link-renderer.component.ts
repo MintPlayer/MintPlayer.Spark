@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { RouterModule } from '@angular/router';
-import type { QueryResultItem, SparkRow } from '@mintplayer/ng-spark/models';
-import { valueFor } from '@mintplayer/ng-spark/models';
+import type { QueryResultItem } from '@mintplayer/ng-spark/models';
 import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
 /**
@@ -17,8 +16,9 @@ import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderer
  * `/{provider}/a/{login}`, and a login on its own no longer addresses anything — `mintplayer` on
  * GitHub and `mintplayer` on GitLab are different accounts. A column renderer receives only its
  * own value *by default*, but it also receives the whole row when it declares the `item` input,
- * which is where `Provider` is read from. Without that this renderer emitted `/a/{login}`, a
- * route that no longer exists.
+ * and the row's id names the forge. Without that this renderer emitted `/a/{login}`, a route that
+ * no longer exists. (It used to read a `Provider` value shipped on the row; since #264 a value
+ * reaches a grid row only as a column, and the id already says it.)
  *
  * With no provider on the row the login renders as **plain text**: a link into a guessed forge
  * would resolve silently to the wrong account rather than to an error, which is the failure this
@@ -48,11 +48,17 @@ export class AccountLinkRendererComponent implements SparkAttributeColumnRendere
     return typeof value === 'string' && value.length > 0 ? value : null;
   });
 
+  /**
+   * The forge, from the row id: a MyAccountRow's id is its owner key, `{provider}:{login}`
+   * (`MyAccountRow` in IMyAccountsService.cs). An id without that prefix — an owner key the server
+   * could not attribute to a forge — yields no provider, so the login renders as plain text.
+   */
   private readonly provider = computed(() => {
-    const row = this.item();
-    if (!row) return null;
-    const value = valueFor(row as SparkRow, 'Provider')?.value;
-    return typeof value === 'string' && value.length > 0 ? value : null;
+    const id = (this.item() as { id?: unknown } | undefined)?.id;
+    if (typeof id !== 'string') return null;
+    const separator = id.indexOf(':');
+    const provider = separator > 0 ? id.substring(0, separator) : '';
+    return /^[a-z]+$/.test(provider) ? provider : null;
   });
 
   readonly link = computed(() => {

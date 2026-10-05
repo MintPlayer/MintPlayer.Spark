@@ -219,8 +219,10 @@ export class SparkPoFormComponent {
    * reference query and lookup fetch. That is the whole reason the overlay is a separate signal.
    */
   optionSourceAttributes = computed(() => {
+    // `showedOn: None` too (#264): the model draws it nowhere, and an action shows it per object — on load,
+    // new or refresh. Only a query-only attribute can never appear on a form.
     return this.entityType()?.attributes
-      .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+      .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject) || !hasShowedOnFlag(a.showedOn, ShowedOn.Query))
       .sort((a, b) => a.order - b.order) || [];
   });
 
@@ -228,7 +230,7 @@ export class SparkPoFormComponent {
     const overlay = this.refreshOverlay();
     return this.entityType()?.attributes
       .map(a => applyOverlay(a, overlay[a.name]))
-      .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+      .filter(a => !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   });
 

@@ -33,7 +33,7 @@ export class SparkReviewQueueLinkComponent {
   constructor() {
     effect(() => {
       this.moderation.ownReputationChanged();
-      this.moderation.ownReputation().then(r => this.canReview.set(r.canReview === true), () => this.canReview.set(false));
+      this.moderation.ownReputation().then(r => this.canReview.set(r?.canReview === true), () => this.canReview.set(false));
     });
   }
 }

@@ -18,24 +18,24 @@ const personType: EntityType = {
   attributes: [
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
-      isRequired: true, isVisible: true, isReadOnly: false,
+      isRequired: true, isReadOnly: false,
       order: 1, showedOn: ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-active', name: 'Active', dataType: 'boolean',
-      isRequired: false, isVisible: true, isReadOnly: false,
+      isRequired: false, isReadOnly: false,
       order: 2, showedOn: ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-jobs', name: 'Jobs', dataType: 'AsDetail', isArray: true,
-      isRequired: false, isVisible: true, isReadOnly: false,
+      isRequired: false, isReadOnly: false,
       order: 3, showedOn: ShowedOn.PersistentObject,
     } as any,
     // Hidden as loaded; revealed by a refresh in the overlay test below.
     {
       id: 'a-reason', name: 'Reason', dataType: 'string',
-      isRequired: false, isVisible: false, isReadOnly: false,
-      order: 4, showedOn: ShowedOn.PersistentObject,
+      isRequired: false, isReadOnly: false,
+      order: 4, showedOn: ShowedOn.None,
     } as any,
   ],
 } as any;
@@ -52,6 +52,9 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
     newObject: vi.fn().mockResolvedValue({ name: 'Person', attributes: [] }),
     ...serviceOverrides,
   };
+  // The create form fetches its own shape (`?for=new`); by default it is the listed type.
+  service.getEntityType ??= vi.fn(async (id: string) =>
+    ((await service.getEntityTypes()) as EntityType[]).find(t => t.id === id));
   TestBed.configureTestingModule({
     providers: [
       provideRouter(routes),
@@ -76,6 +79,15 @@ describe('SparkPoCreateComponent', () => {
     expect(data['FirstName']).toBe('');
     expect(data['Active']).toBe(false);
     expect(data['Jobs']).toEqual([]);
+  });
+
+  // #264 G1/G2: the create form draws the caller's create shape, not the edit one.
+  it('asks the server for the type shaped for a new object', async () => {
+    const { harness, service } = await setup();
+    await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+
+    expect(service.getEntityType).toHaveBeenCalledWith('t-person', 'new');
   });
 
   it('resolves entity type by alias OR id', async () => {
@@ -129,7 +141,7 @@ describe('SparkPoCreateComponent', () => {
 
     expect(c.getEditableAttributes().map(a => a.name)).not.toContain('Reason');
 
-    c.refreshOverlay.set({ Reason: { isVisible: true, isRequired: true } });
+    c.refreshOverlay.set({ Reason: { showedOn: ShowedOn.PersistentObject, isRequired: true } });
     c.formData()['Reason'] = 'Relocation';
 
     await c.onSave();
@@ -172,6 +184,32 @@ describe('SparkPoCreateComponent', () => {
     expect(c.generalErrors()).toHaveLength(1);
   });
 
+  // #264 G6: HR's create form did not draw the required LastName, and the server's "Last Name is required."
+  // went nowhere: the form only shows an attribute's error next to that attribute. An error on an
+  // attribute the form does not draw is promoted to a form-level error, as Vidyano does.
+  it('shows a 400 error on an attribute the form does not draw as a form-level error', async () => {
+    const withUndrawn = {
+      ...personType,
+      attributes: [
+        ...personType.attributes,
+        { id: 'a-code', name: 'Code', dataType: 'string', isRequired: true, isReadOnly: false, order: 5, showedOn: ShowedOn.Query } as any,
+      ],
+    } as EntityType;
+    const error = new HttpErrorResponse({
+      status: 400,
+      error: { result: { errors: [{ attributeName: 'Code', errorMessage: { en: 'Code is required.' }, ruleType: 'required' }] }, operations: [] },
+    });
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withUndrawn]), create: vi.fn().mockRejectedValue(error) });
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+    harness.fixture.detectChanges();
+    await harness.fixture.whenStable();
+
+    expect((harness.routeNativeElement as HTMLElement).textContent).toContain('Code is required.');
+  });
+
   it('onSave non-400 error sets a single generic error', async () => {
     const { harness } = await setup({ create: vi.fn().mockRejectedValue(new Error('boom')) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
@@ -200,6 +238,45 @@ describe('SparkPoCreateComponent', () => {
       expect(newObject).toHaveBeenCalledWith('person', { parentId: 'companies/1', parentType: 'Company', queryId: 'company-people' });
       expect(c.formData()['FirstName']).toBe('from the hook');
       expect(c.formData()['Reason']).toBeUndefined();
+    });
+
+    // #264 G5/G7: what OnNewAsync sets on the blank object shapes the form from the first render.
+    it('applies the runtime showedOn and isRequired the hook set on the blank object', async () => {
+      const withReport = {
+        ...personType,
+        attributes: [
+          ...personType.attributes,
+          { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isReadOnly: false, order: 5, showedOn: ShowedOn.None } as any,
+        ],
+      } as EntityType;
+      const newObject = vi.fn().mockResolvedValue({
+        name: 'Person',
+        attributes: [{ name: 'PoliceReport', value: null, showedOn: 'PersistentObject', isRequired: true }],
+      });
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withReport]), newObject } as any);
+
+      const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+      await harness.fixture.whenStable();
+
+      const report = c.getEditableAttributes().find(a => a.name === 'PoliceReport');
+      expect(report?.isRequired).toBe(true);
+      expect('PoliceReport' in c.formData()).toBe(true);
+    });
+
+    it('leaves an attribute the model shows nowhere off the create form', async () => {
+      const withReport = {
+        ...personType,
+        attributes: [
+          ...personType.attributes,
+          { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isReadOnly: false, order: 5, showedOn: ShowedOn.None } as any,
+        ],
+      } as EntityType;
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([withReport]) });
+
+      const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+      await harness.fixture.whenStable();
+
+      expect(c.getEditableAttributes().map(a => a.name)).not.toContain('PoliceReport');
     });
 
     it('asks /po/new without a parent for a standalone New', async () => {

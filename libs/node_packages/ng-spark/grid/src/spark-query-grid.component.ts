@@ -651,15 +651,11 @@ export class SparkQueryGridComponent {
    */
   private readonly fetchedColumns = signal<QueryColumn[]>([]);
 
-  /** Every column on the wire, drawn or not — what renderers and lookups resolve against. */
-  allColumns = computed(() => this.columns() ?? this.fetchedColumns());
-
   /**
-   * The columns the grid draws. `isVisible: false` ships a value without a column, so a renderer
-   * can read a sibling the grid does not show; undefined means visible, so a server that predates
-   * the field still draws everything.
+   * Every column on the wire — what the grid draws, and what renderers and lookups resolve against.
+   * Every column that ships is drawn (#264): there is no shipped-but-hidden column.
    */
-  visibleColumns = computed(() => this.allColumns().filter(c => c.isVisible !== false));
+  allColumns = computed(() => this.columns() ?? this.fetchedColumns());
 
   /**
    * True when rows do not come from this component's own fetch.

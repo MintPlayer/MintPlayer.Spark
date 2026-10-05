@@ -5,9 +5,9 @@ using MintPlayer.Spark.E2E.Tests._Infrastructure;
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
-/// R2-H8 — EntityMapper now consults the schema's IsReadOnly / IsVisible flags on
-/// writes. CarFixture's CreatedBy is IsReadOnly=true + IsVisible=false in Fleet's
-/// model JSON. A client posting the field on PUT used to overwrite it; now the
+/// R2-H8 — EntityMapper now consults the schema's IsReadOnly flag on writes
+/// (visibility stopped being a write gate in #264). CarFixture's CreatedBy is IsReadOnly=true
+/// in Fleet's model JSON. A client posting the field on PUT used to overwrite it; now the
 /// gate refuses the write.
 ///
 /// R2-M18 — Create endpoint forces obj.Id = null after deserialization, so a POST
@@ -30,28 +30,29 @@ public class MassAssignmentTests
             CarFixture.New(CarFixture.RandomLicensePlate("RO"), model: "RO1"));
         created.Id.Should().NotBeNullOrEmpty();
 
-        // Read it back to see the actual server-stamped CreatedBy.
+        // CreatedBy is server-only since #264 ([IgnoreProperty]): it is not an attribute, so it never
+        // reaches the client. Read the stamped value from storage instead.
+        var originalCreatedBy = (await _fixture.Host.LoadAsync<StoredCar>(created.Id!))?.CreatedBy;
+        originalCreatedBy.Should().NotBeNullOrEmpty("the server stamps CreatedBy on create");
+
         var fresh = await admin.GetPersistentObjectAsync(CarFixture.TypeId, created.Id!);
         fresh.Should().NotBeNull();
-        var originalCreatedBy = fresh!.Attributes
-            .FirstOrDefault(a => a.Name == "CreatedBy")?.Value?.ToString();
+        fresh!.Attributes.Should().NotContain(a => a.Name == "CreatedBy",
+            "a server-only field must not ship to the client");
 
-        // Client tries to rewrite CreatedBy via PUT.
+        // Client forges the attribute anyway — named, changed, and claiming to be writable.
         var attemptedCreatedBy = "users/spoofed-id";
-        var createdByAttr = fresh.Attributes.First(a => a.Name == "CreatedBy");
-        createdByAttr.Value = attemptedCreatedBy;
-        createdByAttr.IsValueChanged = true;
-        createdByAttr.IsReadOnly = false; // Client lies about readonly state too.
+        var forged = fresh.Attributes.First(a => a.Name == "Model").CloneAndAdd("CreatedBy");
+        forged.Value = attemptedCreatedBy;
+        forged.IsValueChanged = true;
+        forged.IsReadOnly = false;
 
         await admin.UpdatePersistentObjectAsync(fresh);
 
-        // Reload and confirm CreatedBy is unchanged.
-        var reloaded = await admin.GetPersistentObjectAsync(CarFixture.TypeId, created.Id!);
-        var reloadedCreatedBy = reloaded!.Attributes
-            .FirstOrDefault(a => a.Name == "CreatedBy")?.Value?.ToString();
-
+        // The mapper writes only attributes the model declares, so the forged one is ignored.
+        var reloadedCreatedBy = (await _fixture.Host.LoadAsync<StoredCar>(created.Id!))?.CreatedBy;
         reloadedCreatedBy.Should().Be(originalCreatedBy,
-            "client-supplied write to IsReadOnly=true attribute must be ignored by the entity mapper");
+            "a client-supplied attribute the model does not declare must be ignored by the entity mapper");
         reloadedCreatedBy.Should().NotBe(attemptedCreatedBy,
             "attacker's attempted value must NOT have landed in storage");
     }
@@ -85,5 +86,11 @@ public class MassAssignmentTests
         (victimReloaded!.Attributes.First(a => a.Name == "Model").Value?.ToString())
             .Should().Be(originalModel,
                 "victim record's Model must NOT have been overwritten by the POST");
+    }
+
+    /// <summary>The stored shape this test reads; Fleet's entity assembly is not referenced by the E2E project.</summary>
+    private sealed class StoredCar
+    {
+        public string? CreatedBy { get; set; }
     }
 }

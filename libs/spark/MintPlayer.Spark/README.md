@@ -389,7 +389,7 @@ After synchronization, you can manually edit the JSON files to:
 - Add translated labels (`label`, `description`) in multiple languages
 - Add validation rules (`rules` array with `minLength`, `maxLength`, `regex`, `email`, `url`, `range`)
 - Change attribute ordering (`order`)
-- Change visibility (`isVisible`, `showedOn`)
+- Change where an attribute is drawn (`showedOn`; see [ShowedOn](#showedon-where-an-attribute-is-drawn)). Hiding a value *from a group* is a `security.json` deny, not a model flag
 - Mark attributes as read-only (`isReadOnly`)
 - Set the display attribute (`displayAttribute`)
 - Add tabs and groups for organizing attributes on detail pages
@@ -506,7 +506,6 @@ A generated model JSON file looks like this:
       "name": "Name",
       "dataType": "string",
       "isRequired": true,
-      "isVisible": true,
       "isReadOnly": false,
       "order": 1,
       "isArray": false,
@@ -594,15 +593,31 @@ Spark maps C# types to model data types automatically:
 | `Reference` | `string` with `[Reference]` | Lookup to another entity |
 | `AsDetail` | Nested object (complex class, e.g. `Address`) | Inline nested form |
 
-## ShowedOn Visibility
+## ShowedOn: where an attribute is drawn
 
-Control where attributes appear using the `showedOn` property:
+`showedOn` is **layout**: it decides where an attribute is drawn, never who may see or write it.
 
 | Value | Description |
 |-------|-------------|
 | `Query` | Show only in list views |
 | `PersistentObject` | Show only in detail/edit views |
 | `Query, PersistentObject` | Show in both (default) |
+| `None` | Ship it on the persistent object, draw it nowhere (Vidyano's `Never`); synchronize keeps it |
+
+There is no `isVisible` (removed in #264; a model file still saying `"isVisible": false` refuses
+startup, `true` is stripped by synchronize). Instead:
+
+- **Hide a value from a group, or from everyone:** a `security.json` attribute deny
+  (`QueryRead/Employee/Salary`), on both `wellKnown` groups for everyone — see
+  [Authorization](../../../docs/guide-authorization.md#hide-an-attribute).
+- **Protect it from writes:** `isReadOnly: true` or an `Edit`/`New` deny. `showedOn: None` alone is
+  not protection — the value is on the wire and a client can post it.
+- **Show it only in some states:** model `None`, and set the runtime `attr.ShowedOn` in the actions
+  class's `OnLoadAsync` / `OnNewAsync` / `OnRefreshAsync` — see
+  [triggers and refresh](../../../docs/guide-triggers-refresh.md#runtime-showedon-show-an-attribute-only-in-some-states).
+  The client applies it from the first render.
+
+Model files can be validated in the editor against the published [JSON schemas](../../../docs/guide-json-schemas.md).
 
 ## Index-Based Queries
 

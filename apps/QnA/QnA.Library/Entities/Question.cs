@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Contributions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.Moderation;
@@ -54,12 +56,19 @@ public class Question : IModeratable, ISoftDeletable, IAuditable
     public string? DeleteReason { get; set; }
 
     /// <summary>Who created the question (a user id). Stamped by History.</summary>
+    /// <remarks>
+    /// A reference, so the page shows the user's name (SparkUser's <c>{UserName}</c> breadcrumb) rather
+    /// than an id. Visitors may read <c>SparkUser</c>, but <c>security.json</c> denies them every user
+    /// attribute except <c>UserName</c> (#264, G-Q15).
+    /// </remarks>
+    [Reference(typeof(SparkUser))]
     public string? CreatedBy { get; set; }
 
     /// <summary>When the question was created. Stamped by History.</summary>
     public DateTimeOffset? CreatedAt { get; set; }
 
     /// <summary>Who changed the question last (a user id). Stamped by History.</summary>
+    [Reference(typeof(SparkUser))]
     public string? ModifiedBy { get; set; }
 
     /// <summary>When the question was changed last. Stamped by History.</summary>

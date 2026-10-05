@@ -212,7 +212,7 @@ C# types, so anything it derives is overwritten:
 | Field | Hand-edit survives? | Where it comes from |
 |---|---|---|
 | `editMode` (e.g. `"inline"`) | **Yes** | Hand-authored presentation |
-| `isReadOnly`, `isVisible` | **Yes** | Hand-authored presentation |
+| `isReadOnly`, `showedOn` (including `"None"`) | **Yes** | Hand-authored presentation (`isVisible` no longer exists, #264) |
 | `lookupReferenceType` | **No — stripped** | Derived from `[LookupReference(typeof(...))]` |
 | `query`, `referenceType` | **No — stripped** | Derived from `[Reference(typeof(...), "...")]` |
 | An inline `queries` entry on an embedded type | **Yes** | Explicitly preserved by the synchronizer |

@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal, effect } from '@angular/core';
-import type { SparkRow } from '@mintplayer/ng-spark/models';
-import { valueFor } from '@mintplayer/ng-spark/models';
 import type { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline';
 import { BrowseService } from '../services/browse.service';
+import { forgeOf } from './forge-of';
 
 /**
  * Spark attribute renderer "coverage-sparkline": bound to Repository.FullName
@@ -53,11 +52,10 @@ export class CoverageSparklineRendererComponent implements SparkAttributeColumnR
 
   private readonly fullName = computed(() => (typeof this.value() === 'string' ? this.value() as string : ''));
 
-  /** The canonical forge spelling for this row: its OwnerKey's prefix, or an explicit override. */
+  /** The canonical forge spelling for this row: from its document id, or an explicit override. */
   private readonly provider = computed(() => {
-    const row = this.item();
-    const ownerKey = row ? valueFor(row as SparkRow, 'OwnerKey')?.value : undefined;
-    if (typeof ownerKey === 'string' && ownerKey.includes(':')) return ownerKey.split(':')[0];
+    const fromId = forgeOf(this.item());
+    if (fromId) return fromId;
 
     const override = this.options()?.['provider'];
     return typeof override === 'string' && override.length > 0 ? override : null;
@@ -71,7 +69,7 @@ export class CoverageSparklineRendererComponent implements SparkAttributeColumnR
       // value by default, which is why an earlier version of this took the provider from the
       // model's static type hints and rendered NOTHING without one - a blank column on every row,
       // since a type hint is per-attribute and the forge is per-row. Declaring `item` gets the
-      // whole row, and Repository carries OwnerKey ("github:mintplayer") on it.
+      // whole row, and a Repository row's id ("Repositories/github/123") names the forge.
       //
       // Still no guessing when the row has no forge: a sparkline fetched for a guessed provider
       // would show one owner's coverage against a same-named owner on another forge. A missing

@@ -1,5 +1,7 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Migrations;
+using Raven.Client;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Queries;
@@ -58,19 +60,26 @@ public partial class M_202609091210_BackfillValueObjectKeys : ISparkMigration
 
     private async Task PatchAsync(string shape, string arrayProperty, CancellationToken cancellationToken)
     {
+        // The property name is spliced once as an identifier (validated, #264) and passed once as a
+        // value ($suffix) for the key it contributes to — never as a string literal in the script.
         var body = $$"""
-            var rows = d.{{arrayProperty}};
+            var rows = d.{{RqlIdentifier.FieldPath(arrayProperty)}};
             if (rows) {
                 for (var i = 0; i < rows.length; i++) {
                     if (!rows[i].Id) {
-                        rows[i].Id = id(d).replace(/[^A-Za-z0-9]/g, '') + '{{arrayProperty}}' + i.toString();
+                        rows[i].Id = id(d).replace(/[^A-Za-z0-9]/g, '') + $suffix + i.toString();
                     }
                 }
             }
             """;
 
+        var query = new IndexQuery
+        {
+            Query = shape.Replace("%BODY%", body),
+            QueryParameters = new Parameters { ["suffix"] = arrayProperty },
+        };
         var operation = await store.Operations.SendAsync(
-            new PatchByQueryOperation(new IndexQuery { Query = shape.Replace("%BODY%", body) }, new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }),
+            new PatchByQueryOperation(query, new QueryOperationOptions { StaleTimeout = TimeSpan.FromMinutes(5) }),
             token: cancellationToken);
 
         // Wait, so a throw here aborts startup and the migration is retried on the next start

@@ -56,7 +56,7 @@ public class UserSecretsAtRestTests : SparkTestDriver
     private async Task<string> CreateAsync(ServiceProvider provider, string email)
         => await InScope(provider, async users =>
         {
-            var user = new SparkUser { UserName = email, Email = email, EmailConfirmed = true };
+            var user = new SparkUser { UserName = email.Replace('@', '-'), Email = email, EmailConfirmed = true };
             (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
             return user.Id!;
         });

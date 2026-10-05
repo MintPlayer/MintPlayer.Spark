@@ -211,7 +211,7 @@ editors immediately), `ValueChanged` (every change; free text debounced 300 ms, 
 save) or `Blur` (on blur; a discrete editor acts as `ValueChanged` and verify-model warns).
 When its value changes the client posts the in-progress object to
 `/spark/po/refresh`, and the hook may toggle `IsRequired` / `IsReadOnly` /
-`IsVisible`, rewrite `Rules`, replace an attribute's `Options`, or set a dependent value.
+`ShowedOn`, rewrite `Rules`, replace an attribute's `Options`, or set a dependent value.
 
 ```csharp
 public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
@@ -219,9 +219,9 @@ public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
     var obj = args.PersistentObject;
     var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
 
-    obj[nameof(Car.PoliceReportNumber)].IsVisible = stolen;
+    obj[nameof(Car.PoliceReportNumber)].ShowedOn = stolen ? EShowedOn.PersistentObject : EShowedOn.None;
     obj[nameof(Car.PoliceReportNumber)].IsRequired = stolen;
-    obj[nameof(Car.PromoVideoUrl)].IsVisible = !stolen;
+    obj[nameof(Car.PromoVideoUrl)].ShowedOn = stolen ? EShowedOn.Query : EShowedOn.Query | EShowedOn.PersistentObject;
     return Task.CompletedTask;
 }
 ```
@@ -230,6 +230,12 @@ public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
 invocation is handed a freshly scaffolded object, so a hook that only turns things *on* leaves a
 form permanently locked after one stray selection. Set both sides of every flag, as above. Share one
 helper between this hook and any load-time shaping.
+
+**State-dependent visibility is the runtime `ShowedOn` (#264, there is no `IsVisible`).** The model
+says `"showedOn": "None"`; the same helper sets `attr.ShowedOn` in `OnLoadAsync` and `OnNewAsync` as
+well as `OnRefreshAsync` (Fleet's `CarActions.ShapeForStatus`), and the client applies it from the
+first render. ⚠️ `ShowedOn` is layout, not protection: hide a value from a group with a
+`security.json` attribute deny, and protect it from writes with `isReadOnly` or an `Edit`/`New` deny.
 
 ⚠️ **No side effects — it also runs on save.** Spark re-runs the hook while validating a save, once
 per triggering attribute, so the rules it establishes are enforced whether or not the client ever

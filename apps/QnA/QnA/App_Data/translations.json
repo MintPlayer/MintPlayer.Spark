@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/translations.schema.json",
   "app": {
     "welcomeTitle": {
       "en": "Welcome to QnA",
@@ -594,6 +595,22 @@
             "en": "Reason",
             "fr": "Motif",
             "nl": "Reden"
+          }
+        }
+      }
+    },
+    "SparkUser": {
+      "label": {
+        "en": "User",
+        "fr": "Utilisateur",
+        "nl": "Gebruiker"
+      },
+      "attributes": {
+        "UserName": {
+          "label": {
+            "en": "User name",
+            "fr": "Nom d'utilisateur",
+            "nl": "Gebruikersnaam"
           }
         }
       }

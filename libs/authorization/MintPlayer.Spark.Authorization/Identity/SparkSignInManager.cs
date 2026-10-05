@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Authorization.Configuration;
 using System.Globalization;
 using System.Security.Claims;
 
@@ -9,23 +10,23 @@ namespace MintPlayer.Spark.Authorization.Identity;
 
 /// <summary>
 /// Spark's <see cref="SignInManager{TUser}"/>: password sign-in accepts an <b>email address or a
-/// user name</b> (#460, D4), and every sign-in records when it happened so that sensitive account
-/// operations can ask for a recent one.
+/// user name</b> (#460, D4) — whichever of the two
+/// <see cref="SparkAuthenticationOptions.SignInIdentifiers"/> allows — and every sign-in records
+/// when it happened so that sensitive account operations can ask for a recent one.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>The resolution rule</b> (<see cref="FindUserForSignInAsync"/>): an identifier containing
-/// <c>@</c> is looked up as an email first, and only when <em>no account</em> has that email is it
-/// looked up as a user name; an identifier without <c>@</c> is only ever a user name. A wrong
-/// password never falls through to a second candidate — the lookup picks one account and the
-/// password is checked against that account alone, so an identifier can never be used to try a
-/// password against two accounts.
+/// <c>@</c> is an email and is looked up only by email; an identifier without <c>@</c> is a user name
+/// and is looked up only by user name. Exactly one lookup, so a wrong password never falls through to
+/// a second candidate — the password is checked against one account alone.
 /// </para>
 /// <para>
-/// The fallback is safe because of <see cref="SparkUserNameValidator{TUser}"/>: a user name that
-/// contains <c>@</c> must equal that user's own email, so "email of account A" and "user name of
-/// account B" cannot be the same string. The fallback exists only for accounts that predate the
-/// rule.
+/// The <c>@</c> decides the kind because of <see cref="SparkUserNameValidator{TUser}"/>: a user name
+/// never contains <c>@</c> (G-Q22). There used to be a fallback from an unmatched email to a user
+/// name, for accounts that predate the rule; <see cref="Migrations.M_202610051200_UserNamesAreNotEmails"/>
+/// gives those a handle, so it is gone, and an <c>@</c>-shaped user name left over from before the
+/// migration cannot sign in by that name.
 /// </para>
 /// <para>
 /// Two-factor and recovery-code steps need nothing extra: the password step stores the
@@ -50,6 +51,7 @@ public class SparkSignInManager<TUser> : SignInManager<TUser>
     public const string AuthenticatedAtItem = ".spark.authenticated_at";
 
     private readonly TimeProvider timeProvider;
+    private readonly SparkSignInIdentifiers signInIdentifiers;
 
     public SparkSignInManager(
         UserManager<TUser> userManager,
@@ -59,16 +61,26 @@ public class SparkSignInManager<TUser> : SignInManager<TUser>
         ILogger<SignInManager<TUser>> logger,
         IAuthenticationSchemeProvider schemes,
         IUserConfirmation<TUser> confirmation,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IOptions<SparkAuthenticationOptions>? authenticationOptions = null)
         : base(userManager, contextAccessor, claimsFactory, optionsAccessor, logger, schemes, confirmation)
     {
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        signInIdentifiers = authenticationOptions?.Value.SignInIdentifiers
+            ?? SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName;
     }
 
     /// <summary>
-    /// Resolves the account a sign-in identifier names: email first when it contains <c>@</c>, user
-    /// name otherwise, and user name as a fallback only when no account has that email.
+    /// Resolves the account a sign-in identifier names: by email when it contains <c>@</c>, by user
+    /// name otherwise — and <see langword="null"/>, without a lookup, when
+    /// <see cref="SparkAuthenticationOptions.SignInIdentifiers"/> does not allow that kind.
     /// </summary>
+    /// <remarks>
+    /// A disallowed kind returns what an unknown account returns, so the caller answers both with the
+    /// same failure. Skipping the lookup makes the refusal a little faster than an unknown account's,
+    /// which tells a prober only which kinds are allowed — what <c>/spark/auth/capabilities</c>
+    /// publishes anyway — and nothing about any account.
+    /// </remarks>
     public virtual async Task<TUser?> FindUserForSignInAsync(string? identifier)
     {
         if (string.IsNullOrWhiteSpace(identifier))
@@ -78,12 +90,14 @@ public class SparkSignInManager<TUser> : SignInManager<TUser>
 
         if (identifier.Contains('@'))
         {
-            var byEmail = await UserManager.FindByEmailAsync(identifier);
-            if (byEmail is not null)
-                return byEmail;
+            return signInIdentifiers.HasFlag(SparkSignInIdentifiers.Email)
+                ? await UserManager.FindByEmailAsync(identifier)
+                : null;
         }
 
-        return await UserManager.FindByNameAsync(identifier);
+        return signInIdentifiers.HasFlag(SparkSignInIdentifiers.UserName)
+            ? await UserManager.FindByNameAsync(identifier)
+            : null;
     }
 
     /// <inheritdoc />

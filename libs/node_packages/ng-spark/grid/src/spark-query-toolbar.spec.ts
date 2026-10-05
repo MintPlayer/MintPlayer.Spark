@@ -22,7 +22,7 @@ import { settle } from '../../src/test-utils';
 const answerType: EntityType = {
   id: 't-answer', name: 'Answer', alias: 'answer', clrType: 'QnA.Answer',
   attributes: [
-    { id: 'a-body', name: 'Body', dataType: 'string', isVisible: true, isReadOnly: false, isRequired: false,
+    { id: 'a-body', name: 'Body', dataType: 'string', isReadOnly: false, isRequired: false,
       order: 1, showedOn: ShowedOn.Query | ShowedOn.PersistentObject } as any,
   ],
 } as any;

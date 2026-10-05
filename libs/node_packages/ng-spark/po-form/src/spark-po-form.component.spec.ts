@@ -22,7 +22,6 @@ function attr(partial: Partial<EntityAttributeDefinition>): EntityAttributeDefin
     name: 'a',
     dataType: 'string',
     isRequired: false,
-    isVisible: true,
     isReadOnly: false,
     order: 1,
     showedOn: ShowedOn.PersistentObject,
@@ -38,7 +37,7 @@ const personType: EntityType = {
   attributes: [
     attr({ id: 'a-first', name: 'FirstName', order: 2 }),
     attr({ id: 'a-nick', name: 'Nickname', order: 1, group: 'g-names' }),
-    attr({ id: 'a-hidden', name: 'Hidden', isVisible: false, order: 3 }),
+    attr({ id: 'a-hidden', name: 'Hidden', showedOn: ShowedOn.None, order: 3 }),
     attr({ id: 'a-readonly', name: 'Readonly', isReadOnly: true, order: 4 }),
     attr({ id: 'a-detail-only', name: 'DetailOnly', order: 5, showedOn: ShowedOn.Query }),
     attr({ id: 'a-orphaned', name: 'Orphaned', order: 6, group: 'g-missing' }),

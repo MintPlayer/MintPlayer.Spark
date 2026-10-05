@@ -24,6 +24,17 @@
           </div>
 
           <div class="mb-3">
+            <label for="userName" class="form-label">{{ 'auth.userName' | t }}</label>
+            <input
+              type="text"
+              id="userName"
+              formControlName="userName"
+              autocomplete="username"
+            />
+            <div class="form-text" [class.text-danger]="form.get('userName')?.touched && form.get('userName')?.invalid">{{ 'auth.userNameHint' | t }}</div>
+          </div>
+
+          <div class="mb-3">
             <label for="password" class="form-label">{{ 'auth.password' | t }}</label>
             <input
               type="password"

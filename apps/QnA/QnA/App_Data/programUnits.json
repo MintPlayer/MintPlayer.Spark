@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/programUnits.schema.json",
   "programUnitGroups": [
     {
       "id": "4e13b000-0000-4000-8000-000000000000",

@@ -99,7 +99,7 @@ public class QnAContributionsBrowserTests
             await SaveFormAsync(page, questionId);
 
             await Attribution(page).WaitForAsync(new() { Timeout = Timeout });
-            (await Attribution(page).InnerTextAsync()).Should().Contain(translator.Email).And.Contain("History (1)");
+            (await Attribution(page).InnerTextAsync()).Should().Contain(translator.UserName).And.Contain("History (1)");
 
             // 2. Edit it: still the translator's one version.
             await page.GotoAsync($"/po/question/{Encoded(questionId)}/edit");
@@ -117,14 +117,14 @@ public class QnAContributionsBrowserTests
             // 3. The History link: the contributions of this question, filtered to the slot (chips).
             await page.ReloadAsync();
             await Attribution(page).WaitForAsync(new() { Timeout = Timeout });
-            (await Attribution(page).InnerTextAsync()).Should().Contain(other.Email).And.Contain("History (2)");
+            (await Attribution(page).InnerTextAsync()).Should().Contain(other.UserName).And.Contain("History (2)");
             await Attribution(page).Locator("a").ClickAsync();
             await page.WaitForURLAsync(url => url.Contains("/query/questiontranslationscontributions", StringComparison.Ordinal), new() { Timeout = Timeout });
             await page.Locator(".badge").Filter(new() { HasTextString = "Language: nl" }).WaitForAsync(new() { Timeout = Timeout });
             await page.Locator(".badge").Filter(new() { HasTextString = "Script: Latn" }).WaitForAsync(new() { Timeout = Timeout });
             var historyRows = page.Locator("spark-query-grid tbody tr, tbody tr").Filter(new() { HasTextString = "nl" });
             await historyRows.Nth(1).WaitForAsync(new() { Timeout = Timeout });
-            (await historyRows.First.InnerTextAsync()).Should().Contain(other.Email, "newest first");
+            (await historyRows.First.InnerTextAsync()).Should().Contain(other.UserName, "newest first");
 
             // 4. A moderator reverts to the translator's version from its page (the line diff is there too).
             var moderatorPage = await moderatorContext.NewPageAsync();

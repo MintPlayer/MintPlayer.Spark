@@ -1,5 +1,5 @@
 import { Type } from '@angular/core';
-import { EntityAttributeDefinition, EntityType } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, EntityType, hasShowedOnFlag, ShowedOn } from '@mintplayer/ng-spark/models';
 import { SparkAttributeRendererRegistration } from './spark-attribute-renderer-registry';
 import { withDeclaredInputs } from './renderer-inputs';
 
@@ -27,7 +27,9 @@ export function resolveRowRenderer(
   registry: readonly SparkAttributeRendererRegistration[] | null | undefined,
 ): SparkResolvedRowRenderer | null {
   if (!rowType || !registry?.length) return null;
-  const ordered = [...(rowType.attributes ?? [])].filter(a => a.isVisible !== false).sort((a, b) => a.order - b.order);
+  const ordered = [...(rowType.attributes ?? [])]
+    .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.Query) || hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+    .sort((a, b) => a.order - b.order);
   for (const attribute of ordered) {
     const registration = attribute.renderer ? registry.find(r => r.name === attribute.renderer && r.rowComponent) : undefined;
     if (!registration) continue;

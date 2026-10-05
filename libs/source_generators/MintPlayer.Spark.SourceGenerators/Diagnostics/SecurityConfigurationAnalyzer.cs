@@ -77,7 +77,8 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     /// <remarks>
     /// The stale-deny trap (PRD §5 Q13): a group restricts a verb on some attributes of a type, and an
     /// attribute the restriction does not mention — typically one added later — silently keeps the
-    /// type-level grant. A warning, because leaving it there can be deliberate.
+    /// type-level grant. A warning, because leaving it there can be deliberate. Silent for a deny both
+    /// well-known groups (anonymous and authenticated) share — "hide from everyone" (#264, G-Q23).
     /// </remarks>
     internal static readonly DiagnosticDescriptor StaleAttributeDenyRule = new(
         id: "SPARK024",
@@ -239,7 +240,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             if (model.Types.Count > 0)
             {
                 var groupNames = ModelNamesReader.ReadGroupNames(content);
-                foreach (var finding in staleDeny.Findings(model, end.Compilation))
+                foreach (var finding in staleDeny.Findings(model, SecurityJsonReader.ReadWellKnownCounterparts(content)))
                 {
                     var groupName = groupNames.TryGetValue(finding.GroupId, out var n) ? n : finding.GroupId;
                     end.ReportDiagnostic(Diagnostic.Create(
@@ -427,7 +428,23 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             set.Add(attribute);
         }
 
-        public IEnumerable<StaleDenyFinding> Findings(ModelIndex model, Compilation compilation)
+        /// <remarks>
+        /// ⚠️ Counts the attributes the <b>model file</b> declares, not the CLR type's properties
+        /// (<see cref="KnownAttributes"/>): only a model-declared attribute can ever reach the wire, so a
+        /// property the model leaves out is not "still readable". A hand-authored model over a library
+        /// type (QnA's <c>SparkUser.json</c> declares 4 of <c>SparkUser</c>'s ~24 properties) otherwise
+        /// listed <c>PasswordHash</c> and the rest. This is the set the runtime posture report
+        /// (<c>StaleAttributeDenials</c>) uses, so build and runtime agree. A property added in this
+        /// build joins the list on the build after synchronize writes it, as it joins the runtime's.
+        /// </remarks>
+        /// <remarks>
+        /// ⚠️ A deny that the <em>other</em> well-known group (<c>wellKnown</c>: anonymous ↔ authenticated)
+        /// repeats for the same verb and type is not counted (#264, G-Q23): denied to both, the attribute
+        /// is hidden from everyone, the documented pattern, and the rest of the type keeping the
+        /// type-level right is the point. A group whose every deny is repeated that way is not reported;
+        /// a deny on one of the two only still is. <c>StaleAttributeDenials</c> applies the same rule.
+        /// </remarks>
+        public IEnumerable<StaleDenyFinding> Findings(ModelIndex model, IReadOnlyDictionary<string, string> wellKnownCounterpart)
         {
             foreach (var pair in denied)
             {
@@ -435,7 +452,16 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                 if (!model.Types.TryGetValue(type, out var entry))
                     continue;
 
-                var all = KnownAttributes(entry, compilation);
+                if (wellKnownCounterpart.TryGetValue(group, out var counterpart)
+                    && denied.TryGetValue((counterpart, verb, type), out var other)
+                    && pair.Value.Denied.All(other.Denied.Contains))
+                    continue;
+
+                // The denied attributes count too: one the CLR type has but the model does not yet is
+                // accepted (SPARK014 judges against KnownAttributes), and a total below the restricted
+                // count would read as nonsense.
+                var all = new HashSet<string>(entry.Attributes, StringComparer.OrdinalIgnoreCase);
+                all.UnionWith(pair.Value.Denied);
                 var seen = mentioned[pair.Key];
                 var unmentioned = all.Where(a => !seen.Contains(a)).OrderBy(a => a, StringComparer.Ordinal).ToList();
                 if (unmentioned.Count == 0)

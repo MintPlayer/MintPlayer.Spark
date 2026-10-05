@@ -3,7 +3,7 @@ import { AS_DETAIL_METADATA_KEY, AS_DETAIL_ROW_KEY, AS_DETAIL_SELF_BREADCRUMB_KE
 import { MergeSchema, contributionRowIsOwn, mergeThreeWay } from './conflict-merge';
 
 function attr(name: string, extra: Partial<EntityAttributeDefinition> = {}): EntityAttributeDefinition {
-  return { id: name, name, dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 0, rules: [], ...extra } as EntityAttributeDefinition;
+  return { id: name, name, dataType: 'string', isRequired: false, isReadOnly: false, order: 0, rules: [], ...extra } as EntityAttributeDefinition;
 }
 
 const lyricType: EntityType = {

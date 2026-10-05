@@ -35,7 +35,7 @@ const personType: EntityType = {
   attributes: [
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
-      isVisible: true, isReadOnly: false, isRequired: false,
+      isReadOnly: false, isRequired: false,
       order: 1, showedOn: ShowedOn.Query | ShowedOn.PersistentObject,
     } as any,
   ],

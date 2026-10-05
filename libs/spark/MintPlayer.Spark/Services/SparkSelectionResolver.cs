@@ -48,6 +48,7 @@ internal sealed partial class SparkSelectionResolver : ISparkSelectionResolver
     [Inject] private readonly ISparkTypeResolver typeResolver;
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
     [Inject] private readonly ILogger<SparkSelectionResolver> logger;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
 
     public async Task<IReadOnlyList<QueryResultItem>?> ResolveAsync(
         EntityTypeDefinition entityType,
@@ -91,7 +92,10 @@ internal sealed partial class SparkSelectionResolver : ISparkSelectionResolver
         {
             // Row-gated by the batched load itself (collection guard, Read row rule, redaction).
             var loaded = await databaseAccess.GetPersistentObjectsByIdAsync(entityType.Id, ids);
-            var columns = QueryResultProjector.BuildColumns(entityType);
+            // The caller's query surface, as a re-run query would have used (#264, G4): a Query-denied
+            // attribute is neither a column nor a value in these rows.
+            var surface = await attributeRights.ForQueryAsync(entityType, cancellationToken);
+            var columns = QueryResultProjector.BuildColumns(surface);
             rows = QueryResultProjector.ToItems(
                 RowSecurityGate.SecuredRows.FromRowGatedLoad([.. loaded]), columns, $"Selection '{entityType.Name}'");
         }

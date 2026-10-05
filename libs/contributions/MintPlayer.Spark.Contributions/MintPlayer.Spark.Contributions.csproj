@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Contributions</PackageId>
-		<Version>11.0.0-preview.95</Version>
+		<Version>11.0.0-preview.97</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Per-user contributions with latest-wins for MintPlayer.Spark (preview): mark a property [Contribution] and every user edits their own version of each slot, the latest non-hidden one is shown, and the history is moderatable. Ships its own source generator and analyzer.</Description>

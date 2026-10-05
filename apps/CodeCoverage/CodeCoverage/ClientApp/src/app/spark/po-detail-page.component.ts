@@ -6,6 +6,7 @@ import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-bad
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
 import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
+import { forgeOf } from './forge-of';
 import { HomeExtrasComponent } from './home-extras.component';
 
 /**
@@ -59,12 +60,11 @@ export default class PoDetailPageComponent {
     if (typeof fullName !== 'string') return null;
     const [owner, name] = fullName.split('/');
 
-    // ⚠️ The provider comes from OwnerKey ("github:MintPlayer"), not from the Provider enum.
-    // Provider serialises as "GitHub", and lowercasing it to reach the URL spelling would work
-    // only by coincidence of how these three are spelled. OwnerKey already holds the canonical
-    // form, which is the whole reason it is a stored value rather than a computed display string.
-    const ownerKey = valueFor(po, 'OwnerKey')?.value;
-    const provider = typeof ownerKey === 'string' ? ownerKey.split(':')[0] : '';
+    // ⚠️ The provider comes from the document id ("Repositories/github/123"), not from the Provider
+    // enum. Provider serialises as "GitHub", and lowercasing it to reach the URL spelling would work
+    // only by coincidence of how these three are spelled. The id holds the canonical form, and
+    // ships whatever the caller may read (OwnerKey, which used to be read here, is denied, #264).
+    const provider = forgeOf(po) ?? '';
 
     return owner && name && provider ? { provider, owner, name } : null;
   }

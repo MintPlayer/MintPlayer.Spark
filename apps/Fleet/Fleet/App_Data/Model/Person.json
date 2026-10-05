@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "ff87918c-1e9f-4467-a47e-831d49c81f25",
     "name": "Person",
@@ -12,7 +13,6 @@
         "name": "Email",
         "dataType": "string",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 3,
         "isArray": false,
@@ -32,7 +32,6 @@
         "name": "FirstName",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
@@ -54,7 +53,6 @@
         "name": "LastName",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 2,
         "isArray": false,

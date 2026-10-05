@@ -63,25 +63,18 @@ Two rules the server now enforces rather than tolerating: a row **must** have an
 (every null key compares equal), and duplicates rendered the same row repeatedly with a matching
 total.
 
-### `showedOn` decides the wire; `isVisible` decides the drawing
+### `showedOn` decides the columns, and every column is drawn
 
-A column is on the wire when its attribute's `showedOn` includes `Query` — the same flag the sort
-allow-list is checked against, so one rule governs both. `isVisible` is carried to the client and
-applied there.
+A column is on the wire when its attribute's `showedOn` includes `Query` (and the caller's `Query`
+right does not deny it), and **every column on the wire is drawn** — the same flag the sort
+allow-list is checked against, so one rule governs both.
 
-That split exists so an app can **ship a value without drawing it**:
-
-```jsonc
-{ "name": "IsPrivate", "dataType": "boolean", "showedOn": "Query", "isVisible": false }
-```
-
-The row carries `IsPrivate`, the grid renders no column for it, and a custom renderer on a *different*
-column can read it — a lock glyph beside a repository name, without spending a column on the fact.
-Before, the only way to get a value to a renderer was to make it a visible column, which is exactly
-the layout decision such an app is avoiding.
-
-Filtering on `isVisible` server-side would also have made an attribute marked `"showedOn": "Query",
-"isVisible": false` **sortable with no column** — the sort gate checks `showedOn` alone.
+The old "ship a value to the grid without drawing it" shape — `"showedOn": "Query"` plus
+`"isVisible": false` — is gone with `isVisible` (#264); a model file still saying
+`"isVisible": false` refuses startup. A value a grid renderer needs is either its own (narrow)
+column, as CodeCoverage's `Repository.IsPrivate` now is (a 🔒 renderer), or is folded server-side
+into a column that is drawn (CodeCoverage's `MyAccountRow` folds its type into the avatar cell). Like
+Vidyano, Spark ships no values for columns it does not draw.
 
 ### Type hints
 
@@ -122,12 +115,13 @@ Run `dotnet run --spark-synchronize-model`. This generates `App_Data/Queries/Get
   "id": "880e8400-e29b-41d4-a716-446655440001",
   "name": "GetCompanies",
   "contextProperty": "Companies",
-  "sortBy": "Name",
-  "sortDirection": "asc"
+  "sortColumns": [
+    { "property": "Name", "direction": "asc" }
+  ]
 }
 ```
 
-The query name follows the pattern `Get{PropertyName}`. The `contextProperty` maps back to the SparkContext property. The synchronizer picks a default `sortBy` based on the entity's attributes (preferring `Name`, `LastName`, or the first string attribute).
+The query name follows the pattern `Get{PropertyName}`. The `contextProperty` maps back to the SparkContext property. The synchronizer picks a default `sortColumns` entry based on the entity's attributes (preferring `Name`, `LastName`, or the first string attribute).
 
 ### Step 3: Customize the Query JSON
 
@@ -139,8 +133,9 @@ After generation, you can edit the query JSON to change the default sort order, 
   "name": "GetCompanies",
   "contextProperty": "Companies",
   "alias": "companies",
-  "sortBy": "EmployeeCount",
-  "sortDirection": "desc"
+  "sortColumns": [
+    { "property": "EmployeeCount", "direction": "desc" }
+  ]
 }
 ```
 
@@ -319,12 +314,19 @@ Each query defines a default sort in its JSON file:
 {
   "name": "GetPeople",
   "contextProperty": "People",
-  "sortBy": "LastName",
-  "sortDirection": "asc"
+  "sortColumns": [
+    { "property": "FullName", "direction": "asc" }
+  ]
 }
 ```
 
-The `sortBy` value must match a property name on the type that the query returns. For index-based queries, this is the projection type (e.g. `VPerson`). For collection queries, this is the entity type.
+Each `sortColumns` property must match a property name on the type that the query returns. For index-based queries, this is the projection type (e.g. `VPerson`). For collection queries, this is the entity type.
+
+**Sort only on a column that is shown in the grid and carried by the index.** A sort on an attribute
+that is not a grid column is the ordering oracle [below](#a-sort-column-must-be-on-the-query-surface),
+and a sort on a field the index does not carry orders nothing. HR's `GetPeople` sorts by `FullName`
+(a shown, `[Search]` column whose `FullNameSort` companion the index carries), not by `LastName`,
+which is now `showedOn: PersistentObject` (#264, G-Q5).
 
 ### Runtime Sort Override
 
@@ -366,11 +368,11 @@ policy as `RowPolicyContext.Deleted`, and the policy that implements soft deleti
 this caller may widen the view (only holders of `ViewDeleted` on the type). See
 [guide-row-security.md](./guide-row-security.md#row-policies--one-rule-for-many-types-460).
 
-If `sortBy` or `sortDirection` are not provided, the query falls back to the values defined in the query JSON file.
+If the request carries no sort columns, the query falls back to the `sortColumns` defined in the query JSON file.
 
 ### Sortable Columns in the Frontend
 
-The Angular frontend renders clickable column headers in query list views. Clicking a column header toggles the sort direction and re-fetches the query with the new `sortBy` and `sortDirection` parameters.
+The Angular frontend renders clickable column headers in query list views. Clicking a column header toggles the sort direction and re-fetches the query with the new sort columns.
 
 Only attributes with `"showedOn"` including `"Query"` appear as sortable columns. The current sort column and direction are reflected in the column header UI.
 
@@ -382,8 +384,9 @@ For index-based queries, you can sort on computed fields that exist only in the 
 {
   "name": "GetPeople",
   "contextProperty": "People",
-  "sortBy": "FullName",
-  "sortDirection": "asc"
+  "sortColumns": [
+    { "property": "FullName", "direction": "asc" }
+  ]
 }
 ```
 
@@ -440,7 +443,7 @@ Two things worth knowing:
   `EMPTY_STRING` and orders on those literals, which on a lower-cased companion land before every real value.
   If a UI wants them last, that has to be arranged explicitly.
 
-You never name the companion when sorting **or filtering**. `sortBy`, the `?sortBy=` override, a caller and a
+You never name the companion when sorting **or filtering**. The query's `sortColumns`, a caller's sort columns and a
 column filter all keep naming the display attribute; the query executor redirects to `{Name}Sort` when the
 projection has one and it is `[IgnoreProperty]`. Filtering goes through the same resolver, and has to —
 `FieldIndexing.Search` destroys equality on the base field as well as ordering.

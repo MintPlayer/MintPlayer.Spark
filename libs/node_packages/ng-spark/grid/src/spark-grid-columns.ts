@@ -1,28 +1,9 @@
 import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { SortColumn } from '@mintplayer/pagination';
-import {
-  EntityAttributeDefinition,
-  EntityType,
-  ShowedOn,
-  SparkQuery,
-  hasShowedOnFlag,
-} from '@mintplayer/ng-spark/models';
+import { SparkQuery } from '@mintplayer/ng-spark/models';
 
 /** Page sizes offered by every Spark grid. */
 export const SPARK_GRID_PAGE_SIZES = [10, 25, 50];
-
-/**
- * The attributes a grid shows, in display order.
- *
- * Shared so the two grids cannot disagree about what "visible" means — they each had their own
- * copy of this expression, which is the kind of thing that stays identical right up until it
- * doesn't.
- */
-export function visibleGridAttributes(entityType: EntityType | null): EntityAttributeDefinition[] {
-  return entityType?.attributes
-    .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.Query))
-    .sort((a, b) => a.order - b.order) ?? [];
-}
 
 /**
  * Initial datatable settings for a query, seeded with the query's declared sort.

@@ -31,17 +31,6 @@ public sealed record SparkSatelliteQuery(string Name, string Source, string? Sor
 public sealed record SparkRendererSeed(Type DeclaringType, string AttributeName, string Renderer, IReadOnlyDictionary<string, object>? Options = null);
 
 /// <summary>
-/// Defaults synchronization applies to an attribute only when it <b>creates</b> it (never to an
-/// attribute the model file already holds, so an authored value always wins): how a library keeps a
-/// raw field of a type it generates out of the query surface, say.
-/// </summary>
-/// <param name="DeclaringType">The type whose model file holds the attribute (<c>SongLyricsContribution</c>).</param>
-/// <param name="AttributeName">The attribute (<c>ContributorId</c>).</param>
-/// <param name="ShowedOn">Where it is shown, or <see langword="null"/> to keep the computed default.</param>
-/// <param name="IsVisible">Whether it is drawn, or <see langword="null"/> to keep the default.</param>
-public sealed record SparkNewAttributeSeed(Type DeclaringType, string AttributeName, EShowedOn? ShowedOn = null, bool? IsVisible = null);
-
-/// <summary>
 /// Satellite model types and renderer seeds, registered by libraries and generated module initializers
 /// and read by model synchronization and the model-shape discovery behind the model hash.
 /// </summary>
@@ -92,22 +81,4 @@ public static class SparkModelSatellites
             ? new Dictionary<string, SparkRendererSeed>(map, StringComparer.Ordinal)
             : new Dictionary<string, SparkRendererSeed>(StringComparer.Ordinal);
     }
-
-    /// <summary>Declares defaults for an attribute synchronization has yet to create.</summary>
-    public static void SeedNewAttribute(SparkNewAttributeSeed seed)
-    {
-        ArgumentNullException.ThrowIfNull(seed);
-        NewAttributeSeeds.GetOrAdd(seed.DeclaringType, static _ => new(StringComparer.Ordinal))[seed.AttributeName] = seed;
-    }
-
-    /// <summary>The new-attribute defaults for <paramref name="declaringType"/>.<paramref name="attributeName"/>, or <see langword="null"/>.</summary>
-    public static SparkNewAttributeSeed? NewAttributeSeedFor(Type declaringType, string attributeName)
-    {
-        ArgumentNullException.ThrowIfNull(declaringType);
-        ArgumentNullException.ThrowIfNull(attributeName);
-        RuntimeHelpers.RunModuleConstructor(declaringType.Module.ModuleHandle);
-        return NewAttributeSeeds.TryGetValue(declaringType, out var map) && map.TryGetValue(attributeName, out var seed) ? seed : null;
-    }
-
-    private static readonly ConcurrentDictionary<Type, ConcurrentDictionary<string, SparkNewAttributeSeed>> NewAttributeSeeds = new();
 }

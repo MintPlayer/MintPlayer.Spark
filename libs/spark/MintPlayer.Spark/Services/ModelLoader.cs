@@ -51,6 +51,7 @@ internal partial class ModelLoader : IModelLoader
             try
             {
                 var json = File.ReadAllText(file);
+                RefuseLegacyIsVisible(json, file);
                 var entityTypeFile = JsonSerializer.Deserialize<EntityTypeFile>(json, jsonOptions);
                 if (entityTypeFile?.PersistentObject != null)
                 {
@@ -107,6 +108,83 @@ internal partial class ModelLoader : IModelLoader
         }
 
         return (byId, byAlias, allQueries);
+    }
+
+    /// <summary>
+    /// Stops the process on a model attribute that still says <c>"isVisible": false</c> (#264, G-Q8).
+    /// The property was removed, and System.Text.Json ignores what it does not know — so without this
+    /// the attribute would silently start being drawn, and, where nothing else protected it, written.
+    /// <c>"isVisible": true</c> was the default and is harmless: it is accepted here and dropped by
+    /// <c>--spark-synchronize-model</c>, which rewrites the file without it.
+    /// </summary>
+    /// <remarks>
+    /// Shared with the synchronizer, which must refuse the same file rather than strip the flag and
+    /// turn a hidden attribute into a shown one. A file that does not parse is left to the callers'
+    /// own error handling.
+    /// </remarks>
+    internal static void RefuseLegacyIsVisible(string json, string file)
+    {
+        List<string> hidden = [];
+        string? typeName = null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !TryGetPropertyIgnoreCase(document.RootElement, "persistentObject", out var po)
+                || po.ValueKind != JsonValueKind.Object)
+                return;
+
+            typeName = TryGetPropertyIgnoreCase(po, "name", out var name) && name.ValueKind == JsonValueKind.String
+                ? name.GetString()
+                : null;
+
+            if (!TryGetPropertyIgnoreCase(po, "attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Array)
+                return;
+
+            foreach (var attribute in attributes.EnumerateArray())
+            {
+                if (attribute.ValueKind == JsonValueKind.Object
+                    && TryGetPropertyIgnoreCase(attribute, "isVisible", out var isVisible)
+                    && isVisible.ValueKind == JsonValueKind.False)
+                {
+                    hidden.Add(TryGetPropertyIgnoreCase(attribute, "name", out var attributeName)
+                        && attributeName.ValueKind == JsonValueKind.String
+                            ? attributeName.GetString() ?? "?"
+                            : "?");
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        if (hidden.Count == 0)
+            return;
+
+        var names = string.Join(", ", hidden.Select(a => $"'{typeName ?? Path.GetFileNameWithoutExtension(file)}.{a}'"));
+        throw new InvalidOperationException(
+            $"Model file {file}: {names} still say \"isVisible\": false, and isVisible was removed (#264). " +
+            "It used to both hide the attribute and refuse writes to it, so ignoring it would show the " +
+            "attribute and could make it writable. Replace it per attribute: to draw it nowhere, write " +
+            "\"showedOn\": \"None\" and protect it with \"isReadOnly\": true (an action can still show it " +
+            "for one object by setting the runtime ShowedOn in OnLoad/OnNew/OnRefresh); to hide it from a " +
+            "group, or from everyone, deny it in security.json instead.");
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 
     /// <summary>

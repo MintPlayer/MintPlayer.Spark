@@ -37,7 +37,7 @@ describe('SparkRegisterComponent', () => {
   it('detects password mismatch as a form-level validation error', async () => {
     const { harness } = await setup();
     const component = await harness.navigateByUrl('/register', SparkRegisterComponent);
-    component.form.setValue({ email: 'a@b.c', password: 'pw1', confirmPassword: 'pw2' });
+    component.form.setValue({ email: 'a@b.c', userName: 'ab', password: 'pw1', confirmPassword: 'pw2' });
 
     expect(component.form.errors).toEqual({ passwordMismatch: true });
   });
@@ -51,16 +51,27 @@ describe('SparkRegisterComponent', () => {
     expect(auth.register).not.toHaveBeenCalled();
   });
 
+  it('refuses a user name that is an email address (the user name is public)', async () => {
+    const { harness, auth } = await setup();
+    const component = await harness.navigateByUrl('/register', SparkRegisterComponent);
+    component.form.setValue({ email: 'a@b.c', userName: 'a@b.c', password: 'pw', confirmPassword: 'pw' });
+
+    await component.onSubmit();
+
+    expect(component.form.controls.userName.hasError('pattern')).toBe(true);
+    expect(auth.register).not.toHaveBeenCalled();
+  });
+
   it('registers and navigates to login with ?registered=true on success', async () => {
     const { harness, auth } = await setup();
     const component = await harness.navigateByUrl('/register', SparkRegisterComponent);
-    component.form.setValue({ email: 'a@b.c', password: 'pw', confirmPassword: 'pw' });
+    component.form.setValue({ email: 'a@b.c', userName: ' ab ', password: 'pw', confirmPassword: 'pw' });
 
     const navigated = nextNavigationEnd();
     await component.onSubmit();
     await navigated;
 
-    expect(auth.register).toHaveBeenCalledWith('a@b.c', 'pw');
+    expect(auth.register).toHaveBeenCalledWith('a@b.c', 'pw', 'ab');
     expect(TestBed.inject(Router).url).toBe('/login?registered=true');
   });
 
@@ -71,7 +82,7 @@ describe('SparkRegisterComponent', () => {
     });
     const { harness } = await setup({ register: vi.fn().mockRejectedValue(error) });
     const component = await harness.navigateByUrl('/register', SparkRegisterComponent);
-    component.form.setValue({ email: 'a@b.c', password: 'x', confirmPassword: 'x' });
+    component.form.setValue({ email: 'a@b.c', userName: 'ab', password: 'x', confirmPassword: 'x' });
 
     await component.onSubmit();
 
@@ -82,7 +93,7 @@ describe('SparkRegisterComponent', () => {
   it('falls back to the registration-failed translation on unknown errors', async () => {
     const { harness } = await setup({ register: vi.fn().mockRejectedValue(new Error('boom')) });
     const component = await harness.navigateByUrl('/register', SparkRegisterComponent);
-    component.form.setValue({ email: 'a@b.c', password: 'pw', confirmPassword: 'pw' });
+    component.form.setValue({ email: 'a@b.c', userName: ' ab ', password: 'pw', confirmPassword: 'pw' });
 
     await component.onSubmit();
 

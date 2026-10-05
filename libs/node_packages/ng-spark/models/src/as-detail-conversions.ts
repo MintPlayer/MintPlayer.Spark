@@ -281,7 +281,6 @@ function buildAttribute(
     dataType: attrDef.dataType,
     isArray: attrDef.isArray,
     isRequired: attrDef.isRequired,
-    isVisible: attrDef.isVisible,
     isReadOnly: attrDef.isReadOnly,
     order: attrDef.order,
     rules: attrDef.rules ?? [],

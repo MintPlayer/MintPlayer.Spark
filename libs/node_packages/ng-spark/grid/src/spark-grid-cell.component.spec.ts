@@ -18,7 +18,7 @@ import { EntityAttributeDefinition } from '@mintplayer/ng-spark/models';
  */
 
 const col = (over: Partial<EntityAttributeDefinition>): EntityAttributeDefinition => ({
-  id: 'c1', name: 'Col', dataType: 'string', isVisible: true, isReadOnly: false,
+  id: 'c1', name: 'Col', dataType: 'string', isReadOnly: false,
   isRequired: false, isArray: false, order: 1,
   ...over,
 } as any);

@@ -3,6 +3,11 @@
  * Values can be combined: ShowedOn.Query | ShowedOn.PersistentObject
  */
 export enum ShowedOn {
+  /**
+   * Drawn on no page (#264; Vidyano's `Never`). The attribute still ships on the object, and an action can show
+   * it for one object through the runtime `showedOn` it sets on load, new or refresh.
+   */
+  None = 0,
   Query = 1,
   PersistentObject = 2,
 }

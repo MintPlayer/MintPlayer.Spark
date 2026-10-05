@@ -183,7 +183,6 @@ public class PersistentObjectAttribute
     public string DataType { get; set; } = "string";
     public bool IsArray { get; set; }
     public bool IsRequired { get; set; }
-    public bool IsVisible { get; set; } = true;
     public bool IsReadOnly { get; set; }
     public bool IsValueChanged { get; set; }
     public int Order { get; set; }
@@ -198,6 +197,17 @@ public class PersistentObjectAttribute
     /// </summary>
     public Dictionary<string, string?>? Breadcrumbs { get; set; }
 
+    /// <summary>
+    /// Where this attribute is drawn, for this object. Starts as the model's <c>showedOn</c>; an action
+    /// changes it per object in <c>OnLoadAsync</c>, <c>OnNewAsync</c> and <c>OnRefreshAsync</c> (Vidyano's
+    /// <c>Visibility</c>, #264 G-Q3). The usual shape: the model says <see cref="EShowedOn.None"/>, and the
+    /// action sets <see cref="EShowedOn.PersistentObject"/> when the object's state calls for the field.
+    /// The client draws from this value, from the first render on.
+    /// <para>
+    /// ⚠️ Layout only, never a write gate: a caller can still post a value for an attribute that is not
+    /// drawn, and it is validated and written. Protect a field with <see cref="IsReadOnly"/> or a deny.
+    /// </para>
+    /// </summary>
     public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;
     public ValidationRule[] Rules { get; set; } = [];
     public Guid? Group { get; set; }

@@ -3,7 +3,9 @@ using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -29,8 +31,8 @@ internal static class Login
         sb.Append("h2{margin-bottom:24px}");
         sb.Append(".form-group{margin-bottom:16px}");
         sb.Append("label{display:block;margin-bottom:4px;font-weight:500;font-size:14px}");
-        sb.Append("input[type=text],input[type=password]{width:100%;padding:8px 12px;border:1px solid var(--idp-input-border);border-radius:6px;font-size:14px;box-sizing:border-box}");
-        sb.Append("input[type=text]:focus,input[type=password]:focus{border-color:var(--idp-focus-border);outline:0;box-shadow:0 0 0 .25rem var(--idp-focus-ring)}");
+        sb.Append("input[type=text],input[type=email],input[type=password]{width:100%;padding:8px 12px;border:1px solid var(--idp-input-border);border-radius:6px;font-size:14px;box-sizing:border-box}");
+        sb.Append("input[type=text]:focus,input[type=email]:focus,input[type=password]:focus{border-color:var(--idp-focus-border);outline:0;box-shadow:0 0 0 .25rem var(--idp-focus-ring)}");
         sb.Append(".btn{display:block;width:100%;padding:10px;border:none;border-radius:6px;font-size:14px;cursor:pointer;box-sizing:border-box}");
         sb.Append(".btn-primary{background:var(--idp-primary);color:#fff;margin-top:8px}");
         sb.Append(".btn-primary:hover{background:var(--idp-primary-hover)}");
@@ -47,8 +49,12 @@ internal static class Login
         ConnectPage.AppendAntiforgery(sb, context);
         sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(Encode(returnUrl)).Append("\" />");
         sb.Append("<div class=\"form-group\">");
-        sb.Append("<label for=\"identifier\">Email or user name</label>");
-        sb.Append("<input type=\"text\" id=\"identifier\" name=\"identifier\" autocomplete=\"username\" required autofocus />");
+        // Labelled from SparkAuthenticationOptions.SignInIdentifiers, which the POST's resolver
+        // (SparkSignInManager) enforces; the field name stays "identifier" whatever it accepts.
+        var (label, type) = IdentifierField(context);
+        sb.Append("<label for=\"identifier\">").Append(label).Append("</label>");
+        sb.Append("<input type=\"").Append(type).Append("\" id=\"identifier\" name=\"identifier\" autocomplete=\"")
+            .Append(type == "email" ? "email" : "username").Append("\" required autofocus />");
         sb.Append("</div>");
         sb.Append("<div class=\"form-group\">");
         sb.Append("<label for=\"password\">Password</label>");
@@ -128,6 +134,18 @@ internal static class Login
         }
 
         RedirectWithError(context, returnUrl, "invalid_credentials");
+    }
+
+    private static (string Label, string Type) IdentifierField(HttpContext context)
+    {
+        var allowed = context.RequestServices.GetService<IOptions<SparkAuthenticationOptions>>()?.Value.SignInIdentifiers
+            ?? SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName;
+        return (allowed.HasFlag(SparkSignInIdentifiers.Email), allowed.HasFlag(SparkSignInIdentifiers.UserName)) switch
+        {
+            (true, false) => ("Email", "email"),
+            (false, true) => ("User name", "text"),
+            _ => ("Email or user name", "text"),
+        };
     }
 
     private static void RedirectWithError(HttpContext context, string returnUrl, string error)

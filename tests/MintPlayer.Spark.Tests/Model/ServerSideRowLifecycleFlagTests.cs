@@ -46,7 +46,7 @@ public class ServerSideRowLifecycleFlagTests : IDisposable
                 "name": "Probe",
                 "clrType": "X.Probe",{{entityLevelJson}}
                 "attributes": [
-                  { "name": "Description", "dataType": "string", "isVisible": true, "isReadOnly": false }
+                  { "name": "Description", "dataType": "string", "isReadOnly": false }
                 ],
                 "queries": []
               },
@@ -100,7 +100,7 @@ public class ServerSideRowLifecycleFlagTests : IDisposable
                 "name": "Probe",
                 "clrType": "X.Probe",
                 "attributes": [
-                  { "name": "Description", "dataType": "string", "isVisible": true, "isReadOnly": true }
+                  { "name": "Description", "dataType": "string", "isReadOnly": true }
                 ],
                 "queries": []
               },

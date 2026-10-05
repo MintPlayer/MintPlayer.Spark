@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "dcbc8be1-049f-40ba-acb5-09af16af2d57",
     "name": "CarreerJob",
@@ -12,7 +13,6 @@
         "name": "ContractEnd",
         "dataType": "date",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 3,
         "isArray": false,
@@ -24,7 +24,6 @@
         "name": "ContractStart",
         "dataType": "date",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
@@ -36,7 +35,6 @@
         "name": "ProfessionId",
         "dataType": "Reference",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 1,
         "query": "GetProfessions",

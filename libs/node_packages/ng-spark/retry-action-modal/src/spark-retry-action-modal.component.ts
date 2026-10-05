@@ -173,7 +173,6 @@ function attrToDefinition(attr: PersistentObjectAttribute): EntityAttributeDefin
     dataType: attr.dataType,
     isArray: attr.isArray,
     isRequired: attr.isRequired,
-    isVisible: attr.isVisible,
     isReadOnly: attr.isReadOnly,
     order: attr.order,
     query: attr.query,

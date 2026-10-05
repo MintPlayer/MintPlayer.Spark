@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
@@ -61,11 +62,23 @@ internal sealed class GetAuthCapabilities : IGetEndpoint
         // its endpoints, and an app with external sign-in but no linking must not link to it.
         var externalLogins = endpoints.IsEndpointMapped(typeof(ListExternalLogins<>));
 
+        // The one value read from the options rather than derived from a route: it shapes how /login
+        // resolves an identifier, not which routes exist. Empty when there is no password sign-in.
+        var identifiers = services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value.SignInIdentifiers
+            ?? SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName;
+        var signInIdentifiers = new List<string>();
+        if (localCredentials != SparkLocalCredentials.Disabled)
+        {
+            if (identifiers.HasFlag(SparkSignInIdentifiers.Email)) signInIdentifiers.Add("email");
+            if (identifiers.HasFlag(SparkSignInIdentifiers.UserName)) signInIdentifiers.Add("userName");
+        }
+
         var providers = await ExternalAuthenticationSchemes.GetInteractiveAsync(services);
 
         return Results.Ok(new
         {
             localCredentials = localCredentials.ToString(),
+            signInIdentifiers,
             passkeys,
             twoFactor,
             emailChange,

@@ -38,7 +38,14 @@ internal static class TranslationsTreeFlattener
         List<KeyValuePair<string, IReadOnlyList<KeyValuePair<string, string>>>> entries,
         List<TranslationsIssue> issues)
     {
-        if (obj.Members.Count == 0)
+        // _-prefixed members are comments, and the root's $schema names the file's JSON schema
+        // (#264, G-Q12/Q17): neither is a translation nor a namespace.
+        var members = new List<KeyValuePair<string, JsonNode>>();
+        foreach (var m in obj.Members)
+            if (!m.Key.StartsWith("_", System.StringComparison.Ordinal) && !(path.Length == 0 && m.Key == "$schema"))
+                members.Add(m);
+
+        if (members.Count == 0)
         {
             issues.Add(new TranslationsIssue { Kind = TranslationsIssueKind.EmptyObject, Path = path });
             return;
@@ -46,7 +53,7 @@ internal static class TranslationsTreeFlattener
 
         var allStrings = true;
         var allObjects = true;
-        foreach (var m in obj.Members)
+        foreach (var m in members)
         {
             if (m.Value is JsonString) allObjects = false;
             else if (m.Value is JsonObject) allStrings = false;
@@ -57,7 +64,7 @@ internal static class TranslationsTreeFlattener
         {
             // Leaf — emit a TranslatedString entry at this path.
             var langs = new List<KeyValuePair<string, string>>();
-            foreach (var m in obj.Members)
+            foreach (var m in members)
             {
                 var lang = m.Key;
                 var val = ((JsonString)m.Value).Value;
@@ -69,7 +76,7 @@ internal static class TranslationsTreeFlattener
 
         if (allObjects)
         {
-            foreach (var m in obj.Members)
+            foreach (var m in members)
             {
                 var childPath = string.IsNullOrEmpty(path) ? m.Key : path + "." + m.Key;
                 Walk((JsonObject)m.Value, childPath, entries, issues);

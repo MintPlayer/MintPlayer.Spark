@@ -50,13 +50,13 @@ export class SparkModerationService {
   // and notify nobody.
   readonly ownReputationChanged = computed(() => ({ navigation: this.navigated(), votes: this.#votesCast() }));
 
-  #ownInFlight: Promise<ModerationReputation> | null = null;
+  #ownInFlight: Promise<ModerationReputation | null> | null = null;
 
   /**
    * The caller's own reputation, shared by every caller in flight at once: the badge and the
-   * review-queue link both re-read on the same navigation and cost one request.
+   * review-queue link both re-read on the same navigation and cost one request. `null` signed out.
    */
-  ownReputation(): Promise<ModerationReputation> {
+  ownReputation(): Promise<ModerationReputation | null> {
     return this.#ownInFlight ??= this.reputation().finally(() => this.#ownInFlight = null);
   }
 
@@ -108,9 +108,13 @@ export class SparkModerationService {
     return this.spark.postEnvelope<ModerationStatus>('/moderation/status', { objectTypeId: type, id });
   }
 
-  /** A user's reputation; the caller's own when `userId` is omitted (with privileges and suspension). */
-  reputation(userId?: string): Promise<ModerationReputation> {
-    return this.spark.postEnvelope<ModerationReputation>('/moderation/reputation', userId ? { userId } : {});
+  /**
+   * A user's reputation; the caller's own when `userId` is omitted (with privileges and suspension).
+   * `null` for an anonymous caller: the server answers it 200 with no result rather than 401, so a
+   * badge on a page anyone may read never sends the app to the sign-in page.
+   */
+  reputation(userId?: string): Promise<ModerationReputation | null> {
+    return this.spark.postEnvelope<ModerationReputation | null>('/moderation/reputation', userId ? { userId } : {});
   }
 
   /** The caller's own ledger, newest first. Voters are never named; a reversal reads "Voting corrected (−N)". */

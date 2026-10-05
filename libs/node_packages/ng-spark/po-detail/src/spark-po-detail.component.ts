@@ -328,9 +328,14 @@ export class SparkPoDetailComponent {
     }
   }
 
+  /**
+   * Drawn from the loaded object's own `showedOn`, falling back to the model's (#264, G-Q3): an action sets
+   * it per object in `OnLoadAsync` — a stolen car's police report number is shown, the model says `None`.
+   */
   visibleAttributes = computed(() => {
+    const loaded = new Map((this.item()?.attributes ?? []).map(a => [a.name, a] as const));
     return this.entityType()?.attributes
-      .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+      .filter(a => hasShowedOnFlag(loaded.get(a.name)?.showedOn ?? a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   });
 

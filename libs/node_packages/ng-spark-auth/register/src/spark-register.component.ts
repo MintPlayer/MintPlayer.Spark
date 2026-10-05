@@ -40,6 +40,8 @@ export class SparkRegisterComponent {
 
   readonly form = this.fb.group({
     email: ['', [Validators.required, Validators.email]],
+    // The public handle other users see; the server refuses '@' too (never an email address).
+    userName: ['', [Validators.required, Validators.pattern(/^[^@]*$/)]],
     password: ['', Validators.required],
     confirmPassword: ['', Validators.required],
   }, { validators: passwordMatchValidator });
@@ -53,10 +55,10 @@ export class SparkRegisterComponent {
     this.loading.set(true);
     this.errorMessage.set('');
 
-    const { email, password } = this.form.value;
+    const { email, userName, password } = this.form.value;
 
     try {
-      await this.authService.register(email!, password!);
+      await this.authService.register(email!, password!, userName!.trim());
       // An app can mount registration without the password form (external-only sign-in with
       // self-service account creation). Landing on the site root beats navigating to `undefined`,
       // which the router resolves to the current route — leaving the user on a form they just

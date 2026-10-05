@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/security.schema.json",
   "wellKnown": {
     "anonymous": "00000000-0000-0000-0000-000000000000",
     "authenticated": "00000000-0000-0000-0000-000000000001"
@@ -175,6 +176,60 @@
       "resource": "Edit/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000081",
+      "resource": "QueryRead/Account/OwnerKey",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": true
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000082",
+      "resource": "QueryRead/Account/OwnerKey",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": true
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000083",
+      "resource": "QueryRead/Repository/OwnerKey",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": true
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000084",
+      "resource": "QueryRead/Repository/OwnerKey",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": true
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000085",
+      "resource": "QueryRead/Repository/PreviousFullNames",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": true
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000086",
+      "resource": "QueryRead/Repository/PreviousFullNames",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": true
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000087",
+      "resource": "Read/ForgeAccounts/Provider",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": true
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000088",
+      "resource": "QueryRead/Home/AccountCount",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": true
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000089",
+      "resource": "QueryRead/Home/RepoCount",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": true
     }
   ]
 }

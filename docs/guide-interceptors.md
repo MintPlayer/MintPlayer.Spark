@@ -19,6 +19,8 @@ A save (create, edit, revert, restore, sync):
 5. **WITH CHECK**: the row rule, judged on the row as the interceptors left it.
 6. Store it with the expected change vector, store one outbox message per durable after-commit interceptor
    (`IAfterSaveCommitted`), and **commit once** (`SaveChanges`): the row and its follow-ups together.
+   Serving an HTTP request, the framework then waits — bounded, never failing — for the indexes over the
+   collections that commit wrote (§1a).
 7. The `IAfterSave` interceptors, each isolated.
 
 A delete (and a bulk delete, row by row, committed once for all rows):
@@ -28,10 +30,27 @@ A delete (and a bulk delete, row by row, committed once for all rows):
    becomes a save of the row.
 3. The `IBeforeDelete` interceptors (stages as above). `context.IsReplaced` is final here.
 4. Store the replacement, or delete — both with the expected change vector — store one outbox message
-   per durable interceptor (`IAfterDeleteCommitted`), and commit once.
+   per durable interceptor (`IAfterDeleteCommitted`), and commit once — then, in a request, the same
+   index wait (§1a).
 5. The `IAfterDelete` interceptors, each isolated.
 
 Later, outside the request: Messaging delivers each outbox message, and the durable interceptor runs (§5a).
+
+### 1a. The caller's next query sees the write
+
+A write made while serving an HTTP request commits first; the commit's outcome is final and is what the
+request answers. Then, separately, the framework waits until every index (static or auto) over a
+collection the commit wrote has processed it, so the same user's next query — a grid re-fetching after
+a save, a sub-query membership check in a bulk delete — does not read a stale index. The wait is
+**best-effort and bounded at 15 s**: an index still behind then, or one disposed during the wait (an
+auto-index merge, a side-by-side swap, a reset), is logged as a warning and the request is answered
+normally. A paused index costs every write to its collections the full 15 s; the warning names it.
+
+This covers everything that commits through `IDatabaseAccess` — including documents an interceptor
+stores in `context.Session`, which commit in the same `SaveChanges`. Scopes without an `HttpContext`
+(message handlers and durable interceptors, cron jobs, migrations, replication, hosted services) do not
+wait. Code that calls `SaveChangesAsync` on a session itself does not wait either; see
+[the custom actions guide](guide-custom-actions.md) for how to get the same behaviour.
 
 Nothing in this list can be skipped: not by an interceptor, not by an Actions class.
 

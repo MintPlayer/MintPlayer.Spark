@@ -5,6 +5,10 @@ on:
     branches:
       - 'master'
 
+# One run at a time on master. Besides saving runners, this serialises the schema-revision job
+# below: two runs deciding "the schemas changed, the next revision is v{n+1}" at the same time
+# would both try to create it. A run cancelled part-way is harmless there: the release is created
+# by one API call, and the next run compares against whatever exists.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
@@ -22,12 +26,107 @@ env:
   SPARK_E2E_HOST_COVERAGE: 'true'
 
 jobs:
+  # #264 G-Q21: decides the Spark JSON schema revision the packages embed, BEFORE anything is built
+  # or packed. The schemas are generated from this commit and compared byte-for-byte with the
+  # assets of the latest schemas/v{n} GitHub release:
+  #   - identical (or no change in what the C# types describe): the packages embed n;
+  #   - different, or no release yet: this job creates the release schemas/v{n+1} (which also
+  #     creates the tag, on this commit) with the six files, asks spark-schemas-deploy.yml to put
+  #     it online, and the packages embed n+1.
+  # So a package can never name a revision whose release does not exist. A revision is published
+  # even when a later step of this run fails; the next run then finds it identical and reuses it.
+  #
+  # A job of its own so that only this job holds `contents: write` (creating releases and tags)
+  # and `actions: write` (dispatching the deploy); the build job below runs third-party code
+  # (npm ci, the test suites) and keeps the read-only token.
+  schema-revision:
+    name: Schema revision
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: write
+      actions: write
+
+    outputs:
+      revision: ${{ steps.revision.outputs.revision }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 11.0.100-rc.1.26425.128
+
+    # The generator references only MintPlayer.Spark.Abstractions; the schemas depend on nothing
+    # but the C# types, so a Debug build is enough. Its own after-build target also writes
+    # schemas/; running it explicitly makes the output path this step's, not a side effect's.
+    - name: Generate the schemas
+      run: dotnet run --project tools/SchemaGenerator/MintPlayer.Spark.SchemaGenerator.csproj -- "$GITHUB_WORKSPACE/schemas"
+
+    - name: Compare with the latest release, and publish a new revision if they differ
+      id: revision
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+
+        # Releases, not tags, are the source of truth: a revision exists when its release (with the
+        # assets the site serves) does. Drafts are skipped; numeric sort, so v10 follows v9.
+        latest="$(gh api --paginate "repos/$REPO/releases?per_page=100" \
+          --jq '.[] | select(.draft | not) | .tag_name' \
+          | sed -nE 's|^schemas/v([0-9]+)$|\1|p' | sort -n | tail -1)"
+        latest="${latest:-0}"
+
+        changed=true
+        if [ "$latest" -gt 0 ]; then
+          published="$RUNNER_TEMP/schemas-v$latest"
+          mkdir -p "$published"
+          gh release download "schemas/v$latest" --repo "$REPO" --dir "$published" --pattern '*.schema.json'
+          # Byte-for-byte, the whole set: a file added or removed counts as a change too.
+          if diff -r "$GITHUB_WORKSPACE/schemas" "$published"; then
+            changed=false
+          fi
+        fi
+
+        if [ "$changed" = true ]; then
+          revision=$((latest + 1))
+          gh release create "schemas/v$revision" "$GITHUB_WORKSPACE"/schemas/*.schema.json \
+            --repo "$REPO" \
+            --target "$GITHUB_SHA" \
+            --title "Spark JSON schemas v$revision" \
+            --latest=false \
+            --notes "The JSON schemas of Spark's App_Data files, generated from $GITHUB_SHA. Served at https://schemas.spark.mintplayer.com/v$revision/<file>.schema.json; --spark-synchronize-model writes that URL into \"\$schema\"."
+          echo "Published schemas/v$revision."
+
+          # A release created with GITHUB_TOKEN triggers no workflow (GitHub suppresses events
+          # caused by that token, to prevent loops), so `on: release` alone would never fire for
+          # it. workflow_dispatch is the documented exception.
+          gh workflow run spark-schemas-deploy.yml --repo "$REPO" --ref "${{ github.event.repository.default_branch }}"
+        else
+          revision=$latest
+          echo "The schemas match schemas/v$revision."
+        fi
+
+        echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
   build:
     name: publish-release
+    needs: schema-revision
     runs-on: ubuntu-latest
     # Build + full test sweep + pack + publish normally lands well under this;
     # the ceiling exists so a wedged run can't hold the 6-hour default.
     timeout-minutes: 45
+
+    env:
+      # Read by MintPlayer.Spark.csproj (an environment variable is an MSBuild property) and
+      # compiled in as SparkSchemaRevision.Current. It is also an input of every `build:release`
+      # task in nx.json, so a cached Release build of another revision is never replayed into
+      # the packages.
+      SparkSchemaRevision: ${{ needs.schema-revision.outputs.revision }}
 
     steps:
     - name: Checkout

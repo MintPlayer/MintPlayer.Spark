@@ -243,10 +243,12 @@ contribution type (a load by id, the history query, a moderator's action) by `Re
 and the target's own row rule, so the history of a row the caller may not see (a draft) stays hidden.
 That is also the row rule Spark's startup check requires before a well-known group may `Read` the type.
 
-Synchronize writes `ContributorId` on the contribution type as `showedOn: PersistentObject` and
-`isVisible: false` when it creates the attribute (the resolved `ContributorName` is shown instead), so
-raw user ids stay out of the history grid by default; an authored value in the model file wins.
-Denying `Query/SongLyricsContribution/ContributorId` also works. The generated type names exist in the
+The **application** decides how `ContributorId` and `Key` are shown, in the contribution type's model
+file, like any other attribute: the library seeds no visibility (#264, G-Q16 — the seed API is gone).
+Synchronize writes them with its usual defaults, and an authored value wins. QnA sets `ContributorId`
+to `showedOn: "None"` and `isReadOnly: true` and shows the resolved `ContributorName` instead, so raw
+user ids stay out of the history grid; to keep the id from a group altogether, deny it
+(`QueryRead/SongLyricsContribution/ContributorId`), since `showedOn` is layout, not protection. The generated type names exist in the
 model only after synchronize; until then SPARK012 warns about them, and both the attribute-level
 analyzer SPARK014 and the runtime validator fall back to the generated CLR class (one build behind is
 fine).

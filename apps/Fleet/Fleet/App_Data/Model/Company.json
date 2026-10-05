@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "f0f91878-bc14-4f33-bb42-2e4c6eabe88c",
     "name": "Company",
@@ -12,7 +13,6 @@
         "name": "EmployeeCount",
         "dataType": "number",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 3,
         "isArray": false,
@@ -30,7 +30,6 @@
         "name": "Name",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
@@ -52,7 +51,6 @@
         "name": "Website",
         "dataType": "string",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 2,
         "isArray": false,

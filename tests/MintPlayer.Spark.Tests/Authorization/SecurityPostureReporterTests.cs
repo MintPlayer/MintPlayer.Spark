@@ -202,6 +202,46 @@ public class SecurityPostureReporterTests
         DescribeWithModel(config).Notes.Should().BeEmpty();
     }
 
+    private static readonly Guid SignedInId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+
+    private static SecurityConfiguration BothWellKnownGroups(params (Guid Group, string Resource, bool Denied)[] rights)
+        => new()
+        {
+            Groups =
+            {
+                [AnonymousId.ToString()] = "Public",
+                [SignedInId.ToString()] = "Signed in",
+            },
+            WellKnown = new() { ["anonymous"] = AnonymousId.ToString(), ["authenticated"] = SignedInId.ToString() },
+            Rights = [.. rights.Select(r => new Right { Id = Guid.NewGuid(), GroupId = r.Group, Resource = r.Resource, IsDenied = r.Denied })],
+        };
+
+    /// <summary>
+    /// #264 G-Q23: a deny on both well-known groups hides the attribute from everyone (the documented
+    /// pattern); the rest of the type keeping its right is intended. SPARK024 agrees.
+    /// </summary>
+    [Fact]
+    public void A_deny_on_both_well_known_groups_is_not_noted()
+    {
+        var config = BothWellKnownGroups(
+            (AnonymousId, "QueryRead/Song", false), (SignedInId, "QueryRead/Song", false),
+            (AnonymousId, "QueryRead/Song/Lyrics", true), (SignedInId, "QueryRead/Song/Lyrics", true));
+
+        DescribeWithModel(config).Notes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_deny_on_one_well_known_group_only_is_still_noted()
+    {
+        var config = BothWellKnownGroups(
+            (AnonymousId, "QueryRead/Song", false), (SignedInId, "QueryRead/Song", false),
+            (AnonymousId, "Read/Song/Lyrics", true), (SignedInId, "Read/Song/Lyrics", true),
+            (AnonymousId, "Read/Song/Genre", true));
+
+        DescribeWithModel(config).Notes.Should().ContainSingle().Which.Should().Be(
+            "Group 'Public' restricts Read on 2 of 3 attributes of 'Song'; 'Title' is still readable through the type-level right — intended?");
+    }
+
     /// <summary>
     /// An attribute grant never unlocks what its type right withholds, so the anonymous surface lists
     /// it only when the type-level right is reachable too.

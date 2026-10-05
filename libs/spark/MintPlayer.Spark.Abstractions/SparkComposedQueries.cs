@@ -54,8 +54,8 @@ public static class SparkComposedQueries
                     $"\"showedOn\": \"PersistentObject\". Columns come from the attributes marked " +
                     $"\"Query\", so this query would render rows into a grid with no columns. Mark the " +
                     $"attributes the grid should show as \"showedOn\": \"Query, PersistentObject\" (or " +
-                    $"\"Query\") in the type's model file. To ship a value without drawing it, keep " +
-                    $"\"showedOn\": \"Query\" and set \"isVisible\": false.");
+                    $"\"Query\") in the type's model file; a row carries only the values of the columns it " +
+                    $"draws.");
             }
 
             if (!IsComposed(type)) continue;

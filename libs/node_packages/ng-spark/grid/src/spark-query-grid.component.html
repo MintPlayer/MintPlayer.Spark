@@ -70,7 +70,7 @@
       (filterChange)="onFilterChange($event)"
       (rowClick)="onRowClick($event)"
       [(settings)]="settings">
-    @for (col of visibleColumns(); track col.name) {
+    @for (col of allColumns(); track col.name) {
       <!--
         `canSort`/`canFilter` arrive already resolved by the server (query override → attribute →
         true), so this only spells the polarity. `!== false` is needed for BOTH, for opposite
@@ -109,7 +109,7 @@
       measured; the data columns would share what it left over equally, and at phone width their
       unclipped headers ran into each other. With no column at all the datatable waits.
     -->
-    @if (rowActions().length && visibleColumns().length) {
+    @if (rowActions().length && allColumns().length) {
       <div *bsDatatableColumn="'__sparkRowActions'; sortable: false; filterable: false">
         <span class="visually-hidden">{{ 'common.actions' | t }}</span>
       </div>
@@ -117,7 +117,7 @@
 
     <ng-container *bsRowTemplate="let item">
       @let row = $any(item);
-      @for (col of visibleColumns(); track col.name; let first = $first) {
+      @for (col of allColumns(); track col.name; let first = $first) {
         <td>
           @if (row) {
             <!-- The first column links to the row's detail page. Two things about this are

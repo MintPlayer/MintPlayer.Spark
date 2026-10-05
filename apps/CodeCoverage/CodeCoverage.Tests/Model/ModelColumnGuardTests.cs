@@ -36,8 +36,7 @@ public class ModelColumnGuardTests
 
     private static string[] VisibleQueryColumns(JsonElement persistentObject)
         => [.. persistentObject.GetProperty("attributes").EnumerateArray()
-            .Where(a => a.GetProperty("isVisible").GetBoolean()
-                && a.GetProperty("showedOn").GetString()!.Contains("Query"))
+            .Where(a => a.GetProperty("showedOn").GetString()!.Contains("Query"))
             .OrderBy(a => a.GetProperty("order").GetInt32())
             .Select(a => a.GetProperty("name").GetString()!)];
 
@@ -45,9 +44,11 @@ public class ModelColumnGuardTests
     public void Repository_grid_shows_the_curated_columns_with_the_repository_name_first()
     {
         // The row link lives on the first visible column; Account/OwnerLogin are
-        // constant on the account page and belong on the detail view only.
+        // constant on the account page and belong on the detail view only. IsPrivate is the
+        // narrow lock column right after the name (#264, G-Q4): it used to be shipped in the
+        // row without a column so repo-name could draw a badge, which showedOn cannot say.
         VisibleQueryColumns(LoadPersistentObject("Repository")).Should().Equal(
-            "Name", "LatestCoverage", "FullName", "LatestCoverageSha");
+            "Name", "IsPrivate", "LatestCoverage", "FullName", "LatestCoverageSha");
     }
 
     [Fact]

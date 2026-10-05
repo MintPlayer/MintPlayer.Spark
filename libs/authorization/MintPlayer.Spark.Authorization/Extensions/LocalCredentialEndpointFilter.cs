@@ -80,6 +80,8 @@ internal static class LocalCredentialEndpointFilter
         // whose route table is MapIdentityApi's verbatim.
         if (mode == SparkLocalCredentials.Disabled)
             GuardAgainstUnreachableSignIn(endpoints.ServiceProvider);
+        else
+            GuardAgainstNoSignInIdentifier(endpoints.ServiceProvider);
 
         var throwaway = new UnpublishedEndpointRouteBuilder(endpoints.ServiceProvider);
         var identityApi = throwaway.MapGroup("/spark/auth").MapIdentityApi<TUser>();
@@ -186,6 +188,25 @@ internal static class LocalCredentialEndpointFilter
             + "authentication provider is registered, so no user could sign in. Register a provider "
             + "(for example identity.AddGitHub(...) via the configureProviders callback), or use "
             + "SparkLocalCredentials.SignInOnly or SparkLocalCredentials.Full instead.");
+    }
+
+    /// <summary>
+    /// Refuses a password sign-in that accepts no identifier: with
+    /// <see cref="SparkAuthenticationOptions.SignInIdentifiers"/> allowing neither the email nor the
+    /// user name, <c>/login</c> is mapped but every attempt is a 401. Only called outside
+    /// <see cref="SparkLocalCredentials.Disabled"/>, where the option is read at all.
+    /// </summary>
+    private static void GuardAgainstNoSignInIdentifier(IServiceProvider services)
+    {
+        var identifiers = services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value.SignInIdentifiers
+            ?? SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName;
+        if ((identifiers & (SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName)) != 0)
+            return;
+
+        throw new InvalidOperationException(
+            "Spark authentication maps password sign-in, but SignInIdentifiers allows neither "
+            + "SparkSignInIdentifiers.Email nor SparkSignInIdentifiers.UserName, so no user could sign in "
+            + "with a password. Allow at least one, or use SparkLocalCredentials.Disabled.");
     }
 
     /// <summary>

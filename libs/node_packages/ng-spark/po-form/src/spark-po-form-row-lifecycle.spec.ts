@@ -27,7 +27,6 @@ function attr(partial: Partial<EntityAttributeDefinition>): EntityAttributeDefin
     name: 'a',
     dataType: 'string',
     isRequired: false,
-    isVisible: true,
     isReadOnly: false,
     order: 1,
     showedOn: ShowedOn.PersistentObject,

@@ -20,7 +20,7 @@ public interface ISparkVisibility
     /// </summary>
     Task<string[]> GetVisibleRepositoryIdsAsync();
 
-    /// <summary>Whether the viewer manages this owner (gates BadgeToken/InstallationId visibility).</summary>
+    /// <summary>Whether the viewer manages this owner (gates BadgeToken visibility).</summary>
     /// <param name="ownerKey">A <c>provider:login</c> key, not a bare login.</param>
     Task<bool> CanManageOwnerAsync(string ownerKey);
 }

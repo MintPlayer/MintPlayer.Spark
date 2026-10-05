@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark</PackageId>
-		<Version>11.0.0-preview.96</Version>
+		<Version>11.0.0-preview.97</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
@@ -77,6 +77,44 @@
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.1" GeneratePathProperty="true" />
 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
 	</ItemGroup>
+
+	<!--
+	  #264 G-Q21: the schema revision this package writes into "$schema" URLs
+	  (https://schemas.spark.mintplayer.com/v{n}/<file>.schema.json), compiled in as the internal
+	  constant SparkSchemaRevision.Current.
+
+	  The publish workflow passes it (environment variable or /p:SparkSchemaRevision=n) after it has
+	  made sure the schemas/v{n} release exists, so a package can never name a revision that is not
+	  online. Any other build derives it from the nearest schemas/v* tag, and falls back to 0 where
+	  there is none or no git at all (a shallow clone, a Docker build context). 0 means "no published
+	  revision": the synchronizer then leaves $schema alone rather than write a URL that 404s.
+
+	  The file is only rewritten when the number changes, so an unchanged revision does not force a
+	  recompile.
+	-->
+	<Target Name="SparkGenerateSchemaRevision" BeforeTargets="CoreCompile">
+		<Exec Condition="'$(SparkSchemaRevision)' == ''"
+			  Command="git describe --tags --match &quot;schemas/v*&quot; --abbrev=0"
+			  WorkingDirectory="$(MSBuildProjectDirectory)"
+			  ConsoleToMSBuild="true" EchoOff="true" IgnoreExitCode="true" ContinueOnError="true"
+			  IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low" StandardErrorImportance="low">
+			<Output TaskParameter="ConsoleOutput" PropertyName="_SparkSchemaTag" />
+		</Exec>
+		<PropertyGroup>
+			<_SparkSchemaRevision>$(SparkSchemaRevision)</_SparkSchemaRevision>
+			<_SparkSchemaRevision Condition="'$(_SparkSchemaRevision)' == '' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_SparkSchemaTag)', '^schemas/v[0-9]+$'))">$(_SparkSchemaTag.Substring(9))</_SparkSchemaRevision>
+			<_SparkSchemaRevision Condition="'$(_SparkSchemaRevision)' == ''">0</_SparkSchemaRevision>
+			<_SparkSchemaRevisionFile>$(IntermediateOutputPath)SparkSchemaRevision.g.cs</_SparkSchemaRevisionFile>
+		</PropertyGroup>
+		<Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(_SparkSchemaRevision)', '^[0-9]+$'))"
+			   Text="SparkSchemaRevision must be a whole number, got '$(_SparkSchemaRevision)'." />
+		<WriteLinesToFile File="$(_SparkSchemaRevisionFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+						  Lines="// &lt;auto-generated/&gt; by SparkGenerateSchemaRevision in MintPlayer.Spark.csproj (#264 G-Q21)&#xA;namespace MintPlayer.Spark.Services%3B&#xA;&#xA;internal static class SparkSchemaRevision&#xA;{&#xA;    /// &lt;summary&gt;The published schemas/v{n} revision, or 0 when this build knows of none.&lt;/summary&gt;&#xA;    public const int Current = $(_SparkSchemaRevision)%3B&#xA;}" />
+		<ItemGroup>
+			<Compile Include="$(_SparkSchemaRevisionFile)" />
+			<FileWrites Include="$(_SparkSchemaRevisionFile)" />
+		</ItemGroup>
+	</Target>
 
 	<ItemGroup>
 	  <PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.3.0-rc.0" />

@@ -85,7 +85,7 @@ hand. They live under `/spark/auth/`:
 
 | Endpoint | Method | Modes | Description |
 |---|---|---|---|
-| `/spark/auth/register` | POST | Full | Register; mails a confirmation link |
+| `/spark/auth/register` | POST | Full | Register (`email`, `password`, `userName`); mails a confirmation link |
 | `/spark/auth/resendConfirmationEmail` | POST | Full | Re-send the confirmation link (unconfirmed accounts only) |
 | `/spark/auth/login` | POST | Full, SignInOnly | Log in with **email or user name** (cookie with `?useCookies=true`, else bearer) |
 | `/spark/auth/refresh` | POST | Full, SignInOnly | Refresh a bearer token |
@@ -110,12 +110,52 @@ exemption is Microsoft's bearer `/refresh` (its credential travels in the body).
 #### Sign-in identifier (#460 D4)
 
 `/login` and the OIDC `/connect/login` page share `SparkSignInManager<TUser>.FindUserForSignInAsync`:
-an identifier containing `@` is looked up as an email first and as a user name only when **no
-account** has that email; without `@` it is a user name. A wrong password never falls through to a
-second account. `SparkUserNameValidator<TUser>` enforces the matching rule on every save: **a user
-name containing `@` must equal that account's own email**, so the two lookups cannot collide. A
-confirmed email change moves an email-shaped user name with it (`SparkUserManager<TUser>`); a chosen
-handle stays. Two-factor and recovery codes work unchanged (the resolved user carries them).
+an identifier containing `@` is an email and is looked up by email only; without `@` it is a user
+name (a user name never contains `@`, see below). One lookup, so a wrong password never falls through
+to a second account. Two-factor and recovery codes work unchanged (the resolved user carries them).
+
+Which kinds are accepted is the application's choice, `SparkAuthenticationOptions.SignInIdentifiers`
+(the password is always required):
+
+```csharp
+spark.AddAuthentication<SparkUser>(auth =>
+{
+    auth.LocalCredentials = SparkLocalCredentials.Full;
+    auth.SignInIdentifiers = SparkSignInIdentifiers.Email;   // or UserName; default Email | UserName
+});
+```
+
+- A disallowed kind is refused **exactly like an unknown account** (same 401, no lookup, no failed
+  attempt counted), so it reveals nothing about accounts.
+- `/spark/auth/capabilities` reports it as `signInIdentifiers` (`["email"]`, `["userName"]` or both;
+  empty under `LocalCredentials = Disabled`). ng-spark-auth's login page labels its field from it —
+  "Email" (`type=email`, `autocomplete=email`), "User name" or "Email or user name"
+  (`autocomplete=username`) — and so does the OIDC `/connect/login` page.
+- A value allowing neither is refused at startup unless `LocalCredentials` is `Disabled`, where there
+  is no password sign-in to configure.
+- `forgotPassword`/`resetPassword` stay email-based in every setting — they are not sign-in, and the
+  link has to be mailed somewhere.
+
+#### The user name is a public handle (#264, G-Q22)
+
+The user name is what other users see: a `{UserName}` reference label, a history author, a
+contributor, the OIDC `preferred_username`. An email address must never reach another user's
+browser, so:
+
+- **`SparkUserNameValidator<TUser>` refuses any user name containing `@`** on every save — register,
+  external sign-up, the profile page, an application's own `UserManager` calls. Error code
+  `UserNameContainsAt`. It also keeps the two sign-in lookups from colliding.
+- **`POST /register` requires a `userName`** (`SparkRegisterRequest`: `email`, `password`,
+  `userName`); a missing or blank one is a 400. ng-spark-auth's register page asks for it, and
+  `SparkClient.RegisterAsync(email, password, userName)` sends it.
+- **A confirmed email change never touches the user name.** (`SparkUserManager<TUser>`, whose only
+  job was to move an email-shaped user name along, is removed.)
+- **External sign-up** derives the handle from the provider (display-name slug, or the provider's
+  handle under `SparkUserNameSource.ProviderHandle`), suffixed `-2`, `-3`, … when taken. A name
+  that is an email address is never used: the account gets `user-` and six hex digits instead.
+- **Existing accounts** whose user name contains `@` get such a generated handle once, through the
+  package migration `M_202610051200_UserNamesAreNotEmails` (it also rewrites `NormalizedUserName`).
+  Their owners can choose another on the account page (`POST /manage/profile` with `userName`).
 
 #### Account mail and links (#460 D6, D16)
 
@@ -411,8 +451,9 @@ provideSparkAccountProfileFields(
 - **Mode restrictions.** Under `SparkLocalCredentials.Disabled`, `manage/password` and `manage/info`
   are not mapped. Exclude `changePassword` there (the account overview also hides it, and two-factor,
   from `/spark/auth/capabilities`).
-- **Login label.** The login form's identifier field is labelled "Email or user name"
-  (`auth.emailOrUserName`, D4).
+- **Login label.** The login form's identifier field follows the server's `signInIdentifiers`:
+  "Email or user name" (`auth.emailOrUserName`, D4, also when the server does not report it),
+  "Email" (`auth.email`) or "User name" (`auth.userName`).
 
 ### Customizing the Generated File
 

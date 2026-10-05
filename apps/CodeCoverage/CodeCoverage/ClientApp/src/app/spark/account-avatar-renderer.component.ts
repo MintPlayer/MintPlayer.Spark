@@ -2,14 +2,19 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { valueFor } from '@mintplayer/ng-spark/models';
 import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
+/** The cell value the server sends for an organisation without an avatar (`MyAccountRowActions.GroupAvatar`). */
+export const GROUP_AVATAR = 'icon:group';
+
 /**
  * Spark column renderer "account-avatar": the account's GitHub avatar, falling back to a
  * person/organization icon.
  *
  * Not the built-in `image` data type, which emits an `<img>` only when the value is non-empty
  * and so renders an *empty cell* for an account we have no avatar for — the hand-written list
- * showed `bi-person`/`bi-people` there. The fallback needs `Type`, which the model declares
- * `showedOn: "Query", isVisible: false` for exactly this reason.
+ * showed `bi-person`/`bi-people` there. Which of the two is decided on the server
+ * (`MyAccountRowActions.WithAvatarFallback`): an organisation without an avatar arrives as the
+ * {@link GROUP_AVATAR} marker in this very cell, so the row needs no separate `Type` value — which,
+ * since #264, could only reach the row as a column of its own.
  *
  * The corner radius used to be an inline style, because the cell drew inside `mp-datatable`'s
  * shadow root where a Bootstrap class did not reach. ng-bootstrap 22.18.0 moved the datatable to
@@ -33,7 +38,7 @@ export class AccountAvatarRendererComponent implements SparkAttributeColumnRende
 
   readonly src = computed(() => {
     const value = this.value();
-    return typeof value === 'string' && value.length > 0 ? value : null;
+    return typeof value === 'string' && value.length > 0 && value !== GROUP_AVATAR ? value : null;
   });
 
   readonly alt = computed(() => {
@@ -41,19 +46,6 @@ export class AccountAvatarRendererComponent implements SparkAttributeColumnRende
     return typeof login === 'string' ? login : '';
   });
 
-  readonly isUser = computed(() => {
-    const type = valueFor(this.item(), 'Type')?.value;
-    return typeof type !== 'string' || !GROUP_ACCOUNT_TYPES.has(type.toLowerCase());
-  });
+  readonly isUser = computed(() => this.value() !== GROUP_AVATAR);
 }
 
-/**
- * The account types that mean "several people", across the forges we know about: GitHub says
- * `Organization`, GitLab says `group`, Bitbucket says `workspace` or `team`.
- *
- * ⚠ Matched as a deny-list on purpose, so an unrecognised value draws the person icon rather than
- * nothing. `Type` is whatever the forge library stored — this renderer never sees the forge — so
- * the one thing it must not do is assume the value it does not know is an organisation. Getting it
- * wrong picks the wrong icon; the previous `=== 'User'` test got it wrong for every forge but one.
- */
-const GROUP_ACCOUNT_TYPES = new Set(['organization', 'organisation', 'group', 'team', 'workspace']);

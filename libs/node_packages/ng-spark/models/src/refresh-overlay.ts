@@ -1,5 +1,6 @@
 import { EntityAttributeDefinition } from './entity-type';
 import { PersistentObject } from './persistent-object';
+import { ShowedOn } from './showed-on';
 import { ValidationRule } from './validation-rule';
 
 /**
@@ -24,7 +25,8 @@ export interface RefreshedOption {
 export interface AttributeOverlay {
   isRequired?: boolean;
   isReadOnly?: boolean;
-  isVisible?: boolean;
+  /** Where the attribute is drawn for this object; an action sets it on load, new or refresh (#264). */
+  showedOn?: ShowedOn | string;
   rules?: ValidationRule[];
   query?: string;
   /** `undefined` means the hook did not touch the options; an empty array means there are none. */
@@ -44,14 +46,16 @@ export function applyOverlay(
     ...attr,
     isRequired: overlay.isRequired ?? attr.isRequired,
     isReadOnly: overlay.isReadOnly ?? attr.isReadOnly,
-    isVisible: overlay.isVisible ?? attr.isVisible,
+    showedOn: overlay.showedOn ?? attr.showedOn,
     rules: overlay.rules ?? attr.rules,
     query: overlay.query ?? attr.query,
   };
 }
 
 /**
- * Reads a refresh response into an overlay.
+ * Reads a refresh response into an overlay — or a loaded or new object, whose attributes carry the same
+ * server-owned presentation: what `OnLoadAsync`/`OnNewAsync` set (`showedOn`, `isRequired`, `isReadOnly`) applies
+ * from the first render, not only after the first refresh (#264, G5/G7).
  *
  * Everything here is presentation the server owns outright, so it is taken verbatim — there is no
  * merging to do on this half, only on values.
@@ -63,7 +67,7 @@ export function overlayFromResponse(response: PersistentObject): RefreshOverlay 
     overlay[attr.name] = {
       isRequired: attr.isRequired,
       isReadOnly: attr.isReadOnly,
-      isVisible: attr.isVisible,
+      showedOn: attr.showedOn,
       rules: attr.rules ?? [],
       query: attr.query,
       options: (attr as { options?: RefreshedOption[] | null }).options ?? undefined,

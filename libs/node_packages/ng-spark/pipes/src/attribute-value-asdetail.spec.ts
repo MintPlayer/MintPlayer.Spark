@@ -32,7 +32,7 @@ const personType: EntityType = {
   alias: 'person',
   clrType: 'HR.Entities.Person',
   attributes: [
-    { id: 'a-addr', name: 'Address', dataType: 'AsDetail', asDetailType: 'HR.Entities.Address', isVisible: true, order: 1 } as any,
+    { id: 'a-addr', name: 'Address', dataType: 'AsDetail', asDetailType: 'HR.Entities.Address', order: 1 } as any,
   ],
 } as any;
 

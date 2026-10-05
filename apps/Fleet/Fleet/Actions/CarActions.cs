@@ -71,20 +71,44 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
     /// </summary>
     public override Task OnRefreshAsync(SparkRefreshArgs<Car> args)
     {
-        var obj = args.PersistentObject;
+        ShapeForStatus(args.PersistentObject, refresh: true);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// The same shape on load (#264, G-Q3): a stolen car opens with its police report number shown,
+    /// without anyone touching the status first. The model says <c>showedOn: None</c>; this shows it.
+    /// </summary>
+    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+    {
+        var po = await base.OnLoadAsync(id, parent);
+        if (po is not null)
+            ShapeForStatus(po, refresh: false);
+        return po;
+    }
+
+    /// <summary>A new car starts in whatever status the form defaults to, shaped like any other.</summary>
+    public override Task OnNewAsync(SparkNewArgs<Car> args)
+    {
+        ShapeForStatus(args.PersistentObject, refresh: false);
+        return base.OnNewAsync(args);
+    }
+
+    private static void ShapeForStatus(PersistentObject obj, bool refresh)
+    {
         var stolen = obj[nameof(Car.Status)].Value?.ToString() == CarStatus.Stolen;
 
         // A stolen vehicle needs a police report, and the plate and manager are frozen: the record
         // is evidence now, not fleet data.
-        obj[nameof(Car.PoliceReportNumber)].IsVisible = stolen;
+        obj[nameof(Car.PoliceReportNumber)].ShowedOn = stolen ? EShowedOn.PersistentObject : EShowedOn.None;
         obj[nameof(Car.PoliceReportNumber)].IsRequired = stolen;
-        obj[nameof(Car.LicensePlate)].IsReadOnly = stolen;
-        obj[nameof(Car.Manager)].IsReadOnly = stolen;
+        // On load and new only ever tighten: a read-only that rights already set must not be lifted
+        // there. A refresh starts from the model, so it sets both sides.
+        obj[nameof(Car.LicensePlate)].IsReadOnly = stolen || (!refresh && obj[nameof(Car.LicensePlate)].IsReadOnly);
+        obj[nameof(Car.Manager)].IsReadOnly = stolen || (!refresh && obj[nameof(Car.Manager)].IsReadOnly);
 
-        // And you do not advertise a car you no longer have.
-        obj[nameof(Car.PromoVideoUrl)].IsVisible = !stolen;
-
-        return Task.CompletedTask;
+        // And you do not advertise a car you no longer have: off the form, still a grid column.
+        obj[nameof(Car.PromoVideoUrl)].ShowedOn = stolen ? EShowedOn.Query : EShowedOn.Query | EShowedOn.PersistentObject;
     }
 
     public ValueTask OnBeforeSaveAsync(Car entity, SaveContext context)

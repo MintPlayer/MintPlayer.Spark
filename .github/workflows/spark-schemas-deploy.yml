@@ -1,0 +1,172 @@
+name: spark-schemas-deploy
+
+# Deploys apps/SparkSchemas to schemas.spark.mintplayer.com (#264, G-Q9, G-Q19, G-Q21).
+#
+# The image is rebuilt from the schemas/v{n} GitHub releases (see apps/SparkSchemas/Dockerfile), so
+# it has to be rebuilt whenever a revision is published, not only when the app's files change:
+#   - workflow_dispatch: dotnet-build-master.yml dispatches this after creating a release. A
+#     release created with GITHUB_TOKEN triggers no `release` event, so this is the path the
+#     automatic revisions take.
+#   - release: a schemas/v* release published by a person (or a token that does trigger events).
+#   - push: a change to the app itself.
+#
+# Same shape as code-coverage-deploy.yml: build -> GHCR -> SSH deploy, with the same secrets. The
+# VPS side (the service in /var/www/spark-schemas/docker-compose.yml and its Traefik route for
+# schemas.spark.mintplayer.com) is server-managed and never written by this workflow.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/SparkSchemas/**'
+      - '.github/workflows/spark-schemas-deploy.yml'
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+# One group for every trigger: the image always holds every release, so the newest run is complete
+# on its own and an older one can be dropped.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: mintplayer/spark-schemas
+
+jobs:
+  build-and-push:
+
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Other releases of this repository (if any) are not schema revisions.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'schemas/v')
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+
+    steps:
+    # The default branch's Dockerfile, also for a release event (whose ref is the tag): the image is
+    # built from the releases, and the tag's commit may predate a change to how it is served.
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ github.event_name == 'release' && github.event.repository.default_branch || github.sha }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Authenticate with GHCR
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Extract tags/labels
+      id: meta-ghcr
+      uses: docker/metadata-action@v6
+      with:
+        github-token: ${{ github.token }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        # A release or dispatch run is not a branch push, so metadata-action would derive no tag
+        # from it; `latest` is what the server's compose file pulls.
+        tags: |
+          type=raw,value=latest
+          type=sha
+
+    # No layer cache: the image is two small layers, and the download stage must run every time
+    # anyway (SCHEMAS_REFRESH below). The token only lifts the API's anonymous rate limit.
+    - name: Build and push Docker image
+      id: push-ghcr
+      uses: docker/build-push-action@v7
+      with:
+        context: ./apps/SparkSchemas
+        file: ./apps/SparkSchemas/Dockerfile
+        push: true
+        tags: ${{ steps.meta-ghcr.outputs.tags }}
+        labels: ${{ steps.meta-ghcr.outputs.labels }}
+        build-args: |
+          GITHUB_REPOSITORY=${{ github.repository }}
+          SCHEMAS_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
+        secrets: |
+          github_token=${{ github.token }}
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        subject-digest: ${{ steps.push-ghcr.outputs.digest }}
+        push-to-registry: true
+
+    # Best-effort, as in code-coverage-deploy.yml: the package must be public for the VPS to pull
+    # without credentials. Verify in the package settings after the first run.
+    - name: Make the package public
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api --method PATCH -H "Accept: application/vnd.github+json" \
+          "/orgs/${{ github.repository_owner }}/packages/container/spark-schemas" \
+          -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
+
+  deploy:
+
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build-and-push
+    # A dispatch from another branch builds the image but deploys nothing.
+    if: github.event_name == 'release' || github.ref == 'refs/heads/master'
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v1.2.5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: ${{ secrets.VPS_PORT }}
+        passphrase: ${{ secrets.VPS_SSH_KEY_PASSPHRASE }}
+        envs: GITHUB_TOKEN
+        script: |
+          # Fail on the FIRST failing command, as in code-coverage-deploy.yml.
+          set -e
+
+          # The compose file (the spark-schemas service and its Traefik labels for
+          # schemas.spark.mintplayer.com) is server-managed: deploys never write it.
+          cd /var/www/spark-schemas
+          test -f docker-compose.yml || { echo "::error::/var/www/spark-schemas/docker-compose.yml is missing — the spark-schemas service must be set up on the server first (operator step, #264)"; exit 1; }
+
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          docker compose pull
+          docker compose up -d --remove-orphans
+
+          docker image prune -f
+          docker compose ps
+
+          # Readiness that can fail: nginx answers /health once it has loaded the configuration.
+          # A FAILURE bound, not a wait: the loop exits on the first answer.
+          for i in $(seq 1 12); do
+            sleep 5
+            if docker compose exec -T spark-schemas wget -qO- http://127.0.0.1/health >/dev/null 2>&1; then
+              echo "ready after attempt $i"
+              exit 0
+            fi
+            echo "readiness attempt $i: not yet"
+          done
+          echo "::error::spark-schemas did not become ready within 60s"
+          exit 1

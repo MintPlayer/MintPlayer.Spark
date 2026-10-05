@@ -42,7 +42,7 @@ internal sealed partial class ListEntityTypes : IGetEndpoint
 
             // Per-caller attribute rights (M2c-2a), as in Get.cs. Returns the same reference when it
             // changes nothing, which the copy below still accounts for.
-            pruned = await attributeRights.ForFormAsync(pruned, httpContext.RequestAborted);
+            pruned = await attributeRights.ForFormAsync(pruned, cancellationToken: httpContext.RequestAborted);
 
             // ⚠️ Copy if neither step did. Both return the SAME reference when they change nothing
             // — that is their documented contract, and the reason they are safe — so the comment

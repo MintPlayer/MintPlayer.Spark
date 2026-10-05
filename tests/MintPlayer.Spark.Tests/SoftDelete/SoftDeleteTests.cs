@@ -804,9 +804,9 @@ public class SoftDeleteTests : SparkTestDriver
             Breadcrumb = "{Title}",
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string", IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "AuthorId", DataType = "Reference", ReferenceType = typeof(SdPerson).FullName, IsVisible = true },
-                new() { Id = Guid.NewGuid(), Name = "IsDeleted", DataType = "bool", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
+                new() { Id = Guid.NewGuid(), Name = "AuthorId", DataType = "Reference", ReferenceType = typeof(SdPerson).FullName },
+                new() { Id = Guid.NewGuid(), Name = "IsDeleted", DataType = "bool" },
             ],
         },
         Queries =
@@ -824,7 +824,7 @@ public class SoftDeleteTests : SparkTestDriver
             Name = "SdPerson",
             ClrType = typeof(SdPerson).FullName!,
             Breadcrumb = "{Name}",
-            Attributes = [new() { Id = Guid.NewGuid(), Name = "Name", DataType = "string", IsVisible = true }],
+            Attributes = [new() { Id = Guid.NewGuid(), Name = "Name", DataType = "string" }],
         },
     };
 
@@ -835,7 +835,7 @@ public class SoftDeleteTests : SparkTestDriver
             Id = SlugTypeId,
             Name = "SdSlug",
             ClrType = typeof(SdSlug).FullName!,
-            Attributes = [new() { Id = Guid.NewGuid(), Name = "Name", DataType = "string", IsVisible = true }],
+            Attributes = [new() { Id = Guid.NewGuid(), Name = "Name", DataType = "string" }],
         },
     };
 

@@ -81,8 +81,8 @@ public class RefreshEndpointTests(RefreshEndpointTests.Host host)
 
         status.Should().Be(HttpStatusCode.OK);
         Attribute(body, "PoliceReport").GetProperty("isRequired").GetBoolean().Should().BeTrue();
-        Attribute(body, "PoliceReport").GetProperty("isVisible").GetBoolean().Should().BeTrue();
-        Attribute(body, "PromoUrl").GetProperty("isVisible").GetBoolean().Should().BeFalse();
+        Attribute(body, "PoliceReport").GetProperty("showedOn").GetString().Should().Be("PersistentObject");
+        Attribute(body, "PromoUrl").GetProperty("showedOn").GetString().Should().Be("None");
     }
 
     [Fact]
@@ -93,8 +93,8 @@ public class RefreshEndpointTests(RefreshEndpointTests.Host host)
         var (_, body) = await PostRefreshAsync(Car("InUse"), "Status");
 
         Attribute(body, "PoliceReport").GetProperty("isRequired").GetBoolean().Should().BeFalse();
-        Attribute(body, "PoliceReport").GetProperty("isVisible").GetBoolean().Should().BeFalse();
-        Attribute(body, "PromoUrl").GetProperty("isVisible").GetBoolean().Should().BeTrue();
+        Attribute(body, "PoliceReport").GetProperty("showedOn").GetString().Should().Be("None");
+        Attribute(body, "PromoUrl").GetProperty("showedOn").GetString().Should().Be("Query, PersistentObject");
     }
 
     [Fact]
@@ -125,12 +125,12 @@ public class RefreshEndpointTests(RefreshEndpointTests.Host host)
         // as must the model, for anything the hook does not mention.
         var obj = Car("Stolen");
         obj["PromoUrl"].IsRequired = true;
-        obj["PromoUrl"].IsVisible = true;
+        obj["PromoUrl"].ShowedOn = EShowedOn.Query | EShowedOn.PersistentObject;
         obj["PoliceReport"].IsRequired = false;
 
         var (_, body) = await PostRefreshAsync(obj, "Status");
 
-        Attribute(body, "PromoUrl").GetProperty("isVisible").GetBoolean().Should().BeFalse();
+        Attribute(body, "PromoUrl").GetProperty("showedOn").GetString().Should().Be("None");
         Attribute(body, "PromoUrl").GetProperty("isRequired").GetBoolean().Should().BeFalse();
         Attribute(body, "PoliceReport").GetProperty("isRequired").GetBoolean().Should().BeTrue();
     }
@@ -267,8 +267,8 @@ public class RefreshTestCarActions : DefaultPersistentObjectActions<RefreshTestC
 
         var stolen = status == "Stolen";
         obj["PoliceReport"].IsRequired = stolen;
-        obj["PoliceReport"].IsVisible = stolen;
-        obj["PromoUrl"].IsVisible = !stolen;
+        obj["PoliceReport"].ShowedOn = stolen ? EShowedOn.PersistentObject : EShowedOn.None;
+        obj["PromoUrl"].ShowedOn = stolen ? EShowedOn.None : EShowedOn.Query | EShowedOn.PersistentObject;
 
         var maintenance = status == "InMaintenance";
         obj["Garage"].Options = maintenance
@@ -305,7 +305,7 @@ public static class RefreshTestModels
                 new EntityAttributeDefinition
                 {
                     Id = Guid.NewGuid(), Name = "PoliceReport", DataType = "string", Order = 2,
-                    IsVisible = false,
+                    ShowedOn = EShowedOn.None,
                 },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "PromoUrl", DataType = "string", Order = 3 },
                 new EntityAttributeDefinition

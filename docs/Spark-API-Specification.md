@@ -602,13 +602,13 @@ When every prompt has been answered, the endpoint returns its normal success res
   "dataType": string,            // "string" | "number" | "boolean" | "date" | "AsDetail" | ...
   "isArray": bool,
   "isRequired": bool,
-  "isVisible": bool,
-  "isReadOnly": bool,
+  "isReadOnly": bool,            // there is no isVisible (#264): hiding from a group is a security.json deny
   "isValueChanged": bool,        // change tracking
   "order": int,
   "query": string?,              // for Reference attributes — the query that backs selection
   "breadcrumb": string?,
-  "showedOn": int,               // flags enum: 0=None | 1=Query | 2=PersistentObject | 3=Both
+  "showedOn": string,            // flags enum as a string: "None" | "Query" | "PersistentObject" | "Query, PersistentObject";
+                                 // layout only — the runtime value an action sets wins over the model's
   "rules": ValidationRule[],
   "group": Guid?,                // attribute grouping
   "renderer": string?,           // custom frontend renderer

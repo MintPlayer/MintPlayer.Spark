@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/security.schema.json",
   "wellKnown": {
     "anonymous": "00000000-0000-0000-0000-000000000000",
     "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"

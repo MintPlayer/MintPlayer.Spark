@@ -15,6 +15,11 @@ public class Account : IForgeConnectable
     public string? Id { get; set; }
 
     /// <summary>GitHub's numeric id for this user or organization; stable even when the login is renamed.</summary>
+    /// <remarks>
+    /// [IgnoreProperty]: entity-only (forge API and document ids), filtered by no index query, so it
+    /// stays out of the model, the wire and the generated index (#264).
+    /// </remarks>
+    [IgnoreProperty]
     public long GitHubId { get; set; }
 
     /// <summary>The GitHub login (user name or organization slug) of this account.</summary>
@@ -32,7 +37,12 @@ public class Account : IForgeConnectable
     /// on this account — GitLab grants access with a group token and Bitbucket with a workspace
     /// credential, and neither has an installation id to put here. A neutral caller reading this
     /// field is a neutral caller that only works for one forge.
+    /// <para>
+    /// [IgnoreProperty]: operational detail no page draws and no index query filters on, so it never
+    /// reaches the wire at all — which replaces the per-row withholding AccountActions used to do (#264).
+    /// </para>
     /// </remarks>
+    [IgnoreProperty]
     public long? InstallationId { get; set; }
 
     /// <summary>Whether we can still act on this account's repositories.</summary>

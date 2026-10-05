@@ -38,6 +38,16 @@
       ]
     },
     "build:release": {
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/.editorconfig",
+        { "workingDirectory": "absolute" },
+        { "dependentTasksOutputFiles": "**/*" },
+        "{workspaceRoot}/Directory.Build.props",
+        "{workspaceRoot}/Directory.Build.targets",
+        { "env": "SparkSchemaRevision" }
+      ],
       "outputs": [
         "{projectRoot}/bin/Release",
         "{projectRoot}/obj/Release"

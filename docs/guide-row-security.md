@@ -177,7 +177,7 @@ public override Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(s
         : Task.FromResult<IReadOnlyCollection<string>?>(["BadgeToken"]);
 ```
 
-- Redaction **nulls, not omits**: the attribute stays in the payload with `Value = null` and `IsVisible = false`. Dropping it would break name-indexed clients and leak the rule via a schema mismatch.
+- Redaction **nulls, not omits**: the attribute stays in the payload with `Value = null` and its model flags untouched — no flag, no marker, byte-identical to a genuinely empty attribute. Dropping it would break name-indexed clients and leak the rule via a schema mismatch.
 - A **dotted name** (`"Jobs.Salary"`) redacts a column inside an AsDetail attribute's embedded rows — the one place a row filter can't reach, since embedded rows aren't rows.
 - **Write-back is shielded**: a client that received a redacted (nulled) value and submits the form back cannot clobber the stored secret — protected attributes are restored to their stored value before the merge.
 - Zero cost for types that don't override the hook.

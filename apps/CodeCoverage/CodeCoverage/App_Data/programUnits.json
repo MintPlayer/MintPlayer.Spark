@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/programUnits.schema.json",
   "_comment": [
     "The server-driven sidebar menu. GET /spark/program-units filters this per caller before it",
     "reaches the client, so a unit whose target the caller has no right to never appears -- hosts",

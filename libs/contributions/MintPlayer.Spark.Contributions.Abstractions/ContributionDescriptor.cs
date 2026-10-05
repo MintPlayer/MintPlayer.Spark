@@ -268,18 +268,8 @@ public static class ContributionRegistry
                 nameof(IContribution.UpdatedAt), "desc")));
         global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.Register(new(descriptor.TargetType, descriptor.CurrentType));
 
-        // The raw contributor id stays off the history grid (and is not drawn on the page): the
-        // resolved ContributorName is shown instead. Only for a newly created attribute.
-        global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.SeedNewAttribute(new(
-            descriptor.ContributionType, nameof(IContribution.ContributorId),
-            ShowedOn: global::MintPlayer.Spark.Abstractions.EShowedOn.PersistentObject, IsVisible: false));
-
-        // The generated row key is the slot tuple, which the slot attributes already show: identity,
-        // not content. Hidden on the element's form and rows, again only for a newly created attribute.
-        if (descriptor.SlotNames.Count > 0)
-            global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.SeedNewAttribute(new(
-                descriptor.ElementType, ContributionDescriptor.RowKeyName,
-                ShowedOn: global::MintPlayer.Spark.Abstractions.EShowedOn.PersistentObject, IsVisible: false));
+        // How ContributorId and the generated row key are shown is the application's choice, made in
+        // its own model files (#264, G-Q16): a library does not decide visibility.
 
         // Opening a contribution shows its text diffed against the current one (PRD Q7).
         foreach (var value in descriptor.ValueNames)

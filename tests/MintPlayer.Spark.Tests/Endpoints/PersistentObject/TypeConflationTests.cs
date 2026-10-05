@@ -213,7 +213,7 @@ public class TypeConflationTests : SparkTestDriver
             ClrType = typeof(ConflationOpen).FullName!,
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Label", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Label", DataType = "string" },
             ],
         },
     };
@@ -227,7 +227,7 @@ public class TypeConflationTests : SparkTestDriver
             ClrType = typeof(ConflationClosed).FullName!,
             Attributes =
             [
-                new() { Id = Guid.NewGuid(), Name = "Secret", DataType = "string", IsVisible = true },
+                new() { Id = Guid.NewGuid(), Name = "Secret", DataType = "string" },
             ],
         },
     };

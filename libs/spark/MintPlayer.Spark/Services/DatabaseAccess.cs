@@ -68,7 +68,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var isNew = replicated && (string.IsNullOrEmpty(idBefore) || !await session.Advanced.ExistsAsync(idBefore));
 
         await session.StoreAsync(document);
-        await session.SaveChangesAsync();
+        await CommitAsync();
 
         // If this is a replicated entity, also broadcast the changes to the owner module
         if (replicated)
@@ -80,7 +80,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     public async Task DeleteDocumentUncheckedAsync<T>(string id) where T : class
     {
         session.Delete(id);
-        await session.SaveChangesAsync();
+        await CommitAsync(deletedById: typeof(T));
 
         // If this is a replicated entity, also notify the owner module
         var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
@@ -387,7 +387,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         try
         {
             saveContext = await WriteSaveAsync(entityType, persistentObject, operation, before, unwritable);
-            await session.SaveChangesAsync();
+            await CommitAsync();
         }
         catch (Exception ex)
         {
@@ -491,7 +491,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         try
         {
             context = await WriteDeleteAsync(entityType, id, entity, operation, reason: null, expectedChangeVector!);
-            await session.SaveChangesAsync();
+            await CommitAsync();
         }
         catch (Exception ex)
         {
@@ -700,7 +700,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     session, entityTypeDefinition, tracked, refused, "These items cannot be deleted:"));
 
             // One commit for every row (#460, D18): all or nothing.
-            await session.SaveChangesAsync();
+            await CommitAsync();
         }
         catch (Exception ex)
         {
@@ -898,6 +898,195 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (await LoadEntityAsync(session, entityType, id) is { } tracked)
             session.Advanced.Evict(tracked);
     }
+
+    /// <summary>
+    /// How long a request's write waits, after its commit, for the indexes over the collections it wrote.
+    /// </summary>
+    /// <remarks>
+    /// A FAILURE bound, not a pacing delay: the wait ends as soon as those indexes caught up, which is
+    /// milliseconds normally and a few seconds under heavy load. An index still behind after 15 s is
+    /// broken, paused or overwhelmed, and making the user wait longer fixes none of those.
+    /// </remarks>
+    internal static readonly TimeSpan RequestWriteIndexWait = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// The longest single waiting query inside <see cref="RequestWriteIndexWait"/>. A query waiting for
+    /// non-stale results keeps its index instance from being disposed, so one 15 s query would hold up an
+    /// index delete, reset, auto-index merge or side-by-side swap for 15 s; slices hold it for at most this.
+    /// </summary>
+    private static readonly TimeSpan RequestWriteIndexWaitSlice = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// Every write of this class commits here: <c>SaveChangesAsync</c> on the request session, then — only
+    /// while serving an HTTP request — a separate, bounded wait for the indexes over the collections that
+    /// commit wrote, so the caller's next query sees its own write.
+    /// </summary>
+    /// <param name="deletedById">
+    /// The type of a document deleted by id without being loaded: RavenDB records that as a deferred
+    /// command, which raises no session event, so its collection is named here.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Why the wait follows the commit instead of riding in it: <c>WaitForIndexesAfterSaveChanges</c> makes
+    /// the server wait INSIDE the batch request after committing, and an index disposed during that wait
+    /// (an auto-index merge, a side-by-side swap) fails the request — a committed write answered as an
+    /// HTTP 500 (#264, 3 of 7 runs under CPU load). Here the commit's outcome is final and is what the
+    /// request reports; the wait can only add time, never an error.
+    /// </para>
+    /// <para>
+    /// Without an <c>HttpContext</c> (message handlers, cron jobs, migrations, replication, hosted
+    /// services) nothing waits: nobody reads straight after them, and waiting would cut their throughput.
+    /// </para>
+    /// </remarks>
+    private async Task CommitAsync(Type? deletedById = null)
+    {
+        if (httpContextAccessor?.HttpContext is not { } httpContext)
+        {
+            await session.SaveChangesAsync();
+            return;
+        }
+
+        // The collections this commit writes, as RavenDB itself enumerates them: OnBeforeStore and
+        // OnBeforeDelete fire inside SaveChangesAsync for every changed, new or deleted entity — whoever
+        // put it in the session (the save itself, an interceptor, an Actions hook).
+        var collections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (deletedById is not null)
+            collections.Add(documentStore.Conventions.GetCollectionName(deletedById));
+        void Record(object? entity)
+        {
+            if (entity is not null && documentStore.Conventions.GetCollectionName(entity) is { Length: > 0 } collection)
+                collections.Add(collection);
+        }
+        void OnStore(object? sender, BeforeStoreEventArgs e) => Record(e.Entity);
+        void OnDelete(object? sender, BeforeDeleteEventArgs e) => Record(e.Entity);
+
+        session.Advanced.OnBeforeStore += OnStore;
+        session.Advanced.OnBeforeDelete += OnDelete;
+        try
+        {
+            await session.SaveChangesAsync();
+        }
+        finally
+        {
+            session.Advanced.OnBeforeStore -= OnStore;
+            session.Advanced.OnBeforeDelete -= OnDelete;
+        }
+
+        await WaitForIndexesAsync(collections, httpContext.RequestAborted);
+    }
+
+    /// <summary>
+    /// Waits, bounded by <see cref="RequestWriteIndexWait"/>, until every index over
+    /// <paramref name="collections"/> has processed the writes committed before the call. Never throws:
+    /// the write it follows is already committed, so a timeout or a failure is logged and swallowed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One <c>GetIndexesStatisticsOperation</c> names the indexes (static and auto) whose source
+    /// collections include a written one, with their staleness; in the common case none is stale and
+    /// that one request is the whole cost. Each stale one gets <c>limit 0</c> queries with
+    /// <c>WaitForNonStaleResults</c>, whose server-side cutoff is the collections' last etag when the
+    /// query starts: it waits for every write up to that point — ours included — and not for writes that
+    /// land afterwards. The index map is fetched per write, not cached: an auto index created by the
+    /// request's previous query would be missing from a cached map.
+    /// </para>
+    /// <para>
+    /// ⚠️ Waiting queries are sliced (<see cref="RequestWriteIndexWaitSlice"/>), not one 15 s query:
+    /// RavenDB does not dispose an index while a query waits on it, so a single long query held an index
+    /// delete for the whole bound and failed it (measured: the delete's own 15 s raft wait timed out).
+    /// Each slice starts a fresh cutoff, so a collection written faster than its index keeps up can run
+    /// into the bound — which is then the truth about that index. An index disposed between or under
+    /// slices (an auto-index merge, a side-by-side swap, a reset or a delete) fails its query; that is
+    /// logged, the statistics are read again, and whatever replaced it (the merged auto index) is waited
+    /// on with the remaining budget. A PAUSED index never catches up,
+    /// so it costs the write the full bound — the warning names it. Disabled and errored indexes, and a
+    /// side-by-side replacement (the original keeps answering queries), are not waited on.
+    /// </para>
+    /// </remarks>
+    private async Task WaitForIndexesAsync(HashSet<string> collections, CancellationToken requestAborted)
+    {
+        if (collections.Count == 0)
+            return;
+
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        using var bound = CancellationTokenSource.CreateLinkedTokenSource(requestAborted);
+        bound.CancelAfter(RequestWriteIndexWait);
+        var database = (session as InMemoryDocumentSessionOperations)?.DatabaseName ?? documentStore.Database;
+        string? waitingOn = null;
+        try
+        {
+            using var waitSession = documentStore.OpenAsyncSession(new Raven.Client.Documents.Session.SessionOptions { Database = database, NoTracking = true, NoCaching = true });
+            waitSession.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
+            var waited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool reread;
+            do
+            {
+                reread = false;
+                waitingOn = null;
+                var indexes = await documentStore.Maintenance.ForDatabase(database)
+                    .SendAsync(new Raven.Client.Documents.Operations.Indexes.GetIndexesStatisticsOperation(), bound.Token);
+                var stale = indexes
+                    .Where(index => index.IsStale
+                        && !waited.Contains(index.Name)
+                        && index.State is not Raven.Client.Documents.Indexes.IndexState.Disabled
+                            and not Raven.Client.Documents.Indexes.IndexState.Error
+                        && !index.Name.StartsWith(Raven.Client.Constants.Documents.Indexing.SideBySideIndexNamePrefix, StringComparison.OrdinalIgnoreCase)
+                        && index.Collections?.Keys.Any(collections.Contains) == true)
+                    .Select(index => index.Name)
+                    .ToList();
+
+                foreach (var name in stale)
+                {
+                    waitingOn = name;
+                    waited.Add(name);
+                    try
+                    {
+                        while (true)
+                        {
+                            var remaining = RequestWriteIndexWait - elapsed.Elapsed;
+                            if (remaining <= TimeSpan.Zero)
+                                throw new TimeoutException($"The {RequestWriteIndexWait.TotalSeconds:0} s bound ran out.");
+                            try
+                            {
+                                await waitSession.Advanced.AsyncDocumentQuery<object>(name)
+                                    .WaitForNonStaleResults(remaining < RequestWriteIndexWaitSlice ? remaining : RequestWriteIndexWaitSlice)
+                                    .CountAsync(bound.Token);
+                                break;
+                            }
+                            catch (TimeoutException) when (elapsed.Elapsed < RequestWriteIndexWait)
+                            {
+                                // Still behind after one slice: ask again, until the bound.
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException && ex is not TimeoutException)
+                    {
+                        // This index went away under the wait (deleted, reset, or merged into a new auto
+                        // index — seen under load in QnA). What replaced it covers the same collections and
+                        // is waited on with the remaining budget, after a fresh read of the statistics.
+                        LogUnfinishedWait(ex, name, collections, elapsed.Elapsed);
+                        reread = true;
+                        break;
+                    }
+                }
+            }
+            while (reread);
+        }
+        catch (OperationCanceledException) when (requestAborted.IsCancellationRequested)
+        {
+            // The caller went away: nobody is left to read the index.
+        }
+        catch (Exception ex)
+        {
+            // The bound ran out, or the index statistics could not be read.
+            LogUnfinishedWait(ex, waitingOn ?? "(index statistics)", collections, elapsed.Elapsed);
+        }
+    }
+
+    private void LogUnfinishedWait(Exception ex, string index, HashSet<string> collections, TimeSpan elapsed)
+        => logger?.LogWarning(ex,
+            "A request's write was committed, but waiting for index {Index} over [{Collections}] to catch up with it ended after {Elapsed} ms without it; the write stands, a query right after it may read the index stale",
+            index, string.Join(", ", collections), (long)elapsed.TotalMilliseconds);
 
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {

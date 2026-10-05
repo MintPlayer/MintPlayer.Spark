@@ -104,8 +104,13 @@ export class SparkService {
     return firstValueFrom(this.http.get<EntityType[]>(`${this.baseUrl}/types`));
   }
 
-  async getEntityType(id: string): Promise<EntityType> {
-    return firstValueFrom(this.http.get<EntityType>(`${this.baseUrl}/types/${encodeURIComponent(id)}`));
+  /**
+   * One entity type, shaped by the caller's attribute rights. `purpose` narrows it for one form (#264, G1/G2):
+   * `'new'` leaves out what the caller may not create and does not apply edit-only denies.
+   */
+  async getEntityType(id: string, purpose?: 'new' | 'edit' | 'read'): Promise<EntityType> {
+    const query = purpose ? `?for=${purpose}` : '';
+    return firstValueFrom(this.http.get<EntityType>(`${this.baseUrl}/types/${encodeURIComponent(id)}${query}`));
   }
 
   async getEntityTypeByClrType(clrType: string): Promise<EntityType | undefined> {

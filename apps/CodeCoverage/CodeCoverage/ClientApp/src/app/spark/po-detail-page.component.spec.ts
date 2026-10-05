@@ -12,8 +12,9 @@ import { CommitFilesExtrasComponent } from './commit-files-extras.component';
 import { HomeExtrasComponent } from './home-extras.component';
 import PoDetailPageComponent from './po-detail-page.component';
 
-function po(attributes: Record<string, unknown>): PersistentObject {
+function po(attributes: Record<string, unknown>, id = 'items/1'): PersistentObject {
   return {
+    id,
     attributes: Object.entries(attributes).map(([name, value]) => ({ name, value })),
   } as unknown as PersistentObject;
 }
@@ -81,7 +82,7 @@ describe('PoDetailPageComponent', () => {
   }
 
   it('mounts the badge, trend and setup panels on a Repository, scoped to its forge', () => {
-    const fixture = render('Repository', po({ FullName: 'acme/widgets', OwnerKey: 'gitlab:acme' }));
+    const fixture = render('Repository', po({ FullName: 'acme/widgets' }, 'Repositories/gitlab/1'));
 
     for (const type of [StubBadgePanel, StubTrendPanel]) {
       const panel = fixture.debugElement.query(By.directive(type)).componentInstance as StubBadgePanel;
@@ -93,7 +94,7 @@ describe('PoDetailPageComponent', () => {
   });
 
   it('mounts no repository panel when the repository has no forge or no owner/name', () => {
-    for (const object of [po({ FullName: 'acme/widgets' }), po({ FullName: 'widgets', OwnerKey: 'github:acme' }), po({ OwnerKey: 'github:acme' })]) {
+    for (const object of [po({ FullName: 'acme/widgets' }), po({ FullName: 'widgets' }, 'Repositories/github/1'), po({}, 'Repositories/github/1')]) {
       const fixture = render('Repository', object);
       expect(has(fixture, StubBadgePanel)).toBe(false);
       expect(has(fixture, StubSetupPanel)).toBe(false);
@@ -112,19 +113,19 @@ describe('PoDetailPageComponent', () => {
   it('mounts the Home extras on Home, and nothing on any other type', () => {
     expect(has(render('Home', po({})), StubHomeExtras)).toBe(true);
 
-    const account = render('Account', po({ FullName: 'acme/widgets', OwnerKey: 'github:acme' }));
+    const account = render('Account', po({ FullName: 'acme/widgets' }, 'Accounts/github/1'));
     for (const type of [StubBadgePanel, StubTrendPanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras]) {
       expect(has(account, type)).toBe(false);
     }
   });
 
-  // Provider serialises as "GitHub"; only OwnerKey holds the URL spelling.
-  it('repoOf reads the forge from OwnerKey, not from the Provider enum', () => {
+  // Provider serialises as "GitHub"; only the document id holds the URL spelling.
+  it('repoOf reads the forge from the document id, not from the Provider enum', () => {
     const page = TestBed.createComponent(PoDetailPageComponent).componentInstance;
 
-    expect(page.repoOf(po({ FullName: 'acme/widgets', OwnerKey: 'github:acme', Provider: 'GitHub' })))
+    expect(page.repoOf(po({ FullName: 'acme/widgets', Provider: 'GitHub' }, 'Repositories/github/1')))
       .toEqual({ provider: 'github', owner: 'acme', name: 'widgets' });
     expect(page.repoOf(po({ FullName: 'acme/widgets', Provider: 'GitHub' }))).toBeNull();
-    expect(page.repoOf(po({ FullName: 42, OwnerKey: 'github:acme' }))).toBeNull();
+    expect(page.repoOf(po({ FullName: 42 }, 'Repositories/github/1'))).toBeNull();
   });
 });

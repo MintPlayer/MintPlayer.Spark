@@ -2,11 +2,12 @@ import { provideZonelessChangeDetection, Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { QueryResultItem } from '@mintplayer/ng-spark/models';
+import type { PersistentObject, QueryResultItem } from '@mintplayer/ng-spark/models';
 import { ShortShaRendererComponent } from './short-sha-renderer.component';
 import { AccountLinkRendererComponent } from './account-link-renderer.component';
-import { AccountAvatarRendererComponent } from './account-avatar-renderer.component';
+import { AccountAvatarRendererComponent, GROUP_AVATAR } from './account-avatar-renderer.component';
 import { RepoNameRendererComponent } from './repo-name-renderer.component';
+import { PrivateLockRendererComponent } from './private-lock-renderer.component';
 
 /**
  * The renderers that read a SIBLING attribute off the row (Spark#245 item context). Each one
@@ -14,9 +15,9 @@ import { RepoNameRendererComponent } from './repo-name-renderer.component';
  * disappears — so these pin the degraded form as deliberately as the happy path.
  */
 
-function row(values: Record<string, unknown>): QueryResultItem {
+function row(values: Record<string, unknown>, id = 'items/1'): QueryResultItem {
   return {
-    id: 'items/1',
+    id,
     values: Object.entries(values).map(([key, value]) => ({ key, value })),
   } as unknown as QueryResultItem;
 }
@@ -44,7 +45,7 @@ describe('ShortShaRendererComponent', () => {
   it('links the 7-char sha to the forge-scoped vanity commit URL, with the full sha in the route', () => {
     const fixture = render(ShortShaRendererComponent, {
       value: sha,
-      item: row({ FullName: 'acme/widgets', OwnerKey: 'gitlab:acme' }),
+      item: row({ FullName: 'acme/widgets' }, 'Repositories/gitlab/1'),
     });
 
     const link = el(fixture).querySelector('a')!;
@@ -53,7 +54,7 @@ describe('ShortShaRendererComponent', () => {
   });
 
   // No forge on the row means no link: a guessed forge would address a different account.
-  it('renders plain text when the row carries no OwnerKey', () => {
+  it('renders plain text when the row id carries no forge', () => {
     const fixture = render(ShortShaRendererComponent, { value: sha, item: row({ FullName: 'acme/widgets' }) });
 
     expect(el(fixture).querySelector('a')).toBeNull();
@@ -63,7 +64,7 @@ describe('ShortShaRendererComponent', () => {
   it('renders plain text when FullName is not owner/name', () => {
     const fixture = render(ShortShaRendererComponent, {
       value: sha,
-      item: row({ FullName: 'widgets', OwnerKey: 'github:acme' }),
+      item: row({ FullName: 'widgets' }, 'Repositories/github/1'),
     });
 
     expect(el(fixture).querySelector('a')).toBeNull();
@@ -79,7 +80,7 @@ describe('ShortShaRendererComponent', () => {
 
   it('renders nothing for an empty or non-string value', () => {
     for (const value of [null, undefined, '', 1234567, { sha }]) {
-      const fixture = render(ShortShaRendererComponent, { value, item: row({ FullName: 'a/b', OwnerKey: 'github:a' }) });
+      const fixture = render(ShortShaRendererComponent, { value, item: row({ FullName: 'a/b' }, 'Repositories/github/1') });
       expect(el(fixture).querySelector('a, span')).toBeNull();
     }
   });
@@ -88,7 +89,7 @@ describe('ShortShaRendererComponent', () => {
     const fixture = render(ShortShaRendererComponent, {
       value: sha,
       options: { titleAttribute: 'Message' },
-      item: row({ FullName: 'acme/widgets', OwnerKey: 'github:acme', Message: 'Fix the parser' }),
+      item: row({ FullName: 'acme/widgets', Message: 'Fix the parser' }, 'Repositories/github/1'),
     });
 
     expect(el(fixture).querySelector('a')!.getAttribute('title')).toBe('Fix the parser');
@@ -109,23 +110,24 @@ describe('ShortShaRendererComponent', () => {
 });
 
 describe('AccountLinkRendererComponent', () => {
-  it('links the login to /{provider}/a/{login}, taking the forge from the row', () => {
-    const fixture = render(AccountLinkRendererComponent, { value: 'mintplayer', item: row({ Provider: 'github' }) });
+  // A MyAccountRow's id is its owner key, `{provider}:{login}`; the forge comes from there (#264).
+  it('links the login to /{provider}/a/{login}, taking the forge from the row id', () => {
+    const fixture = render(AccountLinkRendererComponent, { value: 'mintplayer', item: row({}, 'github:mintplayer') });
 
     const link = el(fixture).querySelector('a')!;
     expect(link.textContent!.trim()).toBe('mintplayer');
     expect(link.getAttribute('href')).toBe('/github/a/mintplayer');
   });
 
-  it('reads the provider off a flat record row too', () => {
-    const fixture = render(AccountLinkRendererComponent, { value: 'mintplayer', item: { Provider: 'gitlab' } });
+  it('ignores a Provider value on the row: only the id names the forge', () => {
+    const fixture = render(AccountLinkRendererComponent, { value: 'mintplayer', item: row({ Provider: 'gitlab' }, 'github:mintplayer') });
 
-    expect(el(fixture).querySelector('a')!.getAttribute('href')).toBe('/gitlab/a/mintplayer');
+    expect(el(fixture).querySelector('a')!.getAttribute('href')).toBe('/github/a/mintplayer');
   });
 
   // The pre-M7 route /a/{login} no longer exists; a login without a forge must not become a link.
-  it('renders the login as plain text when the row has no provider', () => {
-    for (const item of [undefined, row({}), row({ Provider: '' }), row({ Provider: 7 })]) {
+  it('renders the login as plain text when the row id carries no provider', () => {
+    for (const item of [undefined, row({}, 'mintplayer'), row({}, ':mintplayer'), row({}, 'GitHub:mintplayer'), { Provider: 'github' }]) {
       const fixture = render(AccountLinkRendererComponent, { value: 'mintplayer', item });
       expect(el(fixture).querySelector('a')).toBeNull();
       expect(el(fixture).textContent!.trim()).toBe('mintplayer');
@@ -134,7 +136,7 @@ describe('AccountLinkRendererComponent', () => {
 
   it('renders nothing for an empty or non-string login', () => {
     for (const value of [null, '', 42]) {
-      const fixture = render(AccountLinkRendererComponent, { value, item: row({ Provider: 'github' }) });
+      const fixture = render(AccountLinkRendererComponent, { value, item: row({}, 'github:mintplayer') });
       expect(el(fixture).textContent!.trim()).toBe('');
       expect(fixture.componentInstance.link()).toBeNull();
     }
@@ -145,7 +147,7 @@ describe('AccountAvatarRendererComponent', () => {
   it('draws the avatar image with the login as alt text', () => {
     const fixture = render(AccountAvatarRendererComponent, {
       value: 'https://avatars.example.test/u/1',
-      item: row({ Login: 'mintplayer', Type: 'User' }),
+      item: row({ Login: 'mintplayer' }),
     });
 
     const img = el(fixture).querySelector('img')!;
@@ -160,19 +162,19 @@ describe('AccountAvatarRendererComponent', () => {
     expect(el(fixture).querySelector('img')!.getAttribute('alt')).toBe('');
   });
 
-  it('falls back to the group icon for every forge spelling of an organisation, case-insensitively', () => {
-    for (const type of ['Organization', 'organisation', 'group', 'Team', 'WORKSPACE']) {
-      const fixture = render(AccountAvatarRendererComponent, { value: '', item: row({ Type: type }) });
-      const icon = el(fixture).querySelector('i')!;
-      expect(icon.classList.contains('bi-people')).toBe(true);
-      expect(icon.classList.contains('bi-person')).toBe(false);
-    }
+  // The server folds the account type into the cell (MyAccountRowActions.WithAvatarFallback).
+  it('draws the group icon, and no image, for the server group marker', () => {
+    const fixture = render(AccountAvatarRendererComponent, { value: GROUP_AVATAR, item: row({ Login: 'acme' }) });
+
+    const icon = el(fixture).querySelector('i')!;
+    expect(icon.classList.contains('bi-people')).toBe(true);
+    expect(icon.classList.contains('bi-person')).toBe(false);
+    expect(el(fixture).querySelector('img')).toBeNull();
   });
 
-  // Deny-list on purpose: a value we do not recognise is a person, never "nothing".
-  it('falls back to the person icon for users, unknown types and a missing type', () => {
-    for (const item of [row({ Type: 'User' }), row({ Type: 'Bot' }), row({}), undefined]) {
-      const fixture = render(AccountAvatarRendererComponent, { value: null, item });
+  it('falls back to the person icon when there is no avatar', () => {
+    for (const value of [null, undefined, '']) {
+      const fixture = render(AccountAvatarRendererComponent, { value, item: row({}) });
       const icon = el(fixture).querySelector('i')!;
       expect(icon.classList.contains('bi-person')).toBe(true);
       expect(icon.classList.contains('bi-people')).toBe(false);
@@ -181,18 +183,42 @@ describe('AccountAvatarRendererComponent', () => {
 });
 
 describe('RepoNameRendererComponent', () => {
-  it('shows the private badge only when the row says IsPrivate === true', () => {
-    const fixture = render(RepoNameRendererComponent, { value: 'widgets', item: row({ IsPrivate: true }) });
+  it('draws just the name, whatever the row says about privacy', () => {
+    for (const item of [row({ IsPrivate: true }), row({ IsPrivate: false }), undefined]) {
+      const fixture = render(RepoNameRendererComponent, { value: 'widgets', item });
+      expect(el(fixture).textContent!.trim()).toBe('widgets');
+      expect(el(fixture).querySelector('bs-badge, i')).toBeNull();
+    }
+  });
+});
 
-    expect(el(fixture).textContent).toContain('widgets');
-    expect(el(fixture).querySelector('bs-badge')!.textContent!.trim()).toBe('private');
+describe('PrivateLockRendererComponent', () => {
+  function po(): PersistentObject {
+    return { id: 'Repositories/github/1', attributes: [] } as unknown as PersistentObject;
+  }
+
+  it('draws a lock in the grid for a private repository, and nothing else', () => {
+    const fixture = render(PrivateLockRendererComponent, { value: true, item: row({ IsPrivate: true }) });
+
+    expect(el(fixture).querySelector('i.bi-lock-fill')).not.toBeNull();
+    expect(el(fixture).textContent!.trim()).toBe('');
   });
 
-  it('draws no badge for a public repository, a truthy non-boolean, or a row without IsPrivate', () => {
-    for (const item of [row({ IsPrivate: false }), row({ IsPrivate: 'true' }), row({}), undefined]) {
-      const fixture = render(RepoNameRendererComponent, { value: 'widgets', item });
-      expect(el(fixture).textContent).toContain('widgets');
-      expect(el(fixture).querySelector('bs-badge')).toBeNull();
+  it('draws nothing in the grid for a public repository or a non-boolean value', () => {
+    for (const value of [false, 'true', null, undefined]) {
+      const fixture = render(PrivateLockRendererComponent, { value, item: row({}) });
+      expect(el(fixture).querySelector('i')).toBeNull();
+      expect(el(fixture).textContent!.trim()).toBe('');
     }
+  });
+
+  it('says it in words on the detail page', () => {
+    const privateRepo = render(PrivateLockRendererComponent, { value: true, item: po() });
+    expect(el(privateRepo).querySelector('i.bi-lock-fill')).not.toBeNull();
+    expect(el(privateRepo).textContent!.trim()).toBe('private');
+
+    const publicRepo = render(PrivateLockRendererComponent, { value: false, item: po() });
+    expect(el(publicRepo).querySelector('i')).toBeNull();
+    expect(el(publicRepo).textContent!.trim()).toBe('public');
   });
 });

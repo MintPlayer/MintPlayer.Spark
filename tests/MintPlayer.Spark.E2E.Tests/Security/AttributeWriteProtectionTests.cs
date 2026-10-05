@@ -5,8 +5,8 @@ using MintPlayer.Spark.E2E.Tests._Infrastructure;
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
-/// L-7a / L-7b — an attribute with <c>IsReadOnly=true</c> or <c>IsVisible=false</c> in the
-/// schema must not be writable via PUT/POST. These tests assert that the framework either
+/// L-7a / L-7b — an attribute with <c>IsReadOnly=true</c> in the schema must not be writable
+/// via PUT/POST (visibility is layout, not a write gate, since #264). These tests assert that the framework either
 /// rejects or silently drops such attempts, never producing a 500 or blindly mapping a
 /// client-supplied attribute onto the entity.
 /// </summary>

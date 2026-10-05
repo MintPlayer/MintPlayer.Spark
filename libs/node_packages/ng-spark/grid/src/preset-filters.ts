@@ -1,4 +1,4 @@
-import { EntityType, QueryColumnFilter } from '@mintplayer/ng-spark/models';
+import { EntityType, hasShowedOnFlag, QueryColumnFilter, ShowedOn } from '@mintplayer/ng-spark/models';
 
 const NUMERIC_TYPES = new Set(['number', 'int', 'integer', 'long', 'decimal', 'double', 'float']);
 
@@ -16,7 +16,8 @@ export function applicablePresetFilters(
   const result: QueryColumnFilter[] = [];
   for (const filter of filters) {
     const attribute = (entityType.attributes ?? []).find(a => a.name === filter.name);
-    if (!attribute || attribute.isVisible === false) continue;
+    // Only a grid column can be filtered; the server refuses the rest anyway.
+    if (!attribute || !hasShowedOnFlag(attribute.showedOn, ShowedOn.Query)) continue;
     const coerce = (value: unknown): unknown => {
       if (typeof value !== 'string') return value;
       if (NUMERIC_TYPES.has(attribute.dataType)) {

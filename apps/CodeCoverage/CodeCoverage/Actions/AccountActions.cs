@@ -10,7 +10,7 @@ namespace CodeCoverage.Actions;
 
 /// <summary>
 /// Accounts are public to READ (GitHub logins/avatars) and manager-only to WRITE. The installation
-/// id is operational detail only the account's managers get, whatever the action.
+/// id is operational detail that never leaves the server (<c>[IgnoreProperty]</c>, #264).
 /// </summary>
 public partial class AccountActions : DefaultPersistentObjectActions<Account>, ISparkOwnsRowSecurity
 {
@@ -22,8 +22,8 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
         "granted too, so an owner can set the account-wide DeleteBranchOnPrClose default, and that " +
         "makes the write path reachable: without a filter, RowSecurity treats a missing rule as " +
         "ALLOWED, so any signed-in user could edit any account. Writes are therefore narrowed to " +
-        "accounts the caller manages. What is never public is the installation id, withheld per row " +
-        "by GetProtectedAttributesAsync rather than by hiding the row.";
+        "accounts the caller manages. What is never public is the installation id, which is " +
+        "[IgnoreProperty] on the entity and so never reaches the wire at all.";
 
     [Inject] private readonly ISparkVisibility visibility;
 
@@ -46,9 +46,4 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
         var owners = await visibility.GetAllowedOwnersAsync();
         return account => account.OwnerKey.In(owners);
     }
-
-    public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Account entity)
-        => await visibility.CanManageOwnerAsync(entity.OwnerKey)
-            ? null
-            : [nameof(Account.InstallationId)];
 }

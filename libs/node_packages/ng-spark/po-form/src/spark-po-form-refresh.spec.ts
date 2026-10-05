@@ -19,7 +19,6 @@ function attr(partial: Partial<EntityAttributeDefinition>): EntityAttributeDefin
     name: 'a',
     dataType: 'string',
     isRequired: false,
-    isVisible: true,
     isReadOnly: false,
     order: 1,
     showedOn: ShowedOn.PersistentObject,
@@ -34,7 +33,7 @@ const carType: EntityType = {
   clrType: 'Test.Car',
   attributes: [
     attr({ id: 'a-status', name: 'Status', order: 1, dataType: 'string', lookupReferenceType: 'CarStatus', triggersRefresh: 'Auto' }),
-    attr({ id: 'a-report', name: 'PoliceReport', order: 2, isVisible: false }),
+    attr({ id: 'a-report', name: 'PoliceReport', order: 2, showedOn: ShowedOn.None }),
     attr({ id: 'a-promo', name: 'PromoUrl', order: 3 }),
     attr({ id: 'a-plate', name: 'LicensePlate', order: 4, triggersRefresh: 'Auto' }),
     attr({ id: 'a-notes', name: 'Notes', order: 5 }),
@@ -65,7 +64,7 @@ function response(overrides: Record<string, Partial<any>> = {}): PersistentObjec
       name: a.name,
       dataType: a.dataType,
       isRequired: a.isRequired,
-      isVisible: a.isVisible,
+      showedOn: a.showedOn,
       isReadOnly: a.isReadOnly,
       order: a.order,
       rules: [],
@@ -119,8 +118,8 @@ describe('spark-po-form — TriggersRefresh', () => {
     it('reshapes the rendered attributes', async () => {
       const { fixture, component } = createComponent({
         refresh: vi.fn().mockResolvedValue(response({
-          PoliceReport: { isVisible: true, isRequired: true },
-          PromoUrl: { isVisible: false },
+          PoliceReport: { showedOn: 'PersistentObject', isRequired: true },
+          PromoUrl: { showedOn: 'None' },
         })),
       } as any);
       await mount(fixture, { Status: 'Stolen' });
@@ -134,13 +133,31 @@ describe('spark-po-form — TriggersRefresh', () => {
       expect(named(component, 'PromoUrl')).toBeUndefined();
     });
 
+    // #264 G-Q3: the hook says where an attribute is drawn through the runtime showedOn.
+    it('draws and hides attributes by the showedOn the response carries', async () => {
+      const { fixture, component } = createComponent({
+        refresh: vi.fn().mockResolvedValue(response({
+          PoliceReport: { showedOn: 'PersistentObject', isRequired: true },
+          PromoUrl: { showedOn: 'None' },
+        })),
+      } as any);
+      await mount(fixture, { Status: 'Stolen' });
+
+      component.onFieldChange(carType.attributes[0]);
+      await flush();
+      fixture.detectChanges();
+
+      expect(named(component, 'PoliceReport')?.isRequired).toBe(true);
+      expect(named(component, 'PromoUrl')).toBeUndefined();
+    });
+
     it('issues no additional service requests', async () => {
       // ★ The discriminator for the overlay design. Applying a refresh by setting a new EntityType
       // would re-run the option-loading effect and re-issue every reference query, every lookup
       // fetch, a full getEntityTypes() and a getPermissions() per array-AsDetail attribute — on
       // every keystroke-triggered refresh, against a service that caches nothing.
       const { fixture, component, service } = createComponent({
-        refresh: vi.fn().mockResolvedValue(response({ PoliceReport: { isVisible: true } })),
+        refresh: vi.fn().mockResolvedValue(response({ PoliceReport: { showedOn: 'PersistentObject' } })),
       } as any);
       await mount(fixture, { Status: 'Stolen' });
 
@@ -318,8 +335,8 @@ describe('spark-po-form — TriggersRefresh', () => {
 
       // The stale response arrives — it cannot be cancelled, only ignored — and claims a shape the
       // newer one contradicts.
-      resolvers[0]?.(response({ PoliceReport: { isVisible: true, isRequired: true } }));
-      resolvers[1]?.(response({ PoliceReport: { isVisible: false } }));
+      resolvers[0]?.(response({ PoliceReport: { showedOn: 'PersistentObject', isRequired: true } }));
+      resolvers[1]?.(response({ PoliceReport: { showedOn: 'None' } }));
       await flush();
       fixture.detectChanges();
 
@@ -344,7 +361,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       const saved = vi.fn();
       const { fixture, component } = createComponent({
         refresh: vi.fn().mockResolvedValue(response({
-          PoliceReport: { isVisible: true, isRequired: true },
+          PoliceReport: { showedOn: 'PersistentObject', isRequired: true },
         })),
       } as any);
       await mount(fixture, { Status: 'Stolen' });
@@ -363,7 +380,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       const saved = vi.fn();
       const { fixture, component } = createComponent({
         refresh: vi.fn().mockResolvedValue(response({
-          PoliceReport: { isVisible: true, isRequired: true },
+          PoliceReport: { showedOn: 'PersistentObject', isRequired: true },
         })),
       } as any);
       await mount(fixture, { Status: 'Stolen' });
@@ -421,8 +438,8 @@ describe('spark-po-form — TriggersRefresh', () => {
           name: 'Job',
           objectTypeId: 't-job',
           attributes: [
-            { name: 'Kind', value: 'Stolen', isVisible: true, isRequired: false, isReadOnly: false, rules: [] },
-            { name: 'End', value: null, isVisible: true, isRequired: false, isReadOnly: true, rules: [] },
+            { name: 'Kind', value: 'Stolen', isRequired: false, isReadOnly: false, rules: [] },
+            { name: 'End', value: null, isRequired: false, isReadOnly: true, rules: [] },
           ],
         }),
       } as any);
@@ -447,7 +464,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       const { fixture, component } = createComponent({
         refresh: vi.fn().mockResolvedValue({
           id: null, name: 'Job', objectTypeId: 't-job',
-          attributes: [{ name: 'Kind', value: 'x', isVisible: true, isRequired: false, isReadOnly: false, rules: [] }],
+          attributes: [{ name: 'Kind', value: 'x', isRequired: false, isReadOnly: false, rules: [] }],
         }),
       } as any);
       await mount(fixture, { Jobs: [{ Kind: 'InUse' }], Status: 'InUse' });
@@ -601,8 +618,8 @@ describe('spark-po-form — TriggersRefresh', () => {
         refresh: vi.fn().mockResolvedValue({
           id: null, name: 'Gate', objectTypeId: 't-gate',
           attributes: [
-            { name: 'Mode', value: 'Stolen', isVisible: true, isRequired: false, isReadOnly: false, rules: [] },
-            { name: 'Target', value: 80, isVisible: true, isRequired: true, isReadOnly: false, rules: [] },
+            { name: 'Mode', value: 'Stolen', isRequired: false, isReadOnly: false, rules: [] },
+            { name: 'Target', value: 80, isRequired: true, isReadOnly: false, rules: [] },
           ],
         }),
       } as any);
@@ -624,7 +641,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       const { fixture, component } = createComponent({
         refresh: vi.fn().mockResolvedValue({
           id: null, name: 'Gate', objectTypeId: 't-gate',
-          attributes: [{ name: 'Target', value: 80, isVisible: true, isRequired: true, isReadOnly: false, rules: [] }],
+          attributes: [{ name: 'Target', value: 80, isRequired: true, isReadOnly: false, rules: [] }],
         }),
       } as any);
       await mount(fixture, { Gate: gate });
@@ -643,7 +660,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       const { fixture, component } = createComponent({
         refresh: vi.fn().mockResolvedValue({
           id: null, name: 'Gate', objectTypeId: 't-gate',
-          attributes: [{ name: 'Mode', value: 'x', isVisible: true, isRequired: false, isReadOnly: false, rules: [] }],
+          attributes: [{ name: 'Mode', value: 'x', isRequired: false, isReadOnly: false, rules: [] }],
         }),
       } as any);
       await mount(fixture, { Gate: { Mode: 'InUse' }, Status: 'InUse' });

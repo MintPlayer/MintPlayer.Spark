@@ -130,7 +130,7 @@ public class SparkClientAuthExtensionsTests
             .EnqueueOk();                                           // register
         using var client = NewClient(handler);
 
-        await client.RegisterAsync("alice@example.com", "p@ss");
+        await client.RegisterAsync("alice@example.com", "p@ss", "alice");
 
         handler.Requests.Should().HaveCount(2);
         handler.Requests[0].Method.Should().Be(HttpMethod.Get, "the warmup mints the token");
@@ -140,6 +140,7 @@ public class SparkClientAuthExtensionsTests
         register.RequestUri!.AbsolutePath.Should().Be("/spark/auth/register");
         register.Headers.Contains("X-XSRF-TOKEN").Should().BeTrue(
             "register is gated, so a programmatic client must present the token a browser would already hold");
+        handler.Body(1).GetProperty("userName").GetString().Should().Be("alice");
     }
 
     [Fact]
@@ -152,7 +153,7 @@ public class SparkClientAuthExtensionsTests
             .Enqueue(new HttpResponseMessage(HttpStatusCode.BadRequest));
         using var client = NewClient(handler);
 
-        var act = async () => await client.RegisterAsync("alice@example.com", "weak");
+        var act = async () => await client.RegisterAsync("alice@example.com", "weak", "alice");
 
         await act.Should().ThrowAsync<SparkClientException>();
     }
@@ -160,7 +161,7 @@ public class SparkClientAuthExtensionsTests
     [Fact]
     public async Task RegisterAsync_throws_ArgumentNullException_when_client_is_null()
     {
-        var act = async () => await SparkClientAuthExtensions.RegisterAsync(null!, "x", "y");
+        var act = async () => await SparkClientAuthExtensions.RegisterAsync(null!, "x", "y", "z");
 
         await act.Should().ThrowAsync<ArgumentNullException>();
     }

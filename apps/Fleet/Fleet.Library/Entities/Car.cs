@@ -104,7 +104,7 @@ public class Car
     /// Demo field: wouldn't necessarily live on the entity in a production app (could be
     /// a metadata field), but keeping it on the entity is the simplest illustration.
     /// </summary>
-    [IgnoreForIndex]
+    [IgnoreForIndex, IgnoreProperty]
     public string? CreatedBy { get; set; }
 
     /// <summary>

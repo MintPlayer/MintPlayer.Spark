@@ -205,7 +205,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
-            File.WriteAllText(fileName, json);
+            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, json));
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
@@ -269,7 +269,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
-            File.WriteAllText(fileName, JsonSerializer.Serialize(entityTypeFile, JsonOptions));
+            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, JsonSerializer.Serialize(entityTypeFile, JsonOptions)));
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
             Console.WriteLine($"Synchronized model (satellite of {satellite.OwnerType.Name}): {satelliteType.Name} -> {fileName}");
@@ -302,7 +302,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
             var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
-            File.WriteAllText(fileName, json);
+            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, json));
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
@@ -336,6 +336,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
         TranslationsSeeder.Apply(hostEnvironment.ContentRootPath, seeds);
         ReportMissingTranslations();
+
+        // Last of the file edits (#264, G-Q17), so a file the seeder rewrote is covered too. Before the
+        // hashes only by habit: $schema is not part of any hashed shape.
+        foreach (var path in SparkSchemaReference.ApplyAll(hostEnvironment.ContentRootPath, SparkSchemaRevision.Current))
+            Console.WriteLine($"Pointed $schema at schema revision v{SparkSchemaRevision.Current}: {path}");
 
         if (WouldCertifyAnEmptyModel(contextType, queryableProperties.Count, modelPath))
             return;
@@ -617,6 +622,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             try
             {
                 var json = File.ReadAllText(file);
+                // Rewriting the file would strip "isVisible": false and show a hidden attribute, so a
+                // legacy hidden attribute stops the command (#264, G-Q8); the catch below lets it
+                // through. "isVisible": true is dropped by the rewrite, the property no longer existing.
+                ModelLoader.RefuseLegacyIsVisible(json, file);
                 var entityTypeFile = JsonSerializer.Deserialize<EntityTypeFile>(json, jsonOptions);
                 if (entityTypeFile?.PersistentObject != null)
                 {
@@ -631,7 +640,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not InvalidOperationException)
             {
                 Console.WriteLine($"Error loading model file {file}: {ex.Message}");
             }
@@ -885,9 +894,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     // ShowedOn is presentation constrained by structure: projection/entity
                     // membership is the capability to appear on a side, the model author picks the
                     // subset. Strip sides that structurally disappeared, never re-add one (#274).
-                    // An empty result self-heals to the derived capability.
-                    var narrowedShowedOn = existingAttr.ShowedOn & showedOn;
-                    existingAttr.ShowedOn = narrowedShowedOn != 0 ? narrowedShowedOn : showedOn;
+                    // An empty result self-heals to the derived capability — unless the author wrote
+                    // `None` (#264, G-Q4): drawn nowhere is a choice, not an empty intersection, and an
+                    // action shows it per object through the runtime ShowedOn. An absent showedOn reads
+                    // as the default (both sides), so only that one is derived.
+                    if (existingAttr.ShowedOn != EShowedOn.None)
+                    {
+                        var narrowedShowedOn = existingAttr.ShowedOn & showedOn;
+                        existingAttr.ShowedOn = narrowedShowedOn != 0 ? narrowedShowedOn : showedOn;
+                    }
                 }
                 else
                 {
@@ -913,7 +928,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     IsRequired = property.CanWrite
                         && !IsNullable(property.PropertyType)
                         && property.PropertyType != typeof(string),
-                    IsVisible = true,
                     // Computed properties surface read-only rather than not at all. Only set on
                     // creation — the update branch never reassigns IsReadOnly, so a hand-set value
                     // survives re-synchronize.
@@ -931,13 +945,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     ShowedOn = showedOn,
                     Rules = []
                 };
-                // A library's defaults for an attribute it generates (contributions M5b: the raw
-                // ContributorId off the history grid). Creation only, so the model file owns them after.
-                if (SparkModelSatellites.NewAttributeSeedFor(entityType, propertyName) is { } newSeed)
-                {
-                    if (newSeed.ShowedOn is { } seededShowedOn) newAttr.ShowedOn = seededShowedOn;
-                    if (newSeed.IsVisible is { } seededVisible) newAttr.IsVisible = seededVisible;
-                }
                 CollectDescriptionSeed(entityTypeDef.Name, newAttr, descriptionSeed);
                 newAttributes.Add(newAttr);
             }

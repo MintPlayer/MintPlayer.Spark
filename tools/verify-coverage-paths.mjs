@@ -39,8 +39,8 @@ import { globSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// One slug per app the E2E suite hosts (SparkAppDescriptor.CoverageSlug): Fleet, and QnA since #460 M13.
-const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna)-host-[^/]+\/coverage\.cobertura\.xml$/;
+// One slug per app the E2E suite hosts (SparkAppDescriptor.CoverageSlug): Fleet, QnA since #460 M13, HR since #264.
+const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna|hr)-host-[^/]+\/coverage\.cobertura\.xml$/;
 
 /**
  * The marker SparkAppTestHost writes into a host's report directory before it starts the app under
@@ -107,6 +107,13 @@ export const EXPECTED_REPORTS = [
     glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/qna-host-*/coverage.cobertura.xml',
     match: E2E_HOST_REPORT,
     required: hostReportRequired('qna'),
+  },
+  // The HR host (HRTestHost, #264), the same shape.
+  {
+    name: 'E2E HR host subprocess coverage',
+    glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/hr-host-*/coverage.cobertura.xml',
+    match: E2E_HOST_REPORT,
+    required: hostReportRequired('hr'),
   },
   { name: 'MintPlayer.Spark.SourceGenerators.Tests', glob: 'tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'MintPlayer.Spark.Client.Tests', glob: 'tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml' },

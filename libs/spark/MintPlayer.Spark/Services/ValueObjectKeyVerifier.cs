@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Model;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -54,10 +55,16 @@ internal static class ValueObjectKeyVerifier
             // not match. The empty-string arm covers a key whose default is "" rather than a guid:
             // ProjectColumn and EventColumnMapping both derive theirs, so a row saved before the
             // deriving hook existed holds a present-but-useless key.
+            //
+            // Both names are spliced, because RQL takes no parameter for an identifier. They come from
+            // the collection-name convention and CLR property names, never from a request, and are
+            // validated anyway: a convention can be customised to produce anything.
+            var collection = RqlIdentifier.Collection(target.Collection);
+            var key = RqlIdentifier.FieldPath($"{target.Path}[].{target.KeyProperty}");
             var rql =
-                $"from '{target.Collection}' " +
-                $"where {target.Path}[].{target.KeyProperty} == null " +
-                $"or {target.Path}[].{target.KeyProperty} == ''";
+                $"from '{collection}' " +
+                $"where {key} == null " +
+                $"or {key} == ''";
 
             var query = session.Advanced.AsyncRawQuery<object>(rql)
                 .Statistics(out var statistics)

@@ -3,6 +3,7 @@ import { SparkService } from '@mintplayer/ng-spark/services';
 import type { PersistentObject } from '@mintplayer/ng-spark/models';
 import { CommitFilesPanelComponent } from '../components/commit-files-panel/commit-files-panel.component';
 import { valueFor } from '@mintplayer/ng-spark/models';
+import { forgeOf } from './forge-of';
 
 /**
  * Bridges a Commit PersistentObject to the shared Files panel: owner/name come
@@ -41,11 +42,10 @@ export class CommitFilesExtrasComponent {
         const fullName = valueFor(repo, 'FullName')?.value;
         const [owner, name] = typeof fullName === 'string' ? fullName.split('/') : [];
 
-        // The forge, from the repository we just loaded rather than from the URL: this panel is
-        // reached from a Commit page, and the commit's own id carries the forge only because the
-        // repository's does. OwnerKey is "github:MintPlayer"; its prefix is the URL spelling.
-        const ownerKey = valueFor(repo, 'OwnerKey')?.value;
-        const provider = typeof ownerKey === 'string' ? ownerKey.split(':')[0] : '';
+        // The forge, from the repository's document id ("Repositories/github/123") rather than from
+        // the URL: this panel is reached from a Commit page, and the commit's own id carries the
+        // forge only because the repository's does.
+        const provider = forgeOf(repoId) ?? '';
 
         this.target.set(owner && name && provider ? { provider, owner, name, sha } : null);
       } catch {

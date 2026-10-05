@@ -57,7 +57,6 @@ public partial class ForgeAccountsActions
         var title = string.IsNullOrEmpty(template)
             ? provider.ToString()
             : string.Format(CultureInfo.InvariantCulture, template, provider.ToString());
-        obj["Title"].Value = title;
         obj.Breadcrumb = title;
 
         var accounts = await myAccounts.GetAsync(CancellationToken.None, provider: provider);

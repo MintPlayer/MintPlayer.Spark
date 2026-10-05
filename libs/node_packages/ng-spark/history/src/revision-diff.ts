@@ -14,7 +14,7 @@ export interface SparkRevisionChange {
  */
 export function revisionAttributes(entityType: EntityType | null | undefined): EntityAttributeDefinition[] {
   return (entityType?.attributes ?? [])
-    .filter(a => a.isVisible && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
+    .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
     .sort((a, b) => a.order - b.order);
 }
 

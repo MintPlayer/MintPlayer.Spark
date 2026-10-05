@@ -22,6 +22,9 @@
 		<ProjectReference Include="..\..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete.Abstractions\MintPlayer.Spark.SoftDelete.Abstractions.csproj" />
 		<!-- IAuditable, from the plain-SDK History.Abstractions: the History package references the whole framework (#388). -->
 		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History.Abstractions\MintPlayer.Spark.History.Abstractions.csproj" />
+		<!-- For SparkUser, which CreatedBy/ModifiedBy reference ([Reference] takes a Type). The user document
+		     model lives in the plain-SDK Authorization.Abstractions, not the web package (#388, #264 G-Q15). -->
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization.Abstractions\MintPlayer.Spark.Authorization.Abstractions.csproj" />
 		<!-- Question.Translations is a [Contribution] (contributions M6); the generator comes from the targets below. -->
 		<ProjectReference Include="..\..\..\libs\contributions\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). -->

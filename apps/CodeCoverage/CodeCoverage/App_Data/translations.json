@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../schemas/translations.schema.json",
   "app": {
     "title": {
       "en": "Coverage",
@@ -111,30 +112,6 @@
         "DisconnectedReason": {
           "description": {
             "en": "Why the account is disconnected, from DisconnectedReasons; null while connected."
-          }
-        },
-        "GitHubId": {
-          "label": {
-            "en": "GitHub Id",
-            "fr": "Id GitHub",
-            "nl": "GitHub-id"
-          },
-          "description": {
-            "en": "GitHub's numeric id for this user or organization; stable even when the login is renamed.",
-            "fr": "Id numérique GitHub de cet utilisateur ou de cette organisation ; stable même lorsque le login est renommé.",
-            "nl": "GitHub's numerieke id voor deze gebruiker of organisatie; stabiel zelfs wanneer de login hernoemd wordt."
-          }
-        },
-        "InstallationId": {
-          "label": {
-            "en": "Installation Id",
-            "fr": "Id d'installation",
-            "nl": "Installatie-id"
-          },
-          "description": {
-            "en": "GitHub App installation on this account, when the app is installed.",
-            "fr": "Installation de l'application GitHub sur ce compte, lorsque l'application est installée.",
-            "nl": "Installatie van de GitHub App op dit account, wanneer de app geïnstalleerd is."
           }
         },
         "Login": {
@@ -1121,13 +1098,6 @@
     },
     "ForgeAccounts": {
       "attributes": {
-        "Title": {
-          "label": {
-            "en": "",
-            "fr": "",
-            "nl": ""
-          }
-        },
         "Provider": {
           "label": {
             "en": "Forge",
@@ -1413,13 +1383,6 @@
     },
     "Home": {
       "attributes": {
-        "Title": {
-          "label": {
-            "en": "",
-            "fr": "",
-            "nl": ""
-          }
-        },
         "Subtitle": {
           "label": {
             "en": "About",
@@ -1452,25 +1415,11 @@
             "nl": "Avatar"
           }
         },
-        "Provider": {
-          "label": {
-            "en": "Forge",
-            "fr": "Forge",
-            "nl": "Forge"
-          }
-        },
         "Login": {
           "label": {
             "en": "Account",
             "fr": "Compte",
             "nl": "Account"
-          }
-        },
-        "Type": {
-          "label": {
-            "en": "Type",
-            "fr": "Type",
-            "nl": "Type"
           }
         },
         "RepoCount": {
@@ -1771,18 +1720,6 @@
             "nl": "Poortbeleid; leeg betekent alle standaardwaarden (informatief, automatische ratel)."
           }
         },
-        "GitHubId": {
-          "label": {
-            "en": "GitHub Id",
-            "fr": "Id GitHub",
-            "nl": "GitHub-id"
-          },
-          "description": {
-            "en": "GitHub's numeric id for this repository.",
-            "fr": "Id numérique GitHub de ce dépôt ; stable malgré les renommages et les transferts.",
-            "nl": "GitHub's numerieke id voor deze repository; stabiel bij hernoemingen en overdrachten."
-          }
-        },
         "IsPrivate": {
           "label": {
             "en": "Private",
@@ -1886,13 +1823,6 @@
         "nl": "Gebruiker"
       },
       "attributes": {
-        "Id": {
-          "label": {
-            "en": "Id",
-            "fr": "Id",
-            "nl": "Id"
-          }
-        },
         "UserName": {
           "label": {
             "en": "User name",

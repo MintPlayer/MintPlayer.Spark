@@ -212,7 +212,7 @@ public class PasskeyCeremonyStateTests : SparkTestDriver
     {
         using var host = await StartAsync();
 
-        var user = new SparkUser { UserName = "spike@example.com", Email = "spike@example.com" };
+        var user = new SparkUser { UserName = "spike", Email = "spike@example.com" };
         using (var scope = host.Services.CreateScope())
         {
             var userManager = scope.ServiceProvider.GetRequiredService<UserManager<SparkUser>>();

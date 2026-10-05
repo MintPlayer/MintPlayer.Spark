@@ -58,9 +58,9 @@ internal static class SparkAuthenticationExtensions
             .AddRoles<SparkRole>()
             // #460 D4: sign in with email or user name, one resolver for every password sign-in
             // (MapIdentityApi's /login and the OIDC /connect/login page both call the string
-            // overload), plus the user-name rule that keeps the two namespaces from colliding.
+            // overload), plus the user-name rule (never an '@', G-Q22) that keeps the user name a
+            // public handle and the two namespaces from colliding.
             .AddSignInManager<SparkSignInManager<TUser>>()
-            .AddUserManager<SparkUserManager<TUser>>()
             .AddUserValidator<SparkUserNameValidator<TUser>>();
 
         builder.Services.AddScoped<IUserStore<TUser>, UserStore<TUser>>();

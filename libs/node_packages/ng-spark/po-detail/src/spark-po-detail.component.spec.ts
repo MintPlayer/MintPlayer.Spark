@@ -28,12 +28,12 @@ const personType: EntityType = {
   attributes: [
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
-      isRequired: true, isVisible: true, isReadOnly: false,
+      isRequired: true, isReadOnly: false,
       order: 1, showedOn: ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-query-only', name: 'QueryOnly', dataType: 'string',
-      isRequired: false, isVisible: true, isReadOnly: false,
+      isRequired: false, isReadOnly: false,
       order: 2, showedOn: ShowedOn.Query,
     } as any,
   ],
@@ -251,6 +251,42 @@ describe('SparkPoDetailComponent', () => {
     expect(names).toEqual(['FirstName']);
   });
 
+  // #264 G-Q3: the model says None (drawn nowhere), and OnLoadAsync shows the field for this object.
+  describe('the loaded object decides where an attribute is drawn (runtime showedOn)', () => {
+    const withReport = {
+      ...personType,
+      attributes: [
+        ...personType.attributes,
+        { id: 'a-report', name: 'PoliceReport', dataType: 'string', isRequired: false, isReadOnly: false, order: 3, showedOn: 'None' } as any,
+      ],
+    } as EntityType;
+
+    async function loadWith(report: Record<string, unknown>) {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([withReport]),
+        get: vi.fn().mockResolvedValue({ ...existingItem, attributes: [...existingItem.attributes, { id: 'a-report', name: 'PoliceReport', value: 'PV-1', ...report }] }),
+      } as Partial<SparkService>);
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.fixture.whenStable();
+      return c;
+    }
+
+    it('draws an attribute the model shows nowhere when the loaded object shows it', async () => {
+      const c = await loadWith({ showedOn: 'PersistentObject' });
+      expect(c.visibleAttributes().map(a => a.name)).toEqual(['FirstName', 'PoliceReport']);
+    });
+
+    it('does not draw an attribute shown nowhere, although its value ships', async () => {
+      const c = await loadWith({ showedOn: 'None' });
+      expect(c.visibleAttributes().map(a => a.name)).toEqual(['FirstName']);
+    });
+
+    it('falls back to the model when the object says nothing', async () => {
+      const c = await loadWith({});
+      expect(c.visibleAttributes().map(a => a.name)).toEqual(['FirstName']);
+    });
+  });
+
   it('renders the [i] beside a described attribute label and not beside an undescribed one (#348)', async () => {
     const describedType: EntityType = {
       ...personType,
@@ -258,7 +294,7 @@ describe('SparkPoDetailComponent', () => {
         { ...personType.attributes[0], description: { en: 'Given name.' } },
         {
           id: 'a-last', name: 'LastName', dataType: 'string',
-          isRequired: false, isVisible: true, isReadOnly: false,
+          isRequired: false, isReadOnly: false,
           order: 2, showedOn: ShowedOn.PersistentObject,
         } as any,
       ],
@@ -653,9 +689,9 @@ describe('SparkPoDetailComponent', () => {
     const lookupType: EntityType = {
       ...personType,
       attributes: [
-        { id: 'a-role', name: 'Role', dataType: 'string', lookupReferenceType: 'Roles', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'a-status', name: 'Status', dataType: 'string', lookupReferenceType: 'Statuses', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'a-alt', name: 'AltRole', dataType: 'string', lookupReferenceType: 'Roles', isVisible: true, order: 3, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-role', name: 'Role', dataType: 'string', lookupReferenceType: 'Roles', order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-status', name: 'Status', dataType: 'string', lookupReferenceType: 'Statuses', order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-alt', name: 'AltRole', dataType: 'string', lookupReferenceType: 'Roles', order: 3, showedOn: ShowedOn.PersistentObject } as any,
       ],
     } as any;
     const statuses = { name: 'Statuses', values: [{ key: 'on', values: { en: 'On' }, isActive: true }] } as any;
@@ -685,16 +721,16 @@ describe('SparkPoDetailComponent', () => {
       name: 'Line',
       clrType: 'Test.Line',
       attributes: [
-        { id: 'l-product', name: 'Product', dataType: 'Reference', query: 'GetProducts', referenceType: 'Test.Product', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
-        { id: 'l-qty', name: 'Qty', dataType: 'string', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'l-product', name: 'Product', dataType: 'Reference', query: 'GetProducts', referenceType: 'Test.Product', order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'l-qty', name: 'Qty', dataType: 'string', order: 2, showedOn: ShowedOn.PersistentObject } as any,
       ],
     } as any;
     const orderType = (detailTypes?: EntityType[]): EntityType => ({
       ...personType,
       attributes: [
-        { id: 'a-lines', name: 'Lines', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Line', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-lines', name: 'Lines', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Line', order: 1, showedOn: ShowedOn.PersistentObject } as any,
         // No type anywhere: must be skipped rather than recorded as undefined.
-        { id: 'a-ghost', name: 'Ghosts', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Ghost', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-ghost', name: 'Ghosts', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Ghost', order: 2, showedOn: ShowedOn.PersistentObject } as any,
       ],
       detailTypes,
     } as any);

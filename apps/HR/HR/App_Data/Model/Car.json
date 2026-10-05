@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "8317d070-b79e-40c6-825e-1e245142daf9",
     "name": "Car",
@@ -12,7 +13,6 @@
         "name": "Color",
         "dataType": "color",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 4,
         "isArray": false,
@@ -29,7 +29,6 @@
         "name": "LicensePlate",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
@@ -56,7 +55,6 @@
         "name": "Model",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
@@ -78,7 +76,6 @@
         "name": "Year",
         "dataType": "number",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 3,
         "isArray": false,

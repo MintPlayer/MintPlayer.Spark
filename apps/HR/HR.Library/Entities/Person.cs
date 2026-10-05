@@ -2,7 +2,7 @@ using MintPlayer.Spark.Abstractions;
 
 namespace HR.Entities;
 
-// The breadcrumb template lives in App_Data/Model/Person.json ("{FirstName} {LastName} @
+// The breadcrumb template lives in App_Data/Model/Person.json ("{FullName} @
 // {Company}") and recurses through references: {Company} renders the Company's breadcrumb,
 // which in turn renders its {Sector} (a Profession) — a 3-level chain.
 //

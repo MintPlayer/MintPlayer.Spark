@@ -29,7 +29,7 @@ public partial class QnAAccountTests
         var email = $"newcomer-{Guid.NewGuid():N}@qna.example";
         var password = $"Aa1!{Guid.NewGuid():N}";
         using var client = host.NewClient();
-        await client.RegisterAsync(email, password);
+        await client.RegisterAsync(email, password, email[..email.IndexOf('@')]);
 
         var early = async () => await client.LoginAsync(email, password);
         await early.Should().ThrowAsync<SparkClientException>(); // an unconfirmed account does not sign in

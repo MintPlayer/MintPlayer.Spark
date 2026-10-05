@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../../../schemas/model.schema.json",
   "persistentObject": {
     "id": "a1c8e3f0-9d2b-4f6a-b5e7-3c4d8f2a1b0e",
     "name": "Address",
@@ -12,7 +13,6 @@
         "name": "City",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 3,
         "isArray": false,
@@ -34,7 +34,6 @@
         "name": "Description",
         "dataType": "AsDetail",
         "isRequired": false,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 4,
         "asDetailType": "HR.Entities.AddressDescription",
@@ -47,7 +46,6 @@
         "name": "PostalCode",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
@@ -69,7 +67,6 @@
         "name": "Street",
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
         "isReadOnly": false,
         "order": 1,
         "isArray": false,

@@ -97,6 +97,13 @@ New attributes get `Label = TranslatedString.Create(AddSpacesToCamelCase(name))`
 
 No `$schema`, no `schemas/` folder, no Spark Editor PRD in the repo (`docs/issue_324_PRD.md:559` is the only mention). The de-facto schema is `EntityTypeDefinition.cs` ↔ `entity-type.ts`, changed in lockstep, plus the prose tables in the guides.
 
+> **Update 2026-10-05 (#264):** a schema exists now. `tools/SchemaGenerator` generates strict JSON
+> schemas for the six hand-edited App_Data files (model, security, programUnits, translations,
+> culture, actions) from the C# types the loaders read, so `description` is covered with no extra
+> step; revisions are published at `https://schemas.spark.mintplayer.com/v{n}/…` and synchronize
+> manages `$schema`. See [guide-json-schemas.md](guide-json-schemas.md). The text above is kept as
+> it was when this PRD was written.
+
 ### F11 — Naming: `description` already means "heading" at entity level
 
 `EntityTypeDefinition.Description` (`:7`) is rendered as the page heading of create/edit pages. An attribute-level `description` is help text. The two are distinguishable by level, and `description` is what the issue, Vidyano, and the custom-action JSON all call it. Keeping the name and documenting the semantic per level beats inventing `tooltip`/`hint`.

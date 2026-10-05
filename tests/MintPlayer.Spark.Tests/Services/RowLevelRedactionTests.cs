@@ -103,8 +103,6 @@ public class RowLevelRedactionTests : SparkTestDriver
 
         minePo["BadgeToken"].Value.Should().Be("tok-1", "the caller manages this row");
         foreignPo["BadgeToken"].Value.Should().BeNull("redaction is per row, per caller");
-        foreignPo["BadgeToken"].IsVisible.Should().BeTrue(
-            "blanked indistinguishably from an empty value: no IsVisible flip (contributions M2c-2b)");
         foreignPo.Attributes.Should().Contain(a => a.Name == "BadgeToken",
             "redact, don't omit — dropping the attribute breaks name-indexed clients and leaks the rule");
         foreignPo["Name"].Value.Should().Be("public", "only the named attributes are touched");
@@ -153,7 +151,7 @@ public class RowLevelRedactionTests : SparkTestDriver
         using var session = Store.OpenAsyncSession();
         await rowSecurity.RedactAsync(session, [(po, row)], typeof(Repo), typeof(VRepo), "Query");
 
-        po.Attributes.Should().OnlyContain(a => a.Value == null && a.IsVisible,
+        po.Attributes.Should().OnlyContain(a => a.Value == null,
             "the rule can't be asked without the document — unverifiable is not shown");
     }
 
@@ -215,7 +213,6 @@ public class RowLevelRedactionTests : SparkTestDriver
 
         child["Salary"].Value.Should().BeNull(
             "embedded rows aren't rows — the row filter can't reach them, redaction must");
-        child["Salary"].IsVisible.Should().BeTrue("no IsVisible flip, inside embedded rows either (M2c-2b)");
         child["Title"].Value.Should().Be("Dev");
     }
 
