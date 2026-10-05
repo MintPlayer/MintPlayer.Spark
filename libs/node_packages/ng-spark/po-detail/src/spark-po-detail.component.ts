@@ -518,15 +518,20 @@ export class SparkPoDetailComponent {
       await this.sparkService.executeCustomAction(this.type, action.name, this.item() || undefined);
       this.customActionExecuted.emit({ action, item: this.item()! });
       if (action.refreshOnCompleted) {
-        const item = await this.loadItem();
-        this.item.set(item);
-
         // The sub-query grids below do not depend on item(), so re-fetching the PO left them
         // showing pre-action rows -- the action appeared to have done nothing to the very
         // lists it changed.
+        //
+        // Before the await, not after (#319): a server-issued refreshQuery was already dispatched
+        // inside executeCustomAction, and bumps in one synchronous run coalesce into one grid
+        // fetch. Bumping after the re-fetch's network round trip landed in a second
+        // change-detection flush, and the grid fetched twice for one click.
         for (const subQuery of this.subQueries()) {
           this.queryRefresh.request(subQuery.query);
         }
+
+        const item = await this.loadItem();
+        this.item.set(item);
       }
     } catch (e) {
       const err = e as HttpErrorResponse;

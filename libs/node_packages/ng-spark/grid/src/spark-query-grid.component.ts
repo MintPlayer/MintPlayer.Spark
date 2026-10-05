@@ -693,13 +693,33 @@ export class SparkQueryGridComponent {
     // Separate effect, so the token drives the cheap refresh and never the full metadata reload.
     // `first` skips the initial run: the effect above has already fetched, and reacting to the
     // token's starting value would double-fetch on mount.
+    //
+    // The server's refreshQuery is matched per key, against the counter last seen for it (#319):
+    // reading tokenFor re-runs this effect on ANY key's bump, so reacting to the run alone
+    // re-fetched every grid for every refresh. A key seen for the first time -- on mount, or once
+    // the query resolves and its id and alias are known -- is a baseline, never a refresh: the
+    // service is app-wide and its counters outlive the grids.
     let first = true;
+    let lastReloadToken: unknown;
+    const seen = new Map<string, number>();
     effect(() => {
-      // Both the host's token and the server's refreshQuery drive the same cheap refresh.
-      this.reloadToken();
-      this.queryRefresh.tokenFor(this.queryId());
-      if (first) { first = false; return; }
-      untracked(() => this.reload());
+      const reloadToken = this.reloadToken();
+      const query = this.query();
+
+      let refreshed = false;
+      for (const key of [this.queryId(), query?.id, query?.alias]) {
+        if (!key) continue;
+        const token = this.queryRefresh.tokenFor(key);
+        const last = seen.get(key.toLowerCase());
+        if (last !== undefined && token > last) refreshed = true;
+        seen.set(key.toLowerCase(), token);
+      }
+
+      const hostRequested = !first && !Object.is(reloadToken, lastReloadToken);
+      lastReloadToken = reloadToken;
+      first = false;
+
+      if (refreshed || hostRequested) untracked(() => this.reload());
     });
 
     // A new search term must refetch even when page, perPage and sort are unchanged — the

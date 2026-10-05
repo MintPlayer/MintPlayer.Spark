@@ -16,23 +16,35 @@ import { Injectable, signal } from '@angular/core';
 export class SparkQueryRefreshService {
   private readonly tokens = signal<Record<string, number>>({});
 
-  /** Bumped every time the server asks for this query to refresh. */
+  /**
+   * Bumped every time a refresh is asked for this key.
+   *
+   * ⚠️ Reading it makes the caller depend on EVERY key, not just this one: the counters share one
+   * signal. A grid must therefore compare the value with the one it last saw, never react to the
+   * read alone (#319) — otherwise it re-fetches for every query refreshed anywhere in the app.
+   */
   tokenFor(queryId: string | undefined): number {
     if (!queryId) return 0;
-    return this.tokens()[queryId] ?? 0;
+    return this.tokens()[normalize(queryId)] ?? 0;
   }
 
   /**
    * Ask every grid showing `queryId` to re-fetch.
    *
-   * Matched on the EXACT string a grid passes to {@link tokenFor} -- whichever of id or alias
-   * its `queryId` input holds. A caller that knows only the other form will not reach it.
+   * `queryId` is the query's id or its alias. A grid answers to both, whichever its own `queryId`
+   * input holds, because it learns the other from the query it resolved. Keys are matched
+   * case-insensitively, as the server resolves them (`QueryLoader.ResolveQuery`).
    *
    * Callers bumping several keys for one user action should do so in one synchronous run: the
    * signal coalesces bumps within a tick into a single effect run, and bumps split across an
-   * await become one re-fetch each.
+   * await become one re-fetch each (#319).
    */
   request(queryId: string): void {
-    this.tokens.update(current => ({ ...current, [queryId]: (current[queryId] ?? 0) + 1 }));
+    const key = normalize(queryId);
+    this.tokens.update(current => ({ ...current, [key]: (current[key] ?? 0) + 1 }));
   }
+}
+
+function normalize(queryId: string): string {
+  return queryId.toLowerCase();
 }
