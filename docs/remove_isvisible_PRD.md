@@ -370,6 +370,8 @@ These are behaviours only; no code was copied. Vidyano runs **two independent me
 | G-Q22 | **Email addresses are never shown or sent to the browser for another user.** `UserName` becomes a **public handle**: registration asks for it; a framework rule refuses any `UserName` containing `@`; an email change no longer rewrites `UserName` (`SparkUserManager.cs:50`); existing users whose `UserName` is an email get a generated handle through a one-time migration and can change it on the account page. Login keeps accepting email or user name. No new field | owner, 2026-10-05 ("email-addresses should never be shown/leaked to the browser"; chose "UserName = public handle") | QnA labels showed author emails (§10.3); registration set `UserName = email` |
 | G-Q23 | **SPARK024 is silent for a deny on both well-known groups** (the documented "hide from everyone" pattern); a deny on one group only still warns. Analyzer and runtime posture note agree | owner, 2026-10-05 | 22 warnings in CodeCoverage were all deliberate |
 | G-Q24 | **The application decides how users sign in**: `SparkAuthenticationOptions.SignInIdentifiers` (`[Flags] Email \| UserName`, default both). A disallowed identifier kind is refused exactly like an unknown account (same 401 body, no failed-attempt count). The capabilities endpoint publishes the allowed kinds, and the ng-spark-auth and OIDC login pages adapt their label, input type and autocomplete. The old email → user-name fallback is removed (dead since G-Q22) | owner, 2026-10-05: "username OR email - We cannot make this decision for the final application-developers" | §10.1c |
+| G-Q25 | **An anonymously readable page must stay readable**: the QnA anonymous → `/login` redirect is fixed in this PR. `/spark/moderation/reputation` answers an anonymous caller `200 { result: null }` instead of 401 (no data disclosed) | owner, 2026-10-05 ("Yes, fix here") | §10.1d |
+| G-Q26 | **Read-after-write for request-driven saves**: the framework's request save path waits (bounded, `throwOnTimeout: false`) for indexes after `SaveChanges`, so the client's next fetch sees its own write; background work is excluded | owner, 2026-10-05 ("Yes") | §10.1d; `QnASubQueryTests` load-only failure |
 | G-Q2 | No dedicated shape hook: the developer overrides `OnLoad` (and calls `RemoveAttributes`); losing batched selection loads (`SparkSelectionResolver.cs:93`, the only batched caller) for such types is accepted; `OnQuery` is not involved | owner, grill 2026-10-04 | `DefaultPersistentObjectActions.cs:76-87`; supersedes PRD §6.2 |
 | D9 | "Client needs it, not drawn" = `showedOn` (`QueryValue`, explicit `None`), never `security.json` | Claude, delegated by the owner, 2026-10-04; owner agreed ("Vidyano has the Visibility + the security.json") | owner: a deny strips TS-needed values; decompiled Vidyano keeps the two mechanisms separate (§3.7b) |
 
@@ -563,6 +565,93 @@ right after a create. `FindByNameAsync` is an index query.
 
 **Note:** a not-yet-migrated `@`-shaped user name can no longer sign in *by that name*; its email still works. The
 migration renames those names at startup.
+
+### 10.1d Anonymous QnA and read-after-write (2026-10-05)
+**G-Q25, commit `63202286`.** The cause has three parts:
+- each author cell in the questions grid renders `<spark-reputation-badge [userId]>`
+  (`apps/QnA/QnA/ClientApp/src/app/renderers/author-renderer.component.ts`)
+- `/spark/moderation/reputation` refused unauthenticated callers through `ModerationEndpoint.UntypedAsync`
+  (`ModerationEndpoints.cs:97-98`), which becomes 401 via `SparkDenial.Refuse` (`SparkDenial.cs:72-77`)
+- the ng-spark-auth interceptor (`spark-auth.interceptor.ts`) sends the whole app to sign-in on any 401 outside
+  `/spark/auth`
+
+The fix:
+- **Server:** anonymous callers of `/reputation` get `200 { result: null }`, for themselves or any user, so nothing is
+  disclosed.
+- **Unchanged:** `/reputation/history`, review and write endpoints still refuse anonymous callers, and the
+  interceptor still redirects for genuine sign-in pages.
+- **Client:** `SparkModerationService.reputation()`/`ownReputation()` now return `… | null`, and the review-queue link
+  guards against `null`.
+- **Version:** `MintPlayer.Spark.Moderation` is `11.0.0-preview.97`.
+- **Tests:** `ModerationVoteTests.An_anonymous_caller_gets_no_reputation_and_no_401` (red → green), a client spec
+  (red → green), and E2E `QnABrowserTests.An_anonymous_visitor_stays_on_the_questions_page`.
+
+⚠️ **Lasting rule:** any `/spark/*` endpoint that a widget calls from an anonymously readable page must never answer
+anonymous callers with 401, because the interceptor cannot tell a widget's request from a page load. `/votes` and
+`/status` are fine; they resolve against rows the visitor can already read.
+
+**G-Q26, attempt 1 rejected: write-side `WaitForIndexesAfterSaveChanges`.**
+- **Mechanism:** a single place, the request-scoped session at `SparkMiddleware.cs:184`, set only when an
+  `HttpContext` exists, with 15 s and `throwOnTimeout: false`.
+- **Before:** under 8 CPU burners, `QnASubQueryTests` went red in 2 of 3 runs. One was the stale grid; the other was
+  a bulk delete answering 404 instead of 403 because its membership check read a stale index.
+- **After:** the stale grid never recurred, but **3 of 7 runs failed with HTTP 500 on writes that were already
+  committed**.
+- **Server stack:** `BatchHandlerProcessorForBulkDocs.WaitForIndexesAsync` (`AbstractBatchHandlerProcessorForBulkDocs.cs:136`)
+  → `Index.IsStale` → `OperationCanceledException` when an affected index is disposed during the post-commit wait. An
+  auto-index merge does that, and so does a side-by-side static index swap.
+- **Why it can't be patched over:** catching the exception leaves the session without the batch result (dirty
+  entities, stale change vectors, wrong Etag). Waiting on static indexes only misses this case, which runs on an
+  auto-index.
+- **Not committed.** The patch is kept outside the repo, including a deterministic `RequestWriteIndexWaitTests`
+  (`StopIndexOperation`). **G-Q26, attempt 2 (owner, 2026-10-05: "go ahead"): commit, then a separate awaited wait.** `await
+SaveChangesAsync()` commits, and success is final. Then a separate, bounded, awaited wait follows for the indexes
+covering the written collections. A timeout or error there (including a disposed index) is logged and swallowed,
+never surfaced, because the write already succeeded. It lives in one private helper in `DatabaseAccess`, which all
+request writes funnel through. A custom action calling `session.SaveChangesAsync()` directly is not covered and is
+pointed at the helper in the guide.
+
+**Implemented: commit `85f554f6`.** The helper is `DatabaseAccess.CommitAsync` (`DatabaseAccess.cs:941`), used at all
+five commit sites (:71, :83, :390, :494, :703).
+- **Written collections:** captured via `OnBeforeStore`/`OnBeforeDelete` during that `SaveChanges`, plus
+  `deletedById` for deletes by an unloaded id.
+- **The wait:** only with an `HttpContext`. One `GetIndexesStatisticsOperation`; in the normal case nothing is stale
+  and that call is the whole cost. Each stale index covering a written collection then gets `limit 0` queries with
+  `WaitForNonStaleResults` (RavenDB's cutoff: writes up to the query start).
+- **Bounds:** 15 s (`RequestWriteIndexWait`) plus the request's abort token. Any failure is logged as a warning and
+  swallowed.
+- **Two measured design facts:**
+  - The waiting queries are sliced into **500 ms**, because one 15 s waiting query blocks RavenDB from disposing the
+    index (`DeleteIndexOperation` timed out with `IndexDeletionException`).
+  - A disposed index triggers a re-read of the statistics: QnA's auto-index was merged mid-wait in 4 of 8 runs, and
+    every one of those requests still answered 2xx.
+
+**Excluded:**
+- background scopes without an `HttpContext`
+- code calling `SaveChangesAsync` directly: custom actions, identity/IdP stores, `ContributionEndpoints.cs:77`,
+  `LookupReferenceService`, Moderation
+
+The guides `guide-custom-actions.md` ("Writing so the next query sees it") and `guide-interceptors.md` (§1a) cover
+this. No new public API.
+
+**Proof:**
+- `RequestWriteIndexWaitTests`, 5/5 green:
+  - read-after-write with a stopped index
+  - the 15 s bound with a warning
+  - no wait without an `HttpContext`
+  - an index deleted mid-wait
+  - an index reset mid-wait
+
+  With the wait disabled, tests 1, 2 and 4 go red.
+- **QnASubQueryTests under 8 CPU burners:** the final code had 7 of 8 runs green. The baseline (same build, wait
+  disabled) had 1 of 8 green, with 12 failures: 7× 404-for-403, 4× the stale grid, 1× 500.
+- **The single remaining 500** is a pre-existing RavenDB auto-index creation timeout (`IndexCreationException`, raft)
+  before any write. It is present in the baseline too.
+- The first version of the fix had 2 early runs with an unexplained 500 before the re-read change. Across all builds
+  with the fix: 16 of 19 runs green.
+
+⚠️ **Known cost:** a paused or stopped index makes every request write to its collections take the full 15 s (by
+design; the warning names the index).
 
 ### 10.2 Operator steps (done 2026-10-05 with the owner's go-ahead, except where noted)
 1. ✅ VPS `root@188.245.190.60`: `/var/www/spark-schemas/docker-compose.yml`, service **`spark-schemas`** (image
