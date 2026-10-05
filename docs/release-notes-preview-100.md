@@ -1,7 +1,7 @@
 # Spark 11.0.0-preview.100 — audit, soft-delete and moderation members are generated (#271)
 
 **Packages:** `MintPlayer.Spark`, `MintPlayer.Spark.Abstractions`, `MintPlayer.Spark.SourceGenerators`,
-`MintPlayer.Spark.LibraryGenerators`, `MintPlayer.Spark.History`, `MintPlayer.Spark.History.Abstractions`,
+`MintPlayer.Spark.LibraryGenerators`, `MintPlayer.Spark.History`, `MintPlayer.Spark.History.Abstractions`, `MintPlayer.Spark.SoftDelete` (README only),
 `MintPlayer.Spark.Replication`, `MintPlayer.Spark.Replication.Abstractions` and
 `MintPlayer.Spark.AllFeatures` → `11.0.0-preview.100`. No npm package changed. The majors do not move:
 the packages still target .NET 11 and Angular 22.
