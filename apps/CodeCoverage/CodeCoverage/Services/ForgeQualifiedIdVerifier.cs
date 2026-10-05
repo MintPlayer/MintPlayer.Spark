@@ -172,7 +172,13 @@ public static class ForgeQualifiedIdVerifier
         var query = session.Advanced
             .AsyncRawQuery<object>(
                 $"from {collection} as d where d.{field} != null and not startsWith(d.{field}, $p) limit 0")
-            .AddParameter("p", $"{points}/github/");
+            .AddParameter("p", $"{points}/github/")
+            // ⚠️ This dynamic query builds its auto-index on first use, so the first answer is stale by
+            // construction, and a caller's "wait for indexing" beforehand cannot help: the index does not
+            // exist yet. Under load that first answer reached the throw below
+            // (ForgeQualifiedIdVerifierTests, #264 sweep). The bound is a failure bound, not a delay: a
+            // fresh index on these collections settles in well under a second.
+            .WaitForNonStaleResults(TimeSpan.FromMinutes(2));
 
         query.Statistics(out var statistics);
         await query.ToListAsync(cancellationToken);
