@@ -10,6 +10,7 @@ import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { SparkQueryRowAction, provideSparkQueryRowActions } from '@mintplayer/ng-spark/panels';
 import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 import { settle } from '../../src/test-utils';
@@ -883,6 +884,80 @@ describe('SparkQueryGridComponent', () => {
 
       expect(await (c as any).distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal })).toBeNull();
       expect(getDistinctValues).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * #319. A server `refreshQuery` (or the detail page's own refresh) carries the query's id OR its
+   * alias, in whatever case the caller wrote it — the server resolves both case-insensitively. The
+   * grid used to reload on ANY key's bump, so it answered every refresh in the app, its own included
+   * by accident.
+   */
+  describe('server-issued refresh (#319)', () => {
+    async function bumped(key: string | string[], inputs: Record<string, unknown> = {}) {
+      const { fixture, c, service } = await setup({}, inputs);
+      const reload = vi.spyOn(c, 'reload');
+      const refresh = TestBed.inject(SparkQueryRefreshService);
+      for (const k of [key].flat()) refresh.request(k);
+      fixture.detectChanges();
+      await settle(fixture);
+      return { c, service, reload };
+    }
+
+    it('ignores a refresh addressed to another query', async () => {
+      const { reload } = await bumped('q-unrelated');
+
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it('answers its input key', async () => {
+      const { reload } = await bumped('q-all');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers its query\'s alias while holding the id', async () => {
+      const { reload } = await bumped('allpeople');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers its query\'s id while holding the alias', async () => {
+      const { reload } = await bumped('q-all', { queryId: 'allpeople' });
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('matches case-insensitively, as the server resolves ids and aliases', async () => {
+      const { reload } = await bumped('AllPeople');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads once for several bumps of its keys in one run', async () => {
+      const { reload, service } = await bumped(['q-all', 'allpeople', 'q-all']);
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      // The mount fetched once; the refresh, once more.
+      expect(service.executeQuery).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not reload for refreshes that happened before it mounted', async () => {
+      const { fixture } = await setup();
+      const refresh = TestBed.inject(SparkQueryRefreshService);
+      refresh.request('q-all');
+      refresh.request('allpeople');
+      fixture.detectChanges();
+      await settle(fixture);
+
+      // A second grid on the same, app-wide service: the earlier counters are history to it.
+      const late = TestBed.createComponent(SparkQueryGridComponent);
+      const reload = vi.spyOn(late.componentInstance, 'reload');
+      late.componentRef.setInput('queryId', 'allpeople');
+      late.detectChanges();
+      await settle(late);
+
+      expect(reload).not.toHaveBeenCalled();
     });
   });
 
