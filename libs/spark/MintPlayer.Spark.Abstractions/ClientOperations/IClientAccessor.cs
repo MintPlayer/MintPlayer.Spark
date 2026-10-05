@@ -48,7 +48,11 @@ public interface IClientAccessor
     /// </summary>
     void RefreshAttribute(Guid objectTypeId, string id, string attributeName, object? value);
 
-    /// <summary>Re-execute a named query if it's currently displayed.</summary>
+    /// <summary>
+    /// Re-execute a query wherever it's currently displayed. <paramref name="queryId"/> is the
+    /// query's id or its alias, matched case-insensitively — not its name. Every grid showing that
+    /// query re-fetches once, whichever of the two forms it was opened with.
+    /// </summary>
     void RefreshQuery(string queryId);
 
     // The DisableAction overloads (DisableActionsOn / DisableQueryActions / DisableActions /

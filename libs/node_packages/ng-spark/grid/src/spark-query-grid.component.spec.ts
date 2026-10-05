@@ -10,6 +10,7 @@ import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { SparkQueryRowAction, provideSparkQueryRowActions } from '@mintplayer/ng-spark/panels';
 import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 import { settle } from '../../src/test-utils';
@@ -696,7 +697,7 @@ describe('SparkQueryGridComponent', () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      const before = c.fetchFn();
+      const tableReload = vi.spyOn((c as any).datatable(), 'reload');
       c.settings.set(new DatatableSettings({
         perPage: { values: [10, 25, 50], selected: 10 },
         page: { values: [1, 2, 3], selected: 3 },
@@ -713,9 +714,10 @@ describe('SparkQueryGridComponent', () => {
 
       // Page 1, because the old page number means nothing against a different result set.
       expect(c.settings().page.selected).toBe(1);
-      // A NEW fetch identity. The datatable dedupes reloads by (page, perPage, sort) — none of
-      // which a filter changes — so without this the request is silently never made.
-      expect(c.fetchFn()).not.toBe(before);
+      // A FORCED reload, from page 1. The datatable dedupes reloads by (page, perPage, sort) — none
+      // of which a filter changes — so without it the request is silently never made; and the
+      // settings binding reaches the datatable only after the reload already fetched.
+      expect(tableReload).toHaveBeenCalledWith({ resetPage: true });
     });
 
     it('sends excludes rather than a flag when the selection is inversed', async () => {
@@ -886,6 +888,80 @@ describe('SparkQueryGridComponent', () => {
     });
   });
 
+  /**
+   * #319. A server `refreshQuery` (or the detail page's own refresh) carries the query's id OR its
+   * alias, in whatever case the caller wrote it — the server resolves both case-insensitively. The
+   * grid used to reload on ANY key's bump, so it answered every refresh in the app, its own included
+   * by accident.
+   */
+  describe('server-issued refresh (#319)', () => {
+    async function bumped(key: string | string[], inputs: Record<string, unknown> = {}) {
+      const { fixture, c, service } = await setup({}, inputs);
+      const reload = vi.spyOn(c, 'reload');
+      const refresh = TestBed.inject(SparkQueryRefreshService);
+      for (const k of [key].flat()) refresh.request(k);
+      fixture.detectChanges();
+      await settle(fixture);
+      return { c, service, reload };
+    }
+
+    it('ignores a refresh addressed to another query', async () => {
+      const { reload } = await bumped('q-unrelated');
+
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it('answers its input key', async () => {
+      const { reload } = await bumped('q-all');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers its query\'s alias while holding the id', async () => {
+      const { reload } = await bumped('allpeople');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers its query\'s id while holding the alias', async () => {
+      const { reload } = await bumped('q-all', { queryId: 'allpeople' });
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('matches case-insensitively, as the server resolves ids and aliases', async () => {
+      const { reload } = await bumped('AllPeople');
+
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('reloads once for several bumps of its keys in one run', async () => {
+      const { reload, service } = await bumped(['q-all', 'allpeople', 'q-all']);
+
+      expect(reload).toHaveBeenCalledTimes(1);
+      // The mount fetched once; the refresh, once more.
+      expect(service.executeQuery).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not reload for refreshes that happened before it mounted', async () => {
+      const { fixture } = await setup();
+      const refresh = TestBed.inject(SparkQueryRefreshService);
+      refresh.request('q-all');
+      refresh.request('allpeople');
+      fixture.detectChanges();
+      await settle(fixture);
+
+      // A second grid on the same, app-wide service: the earlier counters are history to it.
+      const late = TestBed.createComponent(SparkQueryGridComponent);
+      const reload = vi.spyOn(late.componentInstance, 'reload');
+      late.componentRef.setInput('queryId', 'allpeople');
+      late.detectChanges();
+      await settle(late);
+
+      expect(reload).not.toHaveBeenCalled();
+    });
+  });
+
   describe('custom actions', () => {
     const archive = { name: 'Archive', label: { en: 'Archive' }, showedOn: 'query', refreshOnCompleted: false } as any;
     const other = { ...archive, name: 'Other' };
@@ -933,14 +1009,14 @@ describe('SparkQueryGridComponent', () => {
         const { c, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([archive]) });
         const executed = vi.fn();
         c.customActionExecuted.subscribe(executed);
-        const before = c.fetchFn();
+        const tableReload = vi.spyOn((c as any).datatable(), 'reload');
 
         await c.onCustomAction({ ...archive, confirmation: { en: 'confirm.archive' }, refreshOnCompleted: true });
 
         expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
         expect(executed).toHaveBeenCalledTimes(1);
-        // A new fetch identity is what makes the datatable re-request the current page.
-        expect(c.fetchFn()).not.toBe(before);
+        // The datatable re-requests the current page; the fetch closure is reused, not swapped.
+        expect(tableReload).toHaveBeenCalledTimes(1);
       } finally {
         confirmSpy.mockRestore();
       }

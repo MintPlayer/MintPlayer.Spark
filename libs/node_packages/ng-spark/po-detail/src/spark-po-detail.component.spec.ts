@@ -17,7 +17,7 @@ import {
   PersistentObject,
   ShowedOn,
 } from '@mintplayer/ng-spark/models';
-import { SparkAttributeRefreshService } from '@mintplayer/ng-spark/client-operations';
+import { SparkAttributeRefreshService, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { nextNavigationEnd, settle, StubComponent } from '../../src/test-utils';
 
 const personType: EntityType = {
@@ -473,6 +473,30 @@ describe('SparkPoDetailComponent', () => {
 
     expect(service.executeCustomAction).toHaveBeenCalled();
     expect(service.get).toHaveBeenCalledWith('person', 'people/1');
+  });
+
+  /**
+   * #319. The server may already have bumped a sub-query's token inside `executeCustomAction` (a
+   * `refreshQuery` operation). Bumping it again after the awaited re-fetch of the object lands in a
+   * second change-detection flush, so the grid fetched twice for one click.
+   */
+  it('onCustomAction with refreshOnCompleted asks the sub-query grids to refresh before re-fetching the item (#319)', async () => {
+    const withSubQuery = { ...personType, queries: ['person-friends', { query: 'person-pets' }] } as any;
+    const { harness, service } = await setup({
+      getEntityTypes: vi.fn().mockResolvedValue([withSubQuery]),
+      // Keeps the sub-query grids parked: this test is about the page, not the grids.
+      getQuery: vi.fn().mockReturnValue(new Promise(() => undefined)),
+    } as any);
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    const request = vi.spyOn(TestBed.inject(SparkQueryRefreshService), 'request');
+    (service.get as any).mockClear();
+
+    await c.onCustomAction(customActionRefresh);
+
+    expect(request.mock.calls.map(([key]) => key)).toEqual(['person-friends', 'person-pets']);
+    const lastRequest = Math.max(...request.mock.invocationCallOrder);
+    expect(lastRequest).toBeLessThan((service.get as any).mock.invocationCallOrder[0]);
   });
 
   it('onCustomAction failure sets errorMessage', async () => {
