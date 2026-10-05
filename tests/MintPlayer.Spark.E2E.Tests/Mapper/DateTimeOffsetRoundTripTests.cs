@@ -108,52 +108,103 @@ public class DateTimeOffsetRoundTripTests
             + $"index={fromIndex:o} document={fromDocument:o}");
     }
 
+    /// <summary>
+    /// Three registrations whose instant order is the REVERSE of their wall-clock order: car 0 has the
+    /// latest clock and the earliest instant. Ordering by text or by local clock gives 2, 1, 0.
+    /// </summary>
+    private static readonly DateTimeOffset[] InstantAscending =
+    [
+        new(2027, 3, 2, 01, 00, 0, TimeSpan.FromHours(12)),   // 2027-03-01T13:00Z
+        new(2027, 3, 1, 09, 00, 0, TimeSpan.FromHours(-5)),   // 2027-03-01T14:00Z
+        new(2027, 3, 1, 16, 00, 0, TimeSpan.FromHours(1)),    // 2027-03-01T15:00Z
+    ];
+
     [Fact]
     public async Task Sorting_across_mixed_offsets_is_chronological_by_instant()
     {
-        // Ordering was never broken -- RavenDB preserves the instant -- and this pins that the fix
-        // did not break it. The values are chosen so that ordering by the WALL CLOCK would give a
-        // different answer from ordering by the instant, so a regression here cannot pass by luck.
+        // This test used to fetch each car by its own plate search, in seed order, and assert the seed
+        // was ascending — it never asked the server to sort (PRD §1). Now the server sorts, and the
+        // order of one result page is what is asserted.
         using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
+        var prefix = UniquePrefix();
 
-        var prefix = CarFixture.RandomLicensePlate("SORT")[..4];
-        // Ascending by instant, DESCENDING by wall clock -- the whole point of the fixture. Getting
-        // this wrong is easy: comparing the clock TIMES (23:00, 08:00, 16:00) and forgetting the date
-        // gives values that look scrambled but sort ascending as DateTimes, so the guard below passes
-        // vacuously and the test proves nothing.
-        var expected = new[]
-        {
-            new DateTimeOffset(2027, 3, 2, 01, 00, 0, TimeSpan.FromHours(12)),   // 2027-03-01T13:00Z — latest clock, earliest instant
-            new DateTimeOffset(2027, 3, 1, 09, 00, 0, TimeSpan.FromHours(-5)),   // 2027-03-01T14:00Z
-            new DateTimeOffset(2027, 3, 1, 16, 00, 0, TimeSpan.FromHours(1)),    // 2027-03-01T15:00Z — earliest clock, latest instant
-        };
-
-        foreach (var (value, i) in expected.Select((v, i) => (v, i)))
+        foreach (var (value, i) in InstantAscending.Select((v, i) => (v, i)))
             await client.CreatePersistentObjectAsync(NewCarRegisteredAt(value, $"{prefix}{i}"));
-
         await _fixture.Host.WaitForIndexingAsync();
 
-        var ordered = new List<DateTimeOffset>();
-        foreach (var i in Enumerable.Range(0, expected.Length))
-            ordered.Add(await FindInQueryAsync(client, $"{prefix}{i}"));
+        var ascending = await client.ExecuteQueryAsync("registrations", search: prefix,
+            sortColumns: [new SortColumn { Property = RegisteredAt, Direction = "asc" }]);
+        var descending = await client.ExecuteQueryAsync("registrations", search: prefix,
+            sortColumns: [new SortColumn { Property = RegisteredAt, Direction = "desc" }]);
 
-        ordered.Select(v => v.UtcTicks).Should().BeInAscendingOrder(
-            "the seeded values must be ascending by instant for this test to mean anything");
+        Plates(ascending).Should().Equal($"{prefix}0", $"{prefix}1", $"{prefix}2");
+        Plates(descending).Should().Equal($"{prefix}2", $"{prefix}1", $"{prefix}0");
 
-        // And NOT ascending by wall clock, or the assertion above could pass without anything
-        // actually ordering by instant.
-        var wallClocks = ordered.Select(v => v.DateTime).ToArray();
-        var wallClockAlsoMonotonic = wallClocks.Zip(wallClocks.Skip(1), (a, b) => a <= b).All(x => x);
-        wallClockAlsoMonotonic.Should().BeFalse(
-            $"the fixture must distinguish instant-ordering from clock-ordering; clocks were "
-            + $"{string.Join(", ", wallClocks.Select(w => w.ToString("o", CultureInfo.InvariantCulture)))}");
+        // The guard that makes the assertion above mean something: by wall clock the order differs.
+        var clocks = InstantAscending.Select(v => v.DateTime).ToArray();
+        clocks.Zip(clocks.Skip(1), (a, b) => a <= b).All(x => x).Should().BeFalse(
+            "the cars must be ordered differently by wall clock than by instant, or this proves nothing");
+    }
+
+    [Fact]
+    public async Task A_column_filter_selects_by_instant_over_http()
+    {
+        using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
+        var prefix = UniquePrefix();
+
+        foreach (var (value, i) in InstantAscending.Select((v, i) => (v, i)))
+            await client.CreatePersistentObjectAsync(NewCarRegisteredAt(value, $"{prefix}{i}"));
+        await _fixture.Host.WaitForIndexingAsync();
+
+        // Car 0's instant (13:00Z) written in an offset none of the cars uses.
+        var result = await client.ExecuteQueryAsync("registrations", search: prefix,
+            columns: [new QueryColumnFilter { Name = RegisteredAt, Includes = ["2027-03-01T08:00:00-05:00"] }]);
+
+        Plates(result).Should().Equal($"{prefix}0");
+    }
+
+    [Fact]
+    public async Task Several_sort_columns_order_within_each_group_by_instant()
+    {
+        // The grid sends this on shift-click: one sort column per header, in click order.
+        using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
+        var prefix = UniquePrefix();
+
+        // Group "X" holds cars 0 and 2, group "Y" car 1 and a fourth, earlier car.
+        await client.CreatePersistentObjectAsync(NewCarRegisteredAt(InstantAscending[0], $"{prefix}0", $"{prefix}X"));
+        await client.CreatePersistentObjectAsync(NewCarRegisteredAt(InstantAscending[1], $"{prefix}1", $"{prefix}Y"));
+        await client.CreatePersistentObjectAsync(NewCarRegisteredAt(InstantAscending[2], $"{prefix}2", $"{prefix}X"));
+        await client.CreatePersistentObjectAsync(NewCarRegisteredAt(new(2026, 12, 31, 23, 59, 0, TimeSpan.FromHours(-8)), $"{prefix}3", $"{prefix}Y"));
+        await _fixture.Host.WaitForIndexingAsync();
+
+        var newestFirstPerModel = await client.ExecuteQueryAsync("registrations", search: prefix,
+            sortColumns:
+            [
+                new SortColumn { Property = CarFixture.AttributeNames.Model, Direction = "asc" },
+                new SortColumn { Property = RegisteredAt, Direction = "desc" },
+            ]);
+
+        Plates(newestFirstPerModel).Should().Equal($"{prefix}2", $"{prefix}0", $"{prefix}1", $"{prefix}3");
     }
 
     // ---------------------------------------------------------------------------------
 
-    private static PersistentObject NewCarRegisteredAt(DateTimeOffset value, string? plate = null)
+    /// <summary>
+    /// Five characters that start every plate (and model) a test creates, so a search for them returns
+    /// that test's cars and nothing else in the shared Fleet database.
+    /// </summary>
+    private static string UniquePrefix() => CarFixture.RandomLicensePlate("Q")[..6];
+
+    private static string[] Plates(QueryResult result)
+        => result.Items
+            .Select(i => i.Values.FirstOrDefault(v => v.Key == "LicensePlate")?.Value?.ToString() ?? "")
+            .ToArray();
+
+    private static PersistentObject NewCarRegisteredAt(DateTimeOffset value, string? plate = null, string? model = null)
     {
-        var po = CarFixture.New(plate ?? CarFixture.RandomLicensePlate("DTO"));
+        var po = model is null
+            ? CarFixture.New(plate ?? CarFixture.RandomLicensePlate("DTO"))
+            : CarFixture.New(plate ?? CarFixture.RandomLicensePlate("DTO"), model);
         return new PersistentObject
         {
             Name = po.Name,

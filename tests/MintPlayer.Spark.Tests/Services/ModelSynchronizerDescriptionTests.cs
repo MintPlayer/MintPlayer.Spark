@@ -234,7 +234,16 @@ public sealed class ModelSynchronizerDescriptionTests : IDisposable
         secondModel.Should().Be(firstModel);
         File.ReadAllText(TranslationsFile).Should().Be(afterSecond);
         afterSecond.Should().Contain("\r\n").And.NotMatchRegex("[^\r]\n");
-        afterSecond.Should().StartWith("{\r\n  \"common\": {\r\n    \"hello\"");
+
+        // Since #264 the sync also points "$schema" at the published revision — but that revision comes
+        // from the nearest schemas/v* git tag, and is 0 (no $schema written) where there is none. Master's
+        // CI built before the deploy created schemas/v1 and passed; every build after it stamps the line,
+        // and this assertion, which assumed none, then failed with no code change at all. Expect exactly
+        // what this build's revision writes, so the test no longer depends on which tags the clone holds.
+        var schemaLine = SparkSchemaRevision.Current > 0
+            ? $"  \"$schema\": \"{SparkSchemaReference.HostedUrlFor("translations", SparkSchemaRevision.Current)}\",\r\n"
+            : "";
+        afterSecond.Should().StartWith("{\r\n" + schemaLine + "  \"common\": {\r\n    \"hello\"");
         afterSecond.Should().EndWith("}\r\n");
     }
 

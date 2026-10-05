@@ -751,6 +751,33 @@ describe('SparkQueryGridComponent', () => {
       expect(body.columns).toEqual([]);
     });
 
+    /**
+     * Sorting on several columns from the grid (owner question, 2026-10-05). The header clicks are the
+     * datatable's: a click sorts by that column alone, a shift-click appends a column, a second
+     * shift-click flips it to descending. What it hands the fetch is passed on whole and in click
+     * order; SparkService maps the datatable's 'ascending'/'descending' to 'asc'/'desc' (its own spec).
+     */
+    it('passes every sort column to the query, in click order', async () => {
+      const executeQuery = vi.fn().mockResolvedValue(filterPage);
+      const { c } = await setup({ executeQuery });
+
+      // Click "LastName", then shift-click "RegisteredAt" twice.
+      await c.fetchFn()!({
+        page: 1,
+        perPage: 10,
+        sortColumns: [
+          { property: 'LastName', direction: 'ascending' },
+          { property: 'RegisteredAt', direction: 'descending' },
+        ],
+      } as any);
+
+      const options = executeQuery.mock.calls.at(-1)![1];
+      expect(options.sortColumns).toEqual([
+        { property: 'LastName', direction: 'ascending' },
+        { property: 'RegisteredAt', direction: 'descending' },
+      ]);
+    });
+
     it('asks the server only for the OTHER columns\' filters when listing values', async () => {
       const getDistinctValues = vi.fn().mockResolvedValue({ matching: [], remaining: [], hasMore: false });
       const { c, fixture } = await setup({

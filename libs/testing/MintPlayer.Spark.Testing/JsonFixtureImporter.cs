@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Raven.Client.Documents;
 
@@ -7,6 +8,10 @@ namespace MintPlayer.Spark.Testing;
 /// Seeds an <see cref="IDocumentStore"/> from RavenDB query-result-format JSON files.
 /// Expected shape: <c>{ "Results": [ { "@metadata": { "@id": "...", "@collection": "..." }, ... } ] }</c>.
 /// </summary>
+/// <remarks>
+/// Strings are stored verbatim, dates included: write a <see cref="DateTimeOffset"/> exactly as the
+/// client stores it (<c>"2027-03-01T09:00:00.0000000-05:00"</c>) and it lands with that offset.
+/// </remarks>
 public static class JsonFixtureImporter
 {
     /// <summary>
@@ -35,7 +40,13 @@ public static class JsonFixtureImporter
         foreach (var path in filePaths)
         {
             var content = await File.ReadAllTextAsync(path);
-            var root = JObject.Parse(content);
+
+            // DateParseHandling.None: a fixture's strings are stored as written. Newtonsoft's default
+            // turns every ISO date into a local DateTime, which moved "09:00-05:00" to "15:00" with no
+            // offset on a Brussels machine — the stored value then depended on the machine's zone and
+            // on DST, and only "Z" values survived (docs/datetimeoffset_query_sort_filter_PRD.md, F1).
+            using var reader = new JsonTextReader(new StringReader(content)) { DateParseHandling = DateParseHandling.None };
+            var root = JObject.Load(reader);
             var results = root["Results"] as JArray
                 ?? throw new InvalidOperationException($"Fixture '{path}' has no 'Results' array.");
 

@@ -1,0 +1,94 @@
+{
+  "Results": [
+    {
+      "LicensePlate": "A",
+      "Brand": "Volvo",
+      "Vin": "VIN-A",
+      "Tags": ["fleet"],
+      "RegisteredAt": "2027-03-02T01:00:00.0000000+12:00",
+      "DeregisteredAt": "2027-04-01T10:00:00.0000000+02:00",
+      "@metadata": {
+        "@id": "regcars/a",
+        "@collection": "RegCars",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar, MintPlayer.Spark.Tests"
+      }
+    },
+    {
+      "LicensePlate": "B",
+      "Brand": "Audi",
+      "Vin": "VIN-B",
+      "Tags": ["lease"],
+      "RegisteredAt": "2027-03-01T09:00:00.0000000-05:00",
+      "DeregisteredAt": null,
+      "@metadata": {
+        "@id": "regcars/b",
+        "@collection": "RegCars",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar, MintPlayer.Spark.Tests"
+      }
+    },
+    {
+      "LicensePlate": "C",
+      "Brand": "Volvo",
+      "Vin": "VIN-C",
+      "Tags": [],
+      "RegisteredAt": "2027-03-01T16:00:00.0000000+01:00",
+      "DeregisteredAt": "2027-04-01T09:30:00.0000000+00:00",
+      "@metadata": {
+        "@id": "regcars/c",
+        "@collection": "RegCars",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar, MintPlayer.Spark.Tests"
+      }
+    },
+    {
+      "LicensePlate": "D",
+      "Brand": "Audi",
+      "Vin": "VIN-D",
+      "Tags": ["fleet", "lease"],
+      "RegisteredAt": "2027-03-01T15:00:00.0000000+00:00",
+      "DeregisteredAt": "2027-03-31T23:00:00.0000000-05:00",
+      "@metadata": {
+        "@id": "regcars/d",
+        "@collection": "RegCars",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar, MintPlayer.Spark.Tests"
+      }
+    },
+    {
+      "LicensePlate": "E",
+      "Brand": "Volvo",
+      "Vin": "VIN-E",
+      "Tags": ["fleet"],
+      "RegisteredAt": "2027-03-01T22:15:00.0000000+05:45",
+      "DeregisteredAt": null,
+      "@metadata": {
+        "@id": "regcars/e",
+        "@collection": "RegCars",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar, MintPlayer.Spark.Tests"
+      }
+    },
+    {
+      "LicensePlate": "F",
+      "Brand": "Audi",
+      "Vin": "VIN-F",
+      "Tags": ["lease"],
+      "RegisteredAt": "2026-12-31T23:59:00.0000000-08:00",
+      "DeregisteredAt": "2027-04-01T12:00:00.0000000+05:00",
+      "@metadata": {
+        "@id": "regcars/f",
+        "@collection": "RegCars",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar, MintPlayer.Spark.Tests"
+      }
+    },
+    {
+      "LicensePlate": "G",
+      "Brand": "Audi",
+      "Vin": "VIN-G",
+      "Tags": ["fleet"],
+      "RegisteredAt": "2027-02-01T00:00:00.0000000Z",
+      "@metadata": {
+        "@id": "regcars/g",
+        "@collection": "RegCars",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar, MintPlayer.Spark.Tests"
+      }
+    }
+  ]
+}

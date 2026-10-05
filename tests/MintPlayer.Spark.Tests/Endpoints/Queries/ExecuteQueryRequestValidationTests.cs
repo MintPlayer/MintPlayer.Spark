@@ -82,6 +82,37 @@ public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTes
         ex.ResponseBody.Should().Contain("Unknown sort column(s): PasswordHash");
     }
 
+    /// <summary>
+    /// A misspelled direction used to sort ascending without a word, so a caller asking for the
+    /// newest first silently got the oldest first (PRD F5/D5, owner: "the Spark frontend (and any other
+    /// caller) must post a correct request, otherwise these failures become silent").
+    /// </summary>
+    [Theory]
+    [InlineData("dsc")]
+    [InlineData("descending")]
+    [InlineData("")]
+    public async Task An_unknown_sort_direction_is_a_400_naming_it(string direction)
+    {
+        var ex = (await new Func<Task>(() => _client.ExecuteQueryAsync(AllPeopleQueryId,
+            sortColumns: [new SortColumn { Property = "lastname", Direction = direction }])).Should().ThrowExactlyAsync<SparkClientException>()).Which;
+
+        ex.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        ex.ResponseBody.Should().Contain($"Unknown sort direction '{direction}' for lastname");
+    }
+
+    [Theory]
+    [InlineData("asc")]
+    [InlineData("ASC")]
+    [InlineData("desc")]
+    [InlineData("Desc")]
+    public async Task Both_sort_directions_are_accepted_in_any_case(string direction)
+    {
+        var result = await _client.ExecuteQueryAsync(AllPeopleQueryId,
+            sortColumns: [new SortColumn { Property = "lastname", Direction = direction }]);
+
+        result.TotalItems.Should().Be(2);
+    }
+
     [Fact]
     public async Task Attribute_and_declared_sort_columns_are_allowed()
     {

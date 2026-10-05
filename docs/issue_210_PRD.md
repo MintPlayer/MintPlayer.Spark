@@ -948,6 +948,17 @@ references from the plan. Statuses below are as shipped.
   code fix. It needs its own `*.CodeFixes` assembly plus packaging, which is a self-contained piece of work
   with no bearing on the rest of this issue. **Tracked as #270.**
 
+  > **Superseded 2026-10-05 (#270, `docs/datetimeoffset_query_sort_filter_PRD.md` §9).**
+  > - **R26 is done, and not in a separate assembly.** The `GetTypes()` failure was the *test harness* lacking
+  >   `Workspaces`, now referenced by the test project. The fix ships in `MintPlayer.Spark.SourceGenerators`
+  >   next to the analyzer, by owner decision.
+  > - **R24's text is out of date in two ways.** The `Search` companion is `{Name}Search` (the roles were
+  >   swapped), not `{Name}Sort`. And a `DateTimeOffset` indexed `Exact` needs no companion: it orders by
+  >   instant under every indexing, measured on Corax and Lucene. SPARK005 is now strings only, and an `Exact`
+  >   string is told to add `{Name}Sort`.
+  > - **SPARK006 is wider.** It also catches generated and `{Name}Raw` companions, reported on the base field.
+  >   The text above is kept as the record of what was decided then.
+
   The analyzer already names the property to add, so the gap is a missing lightbulb rather than missing
   information.
 - **R27** **Done, and it cost nothing.** No suppression mechanism was built. When the generator emits the

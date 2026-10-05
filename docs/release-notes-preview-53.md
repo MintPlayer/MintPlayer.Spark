@@ -120,7 +120,7 @@ Generated pairs are correct by construction and excluded from analysis. Hand-wri
 
 | Rule | Fires when |
 |---|---|
-| `SPARK005` | an index declares a field `Search`/`Exact` and its index entity has no `{Name}Sort` companion |
+| `SPARK005` | an index declares a field `Search`/`Exact` and its index entity has no `{Name}Sort` companion *(since #270: strings only; `{Name}Search` for Search, `{Name}Sort` for Exact)* |
 | `SPARK006` | a companion exists but the index map never assigns it, so it indexes as null for every document |
 
 Both are **warnings**, so existing indexes keep compiling while they are flagged. No suppression switch is
@@ -176,6 +176,9 @@ shape is pinned by a test for exactly that reason.
 - **No "Add Sort property" code fix yet.** `SPARK005` names the property to add but there is no lightbulb. A
   `CodeFixProvider` cannot live in the analyzer assembly — it needs `Workspaces` at runtime, which is
   deliberately not packed — so it requires its own assembly and packaging. Follow-up: #270.
+  *Superseded 2026-10-05 (#270): the fix ships in `MintPlayer.Spark.SourceGenerators` itself. The
+  `GetTypes()` failure was the test harness lacking `Workspaces`, not a consumer problem. The companion for
+  `Search` is now `{Name}Search`, not `{Name}Sort`. See `docs/datetimeoffset_query_sort_filter_PRD.md` §9.*
 - **An `IAudit` boilerplate generator** is postponed to #271 — it is the only identified reason to put a
   generator in a library project, so it is justified on its own terms rather than smuggled in here.
 - **Collection fan-out** (`[GenerateIndex(typeof(Country), nameof(Country.Cities))]`) is not implemented, and the

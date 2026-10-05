@@ -334,6 +334,73 @@ describe('SparkQueryListComponent', () => {
       expect(c.gridData()!.map((i: any) => i.id)).toEqual(['p/2', 'p/1', 'p/3', 'p/4']);
     });
 
+    async function sortedIds(
+      columns: { name: string; dataType: string }[],
+      data: { id: string; values: { key: string; value: unknown }[] }[],
+      sortColumns: { property: string; direction: 'ascending' | 'descending' }[],
+    ): Promise<string[]> {
+      const { c, harness, streamSubject } = await live();
+      streamSubject.next({ type: 'snapshot', columns: columns.map((col, i) => ({ ...col, order: i + 1 })), data });
+      await settle(harness.fixture, { rounds: 6 });
+
+      c.grid().settings.set(new DatatableSettings({
+        perPage: { values: [50], selected: 50 },
+        page: { values: [1], selected: 1 },
+        sortColumns,
+      }));
+      await settle(harness.fixture, { rounds: 6 });
+
+      return c.gridData()!.map((i: any) => i.id);
+    }
+
+    /**
+     * Streamed dates are the server's raw ISO strings, each in its own offset and with trailing
+     * fraction zeros trimmed. As text, 09:00-05:00 (14:00Z) sorts before 15:00+00:00, and the ".5"
+     * variant after both — neither is the instant order (PRD F4).
+     */
+    it('sorts a datetime column by instant, not by its text', async () => {
+      const rows = [
+        { id: 'c/late', values: [{ key: 'At', value: '2027-03-01T15:00:00+00:00' }] },       // 15:00Z
+        { id: 'c/mid', values: [{ key: 'At', value: '2027-03-01T09:00:00.5-05:00' }] },      // 14:00:00.5Z
+        { id: 'c/early', values: [{ key: 'At', value: '2027-03-02T01:00:00+12:00' }] },      // 13:00Z
+        { id: 'c/none', values: [] },
+      ];
+
+      const ascending = await sortedIds([{ name: 'At', dataType: 'datetime' }], rows, [{ property: 'At', direction: 'ascending' }]);
+      expect(ascending).toEqual(['c/none', 'c/early', 'c/mid', 'c/late']);
+
+      TestBed.resetTestingModule();
+      const descending = await sortedIds([{ name: 'At', dataType: 'datetime' }], rows, [{ property: 'At', direction: 'descending' }]);
+      expect(descending).toEqual(['c/late', 'c/mid', 'c/early', 'c/none']);
+    });
+
+    it('sorts a number column numerically', async () => {
+      const ids = await sortedIds(
+        [{ name: 'Km', dataType: 'number' }],
+        [
+          { id: 'c/10', values: [{ key: 'Km', value: 10 }] },
+          { id: 'c/9', values: [{ key: 'Km', value: 9 }] },
+          { id: 'c/100', values: [{ key: 'Km', value: 100 }] },
+        ],
+        [{ property: 'Km', direction: 'ascending' }]);
+
+      expect(ids).toEqual(['c/9', 'c/10', 'c/100']);
+    });
+
+    it('breaks a tie on the first column by the instant of a date in the second', async () => {
+      const ids = await sortedIds(
+        [{ name: 'Model', dataType: 'string' }, { name: 'At', dataType: 'datetime' }],
+        [
+          // Text order is the reverse of instant order here: "…03-02T01:00" is the larger string.
+          { id: 'x/13z', values: [{ key: 'Model', value: 'X' }, { key: 'At', value: '2027-03-02T01:00:00+12:00' }] },
+          { id: 'y/only', values: [{ key: 'Model', value: 'Y' }, { key: 'At', value: '2026-12-31T23:59:00-08:00' }] },
+          { id: 'x/14z', values: [{ key: 'Model', value: 'X' }, { key: 'At', value: '2027-03-01T09:00:00-05:00' }] },
+        ],
+        [{ property: 'Model', direction: 'ascending' }, { property: 'At', direction: 'descending' }]);
+
+      expect(ids).toEqual(['x/14z', 'x/13z', 'y/only']);
+    });
+
     it('hands the grid null for a non-streaming query, so it fetches for itself', async () => {
       const { harness, service } = await setup();
       const c = await navigate(harness, '/query/q-all');

@@ -22,14 +22,21 @@ public sealed partial class SortCompanionAnalyzer
     /// partial class but cannot reach inside a hand-written <c>Map = ... select new VCar { ... }</c> initializer,
     /// so a companion can be declared, stored and sortable while being fed by nothing.
     /// </summary>
+    /// <remarks>
+    /// Covers every companion kind since 2026-10-05 — <c>{Name}Search</c>, <c>{Name}Sort</c> and the
+    /// <c>{Name}Raw</c> offset wrapper — and reports on the base field rather than the companion, so a
+    /// generated companion is reachable (docs/datetimeoffset_query_sort_filter_PRD.md, D15). Still a
+    /// warning: silent wrong data, by the rule at the top of this file, and an existing id must not start
+    /// breaking builds.
+    /// </remarks>
     internal static readonly DiagnosticDescriptor UnassignedSortCompanionRule = new(
         id: "SPARK006",
-        title: "Sort companion is never assigned in the index map",
-        messageFormat: "Sort companion '{0}' is never assigned in index '{1}', so it will always be empty. Map it from the same value as its base field.",
+        title: "Index companion is never assigned in the index map",
+        messageFormat: "Index companion '{0}' is never assigned in index '{1}', so {2}. Map it from the same value as '{3}'.",
         category: "Correctness",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "A declared but unmapped companion indexes as null for every document. Nothing fails: the index deploys, reports healthy, and returns the right number of rows with an empty sort key.");
+        description: "A declared but unmapped companion indexes as null for every document. Nothing fails: the index deploys, reports healthy and returns the right rows in the right order, while search on a {Name}Search companion matches nothing and a {Name}Raw companion returns every DateTimeOffset at +00:00.");
 
     /// <summary>
     /// The hole that had no guard at all: the generator emits the <c>Index(...)</c> calls into a

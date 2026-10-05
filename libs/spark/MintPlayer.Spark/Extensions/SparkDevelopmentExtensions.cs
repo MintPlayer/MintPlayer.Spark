@@ -753,6 +753,13 @@ public static class SparkDevelopmentExtensions
                 foreach (var column in query.SortColumns)
                 {
                     if (string.IsNullOrWhiteSpace(column.Property)) continue;
+
+                    // The execute endpoint answers 400 for this; a declared sort never reaches it, so
+                    // without this check a typo sorts ascending in silence (PRD D5).
+                    if (!SortColumn.IsValidDirection(column.Direction))
+                        offenders.Add($"{definition.Name}.{query.Name}: sorts by '{column.Property}' in direction "
+                            + $"'{column.Direction}', which is neither 'asc' nor 'desc' and so sorts ascending");
+
                     if (surface.Contains(column.Property)) continue;
 
                     var attribute = definition.Attributes
@@ -777,7 +784,7 @@ public static class SparkDevelopmentExtensions
             "The sort gate checks the same showedOn flag the wire does, so such a column is refused and "
             + "the grid ships in index order. Either widen the attribute to the query surface (it must "
             + "also exist on the projection, or the widening is intersected away on the next "
-            + "synchronize), or sort by a column that is on it.");
+            + "synchronize), or sort by a column that is on it. A direction must be 'asc' or 'desc'.");
 
         Environment.ExitCode = ExitDrift;
     }

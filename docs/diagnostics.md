@@ -27,8 +27,8 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK002 | Error | Projection property missing `[Reference]` | `ProjectionPropertyAnalyzer` | — |
 | SPARK003 | — | **Retired.** Was `IgnoredBreadcrumbFieldAnalyzer`; no code exists | — | — |
 | SPARK004 | Warning | `UseSpark()` should be called after `UseRouting()` | `MiddlewareOrderAnalyzer` | — |
-| SPARK005 | Warning | Indexed field has no sort companion | `SortCompanionAnalyzer` | — |
-| SPARK006 | Warning | Sort companion is never assigned in the index map | `SortCompanionAnalyzer` | — |
+| SPARK005 | Warning | Indexed field has no sort companion (strings only: `Search` → `{Name}Search`, `Exact` → `{Name}Sort`) | `SortCompanionAnalyzer` | ✅ Move search to a `{Name}Search` companion / Add the sort companion `{Name}Sort` |
+| SPARK006 | Warning | Index companion (`{Name}Search`, `{Name}Sort`, `{Name}Raw`) is never assigned in the index map — reported on the base field | `SortCompanionAnalyzer` | ✅ Map the companion in the index (refused for map/reduce, helper projections and other shapes it cannot edit safely) |
 | SPARK007 | Warning | `[Breadcrumb]` inside a `[FromIndex]` projection has no effect | `BreadcrumbPlacementAnalyzer` | — |
 | SPARK008 | Warning | `[Breadcrumb]` on a property kind that cannot carry it | `BreadcrumbPlacementAnalyzer` | — |
 | SPARK009 | Error | Multiple `[DefaultIndex]` markers over one collection type | `DefaultIndexAnalyzer` | — |
