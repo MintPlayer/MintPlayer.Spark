@@ -21,6 +21,8 @@ import {
   QueryColumnFilter,
   QueryResultItem,
   SparkDeletedFilter,
+  isDateDataType,
+  parseWireDate,
   type SparkSelectionModeSetting,
 } from '@mintplayer/ng-spark/models';
 import { NgComponentOutlet } from '@angular/common';
@@ -439,11 +441,12 @@ export class SparkQueryListComponent {
     // under the user on every update.
     const sortCols = this.grid()?.settings().sortColumns ?? [];
     if (sortCols.length > 0) {
+      const dataTypes = new Map(this.streamColumns().map(c => [c.name, c.dataType]));
       items = [...items].sort((a, b) => {
         for (const col of sortCols) {
-          const aVal = a.values.find(v => v.key === col.property)?.value ?? '';
-          const bVal = b.values.find(v => v.key === col.property)?.value ?? '';
-          const cmp = String(aVal).localeCompare(String(bVal));
+          const aVal = a.values.find(v => v.key === col.property)?.value;
+          const bVal = b.values.find(v => v.key === col.property)?.value;
+          const cmp = compareStreamValues(aVal, bVal, dataTypes.get(col.property));
           if (cmp !== 0) return col.direction === 'descending' ? -cmp : cmp;
         }
         return 0;
@@ -452,4 +455,32 @@ export class SparkQueryListComponent {
 
     this.streamItems.set(items);
   }
+}
+
+/**
+ * Orders two streamed cell values the way the server orders the same column.
+ *
+ * The values are what the wire carries: a date is the raw ISO string WITH its own offset and with
+ * trailing fraction zeros trimmed (`…T09:00:00-05:00`, `…T09:00:00.5-05:00`), a number is a number.
+ * Comparing them as text sorted dates by wall clock and `10` before `9`; a date compares by instant
+ * and a number numerically (docs/datetimeoffset_query_sort_filter_PRD.md, F4).
+ *
+ * A missing value sorts first ascending, as the empty string always did.
+ */
+function compareStreamValues(a: unknown, b: unknown, dataType: string | undefined): number {
+  const aMissing = a === null || a === undefined || a === '';
+  const bMissing = b === null || b === undefined || b === '';
+  if (aMissing || bMissing) return aMissing === bMissing ? 0 : aMissing ? -1 : 1;
+
+  if (isDateDataType(dataType)) {
+    const aDate = parseWireDate(a);
+    const bDate = parseWireDate(b);
+    if (aDate && bDate) return aDate.getTime() - bDate.getTime();
+  } else if (dataType === 'number' || dataType === 'decimal') {
+    const aNumber = Number(a);
+    const bNumber = Number(b);
+    if (!isNaN(aNumber) && !isNaN(bNumber)) return aNumber - bNumber;
+  }
+
+  return String(a).localeCompare(String(b));
 }

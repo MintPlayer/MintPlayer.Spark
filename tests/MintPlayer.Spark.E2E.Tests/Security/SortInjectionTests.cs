@@ -44,20 +44,16 @@ public class SortInjectionTests
     }
 
     [Fact]
-    public async Task Sort_with_malformed_direction_does_not_500()
+    public async Task Sort_with_malformed_direction_is_a_400()
     {
         using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
 
-        // The request may succeed (server tolerates the garbage direction) or fail with 4xx;
-        // the test's point is that it must never be a 500.
-        try
-        {
-            await client.ExecuteQueryAsync(CarsQueryId, sortColumns: [new SortColumn { Property = "LicensePlate", Direction = "not-a-direction" }]);
-        }
-        catch (SparkClientException ex)
-        {
-            ((int)ex.StatusCode).Should().BeLessThan(500,
-                "malformed direction should produce a 4xx client error, not a 500 server fault");
-        }
+        // It used to be tolerated as ascending, which silently inverted a "newest first" request
+        // (docs/datetimeoffset_query_sort_filter_PRD.md, D5). Neither success nor a 500 is acceptable.
+        var ex = (await new Func<Task>(() => client.ExecuteQueryAsync(CarsQueryId,
+            sortColumns: [new SortColumn { Property = "LicensePlate", Direction = "not-a-direction" }]))
+            .Should().ThrowExactlyAsync<SparkClientException>()).Which;
+
+        ((int)ex.StatusCode).Should().Be(400);
     }
 }

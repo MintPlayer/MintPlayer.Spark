@@ -316,6 +316,16 @@ not exist until a query creates them, and RavenDB blocks on that first creation 
 (`{ "Results": [ { "@metadata": { "@id": … }, … } ] }`) and copies **all** metadata through — which
 is how a fixture controls or omits `@Raven-Clr-Type` deliberately.
 
+String values are stored **verbatim, dates included**: write a `DateTimeOffset` as the client stores
+it, `"2027-03-01T09:00:00.0000000-05:00"`, and it keeps its offset. Before 2026-10 the importer let
+Newtonsoft parse dates, which moved them to the machine's local clock and dropped the offset.
+
+- Omitting `Raven-Clr-Type` does not leave it absent: the importer stores a `Dictionary`, so its type
+  name is stamped instead. Typed loads and queries still work, but `LoadAsync<object>` returns a
+  dictionary.
+- For a nested test type, use the CLR name with `+`:
+  `"Ns.OuterTests+Inner, MintPlayer.Spark.Tests"`.
+
 ---
 
 ## Traps

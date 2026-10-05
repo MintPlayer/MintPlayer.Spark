@@ -247,6 +247,7 @@ Fixture `Services/Data/reg-cars.json` with rows A–G (§3) plus `DeregisteredAt
 |---|---|
 | T26 | rewrite `Sorting_across_mixed_offsets_is_chronological_by_instant` to send `sortColumns: RegisteredAt asc` and read the order from one result page, scoped by a plate prefix search |
 | T27 | `Includes` filter on `RegisteredAt` over HTTP with another offset spelling, scoped by plate prefix |
+| T32 | multi-column sort over HTTP: `registrations` sorted by a string column, then `RegisteredAt` → order within each group is by instant (owner question 2026-10-05: "will we be able to sort on 2 and more columns from the frontend?") |
 
 ### 6.4 ng-spark (`spark-query-list.component.spec.ts`)
 
@@ -255,6 +256,8 @@ Fixture `Services/Data/reg-cars.json` with rows A–G (§3) plus `DeregisteredAt
 | T28 | streaming sort on a `datetime` column with mixed offsets and mixed fraction lengths → instant order (red before D4) |
 | T29 | streaming sort on a numeric column → `9 < 10` (red before D4) |
 | T30 | existing null-placement specs still pass unchanged |
+| T31 | multi-column sort from the grid: a header click then two shift-clicks on a second header → `executeQuery` posts `sortColumns: [{A, asc}, {B, desc}]`, in click order, mapped from the datatable's `ascending`/`descending`. Shift-click semantics live in `mp-datatable` (`H(...)`: add asc → flip to desc → remove) |
+| T31b | streaming multi-column sort: a string column first, then a `datetime` column → ties on the string are broken by instant |
 
 ## 7. Out of scope (genuinely not being done)
 

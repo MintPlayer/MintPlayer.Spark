@@ -1151,13 +1151,11 @@ internal partial class EntityMapper : IEntityMapper
             // stamp the server's offset onto the value. AssumeUniversal applies only when the string
             // carries no offset, which is the contract — Spark preserves offsets it is given and
             // treats an absent one as UTC. (AdjustToUniversal is the one to avoid: it flattens every
-            // offset to +00:00, reintroducing the read-side defect on the way in.)
+            // offset to +00:00, reintroducing the read-side defect on the way in.) The query filter
+            // path reads the same strings through the same helper, so a value filters as it saves.
             else if (targetType == typeof(DateTimeOffset))
             {
-                convertedValue = value is DateTimeOffset dto
-                    ? dto
-                    : DateTimeOffset.Parse(value.ToString()!, CultureInfo.InvariantCulture,
-                        DateTimeStyles.AssumeUniversal);
+                convertedValue = value is DateTimeOffset dto ? dto : WireDateTimeOffset.Parse(value.ToString()!);
             }
             else if (targetType == typeof(DateOnly))
             {

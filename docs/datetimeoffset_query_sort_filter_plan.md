@@ -184,6 +184,8 @@ out red is a new finding: stop and investigate, do not adjust the assertion.**
 - npm version: bump `libs/node_packages/ng-spark/package.json` **22.28.0 → 22.28.1**. It is a patch,
   and the major stays on the Angular major. CI auto-publishes on merge and skips an already-published
   version (SP4).
+- T31 in `spark-query-grid.component.spec.ts`: simulate the datatable's sort change (header click then
+  shift-clicks) and assert the `executeQuery` body's `sortColumns`. T31b in the query-list spec.
 - Type switch: `datetime`/`date` → `parseWireDate(v)?.getTime()`; `number`/`decimal` → numeric;
   anything else → today's `localeCompare`. Test inputs from SP4: `'2027-03-01T09:00:00-05:00'` vs
   `'2027-03-01T09:00:00.5-05:00'` vs `'2027-03-01T15:00:00+00:00'`, and `9` vs `10`.
@@ -197,6 +199,9 @@ out red is a new finding: stop and investigate, do not adjust the assertion.**
   Delete the misleading "Ordering was never broken" comment and say what is now measured.
 - T27: the same three cars, `columns: [new QueryColumnFilter { Name = "RegisteredAt", Includes =
   [<another offset spelling of car 1>] }]`, scoped by the prefix search → exactly car 1.
+- T32: three cars sharing one `Brand` value (unique per test) plus one with another brand; sort
+  `[Brand asc, RegisteredAt asc]` (and `RegisteredAt desc`); assert group order, then instant order
+  inside the group.
 - Confirm the plate-prefix search narrows to just the test's rows (search pushdown on
   `LicensePlate`) so other tests' cars sharing the collection cannot interleave.
 

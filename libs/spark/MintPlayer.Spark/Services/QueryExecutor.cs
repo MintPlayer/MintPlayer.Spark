@@ -1852,9 +1852,13 @@ internal sealed record DatabasePage(int TotalItems);
     private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns,
         EntityTypeDefinition definition, SparkQuery? query)
     {
-        for (int i = 0; i < sortColumns.Length; i++)
+        // Whether an ordering has been applied yet — NOT the loop index. A refused or unmatched first
+        // column used to leave the next one as ThenBy on an unordered sequence: harmless on RavenDB,
+        // whose provider reads it as ORDER BY, but a 500 on an in-memory IQueryable from a custom
+        // query (IndexOutOfRangeException at enumeration, or ArgumentException at the call), PRD F3.
+        var ordered = false;
+        foreach (var col in sortColumns)
         {
-            var col = sortColumns[i];
 
             // The sort column names an attribute of the query surface, or it is refused (#295).
             //
@@ -1891,9 +1895,10 @@ internal sealed record DatabasePage(int TotalItems);
             }
 
             var isDescending = string.Equals(col.Direction, "desc", StringComparison.OrdinalIgnoreCase);
-            var methodName = i == 0
+            var methodName = !ordered
                 ? (isDescending ? "OrderByDescending" : "OrderBy")
                 : (isDescending ? "ThenByDescending" : "ThenBy");
+            ordered = true;
 
             var parameter = System.Linq.Expressions.Expression.Parameter(entityType, "x");
             var propertyAccess = System.Linq.Expressions.Expression.Property(parameter, propertyInfo);
@@ -2470,6 +2475,17 @@ internal sealed record DatabasePage(int TotalItems);
                 }
                 if (target.IsEnum) { value = Enum.Parse(target, element.ToString(), ignoreCase: true); return true; }
 
+                // Not System.Text.Json: it reads a string without an offset as SERVER-LOCAL, while a
+                // save reads the same string as UTC, so the filter and the stored value named
+                // different instants (PRD F2). Both now read it through the one helper.
+                if (target == typeof(DateTimeOffset))
+                {
+                    if (element.ValueKind != JsonValueKind.String
+                        || !WireDateTimeOffset.TryParse(element.GetString(), out var instant)) return false;
+                    value = instant;
+                    return true;
+                }
+
                 value = JsonSerializer.Deserialize(element.GetRawText(), target);
 
                 // Deserialize answers null for a JSON literal that is well-formed but not a member of
@@ -2479,6 +2495,13 @@ internal sealed record DatabasePage(int TotalItems);
 
             if (target.IsInstanceOfType(raw)) { value = raw; return true; }
             if (target.IsEnum) { value = Enum.Parse(target, raw.ToString() ?? "", ignoreCase: true); return true; }
+            if (target == typeof(DateTimeOffset) && raw is string text)
+            {
+                // Convert.ChangeType cannot produce a DateTimeOffset (it is not IConvertible).
+                if (!WireDateTimeOffset.TryParse(text, out var instant)) return false;
+                value = instant;
+                return true;
+            }
 
             value = Convert.ChangeType(raw, target);
             return value is not null;

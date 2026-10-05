@@ -195,6 +195,26 @@ public class SparkModelVerifyChecksTests
         reported.Should().Contain("VerifySortProbe.GetVerifySortProbes: " + expected);
     }
 
+    /// <summary>
+    /// The execute endpoint answers 400 for a bad direction, but a declared sort never passes through
+    /// it, so a typo in the model would still sort ascending in silence (PRD D5).
+    /// </summary>
+    [Theory]
+    [InlineData("dsc")]
+    [InlineData("descending")]
+    public void A_declared_sort_direction_other_than_asc_or_desc_exits_3(string direction)
+    {
+        using var scratch = new ScratchContentRoot();
+        var query = Query("GetVerifySortProbes", "Database.VerifySortProbes");
+        query["sortColumns"] = new JsonArray(new JsonObject { ["property"] = "Title", ["direction"] = direction });
+
+        var (exitCode, reported) = VerifyWith(scratch, () =>
+            Plant(scratch, "VerifySortProbe", [Attribute("Title")], [query]));
+
+        exitCode.Should().Be(3);
+        reported.Should().Contain($"VerifySortProbe.GetVerifySortProbes: sorts by 'Title' in direction '{direction}', which is neither 'asc' nor 'desc'");
+    }
+
     [Theory]
     [InlineData("Missing", "'Missing' is not an attribute")]
     [InlineData("Secret", "'Secret' is not on the query surface (showedOn)")]

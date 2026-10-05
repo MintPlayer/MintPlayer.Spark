@@ -132,6 +132,15 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
                         new { error = $"Unknown sort column(s): {string.Join(", ", invalid)}" },
                         statusCode: 400);
                 }
+
+                // A misspelled direction used to sort ascending silently (PRD D5).
+                var badDirection = sortOverrides.FirstOrDefault(c => !SortColumn.IsValidDirection(c.Direction));
+                if (badDirection is not null)
+                {
+                    return Results.Json(
+                        new { error = $"Unknown sort direction '{badDirection.Direction}' for {badDirection.Property}; expected 'asc' or 'desc'." },
+                        statusCode: 400);
+                }
             }
 
             // Column filters (#431) are validated the same way and for the same reason: an unknown
