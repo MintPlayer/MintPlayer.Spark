@@ -8,7 +8,7 @@
 
 | Milestone | State |
 |---|---|
-| SP1–SP4 spikes | ⏳ |
+| SP1–SP4 spikes | ✅ 2026-10-05: results in PRD §3; F3 confirmed as a 500, D11 decided |
 | M1 test infrastructure + JSON fixture | ⏳ |
 | M2 write all server tests first (expected red recorded) | ⏳ |
 | M3 F1 importer fix | ⏳ |
@@ -98,14 +98,25 @@ Files:
   plate order ≠ instant order. Every date string written with an explicit offset or `Z`, 7-digit
   fraction, exactly as the client writes.
 - `MintPlayer.Spark.Tests.csproj` — `<Content Include="Services\Data\*.json" CopyToOutputDirectory="PreserveNewest" />`.
+- Fixture `@metadata` on every row: `"@collection": "RegCars"`, `"Raven-Clr-Type":
+  "MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar, MintPlayer.Spark.Tests"` (SP2).
+- The entity definition has **no** `IndexName`: the index binding goes on the `Registrations` query only,
+  so `RegistrationsUnindexed` really runs on an auto index (SP2).
+- `tests/MintPlayer.Spark.Tests/_Infrastructure/LocalZone.cs`: the `LocalZone` collection definition
+  (`DisableParallelization = true`), the `LocalZone : IDisposable` that sets and restores `TZ` plus
+  `TimeZoneInfo.ClearCachedData()`, and `RequireNonUtc(instant)`, which throws `XunitException`
+  (PRD D11, code shape from SP3).
+- `RegCarLocalZoneFilterTests.cs` (same folder): its own `SharedSparkHost` over the same fixture, in the
+  `LocalZone` collection, holding T15.
 
 Verify by compiling only (`dotnet build` of the test project, output redirected to a log).
 
 ## M2 — All server tests, written before any fix
 
 Write T0–T18 (index path), T19 (direction, written against the D5 recommendation), T20 (unindexed),
-T21–T22 (custom queries; add two custom-query methods on `RegContext` returning `IEnumerable` and
-in-memory `IQueryable`), T23 (`JsonFixtureImporter` unit test, in the same project), T24 (helper —
+T21–T22b (custom queries; add two custom-query methods on `RegContext` returning `IEnumerable` and
+`list.AsQueryable()`; for T22 the refused first column is a model attribute not shown on the query,
+and for T22b a declared sort starts with an array attribute — both measured to 500 today, SP1), T23 (`JsonFixtureImporter` unit test, in the same project), T24 (helper —
 compile-stubbed until M4), plus T15/T24 inside the SP3 zone-simulation collection.
 
 Assertion rules (PRD D9/D10): order as a list of plates; offsets via `EqualsExact`; each sort test
@@ -170,8 +181,12 @@ out red is a new finding: stop and investigate, do not adjust the assertion.**
   `settle()` helpers (`:58-85`, `:181-185`, `:301-335`); inputs from SP4. Run the new specs once
   before the change to record red (`nx run @mintplayer/ng-spark:test -c local`). No app host is
   running, so this does not collide with a live dev server.
-- npm version: a fix is a **patch** bump; the major stays on the Angular major (CLAUDE.md
-  versioning). Check whether CI publishes on merge, and bump accordingly.
+- npm version: bump `libs/node_packages/ng-spark/package.json` **22.28.0 → 22.28.1**. It is a patch,
+  and the major stays on the Angular major. CI auto-publishes on merge and skips an already-published
+  version (SP4).
+- Type switch: `datetime`/`date` → `parseWireDate(v)?.getTime()`; `number`/`decimal` → numeric;
+  anything else → today's `localeCompare`. Test inputs from SP4: `'2027-03-01T09:00:00-05:00'` vs
+  `'2027-03-01T09:00:00.5-05:00'` vs `'2027-03-01T15:00:00+00:00'`, and `9` vs `10`.
 
 ## M8 — E2E
 

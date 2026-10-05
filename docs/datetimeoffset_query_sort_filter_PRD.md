@@ -3,6 +3,7 @@
 **Branch:** `test/dto-query-sort-filter` off `master` (`ca068ea1`)
 **Plan:** [datetimeoffset_query_sort_filter_plan.md](datetimeoffset_query_sort_filter_plan.md)
 **Status:** drafted 2026-10-05, after a three-agent code audit and three measured spikes (§3).
+Owner decisions recorded in §8; plan spikes SP1–SP4 completed the same day (§3).
 **One PR.** The test coverage, and every defect the coverage work found, land together.
 
 ---
@@ -114,13 +115,66 @@ Filter values arrive as `JsonElement` (measured), deserialised with no options
   different offsets collapse to one entry (by design: `DateTimeOffsetFilterTests.cs:133`).
 - `IRequestTimeZoneResolver` has no consumer in the query pipeline.
 
+### SP1–SP4 — plan spikes (2026-10-05, all measured unless marked)
+
+**SP1 — F3 impact (measured, exact reflection call copied from `QueryExecutor.cs:1894-1908`).**
+
+| Source | Result of `ThenBy` without a prior `OrderBy` |
+|---|---|
+| `list.AsQueryable()` | `Invoke` succeeds; enumeration throws `IndexOutOfRangeException`, surfacing from `MaterializeQueryable` (`:1716`) as a `TargetInvocationException` → **500** |
+| `list.AsQueryable().Where(..)` | `Invoke` throws `ArgumentException` ("`IQueryable` cannot be used for parameter of type `IOrderedQueryable`") → **500** |
+| Raven auto and static index | no error; the client emits `order by Name` → correctly ordered |
+
+Custom queries reach `ApplySorting` whenever they return any `IQueryable` (`:1271`, `:1348`, `:1373-1376`).
+A first column is refused, while `i` still advances, in four cases:
+- not on the query surface (`:2607`)
+- an array attribute (`:2614`)
+- `canSort: false` (`:2619`)
+- no property on the row type (`:1883-1891`)
+
+The first three pass the endpoint allow-list, so **F3 is reachable over HTTP**. A model whose
+*declared* sort starts with an array attribute triggers it with no caller involved.
+**F3 → CONFIRMED (measured), a 500 on in-memory custom queries.**
+
+**SP2 — test host (measured, in-repo throwaway spike, removed; 2/2 green).**
+- Works as planned with the F1-fixed importer called directly from `SharedSparkHost.BeforeHostAsync`,
+  after deploying the index. The index is non-stale and fully populated on the first test.
+- `Raven-Clr-Type` must be `MintPlayer.Spark.Tests.Services.RegCarQuerySortFilterTests+RegCar,
+  MintPlayer.Spark.Tests`. Without it the importer stamps a `Dictionary` type: typed paths still
+  work, but `LoadAsync<object>` breaks. Keep the tag.
+- Index-bound and plain-collection queries both sort by instant and return exact offsets.
+  - A `Z` value comes back as `+00:00`.
+  - Both explicit-null and absent `DeregisteredAt` come back `null`.
+- The plain-collection query runs on an auto index provided the entity definition has no
+  `IndexName`.
+- Declared query sorts are set via `EntityTypeFile.Queries[].SortColumns` and are honoured.
+
+**SP3 — simulating a zone in `dotnet test` (measured on WSL Ubuntu 24.04 with the process in
+`Etc/UTC`, and on Windows; xUnit 2.9.3 as the repo).**
+
+| Variant | Linux | Windows |
+|---|---|---|
+| (a) `TZ=Europe/Brussels` + `TimeZoneInfo.ClearCachedData()` in a `DisableParallelization` collection | `Local` = Brussels +01:00, STJ yields `+01:00` → **F2 reproduces**. 2×784 samples by parallel neighbours saw only UTC; a deliberately leaky control *was* detected | `TZ` ignored; Local stays Romance (+01:00 here) |
+| (b) child process | works (64–157 ms); `RemoteExecutor` is **not** on nuget.org | `TZ` ignored |
+| (c) guard: fail when `Local` offset is zero | fires for `Etc/UTC` and for an invalid `TZ` (silent UTC fallback); silent under Brussels | not measured on a UTC Windows box (would need `tzutil`); fires by construction |
+
+**SP4 — streaming wire shape (code read).**
+- A `DateTimeOffset` cell is serialised raw by default System.Text.Json: the fraction is trimmed
+  (`…T09:00:00-05:00`, `…T09:00:00.5-05:00`) and a zero offset is written `+00:00`, never `Z`.
+- `DateTime` follows its `Kind`; `DateOnly` is written `"2027-03-01"`.
+- Column `dataType` values: dates are `datetime` and `date` (`isDateDataType`, `datetime-local.ts:115`);
+  numbers are `number` and `decimal` (`SparkModelShape.cs:194-210`).
+- `parseWireDate(value: unknown): Date | null` accepts every shape above.
+- ng-spark is **22.28.0** and auto-published on merge to master (`dotnet-build-master.yml:261-277`),
+  so the D4 fix ships as **22.28.1**.
+
 ## 4. Defects
 
 | # | Defect | Status | Evidence |
 |---|---|---|---|
 | **F1** | `JsonFixtureImporter` rewrites every ISO date to the machine's local clock and drops the offset (`JObject.Parse` default `DateParseHandling.DateTime`, `JsonFixtureImporter.cs:38`, persisted via `:53`). Any JSON-seeded DTO test is checking a timezone-dependent corruption of its own fixture. | **CONFIRMED (measured)** | SP-B table 1; fix measured: `JsonTextReader { DateParseHandling = None }` + `JObject.Load` stores exactly what `StoreAsync` stores |
 | **F2** | Offset-less filter value is read as **server-local**; the write path reads the same string as **UTC** (`EntityMapper.cs:1149-1160`, `AssumeUniversal`). The same wire string is a different instant in a filter than in a save; the gap moves with the server's zone and DST. | **CONFIRMED (measured)** | SP-B table 2 |
-| **F3** | Refused/unknown first sort column turns the next column into `ThenBy` on an unordered queryable. Probably harmless on Raven (provider treats it as `OrderBy`); on an in-memory `IQueryable` custom query, suspected to throw at enumeration. | CONFIRMED logic, SUSPECTED impact | SP-C; to be measured in SP1 |
+| **F3** | Refused/unknown first sort column turns the next column into `ThenBy` on an unordered queryable. Harmless on Raven; a **500** on an in-memory `IQueryable` custom query, reachable over HTTP. | **CONFIRMED (measured)** | SP1 |
 | **F4** | Client streaming sort compares raw ISO strings: mixed offsets and different fraction lengths sort by text, not instant. Numbers sort as text too (`"10" < "9"`). | **CONFIRMED (code read)** | SP-C; red spec in M5 |
 | **F5** | Sort direction is not validated; `"dsc"`/`"descending"` silently sort ascending. | CONFIRMED | SP-C |
 | **F6** | Date search is inconsistent: pushdown never matches a date, the in-memory fallback matches culture-formatted text — the result depends on whether pushdown was possible. | CONFIRMED (code read) — **not fixed (D6)** | SP-C |
@@ -142,6 +196,7 @@ memory; ties need a tie-breaker.
 | **D7** | Server tests live in `MintPlayer.Spark.Tests` (the `SparkTestDriver` family — they are integration tests, not E2E). Use a **test-local copy** of Car/`Cars_Overview`/`VCar` named `RegCar`/`RegCars_Overview`/`VRegCar`. | Fleet's index is source-generated inside the Fleet web app; Spark.Tests has no generator reference; simple-name assembly scans would collide on `Car`/`CarActions`. |
 | **D8** | Fixture lifecycle: `SharedSparkHost<TContext>` (one database + host per class) for the read-only sort/filter class; seeding via `JsonFixtureImporter.ImportAsync` in `BeforeHostAsync`. | Many read-only tests over one dataset; per-case databases cost ~200 ms each with an index. |
 | **D9** | Tests assert the **order of instants** and the **offset of every returned row** (`EqualsExact`), never `==` on `DateTimeOffset`. Each sort test carries a guard that the fixture is *not* also ordered by wall clock / string. | `DateTimeOffset.Equals` compares instants; that is how the vacuous E2E test survived. |
+| **D11** | Zone simulation (SP3 variant a + guard c): the F2 tests (T15, T24) live in their own classes in a `[CollectionDefinition("LocalZone", DisableParallelization = true)]` collection. Each sets `TZ=Europe/Brussels` + `TimeZoneInfo.ClearCachedData()` and restores both in `Dispose`, and fails (never skips) via `RequireNonUtc` when `Local` has a zero offset. T15's `SharedSparkHost` is created and disposed **inside** that collection, so no host thread from another class runs while the zone is changed. The helper lives in `tests/MintPlayer.Spark.Tests/_Infrastructure/LocalZone.cs`. | Owner asked for simulation inside `dotnet test`; SP3 measured it reproducing F2 on a UTC Linux process, with no leakage and a working leak detector. |
 | **D10** | No-value ordering is pinned only as a **group** (first asc, last desc) — not null-vs-absent within the group. | Corax and Lucene disagree on null vs absent (SP-A); the test must not pin an engine artefact. |
 
 ## 6. Test catalogue
@@ -168,7 +223,7 @@ Fixture `Services/Data/reg-cars.json` with rows A–G (§3) plus `DeregisteredAt
 | T12 | multiple `Includes` | union |
 | T13 | `Excludes` | complement |
 | T14 | `Includes [null]` on nullable column | explicit-null rows; pin absent-row behaviour as measured |
-| T15 | **offset-less** include `"2027-03-01T15:00:00"` | matches C and D (UTC, D2) — red before fix on a non-UTC host |
+| T15 | **offset-less** include `"2027-03-01T15:00:00"` | matches C and D (UTC, D2). Red before the fix under the simulated zone; **moved to its own class `RegCarLocalZoneFilterTests` in the `LocalZone` collection (D11)** |
 | T16 | date-only include `"2027-03-01"` | matches only an instant at `00:00Z` (no range semantics) — pins it |
 | T17 | unparseable include | zero rows, not 500 |
 | T18 | distincts: ordered by instant; C/D collapse; each offered value round-trips as a filter | |
@@ -180,7 +235,8 @@ Fixture `Services/Data/reg-cars.json` with rows A–G (§3) plus `DeregisteredAt
 |---|---|---|
 | T20 | asc/desc by instant on a **plain collection** source (no index bound) | auto index |
 | T21 | custom query returning `IEnumerable` → in-memory `RowSortComparer` sort by instant; nulls last | `needsInMemorySort` |
-| T22 | custom query returning in-memory `IQueryable`, first sort column refused → second column still sorts (F3) | red before D3 if SP1 confirms |
+| T22 | custom query returning `list.AsQueryable()`, `sortColumns = [<not-on-surface column>, RegisteredAt]` → rows sorted by instant, no exception (F3) | **red today: 500** (SP1) |
+| T22b | same, with a declared model sort whose first column is an array attribute | red today (SP1) |
 | T23 | `JsonFixtureImporter` unit test: offsets and `Z` stored verbatim | F1 |
 | T24 | shared parse helper: offset-less and date-only → UTC; explicit offsets kept | D2 |
 | ~~T25~~ | ~~search on a date column~~ | dropped — D6 |
