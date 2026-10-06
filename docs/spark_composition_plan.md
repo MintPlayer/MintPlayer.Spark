@@ -11,7 +11,7 @@ run only in the final sweep.
 | Grill Q1–Q6 | ⏳ |
 | M0 Spikes S1–S5, S7 (S6 not run, Q1 = C) | ✅ 2026-10-06, PRD §9 |
 | M1 DRY imports + one App_Data location (D11, D12) | ✅ 2026-10-06 |
-| M2 Layering engine + kind specs (D2, D3) | ⏳ |
+| M2 Layering engine + kind specs (D2, D3) | ✅ 2026-10-06 (actions + model specs; translations in M5) |
 | M3 Generalised library-layer generator (D1) | ⏳ |
 | M4 Composed-model provider; synchronizer writes the delta (D5, D6) | ⏳ |
 | M5 Translations at runtime (D10) | ⏳ |

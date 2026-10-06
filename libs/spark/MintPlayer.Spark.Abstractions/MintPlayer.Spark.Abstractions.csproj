@@ -26,6 +26,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- The layering engine, one source with the generators (composition D14). -->
+		<Compile Include="..\Shared\Layering\*.cs" Link="Layering\%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Authorization" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />

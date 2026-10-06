@@ -285,6 +285,25 @@ builds.
   (or MiniJson with arrays added), not on `System.Text.Json.Nodes`.
 - **Three engines today, not two.** `LibraryActionsConflictAnalyzer` re-composes actions at
   compile time. It folds into the shared engine.
+- **As built in M2 (2026-10-06).** The source set is `libs/spark/Shared/Layering/` (`SparkJson`,
+  `SparkLayers`, `SparkKinds`), linked into `MintPlayer.Spark.Abstractions` and
+  `MintPlayer.Spark.SourceGenerators`, internal in both. The tree is our own (`SparkJson*`), not
+  MiniJson: MiniJson stays the translations reader until M5 replaces it. Decided while building:
+  - **Strict JSON in every layer.** No comments, no trailing commas, no duplicate keys. The actions
+    run time used to skip comments and trailing commas (`JsonCommentHandling.Skip`); no file in the
+    repository used either, and `_`-prefixed keys are the comment mechanism the schemas publish.
+    Strictness is what the generators already had, so it is the choice that removes drift item 5.
+  - **What refuses a layer, and what only reports.** A layer that cannot be read (invalid JSON, a
+    key twice under the kind's comparer, a value of the wrong shape via `KindSpec.Shape`, a keyed
+    element without its key, `$remove` next to anything but the key) throws `SparkLayerException`.
+    A statement the kind forbids (changing an immutable `id`, a `null` where `NullRemoves` is off)
+    is ignored and listed in `Errors`, so the caller can report every one at once.
+  - **The analyzer** reports nothing when a library layer does not compose, rather than skipping
+    only that layer. The run time refuses the same layer at startup with its message.
+  - **Conflicts name the first spelling** of an action and property, not the conflicting layer's.
+  - The golden files (S2) are committed in `tests/MintPlayer.Spark.Tests/Layering/Golden/`. They
+    were captured from the hand-written engine before the port, and both builds are tested
+    against them.
 
 ### D15 — What is uniform and what stays per kind
 - **Uniform across every kind:**

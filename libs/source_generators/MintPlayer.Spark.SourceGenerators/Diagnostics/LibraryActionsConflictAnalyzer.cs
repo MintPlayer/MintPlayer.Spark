@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
-using System;
-using System.Collections.Generic;
+using MintPlayer.Spark.Layering;
 using System.Collections.Immutable;
 
 namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
@@ -40,40 +39,22 @@ public sealed class LibraryActionsConflictAnalyzer : DiagnosticAnalyzer
         var layers = LibraryActionsReader.Read(context.Compilation);
         if (layers.Count < 2) return;
 
-        // action → property → (canonical value, layer)
-        var composed = new Dictionary<string, Dictionary<string, (string Value, string Layer)>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var layer in layers)
+        // The run time's own engine (composition D14), so the two can never disagree on a conflict.
+        SparkComposition composition;
+        try
         {
-            foreach (var entry in LibraryActionsReader.Entries(layer.Json))
-            {
-                if (entry.Value is null)
-                {
-                    composed.Remove(entry.Key);
-                    continue;
-                }
+            composition = SparkLayers.Compose(LibraryActionsReader.Parse(layers), SparkKinds.Actions);
+        }
+        catch (SparkLayerException)
+        {
+            // The run time refuses a layer that does not compose, in its own words.
+            return;
+        }
 
-                if (!composed.TryGetValue(entry.Key, out var properties))
-                    composed[entry.Key] = properties = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase);
-
-                foreach (var property in entry.Value)
-                {
-                    if (property.Value == "null")
-                    {
-                        properties.Remove(property.Key);
-                        continue;
-                    }
-
-                    if (properties.TryGetValue(property.Key, out var earlier)
-                        && !string.Equals(earlier.Layer, layer.Assembly, StringComparison.OrdinalIgnoreCase)
-                        && earlier.Value != property.Value)
-                    {
-                        context.ReportDiagnostic(Diagnostic.Create(
-                            ConflictRule, Location.None, entry.Key, property.Key, layer.Assembly, earlier.Layer));
-                    }
-
-                    properties[property.Key] = (property.Value, layer.Assembly);
-                }
-            }
+        foreach (var conflict in composition.Conflicts)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(
+                ConflictRule, Location.None, conflict.Path[0], conflict.Path[1], conflict.WinnerLayer, conflict.LoserLayer));
         }
     }
 }

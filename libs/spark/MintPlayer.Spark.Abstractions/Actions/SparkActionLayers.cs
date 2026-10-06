@@ -1,6 +1,6 @@
 using System.Reflection;
-using System.Text.Json;
 using System.Text.Json.Nodes;
+using MintPlayer.Spark.Layering;
 
 namespace MintPlayer.Spark.Abstractions.Actions;
 
@@ -28,7 +28,7 @@ public sealed class SparkComposedAction
     /// <summary>The layer that declared the action.</summary>
     public string DeclaredBy { get; }
 
-    /// <summary>The stated properties, case-insensitive, in the order they were first stated.</summary>
+    /// <summary>The stated properties, case-insensitive, in the order they were stated (one reset with null and stated again comes last).</summary>
     public IReadOnlyDictionary<string, SparkComposedProperty> Properties => properties;
 
     internal readonly Dictionary<string, SparkComposedProperty> properties = new(StringComparer.OrdinalIgnoreCase);
@@ -52,6 +52,7 @@ public sealed record SparkActionsComposition(
 /// Composition runs on the raw JSON objects, before binding to C# classes, because a bound class
 /// cannot say "absent": <c>"Edit": null</c> removes the inherited action, and a property set to
 /// <c>null</c> resets it to the default (it is no longer stated). Names are case-insensitive.
+/// Each layer is strict JSON: no comments, no trailing commas (<c>_</c>-prefixed keys are the comments).
 /// </para>
 /// <para>
 /// Removal is presentation: rights still decide who may run an action.
@@ -89,118 +90,32 @@ public static class SparkActionLayers
             .ToList();
     }
 
-    /// <summary>The layers composed in order.</summary>
+    /// <summary>The layers composed in order, by the shared engine (<see cref="SparkLayers"/>, composition D2/D14).</summary>
     /// <exception cref="InvalidOperationException">A layer is not valid JSON, or not an object of action objects.</exception>
     public static SparkActionsComposition Compose(IEnumerable<SparkActionsLayer> layers)
     {
-        var actions = new Dictionary<string, SparkComposedAction>(StringComparer.OrdinalIgnoreCase);
-        var order = new List<string>();
-        var conflicts = new List<SparkActionsConflict>();
-        var libraryLayers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var composition = SparkLayers.Compose(
+            layers.Select(l => SparkLayer.Parse(l.Name, l.Json, l.IsLibrary)),
+            SparkKinds.Actions);
 
-        foreach (var layer in layers)
+        var actions = new List<SparkComposedAction>();
+        foreach (var entry in composition.Result.Members)
         {
-            if (layer.IsLibrary) libraryLayers.Add(layer.Name);
-
-            foreach (var (name, value) in Entries(layer))
+            var definition = (SparkJsonObject)entry.Value;
+            var action = new SparkComposedAction(entry.Key, composition.SourceOf(definition)!);
+            foreach (var property in definition.Members)
             {
-                if (value is null)
-                {
-                    // "Edit": null — the action is gone from every page, whoever declared it.
-                    if (actions.Remove(name))
-                        order.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
-                    continue;
-                }
-
-                if (!actions.TryGetValue(name, out var action))
-                {
-                    action = new SparkComposedAction(name, layer.Name);
-                    actions[name] = action;
-                    order.Add(name);
-                }
-
-                foreach (var (property, propertyValue) in Properties(layer, name, value))
-                {
-                    if (propertyValue is null)
-                    {
-                        // A property set to null is no longer stated: the default applies.
-                        action.properties.Remove(property);
-                        continue;
-                    }
-
-                    if (layer.IsLibrary
-                        && action.properties.TryGetValue(property, out var earlier)
-                        && libraryLayers.Contains(earlier.Layer)
-                        && !string.Equals(earlier.Layer, layer.Name, StringComparison.OrdinalIgnoreCase)
-                        && !JsonNode.DeepEquals(earlier.Value, propertyValue))
-                    {
-                        conflicts.Add(new SparkActionsConflict(action.Name, property, layer.Name, earlier.Layer));
-                    }
-
-                    action.properties[property] = new SparkComposedProperty(propertyValue.DeepClone(), layer.Name);
-                }
+                action.properties[property.Key] = new SparkComposedProperty(
+                    JsonNode.Parse(SparkJson.Write(property.Value))!,
+                    composition.SourceOf(property.Value)!);
             }
+            actions.Add(action);
         }
 
-        return new SparkActionsComposition(order.Select(n => actions[n]).ToList(), conflicts);
-    }
+        var conflicts = composition.Conflicts
+            .Select(c => new SparkActionsConflict(c.Path[0], c.Path[1], c.WinnerLayer, c.LoserLayer))
+            .ToList();
 
-    private static IEnumerable<(string Name, JsonObject? Value)> Entries(SparkActionsLayer layer)
-    {
-        JsonNode? root;
-        try
-        {
-            root = JsonNode.Parse(layer.Json, documentOptions: new JsonDocumentOptions
-            {
-                CommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true,
-            });
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidOperationException($"{layer.Name} is not valid JSON: {ex.Message}", ex);
-        }
-
-        if (root is null) yield break;
-        if (root is not JsonObject entries)
-            throw new InvalidOperationException(
-                $"{layer.Name} must be a JSON object mapping each action name to its definition, or to null to remove it.");
-
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, value) in entries)
-        {
-            if (IsAnnotation(name, root: true))
-                continue;
-            if (!seen.Add(name))
-                throw new InvalidOperationException($"{layer.Name} declares the action '{name}' twice (names are case-insensitive).");
-
-            yield return value switch
-            {
-                null => (name, null),
-                JsonObject definition => (name, definition),
-                _ => throw new InvalidOperationException(
-                    $"{layer.Name}: '{name}' must be an object (the action's definition) or null (to remove it)."),
-            };
-        }
-    }
-
-    /// <summary>
-    /// Not an action or a property: the file's <c>$schema</c> (root only) and <c>_</c>-prefixed
-    /// comments, which the published schema allows everywhere (#264, G-Q12/Q17).
-    /// </summary>
-    private static bool IsAnnotation(string name, bool root)
-        => name.StartsWith('_') || (root && name == "$schema");
-
-    private static IEnumerable<(string Property, JsonNode? Value)> Properties(SparkActionsLayer layer, string action, JsonObject definition)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (property, value) in definition)
-        {
-            if (IsAnnotation(property, root: false))
-                continue;
-            if (!seen.Add(property))
-                throw new InvalidOperationException($"{layer.Name}: '{action}' states '{property}' twice (names are case-insensitive).");
-            yield return (property, value);
-        }
+        return new SparkActionsComposition(actions, conflicts);
     }
 }

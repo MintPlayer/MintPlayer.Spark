@@ -1,0 +1,17 @@
+New @MintPlayer.Spark
+New.icon = "plus-lg" @MintPlayer.Spark
+New.showedOn = "query" @MintPlayer.Spark
+New.variant = "primary" @MintPlayer.Spark
+Edit @MintPlayer.Spark
+Edit.icon = "pen" @app
+Edit.showedOn = "both" @MintPlayer.Spark
+Edit.variant = "secondary" @A.Lib
+Archive @A.Lib
+Archive.icon = "z" @app
+Archive.showedOn = "detail" @A.Lib
+Archive.offset = 2 @B.Lib
+Publish @B.Lib
+Publish.label = "actions.Publish.label" @B.Lib
+Publish.refreshOnCompleted = false @B.Lib
+Publish.confirmation = false @app
+conflict Archive.icon: B.Lib over A.Lib

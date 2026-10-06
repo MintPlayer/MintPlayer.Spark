@@ -28,6 +28,11 @@
         <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="12.1.1" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
+    <!-- The layering engine, one source with the runtime's MintPlayer.Spark.Abstractions (composition D14). -->
+    <ItemGroup>
+        <Compile Include="..\..\spark\Shared\Layering\*.cs" Link="Layering\%(Filename)%(Extension)" />
+    </ItemGroup>
+
     <!--
     The code fixes in CodeFixes/ derive from CodeFixProvider, which lives in
     Microsoft.CodeAnalysis.Workspaces. ExcludeAssets="runtime" satisfies the compiler while shipping

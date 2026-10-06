@@ -1,9 +1,8 @@
 using Microsoft.CodeAnalysis;
-using MintPlayer.Spark.SourceGenerators.Json;
+using MintPlayer.Spark.Layering;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 
@@ -49,54 +48,18 @@ internal static class LibraryActionsReader
     /// or nothing when the text does not parse — the run time reports that in its own words.
     /// </summary>
     public static IEnumerable<string> Names(string json)
-        => Entries(json).Select(e => e.Key);
-
-    /// <summary>The layer's actions, each with its properties rendered canonically; a removal has none.</summary>
-    public static IReadOnlyList<KeyValuePair<string, IReadOnlyList<KeyValuePair<string, string>>?>> Entries(string json)
     {
-        var result = new List<KeyValuePair<string, IReadOnlyList<KeyValuePair<string, string>>?>>();
-        JsonNode root;
-        try { root = MiniJson.Parse(json, allowScalars: true); }
-        catch (JsonParseException) { return result; }
+        SparkJsonNode root;
+        try { root = SparkJson.Parse(json); }
+        catch (SparkJsonException) { return []; }
 
-        if (root is not JsonObject actions) return result;
-        foreach (var action in actions.Members)
-        {
-            // $schema and _comments are not actions or properties; SparkActionLayers skips them too.
-            if (action.Key.StartsWith("_", StringComparison.Ordinal) || action.Key == "$schema")
-                continue;
-            if (action.Value is JsonObject definition)
-            {
-                var properties = definition.Members
-                    .Where(p => !p.Key.StartsWith("_", StringComparison.Ordinal))
-                    .Select(p => new KeyValuePair<string, string>(p.Key, Render(p.Value)))
-                    .ToList();
-                result.Add(new KeyValuePair<string, IReadOnlyList<KeyValuePair<string, string>>?>(action.Key, properties));
-            }
-            else
-            {
-                result.Add(new KeyValuePair<string, IReadOnlyList<KeyValuePair<string, string>>?>(action.Key, null));
-            }
-        }
-        return result;
+        return root is SparkJsonObject actions
+            ? actions.Members.Select(m => m.Key).Where(key => !SparkLayers.IsAnnotation(key, isRoot: true)).ToList()
+            : [];
     }
 
-    private static string Render(JsonNode node)
-    {
-        switch (node)
-        {
-            case JsonString s:
-                var sb = new StringBuilder();
-                MiniJson.AppendString(sb, s.Value);
-                return sb.ToString();
-            case JsonScalar scalar:
-                return scalar.Raw;
-            case JsonObject o:
-                return "{" + string.Join(",", o.Members
-                    .OrderBy(m => m.Key, StringComparer.Ordinal)
-                    .Select(m => m.Key + ":" + Render(m.Value))) + "}";
-            default:
-                return "null";
-        }
-    }
+    /// <summary>The layers as the shared engine takes them; one that does not parse makes the whole set unreadable.</summary>
+    /// <exception cref="SparkLayerException">A layer is not valid JSON, or not an object.</exception>
+    public static IEnumerable<SparkLayer> Parse(IEnumerable<LibraryActionsLayer> layers)
+        => layers.Select(l => SparkLayer.Parse(l.Assembly, l.Json, isLibrary: true));
 }
