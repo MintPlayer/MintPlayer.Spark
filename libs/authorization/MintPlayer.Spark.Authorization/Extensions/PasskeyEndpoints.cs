@@ -97,7 +97,7 @@ internal static class PasskeyEndpoints
     /// The credential id as it appears in a URL: base64url, matching what the browser produces and
     /// what the listing endpoint hands out.
     /// </summary>
-    private static string EncodeCredentialId(byte[] credentialId)
+    internal static string EncodeCredentialId(byte[] credentialId)
         => Convert.ToBase64String(credentialId).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     internal static bool TryDecodeCredentialId(string value, out byte[] credentialId)

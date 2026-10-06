@@ -15,6 +15,7 @@ import {
   SparkPasskeyRegistrationResult,
   SparkPasskeyResult,
   passkeysSupported,
+  sparkPasskeyError,
   SparkUnlinkResult,
   SparkAccountInfo,
   SparkAccountProfile,
@@ -471,23 +472,8 @@ export class SparkAuthService {
     }
   }
 
-  /**
-   * Collapses everything that can go wrong into the closed error union.
-   *
-   * `AbortError` and `NotAllowedError` are how a browser reports "the user dismissed the prompt" and
-   * "no credential was produced" — neither is a fault, and neither should surface as a red banner.
-   */
+  /** {@link sparkPasskeyError}; shared with the `webauthn.create` client method. */
   private passkeyError(error: unknown): SparkPasskeyError {
-    if (error instanceof DOMException) {
-      if (error.name === 'AbortError') return 'cancelled';
-      if (error.name === 'NotAllowedError') return 'no_credential';
-      return 'failed';
-    }
-
-    const code = (error as { error?: { error?: string } })?.error?.error;
-    if (code === 'locked_out') return 'locked_out';
-    if (code === 'last_credential') return 'last_credential';
-
-    return 'failed';
+    return sparkPasskeyError(error);
   }
 }

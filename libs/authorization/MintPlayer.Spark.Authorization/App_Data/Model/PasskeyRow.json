@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "PasskeyRow, one row of the my-passkeys query on the Passkeys page (generic passkeys page PRD D2),",
+    "shipped by MintPlayer.Spark.Authorization. A virtual row type: no clrType, and its rows are the",
+    "signed-in user's SparkUser.Passkeys, built per request by Custom.MyPasskeys (PasskeyRowActions),",
+    "which reads the request principal and nothing else -- never the page it is shown on.",
+    "",
+    "HAND-AUTHORED. The ids are UUIDv5 of 'authorization:PasskeyRow[.attributes|queries.<Name>]' (D5),",
+    "verified by the generator (SPARK045).",
+    "",
+    "Only Query is granted on this type (the library's security.json), never Read: the rows have no",
+    "detail page. Rename and Remove are the row actions RenamePasskey and RemovePasskey; with no New",
+    "or Delete right the grid offers neither. A row's id is the base64url credential id."
+  ],
+  "persistentObject": {
+    "id": "bc7a3a73-5852-5111-974d-ea0c7ab290e0",
+    "name": "PasskeyRow",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "3a318f6f-96f7-58e7-8e62-480a976a45a1",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "7d70e7b5-2f4d-579f-bb4a-3c150f1d4bd2",
+        "name": "Created",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "76e5a6bc-6805-5fee-be09-cad3046e51eb",
+        "name": "Synced",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "my-passkeys"
+    ]
+  },
+  "queries": [
+    {
+      "id": "be13e8ca-a050-5ee9-8bec-a1903b7e1bc5",
+      "name": "MyPasskeys",
+      "source": "Custom.MyPasskeys",
+      "alias": "my-passkeys",
+      "sortColumns": [
+        {
+          "property": "Created",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "PasskeyRow",
+      "isStreamingQuery": false
+    }
+  ]
+}

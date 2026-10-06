@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "modelHash": "f9749ac4e9f5413f6eff638d471ae4035318a4470161bf7a7a672b640a553469",
+  "modelHash": "03a97efd24acda216b3e7cc7a229cb0614bbc36ea3e8996822abb8e197eb780f",
   "contextRoots": "0b63ccaa50b7c8046d4c299e3b79b34eb3c9d7b64da1040fb50071a67c8c0568",
-  "modelFiles": "b5dde61f85f4f0fbccb47bb62f217ac9a89a2cd0ac7ac766f380fe4c70724e40",
+  "modelFiles": "622661bfce60f66d4154a7ca1bc82ea4a4e07e2fd3d313ab52adcfdd1b8a98ba",
   "files": {
     "Account.json": "e23dd413f45d3dd228822ed6d1290c0ec1f8ff4a492fcacc2c6def934e43af76",
     "ApiToken.json": "777db4746b923a1a32af831c9b578be1e5c839c01a0a71bf837e99e90169a9d3",
@@ -18,6 +18,9 @@
     "GitHubProject.json": "0ada2eb42c380d8f3a120d1fd02d6fe7e2d60ddd6cf5a74aec4096a80c69630c",
     "Home.json": "70bf0a1daa7fe4bab1cedc56c425db8655581eb574d51e47d2b58b9707cc8ef3",
     "MyAccountRow.json": "bdde1f0e754222dad68fa9864b2597a2824e243f2db2621a9083106fe2b6b417",
+    "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
+    "PasskeyRow.json": "7d62e5014e29c0fc975624b4d63a731c6c2ea20b433c90952565b7003e558c93",
+    "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
     "PatchCoverage.json": "4823bb3701a70fb02e92c620c098eb815089f9e249f74565af59b1fec56e4484",
     "ProjectColumn.json": "c248e2ca546650f4d9a8af97ad9180095afe0214e5022e5f7d0edadf5d564760",
     "ReportIngestOutcome.json": "914923e139ff8209050f9899f0972b18e25ce2f849b765062e979bee1fe3ee5e",
@@ -42,7 +45,7 @@
     "Repository": "31d41b6b7bf16810af6479a5cbebbe1cd32f7bd29acca3fa0354c217885a44e7"
   },
   "configFiles": {
-    "actions.json": "348d351f00ea5fc6c9dd46dc03e8c7370dca95dbad2391595a2bff6c9beb0c1a",
+    "actions.json": "5ca33e6c53bbf03f121917f5225adadc43f9ad91d329f7ea70364a0d0311cfe6",
     "programUnits.json": "e8cb6afdaabb25013adec5c04dbfd7713bff8ea8b35ebf022fc60a8ecb4d63a3"
   },
   "libraries": {
@@ -50,11 +53,21 @@
     "spark": "MintPlayer.Spark"
   },
   "layers": {
+    "Model/PasskeyRename.json": {
+      "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
+    },
+    "Model/PasskeyRow.json": {
+      "authorization": "7d62e5014e29c0fc975624b4d63a731c6c2ea20b433c90952565b7003e558c93"
+    },
+    "Model/Passkeys.json": {
+      "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
+    },
     "Model/SparkUser.json": {
       "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
     },
     "actions.json": {
       "app": "59be4284817de9343194fd0917d695d2ed4cf609f3c7890790c2df927360eb23",
+      "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "spark": "178159b4155481a5718c310954503cdfb20f49fc10034ce9665c213f30ea3491"
     }
   }

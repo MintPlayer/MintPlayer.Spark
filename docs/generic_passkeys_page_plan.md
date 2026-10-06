@@ -12,9 +12,9 @@ in M8. Milestones are verified by reading the code and type-checking.
 | M2 Client-method retry: client | ✅ 2026-10-06 (specs written, run in M8) |
 | M2a `paragraph` renderer (PRD D5, grill Q8 = B) — missing from the original plan | ✅ 2026-10-06 |
 | M2b `requiresClient` on actions (PRD §5 O5, grill Q9 = C) — missing from the original plan | ✅ 2026-10-06 |
-| M3 `Passkeys` PO + `my-passkeys` query | ⏳ |
-| M4 Add / Rename / Remove actions | ⏳ |
-| M5 App wiring (CodeCoverage, Fleet, HR) | ⏳ |
+| M3 `Passkeys` PO + `my-passkeys` query | ✅ 2026-10-06 (tests written, run in M8) |
+| M4 Add / Rename / Remove actions | ✅ 2026-10-06 (tests and specs written, run in M8) |
+| M5 App wiring (CodeCoverage, Fleet, HR) | ✅ 2026-10-06 (gates regenerated; specs run in M8) |
 | M6 Retire component and endpoints | ⏳ |
 | M7 Docs and versions | ⏳ |
 | M8 Sweep | ⏳ |
@@ -87,8 +87,11 @@ endpoints, with no backward compatibility.
   - fills `Description` and the breadcrumb from translations
 - `PasskeyRowActions.MyPasskeys(CustomQueryArgs)`: maps `SparkUser.Passkeys` to rows with Name,
   Created (`DateTimeOffset`) and Synced.
-- Reference copies of `Passkeys.json` and `PasskeyRow.json` in the library (O1).
-- Add translation keys as needed.
+- ~~Reference copies of `Passkeys.json` and `PasskeyRow.json` in the library (O1).~~ Superseded by the
+  composition system: `Passkeys.json`, `PasskeyRow.json` and `PasskeyRename.json` **ship** from the
+  library's `App_Data/Model/` with UUIDv5 ids (`npm run stamp:library-model-ids`, SPARK045 verifies);
+  no app keeps a copy.
+- Add translation keys as needed (the library's `translations.json`, en/fr/nl).
 
 ## M4 — Add / Rename / Remove actions
 
@@ -103,11 +106,14 @@ endpoints, with no backward compatibility.
 
 ## M5 — App wiring
 
-For CodeCoverage, Fleet and HR:
-- the model JSON (or the O1 alternative)
-- `security.json` grants: Query on `PasskeyRow`; Read and the three actions on `Passkeys`, for
-  authenticated users
-- the sync test from O1
+For CodeCoverage, Fleet and HR (and QnA, which references the library too):
+- ~~the model JSON (or the O1 alternative)~~ — shipped by the library (composition D6).
+- ~~`security.json` grants~~ — the library's `App_Data/security.json` grants Read and `AddPasskey` on
+  `Passkeys`, Query, `RenamePasskey` and `RemovePasskey` on `PasskeyRow`, to `@authenticated` (D4); the
+  apps state nothing.
+- ~~the sync test from O1~~ — obsolete: there are no copies to keep in sync.
+- Regenerate `modelHashes.json` / `securityPosture.txt` where the new library layers change them, and
+  check that the posture diff is exactly the five library grants.
 
 Routing:
 - `withAccount()` maps `account/passkeys` as a redirect to `/po/passkeys/me`.

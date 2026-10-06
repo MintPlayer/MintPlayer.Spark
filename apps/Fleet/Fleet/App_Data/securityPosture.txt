@@ -3,7 +3,7 @@
 # Rows: group | effect | resource | key | layer
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
-(nothing)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
 
 ## Reachable without signing in (expanded)
 Query/Company
@@ -33,6 +33,11 @@ Module:HR | grant | ReadEditNew/Car | b0000001-0000-0000-0000-000000000012 | app
 Module:HR | grant | Replicate/Cars | b0000001-0000-0000-0000-000000000011 | app
 Signed-in users | grant | QueryRead/Company | 00000000-0000-0000-0000-00000000000f | app
 Signed-in users | grant | Read/LookupReferences | f0000009-0000-0000-0000-000000000001 | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
 Viewers | grant | QueryRead/Car | f0000003-0000-0000-0000-000000000001 | app
 Viewers | grant | QueryRead/CarBrand | f0000003-0000-0000-0000-000000000002 | app
 Viewers | grant | QueryRead/CarStatus | f0000003-0000-0000-0000-000000000003 | app

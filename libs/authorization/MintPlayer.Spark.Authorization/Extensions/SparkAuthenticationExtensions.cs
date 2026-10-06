@@ -66,6 +66,10 @@ internal static class SparkAuthenticationExtensions
         builder.Services.AddScoped<IUserStore<TUser>, UserStore<TUser>>();
         builder.Services.AddScoped<IRoleStore<SparkRole>, RoleStore>();
         builder.Services.AddScoped<SparkExternalLoginLinker<TUser>>();
+        // The generic passkeys page (Passkeys / PasskeyRow): its actions classes are resolved by name,
+        // so they reach the user through this seam, closed over TUser here.
+        builder.Services.AddHttpContextAccessor();
+        builder.Services.TryAddScoped<ISparkPasskeyAccount, SparkPasskeyAccount<TUser>>();
         // Not TryAdd-ed by the framework, and the linker's expiry window is the one thing tests
         // need to move. Registered rather than reading DateTimeOffset.UtcNow inline so that
         // "the link expired" is testable without waiting an hour for it.

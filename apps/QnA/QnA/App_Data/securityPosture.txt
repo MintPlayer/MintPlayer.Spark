@@ -3,6 +3,7 @@
 # Rows: group | effect | resource | key | layer
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
 moderation | MintPlayer.Spark.Moderation | 97c6289972e2
 
 ## Reachable without signing in (expanded)
@@ -62,6 +63,11 @@ Signed-in users | grant | QueryRead/QuestionTranslationsContribution | 4e13ffff-
 Signed-in users | grant | QueryReadEditNewDelete/Answer | 4e13ffff-0000-4000-8000-000000000004 | app
 Signed-in users | grant | QueryReadEditNewDelete/Question | 4e13ffff-0000-4000-8000-000000000003 | app
 Signed-in users | grant | ReopenQuestion/Question | 4e13ffff-0000-4000-8000-000000000008 | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
 Voters | grant | Vote/Answer | 4e13ffff-0000-4000-8000-000000000010 | app
 Voters | grant | Vote/Question | 4e13ffff-0000-4000-8000-000000000009 | app
 

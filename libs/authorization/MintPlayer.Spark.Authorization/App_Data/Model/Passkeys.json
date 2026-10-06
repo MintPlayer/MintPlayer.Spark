@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "Passkeys, the signed-in user's passkeys page (generic passkeys page PRD D1), shipped by",
+    "MintPlayer.Spark.Authorization (composition D6). A virtual page: no clrType, no documents.",
+    "PasskeysActions.OnLoadAsync scaffolds it per request for the caller, ignores the id (the route",
+    "is /po/passkeys/me) and 404s when nobody is signed in or SparkPasskeys is Disabled.",
+    "",
+    "HAND-AUTHORED. The ids are UUIDv5 of 'authorization:Passkeys[.attributes.<Name>]' (D5), verified",
+    "by the generator (SPARK045); 'npm run stamp:library-model-ids -- libs/authorization/MintPlayer.Spark.Authorization'",
+    "writes them.",
+    "",
+    "Description is the explanatory paragraph, filled from auth.passkeysDescription and drawn by the",
+    "core 'paragraph' renderer (full width, no label). The my-passkeys grid below is declared on",
+    "PasskeyRow.json; the three actions and their rights ship in this library's actions.json and",
+    "security.json, so an application states nothing to have the page."
+  ],
+  "persistentObject": {
+    "id": "cd8a0767-2a18-5c73-a608-14cf9efe99ac",
+    "name": "Passkeys",
+    "alias": "passkeys",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "85e69623-cbc6-5164-9989-22732509666b",
+        "name": "Description",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "renderer": "paragraph",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "my-passkeys"
+    ]
+  }
+}

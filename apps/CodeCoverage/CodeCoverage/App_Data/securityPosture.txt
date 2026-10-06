@@ -3,7 +3,7 @@
 # Rows: group | effect | resource | key | layer
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
-(nothing)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
 
 ## Reachable without signing in (expanded)
 Browse/Coverage
@@ -58,6 +58,11 @@ Signed-in users | grant | Resync/Home | c0e5a9e1-0000-4000-8000-000000000052 | a
 Signed-in users | grant | Revoke/ApiToken | c0e5a9e1-0000-4000-8000-00000000006a | app
 Signed-in users | grant | SyncColumns/GitHubProject | c0e5a9e1-0000-4000-8000-000000000064 | app
 Signed-in users | grant | Upload/Coverage | c0e5a9e1-0000-4000-8000-000000000033 | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
 
 ## Inert: libraries switched off in "libraries"
 (nothing)

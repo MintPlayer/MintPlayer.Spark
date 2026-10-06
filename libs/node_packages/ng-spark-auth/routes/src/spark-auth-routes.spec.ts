@@ -143,7 +143,10 @@ describe('sparkAuthRoutes', () => {
     // path names — a swapped import would mount the wrong page with nothing failing.
     const routes = sparkAuthRoutes(withLocalLogin(), withRegistration(), withExternalLogin(), withPasskeys());
     const loaded = await Promise.all(
-      routes[0].children.map(async (c: any) => [c.path, (await c.loadComponent()).name]),
+      routes[0].children
+        // The passkeys path forwards to the generic page and loads nothing (see withAccount's spec).
+        .filter((c: any) => c.loadComponent)
+        .map(async (c: any) => [c.path, (await c.loadComponent()).name]),
     );
 
     expect(Object.fromEntries(loaded)).toEqual({
@@ -153,7 +156,6 @@ describe('sparkAuthRoutes', () => {
       'reset-password': 'SparkResetPasswordComponent',
       'register': 'SparkRegisterComponent',
       'sign-in': 'SparkSignInComponent',
-      'passkeys': 'SparkPasskeysComponent',
     });
   });
 

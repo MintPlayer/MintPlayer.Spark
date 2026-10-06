@@ -380,3 +380,80 @@ the tests and specs are written and run in M8. Where the build differs from the 
   and an app's own `paragraph` still wins. A new registration flag, `fullWidth`, makes the detail page
   drop the label and span the row. It has no column component: as a `showedOn: PersistentObject` text
   block it never reaches a grid. A blank line starts a paragraph, a single newline is a `<br>`.
+
+## 10b. As built (plan M3, M4, M5 — 2026-10-06)
+
+Verified by a clean `dotnet build MintPlayer.Spark.slnx` (0 errors, no warning in a new file, no new
+warning code), `nx build @mintplayer/ng-spark-auth`, `tsc --noEmit` on the ng-spark-auth and CodeCoverage
+spec configs, and every app's verify gates. Tests and specs are written and run in M8. Where the composition
+system decided the shape (it supersedes D6 and O1):
+
+- **Everything ships from the Authorization library; apps state nothing.** `App_Data/Model/Passkeys.json`,
+  `PasskeyRow.json` and `PasskeyRename.json` (UUIDv5 ids stamped by `npm run stamp:library-model-ids`,
+  SPARK045 green); `App_Data/actions.json` (`AddPasskey` detail, `"requiresClient": "webauthn.create"`;
+  `RenamePasskey` / `RemovePasskey` query, `selectionRule "=1"`); `App_Data/security.json` (five grants to
+  `@authenticated`, keys `passkeys-read`, `passkeys-add`, `passkey-rows-query`, `passkey-rows-rename`,
+  `passkey-rows-remove`; SPARK047 green); `translations.json` (labels, the query, the confirmation, three
+  notices; en/fr/nl). The O1 sync test is obsolete: there are no copies.
+- **One non-generic seam, `ISparkPasskeyAccount`** (`Identity/SparkPasskeyAccount.cs`), registered by
+  `AddSparkAuthentication<TUser>` as `SparkPasskeyAccount<TUser>`. The actions classes are resolved by name, so
+  they cannot carry `TUser`; the seam closes it where it is known, as `MapSparkIdentityApi<TUser>` does for
+  the endpoints. Every member starts from the request principal and takes no user, which is the isolation
+  argument: another user's credential id is simply not among the caller's. The logic is the endpoints'
+  (`Sanitize`, `SparkCredentialInventory`, the uniform refusals); the endpoints stay until M6.
+- **Classes are `internal`** (`Actions/PasskeysActions.cs`, `Actions/PasskeyRowActions.cs`,
+  `CustomActions/{Add,Rename,Remove}PasskeyAction.cs`): resolution scans `GetTypes()`, and no consumer
+  needs them. `PasskeyRowActions` implements `ISparkOwnsRowSecurity` with its rationale (S2).
+- **Deviation: `MyPasskeys()` takes no `CustomQueryArgs`.** `CustomQueryArgs` lives in `MintPlayer.Spark`,
+  which Authorization does not reference; a zero-parameter custom query is supported, avoids a new package
+  dependency, and makes "never `args.Parent`" structural rather than a promise (a test pins the signature).
+- **Lazy arguments and ceremony state (D7, S1).** `AddPasskey` checks availability (side-effect free), then
+  `await Retry.Invoke("webauthn.create", async () => await passkeys.CreationOptionsAsync())`; the factory,
+  which mints the challenge and sets the state cookie, runs only on pass 1. The options travel as the JSON
+  object (a cloned `JsonElement`), not a string. Pass 2 attests `Result.Value.GetRawText()`.
+- **Challenge lifetime (owner question).** Read from the decompiled `Microsoft.AspNetCore.Identity`
+  11.0.0-rc.1.26425.128: `IdentityPasskeyOptions.AuthenticatorTimeout` defaults to **5 minutes**, sent to the
+  browser as `timeout` (300000 ms); `SignInManager` parks the attestation state in the
+  `Identity.TwoFactorUserId` cookie (`AddIdentityApiEndpoints` → `AddIdentityCookies` →
+  `AddTwoFactorUserIdCookie`, `ExpireTimeSpan = 5 minutes`, a session cookie whose ticket expires), and
+  **signs it out when it is read**, so a ceremony's state is single-use. Spark overrides neither. A pass 2
+  after expiry, a replayed pass 2, or one without the cookie makes `PerformPasskeyAttestationAsync` throw
+  `InvalidOperationException` ("No passkey attestation is underway"); the account maps exactly that to
+  `SparkPasskeyOutcome.Expired`, and the action notifies `auth.passkeyExpired` ("The passkey request expired.
+  Please try again."), no 500 and no framework text. A browser-side timeout rejects in the browser and
+  answers Cancel (no message).
+- **Outcomes of `AddPasskey`.** Cancel or no value: nothing. A value `{ "error": … }` (the client method
+  resolves this for a failure other than the user's choice, e.g. `InvalidStateError`): `auth.passkeyFailed`.
+  Refusal, a credential held by another account, a store failure: `auth.passkeyFailed`, saying nothing more.
+  Success: `Notify(auth.passkeyAddedNotice)` and `RefreshQuery("my-passkeys")`. The new passkey is unnamed;
+  rename names it (the old page's enrollment name field is gone).
+- **Rename** prompts with `PasskeyRename` (one `Name`, `maxLength` 64) filled with the current name; options
+  `[auth.passkeySave, "Cancel"]`. ⚠️ `"Cancel"` stays literal, untranslated: the retry modal answers a
+  dismissal with `Cancel` only when it is among the options, and shows option labels as given. A framework
+  limitation for every retry prompt, not fixed here. The answer is `Sanitize`d (64 characters, no control
+  characters) whatever the form allowed.
+- **Deviation: Remove confirms through `actions.json`'s `confirmation`** (`actions.RemovePasskey.confirmation`,
+  asked by the grid before the request), not retry options as D4 said: it is the existing, fully translated
+  mechanism, and a retry prompt would carry the untranslated `"Cancel"` above. `LastCredential` is a
+  `Notify` error (`auth.passkeyLastCredential`); success notifies `auth.passkeyRemovedNotice` and refreshes.
+- **Client.** `sparkPasskeyError` moved from `SparkAuthService` (private) to `@mintplayer/ng-spark-auth/models`,
+  shared by the service and the new `sparkAuthClientMethods` (`src/lib/webauthn-client-methods.ts`), which
+  `provideSparkAuth()` registers with `provideSparkClientMethods`: `supported: passkeysSupported`,
+  `unsupportedReason: 'auth.passkeyUnsupported'`, `invoke` = `parseCreationOptionsFromJSON` →
+  `navigator.credentials.create` → the credential's JSON; cancelled / no credential reject (Cancel), any
+  other failure resolves `{ error }`. ⚠️ M7: raise ng-spark-auth's `@mintplayer/ng-spark` peer range to the
+  minor that ships `provideSparkClientMethods`.
+- **Routing (M5).** `withAccount()` and `withPasskeys()` map the passkeys path to `{ canActivate: [...guard,
+  toPasskeysPage], children: [] }`, forwarding to `SPARK_PASSKEYS_PAGE_URL = '/po/passkeys/me'`. A guard and
+  not `redirectTo`, because Angular refuses `canActivate` beside `redirectTo`, and the sign-in guard must run
+  first (the router acts on the first non-passing guard in order). An app that supplies its own component
+  for the entry keeps it. CodeCoverage's `/passkeys` still redirects to `account/passkeys` for that reason.
+- **Gates.** CodeCoverage, Fleet, HR **and QnA** (it references the library too; its passkeys are disabled, so
+  the page 404s there) were re-synchronized. `modelHashes.json`: three library-shipped types and the
+  `actions.json` layer added, no app model file written. `securityPosture.txt`, identical in all four: the
+  `## Layers` line `authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d` and exactly five rows,
+  `Signed-in users (@authenticated) | grant | {Read,AddPasskey}/Passkeys, {Query,RenamePasskey,RemovePasskey}/PasskeyRow | authorization:… | authorization`.
+  Nothing in either anonymous section moved. All eight verify gates exit 0; DemoApp (no Authorization)
+  was unchanged and exits 0.
+- **Goldens.** `codecoverage-` and `qna-translations.golden.txt` gained the 17 new library keys and
+  `common.clientUnsupported`, which M2 added to the core without updating them (both were already stale).

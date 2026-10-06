@@ -7,15 +7,41 @@ import {
   SparkExternalProviderPresentation,
 } from '@mintplayer/ng-spark-auth/models';
 
-import type { CanActivateFn } from '@angular/router';
+import { inject } from '@angular/core';
+import { Router, type CanActivateFn } from '@angular/router';
 import { sparkAuthGuard } from '@mintplayer/ng-spark-auth/guards';
 
 type Loader = () => Promise<any>;
 
 interface Child {
   path: string;
-  loadComponent: Loader;
+  loadComponent?: Loader;
   canActivate?: CanActivateFn[];
+  children?: [];
+}
+
+/**
+ * The passkeys page: the generic persistent-object page of the Authorization library's virtual
+ * `Passkeys` type, one per signed-in user, so the id is the fixed `me` (generic passkeys page PRD D1).
+ */
+export const SPARK_PASSKEYS_PAGE_URL = '/po/passkeys/me';
+
+/** Forwards to {@link SPARK_PASSKEYS_PAGE_URL}. */
+const toPasskeysPage: CanActivateFn = () => inject(Router).parseUrl(SPARK_PASSKEYS_PAGE_URL);
+
+/**
+ * The passkeys path: a redirect into the generic page, kept for bookmarks and the account overview's
+ * link (PRD D8). A guard rather than `redirectTo`, because Angular refuses `canActivate` beside
+ * `redirectTo` and the sign-in guard must still run first: the router acts on the first guard in
+ * array order that does not pass, so an anonymous visitor is sent to sign in, not to a 404. An
+ * application that supplies its own component for the entry keeps it.
+ */
+function passkeysChild(entry: SparkAuthRouteEntry | undefined, path: string, guard: CanActivateFn[]): Child {
+  if (typeof entry === 'object' && entry.component) {
+    const component = entry.component;
+    return { path, loadComponent: () => Promise.resolve(component), ...(guard.length ? { canActivate: guard } : {}) };
+  }
+  return { path, canActivate: [...guard, toPasskeysPage], children: [] };
 }
 
 /** The routed path for an entry, independent of how its component is loaded. */
@@ -190,7 +216,7 @@ function isProvider(
  * has an opinion about which providers exist.
  */
 /**
- * Mounts the passkey management page.
+ * Mounts the passkey management path, which forwards to the generic passkeys page (`/po/passkeys/me`).
  *
  * Independent of every other feature here, and of the server's `SparkLocalCredentials`: a passkey is
  * a passwordless credential, so the applications most likely to want this page are exactly the ones
@@ -198,18 +224,14 @@ function isProvider(
  *
  * ⚠️ The page assumes a signed-in user — enrollment adds a credential to an existing account, it
  * cannot create one. Mount it inside the application's authenticated area, or behind
- * `sparkAuthGuard`; mounting it on the public sign-in path shows an empty list to a visitor who
- * cannot act on it.
+ * `sparkAuthGuard`; the server answers the page with 404 to a visitor who is not signed in.
  */
 export function withPasskeys(entry?: SparkAuthRouteEntry): SparkAuthRoutesFeature {
   const passkeys = entryPath(entry, 'passkeys');
 
   return {
     paths: { passkeys: '/' + passkeys },
-    children: [
-      child(entry, passkeys,
-        () => import('@mintplayer/ng-spark-auth/passkeys').then(m => m.SparkPasskeysComponent)),
-    ],
+    children: [passkeysChild(entry, passkeys, [])],
   };
 }
 
@@ -241,7 +263,7 @@ export type SparkAccountRouteOptions =
  * | change / set password | `account/password` | `SparkChangePasswordComponent` |
  * | two-factor (authenticator, recovery codes) | `account/two-factor` | `SparkTwoFactorSetupComponent` |
  * | connected logins | `account/logins` | `SparkExternalLoginsComponent` |
- * | passkeys | `account/passkeys` | `SparkPasskeysComponent` |
+ * | passkeys (forwards to the generic page, `/po/passkeys/me`) | `account/passkeys` | — |
  * | personal data + account deletion | `account/personal-data` | `SparkPersonalDataComponent` |
  *
  * `confirm-email` must stay at the server's `Spark:Auth:Links:ConfirmEmailPath` (default
@@ -273,8 +295,11 @@ export function withAccount(options?: SparkAccountRouteOptions): SparkAuthRoutes
     () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkTwoFactorSetupComponent));
   add('externalLogins', 'account/logins',
     () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkExternalLoginsComponent));
-  add('passkeys', 'account/passkeys',
-    () => import('@mintplayer/ng-spark-auth/passkeys').then(m => m.SparkPasskeysComponent));
+  if (!excluded.has('passkeys')) {
+    const path = entryPath(options?.passkeys, 'account/passkeys');
+    paths.passkeys = '/' + path;
+    children.push(passkeysChild(options?.passkeys, path, guard));
+  }
   add('personalData', 'account/personal-data',
     () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkPersonalDataComponent));
   add('account', 'account',

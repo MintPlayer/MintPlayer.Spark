@@ -145,6 +145,21 @@ describe('app routes: navigation', () => {
     expect(redirect?.redirectTo).toBe('account/passkeys');
   });
 
+  // The account path is no page of its own any more: after the sign-in guard it forwards to the
+  // generic passkeys page, which the Authorization library ships (/po/passkeys/me).
+  it('forwards account/passkeys to the generic passkeys page after the sign-in guard', () => {
+    const shell = routes.find(r => r.component === ShellComponent)!;
+    const authGroup = shell.children!.find(r => r.path === '' && r.children?.some(c => c.path === 'account/passkeys'))!;
+    const passkeys = authGroup.children!.find(c => c.path === 'account/passkeys')!;
+    expect(passkeys.loadComponent).toBeUndefined();
+    expect(passkeys.canActivate).toHaveLength(2);
+
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(), provideRouter([])] });
+    const forward = passkeys.canActivate![1] as (route: ActivatedRouteSnapshot, state: unknown) => unknown;
+    const target = TestBed.runInInjectionContext(() => forward({} as ActivatedRouteSnapshot, {}));
+    expect(String(target)).toBe('/po/passkeys/me');
+  });
+
   it('sends / and /home to the Home persistent object', async () => {
     const { harness, router } = await setup();
 
