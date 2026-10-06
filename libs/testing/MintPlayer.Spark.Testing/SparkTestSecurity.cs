@@ -70,8 +70,8 @@ public sealed class SparkTestSecurity
     {
         foreach (var resource in resources)
         {
-            _rights.Add(new Right { Id = DeriveId("grant:" + resource), Resource = resource, GroupId = AnonymousGroupId });
-            _rights.Add(new Right { Id = DeriveId("grantauth:" + resource), Resource = resource, GroupId = AuthenticatedGroupId });
+            _rights.Add(new Right { Key = DeriveId("grant:" + resource).ToString(), Resource = resource, GroupId = AnonymousGroupId });
+            _rights.Add(new Right { Key = DeriveId("grantauth:" + resource).ToString(), Resource = resource, GroupId = AuthenticatedGroupId });
         }
 
         return this;
@@ -82,8 +82,8 @@ public sealed class SparkTestSecurity
     {
         foreach (var resource in resources)
         {
-            _rights.Add(new Right { Id = DeriveId("deny:" + resource), Resource = resource, GroupId = AnonymousGroupId, IsDenied = true });
-            _rights.Add(new Right { Id = DeriveId("denyauth:" + resource), Resource = resource, GroupId = AuthenticatedGroupId, IsDenied = true });
+            _rights.Add(new Right { Key = DeriveId("deny:" + resource).ToString(), Resource = resource, GroupId = AnonymousGroupId, IsDenied = true });
+            _rights.Add(new Right { Key = DeriveId("denyauth:" + resource).ToString(), Resource = resource, GroupId = AuthenticatedGroupId, IsDenied = true });
         }
 
         return this;
@@ -132,7 +132,7 @@ public sealed class SparkTestSecurity
         {
             Rights = _rights
                 .Where(r => r.IsDenied && r.GroupId == AnonymousGroupId)
-                .Select(r => new Right { Id = r.Id, Resource = r.Resource, GroupId = AnonymousGroupId })
+                .Select(r => new Right { Key = r.Key, Resource = r.Resource, GroupId = AnonymousGroupId })
                 .ToList(),
         };
 
@@ -149,8 +149,8 @@ public sealed class SparkTestSecurity
 
         foreach (var target in _withoutTargets.OrderBy(t => t, StringComparer.Ordinal))
         {
-            rights.Add(new Right { Id = DeriveId("without:" + target), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AnonymousGroupId, IsDenied = true });
-            rights.Add(new Right { Id = DeriveId("withoutauth:" + target), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AuthenticatedGroupId, IsDenied = true });
+            rights.Add(new Right { Key = DeriveId("without:" + target).ToString(), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AnonymousGroupId, IsDenied = true });
+            rights.Add(new Right { Key = DeriveId("withoutauth:" + target).ToString(), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AuthenticatedGroupId, IsDenied = true });
         }
 
         var config = new SecurityConfiguration

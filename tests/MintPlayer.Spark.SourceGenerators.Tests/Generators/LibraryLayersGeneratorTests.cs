@@ -74,7 +74,7 @@ public class LibraryLayersGeneratorTests
             (@"C:\src\Lib\App_Data\actions.json", "actions.json", Actions),
             (@"C:\src\Lib\App_Data\translations.json", "translations.json", Translations),
             (@"C:\src\Lib\App_Data\Model\SparkUser.json", "Model/SparkUser.json", """{ "persistentObject": { "id": "0d3faefa-624c-5135-bca7-652aa9053e0e", "name": "SparkUser" } }"""),
-            (@"C:\src\Lib\App_Data\security.json", "security.json", """{ "groups": {} }"""),
+            (@"C:\src\Lib\App_Data\security.json", "security.json", """{ "rights": [] }"""),
             (@"C:\src\Lib\App_Data\programUnits.json", "programUnits.json", """{ "programUnitGroups": [] }"""),
             (@"C:\src\Lib\App_Data\moderation.json", "moderation.json", """{ "privileges": {} }"""),
         ]);
@@ -241,5 +241,44 @@ public class LibraryLayersGeneratorTests
         var result = Run("probe", [("App_Data/translations.json", "translations.json", "{ not: valid json")]);
 
         result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_TRANS_001");
+    }
+
+    private const string PasskeysModel = """{ "persistentObject": { "id": "x", "name": "Passkeys", "attributes": [] } }""";
+
+    [Fact]
+    public void A_shipped_security_json_that_keeps_to_the_guard_rails_reports_nothing()
+    {
+        // Composition M6 (D4): grants only, on the library's own type (its model layer) or reserved
+        // target, to a token or its own slot.
+        var result = Run("authorization",
+        [
+            (@"C:\src\Lib\App_Data\Model\Passkeys.json", "Model/Passkeys.json", PasskeysModel),
+            (@"C:\src\Lib\App_Data\security.json", "security.json", """
+                { "reservedTargets": [ "Account" ],
+                  "rights": [ { "key": "passkeys-read", "resource": "QueryRead/Passkeys", "groupId": "@authenticated" },
+                              { "key": "account", "resource": "Manage/Account", "groupId": "authorization:account-holders" } ] }
+                """),
+        ]);
+
+        result.GeneratorDiagnostics.Should().NotContain(d => d.Id == "SPARK047");
+    }
+
+    [Fact]
+    public void A_shipped_security_json_breaking_a_guard_rail_is_reported_in_the_library_build()
+    {
+        // Where the author can fix it: a deny, a foreign type, a group by id, another library's slot.
+        var result = Run("authorization",
+        [
+            (@"C:\src\Lib\App_Data\Model\Passkeys.json", "Model/Passkeys.json", PasskeysModel),
+            (@"C:\src\Lib\App_Data\security.json", "security.json", """
+                { "rights": [
+                    { "key": "deny", "resource": "Delete/Passkeys", "groupId": "@authenticated", "isDenied": true },
+                    { "key": "foreign", "resource": "Read/Person", "groupId": "@authenticated" },
+                    { "key": "by-id", "resource": "Read/Passkeys", "groupId": "00000000-0000-0000-0000-000000000001" },
+                    { "key": "other-slot", "resource": "Read/Passkeys", "groupId": "moderation:moderators" } ] }
+                """),
+        ]);
+
+        result.GeneratorDiagnostics.Where(d => d.Id == "SPARK047").Should().HaveCount(4);
     }
 }

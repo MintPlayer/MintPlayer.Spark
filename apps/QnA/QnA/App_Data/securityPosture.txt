@@ -1,6 +1,66 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Reachable without signing in (expanded)
 Query/Answer
 Query/Question
 Query/QuestionTranslationsContribution
 Read/Answer
 Read/Question
 Read/QuestionTranslationsContribution
+
+## Granted to @anonymous
+Anonymous visitors | grant | QueryRead/Answer | 4e13ffff-0000-4000-8000-000000000002 | app
+Anonymous visitors | grant | QueryRead/Question | 4e13ffff-0000-4000-8000-000000000001 | app
+Anonymous visitors | grant | QueryRead/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000036 | app
+
+## Rights
+Downvoters | grant | Downvote/Answer | 4e13ffff-0000-4000-8000-000000000012 | app
+Downvoters | grant | Downvote/Question | 4e13ffff-0000-4000-8000-000000000011 | app
+Flaggers | grant | Flag/Answer | 4e13ffff-0000-4000-8000-000000000014 | app
+Flaggers | grant | Flag/Question | 4e13ffff-0000-4000-8000-000000000013 | app
+Flaggers | grant | Flag/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000038 | app
+Moderators | grant | Audit/Moderation | 4e13ffff-0000-4000-8000-000000000034 | app
+Moderators | grant | Delete/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000039 | app
+Moderators | grant | Delete/QuestionTranslationsCurrent | 4e13ffff-0000-4000-8000-000000000047 | app
+Moderators | grant | Downvote/Answer | 4e13ffff-0000-4000-8000-000000000030 | app
+Moderators | grant | Downvote/Question | 4e13ffff-0000-4000-8000-000000000022 | app
+Moderators | grant | Flag/Answer | 4e13ffff-0000-4000-8000-000000000031 | app
+Moderators | grant | Flag/Question | 4e13ffff-0000-4000-8000-000000000023 | app
+Moderators | grant | Flag/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000045 | app
+Moderators | grant | Lock/Answer | 4e13ffff-0000-4000-8000-000000000024 | app
+Moderators | grant | Lock/Question | 4e13ffff-0000-4000-8000-000000000016 | app
+Moderators | grant | Lock/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000044 | app
+Moderators | grant | Purge/Answer | 4e13ffff-0000-4000-8000-000000000026 | app
+Moderators | grant | Purge/Question | 4e13ffff-0000-4000-8000-000000000018 | app
+Moderators | grant | Purge/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000042 | app
+Moderators | grant | Read/QuestionTranslationsCurrent | 4e13ffff-0000-4000-8000-000000000046 | app
+Moderators | grant | Restore/Answer | 4e13ffff-0000-4000-8000-000000000025 | app
+Moderators | grant | Restore/Question | 4e13ffff-0000-4000-8000-000000000017 | app
+Moderators | grant | Restore/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000040 | app
+Moderators | grant | Revert/Answer | 4e13ffff-0000-4000-8000-000000000028 | app
+Moderators | grant | Revert/Question | 4e13ffff-0000-4000-8000-000000000020 | app
+Moderators | grant | RevertContribution/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000043 | app
+Moderators | grant | Review/Moderation | 4e13ffff-0000-4000-8000-000000000032 | app
+Moderators | grant | Suspend/Moderation | 4e13ffff-0000-4000-8000-000000000033 | app
+Moderators | grant | ViewDeleted/Answer | 4e13ffff-0000-4000-8000-000000000027 | app
+Moderators | grant | ViewDeleted/Question | 4e13ffff-0000-4000-8000-000000000019 | app
+Moderators | grant | ViewDeleted/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000041 | app
+Moderators | grant | Vote/Answer | 4e13ffff-0000-4000-8000-000000000029 | app
+Moderators | grant | Vote/Question | 4e13ffff-0000-4000-8000-000000000021 | app
+Reviewers | grant | Review/Moderation | 4e13ffff-0000-4000-8000-000000000015 | app
+Signed-in users | grant | CloseQuestion/Question | 4e13ffff-0000-4000-8000-000000000007 | app
+Signed-in users | grant | DuplicateAnswer/Answer | 4e13ffff-0000-4000-8000-000000000035 | app
+Signed-in users | grant | EditNewDelete/QuestionTranslation | 4e13ffff-0000-4000-8000-000000000048 | app
+Signed-in users | grant | History/Answer | 4e13ffff-0000-4000-8000-000000000006 | app
+Signed-in users | grant | History/Question | 4e13ffff-0000-4000-8000-000000000005 | app
+Signed-in users | grant | QueryRead/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000037 | app
+Signed-in users | grant | QueryReadEditNewDelete/Answer | 4e13ffff-0000-4000-8000-000000000004 | app
+Signed-in users | grant | QueryReadEditNewDelete/Question | 4e13ffff-0000-4000-8000-000000000003 | app
+Signed-in users | grant | ReopenQuestion/Question | 4e13ffff-0000-4000-8000-000000000008 | app
+Voters | grant | Vote/Answer | 4e13ffff-0000-4000-8000-000000000010 | app
+Voters | grant | Vote/Question | 4e13ffff-0000-4000-8000-000000000009 | app
+
+## Inert: libraries switched off in "libraries"
+(nothing)

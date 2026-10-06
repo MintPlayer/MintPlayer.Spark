@@ -2,21 +2,29 @@ using Microsoft.Extensions.Caching.Memory;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
-using System.Text.Json;
 
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// Reads <c>App_Data/security.json</c>, validates it, and derives the expanded rights index the
-/// evaluator probes.
+/// Reads <c>App_Data/security.json</c>, composes it over the rights the referenced libraries ship,
+/// validates the result, and derives the expanded rights index the evaluator probes.
 /// </summary>
 /// <remarks>
+/// <para>
+/// A library ships default rights (composition D4, decision log row 6), which deliberately reverses
+/// the position that rights are the application's alone. The guard rails are what make that safe
+/// (<see cref="SparkSecurityFiles"/>): a library only grants, only on what it ships, only to tokens and
+/// to slots the application binds. The application removes a grant by key or switches a library off,
+/// and the posture table lists every effective right with its layer.
+/// </para>
+/// <para>
 /// Structurally the twin of <see cref="ActionsCatalogueLoader"/> — same cache, same
 /// watcher, same fixed path — and deliberately so: both read one JSON file out of
 /// <see cref="SparkAppData"/> at startup and reload it when it changes. The file name is not
 /// configurable (only its directory is, through <c>SparkAppDataDir</c>) for the
 /// same reason that one is not: a second place to put the file is a second place to fail to find
 /// it, and the startup gate can only name one location in its message.
+/// </para>
 /// </remarks>
 [Register(typeof(ISecurityConfigurationLoader), ServiceLifetime.Singleton)]
 internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoader, IDisposable
@@ -88,21 +96,32 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
                 """);
         }
 
-        SecurityConfiguration loaded;
+        SparkSecurityComposition composed;
 
         try
         {
-            var json = File.ReadAllText(filePath);
-            loaded = JsonSerializer.Deserialize<SecurityConfiguration>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            }) ?? new SecurityConfiguration();
+            // The libraries' rights below, the application's file on top (composition D4). The model's
+            // type names keep a library's reserved target from claiming one.
+            var types = modelLoader.GetEntityTypes()?.Select(t => t.Name) ?? [];
+            composed = SparkSecurityFiles.Compose(File.ReadAllText(filePath), modelTypeNames: types);
         }
         catch (Exception ex) when (ex is not SparkSecurityConfigurationException)
         {
             throw new SparkSecurityConfigurationException(
                 $"Spark could not read the security configuration at '{filePath}': {ex.Message}", ex);
         }
+
+        // Every problem at once: a guard rail a library breaks, a token or slot that resolves to no
+        // group, an edit of a library grant. Each would otherwise grant to nobody, or to more than the
+        // file says, without a word.
+        if (composed.Problems.Count > 0)
+        {
+            throw new SparkSecurityConfigurationException(
+                $"The security configuration composed from '{filePath}' and the libraries' rights cannot be trusted:"
+                + Environment.NewLine + string.Join(Environment.NewLine, composed.Problems.Select(p => "  - " + p)));
+        }
+
+        var loaded = composed.Configuration;
 
         // Validated on the way out of the loader, so a hot reload is held to the same standard as
         // startup. A file that has drifted into meaninglessness must not quietly replace one that
@@ -111,8 +130,8 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
         // attribute is refused here, at startup and on every hot reload alike.
         SecurityConfigurationValidator.Validate(loaded, modelLoader);
 
-        logger.LogInformation("Loaded security configuration with {GroupCount} groups and {RightCount} rights",
-            loaded.Groups.Count, loaded.Rights.Count);
+        logger.LogInformation("Loaded security configuration with {GroupCount} groups and {RightCount} rights ({LibraryRightCount} from libraries, {InertCount} inert)",
+            loaded.Groups.Count, loaded.Rights.Count, loaded.Rights.Count(r => r.Layer is not null), loaded.InertRights.Count);
 
         return loaded;
     }

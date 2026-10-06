@@ -51,7 +51,7 @@ public static class SparkSchemaGenerator
     public static IReadOnlyList<SparkSchemaFile> Files { get; } =
     [
         new("model", typeof(EntityTypeFile), "Spark model file (App_Data/Model/*.json)"),
-        new("security", typeof(SecurityConfiguration), "Spark security configuration (App_Data/security.json)"),
+        new("security", typeof(SecurityFile), "Spark security configuration (App_Data/security.json)"),
         new("programUnits", typeof(ProgramUnitsConfiguration), "Spark program units (App_Data/programUnits.json)"),
         new("translations", null, "Spark translations (App_Data/translations.json)"),
         new("culture", typeof(CultureFile), "Spark culture (App_Data/culture.json)"),

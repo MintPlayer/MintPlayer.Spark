@@ -81,7 +81,8 @@ public sealed class QnATestHost : SparkAppTestHost
         {
             ["Privileges"] = new JsonObject
             {
-                // GroupId and Grants stay moderation.json's: configuration layers key by key.
+                // Group and Grants stay the composed moderation.json's (Moderation's defaults, slots bound in
+                // QnA's security.json): configuration layers key by key.
                 ["Upvote"] = Gates(rep: 0),
                 ["Flag"] = Gates(rep: 0),
                 ["Downvote"] = Gates(rep: DownvoteRep),

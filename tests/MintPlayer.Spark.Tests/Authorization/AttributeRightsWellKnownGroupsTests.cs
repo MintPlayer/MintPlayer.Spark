@@ -26,10 +26,10 @@ public class AttributeRightsWellKnownGroupsTests
     private static readonly Guid AuthenticatedId = Guid.Parse("5a000000-0000-4000-8000-000000000003");
 
     private static Right Grant(string resource, Guid group, bool important = false)
-        => new() { Id = Guid.NewGuid(), Resource = resource, GroupId = group, IsImportant = important };
+        => new() { Key = Guid.NewGuid().ToString(), Resource = resource, GroupId = group, IsImportant = important };
 
     private static Right Deny(string resource, Guid group)
-        => new() { Id = Guid.NewGuid(), Resource = resource, GroupId = group, IsDenied = true };
+        => new() { Key = Guid.NewGuid().ToString(), Resource = resource, GroupId = group, IsDenied = true };
 
     private static SecurityConfiguration Config(params Right[] rights)
     {

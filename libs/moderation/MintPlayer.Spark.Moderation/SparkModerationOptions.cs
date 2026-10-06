@@ -28,7 +28,7 @@ public sealed class SparkModerationOptions
     /// <summary>A moderator's delete of someone else's post reverses the votes it earned. Default on.</summary>
     public bool ReverseVotesOnModeratorDelete { get; set; } = true;
 
-    /// <summary>Earnable privileges, by name. Each maps to a <c>security.json</c> group by id.</summary>
+    /// <summary>Earnable privileges, by name. Each confers a slot the application binds to a <c>security.json</c> group.</summary>
     public Dictionary<string, ModerationPrivilegeOptions> Privileges { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -63,8 +63,22 @@ public sealed class SparkModerationOptions
 /// <summary>One earnable privilege (fraud measure 1: every privilege has a reputation, age and activity gate).</summary>
 public sealed class ModerationPrivilegeOptions
 {
-    /// <summary>The <c>security.json</c> group the privilege confers, by id (D12).</summary>
+    /// <summary>
+    /// The slot the privilege confers (<c>moderation:voters</c>), which the application binds to one
+    /// of its groups in <c>security.json</c>: <c>"bindings": { "moderation:voters": ["Voters"] }</c>
+    /// (composition D3, grill Q6). Resolved into <see cref="GroupId"/> at startup; an unbound slot
+    /// refuses startup.
+    /// </summary>
+    public string? Group { get; set; }
+
+    /// <summary>
+    /// The <c>security.json</c> group the privilege confers, by id (D12): resolved from
+    /// <see cref="Group"/> when that is set, otherwise as code sets it.
+    /// </summary>
     public Guid GroupId { get; set; }
+
+    /// <summary>Why <see cref="Group"/> did not resolve; reported by the startup check.</summary>
+    internal string? GroupProblem { get; set; }
 
     /// <summary>Privilege reputation required (<c>rep</c>).</summary>
     public int Rep { get; set; }

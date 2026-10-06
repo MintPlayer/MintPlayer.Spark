@@ -31,11 +31,11 @@ public class ContributionTypeRightsAnalyzerTests
     private static string SecurityJson(params string[] resources)
     {
         var entries = string.Join(",\n", resources.Select((r, i) =>
-            $$"""{ "id": "22222222-2222-2222-2222-00000000000{{i}}", "resource": "{{r}}", "groupId": "00000000-0000-0000-0000-000000000001" }"""));
+            $$"""{ "key": "22222222-2222-2222-2222-00000000000{{i}}", "resource": "{{r}}", "groupId": "00000000-0000-0000-0000-000000000001" }"""));
         return $$"""
             {
               "wellKnown": { "authenticated": "00000000-0000-0000-0000-000000000001" },
-              "groups": { "00000000-0000-0000-0000-000000000001": { "en": "Moderators" } },
+              "groups": { "00000000-0000-0000-0000-000000000001": "Moderators" },
               "rights": [
                 {{entries}}
               ]

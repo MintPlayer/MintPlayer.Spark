@@ -15,7 +15,7 @@ run only in the final sweep.
 | M3 Generalised library-layer generator (D1) | ✅ 2026-10-06 (PRD D1, D16 "As built in M3") |
 | M4 Composed-model provider; synchronizer writes the delta (D5, D6) | ✅ 2026-10-06 (PRD D5, D6 "As built in M4"; SparkUser moved here from M9) |
 | M5 Translations at runtime (D10) | ✅ 2026-10-06 (PRD D10 "As built in M5") |
-| M6 Library rights (D4), if Q2 adopts it | ⏳ |
+| M6 Library rights (D4), if Q2 adopts it | ✅ 2026-10-06 (PRD D4 "As built in M6"; Moderation joins the engine, Q6) |
 | M7 Gates with provenance + uniform reload + describe (D7–D9) | ⏳ |
 | M8 IManager rights at construction (D13) | ⏳ |
 | M9 Migrate libraries and apps | ⏳ |
@@ -56,8 +56,11 @@ Record the results in PRD §9, "Spike results", and amend D1–D13 where they di
 - Generators read the library attributes plus the app's AdditionalFiles.
 
 ## M6 — Library rights (per Q2)
-- `rights` becomes a keyed set; group tokens; `bindings`; the `libraries` opt-in.
+- `rights` becomes a keyed set; group tokens; `bindings`; the per-library opt-out `"libraries": { "<alias>": false }`
+  (decision log row 7; its rights stay in the posture table as inert).
 - Guard rails (grant-only, own resources only) enforced at startup and by the analyzer.
+- `moderation.json` joins the engine (Q6): Moderation ships its defaults, privileges confer slots bound in
+  `security.json`, the composed result stays an `IConfiguration` source below appsettings.
 
 ## M7 — Gates, reload, visibility
 - Composed hashes with layer provenance for the model, actions, program units and rights (the full

@@ -58,7 +58,29 @@ public class SecurityConfiguration
     public Dictionary<string, string>? WellKnown { get; set; }
 
     /// <summary>
-    /// List of rights (permissions) that grant or deny access to resources.
+    /// Binds each library slot to the application's groups (composition D4): <c>"bindings": {
+    /// "moderation:moderators": ["Moderators"] }</c>, by group id or name. A slot a library right or
+    /// a moderation privilege names and the application does not bind refuses startup.
+    /// </summary>
+    public Dictionary<string, List<string>>? Bindings { get; set; }
+
+    /// <summary>
+    /// Per-library opt-out of shipped rights: <c>"libraries": { "authorization": false }</c> switches
+    /// off every right that library ships. They stay in the posture table, marked inert.
+    /// </summary>
+    public Dictionary<string, bool>? Libraries { get; set; }
+
+    /// <summary>
+    /// The effective rights: every library's grants in layer order, then the application's, with
+    /// <see cref="Right.GroupId"/> resolved. In the file, the application's own <c>rights</c>; a
+    /// library grant is removed there with <c>{"key": "alias:key", "$remove": true}</c>.
     /// </summary>
     public List<Right> Rights { get; set; } = new();
+
+    /// <summary>
+    /// The grants of libraries <see cref="Libraries"/> switches off, unresolved (<see cref="Right.Group"/>
+    /// holds the token): listed in the posture table, never evaluated. Not part of the file.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<Right> InertRights { get; set; } = new();
 }

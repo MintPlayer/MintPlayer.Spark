@@ -200,9 +200,11 @@ raw JSON trees and records which layer each leaf came from.
 | security | see D4 | |
 
 ### D4 — Library default rights (⚠️ grill Q2: reverses a deliberate design position)
-- **Rights are a keyed set.** `rights` becomes an object keyed by a stable key: `"<alias>:<name>"`
-  for library rights, the id for the app's own. The app removes a library grant with
-  `"<key>": null`. It never edits a library right; it removes it and adds its own.
+- **Rights are a keyed set.** ~~`rights` becomes an object keyed by a stable key~~ (amended in M6:
+  it stays an array whose elements carry a `key`, keyed by the engine like every other keyed array):
+  `"<alias>:<name>"` for library rights, the id for the app's own. The app removes a library grant
+  with ~~`"<key>": null`~~ `{"key": "<alias>:<name>", "$remove": true}`, the engine's removal for a
+  keyed element (D2). It never edits a library right; it removes it and adds its own.
 - **Guard rails:**
   - **Library layers may only grant.** No `isDenied` and no `isImportant`.
   - **They may grant only on resources the library owns:** its own types, its reserved verbs and
@@ -215,14 +217,78 @@ raw JSON trees and records which layer each leaf came from.
     are active as soon as it is referenced.
   - **Per-library opt-out** (owner, 2026-10-06). `security.json` `"libraries": { "<alias>": false }`
     switches off every right that library ships. Its rights still appear in the posture table,
-    marked inert, so the opt-out is visible too. To drop a single grant, `"<key>": null` still
-    works.
+    marked inert, so the opt-out is visible too. To drop a single grant, ~~`"<key>": null`~~
+    `{"key": "<key>", "$remove": true}` still works.
   - **The gate is the review point.** `securityPosture.txt` becomes a readable, committed **text
     table of every effective right**, with the layer each right came from. It is not a bare hash.
     `--spark-verify-security` fails on drift, so adding a library, or a library update that changes
     rights, appears as a diff in that file in the same PR.
   - Grants to `@anonymous` get their own section in the posture file, and their own CI warning,
     so they cannot hide in a long diff.
+- **As built in M6 (2026-10-06).**
+  - **Shape.** `rights` is an array; every element needs a string `key` (strict JSON, the engine refuses
+    one without, and a key stated twice in one layer). The app's own keys are its old ids (`"id"` renamed
+    to `"key"` in all five apps and every fixture); any text without `:` is allowed. A library writes its
+    keys bare (`"passkeys-read"`) and the composer namespaces them (`authorization:passkeys-read`).
+    `groupId` holds a group id, `@anonymous`, `@authenticated` or a slot `alias:slot` (both lower-kebab);
+    a slot bound to several groups composes into one right per group. New root members (app only):
+    `"bindings": { "<alias>:<slot>": ["<group id or name>", …] }` (names match ignoring case, D24) and
+    `"libraries": { "<alias>": false }`. A library layer may state only `rights` and `reservedTargets`.
+  - **Code.** `SparkSecurityLayers` (shared source, `libs/spark/Shared/Layering/`, kind
+    `SparkKinds.Security`, keys ignoring case as the loader always read them) composes, checks the guard
+    rails and resolves tokens; `SparkSecurityFiles.Compose` (Abstractions) turns it into the
+    `SecurityConfiguration` the evaluator already reads (`Right.Key`, `Right.Layer` = alias or null,
+    `Right.Group` = the token as written, `InertRights`, `Bindings`, `Libraries`). `Right.Id` is gone; the
+    validator's duplicate-id rule became the engine's duplicate-key refusal. `SecurityFile` describes one
+    layer for `security.schema.json` (adds `key`, `$remove`, `bindings`, `libraries`, `reservedTargets`;
+    `groupId` is a string, no longer `uuid`).
+  - **Problems** (every one listed at startup by `SecurityConfigurationLoader`, same sentences at build
+    time): **SPARK047** guard rail (a deny, `isImportant`, a target the library does not ship, a group by id
+    or another library's slot, an app-only member, a key with `:`, a `$remove`); **SPARK048** a token
+    without its `wellKnown` entry, an unknown `@token`, an unbound slot, a binding to an undeclared group;
+    **SPARK049** the app stating a library key other than to remove it, removing a key no library ships, a
+    key prefix or binding or opt-out naming no referenced library. SPARK047 is reported in the library's
+    own build by `LibraryLayersGenerator` and, for referenced libraries, by `SecurityConfigurationAnalyzer`
+    in the app's, which reports 048/049 too; SPARK013 no longer judges tokens or slots.
+  - **Deviation: what a library owns.** Ownership is judged on the resource's target (an attribute right
+    by its type): the persistent-object and query names and aliases of the library's own model layers,
+    plus the pseudo-types it declares in `"reservedTargets"` (`Moderation`). A reserved target that names
+    a composed model type, or one another library already declares, is refused, so it cannot be used to
+    claim an app type. "Its reserved verbs" (D4) are not a separate rule: a library may grant any verb on
+    a target it owns, and nothing on a target it does not. Moderation's printed per-type grants
+    (`Vote/Question`) therefore cannot become library rights in M9; its pseudo-type grants
+    (`Review/Moderation` to `moderation:moderators`) can.
+  - **Posture.** `securityPosture.txt` is the full table: `## Reachable without signing in (expanded)`
+    (the old content), `## Granted to @anonymous`, `## Rights`, `## Inert: libraries switched off`, one
+    row `group | effect | resource | key | layer` each (` | `-separated so a longer name does not rewrite
+    every line; sorted by group, resource, effect, key). A row named by token shows it
+    (`Signed-in users (@authenticated)`); an inert row shows the token unresolved. Verify fails on any
+    drift (exit 3), prints a `::warning::` annotation when the anonymous sections moved, and exits 2 when
+    the configuration does not compose. **The hash with layer identity is M7 (D7)**; M6 only renders the
+    table. All five apps' posture files were regenerated with `--spark-synchronize-security`.
+  - **Proof for CodeCoverage (production).** The effective rights were dumped from the old `security.json`
+    (group name | effect | resource, sorted) before any change and from the new posture table after:
+    identical for all five apps (CodeCoverage 37 rows, DemoApp 16, Fleet 26, HR 28, QnA 48), and each
+    app's anonymous-reachable list is byte-identical to its old `securityPosture.txt`. Only the format and
+    the `id` → `key` rename changed.
+  - **Deviation: no real library grant yet.** No app grants anything on `SparkUser`, so an Authorization
+    default (for example `Read/SparkUser` to `@authenticated`) would widen every app's effective rights,
+    CodeCoverage's included, and decide a disclosure question D6 deliberately left closed. The path is
+    proven with fixtures (`SparkSecurityLayersTests`, `SecurityLayersAnalyzerTests`, generator tests); the
+    real grants are M9's. Moderation's `moderation.json` is the real library layer M6 ships (below).
+  - **Moderation (grill Q6).** `MintPlayer.Spark.Moderation` has the alias `moderation` and ships
+    `App_Data/moderation.json`: the reputation table and the four privileges (QnA's former values), each
+    with `"Group": "moderation:voters|flaggers|downvoters|reviewers"`. `SparkModerationFiles.Compose`
+    (Abstractions, `SparkKinds.Moderation`: every object per key ignoring case, arrays whole, `null`
+    removes) composes it with the app's file; `AddSparkModerationFile` inserts the result as one
+    configuration source at index 0, so appsettings and environment variables still override it. A
+    `PostConfigure` resolves each privilege's `Group` slot through the security bindings into `GroupId`
+    (exactly one group, slot only; a token or id is refused); the startup check refuses an unresolved one.
+    Code-set `GroupId` (no `Group`) still works, which the test host uses (its `AddSpark(Action)` has no
+    configuration builder, so it gets no library defaults). QnA's `moderation.json` shrank to its delta
+    (`DownvoteCastTypes`) and its `security.json` binds the four slots by group name.
+    `--spark-init-moderation` prints a `key` per right and the privilege's slot as `groupId`, the form an
+    app or M9's library layer pastes.
 
 ### D5 — Ids for library-shipped model elements
 Ids are deterministic UUIDv5 values over (library alias, type, member kind, member name). They
@@ -557,7 +623,7 @@ The decision: **construction-time pruning plus one boundary safety net.**
 
 - ~~**Q1** Transport~~ → **C** (decided).
 - ~~**Q2** Library default rights~~ → **B**: adopted. The guard rails are grant-only, own
-  resources only, group tokens and removable with `null`. There is no opt-in; the readable posture
+  resources only, group tokens and removable by key (`$remove`, amended in M6). There is no opt-in; the readable posture
   table is the gate.
 - ~~**Q3** Library ordering~~ → **B, dependency order**.
   - A library stacks above every library it references, and the app is on top.

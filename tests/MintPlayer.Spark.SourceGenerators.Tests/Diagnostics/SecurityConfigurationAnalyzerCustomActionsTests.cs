@@ -24,10 +24,10 @@ public class SecurityConfigurationAnalyzerCustomActionsTests
     private static string SecurityJson(string resource) => $$"""
         {
           "groups": {
-            "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users" }
+            "00000000-0000-0000-0000-000000000001": "Signed-in users"
           },
           "rights": [
-            { "id": "22222222-2222-2222-2222-222222222222", "resource": "{{resource}}", "groupId": "00000000-0000-0000-0000-000000000001" }
+            { "key": "22222222-2222-2222-2222-222222222222", "resource": "{{resource}}", "groupId": "00000000-0000-0000-0000-000000000001" }
           ]
         }
         """;

@@ -36,10 +36,17 @@ public interface ISecurityPostureReporter
 /// on some attributes of a type, and others still inherit the type-level grant). Logged at
 /// Information, never part of the <see cref="Fingerprint"/>.
 /// </param>
+/// <param name="Rights">
+/// Every effective right, one row each, sorted (composition D4): the table <c>securityPosture.txt</c>
+/// commits, so a library added or updated shows up as a diff in the pull request that brings it.
+/// </param>
+/// <param name="Inert">The rights of libraries switched off in <c>"libraries"</c>: listed, never applied.</param>
 public sealed record SecurityPosture(
     IReadOnlyList<string> AnonymouslyReachable,
     IReadOnlyList<string> Warnings,
-    IReadOnlyList<string>? Notes = null)
+    IReadOnlyList<string>? Notes = null,
+    IReadOnlyList<SecurityPostureRow>? Rights = null,
+    IReadOnlyList<SecurityPostureRow>? Inert = null)
 {
 
     /// <summary>
@@ -48,3 +55,12 @@ public sealed record SecurityPosture(
     /// </summary>
     public string Fingerprint => string.Join("\n", AnonymouslyReachable);
 }
+
+/// <summary>One row of the posture table: who, what, which resource, under which key, from which layer.</summary>
+/// <param name="Group">The group's name (its id when it has none); a right named by token or slot adds it, <c>Signed-in users (@authenticated)</c>. An inert row shows only the token.</param>
+/// <param name="Effect"><c>grant</c> or <c>deny</c>, with <c>important</c> for the precedence tier.</param>
+/// <param name="Resource">The resource as written, not expanded.</param>
+/// <param name="Key">The right's key in the composed set.</param>
+/// <param name="Layer"><c>app</c>, or the alias of the library that ships it.</param>
+/// <param name="Anonymous">Granted to the anonymous group: the posture file lists these in their own section.</param>
+public sealed record SecurityPostureRow(string Group, string Effect, string Resource, string Key, string Layer, bool Anonymous = false);

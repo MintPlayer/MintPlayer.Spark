@@ -160,7 +160,7 @@ public sealed class SparkSchemaReferenceTests
                     string.Join(";", ConfigFileShape.ComputeFileHashes(appData).Select(e => $"{e.Key}={e.Value}")),
                     JsonSerializer.Serialize(JsonSerializer.Deserialize<EntityTypeFile>(m, options)),
                     JsonSerializer.Serialize(JsonSerializer.Deserialize<ProgramUnitsConfiguration>(u, options)),
-                    JsonSerializer.Serialize(JsonSerializer.Deserialize<SecurityConfiguration>(s, options)),
+                    JsonSerializer.Serialize(SparkSecurityFiles.Compose(s, libraries: []).Configuration),
                     string.Join(";", ActionsCatalogueLoader.Build(a, SparkActionLayers.Libraries).Actions.Select(x => $"{x.Name}:{x.ShowedOn}:{x.SelectionRule}")));
             }
 

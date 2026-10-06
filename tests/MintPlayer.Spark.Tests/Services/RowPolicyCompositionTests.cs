@@ -326,7 +326,7 @@ public class RowPolicyCompositionTests : SparkTestDriver
         var configuration = new SecurityConfiguration
         {
             WellKnown = new() { [SparkWellKnownGroups.Anonymous] = anonymous.ToString() },
-            Rights = [new Right { Id = Guid.NewGuid(), GroupId = anonymous, Resource = $"Query/{nameof(RpTag)}" }],
+            Rights = [new Right { Key = Guid.NewGuid().ToString(), GroupId = anonymous, Resource = $"Query/{nameof(RpTag)}" }],
         };
 
         var problems = RowPolicyDeclarationValidator.Validate(

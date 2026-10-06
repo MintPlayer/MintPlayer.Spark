@@ -48,6 +48,29 @@ internal static class SparkKinds
         },
         appEmptyStringIsUntranslated: true);
 
+    /// <summary>
+    /// <c>security.json</c> (composition D4): <c>rights</c> is a keyed set, each grant identified by its
+    /// <c>key</c>; <c>{"key": "…", "$remove": true}</c> removes one. Names ignore case, as the loader
+    /// always read them. The guard rails and the alias namespacing are <see cref="SparkSecurityLayers"/>'.
+    /// </summary>
+    public static readonly KindSpec Security = new(
+        "security",
+        StringComparer.OrdinalIgnoreCase,
+        arrayKey: path => IsRights(path) ? "key" : null,
+        shape: (path, value) => IsRights(path) && value.Kind is not SparkJsonKind.Array
+            ? "must be an array of rights"
+            : null);
+
+    /// <summary>
+    /// <c>moderation.json</c> (composition D3, grill Q6): every object merges per property, names
+    /// ignoring case like <c>IConfiguration</c>, so a privilege and a reputation event are keyed by
+    /// name and <c>"Review": null</c> removes a privilege. Arrays are replaced whole.
+    /// </summary>
+    public static readonly KindSpec Moderation = new("moderation", StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsRights(IReadOnlyList<string> path)
+        => path.Count == 1 && string.Equals(path[0], "rights", StringComparison.OrdinalIgnoreCase);
+
     private static bool IsNamedCollection(IReadOnlyList<string> path)
         => path.Count switch
         {

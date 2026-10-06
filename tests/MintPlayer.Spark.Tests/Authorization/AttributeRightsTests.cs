@@ -18,10 +18,10 @@ public class AttributeRightsTests
     private static readonly Guid EditorsId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     private static Right Grant(string resource, Guid? group = null, bool important = false)
-        => new() { Id = Guid.NewGuid(), GroupId = group ?? ContributorsId, Resource = resource, IsImportant = important };
+        => new() { Key = Guid.NewGuid().ToString(), GroupId = group ?? ContributorsId, Resource = resource, IsImportant = important };
 
     private static Right Deny(string resource, Guid? group = null, bool important = false)
-        => new() { Id = Guid.NewGuid(), GroupId = group ?? ContributorsId, Resource = resource, IsDenied = true, IsImportant = important };
+        => new() { Key = Guid.NewGuid().ToString(), GroupId = group ?? ContributorsId, Resource = resource, IsDenied = true, IsImportant = important };
 
     private static SecurityConfiguration Config(params Right[] rights) => new()
     {

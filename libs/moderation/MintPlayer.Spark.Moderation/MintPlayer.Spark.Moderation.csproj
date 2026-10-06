@@ -5,6 +5,8 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of every slot (moderation:voters) and right key the library ships. -->
+		<SparkLibraryAlias>moderation</SparkLibraryAlias>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Moderation</PackageId>

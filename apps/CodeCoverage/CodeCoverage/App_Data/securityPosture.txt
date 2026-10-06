@@ -1,3 +1,8 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Reachable without signing in (expanded)
 Browse/Coverage
 Query/Account
 Query/Build
@@ -9,3 +14,47 @@ Read/Build
 Read/Commit
 Read/Home
 Read/Repository
+
+## Granted to @anonymous
+Anonymous visitors | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000021 | app
+Anonymous visitors | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000001 | app
+Anonymous visitors | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000081 | app
+Anonymous visitors | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000004 | app
+Anonymous visitors | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000003 | app
+Anonymous visitors | deny | QueryRead/Home/AccountCount | c0e5a9e1-0000-4000-8000-000000000088 | app
+Anonymous visitors | deny | QueryRead/Home/RepoCount | c0e5a9e1-0000-4000-8000-000000000089 | app
+Anonymous visitors | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000002 | app
+Anonymous visitors | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000083 | app
+Anonymous visitors | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000085 | app
+Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | app
+
+## Rights
+Signed-in users | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000022 | app
+Signed-in users | grant | DeleteData/Repository | c0e5a9e1-0000-4000-8000-000000000061 | app
+Signed-in users | grant | Edit/Account | c0e5a9e1-0000-4000-8000-00000000006b | app
+Signed-in users | grant | Edit/GitHubProject | c0e5a9e1-0000-4000-8000-000000000063 | app
+Signed-in users | grant | Edit/Repository | c0e5a9e1-0000-4000-8000-00000000006c | app
+Signed-in users | grant | Manage/RepoSettings | c0e5a9e1-0000-4000-8000-000000000032 | app
+Signed-in users | grant | Query/MyAccountRow | c0e5a9e1-0000-4000-8000-000000000051 | app
+Signed-in users | grant | QueryRead/Account | c0e5a9e1-0000-4000-8000-000000000011 | app
+Signed-in users | deny | QueryRead/Account/OwnerKey | c0e5a9e1-0000-4000-8000-000000000082 | app
+Signed-in users | grant | QueryRead/Build | c0e5a9e1-0000-4000-8000-000000000014 | app
+Signed-in users | grant | QueryRead/Commit | c0e5a9e1-0000-4000-8000-000000000013 | app
+Signed-in users | grant | QueryRead/GitHubProject | c0e5a9e1-0000-4000-8000-000000000062 | app
+Signed-in users | grant | QueryRead/ProjectColumn | c0e5a9e1-0000-4000-8000-000000000065 | app
+Signed-in users | grant | QueryRead/Repository | c0e5a9e1-0000-4000-8000-000000000012 | app
+Signed-in users | deny | QueryRead/Repository/OwnerKey | c0e5a9e1-0000-4000-8000-000000000084 | app
+Signed-in users | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-0000-4000-8000-000000000086 | app
+Signed-in users | grant | QueryReadEditNew/ApiToken | c0e5a9e1-0000-4000-8000-000000000069 | app
+Signed-in users | grant | QueryReadEditNewDelete/EventColumnMapping | c0e5a9e1-0000-4000-8000-000000000066 | app
+Signed-in users | grant | Read/ForgeAccounts | c0e5a9e1-0000-4000-8000-000000000053 | app
+Signed-in users | deny | Read/ForgeAccounts/Provider | c0e5a9e1-0000-4000-8000-000000000087 | app
+Signed-in users | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000042 | app
+Signed-in users | grant | Read/LookupReferences | c0e5a9e1-0000-4000-8000-000000000068 | app
+Signed-in users | grant | Resync/Home | c0e5a9e1-0000-4000-8000-000000000052 | app
+Signed-in users | grant | Revoke/ApiToken | c0e5a9e1-0000-4000-8000-00000000006a | app
+Signed-in users | grant | SyncColumns/GitHubProject | c0e5a9e1-0000-4000-8000-000000000064 | app
+Signed-in users | grant | Upload/Coverage | c0e5a9e1-0000-4000-8000-000000000033 | app
+
+## Inert: libraries switched off in "libraries"
+(nothing)

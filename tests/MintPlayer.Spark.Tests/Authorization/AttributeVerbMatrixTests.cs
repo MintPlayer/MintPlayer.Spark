@@ -307,7 +307,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
             {
                 rights.Add(new Right
                 {
-                    Id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes($"{rule}|{group}"))),
+                    Key = new Guid(MD5.HashData(Encoding.UTF8.GetBytes($"{rule}|{group}"))).ToString(),
                     Resource = resource,
                     GroupId = group,
                     IsDenied = denied,

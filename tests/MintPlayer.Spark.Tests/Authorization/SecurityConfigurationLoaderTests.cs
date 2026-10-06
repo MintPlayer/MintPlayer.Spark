@@ -42,9 +42,9 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
     {
         var dir = Path.Combine(_tempDir, "App_Data", "Model");
         Directory.CreateDirectory(dir);
-        var attrs = string.Join(",", attributes.Select(a => $$"""{ "id": "{{Guid.NewGuid()}}", "name": "{{a}}" }"""));
+        var attrs = string.Join(",", attributes.Select(a => $$"""{ "key": "{{Guid.NewGuid()}}", "name": "{{a}}" }"""));
         File.WriteAllText(Path.Combine(dir, name + ".json"),
-            $$"""{ "persistentObject": { "id": "{{Guid.NewGuid()}}", "name": "{{name}}", "attributes": [{{attrs}}] } }""");
+            $$"""{ "persistentObject": { "key": "{{Guid.NewGuid()}}", "name": "{{name}}", "attributes": [{{attrs}}] } }""");
     }
 
     private void WriteConfig(string json) =>
@@ -57,7 +57,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
           },
           "rights": [
             {
-              "id": "aaaa0000-0000-0000-0000-000000000001",
+              "key": "aaaa0000-0000-0000-0000-000000000001",
               "resource": "Read/Person",
               "groupId": "11111111-1111-1111-1111-111111111111",
               "isDenied": false,
@@ -248,8 +248,8 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         {
           "groups": { "11111111-1111-1111-1111-111111111111": "Admins" },
           "rights": [
-            { "id": "aaaa0000-0000-0000-0000-000000000001", "resource": "Edit/Song", "groupId": "11111111-1111-1111-1111-111111111111" },
-            { "id": "aaaa0000-0000-0000-0000-000000000002", "resource": "{{resource}}", "groupId": "11111111-1111-1111-1111-111111111111", "isDenied": true }
+            { "key": "aaaa0000-0000-0000-0000-000000000001", "resource": "Edit/Song", "groupId": "11111111-1111-1111-1111-111111111111" },
+            { "key": "aaaa0000-0000-0000-0000-000000000002", "resource": "{{resource}}", "groupId": "11111111-1111-1111-1111-111111111111", "isDenied": true }
           ]
         }
         """;

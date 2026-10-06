@@ -29,6 +29,36 @@ internal static class ModerationStartupCheck
                 string.Join(", ", options.Privileges.Select(p => $"{p.Key} (rep {p.Value.Rep}, age {p.Value.MinAccountAgeDays}d, active {p.Value.MinActiveDays}d)")));
     }
 
+    /// <summary>
+    /// Resolves each privilege's <see cref="ModerationPrivilegeOptions.Group"/> slot through
+    /// <c>security.json</c>'s <c>bindings</c> into its <see cref="ModerationPrivilegeOptions.GroupId"/>
+    /// (composition D3, grill Q6). A slot that does not resolve, or binds other than exactly one group,
+    /// is recorded for <see cref="Validate"/>, which refuses startup with it.
+    /// </summary>
+    public static void ResolveGroups(SparkModerationOptions options, SecurityConfiguration security)
+    {
+        foreach (var (name, privilege) in options.Privileges)
+        {
+            privilege.GroupProblem = null;
+            if (string.IsNullOrWhiteSpace(privilege.Group)) continue;
+
+            privilege.GroupId = Guid.Empty;
+            if (privilege.Group.StartsWith('@') || !privilege.Group.Contains(':'))
+            {
+                privilege.GroupProblem = $"Privilege '{name}' confers '{privilege.Group}'. A privilege names its group by a slot ('moderation:<slot>') that security.json binds; a token or a group id is refused.";
+                continue;
+            }
+
+            var ids = SparkSecurityFiles.ResolveGroup(security, privilege.Group, out var problem);
+            if (ids is null)
+                privilege.GroupProblem = $"Privilege '{name}' {problem}";
+            else if (ids.Count != 1)
+                privilege.GroupProblem = $"Privilege '{name}' confers the slot '{privilege.Group}', which security.json binds to {ids.Count} groups. A privilege confers exactly one.";
+            else
+                privilege.GroupId = ids[0];
+        }
+    }
+
     /// <summary>The problems with <paramref name="options"/>; empty when it is valid.</summary>
     public static IReadOnlyList<string> Validate(SparkModerationOptions options, SecurityConfiguration security)
     {
@@ -54,9 +84,14 @@ internal static class ModerationStartupCheck
 
         foreach (var (name, privilege) in options.Privileges)
         {
+            if (privilege.GroupProblem is { } groupProblem)
+            {
+                problems.Add(groupProblem);
+                continue;
+            }
             if (privilege.GroupId == Guid.Empty)
             {
-                problems.Add($"Privilege '{name}' has no GroupId.");
+                problems.Add($"Privilege '{name}' has no Group (a slot bound in security.json).");
                 continue;
             }
             if (!declared.Contains(privilege.GroupId))

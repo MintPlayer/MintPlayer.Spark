@@ -73,14 +73,14 @@ public static class SparkModerationInitExtensions
                     continue;
                 }
                 foreach (var resource in Resources(action, targets))
-                    rights.Add(new JsonObject { ["resource"] = resource, ["groupId"] = privilege.GroupId.ToString(), ["_comment"] = $"privilege {name}" });
+                    rights.Add(new JsonObject { ["key"] = $"moderation-{name}-{resource}", ["resource"] = resource, ["groupId"] = string.IsNullOrWhiteSpace(privilege.Group) ? privilege.GroupId.ToString() : privilege.Group, ["_comment"] = $"privilege {name}" });
             }
         }
 
         foreach (var action in new[] { ModerationRights.Lock, ModerationRights.Review, ModerationRights.Suspend, ModerationRights.Audit, "Restore", "Purge", "ViewDeleted", "Revert" })
         {
             foreach (var resource in Resources(action, targets))
-                rights.Add(new JsonObject { ["resource"] = resource, ["groupId"] = "<moderators group id>", ["_comment"] = "moderators (never earnable)" });
+                rights.Add(new JsonObject { ["key"] = $"moderators-{resource}", ["resource"] = resource, ["groupId"] = "<moderators group id>", ["_comment"] = "moderators (never earnable)" });
         }
 
         var report = new JsonObject

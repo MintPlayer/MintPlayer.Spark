@@ -19,7 +19,7 @@ public class ContributionsSecurityValidationTests
     private static SecurityConfiguration Config(string resource) => new()
     {
         Groups = { [Moderators.ToString()] = "Moderators" },
-        Rights = [new Right { Id = Guid.NewGuid(), GroupId = Moderators, Resource = resource }],
+        Rights = [new Right { Key = Guid.NewGuid().ToString(), GroupId = Moderators, Resource = resource }],
     };
 
     /// <summary>A model holding only the target (<c>CoSong</c>): the generated types have no model file yet.</summary>

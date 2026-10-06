@@ -14,169 +14,169 @@
   },
   "rights": [
     {
-      "id": "00000000-0000-0000-0000-000000000001",
+      "key": "00000000-0000-0000-0000-000000000001",
       "resource": "QueryRead/Company",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
-      "id": "00000000-0000-0000-0000-00000000000f",
+      "key": "00000000-0000-0000-0000-00000000000f",
       "resource": "QueryRead/Company",
       "groupId": "b1b2c3d4-0000-0000-0000-00000000000f",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000001",
+      "key": "a0000001-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNewDelete/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000002",
+      "key": "a0000001-0000-0000-0000-000000000002",
       "resource": "QueryReadEditNewDelete/Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000003",
+      "key": "a0000001-0000-0000-0000-000000000003",
       "resource": "QueryReadEditNewDelete/Address",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000004",
+      "key": "a0000001-0000-0000-0000-000000000004",
       "resource": "QueryRead/Car",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000005",
+      "key": "a0000001-0000-0000-0000-000000000005",
       "resource": "QueryReadEditNewDelete/Profession",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000006",
+      "key": "a0000001-0000-0000-0000-000000000006",
       "resource": "QueryReadEditNewDelete/CarreerJob",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000007",
+      "key": "a0000001-0000-0000-0000-000000000007",
       "resource": "QueryReadEditNewDelete/AddressDescription",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000008",
+      "key": "a0000001-0000-0000-0000-000000000008",
       "resource": "QueryReadEditNewDelete/OidcApplication",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "a0000001-0000-0000-0000-000000000009",
+      "key": "a0000001-0000-0000-0000-000000000009",
       "resource": "QueryReadEditNewDelete/OidcScope",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000001",
+      "key": "b0000002-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNew/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000002",
+      "key": "b0000002-0000-0000-0000-000000000002",
       "resource": "QueryReadEditNew/Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000003",
+      "key": "b0000002-0000-0000-0000-000000000003",
       "resource": "QueryReadEditNew/Address",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000004",
+      "key": "b0000002-0000-0000-0000-000000000004",
       "resource": "QueryRead/Car",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000005",
+      "key": "b0000002-0000-0000-0000-000000000005",
       "resource": "QueryReadEditNew/Profession",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000006",
+      "key": "b0000002-0000-0000-0000-000000000006",
       "resource": "QueryReadEditNew/CarreerJob",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
-      "id": "c0000003-0000-0000-0000-000000000001",
+      "key": "c0000003-0000-0000-0000-000000000001",
       "resource": "QueryRead/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
-      "id": "c0000003-0000-0000-0000-000000000002",
+      "key": "c0000003-0000-0000-0000-000000000002",
       "resource": "QueryRead/Company",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
-      "id": "c0000003-0000-0000-0000-000000000003",
+      "key": "c0000003-0000-0000-0000-000000000003",
       "resource": "QueryRead/Address",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
-      "id": "c0000003-0000-0000-0000-000000000004",
+      "key": "c0000003-0000-0000-0000-000000000004",
       "resource": "QueryRead/Car",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
-      "id": "c0000003-0000-0000-0000-000000000005",
+      "key": "c0000003-0000-0000-0000-000000000005",
       "resource": "QueryRead/Profession",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
-      "id": "c0000003-0000-0000-0000-000000000006",
+      "key": "c0000003-0000-0000-0000-000000000006",
       "resource": "QueryRead/CarreerJob",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000011",
+      "key": "b0000002-0000-0000-0000-000000000011",
       "resource": "Replicate/People",
       "groupId": "b0000002-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000012",
+      "key": "b0000002-0000-0000-0000-000000000012",
       "resource": "ReadEditNew/Person",
       "groupId": "b0000002-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "b0000002-0000-0000-0000-000000000022",
+      "key": "b0000002-0000-0000-0000-000000000022",
       "resource": "Replicate/Companies",
       "groupId": "b0000002-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "e0000009-0000-0000-0000-000000000001",
+      "key": "e0000009-0000-0000-0000-000000000001",
       "resource": "Read/LookupReferences",
       "groupId": "b1b2c3d4-0000-0000-0000-00000000000f",
       "isDenied": false
     },
     {
-      "id": "e0000009-0000-0000-0000-000000000002",
+      "key": "e0000009-0000-0000-0000-000000000002",
       "resource": "Edit/LookupReferences",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false

@@ -3,11 +3,17 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using System.Text;
 
 namespace MintPlayer.Spark.Extensions;
 
 /// <summary>
-/// A merge-queue gate over the anonymous surface, mirroring <c>--spark-verify-model</c>.
+/// A merge-queue gate over the effective rights, mirroring <c>--spark-verify-model</c>.
+/// <para>
+/// The baseline is the readable table of every effective right with the layer it came from
+/// (composition D4), the anonymous surface first. A library that ships rights, or an update that
+/// changes them, is reviewed as a diff of that file. Hashing it with layer provenance belongs to M7 (D7).
+/// </para>
 /// <para>
 /// <c>security.json</c> is a data file: widening it is a one-line diff that reads no differently
 /// from narrowing it, and the consequence is invisible until someone reaches the endpoint. Committing
@@ -36,8 +42,8 @@ public static class SparkSecurityVerificationExtensions
     /// starting.
     /// <list type="bullet">
     /// <item><c>--spark-synchronize-security</c> writes the baseline.</item>
-    /// <item><c>--spark-verify-security</c> writes nothing and exits 3 if the anonymous surface has
-    /// changed.</item>
+    /// <item><c>--spark-verify-security</c> writes nothing and exits 3 if the posture has changed (with
+    /// a warning of its own when the anonymous surface did), 2 if the configuration does not compose.</item>
     /// </list>
     /// </summary>
     /// <returns>
@@ -76,7 +82,18 @@ public static class SparkSecurityVerificationExtensions
         }
 
         var path = SparkAppData.Path(builder.Environment.ContentRootPath, BaselineFileName);
-        var current = Render(reporter.Describe());
+        string current;
+        try
+        {
+            current = Render(reporter.Describe());
+        }
+        catch (Services.SparkSecurityConfigurationException ex)
+        {
+            // A configuration that does not compose has no posture: say why, as startup would.
+            Console.Error.WriteLine("Spark: " + ex.Message);
+            Environment.ExitCode = ExitMisconfigured;
+            return true;
+        }
 
         if (verifyOnly)
             Verify(path, current);
@@ -90,7 +107,7 @@ public static class SparkSecurityVerificationExtensions
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, current);
-        Console.WriteLine($"Spark: wrote the anonymous-surface baseline to {BaselineFile}.");
+        Console.WriteLine($"Spark: wrote the security posture baseline to {BaselineFile}.");
     }
 
     private static void Verify(string path, string current)
@@ -102,7 +119,17 @@ public static class SparkSecurityVerificationExtensions
         if (string.Equals(NormalizeLineEndings(committed), NormalizeLineEndings(current), StringComparison.Ordinal))
             return;
 
-        Console.Error.WriteLine("Spark: the set of rights reachable without signing in has changed.");
+        // Anonymous grants get their own warning (composition D4), so a widened public surface is
+        // never just one more line in a long diff. The ::warning:: prefix is a GitHub annotation.
+        if (!string.Equals(NormalizeLineEndings(AnonymousPart(committed)), NormalizeLineEndings(AnonymousPart(current)), StringComparison.Ordinal))
+        {
+            Console.WriteLine($"::warning title=Spark anonymous surface::{BaselineFile}: the rights reachable without signing in have changed.");
+            Console.Error.WriteLine("Spark: the set of rights reachable without signing in has changed.");
+        }
+        else
+        {
+            Console.Error.WriteLine("Spark: the effective rights have changed.");
+        }
         Console.Error.WriteLine();
         Console.Error.WriteLine("Committed:");
         Console.Error.WriteLine(Indent(committed ?? "(no baseline committed)"));
@@ -118,11 +145,60 @@ public static class SparkSecurityVerificationExtensions
     /// <summary>
     /// Deliberately plain text rather than JSON: the file exists to be read in a pull request, and a
     /// one-right-per-line diff says what changed without a reviewer parsing anything.
+    /// <para>
+    /// The full effective table (composition D4), one row per right with the layer it came from.
+    /// Grants to the anonymous group have their own section, with the expanded surface they reach,
+    /// so they cannot hide in a long diff; a switched-off library's rights are listed as inert. Rows
+    /// are separated by <c> | </c> rather than padded into columns, so a longer name added later does
+    /// not rewrite every line.
+    /// </para>
     /// </summary>
-    private static string Render(SecurityPosture posture)
-        => posture.AnonymouslyReachable.Count == 0
-            ? "(nothing)\n"
-            : string.Join("\n", posture.AnonymouslyReachable) + "\n";
+    internal static string Render(SecurityPosture posture)
+    {
+        var anonymous = (posture.Rights ?? []).Where(r => r.Anonymous).ToList();
+        var builder = new StringBuilder();
+        builder.Append("# Spark security posture: every effective right and the layer it comes from.\n");
+        builder.Append($"# {SynchronizeFlag} writes this file; {VerifyFlag} fails when it drifts.\n");
+        builder.Append("# Rows: group | effect | resource | key | layer\n");
+
+        builder.Append('\n').Append(AnonymousHeader).Append('\n');
+        AppendLines(builder, posture.AnonymouslyReachable);
+
+        builder.Append("\n## Granted to @anonymous\n");
+        AppendLines(builder, anonymous.Select(Line));
+
+        builder.Append("\n## Rights\n");
+        AppendLines(builder, (posture.Rights ?? []).Where(r => !r.Anonymous).Select(Line));
+
+        builder.Append("\n## Inert: libraries switched off in \"libraries\"\n");
+        AppendLines(builder, (posture.Inert ?? []).Select(Line));
+        return builder.ToString();
+
+        static string Line(SecurityPostureRow r) => $"{r.Group} | {r.Effect} | {r.Resource} | {r.Key} | {r.Layer}";
+    }
+
+    private const string AnonymousHeader = "## Reachable without signing in (expanded)";
+
+    private static void AppendLines(StringBuilder builder, IEnumerable<string> lines)
+    {
+        var any = false;
+        foreach (var line in lines)
+        {
+            builder.Append(line).Append('\n');
+            any = true;
+        }
+        if (!any) builder.Append("(nothing)\n");
+    }
+
+    /// <summary>The anonymous sections of a rendered posture, so their drift gets its own warning.</summary>
+    private static string? AnonymousPart(string? rendered)
+    {
+        if (rendered is null) return null;
+        var text = rendered.Replace("\r\n", "\n");
+        var start = text.IndexOf(AnonymousHeader, StringComparison.Ordinal);
+        var end = text.IndexOf("\n## Rights\n", StringComparison.Ordinal);
+        return start < 0 || end < start ? text : text[start..end];
+    }
 
     private static string? NormalizeLineEndings(string? value)
         => value?.Replace("\r\n", "\n").TrimEnd('\n');

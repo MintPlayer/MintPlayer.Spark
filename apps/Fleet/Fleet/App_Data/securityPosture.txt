@@ -1,2 +1,40 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Reachable without signing in (expanded)
 Query/Company
 Read/Company
+
+## Granted to @anonymous
+Anonymous visitors | grant | QueryRead/Company | 00000000-0000-0000-0000-000000000001 | app
+
+## Rights
+Administrators | grant | CarCopy/Car | ca000001-0000-0000-0000-000000000001 | app
+Administrators | grant | Edit/LookupReferences | f0000009-0000-0000-0000-000000000002 | app
+Administrators | grant | QueryReadEditNewDelete/Car | f0000001-0000-0000-0000-000000000001 | app
+Administrators | grant | QueryReadEditNewDelete/CarBrand | f0000001-0000-0000-0000-000000000002 | app
+Administrators | grant | QueryReadEditNewDelete/CarStatus | f0000001-0000-0000-0000-000000000003 | app
+Administrators | grant | QueryReadEditNewDelete/Person | f0000001-0000-0000-0000-000000000004 | app
+Administrators | grant | QueryReadEditNewDelete/ServiceEntry | f0000001-0000-0000-0000-000000000005 | app
+Administrators | grant | ScatterRegistrationOffsets/Car | ca000002-0000-0000-0000-000000000001 | app
+Fleet managers | grant | CarCopy/Car | ca000001-0000-0000-0000-000000000002 | app
+Fleet managers | grant | QueryRead/CarBrand | f0000002-0000-0000-0000-000000000002 | app
+Fleet managers | grant | QueryRead/CarStatus | f0000002-0000-0000-0000-000000000003 | app
+Fleet managers | grant | QueryRead/Person | f0000002-0000-0000-0000-000000000004 | app
+Fleet managers | grant | QueryReadEditNew/Car | f0000002-0000-0000-0000-000000000001 | app
+Fleet managers | grant | ReadEdit/ServiceEntry | f0000002-0000-0000-0000-000000000005 | app
+Fleet managers | grant | ScatterRegistrationOffsets/Car | ca000002-0000-0000-0000-000000000002 | app
+Machine:FleetApi | grant | ReadEditNew/Car | b0000002-0000-0000-0000-000000000011 | app
+Module:HR | grant | ReadEditNew/Car | b0000001-0000-0000-0000-000000000012 | app
+Module:HR | grant | Replicate/Cars | b0000001-0000-0000-0000-000000000011 | app
+Signed-in users | grant | QueryRead/Company | 00000000-0000-0000-0000-00000000000f | app
+Signed-in users | grant | Read/LookupReferences | f0000009-0000-0000-0000-000000000001 | app
+Viewers | grant | QueryRead/Car | f0000003-0000-0000-0000-000000000001 | app
+Viewers | grant | QueryRead/CarBrand | f0000003-0000-0000-0000-000000000002 | app
+Viewers | grant | QueryRead/CarStatus | f0000003-0000-0000-0000-000000000003 | app
+Viewers | grant | QueryRead/Person | f0000003-0000-0000-0000-000000000004 | app
+Viewers | grant | Read/ServiceEntry | f0000003-0000-0000-0000-000000000005 | app
+
+## Inert: libraries switched off in "libraries"
+(nothing)
