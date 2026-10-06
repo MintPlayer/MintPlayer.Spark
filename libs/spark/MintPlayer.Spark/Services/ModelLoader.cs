@@ -18,7 +18,7 @@ public interface IModelLoader
 [Register(typeof(IModelLoader), ServiceLifetime.Singleton)]
 internal partial class ModelLoader : IModelLoader
 {
-    [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly IModelSource modelSource;
 
     private Lazy<(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries)>? _data;
 
@@ -36,21 +36,20 @@ internal partial class ModelLoader : IModelLoader
         var byId = new Dictionary<Guid, EntityTypeDefinition>();
         var byAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
         var allQueries = new List<SparkQuery>();
-        var modelPath = SparkAppData.Path(hostEnvironment.ContentRootPath, "Model");
-
-        if (!Directory.Exists(modelPath))
-            return (byId, byAlias, allQueries);
 
         var jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         };
 
-        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        // The composed model (composition D6): library types with the application's deltas on top,
+        // then the application's own files.
+        foreach (var type in modelSource.Types)
         {
+            var file = type.Source;
             try
             {
-                var json = File.ReadAllText(file);
+                var json = type.Json;
                 RefuseLegacyIsVisible(json, file);
                 var entityTypeFile = JsonSerializer.Deserialize<EntityTypeFile>(json, jsonOptions);
                 if (entityTypeFile?.PersistentObject != null)
@@ -70,7 +69,7 @@ internal partial class ModelLoader : IModelLoader
                     {
                         throw new InvalidOperationException(
                             $"Two entity types resolve to the alias '{entityType.Alias}': '{existing.Name}' and " +
-                            $"'{entityType.Name}' (in {Path.GetFileName(file)}). A URL identifies exactly one type, " +
+                            $"'{entityType.Name}' (in {file}). A URL identifies exactly one type, " +
                             $"so the second would be unreachable by alias. Give one of them an explicit, distinct " +
                             $"\"alias\" in its model file.");
                     }

@@ -167,7 +167,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                 foreach (var file in library.Files.Where(f => f.Kind == SparkLayerKinds.Actions))
                     foreach (var name in LibraryLayersReader.ActionNames(file.Json))
                         customActions.Add(name);
-            var model = ReadModel(end.Options.AdditionalFiles, SparkAppDataDir.Read(end.Options.AnalyzerConfigOptionsProvider.GlobalOptions));
+            var model = ReadModel(end.Options.AdditionalFiles, SparkAppDataDir.Read(end.Options.AnalyzerConfigOptionsProvider.GlobalOptions), end.Compilation);
             var knownTargets = model.Targets;
             var combinedVerbs = reserved.Where(r => r.IsCombined).Select(r => r.Verb).ToArray();
             var staleDeny = new StaleDenyCollector();
@@ -569,20 +569,25 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     /// model declares — read by position (<see cref="ModelNamesReader"/>), so an attribute, tab or
     /// group name no longer counts as a type target — plus each persistent object's attributes.
     /// </summary>
-    private static ModelIndex ReadModel(IEnumerable<AdditionalText> files, string appDataDir)
+    private static ModelIndex ReadModel(IEnumerable<AdditionalText> files, string appDataDir, Compilation compilation)
     {
         var index = new ModelIndex { Directory = string.IsNullOrEmpty(appDataDir) ? "Model" : appDataDir + "/Model" };
         foreach (var reserved in ReservedTargets) index.Targets.Add(reserved);
 
-        var any = false;
+        // The composed model (composition D6): a library type is a target although the application
+        // has no file for it, and an application delta on it composes onto the library's.
+        var appFiles = new List<AppModelFileInfo>();
         foreach (var file in files)
         {
             if (!SparkAppDataDir.Contains(file.Path, appDataDir, "Model")) continue;
             if (file.GetText() is not { } text) continue;
+            appFiles.Add(new AppModelFileInfo { Path = file.Path, Text = text.ToString() });
+        }
 
-            any = true;
-            var content = text.ToString();
-
+        // No application model files means nothing to compare against (below), library types or not.
+        var any = appFiles.Count > 0;
+        foreach (var content in ComposedModel.Compose(ComposedModel.LibraryFiles(compilation), appFiles))
+        {
             if (ModelNamesReader.Read(content) is { } parsed)
             {
                 if (!string.IsNullOrEmpty(parsed.TypeName))

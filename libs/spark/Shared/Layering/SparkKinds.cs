@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace MintPlayer.Spark.Layering;
 
@@ -18,15 +19,22 @@ internal static class SparkKinds
             : null);
 
     /// <summary>
-    /// <c>Model/*.json</c>: attributes, tabs, groups and queries merge by <c>name</c>; an <c>id</c>
-    /// can never be changed by a later layer, so an application file for a library type is a delta.
+    /// <c>Model/*.json</c>: attributes, tabs, groups and the file's queries merge by <c>name</c>; an
+    /// <c>id</c> can never be changed by a later layer, so an application file for a library type is a
+    /// delta. <c>persistentObject.queries</c> (the sub-queries: aliases or <c>{ "query": … }</c>, no
+    /// name) is replaced whole.
     /// </summary>
     public static readonly KindSpec Model = new(
         "model",
         StringComparer.Ordinal,
-        arrayKey: path => path.Count >= 1 && IsNamedCollection(path[path.Count - 1]) ? "name" : null,
+        arrayKey: path => IsNamedCollection(path) ? "name" : null,
         isImmutable: path => path.Count >= 1 && path[path.Count - 1] == "id");
 
-    private static bool IsNamedCollection(string segment)
-        => segment is "attributes" or "tabs" or "groups" or "queries";
+    private static bool IsNamedCollection(IReadOnlyList<string> path)
+        => path.Count switch
+        {
+            1 => path[0] == "queries",
+            2 => path[0] == "persistentObject" && path[1] is "attributes" or "tabs" or "groups",
+            _ => false,
+        };
 }

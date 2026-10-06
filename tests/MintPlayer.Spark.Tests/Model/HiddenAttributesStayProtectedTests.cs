@@ -13,10 +13,11 @@ namespace MintPlayer.Spark.Tests.Model;
 /// <b>What is checked.</b> The 24 attributes that were <c>"isVisible": false</c> on master (<c>963cb35b</c>,
 /// listed below) fall in two groups:
 /// <list type="bullet">
-/// <item>22 must stay unwritable. Each passes when its model file still declares it and it is
+/// <item>21 must stay unwritable. Each passes when its model file still declares it and it is
 /// <c>isReadOnly: true</c>, or it is denied <c>Edit</c> and <c>New</c> on both well-known groups; or when the
 /// model no longer declares it at all (deleted, or <c>[IgnoreProperty]</c>): the write gate refuses a name with
-/// no model entry.</item>
+/// no model entry. (A 22nd, CodeCoverage <c>SparkUser.Id</c>, left with the type: SparkUser is now
+/// MintPlayer.Spark.Authorization's model, which declares no <c>Id</c>; composition M4.)</item>
 /// <item>2 are the bugs (Fleet <c>Car.PoliceReportNumber</c>, HR <c>Person.LastName</c>): they must be declared
 /// and writable, because being writable is their fix.</item>
 /// </list>
@@ -32,7 +33,7 @@ namespace MintPlayer.Spark.Tests.Model;
 /// </remarks>
 public class HiddenAttributesStayProtectedTests
 {
-    /// <summary>The 22 attributes hidden on master that must not become writable.</summary>
+    /// <summary>The 21 attributes hidden on master that must not become writable.</summary>
     public static TheoryData<string, string, string> ProtectedOnMaster => new()
     {
         { "CodeCoverage", "Account", "GitHubId" },
@@ -47,7 +48,6 @@ public class HiddenAttributesStayProtectedTests
         { "CodeCoverage", "Repository", "IsPrivate" },
         { "CodeCoverage", "Repository", "OwnerKey" },
         { "CodeCoverage", "Repository", "PreviousFullNames" },
-        { "CodeCoverage", "SparkUser", "Id" },
         { "Fleet", "Car", "CreatedBy" },
         { "QnA", "Answer", "CreatedBy" },
         { "QnA", "Answer", "DeletedBy" },

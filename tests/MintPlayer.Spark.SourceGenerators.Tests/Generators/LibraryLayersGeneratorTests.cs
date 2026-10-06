@@ -73,7 +73,7 @@ public class LibraryLayersGeneratorTests
         [
             (@"C:\src\Lib\App_Data\actions.json", "actions.json", Actions),
             (@"C:\src\Lib\App_Data\translations.json", "translations.json", Translations),
-            (@"C:\src\Lib\App_Data\Model\SparkUser.json", "Model/SparkUser.json", """{ "persistentObject": { "name": "SparkUser" } }"""),
+            (@"C:\src\Lib\App_Data\Model\SparkUser.json", "Model/SparkUser.json", """{ "persistentObject": { "id": "0d3faefa-624c-5135-bca7-652aa9053e0e", "name": "SparkUser" } }"""),
             (@"C:\src\Lib\App_Data\security.json", "security.json", """{ "groups": {} }"""),
             (@"C:\src\Lib\App_Data\programUnits.json", "programUnits.json", """{ "programUnitGroups": [] }"""),
             (@"C:\src\Lib\App_Data\moderation.json", "moderation.json", """{ "privileges": {} }"""),

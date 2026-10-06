@@ -37,6 +37,22 @@ internal static class LibraryLayersDiagnostics
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor ModelIdNotDerived = new(
+        id: "SPARK045",
+        title: "A library model id is not the one derived from its alias and name",
+        messageFormat: "{0}: '{1}' must be \"{2}\" (UUIDv5 of '{3}'), but it is {4}. A library's model ids are derived, never minted, so every application sees the same id (composition D5). Run 'npm run stamp:library-model-ids -- <library project folder>' or write the value by hand.",
+        category: "Spark",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor ModelLayerUnreadable = new(
+        id: "SPARK046",
+        title: "A library model file cannot be composed",
+        messageFormat: "{0} cannot be shipped as a model layer: {1}. Applications would refuse to start with it.",
+        category: "Spark",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     private static readonly Regex AliasPattern = new("^[a-z][a-z0-9]*(-[a-z0-9]+)*$", RegexOptions.CultureInvariant);
 
     /// <summary>

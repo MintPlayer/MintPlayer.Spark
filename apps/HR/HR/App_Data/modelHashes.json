@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "modelHash": "03368359aa6be1079dfecbab9c0d47d084116d68cfb0f882253ef815521579c0",
+  "modelHash": "771498a0cd36fd5fb2a2c612fb70707a1a4d5b663325b76659bf78b98529adce",
   "contextRoots": "4e26fdaddf14f566fc802a5957f1680622690ae57c3cbb5a5ac50a9c1de40ca0",
-  "modelFiles": "cd8f5fc945ae1df65e506bfb0e051d72b73c0e8f9ea5e4fa1cfa4303cc02a635",
+  "modelFiles": "147c47fa3d27321a4c38940f2689d2bfbe95c66f7144acf32e74246f1fac3bbb",
   "files": {
     "Address.json": "4ecd730f0f1ba35c64263d97f1874f4bf85f16e5aaa753162520c6adfc314cf9",
     "AddressDescription.json": "81762682ba0098d7393fd08e758ec8673cf94951a5a353f5e76a1ac350821ce4",
@@ -14,7 +14,8 @@
     "OidcApplication.json": "306586a087b41f6c4be292b3f9ec9281b72bcb6af0d0c4a4fc06b6ad1364246f",
     "OidcScope.json": "1adeec19241a2ba7316759bd69fa18e54ff5b7e4c294b739f3dc85f4c9386814",
     "Person.json": "d8bc58b6ab4828a6dac553ac0fd53fdb823f7407c48d59003eab6c97a7a45a91",
-    "Profession.json": "6bc3aae3a213b9c439fc4a882c456570796f313b1f358481b1642439f9041b8c"
+    "Profession.json": "6bc3aae3a213b9c439fc4a882c456570796f313b1f358481b1642439f9041b8c",
+    "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
   },
   "entities": {
     "Address": "9026c02246fcc4cff031e3e64b6d7a382f9414968212a0249bcfcfc7bee8f1a5",

@@ -193,7 +193,7 @@ raw JSON trees and records which layer each leaf came from.
 |---|---|---|
 | actions | action name (case-insensitive) | as today |
 | translations | key (ordinal), then language | each layer is **flattened first**, so `"a.b"` and `{"a":{"b"}}` meet; `"ns": null` removes a whole prefix; a new language is appended (`GetValue` falls back to the first); `""` from the app ignored; moves from compile time to the same runtime engine (D10) |
-| model | `persistentObject.name` | `attributes[]`, `tabs[]`, `groups[]`, `queries[]` by name. **`id` can never be overridden.** An app file for a library type is a delta |
+| model | `persistentObject.name` | `attributes[]`, `tabs[]`, `groups[]`, `queries[]` by name (the file's root `queries`; the sub-query list `persistentObject.queries` is replaced whole, amended in M4, see D6). **`id` can never be overridden.** An app file for a library type is a delta |
 | programUnits | unit id | |
 | culture | (app only; libraries may not ship it) | |
 | moderation | privilege name; reputation keys | `group` is a token or slot bound in `security.json`. The composed result is exposed as an `IConfiguration` source below appsettings and environment variables (Q6) |
@@ -230,6 +230,27 @@ are **written into the shipped file** and **verified by the library's generator*
 or a rename is caught as a diagnostic. They are never computed silently at runtime, because a
 rename would then change ids on the wire. The app layer cannot override `id`. Types the app owns
 keep their minted ids.
+- **As built in M4 (2026-10-06).**
+  - **Seeds and namespace.** `SparkModelIds` (shared source, `libs/spark/Shared/Layering/SparkModelLayers.cs`)
+    is RFC 4122 v5 in the fixed namespace `036a66ee-1790-46de-9f0e-4e1d856750c9`. The type is
+    `{alias}:{Type}`; a member is `{alias}:{Type}.{attributes|tabs|groups}.{Name}`, and the file's
+    queries `{alias}:{Type}.queries.{Name}`. The member kind is in the seed, so an attribute and a tab
+    with one name cannot collide. The RFC's own example is a test.
+  - **Verification.** `LibraryLayersGenerator` checks every shipped `Model/*.json`: **SPARK045**
+    (error) names the path, the expected id and its seed when an id is missing or minted; **SPARK046**
+    (error) when the file is not strict JSON or names no type, which applications would refuse at
+    startup.
+  - **Writer.** `npm run stamp:library-model-ids -- <library project folder>`
+    (`tools/stamp-library-model-ids.mjs`) reads the alias from the csproj and writes the ids, keeping key
+    order and rewriting `group`/`tab` references. Chosen over a `--spark-…` verb because a library has
+    no host to run one in. It is a second implementation of the derivation; the generator is the
+    check that the two agree.
+  - **Production data.** Model ids are not stored in documents: RavenDB documents carry `@collection`
+    and the CLR type, and the type id travels only on the wire (`/spark/po/{typeId}`, client caches).
+    CodeCoverage's `SparkUser` id changed from `3f7c1d92-…` to `0d3faefa-…` (QnA's from
+    `4e13c0de-…0001`) with no migration; a URL or bookmark naming the old type id stops resolving,
+    and the alias `sparkuser` still does. No `security.json`, `programUnits.json` or right referenced
+    either id (searched); the E2E test that pinned QnA's id now pins the derived one.
 
 ### D6 — One composed-model provider; the synchronizer writes only the app's delta
 - One `IModelSource` (composed layers + app files) replaces every `*.json` glob (§1.2) and the
@@ -238,6 +259,55 @@ keep their minted ids.
   never writes library-owned types or fields.
 - `TranslationsSeeder` and `SparkSchemaReference`, which also write into app files, follow the
   same rule.
+- **As built in M4 (2026-10-06).**
+  - **One composer, both builds.** `SparkModelLayers.Compose` (shared source) groups library layers by
+    `persistentObject.name`, puts the application's files naming a library type on top as deltas, and
+    composes each with `SparkKinds.Model`. An application file naming no library type is the
+    application's own type, as before: two application files are never merged. An application file
+    the engine cannot read (not strict JSON, no name) is passed through as written, so each reader
+    reports it exactly as it did. Problems the run time refuses: an unreadable library layer, an `id`
+    changed by a later layer, two unrelated libraries stating a field differently (a library
+    overriding one it depends on is silent, as for actions).
+  - **Run time.** `SparkModelFiles.Compose(contentRoot)` (Abstractions; `SparkComposedType` with
+    `Name`, `Json`, `FileName`, `AppFile`, `Library`, `Layers`, `Provenance`, `Source`) throws on those
+    problems. `IModelSource` (MintPlayer.Spark, singleton, read once) wraps it for DI; `ModelLoader`
+    reads it. Replaced: `ModelLoader`, the ten `SparkDevelopmentExtensions` verify gates, three
+    `ModelSynchronizer` readers (existing types, description drift, missing translations),
+    `ModelFileShape` (via `ModelHashFile`) and `ModerationInitCommand`: 16 sites.
+    `QueryExecutor` and `SecurityConfigurationValidator` only named the directory in messages.
+    `SparkEndpointFactory` writes test fixtures and is not a reader.
+  - **Hash keys (interim until D7).** `ModelFileShape` hashes each composed type under its file name,
+    a library type under the library's file name. A type moved from an application into a library
+    therefore keeps its key and, ids not being structural, its hash: CodeCoverage's and QnA's
+    `modelHashes.json` verified unchanged after `SparkUser` moved. HR references the library and gained
+    `SparkUser.json` (re-synchronized; only `modelHashes.json` changed). The drift message still says
+    "present on disk" for a library type; the provenance-aware table is D7.
+  - **Generators.** `PersistentObjectNamesGenerator` composes the referenced libraries' model layers
+    (`LibraryLayersReader`) with the application's AdditionalFiles through the same composer, so
+    `PersistentObjectIds` and `PersistentObjectNames` carry library types (CodeCoverage:
+    `SparkUser = "0d3faefa-…"`, verified in the build output). Only an executable gets library
+    constants; a library compilation does not, and a library's own layer files (`SparkLayerPath`) are
+    never its application model. `SecurityConfigurationAnalyzer` reads the composed model too; its "no
+    model files, report nothing" rule still keys on the application's files.
+  - **Writers.** The synchronizer starts from the composed model and writes a library type through
+    `SparkModelLayers.Delta` (`SparkLayers.Delta`, the inverse of `Compose`): only what differs from the
+    library layer (both serialized the same way first, so an omitted default is no difference), never an
+    id the library states, never a removal (#253), and no file at all when nothing differs. It seeds no
+    description of a library type into the application's `translations.json`. `TranslationsSeeder`
+    already skipped keys any layer defines; `SparkSchemaReference` only edits the `$schema` line of
+    files that exist. Neither needed more.
+  - **Schema.** `model.schema.json` no longer requires `id` on the type, attributes, tabs, groups or
+    queries, so a delta validates. The server still requires every composed element to have one.
+  - **Deviation from the plan: `SparkUser` moved in M4, not M9** (owner's M4 brief). It ships from
+    `libs/authorization/MintPlayer.Spark.Authorization/App_Data/Model/SparkUser.json` with derived ids,
+    along with its `model.SparkUser` translations. CodeCoverage's copy and translations are deleted.
+    QnA keeps a delta: `UserName` `showedOn: "PersistentObject"` (the library ships
+    `"Query, PersistentObject"`, CodeCoverage's value; that was the only structural-or-visible drift).
+    Fleet, HR and DemoApp had no copy.
+  - **Deviation: the model `KindSpec`.** M2 keyed every array named `queries` by `name`, but
+    `persistentObject.queries` holds sub-query aliases or `{ "query": … }`, without a name, so every
+    file with a sub-query would have been refused. Only the file's root `queries` is keyed now;
+    the sub-query list is replaced whole.
 
 ### D7 — Gates hash the composed result, with provenance
 - `modelHashes.json` hashes the composed model. That follows the actions precedent: hash what is

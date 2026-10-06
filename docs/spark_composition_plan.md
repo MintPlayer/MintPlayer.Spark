@@ -13,7 +13,7 @@ run only in the final sweep.
 | M1 DRY imports + one App_Data location (D11, D12) | ✅ 2026-10-06 |
 | M2 Layering engine + kind specs (D2, D3) | ✅ 2026-10-06 (actions + model specs; translations in M5) |
 | M3 Generalised library-layer generator (D1) | ✅ 2026-10-06 (PRD D1, D16 "As built in M3") |
-| M4 Composed-model provider; synchronizer writes the delta (D5, D6) | ⏳ |
+| M4 Composed-model provider; synchronizer writes the delta (D5, D6) | ✅ 2026-10-06 (PRD D5, D6 "As built in M4"; SparkUser moved here from M9) |
 | M5 Translations at runtime (D10) | ⏳ |
 | M6 Library rights (D4), if Q2 adopts it | ⏳ |
 | M7 Gates with provenance + uniform reload + describe (D7–D9) | ⏳ |
@@ -71,10 +71,10 @@ Record the results in PRD §9, "Spike results", and amend D1–D13 where they di
 
 ## M9 — Migrations
 - Core ships New/Edit/Delete (already) through the new generator.
-- Authorization ships `SparkUser`, `Passkeys`, `PasskeyRow` and their rights.
+- Authorization ships `Passkeys`, `PasskeyRow` and their rights (`SparkUser` already ships since M4).
 - Moderation's printed `init` rights become library rights.
-- Apps delete their hand copies: `SparkUser.json` in CodeCoverage and QnA, and the duplicated
-  grants. QnA keeps a `showedOn` delta. Update the E2E test that pins the QnA `SparkUser` id.
+- Apps delete their duplicated grants. (Done in M4: CodeCoverage's `SparkUser.json` deleted, QnA's reduced
+  to a `showedOn` delta, the E2E test pins the derived id.)
 
 ## M10 — Docs and versions
 - Rewrite the composition docs and the generated `AGENTS.md`. JSON schemas cover the new keys

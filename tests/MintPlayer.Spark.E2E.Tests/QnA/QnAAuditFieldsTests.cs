@@ -19,8 +19,11 @@ namespace MintPlayer.Spark.E2E.Tests.QnA;
 [Collection(QnAE2ECollection.Name)]
 public class QnAAuditFieldsTests
 {
-    /// <summary>SparkUser's model id (<c>apps/QnA/QnA/App_Data/Model/SparkUser.json</c>).</summary>
-    private static readonly Guid SparkUserTypeId = Guid.Parse("4e13c0de-0000-4000-8000-000000000001");
+    /// <summary>
+    /// SparkUser's model id, which MintPlayer.Spark.Authorization ships: UUIDv5 of
+    /// <c>authorization:SparkUser</c> (composition D5). QnA's <c>App_Data/Model/SparkUser.json</c> is only a delta.
+    /// </summary>
+    private static readonly Guid SparkUserTypeId = Guid.Parse("0d3faefa-624c-5135-bca7-652aa9053e0e");
 
     private readonly QnATestHost host;
 

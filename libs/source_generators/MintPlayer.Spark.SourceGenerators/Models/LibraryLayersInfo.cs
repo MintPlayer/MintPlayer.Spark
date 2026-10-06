@@ -10,6 +10,9 @@ public partial class LibraryLayerFileInfo
     public string Path { get; set; } = string.Empty;
     public string Kind { get; set; } = string.Empty;
     public string Text { get; set; } = string.Empty;
+
+    /// <summary>The file on disk, for a diagnostic's location.</summary>
+    public string FullPath { get; set; } = string.Empty;
 }
 
 /// <summary>What the library-layer generator needs from the compilation itself.</summary>

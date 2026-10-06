@@ -276,6 +276,78 @@ internal static class SparkLayers
         return new SparkComposition(result, state.Sources, state.KeyedArrays, state.MergedObjects, state.Conflicts, state.Errors);
     }
 
+    /// <summary>
+    /// The inverse of <see cref="Compose"/> for a writer (composition D6): the smallest layer that,
+    /// composed onto <paramref name="lower"/>, yields what <paramref name="desired"/> states.
+    /// </summary>
+    /// <remarks>
+    /// It never states a removal: a member or keyed element <paramref name="lower"/> has and
+    /// <paramref name="desired"/> lacks is not reported. A value at an immutable path that
+    /// <paramref name="lower"/> states is never repeated. Annotations are not data.
+    /// </remarks>
+    public static SparkJsonObject Delta(SparkJsonObject lower, SparkJsonObject desired, KindSpec spec)
+        => DeltaObject(lower, desired, new List<string>(), spec, isRoot: true, elementKey: null);
+
+    private static SparkJsonObject DeltaObject(SparkJsonObject lower, SparkJsonObject desired, List<string> schema, KindSpec spec, bool isRoot, string? elementKey)
+    {
+        var delta = new SparkJsonObject(spec.Keys);
+        foreach (var member in desired.Members)
+        {
+            if (IsAnnotation(member.Key, isRoot)) continue;
+            if (elementKey is not null && spec.Keys.Equals(member.Key, elementKey)) continue;
+
+            var childSchema = new List<string>(schema) { member.Key };
+            if (!lower.TryGetValue(member.Key, out var existing))
+            {
+                delta.Set(member.Key, member.Value.DeepClone());
+                continue;
+            }
+            if (spec.IsImmutable(childSchema)) continue;
+
+            if (member.Value is SparkJsonObject desiredObject && existing is SparkJsonObject lowerObject && !spec.IsAtomic(childSchema))
+            {
+                var child = DeltaObject(lowerObject, desiredObject, childSchema, spec, isRoot: false, elementKey: null);
+                if (child.Count > 0) delta.Set(member.Key, child);
+                continue;
+            }
+
+            if (member.Value is SparkJsonArray desiredArray && existing is SparkJsonArray lowerArray && spec.ArrayKey(childSchema) is { } key)
+            {
+                var index = new Dictionary<string, SparkJsonObject>(spec.Keys);
+                foreach (var item in lowerArray.Items)
+                    if (item is SparkJsonObject element && element[key] is SparkJsonString { Value: var id })
+                        index[id] = element;
+
+                var elementSchema = new List<string>(childSchema) { "[]" };
+                var changed = new SparkJsonArray();
+                foreach (var item in desiredArray.Items)
+                {
+                    if (item is not SparkJsonObject element || element[key] is not SparkJsonString { Value: var id }) continue;
+                    if (!index.TryGetValue(id, out var lowerElement))
+                    {
+                        changed.Items.Add(element.DeepClone());
+                        continue;
+                    }
+
+                    var elementDelta = DeltaObject(lowerElement, element, elementSchema, spec, isRoot: false, elementKey: key);
+                    if (elementDelta.Count == 0) continue;
+
+                    var keyed = new SparkJsonObject(spec.Keys);
+                    keyed.Set(key, new SparkJsonString(id));
+                    foreach (var changedMember in elementDelta.Members)
+                        keyed.Set(changedMember.Key, changedMember.Value);
+                    changed.Items.Add(keyed);
+                }
+                if (changed.Items.Count > 0) delta.Set(member.Key, changed);
+                continue;
+            }
+
+            if (!SparkJsonNode.DeepEquals(existing, member.Value))
+                delta.Set(member.Key, member.Value.DeepClone());
+        }
+        return delta;
+    }
+
     internal static string Join(string path, string key) => path.Length == 0 ? key : path + "." + key;
 
     internal static string PathText(IReadOnlyList<string> path)

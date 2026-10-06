@@ -1,0 +1,54 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "SparkUser, shipped by MintPlayer.Spark.Authorization (composition D6). Every application that",
+    "references the library has this type; none keeps a copy. An application changes it with a DELTA",
+    "file of the same name in its own App_Data/Model: persistentObject.name plus only what differs,",
+    "never an id (QnA's SparkUser.json shows UserName on the form only).",
+    "",
+    "HAND-AUTHORED. The ids are UUIDv5 of 'authorization:SparkUser[.attributes.<Name>]' (D5), verified",
+    "by the generator (SPARK045); 'npm run stamp:library-model-ids -- libs/authorization/MintPlayer.Spark.Authorization'",
+    "writes them.",
+    "",
+    "It exists so that a reference to a user (ApiToken.CreatedByUserId, a post's CreatedBy) renders the",
+    "user name instead of a raw document id: a reference resolves its label through the target type's",
+    "breadcrumb, and with no model at all BreadcrumbResolver falls back to the id string.",
+    "",
+    "⚠️ Nothing may be added here without asking what it discloses. SparkUserActions declares no row",
+    "rule -- RowSecurity treats a missing rule as allowed -- so any attribute here is readable by anyone",
+    "who can read an object that references the user. Only UserName is declared: an attribute that is",
+    "not in the model cannot reach the wire, so credential material (PasswordHash, SecurityStamp,",
+    "tokens, ...) never can. UserName never contains '@' (the framework refuses it), so this label never",
+    "shows an email address; Email and PhoneNumber are deliberately absent.",
+    "",
+    "⚠️ The synchronizer must never generate this type: it discovers properties by reflection and would",
+    "emit every credential field as a writable attribute. That is why it is hand-authored here.",
+    "",
+    "⚠️ The breadcrumb names UserName (capital N). A placeholder that matches no attribute renders blank",
+    "rather than raising an error, so a typo here is silent."
+  ],
+  "persistentObject": {
+    "id": "0d3faefa-624c-5135-bca7-652aa9053e0e",
+    "name": "SparkUser",
+    "clrType": "MintPlayer.Spark.Authorization.Identity.SparkUser",
+    "alias": "sparkuser",
+    "breadcrumb": "{UserName}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "78698642-85ae-5c15-bcd7-8885dc64c60b",
+        "name": "UserName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

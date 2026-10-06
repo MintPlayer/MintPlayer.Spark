@@ -98,7 +98,7 @@ public sealed class ModelHashFile
     /// as labels are excluded so hand-editing them does not stop an application from starting.
     /// </summary>
     public static SortedDictionary<string, string> ComputeFileHashes(string contentRootPath)
-        => ModelFileShape.ComputeFileHashes(ModelDirectoryFor(contentRootPath));
+        => ModelFileShape.ComputeFileHashes(SparkLayerCatalog.Libraries, ModelDirectoryFor(contentRootPath));
 
     /// <summary>Structural hashes of the App_Data config files outside the Model directory.</summary>
     public static SortedDictionary<string, string> ComputeConfigHashes(string contentRootPath)

@@ -154,6 +154,17 @@ public static class SparkSchemaGenerator
             if (IsObjectSchema(obj) && obj.ContainsKey("properties"))
                 Close(obj);
 
+            // A model file for a type a library ships is a delta (composition D6): it names the type and
+            // its elements, and never states their ids, which the library fixes (D5). The server still
+            // requires an id on every element once the layers are composed.
+            if (DeltaOptionalId.Contains(type) && obj["required"] is JsonArray required)
+            {
+                foreach (var id in required.Where(r => r?.GetValue<string>() == "id").ToList())
+                    required.Remove(id);
+                if (required.Count == 0)
+                    obj.Remove("required");
+            }
+
             if (context.Path.IsEmpty && context.PropertyInfo is null)
             {
                 // The root: the file may name its own schema, and may carry comments even where its
@@ -171,6 +182,12 @@ public static class SparkSchemaGenerator
 
         return schema;
     }
+
+    /// <summary>The model elements whose <c>id</c> a delta on a library type leaves out.</summary>
+    private static readonly HashSet<Type> DeltaOptionalId =
+    [
+        typeof(EntityTypeDefinition), typeof(EntityAttributeDefinition), typeof(AttributeTab), typeof(AttributeGroup), typeof(SparkQuery),
+    ];
 
     private static bool IsObjectSchema(JsonObject schema) => schema["type"] switch
     {

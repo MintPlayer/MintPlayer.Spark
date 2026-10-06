@@ -47,7 +47,7 @@ public static class SparkModerationInitExtensions
         builder.Configuration.AddSparkModerationFile();
         var options = new SparkModerationOptions();
         builder.Configuration.GetSection(SparkModerationConfigurationExtensions.SectionName).Bind(options);
-        var types = ModeratableTypeNames(SparkAppData.Path(builder.Environment.ContentRootPath, "Model"));
+        var types = ModeratableTypeNames(SparkModelFiles.Compose(builder.Environment.ContentRootPath).Select(t => t.Json));
         Console.WriteLine(Render(options, types));
         return true;
     }
@@ -97,17 +97,15 @@ public static class SparkModerationInitExtensions
             ? types.Select(t => $"{action}/{t}")
             : [$"{action}/{ModerationRights.Target}"];
 
-    /// <summary>The model names of the entity types in <paramref name="modelFolder"/> whose CLR type implements <see cref="IModeratable"/>.</summary>
-    internal static IReadOnlyList<string> ModeratableTypeNames(string modelFolder)
+    /// <summary>The model names of the entity types among <paramref name="modelFiles"/> (the composed model, composition D6) whose CLR type implements <see cref="IModeratable"/>.</summary>
+    internal static IReadOnlyList<string> ModeratableTypeNames(IEnumerable<string> modelFiles)
     {
-        if (!Directory.Exists(modelFolder))
-            return [];
         var names = new List<string>();
-        foreach (var file in Directory.EnumerateFiles(modelFolder, "*.json"))
+        foreach (var json in modelFiles)
         {
             try
             {
-                using var document = JsonDocument.Parse(File.ReadAllText(file));
+                using var document = JsonDocument.Parse(json);
                 if (!TryGet(document.RootElement, "persistentObject", out var po)
                     || !TryGet(po, "name", out var name) || !TryGet(po, "clrType", out var clr))
                     continue;

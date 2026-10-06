@@ -52,19 +52,23 @@ public static class ModelFileShape
     /// so a failure can name the file, and so unrelated files do not collide in a merge.
     /// </summary>
     public static SortedDictionary<string, string> ComputeFileHashes(string modelDirectory)
+        => ComputeFileHashes([], modelDirectory);
+
+    /// <summary>
+    /// Structural hash per type of the composed model (composition D6): <paramref name="libraries"/>'
+    /// model layers with the files in <paramref name="modelDirectory"/> on top. Keyed by file name, a
+    /// library type by the library's file name, so a type that moves from the application into a
+    /// library keeps its key, and its hash when its structure is unchanged (ids are not structural).
+    /// </summary>
+    /// <remarks>
+    /// The full composed table with each layer's identity is M7 (D7). A composition the run time
+    /// would refuse is hashed as composed here: the startup check reports it in its own words.
+    /// </remarks>
+    public static SortedDictionary<string, string> ComputeFileHashes(IEnumerable<SparkLibrary> libraries, string modelDirectory)
     {
         var result = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        if (!Directory.Exists(modelDirectory))
-            return result;
-
-        foreach (var path in Directory.GetFiles(modelDirectory, "*.json"))
-        {
-            var name = Path.GetFileName(path);
-            if (string.Equals(name, ModelHashFile.FileName, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            result[name] = Sha256Hex(Describe(path));
-        }
+        foreach (var type in SparkModelFiles.ComposeLenient(libraries, modelDirectory).Types)
+            result[type.FileName] = Sha256Hex(DescribeJson(type.Json));
 
         return result;
     }
@@ -74,12 +78,15 @@ public static class ModelFileShape
     /// throwing: a corrupt file must still be detectable, and it must not take the process down
     /// before the check can report it.
     /// </summary>
-    public static string Describe(string path)
+    public static string Describe(string path) => DescribeJson(File.ReadAllText(path));
+
+    /// <summary>As <see cref="Describe(string)"/>, for the text of a model file (a composed one, say).</summary>
+    public static string DescribeJson(string json)
     {
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(File.ReadAllText(path));
+            document = JsonDocument.Parse(json);
         }
         catch (JsonException)
         {

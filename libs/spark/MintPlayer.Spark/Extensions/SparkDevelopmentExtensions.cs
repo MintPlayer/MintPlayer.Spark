@@ -367,20 +367,16 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyRefreshTriggersAreImplemented(string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var offenders = new List<string>();
         var blurOnDiscrete = new List<string>();
 
-        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             EntityTypeFile? model;
             try
             {
                 model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file),
+                    file.Json,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (System.Text.Json.JsonException)
@@ -497,19 +493,15 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyCollectionColumnsDoNotClaimSortability(string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var offenders = new List<string>();
 
-        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             EntityTypeFile? model;
             try
             {
                 model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file),
+                    file.Json,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (System.Text.Json.JsonException)
@@ -580,19 +572,15 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyBoundIndexHasAProjection(IIndexCatalog indexCatalog, string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var offenders = new List<string>();
 
-        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             EntityTypeFile? model;
             try
             {
                 model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file),
+                    file.Json,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (System.Text.Json.JsonException)
@@ -717,19 +705,15 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyQuerySortColumnsResolve(string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var offenders = new List<string>();
 
-        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             EntityTypeFile? model;
             try
             {
                 model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file),
+                    file.Json,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (System.Text.Json.JsonException)
@@ -791,19 +775,15 @@ public static class SparkDevelopmentExtensions
 
     private static void VerifyQueryColumnOverridesResolve(string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var offenders = new List<string>();
 
-        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             EntityTypeFile? model;
             try
             {
                 model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file),
+                    file.Json,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (System.Text.Json.JsonException)
@@ -904,19 +884,15 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyQueryAliasesAreUnique(string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var queries = new List<SparkQuery>();
 
-        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             try
             {
                 var entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file), jsonOptions);
+                    file.Json, jsonOptions);
 
                 if (entityTypeFile?.Queries is { Length: > 0 } fileQueries)
                     queries.AddRange(fileQueries);
@@ -972,20 +948,16 @@ public static class SparkDevelopmentExtensions
     /// </para>
     private static void VerifyCustomQueryMethodsExist(IServiceCollection services, string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var problems = new List<string>();
 
-        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             EntityTypeFile? entityTypeFile;
             try
             {
                 entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file), jsonOptions);
+                    file.Json, jsonOptions);
             }
             catch (System.Text.Json.JsonException)
             {
@@ -1040,23 +1012,19 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifySubQueriesCanBeParentScoped(string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var sourcesByAlias = new Dictionary<string, (string Source, string QueryName)>(StringComparer.OrdinalIgnoreCase);
         var subQueryAliases = new List<(string Alias, string ParentType)>();
         var allTypes = new List<EntityTypeDefinition>();
         var allQueries = new List<SparkQuery>();
 
-        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             EntityTypeFile? entityTypeFile;
             try
             {
                 entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file), jsonOptions);
+                    file.Json, jsonOptions);
             }
             catch (System.Text.Json.JsonException)
             {
@@ -1165,36 +1133,32 @@ public static class SparkDevelopmentExtensions
         var typesByAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
         var typesById = new Dictionary<Guid, EntityTypeDefinition>();
 
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (Directory.Exists(modelPath))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
-            foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+            EntityTypeFile? entityTypeFile;
+            try
             {
-                EntityTypeFile? entityTypeFile;
-                try
-                {
-                    entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                        File.ReadAllText(file), jsonOptions);
-                }
-                catch (System.Text.Json.JsonException)
-                {
-                    continue;
-                }
+                entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    file.Json, jsonOptions);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
 
-                if (entityTypeFile is null)
-                    continue;
+            if (entityTypeFile is null)
+                continue;
 
-                foreach (var query in entityTypeFile.Queries)
-                {
-                    queriesByAlias[query.Alias ?? SparkQueryAliases.Derive(query.Name)] = query;
-                    queriesById[query.Id] = query;
-                }
+            foreach (var query in entityTypeFile.Queries)
+            {
+                queriesByAlias[query.Alias ?? SparkQueryAliases.Derive(query.Name)] = query;
+                queriesById[query.Id] = query;
+            }
 
-                if (entityTypeFile.PersistentObject is { } type)
-                {
-                    typesByAlias[type.Alias ?? type.Name.ToLowerInvariant()] = type;
-                    typesById[type.Id] = type;
-                }
+            if (entityTypeFile.PersistentObject is { } type)
+            {
+                typesByAlias[type.Alias ?? type.Name.ToLowerInvariant()] = type;
+                typesById[type.Id] = type;
             }
         }
 
@@ -1338,20 +1302,16 @@ public static class SparkDevelopmentExtensions
 
     private static void VerifyComposedQueriesAreUsable(string contentRootPath)
     {
-        var modelPath = SparkAppData.Path(contentRootPath, "Model");
-        if (!Directory.Exists(modelPath))
-            return;
-
         var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var types = new List<EntityTypeDefinition>();
         var queries = new List<SparkQuery>();
 
-        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             try
             {
                 var entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file), jsonOptions);
+                    file.Json, jsonOptions);
                 if (entityTypeFile?.PersistentObject is not { } type)
                     continue;
 
