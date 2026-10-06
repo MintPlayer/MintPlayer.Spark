@@ -167,9 +167,31 @@ public sealed class SparkTestSecurity
                 [AuthenticatedGroupId.ToString()] = "Signed-in users",
             },
             Rights = rights,
+            Libraries = LibraryRightsOff(),
         };
 
         return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    /// <summary>
+    /// <c>"libraries": { alias: false }</c> for every library in the process that ships rights
+    /// (composition D4, M9), or <see langword="null"/> when none does.
+    /// </summary>
+    /// <remarks>
+    /// A builder file states the fixture's rights exactly, so the libraries' grants are switched off,
+    /// as the test host already gets no library <c>moderation.json</c> defaults. Without this, a
+    /// library granting to its own slot (<c>moderation:moderators</c>) would refuse every host in a
+    /// test process that merely references it, since a builder file binds no slot. A hand-written
+    /// file (<see cref="FromJson"/>) states its own <c>libraries</c> or <c>bindings</c>; it can use
+    /// this for the former.
+    /// </remarks>
+    public static Dictionary<string, bool>? LibraryRightsOff()
+    {
+        var aliases = SparkLayerCatalog.Libraries
+            .Where(l => l.Layers.Any(x => x.Kind == "security"))
+            .Select(l => l.Alias)
+            .ToList();
+        return aliases.Count == 0 ? null : aliases.ToDictionary(a => a, _ => false, StringComparer.Ordinal);
     }
 
     /// <summary>

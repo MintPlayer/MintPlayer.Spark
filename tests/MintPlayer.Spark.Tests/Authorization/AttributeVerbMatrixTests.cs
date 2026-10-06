@@ -329,6 +329,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
                 [SparkTestSecurity.AuthenticatedGroupId.ToString()] = "Signed-in users",
             },
             Rights = rights,
+            Libraries = SparkTestSecurity.LibraryRightsOff(),
         });
     }
 

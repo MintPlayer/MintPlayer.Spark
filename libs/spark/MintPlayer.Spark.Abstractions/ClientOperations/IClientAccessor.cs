@@ -44,7 +44,8 @@ public interface IClientAccessor
 
     /// <summary>
     /// Patch a specific attribute with a new server-computed <paramref name="value"/>
-    /// when the caller doesn't have a PO reference at hand.
+    /// when the caller doesn't have a PO reference at hand. Like the object overload, a no-op for an
+    /// attribute the caller may not read, and a throw for a type or attribute the model does not have.
     /// </summary>
     void RefreshAttribute(Guid objectTypeId, string id, string attributeName, object? value);
 

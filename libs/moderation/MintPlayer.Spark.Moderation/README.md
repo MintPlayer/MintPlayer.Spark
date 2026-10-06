@@ -82,8 +82,10 @@ adds. `Lock`, `Suspend`, `Audit`, `Purge`, `Restore`, `Revert` and `ViewDeleted`
 earnable, not even through `Earnable`.
 
 `dotnet run -- --spark-init-moderation` prints the `security.json` rights to add for each privilege
-(`Grants` × every `IModeratable` type in `App_Data/Model`) and for a moderators group. It writes
-nothing:
+(`Grants` × every `IModeratable` type in `App_Data/Model`) and for a moderators group. The
+`Moderation` pseudo-type's grants (`Review`, `Suspend`, `Audit`) ship in the library's own
+`App_Data/security.json`, granted to the slots `moderation:reviewers` and `moderation:moderators`, so
+the report leaves them out; the application binds those slots. It writes nothing:
 
 ```csharp
 if (builder.InitializeSparkModerationIfRequested(args)) return;

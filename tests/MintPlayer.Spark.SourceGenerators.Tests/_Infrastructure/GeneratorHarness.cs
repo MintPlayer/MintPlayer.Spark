@@ -94,16 +94,19 @@ internal static class GeneratorHarness
         IEnumerable<Type>? referenceTypes = null,
         IEnumerable<(string Path, string Text)>? additionalTexts = null,
         IEnumerable<MetadataReference>? additionalReferences = null,
-        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary)
+        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
+        IReadOnlyDictionary<string, string>? globalOptions = null)
     {
         var analyzer = InstantiateAnalyzer(analyzerTypeName);
         var compilation = BuildCompilation(
             sources, referenceTypes ?? Array.Empty<Type>(), outputKind, additionalReferences: additionalReferences);
 
-        var options = new AnalyzerOptions(
-            System.Collections.Immutable.ImmutableArray.CreateRange(
-                (additionalTexts ?? Array.Empty<(string, string)>())
-                    .Select(t => (AdditionalText)new InMemoryAdditionalText(t.Path, t.Text))));
+        var texts = System.Collections.Immutable.ImmutableArray.CreateRange(
+            (additionalTexts ?? Array.Empty<(string, string)>())
+                .Select(t => (AdditionalText)new InMemoryAdditionalText(t.Path, t.Text)));
+        var options = globalOptions is null
+            ? new AnalyzerOptions(texts)
+            : new AnalyzerOptions(texts, new StubAnalyzerConfigOptionsProvider(rootNamespace: null, globalOptions));
 
         var withAnalyzer = compilation.WithAnalyzers(
             System.Collections.Immutable.ImmutableArray.Create(analyzer), options);

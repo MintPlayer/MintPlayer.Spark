@@ -75,6 +75,24 @@ public class SecurityLayersAnalyzerTests
         diagnostics.Should().Contain(d => d.GetMessage().Contains("never by id"));
     }
 
+    /// <summary>
+    /// Composition M9: a library's own security.json is a layer, judged by LibraryLayersGenerator
+    /// (SPARK047), not an application file. Moderation's slots are bound by the app, never by itself.
+    /// </summary>
+    [Fact]
+    public async Task A_library_s_own_security_layer_is_not_judged_as_an_application_file()
+    {
+        var diagnostics = await GeneratorHarness.RunAnalyzerAsync(
+            AnalyzerName,
+            ["class Placeholder { }"],
+            referenceTypes: [.. SecurityConfigurationAnalyzerTests.ReservedVerbSources, typeof(SparkLayerAttribute)],
+            additionalTexts: [("C:\\lib\\App_Data\\security.json",
+                """{ "reservedTargets": [ "Moderation" ], "rights": [ { "key": "review", "resource": "Review/Moderation", "groupId": "moderation:moderators" } ] }""")],
+            globalOptions: new Dictionary<string, string> { ["build_property.SparkLibraryAlias"] = "moderation" });
+
+        diagnostics.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task An_unbound_slot_is_reported()
     {

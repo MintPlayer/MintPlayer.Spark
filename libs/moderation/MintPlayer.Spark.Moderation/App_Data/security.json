@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "Moderation's rights, shipped as a library layer (composition D4, M9). They name only the",
+    "'Moderation' pseudo-type this library reserves, and only its own slots, which the application",
+    "binds in its security.json:",
+    "  \"bindings\": { \"moderation:moderators\": [\"Moderators\"], \"moderation:reviewers\": [\"Reviewers\"] }",
+    "An unbound slot refuses startup. The per-type grants (Vote/Question, Lock/Answer, ...) cannot ship",
+    "here: the application owns its types, so --spark-init-moderation still prints those for it to paste.",
+    "Opt out of all of these with \"libraries\": { \"moderation\": false }."
+  ],
+  "reservedTargets": [ "Moderation" ],
+  "rights": [
+    { "key": "reviewers-review", "resource": "Review/Moderation", "groupId": "moderation:reviewers" },
+    { "key": "moderators-review", "resource": "Review/Moderation", "groupId": "moderation:moderators" },
+    { "key": "moderators-suspend", "resource": "Suspend/Moderation", "groupId": "moderation:moderators" },
+    { "key": "moderators-audit", "resource": "Audit/Moderation", "groupId": "moderation:moderators" }
+  ]
+}

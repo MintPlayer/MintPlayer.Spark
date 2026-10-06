@@ -17,7 +17,8 @@
     "moderation:voters": [ "Voters" ],
     "moderation:flaggers": [ "Flaggers" ],
     "moderation:downvoters": [ "Downvoters" ],
-    "moderation:reviewers": [ "Reviewers" ]
+    "moderation:reviewers": [ "Reviewers" ],
+    "moderation:moderators": [ "Moderators" ]
   },
   "rights": [
     {
@@ -108,12 +109,6 @@
       "key": "4e13ffff-0000-4000-8000-000000000014",
       "resource": "Flag/Answer",
       "groupId": "4e130000-0000-4000-8000-000000000004",
-      "isDenied": false
-    },
-    {
-      "key": "4e13ffff-0000-4000-8000-000000000015",
-      "resource": "Review/Moderation",
-      "groupId": "4e130000-0000-4000-8000-000000000005",
       "isDenied": false
     },
     {
@@ -209,24 +204,6 @@
     {
       "key": "4e13ffff-0000-4000-8000-000000000031",
       "resource": "Flag/Answer",
-      "groupId": "4e130000-0000-4000-8000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "4e13ffff-0000-4000-8000-000000000032",
-      "resource": "Review/Moderation",
-      "groupId": "4e130000-0000-4000-8000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "4e13ffff-0000-4000-8000-000000000033",
-      "resource": "Suspend/Moderation",
-      "groupId": "4e130000-0000-4000-8000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "4e13ffff-0000-4000-8000-000000000034",
-      "resource": "Audit/Moderation",
       "groupId": "4e130000-0000-4000-8000-000000000001",
       "isDenied": false
     },

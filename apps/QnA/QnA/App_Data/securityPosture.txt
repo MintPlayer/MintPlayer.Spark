@@ -3,7 +3,7 @@
 # Rows: group | effect | resource | key | layer
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
-(nothing)
+moderation | MintPlayer.Spark.Moderation | 97c6289972e2
 
 ## Reachable without signing in (expanded)
 Query/Answer
@@ -24,7 +24,6 @@ Downvoters | grant | Downvote/Question | 4e13ffff-0000-4000-8000-000000000011 | 
 Flaggers | grant | Flag/Answer | 4e13ffff-0000-4000-8000-000000000014 | app
 Flaggers | grant | Flag/Question | 4e13ffff-0000-4000-8000-000000000013 | app
 Flaggers | grant | Flag/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000038 | app
-Moderators | grant | Audit/Moderation | 4e13ffff-0000-4000-8000-000000000034 | app
 Moderators | grant | Delete/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000039 | app
 Moderators | grant | Delete/QuestionTranslationsCurrent | 4e13ffff-0000-4000-8000-000000000047 | app
 Moderators | grant | Downvote/Answer | 4e13ffff-0000-4000-8000-000000000030 | app
@@ -45,14 +44,15 @@ Moderators | grant | Restore/QuestionTranslationsContribution | 4e13ffff-0000-40
 Moderators | grant | Revert/Answer | 4e13ffff-0000-4000-8000-000000000028 | app
 Moderators | grant | Revert/Question | 4e13ffff-0000-4000-8000-000000000020 | app
 Moderators | grant | RevertContribution/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000043 | app
-Moderators | grant | Review/Moderation | 4e13ffff-0000-4000-8000-000000000032 | app
-Moderators | grant | Suspend/Moderation | 4e13ffff-0000-4000-8000-000000000033 | app
 Moderators | grant | ViewDeleted/Answer | 4e13ffff-0000-4000-8000-000000000027 | app
 Moderators | grant | ViewDeleted/Question | 4e13ffff-0000-4000-8000-000000000019 | app
 Moderators | grant | ViewDeleted/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000041 | app
 Moderators | grant | Vote/Answer | 4e13ffff-0000-4000-8000-000000000029 | app
 Moderators | grant | Vote/Question | 4e13ffff-0000-4000-8000-000000000021 | app
-Reviewers | grant | Review/Moderation | 4e13ffff-0000-4000-8000-000000000015 | app
+Moderators (moderation:moderators) | grant | Audit/Moderation | moderation:moderators-audit | moderation
+Moderators (moderation:moderators) | grant | Review/Moderation | moderation:moderators-review | moderation
+Moderators (moderation:moderators) | grant | Suspend/Moderation | moderation:moderators-suspend | moderation
+Reviewers (moderation:reviewers) | grant | Review/Moderation | moderation:reviewers-review | moderation
 Signed-in users | grant | CloseQuestion/Question | 4e13ffff-0000-4000-8000-000000000007 | app
 Signed-in users | grant | DuplicateAnswer/Answer | 4e13ffff-0000-4000-8000-000000000035 | app
 Signed-in users | grant | EditNewDelete/QuestionTranslation | 4e13ffff-0000-4000-8000-000000000048 | app

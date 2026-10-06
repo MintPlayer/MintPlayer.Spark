@@ -18,7 +18,7 @@ run only in the final sweep.
 | M6 Library rights (D4), if Q2 adopts it | ✅ 2026-10-06 (PRD D4 "As built in M6"; Moderation joins the engine, Q6) |
 | M7 Gates with provenance + uniform reload + describe (D7–D9) | ✅ 2026-10-06 (PRD D9 "As built in M7": D7–D9) |
 | M8 IManager rights at construction (D13) | ✅ 2026-10-06 (PRD D13a "As built in M8") |
-| M9 Migrate libraries and apps | ⏳ |
+| M9 Migrate libraries and apps | ✅ 2026-10-06 (PRD D4 "As built in M9"; M8's known gaps closed, PRD D13a; Passkeys moved to the passkeys plan) |
 | M10 Docs and versions | ⏳ |
 | M11 Sweep | ⏳ |
 
@@ -73,9 +73,14 @@ Record the results in PRD §9, "Spike results", and amend D1–D13 where they di
   accessor (per Q5).
 
 ## M9 — Migrations
-- Core ships New/Edit/Delete (already) through the new generator.
-- Authorization ships `Passkeys`, `PasskeyRow` and their rights (`SparkUser` already ships since M4).
-- Moderation's printed `init` rights become library rights.
+- ✅ Core ships New/Edit/Delete (already) through the new generator (`libs/spark/MintPlayer.Spark/App_Data/actions.json`, alias `spark`).
+- ~~Authorization ships `Passkeys`, `PasskeyRow` and their rights~~ **Not in this milestone:** the passkeys plan
+  (`docs/generic_passkeys_page_plan.md`) builds them, as library layers, next. `SparkUser` already ships since M4.
+- ✅ Moderation's printed `init` rights become library rights where the M6 guard rails allow: the `Moderation`
+  pseudo-type's (`Review` to `moderation:reviewers`; `Review`, `Suspend`, `Audit` to the new slot
+  `moderation:moderators`). Per-type grants (`Vote/Question`) stay printed for the app.
+- ✅ M8's known gaps: the object-less `RefreshAttribute`, a hidden required attribute on a create, the
+  `parentReference` leak test.
 - Apps delete their duplicated grants. (Done in M4: CodeCoverage's `SparkUser.json` deleted, QnA's reduced
   to a `showedOn` delta, the E2E test pins the derived id.)
 

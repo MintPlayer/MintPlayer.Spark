@@ -289,6 +289,38 @@ raw JSON trees and records which layer each leaf came from.
     (`DownvoteCastTypes`) and its `security.json` binds the four slots by group name.
     `--spark-init-moderation` prints a `key` per right and the privilege's slot as `groupId`, the form an
     app or M9's library layer pastes.
+- **As built in M9 (2026-10-06).**
+  - **Moderation ships the first real library rights.** `libs/moderation/MintPlayer.Spark.Moderation/App_Data/security.json`
+    reserves `Moderation` and grants `Review/Moderation` to `moderation:reviewers`, and `Review`, `Suspend`,
+    `Audit` on `Moderation` to a new slot, `moderation:moderators`. That is everything the guard rails allow:
+    the moderators' `Lock`, `Restore`, `Purge`, `ViewDeleted`, `Revert` and every privilege's content verb are
+    per type (`Lock/Question`), on targets the application owns, so they stay app rights.
+  - **QnA** dropped the four app copies (`…0015`, `…0032`–`…0034`) and binds `"moderation:moderators":
+    ["Moderators"]`. Proof: its effective rights (group | effect | resource, the token annotation
+    stripped from the group) are identical before and after, 48 rows, and the anonymous-reachable section
+    is byte-identical. Only the key and layer columns of those four rows changed, and the `## Layers`
+    section now lists `moderation | MintPlayer.Spark.Moderation | <hash>`. `--spark-verify-security` and
+    `--spark-verify-model` exit 0.
+  - **Other apps:** nothing to delete. CodeCoverage, DemoApp, Fleet and HR reference no library that ships
+    rights (Authorization ships none yet; Passkeys' rights move to `docs/generic_passkeys_page_plan.md`),
+    and their posture files are unchanged (`--spark-verify-security` exits 0 for each).
+  - **`--spark-init-moderation`** reads the library's own layer from the catalogue and leaves out every
+    right it ships (`resource|groupId` match), naming them in a note with the slots to bind. It skips
+    nothing when the app opted out (`"libraries": { "moderation": false }`). The moderators' per-type
+    grants now print the slot `moderation:moderators` instead of `<moderators group id>`.
+  - **Deviation: a library's own `security.json` is not an application file to the analyzer.**
+    `SecurityConfigurationAnalyzer` judged Moderation's layer as if it were an app's (it is an
+    AdditionalFile there), so every slot grant read as SPARK048 and the library failed to build. It now
+    returns early when `SparkLibraryAlias` is set; `LibraryLayersGenerator` still checks the layer
+    (SPARK047), and the referencing app composes it.
+  - **Deviation: test hosts switch library rights off.** A test process has no `[SparkLayerAssemblies]`, so
+    the catalogue is every Spark-aware assembly it references; MintPlayer.Spark.Tests references
+    Moderation, so every host there would have composed the library's slot grants against a file that
+    binds no slot and refused to start. `SparkTestSecurity.Build()` now writes `"libraries": { alias: false }`
+    for each catalogued library that ships rights (`SparkTestSecurity.LibraryRightsOff()`), the same
+    stance as the test host getting no `moderation.json` defaults; hand-written files
+    (`ModerationTestHost`, `AttributeVerbMatrixTests`) use the helper too. A fixture states every right it
+    means.
 
 ### D5 — Ids for library-shipped model elements
 Ids are deterministic UUIDv5 values over (library alias, type, member kind, member name). They
@@ -727,12 +759,33 @@ The decision: **construction-time pruning plus one boundary safety net.**
     sets the page's id to the forge (the route's id), and the grid scopes by `parent.Id`. No other app
     hook reads an attribute any real caller is denied: only CodeCoverage's `security.json` has attribute
     denies, and library layers may only grant.
-  - **Known gaps.**
+  - **Known gaps** (all three closed in M9, below).
     - `IClientAccessor.RefreshAttribute(Guid, id, name, value)` names an attribute without an object, and
       nothing checks it.
     - The leak test does not cover a sub-query `parentReference`, because startup validation needs a
       real reference.
     - A create whose required attribute is hidden would still report it by name in its validation error.
+  - **Closed in M9 (2026-10-06).**
+    - **Object-less refresh.** `ClientAccessor.RefreshAttribute(Guid, id, name, value)` resolves the type
+      and asks the caller's `Read` denials: a denied attribute is a silent no-op, like the object overload;
+      a type or attribute the model does not have throws. It blocks on the rights decision, as the net's
+      fallback does. The parameterless constructor (unit tests) does not check.
+    - **Hidden required attribute — the rule.** A static `Read` deny is treated like the per-row `Read`
+      protection: an attribute the caller may not read and **did not post** is *unwritable* for that save
+      (`AttributeWriteShield`), so it keeps its stored value — the CLR default or what the actions class
+      or an interceptor fills in, on a create — and save validation skips it. Rejected alternatives:
+      *"the type is not creatable by that caller"* would refuse a create for a reason the caller cannot
+      see (the same existence signal, as a 403); *"write ⊆ read"* would break the write-only field
+      (`QueryRead` denied, `Edit`/`New` granted) that `AttributeVerbMatrixTests` pins. A caller who
+      **posts** the attribute anyway is writing a write-only field deliberately; the value lands and is
+      validated, and an error may name it, because the caller supplied the name (the stance
+      `Posting_a_hidden_attribute_does_not_echo_its_stored_value` already takes). Consequence for model
+      authors: a required attribute that some caller may not read must be filled server-side for that
+      caller, or a create by them stores the default.
+    - **Leak test.** `ConstructionRightsTests` gains `ZqxBlindAttr` (required, write-only), a create that
+      omits it, an action calling the object-less refresh for both hidden attributes, and a real sub-query
+      (`CanaryVaultEntry.ZqxParentRefAttr`, a `Reference` to `CanaryVault`, `QueryRead`-denied) whose
+      `parentReference` must not appear in type or query metadata. Three focused tests pin each gap.
   - **Tests.** `ConstructionRightsTests` covers:
     - the canary leak test: the name and value of a hidden attribute, over PO get/new/refresh/save, query
       rows, type metadata, query metadata, an action result, a retry prompt, the net's fallback and a 404,

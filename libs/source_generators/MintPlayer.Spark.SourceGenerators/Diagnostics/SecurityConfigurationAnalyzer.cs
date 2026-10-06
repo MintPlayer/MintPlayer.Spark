@@ -135,6 +135,15 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
         // no diagnostics rather than a false one. spark.targets wires it for every consumer.
         if (security is null) return;
 
+        // A library's security.json is a layer, not an application's file (composition D4): it binds
+        // no slot and declares no group, so judged as one every right it ships would read as SPARK048.
+        // LibraryLayersGenerator holds it to the library guard rails (SPARK047) instead, and the
+        // application that references it composes it here, under its own file. Moderation was the first
+        // library to ship rights (composition M9).
+        if (context.Options.AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue(LibraryLayersDiagnostics.AliasProperty, out var alias)
+            && !string.IsNullOrWhiteSpace(alias))
+            return;
+
         var reserved = ReservedActionsReader.Read(context.Compilation);
         var builtInActions = reserved.Where(r => !r.IsCombined).Select(r => r.Verb)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

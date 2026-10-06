@@ -120,7 +120,7 @@ public class SparkReservedActionRegistryTests
         var options = new SparkModerationOptions();
         options.Privileges["Curators"] = new() { GroupId = Guid.Parse("00000000-0000-0000-0000-00000000c001"), Grants = ["History", "QueryRead"] };
 
-        var report = SparkModerationInitExtensions.Render(options, ["MoPost"]);
+        var report = SparkModerationInitExtensions.Render(options, ["MoPost"], new HashSet<string>());
 
         report.Should().Contain("\"resource\": \"History/MoPost\"").And.Contain("\"resource\": \"QueryRead/MoPost\"");
         report.Should().Contain("\"resource\": \"Restore/MoPost\"").And.Contain("\"resource\": \"Revert/MoPost\"");

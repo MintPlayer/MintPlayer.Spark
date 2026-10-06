@@ -24,6 +24,15 @@ public class CanaryVault
     public string Name { get; set; } = "";
     public string ZqxCanaryAttr { get; set; } = "";
     public string Note { get; set; } = "";
+    public string? ZqxBlindAttr { get; set; }
+}
+
+/// <summary>A sub-query row whose reference to its <see cref="CanaryVault"/> the caller may not query.</summary>
+public class CanaryVaultEntry
+{
+    public string? Id { get; set; }
+    public string Text { get; set; } = "";
+    public string? ZqxParentRefAttr { get; set; }
 }
 
 /// <summary>
@@ -40,6 +49,12 @@ public class CanaryVault
 /// save that lost its stored value would fail validation.
 /// </para>
 /// <para>
+/// Two more canaries close M8's known gaps (composition M9). <c>ZqxBlindAttr</c> is required and
+/// write-only (Query and Read denied, Edit and New granted), so a create that does not post it must
+/// not fail "required" by its name. <c>ZqxParentRefAttr</c> is the Query-denied <c>parentReference</c>
+/// of a real sub-query, which type and query metadata must leave out.
+/// </para>
+/// <para>
 /// Names start with <c>Canary</c> because <c>ActionsResolver</c> matches actions classes by simple name
 /// across the whole assembly.
 /// </para>
@@ -49,16 +64,22 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
 {
     private static readonly Guid VaultTypeId = Guid.Parse("c4a40000-0000-4000-8000-00000000c001");
     private static readonly Guid VaultsQueryId = Guid.Parse("c4a40000-0000-4000-8000-00000000c002");
+    private static readonly Guid EntryTypeId = Guid.Parse("c4a40000-0000-4000-8000-00000000c003");
+    private static readonly Guid EntriesQueryId = Guid.Parse("c4a40000-0000-4000-8000-00000000c004");
 
     private const string CanaryName = nameof(CanaryVault.ZqxCanaryAttr);
     private const string CanaryValue = "zqx-canary-value-7f3e";
+    private const string BlindName = nameof(CanaryVault.ZqxBlindAttr);
+    private const string ParentRefName = nameof(CanaryVaultEntry.ZqxParentRefAttr);
     private const string Echo = "CanaryEcho";
     private const string Prompt = "CanaryPrompt";
     private const string Leak = "CanaryLeak";
+    private const string Refresh = "CanaryRefresh";
 
     public sealed class CanaryContext : SparkContext
     {
         public IRavenQueryable<CanaryVault> CanaryVaults => Session.Query<CanaryVault>();
+        public IRavenQueryable<CanaryVaultEntry> CanaryVaultEntries => Session.Query<CanaryVaultEntry>();
     }
 
     public class CanaryVaultActions(IEntityMapper mapper)
@@ -98,6 +119,18 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
         }
     }
 
+    /// <summary>A refresh that names a hidden attribute without an object (M8's first known gap).</summary>
+    public sealed class CanaryRefreshAction(IManager manager) : ICustomAction
+    {
+        public Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
+        {
+            manager.Client.RefreshAttribute(VaultTypeId, "canaryvaults/1", CanaryName, CanaryValue);
+            manager.Client.RefreshAttribute(VaultTypeId, "canaryvaults/1", BlindName, CanaryValue);
+            manager.Client.RefreshAttribute(VaultTypeId, "canaryvaults/1", "Name", "Anna");
+            return Task.CompletedTask;
+        }
+    }
+
     public sealed class Host : SharedSparkHost<CanaryContext>
     {
         public override async Task InitializeAsync()
@@ -113,24 +146,28 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
 
         protected override SparkEndpointFactory<CanaryContext> CreateFactory() => new(
             Store,
-            [VaultModel()],
+            [VaultModel(), EntryModel()],
             configureServices: services =>
             {
                 services.AddScoped<CanaryVaultActions>();
                 services.AddScoped<CanaryEchoAction>();
                 services.AddScoped<CanaryPromptAction>();
                 services.AddScoped<CanaryLeakAction>();
-                services.AddSingleton(TestActions.LoaderWithCustom(Echo, Prompt, Leak));
+                services.AddScoped<CanaryRefreshAction>();
+                services.AddSingleton(TestActions.LoaderWithCustom(Echo, Prompt, Leak, Refresh));
                 services.AddScoped<ICustomActionResolver>(sp => new StubActionResolver(new Dictionary<string, ICustomAction>(StringComparer.OrdinalIgnoreCase)
                 {
                     [Echo] = sp.GetRequiredService<CanaryEchoAction>(),
                     [Prompt] = sp.GetRequiredService<CanaryPromptAction>(),
                     [Leak] = sp.GetRequiredService<CanaryLeakAction>(),
+                    [Refresh] = sp.GetRequiredService<CanaryRefreshAction>(),
                 }));
             },
             security: SparkTestSecurity.Empty
-                .Granting("QueryReadEditNew/CanaryVault", $"{Echo}/CanaryVault", $"{Prompt}/CanaryVault", $"{Leak}/CanaryVault")
-                .Denying($"QueryReadEditNew/CanaryVault/{CanaryName}", "Edit/CanaryVault/Note"));
+                .Granting("QueryReadEditNew/CanaryVault", $"{Echo}/CanaryVault", $"{Prompt}/CanaryVault", $"{Leak}/CanaryVault",
+                    $"{Refresh}/CanaryVault", "QueryReadEditNew/CanaryVaultEntry")
+                .Denying($"QueryReadEditNew/CanaryVault/{CanaryName}", "Edit/CanaryVault/Note", $"QueryRead/CanaryVault/{BlindName}",
+                    $"QueryRead/CanaryVaultEntry/{ParentRefName}"));
     }
 
     private readonly SparkEndpointFactory<CanaryContext> _factory = host.Factory;
@@ -157,28 +194,96 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
         po!["Name"].SetValue("Anna");
         await Client.UpdatePersistentObjectAsync(po);
 
-        // Query rows (and their breadcrumbs), type metadata and query metadata.
+        // A create that leaves the required, write-only attribute out: it succeeds, and no
+        // validation error names it.
+        var scaffold = await Client.NewPersistentObjectAsync(VaultTypeId);
+        scaffold!["Name"].SetValue("Cleo");
+        await Client.CreatePersistentObjectAsync(scaffold);
+
+        // Query rows (and their breadcrumbs), type metadata and query metadata — the sub-query's
+        // parentReference among them, on the parent type and on the query.
         await Client.ExecuteQueryAsync(VaultsQueryId);
         await Client.GetEntityTypeAsync("CanaryVault");
+        await Client.GetEntityTypeAsync("CanaryVaultEntry");
         await Client.ListEntityTypesAsync();
         await Client.GetQueryAsync(VaultsQueryId);
+        await Client.GetQueryAsync(EntriesQueryId);
         await Client.ListQueriesAsync();
 
-        // An action's result, a retry prompt, and the net's fallback for a system object.
+        // An action's result, a retry prompt, the net's fallback for a system object, and a refresh
+        // that names attributes without an object.
         await Client.ExecuteActionAsync(VaultTypeId, Echo);
         var prompted = await Client.ExecuteActionAsync(VaultTypeId, Prompt);
         prompted.IsRetry.Should().BeTrue("the prompt is part of what is under test");
         await Client.ExecuteActionAsync(VaultTypeId, Leak);
+        await Client.ExecuteActionAsync(VaultTypeId, Refresh);
 
         // An error: a row that does not exist.
         await Client.GetPersistentObjectAsync(VaultTypeId, "canaryvaults/404");
 
-        _bodies.Should().HaveCountGreaterThanOrEqualTo(14);
+        _bodies.Should().HaveCountGreaterThanOrEqualTo(19);
         foreach (var body in _bodies)
         {
             body.Should().NotContain(CanaryValue, "a hidden attribute's value must never reach a response");
             body.Should().NotContainEquivalentOf(CanaryName, "not even that the hidden attribute exists");
+            body.Should().NotContainEquivalentOf(BlindName, "nor a write-only one the caller did not post");
+            body.Should().NotContainEquivalentOf(ParentRefName, "nor a parentReference the caller may not query");
         }
+    }
+
+    /// <summary>
+    /// M8's first known gap: the object-less refresh is judged like the object one. A hidden attribute
+    /// is a silent no-op, a visible one is refreshed, and a name the type never had throws.
+    /// </summary>
+    [Fact]
+    public void RefreshAttribute_by_type_and_id_skips_an_attribute_the_caller_may_not_read()
+    {
+        using var scope = _factory.CreateScope();
+        using var _ = AttributeRightsEnforcementTests.AsCaller(scope.ServiceProvider);
+        var client = scope.ServiceProvider.GetRequiredService<IManager>().Client;
+
+        client.RefreshAttribute(VaultTypeId, "canaryvaults/1", CanaryName, CanaryValue);
+        client.RefreshAttribute(VaultTypeId, "canaryvaults/1", BlindName, CanaryValue);
+        client.RefreshAttribute(VaultTypeId, "canaryvaults/1", "Name", "Anna");
+
+        client.Operations.OfType<Abstractions.ClientOperations.RefreshAttributeOperation>()
+            .Select(o => o.AttributeName).Should().Equal("Name");
+        var unknown = () => client.RefreshAttribute(VaultTypeId, "canaryvaults/1", "NoSuchAttribute", null);
+        unknown.Should().Throw<InvalidOperationException>("only a hidden name is forgiven");
+    }
+
+    /// <summary>
+    /// M8's third known gap. The required attribute is write-only for this caller, so the create form
+    /// leaves it out; a create that does not post it keeps the CLR default and is not validated on it,
+    /// because a "required" error would name it. Posting it is a deliberate write, and lands.
+    /// </summary>
+    [Fact]
+    public async Task A_create_does_not_validate_a_required_attribute_the_caller_cannot_see()
+    {
+        var scaffold = await Client.NewPersistentObjectAsync(VaultTypeId);
+        scaffold!.Attributes.Select(a => a.Name).Should().NotContain(BlindName);
+        scaffold["Name"].SetValue("Dirk");
+
+        var created = await Client.CreatePersistentObjectAsync(scaffold);
+
+        created.Attributes.Select(a => a.Name).Should().NotContain(BlindName);
+        (await LoadAsync<CanaryVault>(created.Id!))!.ZqxBlindAttr.Should().BeNull();
+
+        var blind = await Client.NewPersistentObjectAsync(VaultTypeId);
+        blind!["Name"].SetValue("Emma");
+        blind.AddAttribute(new PersistentObjectAttribute { Name = BlindName, Value = "written", IsValueChanged = true });
+        var written = await Client.CreatePersistentObjectAsync(blind);
+        (await LoadAsync<CanaryVault>(written.Id!))!.ZqxBlindAttr.Should().Be("written", "a write-only attribute still takes a posted value");
+    }
+
+    [Fact]
+    public async Task Type_and_query_metadata_drop_a_parentReference_the_caller_may_not_query()
+    {
+        var parent = await Client.GetEntityTypeAsync("CanaryVault");
+        var query = await Client.GetQueryAsync(EntriesQueryId);
+
+        parent!.Queries.Should().ContainSingle().Which.ParentReference.Should().BeNull();
+        query!.ParentReference.Should().BeNull();
     }
 
     /// <summary>
@@ -471,7 +576,9 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
                 new() { Id = Guid.NewGuid(), Name = "Name", DataType = "string", Order = 1, RendererOptions = new() { ["titleAttribute"] = CanaryName } },
                 new() { Id = Guid.NewGuid(), Name = CanaryName, DataType = "string", Order = 2, IsRequired = true },
                 new() { Id = Guid.NewGuid(), Name = "Note", DataType = "string", Order = 3 },
+                new() { Id = Guid.NewGuid(), Name = BlindName, DataType = "string", Order = 4, IsRequired = true },
             ],
+            Queries = [new SparkSubQuery { Query = "CanaryVaultEntries", ParentReference = ParentRefName }],
         },
         Queries =
         [
@@ -486,6 +593,39 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
             },
         ],
     };
+
+    /// <summary>A real reference, so startup's parentReference validation accepts the sub-query.</summary>
+    private static EntityTypeFile EntryModel() => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = EntryTypeId,
+            Name = "CanaryVaultEntry",
+            ClrType = typeof(CanaryVaultEntry).FullName!,
+            Attributes =
+            [
+                new() { Id = Guid.NewGuid(), Name = "Text", DataType = "string", Order = 1 },
+                new() { Id = Guid.NewGuid(), Name = ParentRefName, DataType = "Reference", ReferenceType = typeof(CanaryVault).FullName, Order = 2 },
+            ],
+        },
+        Queries =
+        [
+            new SparkQuery
+            {
+                Id = EntriesQueryId,
+                Name = "CanaryVaultEntries",
+                Source = "Database.CanaryVaultEntries",
+                EntityType = "CanaryVaultEntry",
+                ParentReference = ParentRefName,
+            },
+        ],
+    };
+
+    private async Task<T?> LoadAsync<T>(string id) where T : class
+    {
+        using var session = Store.OpenAsyncSession();
+        return await session.LoadAsync<T>(id);
+    }
 
     private sealed class StubActionResolver(IReadOnlyDictionary<string, ICustomAction> actions) : ICustomActionResolver
     {

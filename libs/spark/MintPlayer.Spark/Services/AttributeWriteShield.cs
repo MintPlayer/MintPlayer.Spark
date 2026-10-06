@@ -72,8 +72,8 @@ internal interface IAttributeWriteShield
 /// </param>
 /// <param name="Unwritable">
 /// The object's own (top-level) attributes whose value the save does not take from the caller — a
-/// static refusal, the per-row hook's <c>Edit</c> protection, or its <c>Read</c> protection on an
-/// attribute the client did not change — whether or not the client posted them. Internal only: save
+/// static refusal, the per-row hook's <c>Edit</c> protection, its <c>Read</c> protection on an
+/// attribute the client did not change, or a static <c>Read</c> deny on one it did not post — whether or not the client posted them. Internal only: save
 /// validation skips them (contributions M2d), because the value that is kept is not the caller's.
 /// </param>
 internal sealed record AttributeWriteShieldResult(IReadOnlyList<string> Refused, IReadOnlySet<string> Unwritable);
@@ -107,6 +107,14 @@ internal sealed partial class AttributeWriteShield : IAttributeWriteShield
         var unwritable = new HashSet<string>(await attributeRights.GetDeniedAsync(definition, verb, cancellationToken), StringComparer.OrdinalIgnoreCase);
         unwritable.UnionWith(always.Where(n => !n.Contains('.')));
         unwritable.UnionWith(unlessChanged.Where(n => !n.Contains('.') && posted.Attributes.All(a => !string.Equals(a.Name, n, StringComparison.OrdinalIgnoreCase))));
+
+        // A static Read deny is the per-row Read protection's twin (composition M9, D13a constraint 2):
+        // the caller was never shown the attribute, so one it did not post keeps the stored value (the
+        // CLR default, or what the server fills in, on a create) and is not validated — a "required"
+        // error would name an attribute the caller cannot know exists. One it did post is a deliberate
+        // write to a write-only field (AttributeVerbMatrixTests); the caller supplied that name.
+        var readDenied = await attributeRights.GetDeniedAsync(definition, SparkCoreActions.Read, cancellationToken);
+        unwritable.UnionWith(readDenied.Where(n => posted.Attributes.All(a => !string.Equals(a.Name, n, StringComparison.OrdinalIgnoreCase))));
 
         return new([.. refused.Distinct(StringComparer.OrdinalIgnoreCase)], unwritable);
     }

@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Moderation.Services;
 
 namespace MintPlayer.Spark.Moderation;
@@ -11,6 +12,8 @@ namespace MintPlayer.Spark.Moderation;
 /// <c>--spark-init-moderation</c>: prints the <c>security.json</c> rights an application must add for
 /// its configured privileges and its moderators. Writes nothing — <c>security.json</c> is the
 /// application's authorization model, and the grants are a decision to review, not to paste blindly.
+/// The rights the library ships itself (the <c>Moderation</c> pseudo-type's, composition M9) are not
+/// printed: they need only the slot bindings.
 /// </summary>
 public static class SparkModerationInitExtensions
 {
@@ -48,18 +51,87 @@ public static class SparkModerationInitExtensions
         var options = new SparkModerationOptions();
         builder.Configuration.GetSection(SparkModerationConfigurationExtensions.SectionName).Bind(options);
         var types = ModeratableTypeNames(SparkModelFiles.Compose(builder.Environment.ContentRootPath).Select(t => t.Json));
-        Console.WriteLine(Render(options, types));
+        var shipped = OptedOut(SparkSecurityFiles.PathFor(builder.Environment.ContentRootPath)) ? new HashSet<string>() : ShippedRights();
+        Console.WriteLine(Render(options, types, shipped));
         return true;
     }
 
-    /// <summary>The printed report: a <c>rights</c> array per privilege group, and one for moderators.</summary>
-    internal static string Render(SparkModerationOptions options, IReadOnlyList<string> types)
+    /// <summary>The library's alias (composition D16): the prefix of its slots and of its rights' keys.</summary>
+    internal const string Alias = "moderation";
+
+    /// <summary>The slot the moderators' rights are granted to; the application binds it to its moderators group.</summary>
+    internal const string ModeratorsSlot = "moderation:moderators";
+
+    /// <summary>
+    /// The rights this library's own <c>security.json</c> layer ships (composition D4, M9), as
+    /// <c>resource|groupId</c>, read from the process's library catalogue so the report cannot disagree
+    /// with what is composed. Only pseudo-type grants to its own slots can ship: a per-type grant
+    /// (<c>Vote/Question</c>) names an application type, which a library may not grant on.
+    /// </summary>
+    internal static IReadOnlySet<string> ShippedRights(IEnumerable<SparkLibrary>? libraries = null)
+    {
+        var shipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var json = (libraries ?? SparkLayerCatalog.Libraries)
+            .FirstOrDefault(l => string.Equals(l.Alias, Alias, StringComparison.Ordinal))?
+            .Layers.FirstOrDefault(l => l.Kind == "security")?.Json;
+        if (json is null)
+            return shipped;
+
+        using var document = JsonDocument.Parse(json);
+        if (TryGet(document.RootElement, "rights", out var rights) && rights.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var right in rights.EnumerateArray())
+            {
+                if (TryGet(right, "resource", out var resource) && TryGet(right, "groupId", out var group))
+                    shipped.Add(Shipped(resource.GetString(), group.GetString()));
+            }
+        }
+        return shipped;
+    }
+
+    /// <summary>Whether the application's <c>security.json</c> switches this library's rights off (<c>"libraries": { "moderation": false }</c>).</summary>
+    private static bool OptedOut(string securityPath)
+    {
+        if (!File.Exists(securityPath))
+            return false;
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(securityPath));
+            return TryGet(document.RootElement, "libraries", out var libraries)
+                && TryGet(libraries, Alias, out var on)
+                && on.ValueKind == JsonValueKind.False;
+        }
+        catch (JsonException)
+        {
+            // Startup reports a broken file; the report just assumes the library's rights apply.
+            return false;
+        }
+    }
+
+    private static string Shipped(string? resource, string? group) => $"{resource}|{group}";
+
+    /// <summary>
+    /// The printed report: a <c>rights</c> array per privilege group, and one for moderators. A right in
+    /// <paramref name="shipped"/> is left out and named in a note: the library already grants it, and an
+    /// application copy would be refused as an edit of a library grant (SPARK049) once keyed alike, or
+    /// would duplicate it otherwise.
+    /// </summary>
+    internal static string Render(SparkModerationOptions options, IReadOnlyList<string> types, IReadOnlySet<string> shipped)
     {
         var rights = new JsonArray();
         var notes = new List<string>();
+        var fromLibrary = new List<string>();
         if (types.Count == 0)
             notes.Add($"No IModeratable entity type was found in {SparkAppData.Relative("Model")}; content rights are shown for '<Type>'.");
         var targets = types.Count == 0 ? ["<Type>"] : types;
+
+        void Add(string key, string resource, string group, string comment)
+        {
+            if (shipped.Contains(Shipped(resource, group)))
+                fromLibrary.Add($"{resource} to {group}");
+            else
+                rights.Add(new JsonObject { ["key"] = key, ["resource"] = resource, ["groupId"] = group, ["_comment"] = comment });
+        }
 
         foreach (var (name, privilege) in options.Privileges)
         {
@@ -73,15 +145,23 @@ public static class SparkModerationInitExtensions
                     continue;
                 }
                 foreach (var resource in Resources(action, targets))
-                    rights.Add(new JsonObject { ["key"] = $"moderation-{name}-{resource}", ["resource"] = resource, ["groupId"] = string.IsNullOrWhiteSpace(privilege.Group) ? privilege.GroupId.ToString() : privilege.Group, ["_comment"] = $"privilege {name}" });
+                    Add($"moderation-{name}-{resource}", resource, string.IsNullOrWhiteSpace(privilege.Group) ? privilege.GroupId.ToString() : privilege.Group, $"privilege {name}");
             }
         }
 
         foreach (var action in new[] { ModerationRights.Lock, ModerationRights.Review, ModerationRights.Suspend, ModerationRights.Audit, "Restore", "Purge", "ViewDeleted", "Revert" })
         {
             foreach (var resource in Resources(action, targets))
-                rights.Add(new JsonObject { ["key"] = $"moderators-{resource}", ["resource"] = resource, ["groupId"] = "<moderators group id>", ["_comment"] = "moderators (never earnable)" });
+                Add($"moderators-{resource}", resource, ModeratorsSlot, "moderators (never earnable)");
         }
+
+        if (fromLibrary.Count > 0)
+        {
+            notes.Add(
+                $"Shipped by the library, so not listed: {string.Join(", ", fromLibrary)}. " +
+                $"Bind each slot in \"bindings\" instead of copying them; \"libraries\": {{ \"{Alias}\": false }} switches them off.");
+        }
+        notes.Add($"Bind \"{ModeratorsSlot}\" to your moderators group in \"bindings\"; every privilege's slot is bound the same way.");
 
         var report = new JsonObject
         {

@@ -103,6 +103,9 @@ public static class MoSecurity
                 Resource = r.Item1,
                 GroupId = r.Item2,
             }).ToList(),
+            // The library's own Review/Suspend/Audit grants (composition M9) are off: the fixture
+            // states every right it means, and binds no slot.
+            Libraries = SparkTestSecurity.LibraryRightsOff(),
         };
     }
 

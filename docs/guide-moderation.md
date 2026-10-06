@@ -48,8 +48,9 @@ public class Answer : IModeratable, ISoftDeletable
 
 3. Run `dotnet run -- --spark-init-moderation`, review the printed rights and add them to
    `security.json` (`Vote/Answer`, `Vote/Question`, …), plus the moderators group's
-   `Lock/T`, `Review/Moderation`, `Suspend/Moderation`, `Audit/Moderation`, `Restore/T`, `Purge/T`,
-   `ViewDeleted/T`, `Revert/T`.
+   `Lock/T`, `Restore/T`, `Purge/T`, `ViewDeleted/T`, `Revert/T`. `Review/Moderation`,
+   `Suspend/Moderation` and `Audit/Moderation` ship with the library, granted to its slots: bind
+   them, `"bindings": { "moderation:moderators": ["Moderators"], "moderation:reviewers": ["Reviewers"] }`.
 
 Startup refuses a privilege whose group is missing, well-known, holds a right that is not
 earnable (`Delete`, custom actions — unless listed under `Earnable`), or has no grant. `Lock`,
