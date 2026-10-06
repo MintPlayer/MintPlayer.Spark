@@ -153,4 +153,28 @@ public class PersistentObjectIdsGeneratorTests
 
         result.GeneratedSources.Should().NotContain(s => s.HintName == "PersistentObjectIds.g.cs");
     }
+
+    /// <summary>
+    /// A moved <c>SparkAppDataDir</c> (composition PRD D12) is where the model is read from, and a stray
+    /// <c>App_Data/Model</c> elsewhere in the project no longer is.
+    /// </summary>
+    [Fact]
+    public void Reads_The_Model_From_A_NonDefault_SparkAppDataDir()
+    {
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [KnowsSparkSource],
+            rootNamespace: "TestApp",
+            additionalTexts:
+            [
+                (@"C:\app\Config\Spark\Model\Car.json", Model("27768be5-2ff5-4782-8b22-c0e8d163050e", "Car")),
+                ("App_Data/Model/Person.json", Model("11111111-2222-3333-4444-555555555555", "Person")),
+            ],
+            globalOptions: new Dictionary<string, string> { ["build_property.SparkAppDataDir"] = @"Config\Spark\" });
+
+        var ids = result.GeneratedSources.FirstOrDefault(s => s.HintName == "PersistentObjectIds.g.cs");
+        ids.Source.Should().NotBeNull();
+        ids.Source.Should().Contain("public const string Car = \"27768be5-2ff5-4782-8b22-c0e8d163050e\";");
+        ids.Source.Should().NotContain("Person");
+    }
 }

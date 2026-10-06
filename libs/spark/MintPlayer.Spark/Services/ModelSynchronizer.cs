@@ -43,7 +43,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     public void SynchronizeModels(Type contextType)
     {
         ArgumentNullException.ThrowIfNull(contextType);
-        var modelPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(hostEnvironment.ContentRootPath, "Model");
 
         // Ensure directory exists
         Directory.CreateDirectory(modelPath);
@@ -436,7 +436,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// </summary>
     internal static IReadOnlyList<string> DescribeDescriptionDrift(Type contextType, string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return [];
 
@@ -702,7 +702,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             throw new InvalidOperationException(
                 $"Model for '{entityTypeDef.Name}' declares the attribute '{duplicateAttributeName}' more than once. " +
                 $"Attribute names must be unique within a persistent object — remove the duplicate from " +
-                $"App_Data/Model/{entityTypeDef.Name}.json.");
+                $"{SparkAppData.Relative("Model")}/{entityTypeDef.Name}.json.");
         }
 
         var existingAttrs = entityTypeDef.Attributes.ToDictionary(a => a.Name, a => a);
@@ -1252,17 +1252,17 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         if (missing.Count == 0) return;
 
         Console.WriteLine($"Info: {missing.Count} label key(s) have no translation in every declared language " +
-                          "(the humanized name is shown instead). Add them to App_Data/translations.json:");
+                          $"(the humanized name is shown instead). Add them to {SparkAppData.Relative("translations.json")}:");
         foreach (var line in missing)
             Console.WriteLine($"  {line}");
     }
 
     internal static IReadOnlyList<string> DescribeMissingTranslations(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath)) return [];
 
-        var cultureFile = Path.Combine(contentRootPath, "App_Data", "culture.json");
+        var cultureFile = SparkAppData.Path(contentRootPath, "culture.json");
         var languages = File.Exists(cultureFile)
             ? JsonDocument.Parse(File.ReadAllText(cultureFile)).RootElement.EnumerateObject()
                 .Where(p => string.Equals(p.Name, "languages", StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind == JsonValueKind.Array)

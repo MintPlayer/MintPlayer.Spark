@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.IdentityProvider.Configuration;
 
 public class SparkIdentityProviderOptions
@@ -16,10 +18,10 @@ public class SparkIdentityProviderOptions
     public string? Issuer { get; set; }
 
     /// <summary>
-    /// Path to signing key file. Default: App_Data/oidc-signing-key.json
+    /// Path to signing key file. Default: oidc-signing-key.json in the application's <see cref="SparkAppData"/> directory.
     /// Auto-generated in Development; must be provided in Production.
     /// </summary>
-    public string SigningKeyPath { get; set; } = "App_Data/oidc-signing-key.json";
+    public string SigningKeyPath { get; set; } = SparkAppData.Relative("oidc-signing-key.json");
 
     /// <summary>
     /// Whether to auto-approve consent for clients with ConsentType = "implicit".

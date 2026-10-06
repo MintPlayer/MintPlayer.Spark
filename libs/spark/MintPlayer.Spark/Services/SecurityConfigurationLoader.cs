@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using System.Text.Json;
 
@@ -12,7 +13,8 @@ namespace MintPlayer.Spark.Services;
 /// <remarks>
 /// Structurally the twin of <see cref="ActionsCatalogueLoader"/> — same cache, same
 /// watcher, same fixed path — and deliberately so: both read one JSON file out of
-/// <c>App_Data</c> at startup and reload it when it changes. The path is not configurable for the
+/// <see cref="SparkAppData"/> at startup and reload it when it changes. The file name is not
+/// configurable (only its directory is, through <c>SparkAppDataDir</c>) for the
 /// same reason that one is not: a second place to put the file is a second place to fail to find
 /// it, and the startup gate can only name one location in its message.
 /// </remarks>
@@ -27,7 +29,9 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
     [Inject] private readonly IModelLoader modelLoader;
 
     /// <summary>Where every Spark application's security file lives. See the remarks on the class.</summary>
-    public const string FilePath = "App_Data/security.json";
+    public static string FilePath => SparkAppData.Relative(FileName);
+
+    private const string FileName = "security.json";
 
     private readonly IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
     private FileSystemWatcher? fileWatcher;
@@ -72,7 +76,7 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
 
     private SecurityConfiguration LoadFromFile()
     {
-        var filePath = Path.Combine(hostEnvironment.ContentRootPath, FilePath);
+        var filePath = SparkAppData.Path(hostEnvironment.ContentRootPath, FileName);
 
         if (!File.Exists(filePath))
         {
@@ -121,7 +125,7 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
 
     private void SetupFileWatcher()
     {
-        var filePath = Path.Combine(hostEnvironment.ContentRootPath, FilePath);
+        var filePath = SparkAppData.Path(hostEnvironment.ContentRootPath, FileName);
         var directory = Path.GetDirectoryName(filePath);
         var fileName = Path.GetFileName(filePath);
 

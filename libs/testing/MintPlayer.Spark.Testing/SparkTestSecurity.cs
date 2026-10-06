@@ -240,7 +240,7 @@ public static class SparkTestSecurityFile
     /// <summary>Writes <paramref name="security"/> (permissive by default) into <paramref name="contentRootPath"/>.</summary>
     public static void Write(string contentRootPath, SparkTestSecurity? security = null)
     {
-        var path = Path.Combine(contentRootPath, "App_Data", "security.json");
+        var path = SparkAppData.Path(contentRootPath, "security.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, (security ?? SparkTestSecurity.Permissive).Build());
     }

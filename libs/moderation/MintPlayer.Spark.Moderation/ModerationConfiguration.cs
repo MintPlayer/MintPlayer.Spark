@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
+using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Moderation;
 
@@ -19,8 +20,8 @@ namespace MintPlayer.Spark.Moderation;
 /// </remarks>
 public static class SparkModerationConfigurationExtensions
 {
-    /// <summary>The default location, beside <c>App_Data/security.json</c>.</summary>
-    public const string DefaultPath = "App_Data/moderation.json";
+    /// <summary>The default location, beside <c>security.json</c> in the application's <see cref="SparkAppData"/> directory.</summary>
+    public static string DefaultPath => SparkAppData.Relative("moderation.json");
 
     /// <summary>The configuration section the file is mounted under.</summary>
     public const string SectionName = "Spark:Moderation";
@@ -28,21 +29,28 @@ public static class SparkModerationConfigurationExtensions
     /// <summary>
     /// Adds <paramref name="path"/> (relative to the builder's base path — the content root in an
     /// ASP.NET Core host) as the lowest-precedence source, mounted under <c>Spark:Moderation</c>.
-    /// Idempotent: a second call for the same path adds nothing.
+    /// Idempotent: a second call for the same path adds nothing. Defaults to <see cref="DefaultPath"/>;
+    /// an absolute path is read from where it points.
     /// </summary>
-    public static IConfigurationBuilder AddSparkModerationFile(this IConfigurationBuilder builder, string path = DefaultPath, bool optional = true)
+    public static IConfigurationBuilder AddSparkModerationFile(this IConfigurationBuilder builder, string? path = null, bool optional = true)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        if (builder.Sources.OfType<ModerationJsonConfigurationSource>().Any(s => string.Equals(s.Path, path, StringComparison.OrdinalIgnoreCase)))
+        path ??= DefaultPath;
+        if (builder.Sources.OfType<ModerationJsonConfigurationSource>().Any(s => string.Equals(s.RequestedPath, path, StringComparison.OrdinalIgnoreCase)))
             return builder;
 
+        var rooted = System.IO.Path.IsPathRooted(path);
         var source = new ModerationJsonConfigurationSource
         {
+            RequestedPath = path,
             Path = path,
             Optional = optional,
             ReloadOnChange = false,
-            FileProvider = builder.GetFileProvider(),
+            // The builder's provider is rooted at the base path and cannot serve an absolute path;
+            // ResolveFileProvider gives it one rooted at the file's own directory instead.
+            FileProvider = rooted ? null : builder.GetFileProvider(),
         };
+        if (rooted) source.ResolveFileProvider();
         builder.Sources.Insert(0, source);
         return builder;
     }
@@ -51,6 +59,9 @@ public static class SparkModerationConfigurationExtensions
 /// <summary>A JSON file whose keys are mounted under <c>Spark:Moderation</c>.</summary>
 internal sealed class ModerationJsonConfigurationSource : JsonConfigurationSource
 {
+    /// <summary>The path as passed in, before <see cref="FileConfigurationSource.ResolveFileProvider"/> shortens it.</summary>
+    public string? RequestedPath { get; init; }
+
     public override IConfigurationProvider Build(IConfigurationBuilder builder)
     {
         EnsureDefaults(builder);

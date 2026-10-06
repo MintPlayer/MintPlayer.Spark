@@ -60,7 +60,7 @@ public sealed record SparkActionsComposition(
 public static class SparkActionLayers
 {
     /// <summary>The application layer's name in messages and in <c>--spark-print-effective-actions</c>.</summary>
-    public const string AppLayerName = "App_Data/actions.json";
+    public static string AppLayerName => SparkAppData.Relative("actions.json");
 
     private const string CoreAssemblyName = "MintPlayer.Spark";
 

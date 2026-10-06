@@ -269,7 +269,7 @@ public static class SparkDevelopmentExtensions
         {
             if (descriptionDrift)
             {
-                Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model.");
+                Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated {SparkAppData.Relative("Model")}.");
                 Environment.ExitCode = ExitDrift;
                 return;
             }
@@ -308,7 +308,7 @@ public static class SparkDevelopmentExtensions
         }
 
         Console.Error.WriteLine();
-        Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model and {ModelHashFile.FileName}.");
+        Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated {SparkAppData.Relative("Model")} and {ModelHashFile.FileName}.");
         // A JSON-only virtual type (no clrType) has no CLR class to regenerate from, so synchronize
         // only re-stamps its hash. Same command, but "regenerated" would send the author looking for
         // a class that does not exist — which is the whole point of the type.
@@ -367,7 +367,7 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyRefreshTriggersAreImplemented(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 
@@ -497,7 +497,7 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyCollectionColumnsDoNotClaimSortability(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 
@@ -580,7 +580,7 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyBoundIndexHasAProjection(IIndexCatalog indexCatalog, string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 
@@ -717,7 +717,7 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyQuerySortColumnsResolve(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 
@@ -791,7 +791,7 @@ public static class SparkDevelopmentExtensions
 
     private static void VerifyQueryColumnOverridesResolve(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 
@@ -904,7 +904,7 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyQueryAliasesAreUnique(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 
@@ -972,7 +972,7 @@ public static class SparkDevelopmentExtensions
     /// </para>
     private static void VerifyCustomQueryMethodsExist(IServiceCollection services, string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 
@@ -1040,7 +1040,7 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifySubQueriesCanBeParentScoped(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 
@@ -1136,7 +1136,7 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyProgramUnitTargetsResolve(string contentRootPath)
     {
-        var unitsPath = Path.Combine(contentRootPath, "App_Data", "programUnits.json");
+        var unitsPath = SparkAppData.Path(contentRootPath, "programUnits.json");
         if (!File.Exists(unitsPath))
             return; // An app may legitimately ship no menu.
 
@@ -1165,7 +1165,7 @@ public static class SparkDevelopmentExtensions
         var typesByAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
         var typesById = new Dictionary<Guid, EntityTypeDefinition>();
 
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (Directory.Exists(modelPath))
         {
             foreach (var file in Directory.GetFiles(modelPath, "*.json"))
@@ -1338,7 +1338,7 @@ public static class SparkDevelopmentExtensions
 
     private static void VerifyComposedQueriesAreUsable(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(contentRootPath, "Model");
         if (!Directory.Exists(modelPath))
             return;
 

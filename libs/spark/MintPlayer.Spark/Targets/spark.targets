@@ -179,4 +179,15 @@
 		                 Condition="Exists('$(SparkAppDataDir)\programUnits.json')" />
 	</ItemGroup>
 
+	<!--
+	  The same directory for the generators and the runtime (composition PRD D12). The generators
+	  match AdditionalFiles paths against build_property.SparkAppDataDir; the runtime reads the
+	  assembly metadata through SparkAppData. Unconditional: the runtime needs it even when a project
+	  supplies its own AdditionalFiles.
+	-->
+	<ItemGroup>
+		<CompilerVisibleProperty Include="SparkAppDataDir" />
+		<AssemblyMetadata Include="SparkAppDataDir" Value="$(SparkAppDataDir)" />
+	</ItemGroup>
+
 </Project>

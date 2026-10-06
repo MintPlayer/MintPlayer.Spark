@@ -118,24 +118,26 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
                     settings.RootNamespace ?? "GeneratedCode");
             });
 
-        // Harvest PersistentObjectIdInfo from App_Data/Model/*.json AdditionalFiles.
+        // Harvest PersistentObjectIdInfo from <SparkAppDataDir>/Model/*.json AdditionalFiles.
         // Files that don't parse as Spark Model JSON (missing "persistentObject" wrapper,
         // missing id/name, bad Guid) are silently skipped — they may be other auxiliary
         // JSON files the host includes.
+        var appDataDirProvider = context.AnalyzerConfigOptionsProvider
+            .Select(static (options, _) => SparkAppDataDir.Read(options.GlobalOptions));
+
         var idsProvider = context.AdditionalTextsProvider
-            .Where(static t =>
+            .Combine(appDataDirProvider)
+            .Where(static p =>
             {
-                var file = Path.GetFileName(t.Path);
+                var file = Path.GetFileName(p.Left.Path);
                 if (!file.EndsWith(".json", System.StringComparison.OrdinalIgnoreCase))
                     return false;
-                // Path convention: <anything>/App_Data/Model/<EntityName>.json
-                // Accept both absolute paths from csproj globs and relative paths from tests.
-                var normalized = t.Path.Replace('\\', '/');
-                return normalized.Contains("App_Data/Model/");
+                // Path convention: <anything>/<SparkAppDataDir>/Model/<EntityName>.json
+                return SparkAppDataDir.Contains(p.Left.Path, p.Right, "Model");
             })
-            .Select(static (t, ct) =>
+            .Select(static (p, ct) =>
             {
-                var text = t.GetText(ct)?.ToString();
+                var text = p.Left.GetText(ct)?.ToString();
                 return text is not null && ModelJsonReader.TryRead(text, out var info)
                     ? info
                     : null;

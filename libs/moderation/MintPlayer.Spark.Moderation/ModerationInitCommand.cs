@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Moderation.Services;
 
 namespace MintPlayer.Spark.Moderation;
@@ -46,7 +47,7 @@ public static class SparkModerationInitExtensions
         builder.Configuration.AddSparkModerationFile();
         var options = new SparkModerationOptions();
         builder.Configuration.GetSection(SparkModerationConfigurationExtensions.SectionName).Bind(options);
-        var types = ModeratableTypeNames(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "Model"));
+        var types = ModeratableTypeNames(SparkAppData.Path(builder.Environment.ContentRootPath, "Model"));
         Console.WriteLine(Render(options, types));
         return true;
     }
@@ -57,7 +58,7 @@ public static class SparkModerationInitExtensions
         var rights = new JsonArray();
         var notes = new List<string>();
         if (types.Count == 0)
-            notes.Add("No IModeratable entity type was found in App_Data/Model; content rights are shown for '<Type>'.");
+            notes.Add($"No IModeratable entity type was found in {SparkAppData.Relative("Model")}; content rights are shown for '<Type>'.");
         var targets = types.Count == 0 ? ["<Type>"] : types;
 
         foreach (var (name, privilege) in options.Privileges)
@@ -84,7 +85,7 @@ public static class SparkModerationInitExtensions
 
         var report = new JsonObject
         {
-            ["_comment"] = "Rights to add to App_Data/security.json for Spark Moderation. Review them; nothing was written.",
+            ["_comment"] = $"Rights to add to {SparkAppData.Relative("security.json")} for Spark Moderation. Review them; nothing was written.",
             ["notes"] = new JsonArray(notes.Select(n => (JsonNode)JsonValue.Create(n)!).ToArray()),
             ["rights"] = rights,
         };

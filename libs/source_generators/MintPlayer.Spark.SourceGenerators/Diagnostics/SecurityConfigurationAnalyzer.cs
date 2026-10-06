@@ -165,7 +165,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             foreach (var layer in LibraryActionsReader.Read(end.Compilation))
                 foreach (var name in LibraryActionsReader.Names(layer.Json))
                     customActions.Add(name);
-            var model = ReadModel(end.Options.AdditionalFiles);
+            var model = ReadModel(end.Options.AdditionalFiles, SparkAppDataDir.Read(end.Options.AnalyzerConfigOptionsProvider.GlobalOptions));
             var knownTargets = model.Targets;
             var combinedVerbs = reserved.Where(r => r.IsCombined).Select(r => r.Verb).ToArray();
             var staleDeny = new StaleDenyCollector();
@@ -308,7 +308,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                 .OfType<INamedTypeSymbol>().FirstOrDefault();
             if (declared is null)
             {
-                return $"targets '{type}', which is not a persistent object in App_Data/Model — an attribute right "
+                return $"targets '{type}', which is not a persistent object in {model.Directory} — an attribute right "
                        + "names the type by its name, not an alias, a query or a reserved target";
             }
 
@@ -517,6 +517,9 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     {
         public ISet<string> Targets { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, ModelType> Types { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The model directory as messages name it, e.g. <c>App_Data/Model</c>.</summary>
+        public string Directory { get; set; } = SparkAppDataDir.Default + "/Model";
     }
 
     /// <summary>
@@ -564,16 +567,15 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     /// model declares — read by position (<see cref="ModelNamesReader"/>), so an attribute, tab or
     /// group name no longer counts as a type target — plus each persistent object's attributes.
     /// </summary>
-    private static ModelIndex ReadModel(IEnumerable<AdditionalText> files)
+    private static ModelIndex ReadModel(IEnumerable<AdditionalText> files, string appDataDir)
     {
-        var index = new ModelIndex();
+        var index = new ModelIndex { Directory = string.IsNullOrEmpty(appDataDir) ? "Model" : appDataDir + "/Model" };
         foreach (var reserved in ReservedTargets) index.Targets.Add(reserved);
 
         var any = false;
         foreach (var file in files)
         {
-            if (file.Path.IndexOf("App_Data", StringComparison.OrdinalIgnoreCase) < 0) continue;
-            if (file.Path.IndexOf("Model", StringComparison.OrdinalIgnoreCase) < 0) continue;
+            if (!SparkAppDataDir.Contains(file.Path, appDataDir, "Model")) continue;
             if (file.GetText() is not { } text) continue;
 
             any = true;

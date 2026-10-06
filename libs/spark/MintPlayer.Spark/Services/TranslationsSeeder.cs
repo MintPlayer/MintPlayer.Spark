@@ -34,7 +34,7 @@ internal static class TranslationsSeeder
     };
 
     internal static string PathFor(string contentRootPath)
-        => Path.Combine(contentRootPath, "App_Data", "translations.json");
+        => SparkAppData.Path(contentRootPath, "translations.json");
 
     /// <summary>The seeds that would be written: those whose key no layer defines in <c>en</c>.</summary>
     internal static IReadOnlyList<(string Key, string Text)> Pending(

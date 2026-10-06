@@ -893,7 +893,7 @@ internal sealed record DatabasePage(int TotalItems);
         var entityTypeDefinition = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name)
             ?? throw new InvalidOperationException(
                 $"Query '{query.Name}' returns rows of '{entityType.Name}', which has no model file in " +
-                $"App_Data/Model. Run '--spark-synchronize-model' and commit the result — without a " +
+                $"{SparkAppData.Relative("Model")}. Run '--spark-synchronize-model' and commit the result — without a " +
                 $"definition there are no columns to render and no attributes to map into.");
 
         // One answer to "which type is this query about", rather than two that happen to agree.
@@ -1138,7 +1138,7 @@ internal sealed record DatabasePage(int TotalItems);
                       + $"come from — so the executor cannot infer one from the method's return type. Set "
                       + $"\"entityType\" in the query's model file."
                     : $"Query '{query.Name}' names entityType '{query.EntityType}', which has no model file in "
-                      + $"App_Data/Model. Check the spelling against the type's \"name\", or run "
+                      + $"{SparkAppData.Relative("Model")}. Check the spelling against the type's \"name\", or run "
                       + $"'--spark-synchronize-model' if the type is new.");
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);

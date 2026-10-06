@@ -86,11 +86,11 @@ public sealed class ModelHashFile
 
     /// <summary>Absolute path of the hash file for a given content root.</summary>
     public static string PathFor(string contentRootPath)
-        => Path.Combine(contentRootPath, "App_Data", FileName);
+        => SparkAppData.Path(contentRootPath, FileName);
 
     /// <summary>Absolute path of the model directory for a given content root.</summary>
     public static string ModelDirectoryFor(string contentRootPath)
-        => Path.Combine(contentRootPath, "App_Data", "Model");
+        => SparkAppData.Path(contentRootPath, "Model");
 
     /// <summary>
     /// Structural fingerprint of every file in the model directory, keyed by file name.
@@ -102,7 +102,7 @@ public sealed class ModelHashFile
 
     /// <summary>Structural hashes of the App_Data config files outside the Model directory.</summary>
     public static SortedDictionary<string, string> ComputeConfigHashes(string contentRootPath)
-        => ConfigFileShape.ComputeFileHashes(Path.Combine(contentRootPath, "App_Data"));
+        => ConfigFileShape.ComputeFileHashes(SparkAppData.Directory(contentRootPath));
 
     /// <summary>Roll-up over the per-file structural hashes.</summary>
     public static string CombineFileHashes(IReadOnlyDictionary<string, string> fileHashes)

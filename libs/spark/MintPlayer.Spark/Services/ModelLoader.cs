@@ -36,7 +36,7 @@ internal partial class ModelLoader : IModelLoader
         var byId = new Dictionary<Guid, EntityTypeDefinition>();
         var byAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
         var allQueries = new List<SparkQuery>();
-        var modelPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(hostEnvironment.ContentRootPath, "Model");
 
         if (!Directory.Exists(modelPath))
             return (byId, byAlias, allQueries);

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Services;
 
@@ -54,7 +55,7 @@ internal static partial class SparkSchemaReference
         if (revision <= 0)
             return changed;
 
-        var appData = Path.Combine(contentRootPath, "App_Data");
+        var appData = SparkAppData.Directory(contentRootPath);
         foreach (var (pattern, schema) in Files)
         {
             var directory = Path.Combine(appData, Path.GetDirectoryName(pattern) ?? string.Empty);

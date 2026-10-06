@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 
 namespace MintPlayer.Spark.Extensions;
@@ -23,7 +24,9 @@ public static class SparkSecurityVerificationExtensions
     internal const string SynchronizeFlag = "--spark-synchronize-security";
 
     /// <summary>The committed baseline, beside the model's hash file for the same reason.</summary>
-    internal const string BaselineFile = "App_Data/securityPosture.txt";
+    internal static string BaselineFile => SparkAppData.Relative(BaselineFileName);
+
+    private const string BaselineFileName = "securityPosture.txt";
 
     private const int ExitMisconfigured = 2;
     private const int ExitDrift = 3;
@@ -72,7 +75,7 @@ public static class SparkSecurityVerificationExtensions
             return true;
         }
 
-        var path = Path.Combine(builder.Environment.ContentRootPath, BaselineFile);
+        var path = SparkAppData.Path(builder.Environment.ContentRootPath, BaselineFileName);
         var current = Render(reporter.Describe());
 
         if (verifyOnly)

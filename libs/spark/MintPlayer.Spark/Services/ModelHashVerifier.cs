@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Exceptions;
 using System.Text;
@@ -102,7 +103,7 @@ public static class ModelHashVerifier
             message.AppendLine("Spark cannot verify the model: no readable " + ModelHashFile.FileName + " was found.");
             message.AppendLine();
             message.AppendLine($"Expected it at {ModelHashFile.PathFor(contentRootPath)}.");
-            message.AppendLine("It is generated alongside App_Data/Model and must be deployed with it.");
+            message.AppendLine($"It is generated alongside {SparkAppData.Relative("Model")} and must be deployed with it.");
         }
         else
         {
@@ -114,7 +115,7 @@ public static class ModelHashVerifier
 
             message.AppendLine();
             message.AppendLine($"{ModelHashFile.FileName} describes a different model than this build produces,");
-            message.AppendLine("so App_Data/Model no longer matches the entity classes. Attributes may be missing,");
+            message.AppendLine($"so {SparkAppData.Relative("Model")} no longer matches the entity classes. Attributes may be missing,");
             message.AppendLine("mistyped or read-only, and saves may silently drop values.");
         }
 
@@ -123,7 +124,7 @@ public static class ModelHashVerifier
         message.AppendLine();
         message.AppendLine("    dotnet run --spark-synchronize-model");
         message.AppendLine();
-        message.AppendLine("If this appeared after a deployment rather than a code change, App_Data was published");
+        message.AppendLine($"If this appeared after a deployment rather than a code change, {SparkAppData.RelativeDirectory} was published");
         message.AppendLine("from a different build than the application binaries. Redeploy both from one commit.");
         message.AppendLine();
         message.AppendLine($"To start anyway, set {OverrideVariable} to the actual hash below (this disables");
@@ -157,7 +158,7 @@ public static class ModelHashVerifier
         {
             if (reported++ == 12)
             {
-                yield return "… and more; the whole model differs, which usually means a stale App_Data.";
+                yield return $"… and more; the whole model differs, which usually means a stale {SparkAppData.RelativeDirectory}.";
                 yield break;
             }
             yield return line;

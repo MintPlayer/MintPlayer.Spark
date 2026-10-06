@@ -26,7 +26,7 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
 
     private ProgramUnitsConfiguration LoadProgramUnits()
     {
-        var filePath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "programUnits.json");
+        var filePath = SparkAppData.Path(hostEnvironment.ContentRootPath, "programUnits.json");
 
         // Fail-soft on absence only: an app without a menu is a valid app. A file that exists but
         // cannot be parsed or validated throws instead — the silent alternative is an empty menu
@@ -49,7 +49,7 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
         catch (JsonException ex)
         {
             throw new SparkProgramUnitsConfigurationException(
-                $"App_Data/programUnits.json is not valid JSON: {ex.Message}", ex);
+                $"{SparkAppData.Relative("programUnits.json")} is not valid JSON: {ex.Message}", ex);
         }
 
         Validate(config);

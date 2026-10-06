@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
@@ -45,7 +46,7 @@ public static class SparkSecurityInitExtensions
         if (!args.Contains(InitFlag))
             return false;
 
-        var path = Path.Combine(builder.Environment.ContentRootPath, SecurityConfigurationLoader.FilePath);
+        var path = SparkAppData.Path(builder.Environment.ContentRootPath, "security.json");
 
         // Never overwrite. A file that already exists is the application's authorization model, and
         // regenerating a starter over it would be the single most destructive thing this command

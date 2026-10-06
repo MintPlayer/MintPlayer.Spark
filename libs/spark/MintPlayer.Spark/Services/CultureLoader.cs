@@ -18,7 +18,7 @@ internal partial class CultureLoader : ICultureLoader
 
     private CultureConfiguration LoadCulture()
     {
-        var filePath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "culture.json");
+        var filePath = SparkAppData.Path(hostEnvironment.ContentRootPath, "culture.json");
 
         if (!File.Exists(filePath))
             return Build(["en"], "en");
@@ -49,7 +49,7 @@ internal partial class CultureLoader : ICultureLoader
                     // culture.languages.{code}. The old object form embedded the names, so it is refused.
                     if (property.Value.ValueKind != JsonValueKind.Array)
                         throw new InvalidOperationException(
-                            "App_Data/culture.json: 'languages' must be an array of language codes, e.g. " +
+                            $"{SparkAppData.Relative("culture.json")}: 'languages' must be an array of language codes, e.g. " +
                             "[\"en\", \"fr\", \"nl\"]. A language's display name is the translations.json key " +
                             "'culture.languages.{code}'.");
                     codes.AddRange(property.Value.EnumerateArray()

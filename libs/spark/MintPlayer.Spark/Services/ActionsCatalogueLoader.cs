@@ -65,8 +65,8 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
             {
                 logger.LogWarning(
                     "Libraries '{Winner}' and '{Loser}' both state '{Property}' of the action '{Action}', with different values. "
-                    + "'{Winner}' wins (libraries apply by assembly name). State it in App_Data/actions.json to choose.",
-                    conflict.WinnerLayer, conflict.LoserLayer, conflict.Property, conflict.Action, conflict.WinnerLayer);
+                    + "'{Winner}' wins (libraries apply by assembly name). State it in {ActionsFile} to choose.",
+                    conflict.WinnerLayer, conflict.LoserLayer, conflict.Property, conflict.Action, conflict.WinnerLayer, SparkActionLayers.AppLayerName);
             }
             logger.LogInformation("Composed the action catalogue: {ActionCount} actions", catalogue.Actions.Count);
             return catalogue;
@@ -80,7 +80,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
 
     /// <summary>The application layer's path for a content root.</summary>
     public static string PathFor(string contentRootPath)
-        => Path.Combine(contentRootPath, "App_Data", ConfigFileShape.ActionsFileName);
+        => SparkAppData.Path(contentRootPath, ConfigFileShape.ActionsFileName);
 
     /// <summary>The library layers composed with <paramref name="appJson"/> (null: no application file), bound and validated.</summary>
     /// <exception cref="FormatException">The composed catalogue is invalid; the message names every offender.</exception>

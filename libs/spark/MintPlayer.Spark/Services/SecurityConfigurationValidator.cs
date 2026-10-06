@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 
 namespace MintPlayer.Spark.Services;
@@ -87,7 +88,7 @@ internal static class SecurityConfigurationValidator
             definition = definition
                 ?? throw new SparkSecurityConfigurationException(
                     $"security.json declares a right with resource '{right.Resource}', but no persistent object "
-                    + $"named '{type}' exists in App_Data/Model. An attribute right must name the type by its "
+                    + $"named '{type}' exists in {SparkAppData.Relative("Model")}. An attribute right must name the type by its "
                     + "name (not its alias, a query or a reserved target such as LookupReferences).");
 
             if (!definition.Attributes.Any(a => string.Equals(a.Name, attribute, StringComparison.OrdinalIgnoreCase)))

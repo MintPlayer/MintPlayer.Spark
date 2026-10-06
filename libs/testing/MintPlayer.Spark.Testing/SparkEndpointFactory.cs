@@ -127,7 +127,7 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(models);
 
         _contentRoot = Path.Combine(Path.GetTempPath(), "spark-endpoint-tests-" + Guid.NewGuid().ToString("N"));
-        var modelDir = Path.Combine(_contentRoot, "App_Data", "Model");
+        var modelDir = SparkAppData.Path(_contentRoot, "Model");
         Directory.CreateDirectory(modelDir);
 
         foreach (var model in models)

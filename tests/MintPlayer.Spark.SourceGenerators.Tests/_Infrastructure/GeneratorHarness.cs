@@ -34,7 +34,8 @@ internal static class GeneratorHarness
         string? generatorAssemblyName = null,
         OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
         IEnumerable<MetadataReference>? additionalReferences = null,
-        CSharpParseOptions? parseOptions = null)
+        CSharpParseOptions? parseOptions = null,
+        IReadOnlyDictionary<string, string>? globalOptions = null)
     {
         var generator = InstantiateGenerator(generatorTypeName, generatorAssemblyName);
 
@@ -47,8 +48,8 @@ internal static class GeneratorHarness
 
         var driverParseOptions = (CSharpParseOptions)compilation.SyntaxTrees.First().Options;
 
-        // Surface RootNamespace via analyzer config so the generator can read Settings.
-        var optionsProvider = new StubAnalyzerConfigOptionsProvider(rootNamespace);
+        // Surface RootNamespace (and any other build_property.* a test passes) via analyzer config.
+        var optionsProvider = new StubAnalyzerConfigOptionsProvider(rootNamespace, globalOptions);
 
         var additionalTextList = additionalTexts?
             .Select(t => (AdditionalText)new InMemoryAdditionalText(t.Path, t.Text))
@@ -396,7 +397,8 @@ internal sealed record GeneratorRunResult(
 internal sealed class StubAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsProvider
 {
     private readonly StubOptions _options;
-    public StubAnalyzerConfigOptionsProvider(string? rootNamespace) => _options = new StubOptions(rootNamespace);
+    public StubAnalyzerConfigOptionsProvider(string? rootNamespace, IReadOnlyDictionary<string, string>? values = null)
+        => _options = new StubOptions(rootNamespace, values);
 
     public override AnalyzerConfigOptions GlobalOptions => _options;
     public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => _options;
@@ -405,11 +407,13 @@ internal sealed class StubAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsP
     private sealed class StubOptions : AnalyzerConfigOptions
     {
         private readonly Dictionary<string, string> _values;
-        public StubOptions(string? rootNamespace)
+        public StubOptions(string? rootNamespace, IReadOnlyDictionary<string, string>? values)
         {
             _values = new(StringComparer.OrdinalIgnoreCase);
             if (!string.IsNullOrEmpty(rootNamespace))
                 _values["build_property.rootnamespace"] = rootNamespace;
+            foreach (var (key, value) in values ?? new Dictionary<string, string>())
+                _values[key] = value;
         }
 
         public override bool TryGetValue(string key, out string value)
