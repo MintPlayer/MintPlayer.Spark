@@ -31,16 +31,29 @@ writes a starting file. It grants nothing, and it carries the whole grammar in c
     "a1b2c3d4-0000-0000-0000-000000000001": "Administrators"
   },
   "rights": [
-    { "id": "…", "resource": "QueryRead/Car", "groupId": "…000000f", "isDenied": false },
-    { "id": "…", "resource": "EditNewDelete/Car", "groupId": "…0000001", "isDenied": false }
+    { "key": "…", "resource": "QueryRead/Car", "groupId": "…000000f", "isDenied": false },
+    { "key": "…", "resource": "EditNewDelete/Car", "groupId": "…0000001", "isDenied": false }
   ]
 }
 ```
 
 A group's value is its **name**, untranslated, and the name is its identity: group claims and
 `[SparkAuthorize(Group = …)]` match it (case-insensitively), never a translation (#467, D24). The
-label users see is the key `security.groups.{name}.label` in `translations.json`. Rights reference
-groups by id.
+label users see is the key `security.groups.{name}.label` in `translations.json`.
+
+Every right has a **`key`**, any text without `:`, unique in the file; the engine refuses a right
+without one and a key stated twice. A right's `groupId` is a group id, or a token: `@anonymous` and
+`@authenticated` resolve through `wellKnown`, and `alias:slot` (for example `moderation:moderators`)
+is a slot a library defines and you bind in `"bindings"`.
+
+**Libraries ship rights too.** A referenced library's `security.json` layer is active as soon as the
+library is referenced: Authorization grants its passkeys page to `@authenticated`, Moderation grants
+`Review`, `Suspend` and `Audit` on its `Moderation` pseudo-type to its slots. A library may only
+grant, and only on what it ships. You remove one of its rights with
+`{ "key": "authorization:passkeys-add", "$remove": true }`, or all of a library's with
+`"libraries": { "authorization": false }`; you never edit one. `--spark-describe security` prints
+every effective right with the layer it came from. The rules, the guard rails and their diagnostics
+(SPARK047–049) are in [library layers](guide-library-layers.md#rights).
 
 A **right** is `{action}/{target}`.
 
@@ -189,8 +202,8 @@ that attribute — three segments, next to the type grant it narrows:
 
 ```jsonc
 "rights": [
-  { "id": "…", "resource": "QueryRead/Employee",        "groupId": "<authenticated>" },
-  { "id": "…", "resource": "QueryRead/Employee/Salary", "groupId": "<authenticated>", "isDenied": true }
+  { "key": "…", "resource": "QueryRead/Employee",        "groupId": "<authenticated>" },
+  { "key": "…", "resource": "QueryRead/Employee/Salary", "groupId": "<authenticated>", "isDenied": true }
 ]
 ```
 
@@ -385,8 +398,12 @@ refusing — otherwise an anonymous visitor would be bounced to sign-in merely f
 **At startup**, every application prints which rights an anonymous caller holds — including when
 that is nothing, because silence is indistinguishable from the check not running.
 
-**In CI**, `--spark-verify-security` compares that list against a committed
-`App_Data/securityPosture.txt` and exits 3 if it moved:
+**In CI**, `--spark-verify-security` compares the effective rights against a committed
+`App_Data/securityPosture.txt` and exits 3 if anything moved. The file is a table of every effective
+right (`group | effect | resource | key | layer`), with the anonymous surface in sections of its own,
+the rights of switched-off libraries marked inert, and one line per library that ships rights. A
+failure prints the changed lines and the layer that changed them, and an anonymous section that moved
+also gets a `::warning::` annotation. Exit 2 means `security.json` does not compose at all.
 
 ```bash
 dotnet run -- --spark-verify-security     # the gate

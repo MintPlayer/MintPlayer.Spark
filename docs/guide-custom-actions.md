@@ -275,13 +275,13 @@ If your application uses Spark Authorization, add entries to `App_Data/security.
   },
   "rights": [
     {
-      "id": "ca000001-0000-0000-0000-000000000001",
+      "key": "ca000001-0000-0000-0000-000000000001",
       "resource": "CarCopy/Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "ca000001-0000-0000-0000-000000000002",
+      "key": "ca000001-0000-0000-0000-000000000002",
       "resource": "CarCopy/Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false

@@ -98,7 +98,7 @@ CLR class at all** — a start page, a dashboard, a per-user landing page. The r
 
        public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
        {
-           var obj = manager.GetPersistentObject("StartPage");   // scaffold: all attributes, null values
+           var obj = await manager.GetPersistentObjectAsync("StartPage");   // for this caller, null values
            obj["Welcome"].Value = "Hello!";
            obj["PeopleCount"].Value = await session.Query<Person>().CountAsync();
            return obj;                                           // null ⇒ 404
@@ -116,7 +116,7 @@ CLR class at all** — a start page, a dashboard, a per-user landing page. The r
    (`"start"`); the page is free to ignore it.
 
 The same JSON-only shape serves dialog/popup POs: declare the model file, scaffold with
-`IManager.GetPersistentObject(...)` inside a custom action, and hand it to a retry action —
+`IManager.GetPersistentObjectAsync(...)` inside a custom action, and hand it to a retry action —
 no class needed there either (Fleet's `ConfirmDeleteCar` is the worked example).
 
 What the framework does with a composed object: it is served after the type-level `Read` check

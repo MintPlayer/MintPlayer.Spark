@@ -52,17 +52,22 @@ The file holds the **contents** of `Spark:Moderation`. `AddModeration` inserts i
 the command line override any value: `Spark__Moderation__Fraud__MaxVotesCastPerDay=10`. Code
 passed to `AddModeration(o => …)` sets defaults that configuration then overrides.
 
+The library ships the defaults as its own layer, `App_Data/moderation.json` (alias `moderation`,
+composition D3): the reputation table and the `Upvote`, `Flag`, `Downvote` and `Review` privileges,
+each conferring a **slot** (`"Group": "moderation:voters|flaggers|downvoters|reviewers"`). The
+application's file composes on top per key (a privilege or event by name, `null` removes, arrays
+replaced whole), so it states only what differs, and its `security.json` binds the slots:
+`"bindings": { "moderation:voters": ["Voters"], … }`. A privilege's slot resolves to exactly one
+group; an unbound one refuses startup. `--spark-describe moderation --layers` prints the composed
+section with each value's layer. A fuller application file:
+
 ```json
 {
-  "Reputation": { "UpvoteReceived": 10, "DownvoteReceived": -2, "DownvoteCast": -1, "FlagUpheld": 2, "FlagDeclined": 0 },
   "DownvoteCastTypes": [ "Answer" ],
   "ReverseVotesOnModeratorDelete": true,
   "Privileges": {
-    "Upvote":   { "GroupId": "…", "Rep": 15,   "MinAccountAgeDays": 0,  "MinActiveDays": 0,  "Grants": [ "Vote" ] },
-    "Flag":     { "GroupId": "…", "Rep": 15,   "MinAccountAgeDays": 1,  "MinActiveDays": 1,  "Grants": [ "Flag" ] },
-    "Downvote": { "GroupId": "…", "Rep": 125,  "MinAccountAgeDays": 7,  "MinActiveDays": 3,  "Grants": [ "Downvote" ] },
-    "Review":   { "GroupId": "…", "Rep": 500,  "MinAccountAgeDays": 30, "MinActiveDays": 10, "Grants": [ "Review" ] },
-    "Edit":     { "GroupId": "…", "Rep": 2000, "MinAccountAgeDays": 60, "MinActiveDays": 20, "Grants": [ "Edit" ] }
+    "Upvote":   { "Rep": 15 },
+    "Review":   { "Rep": 500, "MinAccountAgeDays": 30, "MinActiveDays": 10 }
   },
   "Earnable": [],
   "Fraud": { "MaxVotesCastPerDay": 30 },

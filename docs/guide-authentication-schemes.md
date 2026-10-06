@@ -361,7 +361,7 @@ claims resolved to exactly the same set as an anonymous visitor, so the two were
 `security.json`.
 
 ```json
-{ "resource": "QueryRead/Repository", "groupId": "a1b2c3d4-0000-0000-0000-00000000000f" }
+{ "key": "repositories-read", "resource": "QueryRead/Repository", "groupId": "a1b2c3d4-0000-0000-0000-00000000000f" }
 ```
 
 ### Seeing the anonymous surface
