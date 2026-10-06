@@ -43,6 +43,7 @@
     "conflictResolved":    { "en": "Your choices were applied on top of their version, which also changed {fields}. Review and save.", "fr": "Vos choix ont été appliqués sur leur version, qui a aussi modifié {fields}. Vérifiez puis enregistrez.", "nl": "Uw keuzes werden toegepast op hun versie, die ook {fields} wijzigde. Controleer en sla op." },
     "conflictResolvedNoFields": { "en": "Your choices were applied on top of their version. Review and save.", "fr": "Vos choix ont été appliqués sur leur version. Vérifiez puis enregistrez.", "nl": "Uw keuzes werden toegepast op hun versie. Controleer en sla op." },
     "actionFailed":      { "en": "The action failed.", "fr": "L'action a échoué.", "nl": "De actie is mislukt." },
+    "clientUnsupported": { "en": "This action is not available in this browser.", "fr": "Cette action n'est pas disponible dans ce navigateur.", "nl": "Deze actie is niet beschikbaar in deze browser." },
     "confirmDeleteSelected": { "en": "Are you sure you want to delete the selected items?", "fr": "Êtes-vous sûr de vouloir supprimer les éléments sélectionnés ?", "nl": "Weet u zeker dat u de geselecteerde items wilt verwijderen?" },
     "deleteRefused":     { "en": "The items could not be deleted: at least one of them is no longer available.", "fr": "Les éléments n'ont pas pu être supprimés : au moins l'un d'eux n'est plus disponible.", "nl": "De items konden niet worden verwijderd: minstens één ervan is niet meer beschikbaar." },
     "selected":          { "en": "selected",       "fr": "sélectionné(s)",  "nl": "geselecteerd" },

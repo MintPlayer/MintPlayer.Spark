@@ -56,4 +56,11 @@ public sealed class SparkCustomAction
     /// <see cref="SparkClient.ExecuteActionAsync"/>.
     /// </summary>
     public bool IsDefault { get; init; }
+
+    /// <summary>
+    /// The client method the action needs, e.g. <c>webauthn.create</c>: it raises a client-method step
+    /// (<see cref="RetryActionPayload.ClientMethod"/>) a handler answers with <see cref="RetryAnswer.Return"/>.
+    /// Null when the action needs none.
+    /// </summary>
+    public string? RequiresClient { get; init; }
 }

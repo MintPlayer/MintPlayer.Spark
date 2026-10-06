@@ -97,4 +97,13 @@ public sealed class RetryActionPayload
     public string[] Options { get; init; } = [];
     public string? DefaultOption { get; init; }
     public PersistentObject? PersistentObject { get; init; }
+
+    /// <summary>
+    /// Set when the server asks for a client method (<c>IRetryAccessor.Invoke</c>) rather than a choice:
+    /// answer with <see cref="RetryAnswer.Return"/>, or <see cref="RetryAnswer.Cancel"/>.
+    /// </summary>
+    public string? ClientMethod { get; init; }
+
+    /// <summary>The client method's argument, as the server serialized it.</summary>
+    public System.Text.Json.JsonElement? Arguments { get; init; }
 }

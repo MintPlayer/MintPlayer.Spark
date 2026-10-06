@@ -99,7 +99,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
     }
 
     internal static readonly string[] KnownProperties =
-        ["label", "description", "confirmation", "icon", "showedOn", "selectionRule", "refreshOnCompleted", "variant", "offset"];
+        ["label", "description", "confirmation", "icon", "showedOn", "selectionRule", "refreshOnCompleted", "variant", "offset", "requiresClient"];
 
     private static readonly IReadOnlyDictionary<string, TranslatedString> NoTranslations = new Dictionary<string, TranslatedString>();
 
@@ -203,6 +203,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
             Confirmation = confirmation,
             Variant = String("variant"),
             Offset = offset,
+            RequiresClient = String("requiresClient") is { Length: > 0 } requiresClient ? requiresClient : null,
             DeclaredBy = action.DeclaredBy,
             Sources = action.Properties.ToDictionary(p => p.Key, p => p.Value.Layer, StringComparer.OrdinalIgnoreCase),
         };

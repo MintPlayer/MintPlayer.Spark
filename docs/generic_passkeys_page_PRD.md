@@ -342,3 +342,41 @@ a CDP virtual authenticator.
 - Registering (`Endpoints/Passkeys/RegisterPasskey.cs`) neither signs in again nor changes claims.
   Antiforgery binds to the user-id claim, which doesn't change.
 - The 449 re-issues `XSRF-TOKEN` anyway (S1). D3 drops the refresh.
+
+## 10. As built (plan M1, M2, M2a, M2b — 2026-10-06)
+
+Built as D5, D7 and Q9 say, verified by a clean `dotnet build` and `nx build @mintplayer/ng-spark`;
+the tests and specs are written and run in M8. Where the build differs from the text above:
+
+- **`Invoke` is `Task Invoke(string clientMethod, Func<Task<object?>> arguments)`**, awaited by the
+  action: the factory is asynchronous, so the throw on an unanswered step is too
+  (`IRetryAccessor.cs`, `RetryAccessor.cs`). It shares `Action`'s step counter, so mixed
+  conversations number in order (test `Invoke_and_Action_share_one_step_counter…`).
+- **Wire shape of the 449.** A `retry` operation with `options: []`, `title` = the method name,
+  `clientMethod` and `arguments`. The answer is `{ step, option: "OK", value }`, or
+  `{ step, option: "Cancel" }` for an unknown, unsupported, rejected or throwing method. "OK" is a
+  convention, not a choice the server offered.
+- **Arguments are serialized at `Invoke` time with the app's HTTP JSON options** (falling back to
+  `JsonSerializerOptions.Web`), so their spelling matches the envelope and a persistent object
+  inside them still meets the boundary net (D13a) while the request is current. A retry with no
+  persistent object passes the middleware's prompt presentation untouched (`prompt is null`).
+- **Client registration is a map, not a list of `{ name, run }`:**
+  `provideSparkClientMethods({ 'webauthn.create': { invoke(args), supported?(), unsupportedReason? } })`,
+  multi-provided; a later registration of a name wins. `SparkClientMethodRegistry` (client-operations)
+  runs `invoke` and `supported` in an injection context. An unknown name logs one `console.warn`; a
+  rejection is silent (a cancelled ceremony is not an error). An unsupported method answers Cancel
+  **without running**.
+- **A client-method Cancel is always sent to the server**, unlike a modal's Cancel without a Cancel
+  option, which rethrows: the server action decides what a cancelled browser step means.
+- **The .NET protocol client** carries the same fields: `RetryActionPayload.ClientMethod/Arguments`,
+  `RetryAnswer.Return(value)`, `SparkCustomAction.RequiresClient`.
+- **`requiresClient`** is an `actions.json` property (`ActionsCatalogueLoader.KnownProperties`,
+  `ActionsFileEntry`, hence the generated schema) listed by `/spark/actions/list` only when set. The
+  grid toolbar, query card, query-list page, row menu (an inert, `aria-disabled` item, since a menu item
+  cannot be `[disabled]`) and the detail action bar disable it with the translated reason as `title`:
+  `common.clientUnsupported` (en/fr/nl, core `translations.json`) unless the method names its own key.
+- **`paragraph` is a core renderer**, in `sparkCoreRenderers`: the `SPARK_ATTRIBUTE_RENDERERS`
+  default and appended after an app's own list by `provideSparkAttributeRenderers`, so no app wires it
+  and an app's own `paragraph` still wins. A new registration flag, `fullWidth`, makes the detail page
+  drop the label and span the row. It has no column component: as a `showedOn: PersistentObject` text
+  block it never reaches a grid. A blank line starts a paragraph, a single newline is a `<br>`.

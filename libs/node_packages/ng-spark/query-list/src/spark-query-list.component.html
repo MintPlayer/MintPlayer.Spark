@@ -9,7 +9,7 @@
         @if (action.kind !== 'custom' || showCustomActions()) {
           <button *bsPriorityNavItem="action.priority" type="button" [class]="toolbarActionClass(action)"
                   [attr.data-action]="action.name"
-                  [disabled]="!isToolbarActionEnabled(action)" (click)="runToolbarAction(action)">
+                  [disabled]="!isToolbarActionEnabled(action)" [attr.title]="toolbarActionUnavailableReason(action)" (click)="runToolbarAction(action)">
             @if (action.definition.icon && action.kind !== 'custom') {
               <spark-icon [name]="action.definition.icon" />
             }

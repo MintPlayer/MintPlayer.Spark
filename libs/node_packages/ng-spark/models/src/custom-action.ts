@@ -37,4 +37,10 @@ export interface CustomActionDefinition {
    * `/po/new`, the edit page and `/po/delete-many`, never `/actions/execute`. Absent for a custom action.
    */
   isDefault?: boolean;
+  /**
+   * The client method the action needs in the browser (`provideSparkClientMethods`), e.g.
+   * `'webauthn.create'`. When it is not registered, or its `supported()` says no, the action is shown
+   * disabled with the reason as its tooltip. Advisory: the server still handles a cancelled step.
+   */
+  requiresClient?: string;
 }

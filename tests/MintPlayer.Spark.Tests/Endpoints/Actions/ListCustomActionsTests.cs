@@ -115,6 +115,25 @@ public class ListCustomActionsTests
         first.GetProperty("confirmation").GetProperty("en").GetString().Should().NotBeNullOrEmpty();
         first.GetProperty("variant").GetString().Should().Be("warning");
         first.GetProperty("offset").GetInt32().Should().Be(42);
+        first.TryGetProperty("requiresClient", out _).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// <c>requiresClient</c> (generic passkeys page, Q9) reaches the client verbatim, so it can show the
+    /// action disabled when the browser lacks the method; it is omitted when the action needs none.
+    /// </summary>
+    [Fact]
+    public async Task RequiresClient_is_carried_to_the_client()
+    {
+        _modelLoader.ResolveEntityType(Arg.Any<string>()).Returns(CarType);
+        UseCatalogue("""{ "ArchiveCar": { "requiresClient": "webauthn.create" } }""");
+        _actionResolver.GetRegisteredActionNames().Returns(["ArchiveCar"]);
+        _permissions.IsAllowedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        using var doc = await ListAsync();
+
+        var action = doc.RootElement.EnumerateArray().Single(e => !IsDefault(e));
+        action.GetProperty("requiresClient").GetString().Should().Be("webauthn.create");
     }
 
     // ── #467 D7: New, Edit and Delete come from the core layer, each under its own right ─────────

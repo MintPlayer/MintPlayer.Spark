@@ -52,6 +52,14 @@ public sealed class ActionDefinition
     /// <summary>Display order (lower = first); equal offsets keep the catalogue's order.</summary>
     public int Offset { get; init; }
 
+    /// <summary>
+    /// The client method the action needs in the browser (<c>provideSparkClientMethods</c>), e.g.
+    /// <c>"webauthn.create"</c>. The client shows the action disabled, with a reason, when the method
+    /// is not registered or reports itself unsupported. Advisory only: the action still has to treat
+    /// a cancelled client-method step gracefully.
+    /// </summary>
+    public string? RequiresClient { get; init; }
+
     /// <summary>The layer that declared the action.</summary>
     public required string DeclaredBy { get; init; }
 

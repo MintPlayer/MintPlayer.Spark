@@ -24,7 +24,9 @@
         }
         @if (showCustomActions()) {
           @for (action of visibleCustomActions(); track action.name) {
-            <button *bsPriorityNavItem="10 + action.offset" [class]="customActionClass(action)" [disabled]="runningAction() !== null" (click)="onCustomAction(action)">
+            @let unavailable = customActionUnavailableReason(action);
+            <button *bsPriorityNavItem="10 + action.offset" [class]="customActionClass(action)" [attr.data-action]="action.name"
+                    [disabled]="runningAction() !== null || unavailable !== null" [attr.title]="unavailable" (click)="onCustomAction(action)">
               {{ action.label | resolveTranslation }}
             </button>
           }
@@ -97,8 +99,12 @@
       </ng-template>
 
           <ng-template #detailAttrField let-attr let-currentItem="item">
-              <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}<spark-attribute-description [description]="attr.description" /></dt>
-              <dd [sm]="9">
+              <!-- A full-width renderer (the core 'paragraph') is body text: no label, the whole row. -->
+              @let fullWidth = isFullWidthRenderer(attr);
+              @if (!fullWidth) {
+                <dt [sm]="3">{{ (attr.label | resolveTranslation) || attr.name }}<spark-attribute-description [description]="attr.description" /></dt>
+              }
+              <dd [sm]="fullWidth ? 12 : 9">
               @if (getDetailRendererComponent(attr); as rendererType) {
                 <ng-container *ngComponentOutlet="rendererType; inputs: getDetailRendererInputs(rendererType, attr, currentItem)"></ng-container>
               } @else if (attr.dataType === 'AsDetail' && attr.isArray) {

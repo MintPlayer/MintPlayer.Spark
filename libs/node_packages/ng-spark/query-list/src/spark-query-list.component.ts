@@ -175,6 +175,11 @@ export class SparkQueryListComponent {
     return this.grid()?.isToolbarActionEnabled(action) ?? false;
   }
 
+  /** The tooltip of an action disabled for want of its client method (`requiresClient`); null otherwise. */
+  protected toolbarActionUnavailableReason(action: SparkQueryToolbarAction): string | null {
+    return this.grid()?.actionUnavailableReason(action.definition) ?? null;
+  }
+
   protected runToolbarAction(action: SparkQueryToolbarAction): void {
     if (action.kind === 'new') {
       // Through this page's own onCreate, so `createClicked` fires exactly as it always has.

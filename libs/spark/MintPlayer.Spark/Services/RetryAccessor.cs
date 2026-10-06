@@ -1,8 +1,11 @@
+using Microsoft.AspNetCore.Http.Json;
+using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
+using System.Text.Json;
 
 namespace MintPlayer.Spark.Services;
 
@@ -10,6 +13,8 @@ namespace MintPlayer.Spark.Services;
 internal sealed partial class RetryAccessor : IRetryAccessor
 {
     [Inject] private readonly IClientAccessor clientAccessor;
+    // Optional so tests can build the accessor by hand; DI always supplies it (Invoke's arguments).
+    [Inject] private readonly IOptions<JsonOptions>? jsonOptions = null;
 
     /// <summary>
     /// All answered retry results, keyed by step index.
@@ -62,5 +67,34 @@ internal sealed partial class RetryAccessor : IRetryAccessor
         // emitted before this call. Then throw to unwind.
         ((ClientAccessor)clientAccessor).PushRetry(step, title, options, defaultOption, persistentObject, message);
         throw new SparkRetryActionException(step, title, options, defaultOption, persistentObject, message);
+    }
+
+    public async Task Invoke(string clientMethod, Func<Task<object?>> arguments)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(clientMethod);
+        ArgumentNullException.ThrowIfNull(arguments);
+
+        // One step counter for prompts and client methods alike, so a conversation can mix them.
+        var step = currentStep++;
+
+        if (AnsweredResults?.TryGetValue(step, out var result) == true)
+        {
+            Result = result;
+            return;
+        }
+
+        // Only now: the factory may have side effects (a WebAuthn challenge), and an answered step
+        // must not repeat them (PRD D7).
+        var value = await arguments();
+
+        // Serialized with the response's own options, so the wire spelling matches the rest of the
+        // envelope and a persistent object inside the arguments still meets the boundary net (D13a)
+        // here, while the request is current.
+        var serialized = value is null
+            ? (JsonElement?)null
+            : JsonSerializer.SerializeToElement(value, value.GetType(), jsonOptions?.Value.SerializerOptions ?? JsonSerializerOptions.Web);
+
+        ((ClientAccessor)clientAccessor).PushRetry(step, clientMethod, [], null, null, null, clientMethod, serialized);
+        throw new SparkRetryActionException(step, clientMethod, [], null, null, null, clientMethod, serialized);
     }
 }

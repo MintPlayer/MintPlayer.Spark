@@ -1,4 +1,5 @@
 import { InjectionToken, Provider, Type } from '@angular/core';
+import { SparkParagraphRendererComponent } from './paragraph-renderer.component';
 
 export interface SparkAttributeRendererRegistration {
   /** The renderer name (must match attr.renderer in model JSON) */
@@ -32,11 +33,24 @@ export interface SparkAttributeRendererRegistration {
    * give it, which is the whole reason the renderer itself cannot be used here.
    */
   filterLabel?: (value: unknown) => string;
+  /**
+   * The detail page draws the renderer across the whole row, with no label: for text blocks such
+   * as the core `paragraph` renderer, which are body text rather than a labelled value.
+   */
+  fullWidth?: boolean;
 }
+
+/**
+ * The renderers ng-spark ships itself, available in every app without registration. An app's own
+ * registration of the same name wins (it comes first in the list).
+ */
+export const sparkCoreRenderers: readonly SparkAttributeRendererRegistration[] = [
+  { name: 'paragraph', detailComponent: SparkParagraphRendererComponent, fullWidth: true },
+];
 
 export const SPARK_ATTRIBUTE_RENDERERS = new InjectionToken<SparkAttributeRendererRegistration[]>(
   'SparkAttributeRenderers',
-  { factory: () => [] }
+  { factory: () => [...sparkCoreRenderers] }
 );
 
 /**
@@ -53,6 +67,7 @@ export function provideSparkAttributeRenderers(
 ): Provider {
   return {
     provide: SPARK_ATTRIBUTE_RENDERERS,
-    useValue: renderers,
+    // The app's first, so `find` by name lets it replace a core renderer.
+    useValue: [...renderers, ...sparkCoreRenderers],
   };
 }

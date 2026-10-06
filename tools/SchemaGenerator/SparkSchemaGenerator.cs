@@ -347,6 +347,9 @@ public sealed class ActionsFileEntry
     public string? Variant { get; set; }
 
     public int? Offset { get; set; }
+
+    /// <summary>A client method the action needs (<c>provideSparkClientMethods</c>), e.g. <c>webauthn.create</c>; shown disabled with a reason without it.</summary>
+    public string? RequiresClient { get; set; }
 }
 
 /// <summary>Where an action is shown, as <c>actions.json</c> spells it.</summary>

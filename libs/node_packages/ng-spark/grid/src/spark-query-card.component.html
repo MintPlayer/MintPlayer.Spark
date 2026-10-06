@@ -34,7 +34,7 @@
           @for (action of toolbarActions(); track action.name) {
             <button *bsPriorityNavItem="action.priority" type="button" [class]="actionClass(action)"
                     [attr.data-action]="action.name"
-                    [disabled]="!isEnabled(action)" (click)="run(action)">
+                    [disabled]="!isEnabled(action)" [attr.title]="unavailableReason(action)" (click)="run(action)">
               @if (action.definition.icon && action.kind !== 'custom') {
                 <spark-icon [name]="action.definition.icon" />
               }

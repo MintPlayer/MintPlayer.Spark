@@ -67,6 +67,10 @@ export interface RetryOperation {
     defaultOption?: string | null;
     persistentObject?: PersistentObject | null;
     message?: string | null;
+    /** A client method to run instead of a modal (`IRetryAccessor.Invoke`); see `provideSparkClientMethods`. */
+    clientMethod?: string | null;
+    /** Its argument, as the server serialized it. */
+    arguments?: unknown;
 }
 
 /**

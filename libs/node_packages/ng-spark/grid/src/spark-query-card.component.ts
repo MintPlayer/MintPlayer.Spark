@@ -163,6 +163,11 @@ export class SparkQueryCardComponent {
     return this.grid()?.isToolbarActionEnabled(action) ?? false;
   }
 
+  /** The tooltip of an action disabled for want of its client method (`requiresClient`); null otherwise. */
+  protected unavailableReason(action: SparkQueryToolbarAction): string | null {
+    return this.grid()?.actionUnavailableReason(action.definition) ?? null;
+  }
+
   protected run(action: SparkQueryToolbarAction): void {
     void this.grid()?.runToolbarAction(action);
   }

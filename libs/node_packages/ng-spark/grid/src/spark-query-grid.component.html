@@ -166,7 +166,10 @@
                          (detach)="closeRowMenu(row.id)">
               <bs-dropdown-menu class="spark-row-menu">
                 @for (action of rowActions(); track action.name) {
+                  @let unavailable = actionUnavailableReason(action.definition);
                   <li bsDropdownItem class="spark-row-action" [attr.data-action]="action.name"
+                      [class.disabled]="unavailable !== null" [attr.aria-disabled]="unavailable !== null ? 'true' : null"
+                      [attr.title]="unavailable"
                       (click)="chooseRowAction(action, row)">
                     {{ action.definition.label | resolveTranslation }}
                   </li>

@@ -8,8 +8,10 @@ in M8. Milestones are verified by reading the code and type-checking.
 | Milestone | State |
 |---|---|
 | M0 Spikes S1–S5 | ✅ 2026-10-06, PRD §9 |
-| M1 Client-method retry: server | ⏳ |
-| M2 Client-method retry: client | ⏳ |
+| M1 Client-method retry: server | ✅ 2026-10-06 (tests written, run in M8) |
+| M2 Client-method retry: client | ✅ 2026-10-06 (specs written, run in M8) |
+| M2a `paragraph` renderer (PRD D5, grill Q8 = B) — missing from the original plan | ✅ 2026-10-06 |
+| M2b `requiresClient` on actions (PRD §5 O5, grill Q9 = C) — missing from the original plan | ✅ 2026-10-06 |
 | M3 `Passkeys` PO + `my-passkeys` query | ⏳ |
 | M4 Add / Rename / Remove actions | ⏳ |
 | M5 App wiring (CodeCoverage, Fleet, HR) | ⏳ |
@@ -58,6 +60,24 @@ endpoints, with no backward compatibility.
   - unknown name
   - rejection
   - the depth cap still holds
+
+## M2a — `paragraph` renderer (PRD D5)
+
+- `ng-spark/renderers`: `SparkParagraphRendererComponent`, shipped as a core renderer
+  (`sparkCoreRenderers`, available without registration; an app's own `paragraph` wins).
+- Registration flag `fullWidth`: the detail page drops the label and spans the row.
+- Escaped by default; `rendererOptions.sanitize === false` → `[innerHTML]`, never
+  `bypassSecurityTrustHtml`.
+- Specs: escaping, line breaks, the innerHTML path stripping `<script>` / `onerror`, core registration.
+
+## M2b — `requiresClient` (PRD §5 O5 / Q9)
+
+- `actions.json` property `requiresClient` (loader `KnownProperties`, `ActionsFileEntry` → schema),
+  carried by `/spark/actions/list` (omitted when null) and the .NET client's `SparkCustomAction`.
+- Client: `SparkClientMethodRegistry.unavailableReason(name)`; the grid toolbar, query card,
+  query-list page, row menu and the detail page's action bar disable the action and show the
+  translated reason (`common.clientUnsupported`, or the method's own `unsupportedReason`) as `title`.
+- Tests/specs: listing carries it; grid disables / leaves the rule in charge / inert row-menu item.
 
 ## M3 — `Passkeys` PO and the `my-passkeys` query (Authorization library)
 

@@ -919,7 +919,7 @@ public partial class SparkClient : IDisposable
                     $"\"{answer.Option}\" is not one of the options offered for step {prompt.Step} " +
                     $"(\"{prompt.Title}\"): {string.Join(" / ", prompt.Options)}.", nameof(onRetry));
 
-            answers.Add(new { step = prompt.Step, option = answer.Option, persistentObject = answer.PersistentObject });
+            answers.Add(new { step = prompt.Step, option = answer.Option, persistentObject = answer.PersistentObject, value = answer.Value });
             body["retryResults"] = answers.ToArray();
         }
     }

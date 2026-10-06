@@ -203,6 +203,10 @@ public static class SparkClientOperations
                     PersistentObject = op.TryGetProperty("persistentObject", out var po) && po.ValueKind == JsonValueKind.Object
                         ? Deserialize<PersistentObject>(po)
                         : null,
+                    ClientMethod = String(op, "clientMethod"),
+                    Arguments = op.TryGetProperty("arguments", out var arguments) && arguments.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+                        ? arguments.Clone()
+                        : null,
                 },
             },
             _ => new SparkUnknownOperation { Type = type, Raw = raw },

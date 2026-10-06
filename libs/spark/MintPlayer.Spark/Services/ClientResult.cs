@@ -65,7 +65,8 @@ internal static class ClientResult
         if (!client.Operations.Any(o => o is RetryOperation))
         {
             ((ClientAccessor)client).PushRetry(
-                ex.Step, ex.Title, ex.Options, ex.DefaultOption, ex.PersistentObject, ex.RetryMessage);
+                ex.Step, ex.Title, ex.Options, ex.DefaultOption, ex.PersistentObject, ex.RetryMessage,
+                ex.ClientMethod, ex.Arguments);
         }
         return Envelope(client, null, 449);
     }

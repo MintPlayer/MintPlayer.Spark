@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
-import { ClientOperationEnvelope, RetryOperation, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
+import { ClientOperationEnvelope, RetryOperation, SparkClientMethodRegistry, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
@@ -98,6 +98,7 @@ export class SparkService {
    */
   private static readonly MAX_RETRY_DEPTH = 16;
   private readonly dispatcher = inject(SparkClientOperationDispatcher);
+  private readonly clientMethods = inject(SparkClientMethodRegistry);
 
   // Entity Types
   async getEntityTypes(): Promise<EntityType[]> {
@@ -516,6 +517,18 @@ export class SparkService {
         `Gave up after answering ${SparkService.MAX_RETRY_DEPTH} retry prompts; the last was step ` +
         `${retryOp.step} ("${retryOp.title}"). A hook that raises a retry without checking ` +
         `Retry.Result first will do this — it re-raises on every resubmission.`);
+    }
+
+    // A client-method step (`IRetryAccessor.Invoke`): no modal, the registered method answers. Any
+    // failure, an unknown name included, is sent to the server as Cancel rather than thrown, because
+    // the server action decides what a cancelled browser step means (PRD D7, Q9).
+    if (retryOp.clientMethod) {
+      const outcome = await this.clientMethods.invoke(retryOp.clientMethod, retryOp.arguments);
+      const answer: RetryActionResult = outcome.ok
+        ? { step: retryOp.step, option: 'OK', value: outcome.value }
+        : { step: retryOp.step, option: 'Cancel' };
+      body.retryResults = [...(body.retryResults || []), answer];
+      return retryFn();
     }
 
     const payload: RetryActionPayload = {

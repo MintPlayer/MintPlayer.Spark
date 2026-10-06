@@ -9,11 +9,21 @@ namespace MintPlayer.Spark.Client;
 /// </summary>
 public sealed class RetryAnswer
 {
-    private RetryAnswer(string option, PersistentObject? persistentObject)
+    private RetryAnswer(string option, PersistentObject? persistentObject, object? value = null)
     {
         Option = option;
         PersistentObject = persistentObject;
+        Value = value;
     }
+
+    /// <summary>What a client-method step resolved with (<see cref="Return"/>); null otherwise.</summary>
+    public object? Value { get; }
+
+    /// <summary>
+    /// Answers a client-method step (<see cref="RetryActionPayload.ClientMethod"/>) with what the method
+    /// resolved to, as the browser would. The option is <c>"OK"</c>.
+    /// </summary>
+    public static RetryAnswer Return(object? value) => new("OK", null, value);
 
     /// <summary>The label of the option chosen, exactly as it appeared in the prompt's options.</summary>
     public string Option { get; }

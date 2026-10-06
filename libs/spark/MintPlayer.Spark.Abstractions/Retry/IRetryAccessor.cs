@@ -25,4 +25,24 @@ public interface IRetryAccessor
         PersistentObject? persistentObject = null,
         string? message = null
     );
+
+    /// <summary>
+    /// Asks the browser to run the client method registered under <paramref name="clientMethod"/>
+    /// (<c>provideSparkClientMethods</c>) and hand its result back to this action. The same step
+    /// pump as <see cref="Action"/>: on an unanswered step this throws and never returns; on the
+    /// replay of an answered step it returns and <see cref="Result"/> holds the answer —
+    /// <see cref="RetryResult.Value"/> on success, <see cref="RetryResult.Option"/> <c>"Cancel"</c>
+    /// when the method was unknown, unsupported, rejected or threw.
+    /// </summary>
+    /// <param name="clientMethod">The registered name, e.g. <c>"webauthn.create"</c>.</param>
+    /// <param name="arguments">
+    /// Builds the method's argument. Runs <b>only</b> for an unanswered step.
+    /// </param>
+    /// <remarks>
+    /// ⚠️ <b>The action re-runs from the top on every pass.</b> Arguments are a factory, not a value,
+    /// because building them may have side effects — a WebAuthn challenge issued again on the answering
+    /// pass would overwrite the state the answer must be checked against. Anything else an action does
+    /// before a retry step must be side-effect free or idempotent for the same reason.
+    /// </remarks>
+    Task Invoke(string clientMethod, Func<Task<object?>> arguments);
 }

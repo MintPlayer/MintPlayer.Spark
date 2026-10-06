@@ -14,7 +14,7 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkService, SparkLanguageService, SparkReturnNavigationService } from '@mintplayer/ng-spark/services';
-import { SparkAttributePatch, SparkAttributeRefreshService, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
+import { SparkAttributePatch, SparkAttributeRefreshService, SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import {
   TranslateKeyPipe,
   ResolveTranslationPipe,
@@ -75,6 +75,7 @@ export class SparkPoDetailComponent {
   private readonly queryRefresh = inject(SparkQueryRefreshService);
   private readonly attributeRefresh = inject(SparkAttributeRefreshService);
   protected readonly lang = inject(SparkLanguageService);
+  private readonly clientMethods = inject(SparkClientMethodRegistry);
   protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   /**
@@ -371,6 +372,12 @@ export class SparkPoDetailComponent {
     return this.visibleAttributes().filter(a => a.group === group.id);
   }
 
+  /** Whether the attribute's renderer asks for the whole row, without a label (`fullWidth`). */
+  isFullWidthRenderer(attr: EntityAttributeDefinition): boolean {
+    if (!attr.renderer) return false;
+    return this.rendererRegistry.find(r => r.name === attr.renderer)?.fullWidth === true;
+  }
+
   getDetailRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
     if (!attr.renderer) return null;
     return this.rendererRegistry.find(r => r.name === attr.renderer)?.detailComponent ?? null;
@@ -505,10 +512,20 @@ export class SparkPoDetailComponent {
    */
   runningAction = signal<string | null>(null);
 
+  /**
+   * Why an action cannot run in this browser, translated, for its tooltip: the client method it
+   * requires (`requiresClient`) is not registered or not supported here (Q9). Null otherwise.
+   */
+  protected customActionUnavailableReason(action: CustomActionDefinition): string | null {
+    const key = this.clientMethods.unavailableReason(action.requiresClient);
+    return key === null ? null : this.lang.t(key);
+  }
+
   async onCustomAction(action: CustomActionDefinition): Promise<void> {
     // Guard re-entry as well as disabling the button: the template is not the only caller, and a
     // host component driving this method directly would otherwise bypass the check.
     if (this.runningAction()) return;
+    if (this.clientMethods.unavailableReason(action.requiresClient) !== null) return;
 
     const message = confirmationText(action, 1);
     if (message && !confirm(message)) return;

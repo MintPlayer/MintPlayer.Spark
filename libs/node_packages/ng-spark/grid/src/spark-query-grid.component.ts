@@ -18,7 +18,7 @@ import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { CdkConnectedOverlay, CdkOverlayOrigin, type ConnectedPosition } from '@angular/cdk/overlay';
 import { BsDropdownItemDirective, BsDropdownMenuComponent } from '@mintplayer/ng-bootstrap/dropdown-menu';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
+import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { QueryCellValuePipe, QueryReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
@@ -94,6 +94,7 @@ export class SparkQueryGridComponent {
   /** Add-on row-menu entries (`SPARK_QUERY_ROW_ACTIONS`), e.g. Contributions' revert. */
   private readonly addonRowActions = orderSparkExtensions(inject(SPARK_QUERY_ROW_ACTIONS, { optional: true }), a => a.priority ?? 50);
   readonly lang = inject(SparkLanguageService);
+  private readonly clientMethods = inject(SparkClientMethodRegistry);
 
   /** Query alias or id. */
   queryId = input.required<string>();
@@ -537,6 +538,8 @@ export class SparkQueryGridComponent {
 
   /** Runs the chosen row-menu item and closes the menu. */
   async chooseRowAction(action: SparkQueryToolbarAction, row: QueryResultItem): Promise<void> {
+    // A menu item cannot be [disabled]; one whose client method is unavailable is inert instead.
+    if (this.actionUnavailableReason(action.definition) !== null) return;
     this.closeRowMenu();
     await this.runRowAction(action, row);
   }
@@ -675,9 +678,22 @@ export class SparkQueryGridComponent {
   hasExternalData = computed(() =>
     this.data() !== null || this.query()?.isStreamingQuery === true);
 
-  /** Whether an action's selection rule is satisfied right now. The server checks it again. */
+  /**
+   * Whether an action can run right now: its selection rule is satisfied, and the client method it
+   * requires (`requiresClient`) is registered and supported here. The server checks the rule again.
+   */
   isActionEnabled(action: CustomActionDefinition): boolean {
-    return parseSelectionRule(action.selectionRule)(this.selection().map(r => r.id).length);
+    return this.clientMethods.unavailableReason(action.requiresClient) === null
+      && parseSelectionRule(action.selectionRule)(this.selection().map(r => r.id).length);
+  }
+
+  /**
+   * Why an action is disabled regardless of the selection, translated, for its tooltip: its required
+   * client method is missing or unsupported in this browser (Q9). Null when nothing stands in the way.
+   */
+  actionUnavailableReason(action: CustomActionDefinition): string | null {
+    const key = this.clientMethods.unavailableReason(action.requiresClient);
+    return key === null ? null : this.lang.t(key);
   }
 
   constructor() {
