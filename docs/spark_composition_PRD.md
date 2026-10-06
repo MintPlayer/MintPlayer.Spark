@@ -79,8 +79,9 @@ Plus side channels: reserved verbs via `[assembly: SparkReservedActions]`, rende
 - **G1** Any plugin library can ship sensible default files: actions, PersistentObjects (model),
   default rights, translations, program units, and later other file kinds.
 - **G2** The application ships its own files, whose fields **override** the defaults
-  (composition). It does not copy them. Example: overriding only an action's icon
-  (`apps/QnA/QnA/App_Data/actions.json:4`).
+  (composition). It does not copy them. Example: overriding only the icon of a library-shipped
+  action. (Correction from S2: `apps/QnA/QnA/App_Data/actions.json:4` is the app's own action, not
+  an override.)
 - **G3** Library updates **reach** apps. A one-time copy into the app is not allowed.
 - **G4** The behaviour is identical for **PackageReference and ProjectReference**, with as little
   duplication as possible (DRY).
@@ -112,6 +113,13 @@ Plus side channels: reserved verbs via `[assembly: SparkReservedActions]`, rende
 **✅ Decided: C** (owner, 2026-10-06, after a walkthrough of today's actions and translations
 transport). The rest of this section is kept for the record.
 
+**Amended by S1:** runtime discovery does not rely on a `SparkAware` walk alone. The compiler
+drops a referenced assembly whose types the app never uses, so a library that ships only layers
+was visible at compile time but **missing at runtime**. The app-side generator records the layered
+assemblies (`[assembly: SparkLayerAssemblies("…")]`), and the runtime `Assembly.Load`s exactly
+those, so both views agree. Layer paths are embedded relative, with `/`. Web SDK libraries keep
+`Content Remove` on their layer files (NETSDK1152).
+
 **Recommendation was: C**, with D9 for visibility. If physical files are a hard requirement, B
 (Static Web Assets pattern, composed into `obj`/`bin`) rather than A, and every reader moves to
 the output folder.
@@ -124,7 +132,12 @@ raw JSON trees and records which layer each leaf came from.
 - **Objects** merge per property.
 - **Arrays of identified elements** merge per element key. **Arrays of primitives** are replaced
   whole.
-- **`null`** removes an element or resets a property to the layer below.
+- **`null`** resets a property to the layer below. A keyed-array **element** is removed with
+  `{"<key>": "...", "$remove": true}`, because a bare `null` carries no key (S2). A property that is
+  reset and then set again by a later layer is **appended**. Today's engine keeps the old position,
+  which only `Sources` and the printed actions show; the hash sorts (S2).
+- **Atomic paths:** `KindSpec.IsAtomic(path)` marks values that are replaced whole rather than
+  merged. For example, an action's object-valued properties at depth 2 (S2).
 - **Annotations** (`$schema`, `_`-prefixed keys) are ignored.
 - **Conflicts:**
   - Library against library: a diagnostic at compile time (the generator) and at startup.
@@ -139,7 +152,7 @@ raw JSON trees and records which layer each leaf came from.
 | Kind | Element key | Notes |
 |---|---|---|
 | actions | action name (case-insensitive) | as today |
-| translations | key, then language | `""` from the app ignored; moves from compile time to the same runtime engine (D10) |
+| translations | key (ordinal), then language | each layer is **flattened first**, so `"a.b"` and `{"a":{"b"}}` meet; `"ns": null` removes a whole prefix; a new language is appended (`GetValue` falls back to the first); `""` from the app ignored; moves from compile time to the same runtime engine (D10) |
 | model | `persistentObject.name` | `attributes[]`, `tabs[]`, `groups[]`, `queries[]` by name. **`id` can never be overridden.** An app file for a library type is a delta |
 | programUnits | unit id | |
 | culture | (app only; libraries may not ship it) | |
@@ -211,7 +224,15 @@ keep their minted ids.
   like every other kind.
 - The `HostTranslationsAggregatorGenerator` registry is removed.
 - The generators that need translations at compile time read the library attributes plus the
-  app's AdditionalFiles, as the analyzers do for actions today.
+  app's AdditionalFiles, as the analyzers do for actions today. S3 found that only SPARK_TRANS_005
+  needs this; it moves to an analyzer like `LibraryActionsConflictAnalyzer`.
+- `LibraryTranslationsGenerator` is gated off for the host. Today it also embeds the host's own
+  file, which would double the app layer at runtime (S3).
+- The static `SparkTranslations.All` (read at `SparkText.cs:32`, `TranslationsLoader.cs:16`,
+  `TranslationsSeeder.cs:77` and `ModelSynchronizer.cs:1300`, and filled today by a ModuleInitializer)
+  becomes a startup-registered snapshot that is swapped atomically on reload.
+- Cost (S3, measured): 3–20 ms warm and 66–172 ms cold for 3 layers and up to 586 keys. That is
+  acceptable, provided the engine uses indexed lookups; a naive version took 120 ms warm.
 
 ### D11 — DRY imports
 - `spark.props`/`.targets` (and each library's targets) are imported **once** from
@@ -221,6 +242,23 @@ keep their minted ids.
   generators and tests.
 - Application detection uses `'$(OutputType)'=='Exe' And '$(IsTestProject)'!='true'`, with an
   explicit opt-out property.
+- **Amended by S4:**
+  - **Everything is imported from `Directory.Build.targets`, the props included.** `OutputType`
+    and `IsTestProject` are still empty when `Directory.Build.props` is evaluated, for all 56
+    projects. That only holds while no csproj body reads `SparkAppDataDir`/`SpaRoot` at
+    evaluation time, and none does.
+  - **The opt-out is `<SparkApplication>false</SparkApplication>`.** Tools need it:
+    `tools/SchemaGenerator` is an Exe and otherwise gets SPARK001 and an `AGENTS.md`.
+  - **Library targets** (for example `spark-authorization.targets`) gate at execution time on
+    `@(ReferencePath)`, never on the application type. Otherwise DemoApp, which has no
+    Authorization reference, got SPARK030 and a generated `spark-auth.setup.ts`.
+  - **Two kinds of target stay per project.**
+    - The targets that add ProjectReferences (`spark-allfeatures.targets`,
+      `spark-contributions.targets`), because restore does not see `IsTestProject`.
+    - `spark-testing.targets`, because only 3 of the 5 test projects get its AGENTS.md.
+  - **Proven:** 18 hand `<Import>`s removed, the solution builds with 0 errors and the same 309
+    warnings by code, no new files appear in any project, and the 5 apps' AdditionalFiles,
+    ProjectReferences and Spark properties are identical to before.
 
 ### D12 — One `App_Data` location
 - Every runtime and generator site resolves `App_Data` through one helper, honouring
@@ -242,6 +280,11 @@ Generators and analyzers (`netstandard2.0`) need composed data at compile time, 
 file set**, linked into both. Two engines are exactly how actions (runtime) and translations
 (compile time) drifted apart. There is a test that runs the same golden layers through both
 builds.
+- **The tree type (S2).** The generators have no System.Text.Json, and their MiniJson rejects
+  arrays, which the model kind needs. So the shared source works on a small abstract JSON tree
+  (or MiniJson with arrays added), not on `System.Text.Json.Nodes`.
+- **Three engines today, not two.** `LibraryActionsConflictAnalyzer` re-composes actions at
+  compile time. It folds into the shared engine.
 
 ### D15 — What is uniform and what stays per kind
 - **Uniform across every kind:**
@@ -258,6 +301,10 @@ builds.
   - model ids are immutable
   - rights are a keyed grant set with guard rails, not overridable fields (D4)
   - translations keep "`""` = untranslated" **and gain `null` removal**, which they lack today
+  - key case sensitivity: actions are case-insensitive and translations are ordinal. This is
+    deliberate (S2 drift list).
+  - **Uniform, newly for translations:** the library order rule (core first, then by
+    dependency). Translations are only ordinal-alphabetical today (S2).
 - **Not layered:**
   - `culture.json` (app-only)
   - `modelHashes.json` and `securityPosture.txt` (gate outputs)
@@ -271,7 +318,7 @@ The owner's constraints (2026-10-06):
 - **(2)** No API response exposes hidden values, nor even that a hidden attribute exists.
 
 The decision: **construction-time pruning plus one boundary safety net.**
-- **Construction.** `IManager` builds persistent objects pruned for the current caller. Pruning
+- **Construction.** `IEntityMapper` (`GetPersistentObject` and `ToPersistentObject`; `IManager` only delegates to it, S5) builds persistent objects pruned for the current caller and verb. Pruning
   **removes** refused attributes; it does not blank them, so their existence does not leak.
   System code uses a named, reviewable `manager.AsSystem()`. A request with no HTTP caller (a
   background job) is explicitly the system caller, never an anonymous one.
@@ -285,21 +332,25 @@ The decision: **construction-time pruning plus one boundary safety net.**
     `PersistentObjectPresenter`) collapse into the net.
 - **Breadcrumbs (constraint 1).** These are resolved from the **entity** by `BreadcrumbResolver`,
   not from the pruned object's attributes, so pruning does not break them. Tokens a static right
-  refuses already render as the redaction placeholder (`BreadcrumbResolver.cs:224-237, :413`,
+  refuses already render empty, the same as an empty value (`BreadcrumbResolver.cs:440-443`; the placeholder is only for a whole denied document, :237, :413; corrected by S7;
   contributions M2c-2a).
   - The breadcrumb **template** sent with type metadata must not name a hidden attribute either.
-    S7 checks this.
+    S7 found that it does today (EntityTypeDefinition.cs:96), so `ForFormAsync`/`ForQueryAsync` rewrite it, and query `SortColumns`/`Columns` are filtered as well (§9 S7).
 - **Leak test (constraint 2).** A test seeds canary values and canary attribute names on hidden
   attributes. It asserts that **no** serialized response contains either: PO get/new/refresh/save,
   query rows, breadcrumbs, type metadata, retry prompts and error messages.
 - **Trap.** Hooks that read a hidden attribute now see it missing, and silently compute something
   wrong. S5 lists every `GetPersistentObject` caller and every attribute-reading hook before
-  pruning is switched on. Each one that needs hidden data moves to `AsSystem()`.
+  pruning is switched on. Each one that needs hidden data moves to `AsSystem()`. Writing to a pruned attribute is a silent no-op, and hooks get `TryGet`, because ForgeAccountsActions.cs:51 writes a Read-denied attribute (§9 S5).
 
 ### D16 — Library alias (grill Q7 = B)
 - Every library that ships layers declares `<SparkLibraryAlias>authorization</SparkLibraryAlias>` in
   its csproj. It is **required**, with no default derived from the assembly name.
 - The generator reads it through `CompilerVisibleProperty` and stamps it into the layer attribute.
+  This was proven over both reference kinds (S1).
+- A library author references the generator package with `PrivateAssets="all"`. Without it the
+  generator flowed into the app despite the nuspec's `exclude`, ran twice, and broke the build with
+  CS0101 (S1). An analyzer checks this, the way SPARK002 does.
 - The alias is used in:
   - right keys (`authorization:passkeys-read`)
   - slot tokens (`moderation:moderators`)
@@ -366,7 +417,8 @@ The decision: **construction-time pruning plus one boundary safety net.**
 - `MintPlayer.Spark.Authorization` ships `SparkUser`, `Passkeys` and `PasskeyRow` (model) plus
   their default rights. CodeCoverage, Fleet and HR delete their hand copies, and the passkeys
   page works on each. QnA overrides one `SparkUser` attribute with a delta.
-- QnA's icon override (`actions.json:4`) still composes. Core New/Edit/Delete are shipped by the
+- An app override of one property of a **library** action composes. No golden file in the repo
+  exercises an override today: QnA's `actions.json:4` is the app's own `CloseQuestion` (S2). Core New/Edit/Delete are shipped by the
   core layer.
 - The same app, consuming the libraries as **packages** from a local feed, composes identically
   (S1, kept as a test).
@@ -392,3 +444,221 @@ The decision: **construction-time pruning plus one boundary safety net.**
 | 11 | `moderation.json` joins the engine; group ids become tokens or bindings; it stays reachable as `IConfiguration` below appsettings and environment variables | Grill Q6 = B, 2026-10-06. It is the same group-reference problem as D4, and its defaults belong to the library (G1) |
 | 12 | Explicit, required short alias per library (D16) | Grill Q7 = B: the owner's own proposal, the final call delegated to Claude (2026-10-06). An alias implied by the assembly name would change keys and ids silently on a rename, and make collisions likelier |
 | 5 | One engine source, linked into both the runtime and the generators (D14) | The actions and translations engines drifted apart (case sensitivity, `null`/`""`, ordering), per the inventory investigation |
+
+## 9. Spike results
+
+### S1 — embedded layers over ProjectReference and PackageReference (2026-10-06, standalone prototype)
+
+**Verdict: PROVEN, with two pitfalls (D1, D16 amended).**
+
+**Setup.** A standalone prototype was built outside the repo, so the repo's Directory.Build files
+could not affect it:
+- **Contract.** `[assembly: SparkLayer(alias, path, json)]`.
+- **Library generator** (netstandard2.0, packed into `analyzers/dotnet/cs`). It reads AdditionalFiles
+  that carry `SparkLayerPath` metadata, plus `build_property.SparkLibraryAlias`.
+- **Items.** `buildTransitive` props/targets add `Model/*.json` and `security.json` as AdditionalFiles.
+- **App-side dump generator.** It reads `SourceModule.ReferencedAssemblySymbols`.
+- **Libraries.**
+  - An in-repo-style library (ProjectReference plus Import) holding QnA's real `SparkUser.json`,
+    `DeleteReason.json` and `security.json`.
+  - A third-party-style library built **only from packages**.
+- **Two apps.** One consumes the libraries by ProjectReference, the other by PackageReference from a
+  local folder feed.
+
+**Result.** The runtime dump and the compile-time dump (`alias|assembly|path|length|sha256`, for
+example `authorization|Proto.Auth|security.json|10088|D2A7B61251C49CA3`) are **byte-identical
+between the two apps**.
+- **Consumers** need no buildTransitive for transport, because the layers sit inside the dll.
+- **Library authors** need it for the items, the metadata and `CompilerVisibleProperty`.
+
+**Pitfalls**
+1. **Reference trimming.** A library whose types the app never uses is dropped from the app's
+   metadata. Its layer was seen at compile time but not by the runtime walk. The fix, proven: the
+   app-side generator records `[assembly: SparkLayerAssemblies(...)]` and the runtime loads exactly
+   those names (D1).
+2. **The generator flows to the app.** Without `PrivateAssets="all"` on the library author's
+   generator reference, the generator reached the app and ran twice, which fails with CS0101 (D16).
+3. **Size is not a constraint.**
+   - 1 MB and 20 MB JSON round-trip with identical hashes; a 20 MB dll builds in 16 s and is read
+     in 300 ms.
+   - The largest real Model directory is 116 KB (CodeCoverage).
+   - There is no CS8103, because attribute blobs live in #Blob, not #US.
+   - Reflection reads are cached.
+4. **Paths** are embedded relative, with `/`, through item metadata. No machine paths.
+5. **Web SDK libraries** keep `Content Remove` (NETSDK1152).
+
+The prototype is in the session scratchpad (`s1/`, driven by `run.sh`) and is not committed.
+
+### S4 — repo-wide import of the Spark targets (2026-10-06, worktree, not committed)
+
+**Verdict: PROVEN with amendments (D11 amended).**
+
+**Change.** `Directory.Build.targets` imports `spark.props`, `spark-authorization.props`,
+`spark-authorization.targets` and `spark.targets` under
+`SparkApplication = OutputType=='Exe' And IsTestProject!='true'`, with the opt-out
+`<SparkApplication>false</SparkApplication>`. A gating target, `_SparkGateAuthorizationTargets`
+(AfterTargets=ResolveAssemblyReferences), sets `EnableSparkAuthSpa=false` unless
+`@(ReferencePath)` contains `MintPlayer.Spark.Authorization`. The 18 hand `<Import>`s were removed
+from CodeCoverage, DemoApp, Fleet, HR and QnA.
+
+**Evidence** (`dotnet build MintPlayer.Spark.slnx`)
+
+| Build | Errors | Notes |
+|---|---|---|
+| Baseline | 0 | 309 warnings |
+| Naive guard | 1 | SchemaGenerator got SPARK001 and an `AGENTS.md`; DemoApp got SPARK030 and `spark-auth.setup.ts` |
+| Fixed | 0 | 309 warnings, identical histogram by code; no new files in any project |
+
+**Probing all 56 csproj files** (`-getProperty`/`-getItem`):
+- `OutputType`/`IsTestProject` are empty at props time.
+- In the targets file, all 5 test projects are `Exe` + `IsTestProject=true` (xunit 2.9.3 with the
+  current Test.Sdk), so the guard holds.
+- The apps' AdditionalFiles, ProjectReferences and Spark properties are identical to the
+  hand-import baseline. DemoApp differs only in auth defaults, which are cancelled at execution.
+
+**Stays per project:**
+- the ProjectReference-adding targets, because restore does not see `IsTestProject`;
+- `spark-testing.targets`.
+
+**Unrelated finding:** a baseline build already modifies `package-lock.json` and generates the
+gitignored `spark-auth.setup.ts` in four apps.
+
+### S2 — `SparkLayers.Compose` against today's actions engine (2026-10-06, throw-away prototype)
+
+**Verdict: PROVEN, with one ordering caveat.**
+- **Golden test.** The core layer came from the `[assembly: SparkActions]` in QnA's bin, the only
+  library actions layer (314 chars, `MintPlayer.Spark`), with `apps/QnA/QnA/App_Data/actions.json`
+  on top. A dump of action, declaredBy, property=json @layer and the conflicts from both engines was
+  **identical (1008 bytes)**.
+- **Edge cases.** Five synthetic edge cases were run through both engines; four were identical:
+  - case-insensitive names, keeping the first spelling;
+  - a `null` remove followed by a re-add, which appends;
+  - lib-vs-lib conflicts, with the app silent and `""` kept;
+  - annotations, and an object-valued property.
+
+  The fifth differed: a property reset with `null` and then set again keeps its old position in
+  today's engine, because .NET `Dictionary` reuses the slot (`SparkActionLayers.cs:127,140`). The
+  new engine appends it. The hash is unaffected, because `ConfigFileShape.DescribeActions` sorts.
+  Decided: append (D2).
+- **Model delta.** The library layer was QnA's `SparkUser.json`. The app delta changed `UserName`'s
+  `showedOn` (the real QnA-vs-CodeCoverage drift) and added an attribute.
+  - Every library field was kept. Provenance per leaf was correct: `attributes[UserName].showedOn`
+    came from the app and `.isReadOnly` from the library.
+  - An app changing `persistentObject.id` or an attribute `id` was refused with two errors.
+  - A keyed-array element cannot be removed with `null`, so the prototype used `$remove: true`
+    (D2).
+- **Engine needs.** `KindSpec.IsAtomic(path)` was required, because an action's object-valued
+  properties are replaced whole.
+- **The drift list** (actions vs translations, plus the actions analyzer):
+  1. Key case: actions are insensitive; translations are ordinal for both key and language.
+  2. Library order: actions put core first, then case-insensitive alphabetical; translations are
+     ordinal alphabetical.
+  3. `null`: actions remove or reset; in translations it marks the leaf "mixed" and drops the
+     subtree (SPARK_TRANS_002, silently for the host).
+  4. `""`: a value in actions; in translations the app's is ignored and a library's is kept.
+  5. Invalid JSON: the actions runtime throws; the generators and the analyzer skip silently, and
+     the analyzer reads a scalar action as a removal.
+  6. Duplicate names: the actions runtime throws; the analyzer and MiniJson keep the last one.
+  7. Conflict equality: `JsonNode.DeepEquals`, sorted-key strings, or ordinal strings.
+  8. Translations are a nested tree that is flattened per layer.
+  9. The order of languages matters.
+  10. A third engine exists: `LibraryActionsConflictAnalyzer`.
+
+  All of these are settled in D2, D3, D14 and D15.
+- Spike code and logs are in the session scratchpad (`spike/SparkLayers.cs`, `spike/Program.cs`).
+  They are not committed.
+
+### S3 — translations at runtime (2026-10-06, throw-away prototype)
+
+**Verdict: PROVEN.**
+- **Golden test.** Runtime composition read the `[SparkTranslations]` chunks by reflection, added
+  the app's `translations.json` from disk, then flattened and merged. It matched the generated
+  `SparkTranslationsRegistry.All` exactly, including language order: QnA 398 of 398 keys,
+  CodeCoverage 586 of 586.
+- **The host embeds its own chunk.** `LibraryTranslationsGenerator` is not gated to libraries, so
+  this would duplicate the app layer. It has to be gated off (D10).
+- **Compile-time consumers.**
+  - `LibraryTranslationsGenerator` (SPARK_TRANS_001–004) is unaffected.
+  - `HostTranslationsAggregatorGenerator` is removed. Its SPARK_TRANS_005 already reads
+    referenced-assembly attributes plus AdditionalFiles, and moves to an analyzer.
+  - No other generator or analyzer reads translations (`GenerateIndex`, `SparkModelSymbols`,
+    `ModelNamesReader`, `ModelJsonReader` checked).
+- **Startup cost** (Stopwatch; noisy machine; assemblies preloaded; discovery, parse, flatten and
+  merge counted):
+
+| App | Layers | Cold, 5 processes | Warm median | Warm min |
+|---|---|---|---|---|
+| QnA | 3 | 66–172 ms | 10.6–17.7 ms | 3.1 ms |
+| CodeCoverage | 3 | 90–168 ms | 12–20 ms | 4.3 ms |
+
+  The first prototype took 120 ms warm, because of O(n²) lookups and provenance scans. The shared
+  engine therefore uses indexed lookups.
+
+### S5 — callers of `GetPersistentObject` (2026-10-06, code reading)
+
+**Verdict: D13 is feasible but sits at the wrong layer.** The three `IManager.GetPersistentObject`
+overloads (`IManager.cs:23,30,38`) only delegate to `IEntityMapper` (`Manager.cs:21-27`). The real
+construction paths are `IEntityMapper.GetPersistentObject` and `IEntityMapper.ToPersistentObject`.
+
+App callers through `IManager`, none of which needs hidden data:
+
+| file:line | kind | reads/writes attributes |
+|---|---|---|
+| apps/QnA/QnA/Interceptors/DeleteReasonInterceptor.cs:41 | retry-prompt virtual PO | own prompt only |
+| apps/Fleet/Fleet/Actions/CarActions.cs:156 | `OnBeforeDelete` popup | writes `popup["LicensePlate"]` |
+| apps/DemoApp/DemoApp/Actions/StartPageActions.cs:35 | virtual `OnLoad` | writes 4 attributes |
+| apps/CodeCoverage/CodeCoverage/Actions/HomeActions.cs:38 | virtual `OnLoad` | writes `AccountCount`/`RepoCount`, which are denied to anonymous users; the anonymous branch returns first (:50) |
+| apps/CodeCoverage/CodeCoverage/Actions/ForgeAccountsActions.cs:48 | virtual `OnLoad` | **:51 writes `obj["Provider"]`, which is Read-denied to authenticated users (security.json:218)** |
+
+There is no pruning at construction today, so ForgeAccounts works now. Under D13 as written, the
+indexer would throw `KeyNotFoundException` (`PersistentObject.cs:133-135`) for every signed-in user
+on production. `AsSystem()` does not help, because the Development net throws on a system object
+that reaches the response.
+
+Framework paths through `IEntityMapper` that must see hidden data, and so need system construction:
+- `SaveValidation.cs:92`: stored values for unwritable attributes.
+- `SyncActionHandler.cs:130`: replication. Pruning there would drop synced fields (data loss).
+- `EffectiveObjectFactory.cs:41`: the effective object for refresh and save.
+
+Load hooks that read attributes, which fail closed or throw once those attributes are denied:
+`QuestionTranslatorFormInterceptor.cs:26` (`AuthorId`), `RepositoryActions.cs:47` (`Gate`), and
+`CarActions.cs:97-110` (`ShapeForStatus`, 5 attributes). Today the load hooks run on unpruned
+objects, because `Get.cs:90` presents after the hooks.
+
+These `PresentAsync` sites become redundant behind the boundary net, for static attribute rights:
+Get.cs:90, New.cs:104/:198, Refresh.cs:162/:172, SaveResponsePresenter.cs:57/:62, ExecuteCustomAction.cs:343/:347,
+RowSecurityGate.cs:226, RetryPresentation.cs:24, PersistentObjectPresenter.cs:58. The per-row
+`RowSecurity.RedactAsync` calls (RowSecurityGate:218, RetryPresentation:40, Presenter:52/54,
+DefaultPersistentObjectActions:172) stay.
+
+Tests: 3 files call `IManager` and about 41 calls in 6 files call `IEntityMapper`.
+
+### S7 — hidden attribute names reaching the client (2026-10-06, code reading)
+
+**Verdict: today's data exposes no hidden name, but there are two structural leaks.**
+- **The type breadcrumb template is not filtered.** `ForFormAsync` (AttributeRightsEnforcement.cs:142-172)
+  removes Read-denied attributes, but `ShallowCopy` copies `Breadcrumb` verbatim
+  (EntityTypeDefinition.cs:96). The client applies it itself (`as-detail-display-value.pipe.ts:27`).
+  `RendererOptions` and `SparkSubQuery.ParentReference` aren't filtered either (minor).
+- **Query `SortColumns` and `Columns` are not filtered.** `SparkQuery` (SparkQuery.cs:34, :80) is serialized raw by
+  Queries Get.cs:53 and List.cs:30. Current CodeCoverage sorts are only on `Login`/`Name`.
+- Filtered already: query rows (`ForQueryAsync`: QueryExecutor.cs:88, StreamingQueryExecutor.cs:70,
+  SparkSelectionResolver.cs:97), PO JSON (`RetainAttributes`; `showedOn` sits on each attribute and goes
+  with it), and the permissions endpoint (type-level booleans only).
+- `BreadcrumbResolver`: a refused token renders **empty**, the same as an empty value (:440-443). The
+  placeholder `"—"` (SparkOptions.cs:24) is only for a whole denied document (:237, :413).
+
+### Amendments taken from S5/S7
+1. D13 prunes inside `IEntityMapper` (`GetPersistentObject` and `ToPersistentObject`), and `IManager`
+   inherits it.
+2. On a constructed object, writing to a pruned attribute is a **silent no-op**, and hooks get
+   `TryGet`. This keeps ForgeAccountsActions.cs:51 working when `Provider` is pruned.
+3. Pruning takes the verb (Read+Edit, Read+New, read-only marking). Both construction and the net
+   receive the verb context.
+4. `AsSystem()` is required for SyncActionHandler, SaveValidation's stored object and the effective
+   object. Hooks receive the **pruned** object, and the leak test covers that.
+5. `ForFormAsync`/`ForQueryAsync` rewrite the `Breadcrumb` template, dropping refused tokens.
+   `Queries/Get` and `Queries/List` filter `SortColumns`/`Columns` by attribute rights. Both go into
+   the canary leak test.
+6. Correction to D13a: refused tokens render empty, not as the placeholder.
+7. The net replaces only static attribute presentation. Per-row redaction stays.

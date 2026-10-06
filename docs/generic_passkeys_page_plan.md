@@ -7,7 +7,7 @@ in M8. Milestones are verified by reading the code and type-checking.
 
 | Milestone | State |
 |---|---|
-| M0 Spikes S1–S5 | ⏳ |
+| M0 Spikes S1–S5 | ✅ 2026-10-06, PRD §9 |
 | M1 Client-method retry: server | ⏳ |
 | M2 Client-method retry: client | ⏳ |
 | M3 `Passkeys` PO + `my-passkeys` query | ⏳ |

@@ -23,7 +23,7 @@ Spark PersistentObject or Query page.
 | The page is **library** code, mounted by every app that calls `withAccount()` (CodeCoverage, Fleet, HR; QnA excludes it; DemoApp has no `withAccount`) | `libs/node_packages/ng-spark-auth/passkeys/src/spark-passkeys.component.{ts,html}`; `ng-spark-auth/routes/src/spark-auth-routes.ts:276-277`; `apps/CodeCoverage/CodeCoverage/ClientApp/src/app/app.routes.ts:40-45` |
 | Features: list (name, "Added {createdAt}", "· Synced"), inline rename (max 64), **remove without confirmation**, add (WebAuthn ceremony), empty-state alert, description paragraph, unsupported-browser alert, one error banner | `spark-passkeys.component.html`; `.ts:87-90, :104` |
 | `createdAt` is printed as a raw ISO string; `isBackupEligible` and `transports` are fetched but never shown | `spark-passkeys.component.html` |
-| **Mobile defect:** `mp-card` sets `overflow: hidden`, rows are `d-flex justify-content-between` without wrap, and the unbreakable ISO date makes the row wider than the card — the overflow is clipped, so there is nothing to scroll (code reading, not yet confirmed in a browser — S4) | `@mintplayer/web-components/card/index.mjs:29`; `ng-spark/shell/src/spark-shell.component.scss:89` |
+| **Mobile defect:** `mp-card` sets `overflow: hidden`, rows are `d-flex justify-content-between` without wrap, and the two non-wrapping buttons make the row wider than the card (the ISO date does wrap at its hyphen) — the overflow is clipped, so there is nothing to scroll. **Confirmed at 375 px (S4, §9)** | `@mintplayer/web-components/card/index.mjs:29`; `ng-spark/shell/src/spark-shell.component.scss:89` |
 | Server: `/spark/auth/passkeys` list / `creation-options` / register / `{id}/name` / `DELETE {id}` (+ anonymous `request-options` and `sign-in`). Delete refuses the last credential (`last_credential`) | `libs/authorization/MintPlayer.Spark.Authorization/Extensions/PasskeyEndpoints.cs:67-90`; `Endpoints/Passkeys/*.cs`; `SparkCredentialInventory.WouldRemoveLastPasskey` (`DeletePasskey.cs:47-57`) |
 | Passkeys are **not documents**: they are embedded as `SparkUser.Passkeys : List<SparkUserPasskey>` behind ASP.NET Identity's `IUserPasskeyStore`; uniqueness is a compare-exchange key | `Authorization.Abstractions/Identity/SparkUser.cs:89`; `Identity/UserStore.Passkeys.cs:16-27, :66` |
 | Ceremony state is held by `SignInManager` in a DataProtection-protected cookie (not raw `IPasskeyHandler` state) | `Endpoints/Passkeys/PasskeyCreationOptions.cs` |
@@ -89,6 +89,12 @@ into the same action. Only the concept informs this design; no code is taken fro
 - `Custom.MyPasskeys(CustomQueryArgs)` reads **the current user's** `SparkUser.Passkeys`, through
   `UserManager` and the passkey store. It never reads a user id from `args.Parent`, so there is no
   IDOR.
+- The Actions classes live in the Authorization assembly; resolution scans every loaded assembly
+  (S2). Two traps:
+  - A second class with the same simple name anywhere throws (`ActionsResolver.cs:145-155`), so
+    no app may declare `PasskeysActions`/`PasskeyRowActions`/`PasskeyRenameActions`.
+  - The clrType-less row source must implement `ISparkOwnsRowSecurity` with a rationale
+    (`QueryExecutor.cs:1186-1199`).
 - Columns:
   - Name (`auth.passkeyUnnamed` when empty)
   - Created (a `DateTimeOffset`, rendered by the generic date renderer instead of a raw ISO string)
@@ -108,13 +114,13 @@ into the same action. Only the concept informs this design; no code is taken fro
   `AddOrUpdatePasskeyAsync`, then:
   - `RefreshQuery("my-passkeys")`
   - `Notify`
-  - the CSRF refresh the old page did with `csrfRefresh()` (S5)
+  - no CSRF refresh: registering changes no identity claim, and the 449 already re-issues `XSRF-TOKEN` (S5, §9)
 - **Why not New / `OnNewAsync`:** see §1.2. The New button navigates to a create page, and a
   virtual type can neither run `OnNewAsync` nor save.
 
 ### D4 — Rename and Remove: custom actions on `PasskeyRow`
 - **Rename** asks for the new name with a `RetryOperation.PersistentObject` form (one `Name`
-  attribute, max 64), then saves it through `UserManager`. This replaces inline editing.
+  attribute, max 64) of its own virtual prompt type `PasskeyRename` (not `PasskeyRow`), then saves it through `UserManager`. This replaces inline editing. Round trip proven (S3, §9).
 - **Remove** asks for confirmation with retry options (new: today there is none), then deletes. A
   `last_credential` refusal becomes a `Notify` error.
 - **Authorization** is the action right in `security.json`. The selected rows are rebuilt by
@@ -267,3 +273,72 @@ that the cookie survives the 449.
 | 4 | Prior art is concepts only | Owner, 2026-10-05: no 1:1 copying of private code |
 | 5 | No backward compatibility: the endpoints, the component and the entry point are deleted outright | Owner, 2026-10-05: "the libraries are still in preview, so no backward compat is needed" |
 | 6 | No retry protocol change for multiple phases; `Invoke` takes lazy arguments | Steps are already numbered and keyed (`RetryAccessor.cs:32-33, :51-58`), with depth up to 16 (`spark.service.ts:99`). The rerun-from-the-top trap is in D7 |
+
+## 9. Spike results (2026-10-06)
+
+### S4 — the mobile defect at 375 px: PROVEN
+CodeCoverage was run at a 375×800 viewport through `playwright_node`, with one passkey registered on
+a CDP virtual authenticator.
+
+**`/account/passkeys` clips.**
+- `mp-card` has `overflow-x: hidden`, with scrollWidth 340 against clientWidth 325.
+- The row `div.d-flex.align-items-center.justify-content-between` is 316 against 277.
+- The Remove button is cut off, and nothing can scroll; the document's scrollWidth is 375.
+- The ISO date wraps at its hyphen, so the clipping comes from the two non-wrapping buttons (§1.1
+  corrected).
+
+**`/po/forge-accounts/github` scrolls.**
+- Only `div.datatable-scroll` overflows: 584 against 269, with `overflow-x: auto`. Setting
+  `scrollLeft = 200` stuck.
+- The page itself does not scroll.
+- The `my-accounts` grid had no rows, so 584 px is the header width.
+
+**Notes for re-running.**
+- The Angular dev server, started by the host, timed out twice with "Nx plugin worker … did not
+  receive a load message within 10 seconds". It started with `NX_PLUGIN_NO_TIMEOUTS=true
+  NX_DAEMON=false` on `dotnet run`.
+- Signing in locally needed `auth.LocalCredentials = Full` (temporary, reverted) and
+  `Spark__Auth__AllowUnconfirmedRegistration=true`. The local user `spikes4` is still in the
+  local dev `Coverage` DB.
+
+### S2 — library Actions classes and `Custom.X` found: PROVEN (code reading)
+- `ActionsResolver.FindActionsType` scans `AppDomain.CurrentDomain.GetAssemblies()`
+  (`Services/ActionsResolver.cs:115-158`, used by `ResolveByEntityName` at `:93-99`).
+- `Custom.X` is a method on that actions instance (`Services/QueryExecutor.cs:1168-1204`). Custom
+  actions are found the same way (`Services/CustomActionResolver.cs:71-99`).
+- Traps:
+  - A duplicate simple name throws (`ActionsResolver.cs:145-155`).
+  - A clrType-less source needs `ISparkOwnsRowSecurity` (`QueryExecutor.cs:1186-1199`).
+  - Custom-action names are deduplicated by `TryAdd`: the first one wins, silently. See D2.
+
+### S1 — `Set-Cookie` on a 449: PROVEN for the 449 half
+- **Setup.** A throw-away test ran through the real pipeline (`SparkEndpointFactory`,
+  `/spark/actions/execute`). A custom action did `Response.Cookies.Append` and then `retry.Action(...)`.
+- **The 449.** It carried `Set-Cookie: spike-ceremony=…; path=/; secure; samesite=strict; httponly`
+  and a re-issued `XSRF-TOKEN`.
+- **Pass 2.** Sent with that cookie, it saw it and returned 200.
+- **Why the header survives.**
+  - The middleware catch (`SparkMiddleware.cs:407-429`, `when (!context.Response.HasStarted)`)
+    never clears headers.
+  - `ExecuteCustomAction.cs:383` keeps the retry exception out of its catch-all.
+- **Inferred, not run:** a real `PerformPasskeyAttestationAsync` on pass 2. The #439 SP1 tests
+  (`PasskeyCeremonyStateTests`) already show attestation against that cookie.
+
+### S3 — a PO prompt from a custom action on a virtual row: PROVEN (empirical)
+- **Setup.** A custom action on a clrType-less row type (Custom query, `selectedItemIds` plus
+  `queryId`) prompted with a virtual `PersistentObject`.
+- **Result.** Pass 2 read `retry.Result.PersistentObject["Name"].GetValue<string>()` as the edited
+  value, and the selection was rebuilt on both passes.
+- **Client.** The retry modal builds its form from the PO's own attributes
+  (`spark-retry-action-modal.component.ts:95-115`).
+- **Server.** `RetryPresentation` removes only explicitly denied attributes.
+- **Precedent.** Fleet's `ConfirmDeleteCar` (`CarActions.cs:151-176`) and the E2E
+  `RetryActionDeleteTests`.
+- **Decision.** The prompt gets its own virtual type, `PasskeyRename` (D4).
+
+### S5 — `csrfRefresh()` after registering: NOT NEEDED (code reading)
+- The call was added with #439 (`61c5c427`), as "on every session change"
+  (`docs/issue_439_plan.md:307`).
+- Registering (`Endpoints/Passkeys/RegisterPasskey.cs`) neither signs in again nor changes claims.
+  Antiforgery binds to the user-id claim, which doesn't change.
+- The 449 re-issues `XSRF-TOKEN` anyway (S1). D3 drops the refresh.
