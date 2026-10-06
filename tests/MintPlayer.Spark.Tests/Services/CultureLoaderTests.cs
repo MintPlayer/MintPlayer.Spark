@@ -27,7 +27,7 @@ public sealed class CultureLoaderTests : IDisposable
         try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
-    private CultureLoader CreateLoader() => new(_hostEnv);
+    private CultureLoader CreateLoader() => new(_hostEnv, TranslationsLoader.For(_hostEnv, []));
 
     private void WriteCulture(string json) =>
         File.WriteAllText(Path.Combine(_tempDir, "App_Data", "culture.json"), json);
@@ -58,8 +58,8 @@ public sealed class CultureLoaderTests : IDisposable
 
         config.DefaultLanguage.Should().Be("nl");
         config.Languages.Keys.Should().Equal("en", "nl");
-        // The name is the translations.json key culture.languages.{code} (#467, D1). This project
-        // compiles no translations, so the untranslated code itself is shown.
+        // The name is the translations.json key culture.languages.{code} (#467, D1). The loader composes
+        // no library layers here and the app has no file, so the untranslated code itself is shown.
         config.Languages["nl"].GetValue("nl").Should().Be("nl");
     }
 

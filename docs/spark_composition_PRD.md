@@ -344,6 +344,52 @@ keep their minted ids.
   becomes a startup-registered snapshot that is swapped atomically on reload.
 - Cost (S3, measured): 3–20 ms warm and 66–172 ms cold for 3 layers and up to 586 keys. That is
   acceptable, provided the engine uses indexed lookups; a naive version took 120 ms warm.
+- **As built in M5 (2026-10-06).**
+  - **Engine.** `SparkKinds.Translations` (ordinal keys and languages, a language must be a string,
+    the app's `""` ignored) plus `SparkTranslationLayers` (shared source) flatten each layer first, then
+    compose with `SparkLayers.Compose`. A namespace's `null` is expanded into one `null` per key the
+    layers below stated under that prefix (a sorted set, one range per removal), as a separate layer
+    applied before the layer's own keys, so a layer can remove a namespace and restate part of it. A key
+    left with no language is dropped. Library order is the catalog's (core first, then by dependency),
+    which settles S2 drift item 2.
+  - **Flattening rules.** An object of strings is a translation; an object of objects and `null`s is a
+    namespace (`null` removes); an all-`null` object is a namespace. A language cannot be removed:
+    `{"en": "x", "nl": null}` is SPARK_TRANS_002 (mixed). Refused at run time and reported at build
+    time: mixed (002), an array (004), one key stated twice, dotted and nested (**SPARK_TRANS_006**, new,
+    error), and invalid JSON (001, now the strict `SparkJson` reader, so a duplicate property is 001).
+    An empty object (003) is skipped. `LibraryLayersGenerator` checks every `translations.json` through
+    the same flattener; MiniJson and `TranslationsTreeFlattener` are deleted.
+  - **Run time.** `SparkTranslations` (Abstractions) is no longer a static registry: `Compose(layers)` and
+    `Compose(contentRoot, libraries?)` return `SparkTranslationsComposition(All, Conflicts)`;
+    `Libraries` reads `SparkLayerCatalog`. `ITranslationsLoader` (singleton) holds the snapshot: composed
+    on first use (a broken file throws, so startup fails), reloaded by a `FileSystemWatcher` on
+    `translations.json` (the actions loader's policy, 100 ms debounce), swapped atomically. A reload that
+    does not compose is logged and keeps the previous snapshot. Library conflicts are logged at warning
+    level with SPARK_TRANS_005's wording. `GET /spark/translations` serves the snapshot.
+  - **Readers.** `SparkText.Resolve`/`Lookup` take the translations as an argument; `ModelLoader`,
+    `ActionsCatalogueLoader`, `CultureLoader` and `ProgramUnitsLoader` inject `ITranslationsLoader`.
+    `ActionsCatalogueLoader.Build` takes an optional dictionary (none: humanized names), and
+    `--spark-print-effective-actions` composes from disk. `TranslationsSeeder` and
+    `ModelSynchronizer.DescribeMissingTranslations` compose from the content root, since they run without a
+    service provider.
+  - **Removed.** `HostTranslationsAggregatorGenerator` (+ producer), the generated
+    `SparkTranslationsRegistry` and its ModuleInitializer, `SparkTranslations.Register/All`, the aggregate
+    models, its snapshot test. `LibraryLayersGenerator` stays gated to libraries (M3), so an application's
+    file is only read from disk, never also embedded.
+  - **Analyzer.** `LibraryTranslationsConflictAnalyzer` reports SPARK_TRANS_005 for an application (as the
+    aggregator did), composing the libraries' layers and the app's `translations.json` AdditionalFile
+    through `SparkTranslationLayers`; a library overriding one it depends on is silent. An app file that
+    does not read is left out (001–004 report it), so library conflicts are still found. The app stating
+    a key does not silence a library conflict, as before.
+  - **Golden.** `tests/MintPlayer.Spark.Tests/Layering/Golden/{qna,codecoverage}-translations.golden.txt`
+    were dumped by reflection from the compiled `SparkTranslationsRegistry.All` in each application's bin,
+    before the aggregator was removed (398 and 586 keys, as in S3); `SparkTranslationLayersTests` composes
+    the core and Authorization files plus the app's and compares, language order included.
+  - **Deviation: baked texts do not follow a reload yet.** The model's, the action catalogue's, the
+    program units' and the culture's labels are resolved when those loaders load (the model and culture
+    once, the catalogue per its 5-minute cache or its own file change). `GET /spark/translations` and every
+    `Resolve` follow a reload at once. Re-resolving the baked texts belongs to M7's uniform reload (D8).
+  - **Deviation: the JSON schema** still describes a namespace as objects only; it learns `null` with M10.
 
 ### D11 — DRY imports
 - `spark.props`/`.targets` (and each library's targets) are imported **once** from

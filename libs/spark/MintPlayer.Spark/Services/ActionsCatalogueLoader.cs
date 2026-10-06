@@ -27,6 +27,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
     [Inject] private readonly ILogger<ActionsCatalogueLoader> logger;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
 
     private readonly IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
     private FileSystemWatcher? fileWatcher;
@@ -60,7 +61,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
 
         try
         {
-            var catalogue = Build(appJson, SparkActionLayers.Libraries);
+            var catalogue = Build(appJson, SparkActionLayers.Libraries, translationsLoader.GetAll());
             foreach (var conflict in catalogue.Conflicts)
             {
                 logger.LogWarning(
@@ -83,8 +84,9 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
         => SparkAppData.Path(contentRootPath, ConfigFileShape.ActionsFileName);
 
     /// <summary>The library layers composed with <paramref name="appJson"/> (null: no application file), bound and validated.</summary>
+    /// <param name="translations">The texts the labels resolve against; <see langword="null"/>: none, so every label is the humanized name.</param>
     /// <exception cref="FormatException">The composed catalogue is invalid; the message names every offender.</exception>
-    internal static ActionsCatalogue Build(string? appJson, IReadOnlyList<SparkActionsLayer> libraries)
+    internal static ActionsCatalogue Build(string? appJson, IReadOnlyList<SparkActionsLayer> libraries, IReadOnlyDictionary<string, TranslatedString>? translations = null)
     {
         var layers = appJson is null
             ? libraries
@@ -102,7 +104,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
 
         var problems = new List<string>();
         var actions = composition.Actions
-            .Select(action => Bind(action, problems))
+            .Select(action => Bind(action, translations ?? NoTranslations, problems))
             .ToList();
 
         if (problems.Count > 0)
@@ -115,7 +117,9 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
     internal static readonly string[] KnownProperties =
         ["label", "description", "confirmation", "icon", "showedOn", "selectionRule", "refreshOnCompleted", "variant", "offset"];
 
-    private static ActionDefinition Bind(SparkComposedAction action, List<string> problems)
+    private static readonly IReadOnlyDictionary<string, TranslatedString> NoTranslations = new Dictionary<string, TranslatedString>();
+
+    private static ActionDefinition Bind(SparkComposedAction action, IReadOnlyDictionary<string, TranslatedString> translations, List<string> problems)
     {
         var name = action.Name;
         var where = $"'{name}' ({action.DeclaredBy})";
@@ -184,10 +188,10 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
 
         // Text is resolved here, once, on the server (#467, D26): the wire carries a TranslatedString.
         var labelKey = Text("label");
-        var label = SparkText.Resolve(labelKey is null ? null : TranslatedString.FromKey(labelKey), $"actions.{name}.label", name)!;
+        var label = SparkText.Resolve(translations, labelKey is null ? null : TranslatedString.FromKey(labelKey), $"actions.{name}.label", name)!;
 
         var descriptionKey = Text("description");
-        var description = SparkText.Lookup(descriptionKey ?? $"actions.{name}.description");
+        var description = SparkText.Lookup(translations, descriptionKey ?? $"actions.{name}.description");
 
         TranslatedString? confirmation;
         if (action.Properties.TryGetValue("confirmation", out var confirm) && confirm.Value.GetValueKind() == JsonValueKind.False)
@@ -198,9 +202,9 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
         else
         {
             var confirmationKey = Text("confirmation");
-            confirmation = SparkText.Lookup(confirmationKey ?? $"actions.{name}.confirmation")
+            confirmation = SparkText.Lookup(translations, confirmationKey ?? $"actions.{name}.confirmation")
                 // An explicit key asks for a confirmation even before somebody translates it.
-                ?? (confirmationKey is null ? null : SparkText.Lookup("common.areYouSure") ?? TranslatedString.Create("Are you sure?"));
+                ?? (confirmationKey is null ? null : SparkText.Lookup(translations, "common.areYouSure") ?? TranslatedString.Create("Are you sure?"));
         }
 
         return new ActionDefinition

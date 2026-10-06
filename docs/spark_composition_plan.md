@@ -14,7 +14,7 @@ run only in the final sweep.
 | M2 Layering engine + kind specs (D2, D3) | ✅ 2026-10-06 (actions + model specs; translations in M5) |
 | M3 Generalised library-layer generator (D1) | ✅ 2026-10-06 (PRD D1, D16 "As built in M3") |
 | M4 Composed-model provider; synchronizer writes the delta (D5, D6) | ✅ 2026-10-06 (PRD D5, D6 "As built in M4"; SparkUser moved here from M9) |
-| M5 Translations at runtime (D10) | ⏳ |
+| M5 Translations at runtime (D10) | ✅ 2026-10-06 (PRD D10 "As built in M5") |
 | M6 Library rights (D4), if Q2 adopts it | ⏳ |
 | M7 Gates with provenance + uniform reload + describe (D7–D9) | ⏳ |
 | M8 IManager rights at construction (D13) | ⏳ |

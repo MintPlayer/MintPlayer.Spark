@@ -13,6 +13,7 @@ public interface ICultureLoader
 internal partial class CultureLoader : ICultureLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
 
     private Lazy<CultureConfiguration>? _culture;
 
@@ -68,12 +69,12 @@ internal partial class CultureLoader : ICultureLoader
         }
     }
 
-    internal static CultureConfiguration Build(IEnumerable<string> codes, string defaultLanguage) => new()
+    private CultureConfiguration Build(IEnumerable<string> codes, string defaultLanguage) => new()
     {
         Languages = codes.ToDictionary(
             code => code,
             // An untranslated language shows its code as-is ("pt"), not humanized.
-            code => SparkText.Lookup($"culture.languages.{code}") ?? TranslatedString.Create(code)),
+            code => SparkText.Lookup(translationsLoader.GetAll(), $"culture.languages.{code}") ?? TranslatedString.Create(code)),
         DefaultLanguage = defaultLanguage,
     };
 

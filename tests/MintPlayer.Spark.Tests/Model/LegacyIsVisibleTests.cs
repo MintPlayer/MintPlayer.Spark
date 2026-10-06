@@ -61,7 +61,7 @@ public sealed class LegacyIsVisibleTests : IDisposable
     {
         WriteModel("false");
 
-        var act = () => new ModelLoader(ModelSource.For(_hostEnv, [])).GetEntityTypes().ToList();
+        var act = () => new ModelLoader(ModelSource.For(_hostEnv, []), TranslationsLoader.For(_hostEnv, [])).GetEntityTypes().ToList();
 
         var message = act.Should().Throw<InvalidOperationException>().Which.Message;
         message.Should().Contain("'LivPerson.Nickname'");
@@ -76,7 +76,7 @@ public sealed class LegacyIsVisibleTests : IDisposable
     {
         WriteModel("true");
 
-        var types = new ModelLoader(ModelSource.For(_hostEnv, [])).GetEntityTypes().ToList();
+        var types = new ModelLoader(ModelSource.For(_hostEnv, []), TranslationsLoader.For(_hostEnv, [])).GetEntityTypes().ToList();
 
         types.Should().ContainSingle(t => t.Name == "LivPerson")
             .Which.Attributes.Select(a => a.Name).Should().Contain("Nickname");

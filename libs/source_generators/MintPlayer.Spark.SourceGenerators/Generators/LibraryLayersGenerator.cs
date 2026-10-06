@@ -155,19 +155,28 @@ public sealed class LibraryLayersGenerator : IIncrementalGenerator
         var info = new TranslationsLibraryInfo { FilePath = path, Parsed = true };
         if (string.IsNullOrEmpty(text)) return info;
 
-        JsonNode parsed;
+        // The run time's own reader and flattener (composition D10/D14): strict JSON, the same issues.
+        SparkJsonNode parsed;
         try
         {
-            parsed = MiniJson.Parse(text!);
+            parsed = SparkJson.Parse(text!);
         }
-        catch (JsonParseException ex)
+        catch (SparkJsonException ex)
         {
             info.Parsed = false;
             info.ParseError = ex.Message;
             return info;
         }
 
-        info.Issues = TranslationsTreeFlattener.Flatten(parsed).Issues
+        if (parsed is not SparkJsonObject root)
+        {
+            if (parsed is SparkJsonNull) return info;
+            info.Parsed = false;
+            info.ParseError = "the file must be a JSON object";
+            return info;
+        }
+
+        info.Issues = SparkTranslationLayers.Flatten(root).Issues
             .Select(i => new TranslationsIssueInfo { Kind = i.Kind.ToString(), Path = i.Path })
             .ToList();
         return info;
@@ -185,9 +194,10 @@ public sealed class LibraryLayersGenerator : IIncrementalGenerator
         {
             var descriptor = issue.Kind switch
             {
-                nameof(TranslationsIssueKind.MixedLeafAndNamespace) => TranslationsDiagnostics.MixedLeafAndNamespace,
-                nameof(TranslationsIssueKind.EmptyObject) => TranslationsDiagnostics.EmptyObject,
-                nameof(TranslationsIssueKind.ArrayNotAllowed) => TranslationsDiagnostics.ArrayNotAllowed,
+                nameof(SparkTranslationsIssueKind.MixedLeafAndNamespace) => TranslationsDiagnostics.MixedLeafAndNamespace,
+                nameof(SparkTranslationsIssueKind.EmptyObject) => TranslationsDiagnostics.EmptyObject,
+                nameof(SparkTranslationsIssueKind.ArrayNotAllowed) => TranslationsDiagnostics.ArrayNotAllowed,
+                nameof(SparkTranslationsIssueKind.DuplicateKey) => TranslationsDiagnostics.DuplicateKey,
                 _ => TranslationsDiagnostics.InvalidJson,
             };
             spc.ReportDiagnostic(Diagnostic.Create(descriptor, Location.None, issue.Path));

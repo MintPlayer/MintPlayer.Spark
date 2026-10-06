@@ -49,7 +49,16 @@ public static class SparkDevelopmentExtensions
     {
         var appPath = ActionsCatalogueLoader.PathFor(contentRootPath);
         var appJson = File.Exists(appPath) ? File.ReadAllText(appPath) : null;
-        var catalogue = ActionsCatalogueLoader.Build(appJson, libraries);
+        IReadOnlyDictionary<string, TranslatedString> translations;
+        try
+        {
+            translations = SparkTranslations.Compose(contentRootPath).All;
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new FormatException(ex.Message, ex);
+        }
+        var catalogue = ActionsCatalogueLoader.Build(appJson, libraries, translations);
 
         var layerNames = libraries.Select(l => l.Name).ToList();
         if (appJson is not null) layerNames.Add(Abstractions.Actions.SparkActionLayers.AppLayerName);

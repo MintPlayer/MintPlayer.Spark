@@ -29,7 +29,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
         try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
-    private ProgramUnitsLoader CreateLoader() => new(_hostEnv);
+    private ProgramUnitsLoader CreateLoader() => new(_hostEnv, TranslationsLoader.For(_hostEnv, []));
 
     private void WriteUnits(string json) =>
         File.WriteAllText(Path.Combine(_tempDir, "App_Data", "programUnits.json"), json);
@@ -85,8 +85,8 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
     }
 
     /// <summary>
-    /// #467 D1: a menu entry's name is a translations.json key. Untranslated (this project compiles
-    /// no translations), its last segment is shown humanized.
+    /// #467 D1: a menu entry's name is a translations.json key. Untranslated (the loader composes
+    /// no layers here), its last segment is shown humanized.
     /// </summary>
     [Fact]
     public void A_name_is_a_translation_key_shown_humanized_when_untranslated()

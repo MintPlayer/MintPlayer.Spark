@@ -17,7 +17,7 @@ internal static class TranslationsDiagnostics
     public static readonly DiagnosticDescriptor MixedLeafAndNamespace = new(
         id: "SPARK_TRANS_002",
         title: "Mixed leaf/namespace object in translations.json",
-        messageFormat: "Object at '{0}' mixes string and object values. A translation leaf must have only string values; a namespace must have only object values.",
+        messageFormat: "Object at '{0}' mixes string and object values. A translation leaf must have only string values; a namespace must have only object values (or null, to remove a namespace a library ships).",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -34,6 +34,14 @@ internal static class TranslationsDiagnostics
         id: "SPARK_TRANS_004",
         title: "Array not allowed in translations.json",
         messageFormat: "Value at '{0}' is an array. Arrays are not allowed in translations.json.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor DuplicateKey = new(
+        id: "SPARK_TRANS_006",
+        title: "Translation key stated twice in translations.json",
+        messageFormat: "'{0}' is stated twice, e.g. once as a dotted key and once nested. The application refuses the file at startup.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

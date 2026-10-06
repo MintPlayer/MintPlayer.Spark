@@ -13,9 +13,9 @@ namespace MintPlayer.Spark.Services;
 /// <remarks>
 /// <para>
 /// Add-only: an existing non-blank <c>en</c> is a human's wording and is never replaced; a blank one
-/// asks for the seed again (#424's "seeds, never owns"). "Defined" means the compiled translations
-/// (every library plus the app as last built) or the app file on disk, so an edit not yet rebuilt is
-/// respected.
+/// asks for the seed again (#424's "seeds, never owns"). "Defined" means the composed translations
+/// (every library layer plus the app file on disk, composition D10), or the file as this run has
+/// already seeded it.
 /// </para>
 /// <para>
 /// Formatting (spike S10): the file is rewritten as indented JSON with the relaxed encoder, keeping its
@@ -41,8 +41,9 @@ internal static class TranslationsSeeder
         string contentRootPath, IEnumerable<(string Key, string Text)> seeds)
     {
         var root = ReadRoot(PathFor(contentRootPath), out _, out _);
+        var composed = SparkTranslations.Compose(contentRootPath).All;
         return seeds
-            .Where(s => !IsDefinedInEnglish(s.Key, root))
+            .Where(s => !IsDefinedInEnglish(s.Key, composed, root))
             .GroupBy(s => s.Key, StringComparer.Ordinal)
             .Select(g => g.First())
             .ToList();
@@ -53,11 +54,12 @@ internal static class TranslationsSeeder
     {
         var path = PathFor(contentRootPath);
         var root = ReadRoot(path, out var original, out var lineEnding);
+        var composed = SparkTranslations.Compose(contentRootPath).All;
         var added = 0;
 
         foreach (var (key, text) in seeds)
         {
-            if (IsDefinedInEnglish(key, root)) continue;
+            if (IsDefinedInEnglish(key, composed, root)) continue;
             if (Insert(root, key, text)) added++;
         }
 
@@ -72,9 +74,9 @@ internal static class TranslationsSeeder
         return added;
     }
 
-    private static bool IsDefinedInEnglish(string key, JsonObject root)
+    private static bool IsDefinedInEnglish(string key, IReadOnlyDictionary<string, TranslatedString> composed, JsonObject root)
     {
-        if (SparkTranslations.All.TryGetValue(key, out var compiled)
+        if (composed.TryGetValue(key, out var compiled)
             && compiled.Translations.TryGetValue("en", out var en)
             && !string.IsNullOrWhiteSpace(en))
             return true;

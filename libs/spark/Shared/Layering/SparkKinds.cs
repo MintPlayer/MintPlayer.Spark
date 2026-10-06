@@ -30,6 +30,24 @@ internal static class SparkKinds
         arrayKey: path => IsNamedCollection(path) ? "name" : null,
         isImmutable: path => path.Count >= 1 && path[path.Count - 1] == "id");
 
+    /// <summary>
+    /// <c>translations.json</c>, flattened first (<see cref="SparkTranslationLayers"/>): dotted key →
+    /// <c>{ language: text }</c>, keys and languages ordinal. A later layer replaces only the languages it
+    /// states, and a new one is appended. <c>"key": null</c> removes the key (the flattener expands a
+    /// namespace's <c>null</c> into one per key); a language cannot be removed. The application's
+    /// <c>""</c> is "not translated yet" and ignored; a library's is kept.
+    /// </summary>
+    public static readonly KindSpec Translations = new(
+        "translations",
+        StringComparer.Ordinal,
+        shape: (path, value) => path.Count switch
+        {
+            1 when value.Kind is not (SparkJsonKind.Object or SparkJsonKind.Null) => "must be an object of languages or null (to remove it)",
+            2 when value.Kind is not SparkJsonKind.String => "must be a string",
+            _ => null,
+        },
+        appEmptyStringIsUntranslated: true);
+
     private static bool IsNamedCollection(IReadOnlyList<string> path)
         => path.Count switch
         {

@@ -84,8 +84,11 @@ the root `Directory.Build.targets`, which is not shipped in any package. It runs
 because a framework reference inherited through a `ProjectReference` arrives as the latter.
 
 Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
-(`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…`
-(`TranslationsDiagnostics.cs`).
+(`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…006`
+(`TranslationsDiagnostics.cs`). The exception is `SPARK_TRANS_005` (two unrelated libraries translate
+a key into a language differently), which `LibraryTranslationsConflictAnalyzer` reports since
+composition M5, when the host aggregator generator was removed. `SPARK_TRANS_006` (one key stated
+twice, dotted and nested) is new in M5; the run time refuses such a file.
 
 ## `MPEP*` — not ours, but they appear in our builds
 

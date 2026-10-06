@@ -265,9 +265,10 @@ public static class SparkSchemaGenerator
 
     /// <summary>
     /// translations.json is a tree: every object holds either only strings (a leaf, language → text)
-    /// or only objects (a namespace). The translations source generator reports anything else
-    /// (<c>TranslationsTreeFlattener</c>), and skips underscore properties as comments. Its parser
-    /// accepts strings and objects only (<c>MiniJson</c>), so a comment here must be a string.
+    /// or only objects (a namespace). The generators and the run time report anything else
+    /// (<c>SparkTranslationLayers</c>, composition D10), and skip underscore properties as comments. The schema
+    /// keeps a comment a string, as every file in the repository writes it. The run time also takes
+    /// <c>null</c> for a namespace a library ships (composition D3); the schema learns it with M10.
     /// </summary>
     private static JsonObject TranslationsSchema()
     {

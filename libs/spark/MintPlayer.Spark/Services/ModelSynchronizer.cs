@@ -1319,6 +1319,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 .ToList()
             : ["en"];
 
+        var translations = SparkTranslations.Compose(contentRootPath).All;
         var keys = new List<string>();
         foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
@@ -1345,7 +1346,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var lines = new List<string>();
         foreach (var key in keys.Distinct(StringComparer.Ordinal))
         {
-            SparkTranslations.All.TryGetValue(key, out var translated);
+            translations.TryGetValue(key, out var translated);
             var absent = languages
                 .Where(l => translated is null || !translated.Translations.TryGetValue(l, out var v) || string.IsNullOrWhiteSpace(v))
                 .ToList();

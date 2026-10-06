@@ -13,6 +13,7 @@ public interface IProgramUnitsLoader
 internal partial class ProgramUnitsLoader : IProgramUnitsLoader
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
 
     private Lazy<ProgramUnitsConfiguration>? _programUnits;
 
@@ -56,7 +57,7 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
         return config;
     }
 
-    private static void Validate(ProgramUnitsConfiguration config)
+    private void Validate(ProgramUnitsConfiguration config)
     {
         foreach (var group in config.ProgramUnitGroups)
         {
@@ -94,14 +95,14 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
     /// A menu entry's <c>name</c> is a <c>translations.json</c> key (#467, D1), e.g.
     /// <c>"programUnits.cars"</c>; its last segment, humanized, is shown when no layer translates it.
     /// </summary>
-    private static TranslatedString ResolveName(TranslatedString? name, string owner)
+    private TranslatedString ResolveName(TranslatedString? name, string owner)
     {
         if (name?.Key is not { Length: > 0 } key)
             throw new SparkProgramUnitsConfigurationException(name is { Translations.Count: > 0 }
                 ? $"{owner} embeds translated text in its 'name' (\"{name.GetDefaultValue()}\"). " +
                   "Move it into translations.json and set 'name' to that key, e.g. \"programUnits.cars\"."
                 : $"{owner} has no 'name'. Set it to a translations.json key, e.g. \"programUnits.cars\".");
-        return SparkText.Resolve(name, key, key)!;
+        return SparkText.Resolve(translationsLoader.GetAll(), name, key, key)!;
     }
 
     public ProgramUnitsConfiguration GetProgramUnits()

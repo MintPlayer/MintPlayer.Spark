@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.SourceGenerators.Json;
 /// runtime — which languages exist. The file therefore has to arrive as an <c>AdditionalFiles</c> item and be
 /// parsed here. <c>languages</c> is an array of codes (#467, D1); each language's display name is the
 /// <c>translations.json</c> key <c>culture.languages.{code}</c>, which the generator does not need.
-/// MiniJson (built for translations.json) refuses arrays, so the array is read by pattern.
+/// The array is read by pattern.
 /// </para>
 /// </summary>
 internal static class CultureJsonReader

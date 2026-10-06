@@ -152,51 +152,6 @@ public class SourceGeneratorSnapshots
     }
 
     /// <summary>
-    /// Pin the host-side aggregator: it walks referenced assemblies' translations layers
-    /// ([SparkLayer] of kind "translations", raw nested JSON), flattens them, merges them with the
-    /// host's own translations.json (host wins on conflict), and emits the merged dictionary. The
-    /// generator only fires for ConsoleApplication/WindowsApplication output, so we
-    /// build the test compilation as a console app and inject a synthetic referenced
-    /// library carrying one translations layer plus a host-side
-    /// translations.json that overrides one key.
-    /// </summary>
-    [Fact]
-    public Task HostTranslationsAggregatorGenerator_composes_a_library_layer_and_host_overrides_a_key()
-    {
-        // Synthetic referenced library with a nested translations layer, as LibraryLayersGenerator
-        // embeds it: the file's own text, flattened by the aggregator.
-        const string libSource = """
-            using MintPlayer.Spark.Abstractions;
-            [assembly: SparkLayer("fixture", "translations", "translations.json", "{\"greeting\":{\"en\":\"Hello\",\"nl\":\"Hallo\"},\"shared\":{\"en\":\"FromLib\",\"nl\":\"VanLib\"}}")]
-            """;
-
-        var libRef = GeneratorHarness.CompileToMetadataReference(
-            assemblyName: "FixtureLib",
-            sources: [libSource],
-            referenceTypes: [typeof(SparkLayerAttribute)]);
-
-        // The host overrides only "shared"/en: composition is per (key, language) (#467, D2), so the
-        // library's nl survives, and an app override is never reported as a conflict (D3).
-        const string hostTranslations = """
-            {
-              "shared": { "en": "FromHost" },
-              "farewell": { "en": "Bye", "nl": "Tot ziens" }
-            }
-            """;
-
-        var result = GeneratorHarness.Run(
-            "HostTranslationsAggregatorGenerator",
-            sources: [],
-            referenceTypes: [typeof(SparkLayerAttribute)],
-            rootNamespace: "TestApp",
-            additionalTexts: [("translations.json", hostTranslations)],
-            outputKind: OutputKind.ConsoleApplication,
-            additionalReferences: [libRef]);
-
-        return Verifier.Verify(Render(result));
-    }
-
-    /// <summary>
     /// Pins the whole emitted index / index-entity pair. The structural tests cover individual rules;
     /// this makes any drift in the generated shape a reviewable diff — which matters more here than for
     /// the registration generators, because <c>ProjectionPropertyAnalyzer</c> excludes generated code, so

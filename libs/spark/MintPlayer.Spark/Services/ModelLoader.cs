@@ -19,6 +19,7 @@ public interface IModelLoader
 internal partial class ModelLoader : IModelLoader
 {
     [Inject] private readonly IModelSource modelSource;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
 
     private Lazy<(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries)>? _data;
 
@@ -55,7 +56,7 @@ internal partial class ModelLoader : IModelLoader
                 if (entityTypeFile?.PersistentObject != null)
                 {
                     var entityType = entityTypeFile.PersistentObject;
-                    ResolveText(entityType, entityTypeFile.Queries);
+                    ResolveText(translationsLoader.GetAll(), entityType, entityTypeFile.Queries);
 
                     // Auto-generate alias from Name if not explicitly set
                     entityType.Alias ??= entityType.Name.ToLowerInvariant();
@@ -191,17 +192,17 @@ internal partial class ModelLoader : IModelLoader
     /// Done once here, so everything downstream (the wire, validation messages, breadcrumbs) keeps
     /// seeing a resolved <see cref="TranslatedString"/>.
     /// </summary>
-    internal static void ResolveText(EntityTypeDefinition entityType, IEnumerable<SparkQuery> queries)
+    internal static void ResolveText(IReadOnlyDictionary<string, TranslatedString> translations, EntityTypeDefinition entityType, IEnumerable<SparkQuery> queries)
     {
         var prefix = $"model.{entityType.Name}";
-        entityType.Label = SparkText.Resolve(entityType.Label, $"{prefix}.label", entityType.Name);
+        entityType.Label = SparkText.Resolve(translations, entityType.Label, $"{prefix}.label", entityType.Name);
 
         foreach (var attribute in entityType.Attributes)
         {
             var attributePrefix = $"{prefix}.attributes.{attribute.Name}";
-            attribute.Label = SparkText.Resolve(attribute.Label, $"{attributePrefix}.label", attribute.Name);
+            attribute.Label = SparkText.Resolve(translations, attribute.Label, $"{attributePrefix}.label", attribute.Name);
             // Help text has no fallback: an attribute without one shows no [i].
-            attribute.Description = SparkText.Resolve(attribute.Description, $"{attributePrefix}.description", fallbackName: null);
+            attribute.Description = SparkText.Resolve(translations, attribute.Description, $"{attributePrefix}.description", fallbackName: null);
 
             // A rule's custom message is an explicit key (conventionally {attr}.rules.{type}); an
             // untranslated one leaves the built-in validation.* message in charge.
@@ -209,18 +210,18 @@ internal partial class ModelLoader : IModelLoader
             {
                 var ruleKey = $"{attributePrefix}.rules.{rule.Type}";
                 SparkText.RejectInlineText(rule.Message, ruleKey);
-                rule.Message = rule.Message?.Key is { } key ? SparkText.Lookup(key) : null;
+                rule.Message = rule.Message?.Key is { } key ? SparkText.Lookup(translations, key) : null;
             }
         }
 
         foreach (var tab in entityType.Tabs)
-            tab.Label = SparkText.Resolve(tab.Label, $"{prefix}.tabs.{tab.Name}.label", tab.Name);
+            tab.Label = SparkText.Resolve(translations, tab.Label, $"{prefix}.tabs.{tab.Name}.label", tab.Name);
 
         foreach (var group in entityType.Groups)
-            group.Label = SparkText.Resolve(group.Label, $"{prefix}.groups.{group.Name}.label", group.Name);
+            group.Label = SparkText.Resolve(translations, group.Label, $"{prefix}.groups.{group.Name}.label", group.Name);
 
         foreach (var query in queries)
-            query.Label = SparkText.Resolve(query.Label, $"queries.{query.Name}.label", query.Name);
+            query.Label = SparkText.Resolve(translations, query.Label, $"queries.{query.Name}.label", query.Name);
     }
 
     public IEnumerable<EntityTypeDefinition> GetEntityTypes()

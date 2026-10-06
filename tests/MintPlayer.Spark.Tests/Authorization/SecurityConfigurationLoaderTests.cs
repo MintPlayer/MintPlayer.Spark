@@ -36,7 +36,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         }
     }
 
-    private SecurityConfigurationLoader CreateLoader() => new(_hostEnv, _logger, new ModelLoader(ModelSource.For(_hostEnv, [])));
+    private SecurityConfigurationLoader CreateLoader() => new(_hostEnv, _logger, new ModelLoader(ModelSource.For(_hostEnv, []), TranslationsLoader.For(_hostEnv, [])));
 
     private void WriteModel(string name, params string[] attributes)
     {

@@ -313,7 +313,7 @@ internal static class GeneratorHarness
     /// Compiles <paramref name="sources"/> to an in-memory PE image and returns it as a
     /// <see cref="MetadataReference"/>. Lets snapshot tests fabricate a "referenced library"
     /// with assembly attributes that the generator under test inspects (e.g.
-    /// <c>HostTranslationsAggregatorGenerator</c> reading <c>SparkLayerAttribute</c>).
+    /// <c>LibraryTranslationsConflictAnalyzer</c> reading <c>SparkLayerAttribute</c>).
     /// </summary>
     public static MetadataReference CompileToMetadataReference(
         string assemblyName,

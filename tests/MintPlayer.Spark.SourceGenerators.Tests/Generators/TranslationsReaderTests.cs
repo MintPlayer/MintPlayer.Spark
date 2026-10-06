@@ -6,12 +6,14 @@ using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
 
 /// <summary>
-/// The generator's own JSON reader (<c>MiniJson</c>) and tree flattener, driven through
-/// <c>LibraryLayersGenerator</c>, which checks every <c>translations.json</c> the compiler sees, because
-/// both are internal to an assembly the tests load rather than reference. The parse error's message is
-/// carried in SPARK_TRANS_001, so each malformed shape can be told apart by its text.
+/// The shared reader (<c>SparkJson</c>) and translations flattener (<c>SparkTranslationLayers</c>),
+/// driven through <c>LibraryLayersGenerator</c>, which checks every <c>translations.json</c> the compiler
+/// sees, because both are internal to an assembly the tests load rather than reference. Composition M5
+/// (D10) replaced the generators' own MiniJson with them, so a file the generator accepts is one the run
+/// time composes. The parse error's message is carried in SPARK_TRANS_001, so each malformed shape can be
+/// told apart by its text.
 /// </summary>
-public class TranslationsMiniJsonTests
+public class TranslationsReaderTests
 {
     /// <summary>A plain <c>translations.json</c> (an application's): checked, never embedded.</summary>
     private static GeneratorRunResult Run(string translations) => GeneratorHarness.Run(
@@ -33,25 +35,20 @@ public class TranslationsMiniJsonTests
         });
 
     [Theory]
-    [InlineData("""{ "a": [1] }""", "Arrays are not allowed in translations.json (at 'a')")]
-    [InlineData("""{ "a": { "en": true } }""", "Booleans are not allowed in translations.json (at 'a.en')")]
-    [InlineData("""{ "a": false }""", "Booleans are not allowed")]
-    [InlineData("""{ "a": 1 }""", "Numbers are not allowed in translations.json (at 'a')")]
-    [InlineData("""{ "a": -1 }""", "Numbers are not allowed")]
-    [InlineData("""{ "a": x }""", "Unexpected character 'x'")]
-    [InlineData("""{ "a": nul }""", "Unexpected token")]
-    [InlineData("""{ "a" "b" }""", "Expected ':' after property name")]
-    [InlineData("""{ a: "b" }""", "Expected property name")]
-    [InlineData("""{ "a": "b" """, "Unexpected end of object.")]
-    [InlineData("""{ "a": "b" x""", "Expected ',' or '}'")]
-    [InlineData("""{ "a": """, "Unexpected end of input.")]
-    [InlineData("""{ "a": "b\""", "Unterminated escape sequence.")]
-    [InlineData("""{ "a": "\u12""", "Truncated unicode escape.")]
-    [InlineData("""{ "a": "\uZZZZ" }""", "Invalid unicode escape '\\uZZZZ'")]
-    [InlineData("""{ "a": "\q" }""", "Invalid escape sequence '\\q'")]
-    [InlineData("""{ "a": "open""", "Unterminated string.")]
-    [InlineData("""{} extra""", "Unexpected trailing content")]
-    [InlineData("   ", "Unexpected end of input.")]
+    [InlineData("""{ "a": x }""", "unexpected character 'x'")]
+    [InlineData("""{ "a": nul }""", "unexpected token")]
+    [InlineData("""{ "a" "b" }""", "expected ':' after a property name")]
+    [InlineData("""{ a: "b" }""", "expected a property name")]
+    [InlineData("""{ "a": "b" """, "unexpected end of input in an object")]
+    [InlineData("""{ "a": "b" x""", "expected ',' or '}'")]
+    [InlineData("""{ "a": """, "unexpected end of input")]
+    [InlineData("""{ "a": "\uZZZZ" }""", "invalid \\u escape")]
+    [InlineData("""{ "a": "\q" }""", "invalid escape '\\q'")]
+    [InlineData("""{ "a": "open""", "unterminated string")]
+    [InlineData("""{} extra""", "unexpected content after the JSON value")]
+    [InlineData("""{ "a": { "en": "x" }, "a": { "nl": "y" } }""", "is stated twice")]
+    [InlineData("\"just a string\"", "must be a JSON object")]
+    [InlineData("   ", "unexpected end of input")]
     public void Malformed_json_is_reported_with_the_reason(string translations, string reason)
     {
         var result = Run(translations);
@@ -70,22 +67,41 @@ public class TranslationsMiniJsonTests
               "good": { "en": "Fine" },
               "mixed": { "en": "Leaf", "child": { "en": "Nested" } },
               "empty": {},
-              "nothing": { "en": null }
+              "number": { "en": 1 },
+              "list": { "en": ["a"] }
             }
             """);
 
         result.GeneratorDiagnostics.Select(d => d.Id).Should().BeEquivalentTo(
-            ["SPARK_TRANS_002", "SPARK_TRANS_003", "SPARK_TRANS_002"]);
-        result.GeneratorDiagnostics.Select(d => d.GetMessage()).Should().Contain(m => m.Contains("mixed"));
-        result.GeneratorDiagnostics.Select(d => d.GetMessage()).Should().Contain(m => m.Contains("empty"));
+            ["SPARK_TRANS_002", "SPARK_TRANS_003", "SPARK_TRANS_002", "SPARK_TRANS_004"]);
+        result.GeneratorDiagnostics.Select(d => d.GetMessage()).Should().Contain(m => m.Contains("'mixed'"));
+        result.GeneratorDiagnostics.Select(d => d.GetMessage()).Should().Contain(m => m.Contains("'empty'"));
+        result.GeneratorDiagnostics.Select(d => d.GetMessage()).Should().Contain(m => m.Contains("'list.en'"));
     }
 
-    [Theory]
-    [InlineData("\"just a string\"")]
-    [InlineData("null")]
-    public void A_root_that_is_not_an_object_produces_nothing(string translations)
+    [Fact]
+    public void A_null_namespace_is_a_removal_not_a_problem()
     {
-        var result = Run(translations);
+        // Composition D3: "ns": null removes a namespace a library ships; it was SPARK_TRANS_002 before M5.
+        var result = Run("""{ "moderation": null, "app": { "old": null, "title": { "en": "T" } } }""");
+
+        result.GeneratorDiagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void One_key_stated_dotted_and_nested_is_SPARK_TRANS_006()
+    {
+        var result = Run("""{ "app.title": { "en": "A" }, "app": { "title": { "en": "B" } } }""");
+
+        var diagnostic = result.GeneratorDiagnostics.Should().ContainSingle().Which;
+        diagnostic.Id.Should().Be("SPARK_TRANS_006");
+        diagnostic.GetMessage().Should().Contain("'app.title'");
+    }
+
+    [Fact]
+    public void A_null_root_produces_nothing()
+    {
+        var result = Run("null");
 
         result.GeneratorDiagnostics.Should().BeEmpty();
         result.GeneratedSources.Should().BeEmpty();

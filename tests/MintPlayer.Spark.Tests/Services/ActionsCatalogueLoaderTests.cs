@@ -29,7 +29,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true); } catch { /* watcher locks — best-effort */ }
     }
 
-    private ActionsCatalogueLoader CreateLoader() => new(_hostEnv, NullLogger<ActionsCatalogueLoader>.Instance);
+    private ActionsCatalogueLoader CreateLoader() => new(_hostEnv, NullLogger<ActionsCatalogueLoader>.Instance, TranslationsLoader.For(_hostEnv, []));
 
     private void WriteApp(string json) => File.WriteAllText(ActionsCatalogueLoader.PathFor(_tempDir), json);
 

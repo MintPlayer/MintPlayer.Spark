@@ -93,7 +93,7 @@ public sealed class SparkSchemaGeneratorTests
 
         Validate(translations, """{ "$schema": "x", "_c": "c", "app": { "title": { "_c": "c", "en": "T", "nl": "T" } } }""").Should().BeEmpty();
         Validate(translations, """{ "app": { "title": { "en": "T" }, "en": "T" } }""").Should().NotBeEmpty();
-        // The generators' parser (MiniJson) refuses numbers and arrays in translations.json, comments included.
+        // A comment is a string, as every file in the repository writes it.
         Validate(translations, """{ "_c": 1, "app": { "title": { "en": "T" } } }""").Should().NotBeEmpty();
     }
 
@@ -131,7 +131,7 @@ public sealed class SparkSchemaGeneratorTests
             var host = Substitute.For<IHostEnvironment>();
             host.ContentRootPath.Returns(directory);
 
-            var culture = new CultureLoader(host).GetCulture();
+            var culture = new CultureLoader(host, TranslationsLoader.For(host, [])).GetCulture();
 
             // Every mirrored property reached the loader: neither fell back to its default.
             culture.Languages.Keys.Should().BeEquivalentTo(["en", "nl"]);

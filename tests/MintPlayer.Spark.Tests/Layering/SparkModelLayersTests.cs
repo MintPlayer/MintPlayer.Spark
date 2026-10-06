@@ -224,7 +224,7 @@ public class SparkModelLayersTests : IDisposable
         var hostEnvironment = Substitute.For<IHostEnvironment>();
         hostEnvironment.ContentRootPath.Returns(contentRoot);
 
-        var loader = new ModelLoader(ModelSource.For(hostEnvironment, [Authorization]));
+        var loader = new ModelLoader(ModelSource.For(hostEnvironment, [Authorization]), TranslationsLoader.For(hostEnvironment, []));
 
         var sparkUser = loader.GetEntityType(Guid.Parse(SparkUserId));
         sparkUser.Should().NotBeNull();
