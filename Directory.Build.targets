@@ -17,6 +17,14 @@
 	<Import Project="$(MSBuildThisFileDirectory)libs\spark\MintPlayer.Spark\Targets\spark.targets" Condition="'$(SparkApplication)' == 'true'" />
 
 	<!--
+	  The library-layer items for every in-repo project (composition D1): what the generator package's
+	  build/ targets do for a project that references it from NuGet. The file guards itself: only a class
+	  library that has App_Data layer files gets items, and the generator embeds them only when the
+	  project references it.
+	-->
+	<Import Project="$(MSBuildThisFileDirectory)libs\source_generators\MintPlayer.Spark.SourceGenerators\build\MintPlayer.Spark.SourceGenerators.targets" Condition="'$(_SparkLibraryLayersImported)' != 'true'" />
+
+	<!--
 	  A LIBRARY's targets must only act when the app actually references that library, directly or
 	  transitively, by project or by package. That is unknowable at evaluation time, but the resolved
 	  ReferencePath knows it once references are resolved, and every spark-authorization target runs

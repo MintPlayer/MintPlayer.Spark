@@ -12,7 +12,7 @@ run only in the final sweep.
 | M0 Spikes S1–S5, S7 (S6 not run, Q1 = C) | ✅ 2026-10-06, PRD §9 |
 | M1 DRY imports + one App_Data location (D11, D12) | ✅ 2026-10-06 |
 | M2 Layering engine + kind specs (D2, D3) | ✅ 2026-10-06 (actions + model specs; translations in M5) |
-| M3 Generalised library-layer generator (D1) | ⏳ |
+| M3 Generalised library-layer generator (D1) | ✅ 2026-10-06 (PRD D1, D16 "As built in M3") |
 | M4 Composed-model provider; synchronizer writes the delta (D5, D6) | ⏳ |
 | M5 Translations at runtime (D10) | ⏳ |
 | M6 Library rights (D4), if Q2 adopts it | ⏳ |
@@ -39,9 +39,11 @@ Record the results in PRD §9, "Spike results", and amend D1–D13 where they di
 ## M3 — Library-layer generator
 - One generator embeds a library's `App_Data/**` (per kind) as assembly attributes. It replaces
   `LibraryActionsGenerator` and `LibraryTranslationsGenerator`.
-- Discovery at runtime goes through `SparkAware`; at compile time through referenced-assembly
-  symbols.
-- A test runs the same app over ProjectReference and over a local-feed PackageReference (S1).
+- Discovery at runtime goes through the assemblies the application recorded
+  (`SparkLayerAssemblies`, S1), `SparkAware` only as the fallback; at compile time through
+  referenced-assembly symbols.
+- A test runs the same app over ProjectReference and over a local-feed PackageReference (S1):
+  `npm run test:layer-transport`, run in M11.
 
 ## M4 — Composed model
 - `IModelSource` replaces every `Model/*.json` glob, including the

@@ -8,7 +8,8 @@ namespace MintPlayer.Spark.Abstractions.Actions;
 /// <param name="Name">The layer as messages name it: the assembly name, or <see cref="SparkActionLayers.AppLayerName"/>.</param>
 /// <param name="Json">The file's text.</param>
 /// <param name="IsLibrary">Whether it is a library layer. Only two libraries can conflict (#467, D7).</param>
-public sealed record SparkActionsLayer(string Name, string Json, bool IsLibrary);
+/// <param name="DependsOn">The library layers this one stacks above; overriding one of those is intended, never a conflict (composition D2, grill Q3).</param>
+public sealed record SparkActionsLayer(string Name, string Json, bool IsLibrary, IReadOnlyList<string>? DependsOn = null);
 
 /// <summary>One property of a composed action, and the layer that set it.</summary>
 public sealed record SparkComposedProperty(JsonNode Value, string Layer);
@@ -44,7 +45,7 @@ public sealed record SparkActionsComposition(
 
 /// <summary>
 /// Composes <c>actions.json</c> in layers (#467, D7/S12): the core library's, then every other
-/// library's by assembly name, then the application's. A later layer composes on top <b>per
+/// library's in layer order (composition D2), then the application's. A later layer composes on top <b>per
 /// property</b>, and a name no earlier layer has adds an action.
 /// </summary>
 /// <remarks>
@@ -63,39 +64,27 @@ public static class SparkActionLayers
     /// <summary>The application layer's name in messages and in <c>--spark-print-effective-actions</c>.</summary>
     public static string AppLayerName => SparkAppData.Relative("actions.json");
 
-    private const string CoreAssemblyName = "MintPlayer.Spark";
+    private static readonly Lazy<IReadOnlyList<SparkActionsLayer>> libraries = new(() => From(SparkLayerCatalog.Libraries));
 
-    private static readonly Lazy<IReadOnlyList<SparkActionsLayer>> libraries = new(() => Discover(SparkAssemblies.SparkAware()));
-
-    /// <summary>Every library layer in this process, core first and then by assembly name.</summary>
+    /// <summary>Every library layer in this process, in layer order (<see cref="SparkLayerCatalog"/>).</summary>
     public static IReadOnlyList<SparkActionsLayer> Libraries => libraries.Value;
 
-    /// <summary>The library layers <paramref name="assemblies"/> carry, core first and then by assembly name.</summary>
+    /// <summary>The library layers <paramref name="assemblies"/> carry, in layer order.</summary>
     public static IReadOnlyList<SparkActionsLayer> Discover(IEnumerable<Assembly> assemblies)
-    {
-        var layers = new List<SparkActionsLayer>();
-        foreach (var assembly in assemblies.Distinct())
-        {
-            SparkActionsAttribute? attribute;
-            try { attribute = assembly.GetCustomAttribute<SparkActionsAttribute>(); }
-            catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or TypeLoadException) { continue; }
+        => From(SparkLayerCatalog.Discover(assemblies));
 
-            if (attribute is not null && assembly.GetName().Name is { } name)
-                layers.Add(new SparkActionsLayer(name, attribute.Json, IsLibrary: true));
-        }
-
-        return layers
-            .OrderBy(l => string.Equals(l.Name, CoreAssemblyName, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+    private static IReadOnlyList<SparkActionsLayer> From(IEnumerable<SparkLibrary> libraries)
+        => SparkLayerCatalog.Of(libraries, SparkLayerKinds.Actions)
+            .Select(x => new SparkActionsLayer(x.Library.AssemblyName, x.Layer.Json, IsLibrary: true, x.Library.DependsOn))
             .ToList();
-    }
 
     /// <summary>The layers composed in order, by the shared engine (<see cref="SparkLayers"/>, composition D2/D14).</summary>
     /// <exception cref="InvalidOperationException">A layer is not valid JSON, or not an object of action objects.</exception>
     public static SparkActionsComposition Compose(IEnumerable<SparkActionsLayer> layers)
     {
+        var list = layers.ToList();
         var composition = SparkLayers.Compose(
-            layers.Select(l => SparkLayer.Parse(l.Name, l.Json, l.IsLibrary)),
+            list.Select(l => SparkLayer.Parse(l.Name, l.Json, l.IsLibrary)),
             SparkKinds.Actions);
 
         var actions = new List<SparkComposedAction>();
@@ -112,7 +101,11 @@ public static class SparkActionLayers
             actions.Add(action);
         }
 
+        // A library overriding a library it depends on means it (grill Q3); only unrelated ones conflict.
+        var dependsOn = list.GroupBy(l => l.Name, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().DependsOn ?? [], StringComparer.Ordinal);
         var conflicts = composition.Conflicts
+            .Where(c => !(dependsOn.TryGetValue(c.WinnerLayer, out var below) && below.Contains(c.LoserLayer, StringComparer.Ordinal)))
             .Select(c => new SparkActionsConflict(c.Path[0], c.Path[1], c.WinnerLayer, c.LoserLayer))
             .ToList();
 

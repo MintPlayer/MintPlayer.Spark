@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using MintPlayer.Spark.Layering;
 using MintPlayer.Spark.SourceGenerators.Diagnostics;
 using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
@@ -12,13 +13,12 @@ namespace MintPlayer.Spark.SourceGenerators.Generators;
 [Generator(LanguageNames.CSharp)]
 public class HostTranslationsAggregatorGenerator : IncrementalGenerator
 {
-    private const string AttributeMetadataName = "MintPlayer.Spark.Abstractions.SparkTranslationsAttribute";
-
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
         IncrementalValueProvider<Settings> settingsProvider)
     {
-        // Referenced assemblies' translation attribute payloads, projected to POCOs immediately.
+        // Referenced libraries' translations layers ([assembly: SparkLayer], composition D1), in layer
+        // order (core first, then by dependency), each flattened the way the host's own file is below.
         var referencedProvider = context.CompilationProvider
             .Select(static (compilation, ct) =>
             {
@@ -26,42 +26,26 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
                           || compilation.Options.OutputKind == OutputKind.WindowsApplication;
                 if (!isHost) return new TranslationsAggregateInfo { ShouldEmit = false };
 
-                var attrType = compilation.GetTypeByMetadataName(AttributeMetadataName);
-                if (attrType is null) return new TranslationsAggregateInfo { ShouldEmit = false };
+                if (compilation.GetTypeByMetadataName(LibraryLayersReader.LayerAttribute) is null)
+                    return new TranslationsAggregateInfo { ShouldEmit = false };
 
-                var byAssembly = new Dictionary<string, TranslationsAssemblyInfo>();
-                foreach (var asmSymbol in compilation.SourceModule.ReferencedAssemblySymbols)
+                var assemblies = new List<TranslationsAssemblyInfo>();
+                foreach (var library in LibraryLayersReader.Read(compilation))
                 {
                     ct.ThrowIfCancellationRequested();
-                    foreach (var attr in asmSymbol.GetAttributes())
+                    var info = new TranslationsAssemblyInfo { AssemblyName = library.Assembly, DependsOn = library.DependsOn.ToList() };
+                    foreach (var file in library.Files.Where(f => f.Kind == SparkLayerKinds.Translations))
                     {
-                        if (!SymbolEqualityComparer.Default.Equals(attr.AttributeClass, attrType))
-                            continue;
-                        if (attr.ConstructorArguments.Length != 3) continue;
-
-                        var chunkIndex = attr.ConstructorArguments[0].Value as int? ?? 0;
-                        var chunkCount = attr.ConstructorArguments[1].Value as int? ?? 0;
-                        var json = attr.ConstructorArguments[2].Value as string ?? string.Empty;
-                        var asmName = asmSymbol.Name;
-
-                        if (!byAssembly.TryGetValue(asmName, out var info))
-                        {
-                            info = new TranslationsAssemblyInfo { AssemblyName = asmName };
-                            byAssembly[asmName] = info;
-                        }
-                        info.Chunks.Add(new TranslationsChunkInfo
-                        {
-                            ChunkIndex = chunkIndex,
-                            ChunkCount = chunkCount,
-                            Json = json,
-                        });
+                        if (Flatten(file.Json) is { } flat)
+                            info.Chunks.Add(new TranslationsChunkInfo { ChunkIndex = 0, ChunkCount = 1, Json = flat });
                     }
+                    if (info.Chunks.Count > 0) assemblies.Add(info);
                 }
 
                 return new TranslationsAggregateInfo
                 {
                     ShouldEmit = true,
-                    Assemblies = byAssembly.Values.OrderBy(a => a.AssemblyName, System.StringComparer.Ordinal).ToList(),
+                    Assemblies = assemblies,
                     OwnAssemblyName = compilation.AssemblyName ?? "",
                 };
             })
@@ -73,22 +57,9 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
             .Where(static t => string.Equals(Path.GetFileName(t.Path), "translations.json", System.StringComparison.OrdinalIgnoreCase))
             .Select(static (t, ct) =>
             {
-                var text = t.GetText(ct)?.ToString();
                 var info = new TranslationsAssemblyInfo();
-                if (string.IsNullOrEmpty(text)) return info;
-                JsonNode parsed;
-                try { parsed = MiniJson.Parse(text!); }
-                catch (JsonParseException) { return info; }
-
-                var (entries, _) = TranslationsTreeFlattener.Flatten(parsed);
-                if (entries.Count == 0) return info;
-
-                info.Chunks.Add(new TranslationsChunkInfo
-                {
-                    ChunkIndex = 0,
-                    ChunkCount = 1,
-                    Json = MiniJson.Serialize(entries),
-                });
+                if (Flatten(t.GetText(ct)?.ToString()) is { } flat)
+                    info.Chunks.Add(new TranslationsChunkInfo { ChunkIndex = 0, ChunkCount = 1, Json = flat });
                 return info;
             })
             .Collect()
@@ -134,11 +105,24 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
         context.ProduceCode(sourceProvider);
     }
 
+    /// <summary>A <c>translations.json</c> as one flat object of keys; <see langword="null"/> when it is empty or does not parse (SPARK_TRANS_001 says why).</summary>
+    private static string? Flatten(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+        JsonNode parsed;
+        try { parsed = MiniJson.Parse(text!); }
+        catch (JsonParseException) { return null; }
+
+        var (entries, _) = TranslationsTreeFlattener.Flatten(parsed);
+        return entries.Count == 0 ? null : MiniJson.Serialize(entries);
+    }
+
     internal static Dictionary<string, List<KeyValuePair<string, string>>> MergeTranslations(
         TranslationsAggregateInfo info,
         out List<TranslationsConflict> conflicts)
     {
-        // Composition per (key, language) (#467, D2): libraries (alphabetical) first, host last. A later
+        // Composition per (key, language) (#467, D2): libraries in layer order first (core, then by
+        // dependency, alphabetical between unrelated ones; composition D2), host last. A later
         // layer replaces only the languages it defines, so an app adding `es` keeps the libraries' en/fr/nl
         // and an app overriding `nl` keeps the rest. Each language remembers the assembly that set it, for
         // conflict reporting.
@@ -202,7 +186,7 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
                 }
 
                 var existing = langs[index];
-                if (!isHost && !string.Equals(existing.Value, js.Value, System.StringComparison.Ordinal))
+                if (!isHost && !asm.DependsOn.Contains(existing.Owner) && !string.Equals(existing.Value, js.Value, System.StringComparison.Ordinal))
                 {
                     conflicts.Add(new TranslationsConflict
                     {

@@ -6,8 +6,9 @@ using RunResult = MintPlayer.Spark.SourceGenerators.Tests._Infrastructure.Genera
 namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
 
 /// <summary>
-/// #467 D2/D3/D23: translations compose per (key, language). Libraries apply alphabetically, the app
-/// last; a layer replaces only the languages it defines. Only two LIBRARIES disagreeing on the same
+/// #467 D2/D3/D23: translations compose per (key, language). Libraries apply in layer order (core,
+/// then by dependency, alphabetically between unrelated ones; composition D2), the app last; a layer
+/// replaces only the languages it defines. Only two LIBRARIES disagreeing on the same
 /// (key, language) is reported (SPARK_TRANS_005); the app overriding a library is the intended way to
 /// customize and is silent. An app's <c>""</c> counts as "not defined".
 /// </summary>
@@ -15,20 +16,23 @@ public class HostTranslationsCompositionTests
 {
     private const string GeneratorName = "HostTranslationsAggregatorGenerator";
 
-    private static MetadataReference Library(string name, string json)
+    private static MetadataReference Library(string name, string json, params string[] dependsOn)
     {
         var escaped = json.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        var source = $"using MintPlayer.Spark.Abstractions;\n[assembly: SparkLayer(\"{name.ToLowerInvariant()}\", \"translations\", \"translations.json\", \"{escaped}\")]";
+        if (dependsOn.Length > 0)
+            source += $"\n[assembly: SparkLayerDependencies({string.Join(", ", dependsOn.Select(d => $"\"{d}\""))})]";
         return GeneratorHarness.CompileToMetadataReference(
             assemblyName: name,
-            sources: [$"using MintPlayer.Spark.Abstractions;\n[assembly: SparkTranslations(0, 1, \"{escaped}\")]"],
-            referenceTypes: [typeof(SparkTranslationsAttribute)]);
+            sources: [source],
+            referenceTypes: [typeof(SparkLayerAttribute)]);
     }
 
     private static RunResult RunHost(string? hostTranslations, params MetadataReference[] libraries)
         => GeneratorHarness.Run(
             GeneratorName,
             sources: [],
-            referenceTypes: [typeof(SparkTranslationsAttribute)],
+            referenceTypes: [typeof(SparkLayerAttribute)],
             rootNamespace: "TestApp",
             additionalTexts: hostTranslations is null ? [] : [("translations.json", hostTranslations)],
             outputKind: OutputKind.ConsoleApplication,
@@ -93,6 +97,27 @@ public class HostTranslationsCompositionTests
         message.Should().Contain("'save'").And.Contain("'en'").And.Contain("LibA").And.Contain("LibB");
         Line(Registry(result), "save").Should().Contain(
             "[\"en\"] = \"Store\", [\"nl\"] = \"Opslaan\", [\"fr\"] = \"Enregistrer\"");
+    }
+
+    [Fact]
+    public void A_library_overrides_a_library_it_depends_on_silently_whatever_their_names()
+    {
+        // Composition D2 / grill Q3: AExt stacks above ZLib because it depends on it, although it sorts
+        // first by name, and overriding a dependency is intended, never SPARK_TRANS_005.
+        var result = RunHost(null,
+            Library("AExt", """{"save":{"en":"Store"}}""", "ZLib"),
+            Library("ZLib", """{"save":{"en":"Save","nl":"Opslaan"}}"""));
+
+        result.GeneratorDiagnostics.Should().NotContain(d => d.Id == "SPARK_TRANS_005");
+        Line(Registry(result), "save").Should().Contain("[\"en\"] = \"Store\", [\"nl\"] = \"Opslaan\"");
+    }
+
+    [Fact]
+    public void A_nested_library_layer_is_flattened_before_it_composes()
+    {
+        var result = RunHost(null, Library("Lib", """{"actions":{"save":{"en":"Save"}},"$schema":"x"}"""));
+
+        Line(Registry(result), "actions.save").Should().Contain("[\"en\"] = \"Save\"");
     }
 
     [Fact]

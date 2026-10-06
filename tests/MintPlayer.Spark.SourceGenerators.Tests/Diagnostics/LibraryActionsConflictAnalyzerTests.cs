@@ -18,15 +18,32 @@ public class LibraryActionsConflictAnalyzerTests
     private static MetadataReference Library(string assemblyName, string json)
         => GeneratorHarness.CompileToMetadataReference(
             assemblyName,
-            [$"[assembly: MintPlayer.Spark.Abstractions.SparkActions({SymbolDisplay.FormatLiteral(json, quote: true)})]"],
-            [typeof(SparkActionsAttribute)]);
+            [$"[assembly: MintPlayer.Spark.Abstractions.SparkLayer({SymbolDisplay.FormatLiteral(assemblyName.ToLowerInvariant().Replace('.', '-'), quote: true)}, \"actions\", \"actions.json\", {SymbolDisplay.FormatLiteral(json, quote: true)})]"],
+            [typeof(SparkLayerAttribute)]);
 
     private static Task<IReadOnlyList<Diagnostic>> RunAsync(params MetadataReference[] libraries)
         => GeneratorHarness.RunAnalyzerAsync(
             AnalyzerName,
             ["public class App { }"],
-            referenceTypes: [typeof(SparkActionsAttribute)],
+            referenceTypes: [typeof(SparkLayerAttribute)],
             additionalReferences: libraries);
+
+    [Fact]
+    public async Task A_library_overriding_a_library_it_depends_on_is_not_SPARK036()
+    {
+        // Grill Q3: overriding a dependency is intended; only unrelated libraries conflict.
+        var extension = GeneratorHarness.CompileToMetadataReference(
+            "A.Ext",
+            [
+                """[assembly: MintPlayer.Spark.Abstractions.SparkLayer("a-ext", "actions", "actions.json", "{ \"Archive\": { \"icon\": \"archive\" } }")]""",
+                """[assembly: MintPlayer.Spark.Abstractions.SparkLayerDependencies("B.Lib")]""",
+            ],
+            [typeof(SparkLayerAttribute)]);
+
+        var diagnostics = await RunAsync(extension, Library("B.Lib", """{ "Archive": { "icon": "box" } }"""));
+
+        diagnostics.Should().BeEmpty();
+    }
 
     [Fact]
     public async Task Two_libraries_stating_a_property_differently_is_SPARK036_naming_both()

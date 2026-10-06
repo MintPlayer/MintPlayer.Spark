@@ -2,7 +2,7 @@
 
 The attributes an entity library applies to its own types: `[GenerateIndex]`, `[Search]`, `[Sortable]`,
 `[Reference]`, `[LookupReference]`, `[ValueObject]`, `[ValueKey]`, `[Breadcrumb]`, `[IgnoreProperty]`,
-`[IgnoreForIndex]`, `[FromIndex]`, `[DefaultIndex]`, `[SparkActions]`, `[SparkTranslations]` and
+`[IgnoreForIndex]`, `[FromIndex]`, `[DefaultIndex]`, the generator-emitted `[SparkLayer]`, `[SparkLayerDependencies]` and `[SparkLayerAssemblies]`, and
 `[SparkAttributeDescription]`.
 
 It is a plain `Microsoft.NET.Sdk` package with no dependencies, so a project that holds only entities

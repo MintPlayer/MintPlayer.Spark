@@ -35,7 +35,8 @@ internal static class GeneratorHarness
         OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
         IEnumerable<MetadataReference>? additionalReferences = null,
         CSharpParseOptions? parseOptions = null,
-        IReadOnlyDictionary<string, string>? globalOptions = null)
+        IReadOnlyDictionary<string, string>? globalOptions = null,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? additionalTextOptions = null)
     {
         var generator = InstantiateGenerator(generatorTypeName, generatorAssemblyName);
 
@@ -49,7 +50,7 @@ internal static class GeneratorHarness
         var driverParseOptions = (CSharpParseOptions)compilation.SyntaxTrees.First().Options;
 
         // Surface RootNamespace (and any other build_property.* a test passes) via analyzer config.
-        var optionsProvider = new StubAnalyzerConfigOptionsProvider(rootNamespace, globalOptions);
+        var optionsProvider = new StubAnalyzerConfigOptionsProvider(rootNamespace, globalOptions, additionalTextOptions);
 
         var additionalTextList = additionalTexts?
             .Select(t => (AdditionalText)new InMemoryAdditionalText(t.Path, t.Text))
@@ -312,7 +313,7 @@ internal static class GeneratorHarness
     /// Compiles <paramref name="sources"/> to an in-memory PE image and returns it as a
     /// <see cref="MetadataReference"/>. Lets snapshot tests fabricate a "referenced library"
     /// with assembly attributes that the generator under test inspects (e.g.
-    /// <c>HostTranslationsAggregatorGenerator</c> reading <c>SparkTranslationsAttribute</c>).
+    /// <c>HostTranslationsAggregatorGenerator</c> reading <c>SparkLayerAttribute</c>).
     /// </summary>
     public static MetadataReference CompileToMetadataReference(
         string assemblyName,
@@ -397,12 +398,40 @@ internal sealed record GeneratorRunResult(
 internal sealed class StubAnalyzerConfigOptionsProvider : AnalyzerConfigOptionsProvider
 {
     private readonly StubOptions _options;
-    public StubAnalyzerConfigOptionsProvider(string? rootNamespace, IReadOnlyDictionary<string, string>? values = null)
-        => _options = new StubOptions(rootNamespace, values);
+    private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? _fileOptions;
+
+    /// <param name="fileOptions">
+    /// Per AdditionalText path, the item metadata MSBuild would hand that one file
+    /// (<c>build_metadata.AdditionalFiles.*</c>), on top of <paramref name="values"/>.
+    /// </param>
+    public StubAnalyzerConfigOptionsProvider(
+        string? rootNamespace,
+        IReadOnlyDictionary<string, string>? values = null,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? fileOptions = null)
+    {
+        _options = new StubOptions(rootNamespace, values);
+        _fileOptions = fileOptions;
+        _values = values;
+        _rootNamespace = rootNamespace;
+    }
+
+    private readonly IReadOnlyDictionary<string, string>? _values;
+    private readonly string? _rootNamespace;
 
     public override AnalyzerConfigOptions GlobalOptions => _options;
     public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => _options;
-    public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => _options;
+    public override AnalyzerConfigOptions GetOptions(AdditionalText textFile)
+    {
+        if (_fileOptions is null || !_fileOptions.TryGetValue(textFile.Path, out var metadata))
+            return _options;
+
+        var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in _values ?? new Dictionary<string, string>())
+            merged[key] = value;
+        foreach (var (key, value) in metadata)
+            merged[key] = value;
+        return new StubOptions(_rootNamespace, merged);
+    }
 
     private sealed class StubOptions : AnalyzerConfigOptions
     {

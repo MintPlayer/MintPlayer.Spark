@@ -120,6 +120,42 @@ assemblies (`[assembly: SparkLayerAssemblies("…")]`), and the runtime `Assembl
 those, so both views agree. Layer paths are embedded relative, with `/`. Web SDK libraries keep
 `Content Remove` on their layer files (NETSDK1152).
 
+**As built in M3 (2026-10-06).**
+- **Contract** (`MintPlayer.Spark.Attributes`, namespace `MintPlayer.Spark.Abstractions`):
+  - `[assembly: SparkLayer(alias, kind, path, json)]`, one per file; the text unparsed and unchunked
+    (S1: attribute blobs have no practical ceiling, so the translations' 60 KB chunks are gone).
+  - `[assembly: SparkLayerDependencies("A", …)]` beside them: the layered assemblies the library was
+    compiled against, transitively. **Deviation:** the order is not read from
+    `GetReferencedAssemblies` (Q3 said so) because the compiler drops a reference whose types a
+    library never uses, the same trimming S1 found for applications; a library may override another's
+    layer without touching its code. Recorded, both views read the same list.
+  - `[assembly: SparkLayerAssemblies("A", …)]` in the application, in layer order.
+  - `SparkActions` and `SparkTranslations` are removed, with `LibraryActionsGenerator` and
+    `LibraryTranslationsGenerator`.
+- **The path decides the kind** (`SparkLayerKinds.FromPath`, shared source): `actions.json`,
+  `translations.json`, `Model/*.json`, `security.json`, `programUnits.json`, `moderation.json`.
+  One metadata item, `SparkLayerPath`, so build and generator cannot disagree on a kind.
+- **Items.** The generator package's `build/MintPlayer.Spark.SourceGenerators.targets` adds them,
+  with the `Content Remove`, for a class library that is not a test project
+  (`<SparkLibraryLayers>false</SparkLibraryLayers>` opts out); `Directory.Build.targets` imports it
+  in this repository. `build/`, not `buildTransitive/`: the package is referenced with
+  `PrivateAssets="all"`, so it reaches exactly the library. The libraries' hand-written items are gone.
+- **Generators.** `LibraryLayersGenerator` embeds, only in a class library (an executable embeds
+  nothing, S3), and still checks every `translations.json` (SPARK_TRANS_001–004).
+  `ApplicationLayersGenerator` writes `SparkLayerAssemblies` in an executable. Readers:
+  `LibraryLayersReader` at compile time (the actions analyzer, the security analyzer, the host
+  translations aggregator, which keeps its registry until M5 and now flattens the raw layers itself),
+  `SparkLayerCatalog` at run time (`Libraries`, `Of(kind)`, `Discover`; `SparkActionLayers` reads it).
+- **Run time.** `SparkLayerCatalog` loads the entry assembly's recorded names (`Assembly.Load`, a
+  name that does not load fails) and falls back to `SparkAssemblies.SparkAware()` when the entry
+  assembly recorded nothing (a `WebApplicationFactory` host, whose entry assembly is the test
+  runner). Cached; two libraries with one alias throw at first use, which is startup.
+- **Package vs project** (acceptance item 3) is `npm run test:layer-transport`
+  (`tools/layer-transport-check.mjs`): S1's `run.sh` against the real libraries, packed at a
+  throw-away version to a local feed with `--artifacts-path`, so neither `bin`/`obj` nor the Nx cache
+  is touched. A script and not an xunit test, because packing the closure and restoring from
+  nuget.org takes minutes and the local sweep must not wait for it; M11 runs it.
+
 **Recommendation was: C**, with D9 for visibility. If physical files are a hard requirement, B
 (Static Web Assets pattern, composed into `obj`/`bin`) rather than A, and every reader moves to
 the output folder.
@@ -142,6 +178,10 @@ raw JSON trees and records which layer each leaf came from.
 - **Conflicts:**
   - Library against library: a diagnostic at compile time (the generator) and at startup.
   - The app always wins, silently.
+  - **As built in M3:** a library overriding a library it depends on is silent too (Q3). The engine
+    still lists every library-vs-library conflict; the actions analyzer, `SparkActionLayers.Compose`
+    and the translations aggregator drop those whose winner recorded the loser in
+    `SparkLayerDependencies`.
 - **Per-kind flags** are explicit rather than silently unified:
   - case sensitivity of keys
   - "`""` means untranslated" (translations)
@@ -227,7 +267,8 @@ keep their minted ids.
   app's AdditionalFiles, as the analyzers do for actions today. S3 found that only SPARK_TRANS_005
   needs this; it moves to an analyzer like `LibraryActionsConflictAnalyzer`.
 - `LibraryTranslationsGenerator` is gated off for the host. Today it also embeds the host's own
-  file, which would double the app layer at runtime (S3).
+  file, which would double the app layer at runtime (S3). **Done in M3:** it is replaced by
+  `LibraryLayersGenerator`, which embeds nothing in an executable.
 - The static `SparkTranslations.All` (read at `SparkText.cs:32`, `TranslationsLoader.cs:16`,
   `TranslationsSeeder.cs:77` and `ModelSynchronizer.cs:1300`, and filled today by a ModuleInitializer)
   becomes a startup-registered snapshot that is swapped atomically on reload.
@@ -380,6 +421,21 @@ The decision: **construction-time pruning plus one boundary safety net.**
 - The generator warns when an alias is too generic. The docs say to choose it like a NuGet package
   id: it is effectively permanent, because changing it rewrites keys and ids in every consuming
   app.
+- **As built in M3 (2026-10-06):**
+  - **SPARK041** (error): layer files and no alias, or one that is not lower-kebab
+    (`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, because it becomes part of right keys and ids); nothing is
+    embedded. **SPARK042** (warning): a generic alias, from a short deny-list (`app`, `application`,
+    `base`, `common`, `core`, `default`, `extensions`, `lib`, `library`, `main`, `module`, `plugin`,
+    `shared`, `test`, `tests`, `util`, `utils`). **SPARK043** (error): two referenced libraries with one
+    alias, from `ApplicationLayersGenerator`; `SparkLayerCatalog` throws the same at startup.
+  - **SPARK044** (MSBuild warning) is the `PrivateAssets` check. It is detectable: it lives in the
+    generator package's `build/` targets, which NuGet imports into the referencing library, and reads
+    that `PackageReference`'s `PrivateAssets` exactly as SPARK002 does. A Roslyn analyzer could not
+    see package metadata.
+  - **Aliases:** `MintPlayer.Spark` = `spark`, `MintPlayer.Spark.Authorization` = `authorization`,
+    the two libraries that ship layers today. Moderation, Messaging, IdentityProvider and
+    Contributions ship none yet; each gets its alias in the milestone that gives it a layer (M6/M9
+    for Moderation's `moderation`), since an alias without layers is never read.
 
 ## 5. Open decisions (grill)
 

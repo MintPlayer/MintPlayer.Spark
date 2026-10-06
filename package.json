@@ -6,6 +6,7 @@
     "test:ng-spark-auth": "npm --workspace @mintplayer/ng-spark-auth run test",
     "test:ng": "npm run test:ng-spark && npm run test:ng-spark-auth",
     "test:affected": "node tools/test-local.mjs",
+    "test:layer-transport": "node tools/layer-transport-check.mjs",
     "test": "nx run-many --target=test"
   },
   "workspaces": [

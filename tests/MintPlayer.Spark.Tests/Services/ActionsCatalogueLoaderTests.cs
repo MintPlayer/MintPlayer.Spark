@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Services;
@@ -131,12 +132,12 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     }
 
     [Fact]
-    public void Library_layers_are_discovered_core_first_then_by_assembly_name()
+    public void Library_layers_are_discovered_core_first_in_layer_order()
     {
         SparkActionLayers.Libraries.Should().NotBeEmpty();
         SparkActionLayers.Libraries[0].Name.Should().Be("MintPlayer.Spark");
-        SparkActionLayers.Libraries.Select(l => l.Name).Skip(1)
-            .Should().BeInAscendingOrder(StringComparer.OrdinalIgnoreCase);
+        SparkActionLayers.Libraries.Select(l => l.Name).Should().Equal(
+            SparkLayerCatalog.Of("actions").Select(x => x.Library.AssemblyName));
     }
 
     // ── Validation ──────────────────────────────────────────────────────────────────────────────

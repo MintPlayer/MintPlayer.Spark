@@ -8,6 +8,9 @@ public partial class TranslationsAssemblyInfo
 {
     public string AssemblyName { get; set; } = string.Empty;
     public List<TranslationsChunkInfo> Chunks { get; set; } = new();
+
+    /// <summary>The layered assemblies this library stacks above; overriding them is never a conflict (grill Q3).</summary>
+    public List<string> DependsOn { get; set; } = new();
 }
 
 [GenerateEquality]

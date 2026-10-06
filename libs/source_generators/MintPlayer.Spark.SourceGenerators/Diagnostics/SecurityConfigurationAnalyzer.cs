@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
+using MintPlayer.Spark.Layering;
 using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using System;
@@ -162,9 +163,10 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             var groupIds = SecurityJsonReader.ReadGroupIds(content);
             var customActions = ReadNames(end.Options.AdditionalFiles, "actions.json", TopLevelKeys);
             // Library layers (#467, S12): an action a referenced library ships is one Spark asks for.
-            foreach (var layer in LibraryActionsReader.Read(end.Compilation))
-                foreach (var name in LibraryActionsReader.Names(layer.Json))
-                    customActions.Add(name);
+            foreach (var library in LibraryLayersReader.Read(end.Compilation))
+                foreach (var file in library.Files.Where(f => f.Kind == SparkLayerKinds.Actions))
+                    foreach (var name in LibraryLayersReader.ActionNames(file.Json))
+                        customActions.Add(name);
             var model = ReadModel(end.Options.AdditionalFiles, SparkAppDataDir.Read(end.Options.AnalyzerConfigOptionsProvider.GlobalOptions));
             var knownTargets = model.Targets;
             var combinedVerbs = reserved.Where(r => r.IsCombined).Select(r => r.Verb).ToArray();

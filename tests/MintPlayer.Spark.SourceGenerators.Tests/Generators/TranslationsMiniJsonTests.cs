@@ -7,17 +7,30 @@ namespace MintPlayer.Spark.SourceGenerators.Tests.Generators;
 
 /// <summary>
 /// The generator's own JSON reader (<c>MiniJson</c>) and tree flattener, driven through
-/// <c>LibraryTranslationsGenerator</c> because both are internal to an assembly the tests load
-/// rather than reference. The parse error's message is carried in SPARK_TRANS_001, so each malformed
-/// shape can be told apart by its text.
+/// <c>LibraryLayersGenerator</c>, which checks every <c>translations.json</c> the compiler sees, because
+/// both are internal to an assembly the tests load rather than reference. The parse error's message is
+/// carried in SPARK_TRANS_001, so each malformed shape can be told apart by its text.
 /// </summary>
-public class LibraryTranslationsMiniJsonTests
+public class TranslationsMiniJsonTests
 {
+    /// <summary>A plain <c>translations.json</c> (an application's): checked, never embedded.</summary>
     private static GeneratorRunResult Run(string translations) => GeneratorHarness.Run(
-        "LibraryTranslationsGenerator",
+        "LibraryLayersGenerator",
         sources: [],
         rootNamespace: "TestApp",
         additionalTexts: [("translations.json", translations)]);
+
+    /// <summary>A library's translations layer: checked, and embedded as written.</summary>
+    private static GeneratorRunResult RunLayer(string translations) => GeneratorHarness.Run(
+        "LibraryLayersGenerator",
+        sources: [],
+        referenceTypes: [typeof(SparkLayerAttribute)],
+        additionalTexts: [("App_Data/translations.json", translations)],
+        globalOptions: new Dictionary<string, string> { ["build_property.SparkLibraryAlias"] = "probe" },
+        additionalTextOptions: new Dictionary<string, IReadOnlyDictionary<string, string>>
+        {
+            ["App_Data/translations.json"] = new Dictionary<string, string> { ["build_metadata.AdditionalFiles.SparkLayerPath"] = "translations.json" },
+        });
 
     [Theory]
     [InlineData("""{ "a": [1] }""", "Arrays are not allowed in translations.json (at 'a')")]
@@ -65,7 +78,6 @@ public class LibraryTranslationsMiniJsonTests
             ["SPARK_TRANS_002", "SPARK_TRANS_003", "SPARK_TRANS_002"]);
         result.GeneratorDiagnostics.Select(d => d.GetMessage()).Should().Contain(m => m.Contains("mixed"));
         result.GeneratorDiagnostics.Select(d => d.GetMessage()).Should().Contain(m => m.Contains("empty"));
-        Chunks(result).Should().ContainSingle().Which.Should().Contain("\"good\"");
     }
 
     [Theory]
@@ -82,9 +94,9 @@ public class LibraryTranslationsMiniJsonTests
     [Fact]
     public void Escapes_survive_the_round_trip_into_the_compiled_attribute()
     {
-        // Read back through a compiled assembly: the text goes JSON -> MiniJson -> JSON -> C# literal
-        // -> metadata, and a mistake at any step shows up only here.
-        var result = Run("""
+        // Read back through a compiled assembly: the text goes JSON -> C# literal -> metadata, and a
+        // mistake at either step shows up only here.
+        var result = RunLayer("""
             { "quote": { "en": "say \"hi\" \\ \/ \b\f\n\r\t café \u0001 \u007f" } }
             """);
 
@@ -97,8 +109,10 @@ public class LibraryTranslationsMiniJsonTests
     }
 
     [Fact]
-    public void A_file_beyond_the_attribute_ceiling_is_split_into_chunks_that_lose_nothing()
+    public void A_large_file_is_embedded_whole_in_one_attribute()
     {
+        // The flattened 60 KB chunks are gone: an attribute blob lives in #Blob, not #US, so its size
+        // is not the ceiling CS8103 guards (composition S1 round-tripped 20 MB).
         var sb = new StringBuilder("{");
         for (var i = 0; i < 1200; i++)
         {
@@ -107,29 +121,19 @@ public class LibraryTranslationsMiniJsonTests
         }
         sb.Append('}');
 
-        var attributes = Compile(Run(sb.ToString()));
+        var attribute = Compile(RunLayer(sb.ToString())).Should().ContainSingle().Which;
 
-        attributes.Count.Should().BeGreaterThan(1, "roughly 90 KB of entries cannot fit one 60 KB chunk");
-        attributes.Select(a => a.ChunkCount).Should().OnlyContain(c => c == attributes.Count);
-        attributes.Select(a => a.ChunkIndex).Should().BeEquivalentTo(Enumerable.Range(0, attributes.Count));
-        attributes.Should().OnlyContain(a => Encoding.UTF8.GetByteCount(a.Json) <= 60 * 1024 + 256);
-        var keys = attributes
-            .SelectMany(a => System.Text.Json.JsonDocument.Parse(a.Json).RootElement.EnumerateObject().Select(p => p.Name))
-            .ToList();
-        keys.Should().HaveCount(1200);
-        keys.Distinct().Should().HaveCount(1200, "an entry must land in exactly one chunk");
+        attribute.Json.Should().Be(sb.ToString());
+        Encoding.UTF8.GetByteCount(attribute.Json).Should().BeGreaterThan(60 * 1024);
     }
 
-    private static IEnumerable<string> Chunks(GeneratorRunResult result) =>
-        Compile(result).Select(a => a.Json);
-
-    private static List<SparkTranslationsAttribute> Compile(GeneratorRunResult result)
+    private static List<SparkLayerAttribute> Compile(GeneratorRunResult result)
     {
         var assembly = GeneratorHarness.EmitAndLoad(
             "TranslationsProbe" + Guid.NewGuid().ToString("N"),
             result.GeneratedSources.Select(s => s.Source),
-            referenceTypes: [typeof(SparkTranslationsAttribute)]);
+            referenceTypes: [typeof(SparkLayerAttribute)]);
 
-        return [.. assembly.GetCustomAttributes<SparkTranslationsAttribute>().OrderBy(a => a.ChunkIndex)];
+        return [.. assembly.GetCustomAttributes<SparkLayerAttribute>()];
     }
 }

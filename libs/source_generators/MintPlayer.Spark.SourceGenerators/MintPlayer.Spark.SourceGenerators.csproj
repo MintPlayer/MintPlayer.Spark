@@ -28,6 +28,14 @@
         <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="12.1.1" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
+    <!--
+    The library-layer items, the alias and the SPARK044 check (composition D1, D16), imported by NuGet
+    into the project that references this package. In this repository Directory.Build.targets imports it.
+    -->
+    <ItemGroup>
+        <None Include="build\MintPlayer.Spark.SourceGenerators.targets" Pack="true" PackagePath="build/" />
+    </ItemGroup>
+
     <!-- The layering engine, one source with the runtime's MintPlayer.Spark.Abstractions (composition D14). -->
     <ItemGroup>
         <Compile Include="..\..\spark\Shared\Layering\*.cs" Link="Layering\%(Filename)%(Extension)" />
