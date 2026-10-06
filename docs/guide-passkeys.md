@@ -19,15 +19,19 @@ spark.AddAuthentication<SparkUser>(configure: auth =>
 });
 ```
 
-Client side, mount the management page:
+Client side, mount the account area:
 
 ```ts
 ...sparkAuthRoutes(withExternalLogin(githubProvider()), withAccount()),
 ```
 
-`withAccount()` mounts it at `/account/passkeys` and links it from the account overview, which
-`<spark-auth-bar>`'s Account button opens. `withPasskeys()` still mounts the page alone (at
-`/passkeys`) for an app without the account area, but then nothing links to it.
+The passkeys page is a generic Spark page, `/po/passkeys/me`, which the Authorization library ships
+whole: the virtual `Passkeys` type, its `my-passkeys` query and the `AddPasskey`, `RenamePasskey`
+and `RemovePasskey` actions, with their rights granted to `@authenticated`. An app declares none of
+it. `withAccount()` maps `/account/passkeys` to forward there and links it from the account overview,
+which `<spark-auth-bar>`'s Account button opens. `withPasskeys()` maps the forward alone (at
+`/passkeys`) for an app without the account area, but then nothing links to it. `provideSparkAuth()`
+registers the `webauthn.create` client method that Add runs in the browser.
 
 That is the whole setup. The sign-in page grows a "Sign in with a passkey" button on its own, once
 the server reports the capability and the browser supports the ceremony.
@@ -65,17 +69,18 @@ to work against the real domain.
 ## What the ceremony looks like
 
 Both flows are two round trips. The client asks for options, hands them to the authenticator, and
-posts back what it produced.
+posts back what it produced. Enrollment is the `AddPasskey` action, through a client-method retry
+(`IRetryAccessor.Invoke`); sign-in is two anonymous endpoints.
 
-| | Enrollment | Sign-in |
+| | Enrollment (`AddPasskey`) | Sign-in |
 |---|---|---|
-| 1 | `POST /spark/auth/passkeys/creation-options` | `POST /spark/auth/passkeys/request-options` |
-| 2 | `navigator.credentials.create()` | `navigator.credentials.get()` |
-| 3 | `POST /spark/auth/passkeys` | `POST /spark/auth/passkeys/sign-in` |
+| 1 | `POST /spark/actions/execute` answers 449: a retry naming `webauthn.create`, the creation options as its arguments | `POST /spark/auth/passkeys/request-options` |
+| 2 | `navigator.credentials.create()`, run by the `webauthn.create` client method | `navigator.credentials.get()` |
+| 3 | the same request again, the credential as the retry answer's `value` | `POST /spark/auth/passkeys/sign-in` |
 
-Management is `GET /spark/auth/passkeys`, `POST /spark/auth/passkeys/{id}/name` and
-`DELETE /spark/auth/passkeys/{id}`. Everything except the two sign-in routes requires authentication
-and an antiforgery token.
+Listing, renaming and removing are the page's query and row actions. They run through Spark's
+query and action pipelines, so `security.json` authorizes them and the action pipeline's antiforgery
+covers them; only the two sign-in routes are passkey HTTP endpoints.
 
 ### ⚠️ The challenge never leaves the server
 
@@ -169,8 +174,8 @@ presented 0 signs in, twice in a row. So points 1–3 above hold as written.
 
 ## Removing the last credential
 
-`DELETE /spark/auth/passkeys/{id}` refuses with `last_credential` when the passkey is the only thing
-that can sign the account in. Unlinking an external login refuses the same way, and each now counts
+The `RemovePasskey` action refuses, with the `auth.passkeyLastCredential` notification, when the
+passkey is the only thing that can sign the account in. Unlinking an external login refuses the same way, and each now counts
 the other — a passkey counts only while `SparkPasskeys` is `Enabled`, for the same reason a password
 stops counting under `LocalCredentials.Disabled`: an enrolled credential with no endpoint to present
 it to is an artefact, not a way in.

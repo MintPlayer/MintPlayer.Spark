@@ -134,7 +134,7 @@ internal sealed partial class SparkPasskeyAccount<TUser> : ISparkPasskeyAccount
         {
             Id = await userManager.GetUserIdAsync(current),
             Name = await userManager.GetUserNameAsync(current) ?? string.Empty,
-            // The account name rather than the email, as the creation-options endpoint does: the
+            // The account name rather than the email, as the retired creation-options endpoint did: the
             // authenticator shows and stores this string, so it should be recognisable without being
             // more identifying than the account already is.
             DisplayName = await userManager.GetUserNameAsync(current) ?? string.Empty,

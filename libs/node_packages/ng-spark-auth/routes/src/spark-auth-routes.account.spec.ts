@@ -90,6 +90,8 @@ describe('withAccount (#460, D16)', () => {
     expect((await byPath['account/logins'].loadComponent()).name).toBe('SparkExternalLoginsComponent');
     expect((await byPath['account/personal-data'].loadComponent()).name).toBe('SparkPersonalDataComponent');
     expect((await byPath['account'].loadComponent()).name).toBe('SparkAccountOverviewComponent');
+    // The library has no passkeys component left to load (plan M6): the page is the generic one.
+    expect(byPath['account/passkeys'].loadComponent).toBeUndefined();
   });
 
   it('combines with withPasskeys (the later feature owns the passkeys path)', () => {

@@ -26,7 +26,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Ported from <see cref="Extensions.PasskeyManagementTests"/>, whose endpoints these replace: the same
+/// Ported from the retired management endpoints' tests (PRD D8, plan M6): the same
 /// refusals (a ceremony that throws, a credential held elsewhere, the last-credential guard) and the
 /// same 64-character name rule, now reached through the action pipeline's retry instead of HTTP.
 /// </para>
@@ -317,7 +317,9 @@ public class PasskeysPageTests
         var op = client.Operations.OfType<RetryOperation>().Should().ContainSingle().Which;
         op.PersistentObject!.Name.Should().Be("PasskeyRename");
         op.PersistentObject["Name"].Value.Should().Be("laptop");
-        op.Options.Should().Contain("Cancel");
+        // Save is the action's; Cancel is the client's own translated button, never an untranslated option.
+        op.Options.Should().Equal("auth.passkeySave");
+        op.Cancellable.Should().BeTrue();
     }
 
     [Fact]
@@ -366,6 +368,17 @@ public class PasskeysPageTests
         await userManager.Received(1).RemovePasskeyAsync(alice, Arg.Is<byte[]>(id => id.SequenceEqual(AliceCredential)));
         Notifications.Should().ContainSingle(n => n.Kind == NotificationKind.Success && n.Message == "auth.passkeyRemovedNotice");
         Refreshed.Should().Equal(SparkPasskeysPage.QueryAlias);
+    }
+
+    [Fact]
+    public async Task Another_passkey_rescues_the_one_being_removed()
+    {
+        userManager.GetPasskeysAsync(alice).Returns([Passkey(AliceCredential, "laptop"), Passkey([6, 6, 6, 6], "phone")]);
+
+        await Pass<RemovePasskeyAction>().ExecuteAsync(Selected(AliceCredentialText));
+
+        await userManager.Received(1).RemovePasskeyAsync(alice, Arg.Is<byte[]>(id => id.SequenceEqual(AliceCredential)));
+        Notifications.Should().ContainSingle(n => n.Kind == NotificationKind.Success && n.Message == "auth.passkeyRemovedNotice");
     }
 
     [Fact]

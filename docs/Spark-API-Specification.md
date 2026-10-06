@@ -516,8 +516,9 @@ with `type: "retry"`:
       "step": 0,
       "title": "Delete Car",
       "message": "Type the license plate to confirm deletion of ABC-123.",
-      "options": ["Delete", "Cancel"],
-      "defaultOption": "Cancel",
+      "options": ["Delete"],
+      "defaultOption": null,
+      "cancellable": true,
       "persistentObject": { /* optional scaffold PO for a form */ }
     }
   ]
@@ -552,9 +553,12 @@ Three properties of this protocol are easy to get wrong and were confirmed on th
   incremented counter agrees with the server right up until that happens, and then answers a
   different question than the one that was asked.
 
-`"Cancel"` is not auto-appended to `options`; a hook that wants it must offer it. The Angular client
-sends `"Cancel"` when the user dismisses the modal, and a hook that reads it typically returns
-without acting.
+`"Cancel"` is never one of the `options`, which are labels shown as given. A hook that wants a Cancel
+passes `cancellable: true` (`IRetryAccessor.Action`); the operation then carries `"cancellable": true`,
+the client adds its own Cancel button labelled in the user's language (`common.cancel`), and it
+answers that button, and the modal being dismissed, with `"option": "Cancel"`. A hook that reads it
+typically returns without acting. Without `cancellable`, a dismissal abandons the request: nothing is
+sent.
 
 When every prompt has been answered, the endpoint returns its normal success response.
 
@@ -779,8 +783,9 @@ Content-Type: application/json
       "step": 0,
       "title": "Delete Person",
       "message": "This person has 5 related orders. Delete them as well?",
-      "options": ["Cancel", "Delete All"],
-      "defaultOption": "Cancel",
+      "options": ["Delete All"],
+      "defaultOption": null,
+      "cancellable": true,
       "persistentObject": null
     }
   ]

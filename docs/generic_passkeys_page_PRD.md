@@ -400,7 +400,7 @@ system decided the shape (it supersedes D6 and O1):
   they cannot carry `TUser`; the seam closes it where it is known, as `MapSparkIdentityApi<TUser>` does for
   the endpoints. Every member starts from the request principal and takes no user, which is the isolation
   argument: another user's credential id is simply not among the caller's. The logic is the endpoints'
-  (`Sanitize`, `SparkCredentialInventory`, the uniform refusals); the endpoints stay until M6.
+  (`Sanitize`, `SparkCredentialInventory`, the uniform refusals); the endpoints stay until M6 (deleted in M6, below).
 - **Classes are `internal`** (`Actions/PasskeysActions.cs`, `Actions/PasskeyRowActions.cs`,
   `CustomActions/{Add,Rename,Remove}PasskeyAction.cs`): resolution scans `GetTypes()`, and no consumer
   needs them. `PasskeyRowActions` implements `ISparkOwnsRowSecurity` with its rationale (S2).
@@ -430,7 +430,7 @@ system decided the shape (it supersedes D6 and O1):
 - **Rename** prompts with `PasskeyRename` (one `Name`, `maxLength` 64) filled with the current name; options
   `[auth.passkeySave, "Cancel"]`. ⚠️ `"Cancel"` stays literal, untranslated: the retry modal answers a
   dismissal with `Cancel` only when it is among the options, and shows option labels as given. A framework
-  limitation for every retry prompt, not fixed here. The answer is `Sanitize`d (64 characters, no control
+  limitation for every retry prompt, not fixed here. (⚠️ SUPERSEDED by M6, below: `cancellable`.) The answer is `Sanitize`d (64 characters, no control
   characters) whatever the form allowed.
 - **Deviation: Remove confirms through `actions.json`'s `confirmation`** (`actions.RemovePasskey.confirmation`,
   asked by the grid before the request), not retry options as D4 said: it is the existing, fully translated
@@ -457,3 +457,51 @@ system decided the shape (it supersedes D6 and O1):
   was unchanged and exits 0.
 - **Goldens.** `codecoverage-` and `qna-translations.golden.txt` gained the 17 new library keys and
   `common.clientUnsupported`, which M2 added to the core without updating them (both were already stale).
+
+### M6 (2026-10-06): the component and endpoints retired, and the retry modal's Cancel
+
+Verified by a clean `dotnet build MintPlayer.Spark.slnx` (0 errors, no warning in a changed file, no new
+warning code), `nx build` of `@mintplayer/ng-spark` and `@mintplayer/ng-spark-auth`, `tsc --noEmit` on both
+spec configs, and both verify gates of CodeCoverage, Fleet, HR and QnA (all exit 0; no app `App_Data` changed).
+Tests, specs and the E2E are written and run in M8.
+
+- **Deleted, as D8 says:** `@mintplayer/ng-spark-auth/passkeys` (component, spec, entry point; ng-packagr
+  discovers entry points from their `ng-package.json`, so there was no other wiring), `SparkAuthService`
+  `registerPasskey` / `passkeys` / `renamePasskey` / `removePasskey` and their spec cases, and the endpoint
+  classes `ListPasskeys`, `PasskeyCreationOptions`, `RegisterPasskey`, `RenamePasskey`, `DeletePasskey` with
+  their `MapPasskeyApi` lines. **Sign-in keeps** `PasskeyRequestOptions` and `PasskeySignIn` and, from
+  `PasskeyEndpoints`, `SignInFailed` and `IsCeremonyInputFailure`; `EncodeCredentialId`, `TryDecodeCredentialId`
+  and `Sanitize` stay for `SparkPasskeyAccount` and the row query.
+- **Also removed, now unused:** `BadCeremonyInput`, `ToSummary`, `PasskeyRenameRequest`; `PasskeyRegistrationRequest`
+  became `PasskeySignInRequest` (no `Name`); the models `SparkPasskey`, `SparkPasskeyRegistrationResult` and the
+  passkey error `'last_credential'` (the last-credential refusal is a notification now); and nine translation
+  keys only the component read (`passkeysNone`, `passkeyAdd`, `passkeyRemove`, `passkeyName`, `passkeyCancel`,
+  `passkeyAdded`, `passkeySynced`, `passkeyNoCredential`, `passkeyListFailed`), out of both goldens too.
+- **Tests.** `PasskeyManagementTests` is deleted: `PasskeysPageTests` ported it in M3/M4, and gained the one case
+  it lacked (another passkey rescues the one removed). `PasskeyEndpointTests` pins that only the two sign-in
+  routes are mapped and that the retired ones answer 404. `spark-auth-routes.account.spec.ts` was already
+  updated in M5; it now also pins that the passkeys path loads no component.
+- **E2E (`PasskeyCeremonyTests`).** Each test seeds and signs in an account of its own (a virtual authenticator
+  holds one credential per account, and the shared admin must keep its password): `/account/passkeys` lands
+  on `/po/passkeys/me`; the action bar's `AddPasskey` enrolls and the new passkey signs in after the cookies are
+  cleared; the row menu's Rename (retry form: Cancel changes nothing, Save stores the name) and Remove (the
+  `actions.json` confirmation); the last-credential refusal, for which `SparkAppTestHost.RemovePasswordAsync`
+  drops the seeded user's password hash, the one shape no public endpoint produces. Every assertion reads the
+  `my-passkeys` query through `POST /spark/queries/execute` with the browser's session.
+- **Deviation: the retry Cancel fix (owner request, not in the plan).** Supersedes the ⚠️ under Rename above.
+  `IRetryAccessor.Action(..., bool cancellable = false)` and `RetryOperation.Cancellable` (wire `cancellable`):
+  the client adds its own Cancel button, labelled `common.cancel` (core translations, en/fr/nl, which already
+  existed), and answers it and a dismissal with `option: "Cancel"`, now `RetryResult.CancelOption`, so the
+  server contract `Option == "Cancel"` is unchanged. Identification is by the flag, never by a label:
+  `SparkService` rethrows a dismissal only when the prompt is not cancellable (an option labelled "Cancel"
+  is just a label), and `Action` refuses `"Cancel"` among the options with an `ArgumentException`, because an
+  option `"Cancel"` would show untranslated and a translated one would never be recognised. Chosen over
+  id/label option pairs because it needs no change to `options` or to any answer, and every caller in the
+  repository wanted exactly one Cancel. ng-spark: `SPARK_RETRY_CANCEL`, `RetryActionPayload.cancellable`, the
+  modal's `.spark-retry-cancel` button. .NET client: `RetryActionPayload.Cancellable` and `AcceptedOptions`,
+  which the option check and its messages use, so `RetryAnswer.Cancel()` is accepted exactly then. Callers that
+  passed a literal `"Cancel"` now pass `cancellable: true`: `RenamePasskey`, Fleet's `DeleteCar` prompt, QnA's
+  delete reason, two test actions, and the retry docs (`guide-manager-retry-actions.md`, `guide-interceptors.md`,
+  `Spark-API-Specification.md`). Fleet's stolen-car steps never offered Cancel and are unchanged.
+- **Plan M8** gained two manual browser checks: CodeCoverage `/po/forge-accounts/github` (composition M8 changed
+  how its forge is chosen) and the passkeys page at 375 px.

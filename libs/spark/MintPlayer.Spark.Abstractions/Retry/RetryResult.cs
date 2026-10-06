@@ -5,9 +5,16 @@ namespace MintPlayer.Spark.Abstractions.Retry;
 public sealed class RetryResult
 {
     /// <summary>
-    /// The label of the button the user clicked. For a client-method step
-    /// (<see cref="IRetryAccessor.Invoke"/>) <c>"Cancel"</c> when the method was unknown, unsupported,
-    /// rejected or threw, and <c>"OK"</c> when it answered.
+    /// The <see cref="Option"/> of a cancelled step: the client's own Cancel button or a dismissed modal
+    /// on a <c>cancellable</c> prompt (<see cref="IRetryAccessor.Action"/>), and a client-method step
+    /// whose method was unknown, unsupported, rejected or threw. An identifier, never a label: the
+    /// button the user sees is the client's translation of <c>common.cancel</c>.
+    /// </summary>
+    public const string CancelOption = "Cancel";
+
+    /// <summary>
+    /// The option the user clicked, exactly as the action offered it, or <see cref="CancelOption"/>.
+    /// For a client-method step (<see cref="IRetryAccessor.Invoke"/>) <c>"OK"</c> when it answered.
     /// </summary>
     public required string Option { get; init; }
 

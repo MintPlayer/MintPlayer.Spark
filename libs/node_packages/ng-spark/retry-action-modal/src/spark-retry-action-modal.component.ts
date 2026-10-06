@@ -5,6 +5,7 @@ import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModal
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { RetryActionService, SparkService } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
+import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import {
   dictToNestedPo,
   EntityAttributeDefinition,
@@ -13,6 +14,7 @@ import {
   nestedPoToDict,
   PersistentObject,
   PersistentObjectAttribute,
+  SPARK_RETRY_CANCEL,
 } from '@mintplayer/ng-spark/models';
 
 /**
@@ -26,9 +28,9 @@ import {
  */
 @Component({
   selector: 'spark-retry-action-modal',
-  imports: [CommonModule, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkPoFormComponent],
+  imports: [CommonModule, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkPoFormComponent, TranslateKeyPipe],
   template: `
-    <bs-modal [isOpen]="isOpen()" (isOpenChange)="!$event && onOption('Cancel')">
+    <bs-modal [isOpen]="isOpen()" (isOpenChange)="!$event && onOption(cancel)">
       <div *bsModal>
         <div bsModalHeader>
           <h5 class="modal-title">{{ retryActionService.payload()?.title }}</h5>
@@ -49,9 +51,20 @@ import {
           @for (option of retryActionService.payload()?.options; track option) {
             <button
               type="button"
-              [color]="option === 'Cancel' ? colors.secondary : colors.primary"
+              [color]="colors.primary"
               (click)="onOption(option)">
               {{ option }}
+            </button>
+          }
+          <!-- The prompt's Cancel is the client's, in the user's language; it answers the identifier
+               'Cancel' whatever it reads, which is why the server asks for it with a flag. -->
+          @if (retryActionService.payload()?.cancellable) {
+            <button
+              type="button"
+              class="spark-retry-cancel"
+              [color]="colors.secondary"
+              (click)="onOption(cancel)">
+              {{ 'common.cancel' | t }}
             </button>
           }
         </div>
@@ -65,6 +78,7 @@ export class SparkRetryActionModalComponent {
   private readonly sparkService = inject(SparkService);
 
   colors = Color;
+  protected readonly cancel = SPARK_RETRY_CANCEL;
   isOpen = computed(() => this.retryActionService.payload() !== null);
 
   /**

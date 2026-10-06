@@ -425,7 +425,7 @@ provideSparkAccountProfileFields(
 | Password | `account/password` | `SparkChangePasswordComponent` | `POST manage/password` |
 | Two-factor | `account/two-factor` | `SparkTwoFactorSetupComponent` | `POST manage/2fa`, `GET manage/2fa/authenticator-uri` |
 | Connected logins | `account/logins` | `SparkExternalLoginsComponent` | `GET external-logins`, link / unlink |
-| Passkeys | `account/passkeys` | `SparkPasskeysComponent` | `passkeys/*` |
+| Passkeys | `account/passkeys`, forwarding to `/po/passkeys/me` | — (the generic page) | the `Passkeys` page, the `my-passkeys` query, the `AddPasskey` / `RenamePasskey` / `RemovePasskey` actions |
 | Personal data + deletion | `account/personal-data` | `SparkPersonalDataComponent` | `GET manage/personal-data`, `DELETE manage/account` |
 
 - **Guarding and paths.** Every page except confirm-email is guarded by `sparkAuthGuard`

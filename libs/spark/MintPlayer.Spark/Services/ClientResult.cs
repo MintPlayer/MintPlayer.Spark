@@ -66,7 +66,7 @@ internal static class ClientResult
         {
             ((ClientAccessor)client).PushRetry(
                 ex.Step, ex.Title, ex.Options, ex.DefaultOption, ex.PersistentObject, ex.RetryMessage,
-                ex.ClientMethod, ex.Arguments);
+                ex.ClientMethod, ex.Arguments, ex.Cancellable);
         }
         return Envelope(client, null, 449);
     }

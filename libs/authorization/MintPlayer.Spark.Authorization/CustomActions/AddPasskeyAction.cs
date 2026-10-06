@@ -3,6 +3,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Authorization.Actions;
 using MintPlayer.Spark.Authorization.Identity;
 
@@ -54,7 +55,7 @@ internal sealed partial class AddPasskeyAction : ICustomAction
         // A dismissed authenticator prompt, an unsupported browser or an unregistered method: the user
         // chose not to, which is not an error worth a banner (G5).
         var answer = manager.Retry.Result!;
-        if (answer.Option == "Cancel" || answer.Value is not { ValueKind: JsonValueKind.Object } credential)
+        if (answer.Option == RetryResult.CancelOption || answer.Value is not { ValueKind: JsonValueKind.Object } credential)
             return;
 
         // The browser reports a ceremony that failed for a reason other than the user's choice (an

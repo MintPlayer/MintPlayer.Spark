@@ -72,10 +72,9 @@ describe('SparkAuthService passkeys', () => {
   });
 
   describe('feature detection', () => {
-    it('refuses both ceremonies when the browser cannot run them', async () => {
+    it('refuses the sign-in ceremony when the browser cannot run it', async () => {
       removeWebAuthn();
 
-      await expect(service.registerPasskey()).resolves.toEqual({ success: false, error: 'unsupported' });
       await expect(service.signInWithPasskey()).resolves.toEqual({ success: false, error: 'unsupported' });
     });
 
@@ -175,49 +174,11 @@ describe('SparkAuthService passkeys', () => {
     });
   });
 
-  describe('enrollment and management', () => {
-    it('posts the credential and the chosen name', async () => {
-      installWebAuthn();
-
-      const result = service.registerPasskey('Work laptop');
-      await flush();
-      http.expectOne('/spark/auth/passkeys/creation-options').flush(JSON.stringify({ challenge: 'abc' }));
-      await flush();
-
-      const enroll = http.expectOne('/spark/auth/passkeys');
-      expect(enroll.request.method).toBe('POST');
-      expect(enroll.request.body.name).toBe('Work laptop');
-      expect(JSON.parse(enroll.request.body.credentialJson).id).toBe('new-credential');
-      enroll.flush({ id: 'abc', name: 'Work laptop', createdAt: '', isBackedUp: false, isBackupEligible: true, transports: [] });
-      await flush();
-      http.expectOne('/spark/auth/csrf-refresh').flush(null);
-
-      await expect(result).resolves.toMatchObject({ success: true, passkey: { name: 'Work laptop' } });
-    });
-
-    it('lists the account passkeys', async () => {
-      const result = service.passkeys();
-      await flush();
-      http.expectOne('/spark/auth/passkeys').flush([{ id: 'a', name: 'Phone' }]);
-
-      await expect(result).resolves.toHaveLength(1);
-    });
-
-    it('reports last_credential rather than throwing when removal is refused', async () => {
-      const result = service.removePasskey('abc');
-      await flush();
-      http.expectOne('/spark/auth/passkeys/abc')
-        .flush({ success: false, error: 'last_credential' }, { status: 400, statusText: 'Bad Request' });
-
-      await expect(result).resolves.toEqual({ success: false, error: 'last_credential' });
-    });
-
-    it('encodes the credential id into the url', async () => {
-      const result = service.renamePasskey('a/b+c', 'Renamed');
-      await flush();
-      http.expectOne('/spark/auth/passkeys/a%2Fb%2Bc/name').flush({});
-
-      await expect(result).resolves.toEqual({ success: true });
-    });
+  // Listing, adding, renaming and removing are the generic passkeys page's query and actions now
+  // (generic passkeys page PRD D8); the endpoints they called are gone, so must the methods be.
+  it('has no passkey management methods left', () => {
+    for (const retired of ['registerPasskey', 'passkeys', 'renamePasskey', 'removePasskey']) {
+      expect(retired in service).toBe(false);
+    }
   });
 });

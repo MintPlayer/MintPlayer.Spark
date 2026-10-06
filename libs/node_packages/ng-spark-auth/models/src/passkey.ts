@@ -1,17 +1,3 @@
-/** One passkey attached to the signed-in account, as the server reports it. */
-export interface SparkPasskey {
-  /** Base64url of the credential id. Opaque to the client — it is only ever echoed back in a URL. */
-  id: string;
-  /** The user's own label, or `null` if they never set one. */
-  name: string | null;
-  createdAt: string;
-  /** Whether the credential is currently synced to the authenticator's cloud backup. */
-  isBackedUp: boolean;
-  isBackupEligible: boolean;
-  /** `usb`, `nfc`, `ble`, `internal`, `hybrid` — a hint for the browser, never a security control. */
-  transports: string[];
-}
-
 /**
  * Why a passkey ceremony did not complete.
  *
@@ -31,19 +17,12 @@ export type SparkPasskeyError =
   | 'no_credential'
   /** The account is locked out. The one server-side outcome worth distinguishing. */
   | 'locked_out'
-  /** ⚠️ It was the account's last way in, so removing it would have locked the owner out for good. */
-  | 'last_credential'
   /** Everything else, server or client. */
   | 'failed';
 
 export interface SparkPasskeyResult {
   success: boolean;
   error?: SparkPasskeyError;
-}
-
-export interface SparkPasskeyRegistrationResult extends SparkPasskeyResult {
-  /** The newly enrolled passkey, when `success` is true. */
-  passkey?: SparkPasskey;
 }
 
 /**
@@ -61,7 +40,6 @@ export function sparkPasskeyError(error: unknown): SparkPasskeyError {
 
   const code = (error as { error?: { error?: string } })?.error?.error;
   if (code === 'locked_out') return 'locked_out';
-  if (code === 'last_credential') return 'last_credential';
 
   return 'failed';
 }

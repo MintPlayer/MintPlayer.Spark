@@ -56,6 +56,18 @@ public class RetryConversationTests
                 Encoding.UTF8, "application/json"),
         };
 
+    private static HttpResponseMessage CancellablePrompt(int step, string title, params string[] options)
+        => new((HttpStatusCode)449)
+        {
+            Content = new StringContent(
+                $$"""
+                {"result":null,"operations":[{"type":"retry","step":{{step}},"title":"{{title}}",
+                 "options":[{{string.Join(",", options.Select(o => $"\"{o}\""))}}],
+                 "defaultOption":null,"persistentObject":null,"message":"Are you sure?","cancellable":true}]}
+                """,
+                Encoding.UTF8, "application/json"),
+        };
+
     private static HttpResponseMessage PromptWithForm(int step, string title, string[] options, PersistentObject form)
         => new((HttpStatusCode)449)
         {
@@ -251,6 +263,35 @@ public class RetryConversationTests
 
         // Warmup + the one attempt. Nothing was sent for the rejected option.
         handler.Requests.Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// Cancel is asked for with <c>cancellable</c>, never offered as an option (a browser shows its own
+    /// translated button for it), so the option check accepts it exactly when the prompt says so.
+    /// </summary>
+    [Fact]
+    public async Task Cancel_is_accepted_when_the_prompt_is_cancellable_and_refused_otherwise()
+    {
+        var (client, handler) = NewClientWithWarmup();
+        handler.Enqueue(Prompt(0, "Delete car", "Delete"));
+        handler.Enqueue(CancellablePrompt(0, "Delete car", "Delete"));
+        handler.EnqueueStatus(HttpStatusCode.NoContent);
+
+        using (client)
+        {
+            var plain = await client.ExecuteActionAsync(Guid.NewGuid(), "DeleteCar");
+            plain.Retry!.Cancellable.Should().BeFalse();
+            await new Func<Task>(() => client.ContinueAsync(plain, RetryAnswer.Cancel().Option)).Should().ThrowExactlyAsync<ArgumentException>();
+
+            var cancellable = await client.ExecuteActionAsync(Guid.NewGuid(), "DeleteCar");
+            cancellable.Retry!.Cancellable.Should().BeTrue();
+            cancellable.Retry.Options.Should().Equal("Delete");
+            cancellable.Retry.AcceptedOptions.Should().Equal("Delete", "Cancel");
+            (await client.ContinueAsync(cancellable, RetryAnswer.Cancel().Option)).IsRetry.Should().BeFalse();
+        }
+
+        handler.LastBody().GetProperty("retryResults").EnumerateArray().Single()
+            .GetProperty("option").GetString().Should().Be("Cancel");
     }
 
     [Fact]

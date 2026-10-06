@@ -42,7 +42,9 @@ public class RetryActionDeleteTests
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
         var retry = ExtractRetryOperation(payload);
         retry.GetProperty("title").GetString().Should().Be("Delete car");
-        retry.GetProperty("options").EnumerateArray().Select(o => o.GetString()).Should().Contain("Delete").And.Contain("Cancel");
+        // Cancel is no option (a label the client would show untranslated) but the client's own, asked for by `cancellable`.
+        retry.GetProperty("options").EnumerateArray().Select(o => o.GetString()).Should().Equal("Delete");
+        retry.GetProperty("cancellable").GetBoolean().Should().BeTrue();
         var step = retry.GetProperty("step").GetInt32();
         var po = retry.GetProperty("persistentObject").Clone();
 

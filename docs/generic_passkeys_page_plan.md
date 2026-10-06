@@ -15,7 +15,7 @@ in M8. Milestones are verified by reading the code and type-checking.
 | M3 `Passkeys` PO + `my-passkeys` query | ✅ 2026-10-06 (tests written, run in M8) |
 | M4 Add / Rename / Remove actions | ✅ 2026-10-06 (tests and specs written, run in M8) |
 | M5 App wiring (CodeCoverage, Fleet, HR) | ✅ 2026-10-06 (gates regenerated; specs run in M8) |
-| M6 Retire component and endpoints | ⏳ |
+| M6 Retire component and endpoints, plus the retry modal's translated Cancel | ✅ 2026-10-06 (tests, specs and E2E written, run in M8; PRD §10b, M6) |
 | M7 Docs and versions | ⏳ |
 | M8 Sweep | ⏳ |
 
@@ -145,3 +145,9 @@ Routing:
   with its log written raw to a file.
 - Use `playwright_node` to check the acceptance list (PRD §7) on CodeCoverage at 375 px and at
   desktop width.
+- Manual browser checks (`playwright_node`), added in M6:
+  - CodeCoverage `/po/forge-accounts/github`: composition M8 changed how its forge is chosen, and no
+    E2E covers that page. It must show the GitHub account, not another forge's or an empty page.
+  - The passkeys page at 375 px (PRD acceptance): the action bar's "Add a passkey", the grid's row
+    menu (Rename opens the `PasskeyRename` form, Remove asks first) and the Rename modal's footer
+    (Save and the translated Cancel), with no horizontal scroll. Check the Cancel in nl or fr too.

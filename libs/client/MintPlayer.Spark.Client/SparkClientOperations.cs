@@ -204,6 +204,7 @@ public static class SparkClientOperations
                         ? Deserialize<PersistentObject>(po)
                         : null,
                     ClientMethod = String(op, "clientMethod"),
+                    Cancellable = op.TryGetProperty("cancellable", out var cancellable) && cancellable.ValueKind == JsonValueKind.True,
                     Arguments = op.TryGetProperty("arguments", out var arguments) && arguments.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
                         ? arguments.Clone()
                         : null,

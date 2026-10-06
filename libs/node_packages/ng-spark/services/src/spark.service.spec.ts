@@ -234,8 +234,9 @@ describe('SparkService', () => {
             type: 'retry',
             step: 'overwrite',
             title: 'Overwrite?',
-            options: ['Overwrite', 'Cancel'],
-            defaultOption: 'Cancel',
+            options: ['Overwrite'],
+            defaultOption: 'Overwrite',
+            cancellable: true,
           },
         ],
       },
@@ -258,7 +259,7 @@ describe('SparkService', () => {
     await expect(promise).resolves.toMatchObject({ id: 'people/1' });
   });
 
-  it('rethrows the 449 when the user cancels and Cancel was not an explicit option', async () => {
+  it('rethrows the 449 when the user dismisses a prompt that is not cancellable', async () => {
     retryService.show.mockResolvedValueOnce({ step: 'overwrite', option: 'Cancel' });
 
     const promise = service.create('Person', { name: 'Alice' });
@@ -269,13 +270,48 @@ describe('SparkService', () => {
           type: 'retry',
           step: 'overwrite',
           title: 'Overwrite?',
-          options: ['Overwrite'], // Cancel NOT in options → cancellation rethrows.
+          options: ['Overwrite'], // not cancellable → a dismissal rethrows.
         }],
       },
       { status: 449, statusText: 'Retry With' }
     );
 
     await expect(promise).rejects.toMatchObject({ status: 449 });
+    await flushMicrotasks();
+  });
+
+  // Cancel is identified by the flag, never by an option's label: the modal shows its own translated
+  // Cancel, and a label 'Cancel' among the options is just a label.
+  it('sends Cancel for a cancellable prompt, and hands the modal the flag', async () => {
+    retryService.show.mockResolvedValueOnce({ step: 0, option: 'Cancel' });
+
+    const promise = service.create('Person', { name: 'Alice' });
+
+    httpTesting.expectOne('/spark/po/create').flush(
+      { operations: [{ type: 'retry', step: 0, title: 'Rename', options: ['Save'], cancellable: true }] },
+      { status: 449, statusText: 'Retry With' }
+    );
+    await flushMicrotasks();
+
+    expect(retryService.show).toHaveBeenCalledWith(expect.objectContaining({ options: ['Save'], cancellable: true }));
+    const second = httpTesting.expectOne('/spark/po/create');
+    expect(second.request.body.retryResults).toEqual([{ step: 0, option: 'Cancel' }]);
+    second.flush(null, { status: 204, statusText: 'No Content' });
+    await promise;
+  });
+
+  it('does not treat an option labelled Cancel as a cancel', async () => {
+    retryService.show.mockResolvedValueOnce({ step: 0, option: 'Cancel' });
+
+    const promise = service.create('Person', { name: 'Alice' });
+
+    httpTesting.expectOne('/spark/po/create').flush(
+      { operations: [{ type: 'retry', step: 0, title: 'Delete?', options: ['Delete', 'Cancel'] }] },
+      { status: 449, statusText: 'Retry With' }
+    );
+
+    await expect(promise).rejects.toMatchObject({ status: 449 });
+    expect(retryService.show).toHaveBeenCalledWith(expect.objectContaining({ cancellable: false }));
     await flushMicrotasks();
   });
 

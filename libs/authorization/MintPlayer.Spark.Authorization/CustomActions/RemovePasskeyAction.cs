@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Authorization.CustomActions;
 /// The confirmation is the action's <c>confirmation</c> text in the library's <c>actions.json</c>
 /// (<c>actions.RemovePasskey.confirmation</c>), asked by the grid before the request is sent. The old
 /// page removed without asking. The last-credential guard is <c>SparkCredentialInventory</c>, as on
-/// the endpoint it replaces; its refusal is a notification, so the row simply stays.
+/// the retired endpoint; its refusal is a notification, so the row simply stays.
 /// </remarks>
 internal sealed partial class RemovePasskeyAction : ICustomAction
 {

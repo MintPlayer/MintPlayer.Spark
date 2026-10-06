@@ -63,7 +63,7 @@ public sealed class CarInterceptors(IManager manager) : IBeforeDelete<Car>, IAft
 {
     public ValueTask OnBeforeDeleteAsync(Car car, DeleteContext context)
     {
-        manager.Retry.Action("Delete car", ["Delete", "Cancel"], message: $"Delete {car.LicensePlate}?");
+        manager.Retry.Action("Delete car", ["Delete"], message: $"Delete {car.LicensePlate}?", cancellable: true);
         if (manager.Retry.Result!.Option == "Cancel")
             throw new SparkCancelException();
         return ValueTask.CompletedTask;

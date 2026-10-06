@@ -53,7 +53,7 @@ public sealed class SparkRetryRequiredException : SparkClientException
 
     private static string BuildMessage(RetryActionPayload prompt, int answered)
     {
-        var options = prompt.Options.Length == 0 ? "(none offered)" : string.Join(" / ", prompt.Options);
+        var options = prompt.Options.Length == 0 ? "(none offered)" : string.Join(" / ", prompt.AcceptedOptions);
         var preamble = answered == 0
             ? "The server asked a question and no retry handler was supplied"
             : $"The server asked a question and the retry handler declined it (after answering {answered})";

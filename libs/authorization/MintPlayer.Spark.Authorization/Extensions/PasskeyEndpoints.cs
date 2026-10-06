@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Endpoints.Passkeys;
@@ -14,8 +13,7 @@ using System.Text.Json;
 namespace MintPlayer.Spark.Authorization.Extensions;
 
 /// <summary>
-/// The passkey (WebAuthn) surface: enrollment and management for a signed-in user, and
-/// discoverable-credential sign-in for an anonymous one.
+/// The passkey (WebAuthn) HTTP surface: discoverable-credential sign-in for an anonymous caller.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -23,6 +21,12 @@ namespace MintPlayer.Spark.Authorization.Extensions;
 /// <see cref="SparkPasskeys"/> and the generated mapper is unconditional. Microsoft's
 /// <c>MapIdentityApi</c> contributes nothing here — measured, it maps no passkey route at all — so
 /// every endpoint below is Spark's own.
+/// </para>
+/// <para>
+/// A signed-in user's passkeys are not HTTP: listing, adding, renaming and removing them are the
+/// generic passkeys page's <c>my-passkeys</c> query and custom actions, over
+/// <see cref="ISparkPasskeyAccount"/> (generic passkeys page PRD D8). The helpers below are shared
+/// with it.
 /// </para>
 /// <para>
 /// ⚠️ The ceremony runs through <see cref="SignInManager{TUser}"/>, never
@@ -43,14 +47,6 @@ internal static class PasskeyEndpoints
     /// </summary>
     internal static IResult SignInFailed() =>
         Results.Json(new { error = "passkey_failed" }, statusCode: StatusCodes.Status401Unauthorized);
-
-    /// <summary>
-    /// Malformed input is a 400 with no detail. The ceremony endpoints decode attacker-controlled
-    /// base64url and credential JSON, which throws readily; an unhandled throw would be a 500 on an
-    /// anonymous route and would put exception text in the response.
-    /// </summary>
-    internal static IResult BadCeremonyInput() =>
-        Results.Json(new { error = "invalid_request" }, statusCode: StatusCodes.Status400BadRequest);
 
     /// <summary>
     /// Everything the framework throws when a ceremony cannot be evaluated.
@@ -81,11 +77,6 @@ internal static class PasskeyEndpoints
         // where TUser is concrete. Mapped on `endpoints`, not `authGroup`: the /spark/auth prefix
         // comes from [MemberOf<SparkAuthGroup>], and mapping onto the group as well would compose
         // it twice.
-        endpoints.MapEndpoint<PasskeyCreationOptions<TUser>>();
-        endpoints.MapEndpoint<RegisterPasskey<TUser>>();
-        endpoints.MapEndpoint<ListPasskeys<TUser>>();
-        endpoints.MapEndpoint<RenamePasskey<TUser>>();
-        endpoints.MapEndpoint<DeletePasskey<TUser>>();
         endpoints.MapEndpoint<PasskeyRequestOptions<TUser>>();
         endpoints.MapEndpoint<PasskeySignIn<TUser>>();
     }
@@ -94,8 +85,8 @@ internal static class PasskeyEndpoints
     #region Helpers
 
     /// <summary>
-    /// The credential id as it appears in a URL: base64url, matching what the browser produces and
-    /// what the listing endpoint hands out.
+    /// The credential id as the passkeys page's rows carry it: base64url, matching what the browser
+    /// produces.
     /// </summary>
     internal static string EncodeCredentialId(byte[] credentialId)
         => Convert.ToBase64String(credentialId).TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -134,27 +125,11 @@ internal static class PasskeyEndpoints
         return cleaned.Length == 0 ? null : cleaned[..Math.Min(cleaned.Length, 64)];
     }
 
-    internal static object ToSummary(UserPasskeyInfo passkey) => new
-    {
-        id = EncodeCredentialId(passkey.CredentialId),
-        name = passkey.Name,
-        createdAt = passkey.CreatedAt,
-        isBackedUp = passkey.IsBackedUp,
-        isBackupEligible = passkey.IsBackupEligible,
-        transports = passkey.Transports,
-    };
-
     #endregion
 }
 
-/// <summary>The credential JSON the browser produced, plus an optional label at enrollment.</summary>
-internal sealed class PasskeyRegistrationRequest
+/// <summary>The assertion JSON the browser produced for a sign-in.</summary>
+internal sealed class PasskeySignInRequest
 {
     public string? CredentialJson { get; set; }
-    public string? Name { get; set; }
-}
-
-internal sealed class PasskeyRenameRequest
-{
-    public string? Name { get; set; }
 }

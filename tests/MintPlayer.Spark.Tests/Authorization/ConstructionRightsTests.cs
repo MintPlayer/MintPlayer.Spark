@@ -102,7 +102,7 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
         {
             var prompt = await manager.GetPersistentObjectAsync(VaultTypeId, cancellationToken: cancellationToken);
             prompt[CanaryName].Value = CanaryValue; // pruned for this caller: a silent no-op
-            manager.Retry.Action(title: "Confirm", options: ["OK", "Cancel"], persistentObject: prompt);
+            manager.Retry.Action(title: "Confirm", options: ["OK"], persistentObject: prompt, cancellable: true);
         }
     }
 

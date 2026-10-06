@@ -36,6 +36,50 @@ public class RetryAccessorTests
         op.DefaultOption.Should().Be("a");
     }
 
+    /// <summary>
+    /// Cancel is asked for, not offered: the client adds a Cancel in the user's language and answers
+    /// it as <see cref="RetryResult.CancelOption"/>, whatever the button says.
+    /// </summary>
+    [Fact]
+    public void A_cancellable_prompt_carries_the_flag_and_not_a_Cancel_option()
+    {
+        var clientAccessor = new ClientAccessor();
+        var retry = new RetryAccessor(clientAccessor);
+
+        var act = () => retry.Action("Rename", ["Save"], persistentObject: null, cancellable: true);
+
+        act.Should().Throw<SparkRetryActionException>().Which.Cancellable.Should().BeTrue();
+        var op = clientAccessor.Operations.OfType<RetryOperation>().Should().ContainSingle().Which;
+        op.Options.Should().Equal("Save");
+        op.Cancellable.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_prompt_is_not_cancellable_unless_it_asks()
+    {
+        var clientAccessor = new ClientAccessor();
+
+        var act = () => new RetryAccessor(clientAccessor).Action("Confirm", ["Confirm"]);
+
+        act.Should().Throw<SparkRetryActionException>();
+        clientAccessor.Operations.OfType<RetryOperation>().Single().Cancellable.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// ⚠️ A literal <c>"Cancel"</c> option is the bug this flag replaced: shown untranslated, and a
+    /// translated one would never have been recognised as a cancel. Refused before anything is pushed.
+    /// </summary>
+    [Fact]
+    public void Cancel_among_the_options_is_refused()
+    {
+        var clientAccessor = new ClientAccessor();
+
+        var act = () => new RetryAccessor(clientAccessor).Action("Delete car", ["Delete", RetryResult.CancelOption]);
+
+        act.Should().Throw<ArgumentException>().Which.Message.Should().Contain("cancellable");
+        clientAccessor.Operations.Should().BeEmpty();
+    }
+
     [Fact]
     public void Action_returns_without_throwing_when_step_is_already_answered()
     {

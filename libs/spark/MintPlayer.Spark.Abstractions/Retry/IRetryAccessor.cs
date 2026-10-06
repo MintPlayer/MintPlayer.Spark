@@ -14,16 +14,26 @@ public interface IRetryAccessor
     /// On the first pass (unanswered step) this method throws internally and never returns.
     /// On replay of an already-answered step it returns normally and populates <see cref="Result"/>.
     ///
-    /// The <paramref name="options"/> are sent to the frontend exactly as specified.
-    /// "Cancel" is NOT auto-appended. However, when the user closes the modal
-    /// (e.g. via the X button), the frontend sends "Cancel" as the chosen option.
+    /// The <paramref name="options"/> are sent to the frontend exactly as specified, and shown as
+    /// their own labels, so pass them translated.
     /// </summary>
+    /// <param name="cancellable">
+    /// Offers a Cancel as well: the client adds its own button, labelled in the user's language
+    /// (<c>common.cancel</c>), and answers it, or the modal being closed, with
+    /// <see cref="RetryResult.CancelOption"/>. Without it a closed modal abandons the request and
+    /// the action never hears of it.
+    /// </param>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="options"/> contains <see cref="RetryResult.CancelOption"/>: Cancel is an
+    /// answer, not a label, so it is asked for with <paramref name="cancellable"/>.
+    /// </exception>
     void Action(
         string title,
         string[] options,
         string? defaultOption = null,
         PersistentObject? persistentObject = null,
-        string? message = null
+        string? message = null,
+        bool cancellable = false
     );
 
     /// <summary>

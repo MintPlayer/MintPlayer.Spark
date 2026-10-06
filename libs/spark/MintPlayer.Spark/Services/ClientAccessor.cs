@@ -169,7 +169,8 @@ internal sealed partial class ClientAccessor : IClientAccessor
         PersistentObject? persistentObject,
         string? message,
         string? clientMethod = null,
-        System.Text.Json.JsonElement? arguments = null)
+        System.Text.Json.JsonElement? arguments = null,
+        bool cancellable = false)
         => _operations.Add(new RetryOperation
         {
             Step = step,
@@ -180,5 +181,6 @@ internal sealed partial class ClientAccessor : IClientAccessor
             Message = message,
             ClientMethod = clientMethod,
             Arguments = arguments,
+            Cancellable = cancellable,
         });
 }

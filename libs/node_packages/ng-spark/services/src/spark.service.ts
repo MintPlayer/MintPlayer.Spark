@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult, SPARK_RETRY_CANCEL } from '@mintplayer/ng-spark/models';
 import { ClientOperationEnvelope, RetryOperation, SparkClientMethodRegistry, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
@@ -526,7 +526,7 @@ export class SparkService {
       const outcome = await this.clientMethods.invoke(retryOp.clientMethod, retryOp.arguments);
       const answer: RetryActionResult = outcome.ok
         ? { step: retryOp.step, option: 'OK', value: outcome.value }
-        : { step: retryOp.step, option: 'Cancel' };
+        : { step: retryOp.step, option: SPARK_RETRY_CANCEL };
       body.retryResults = [...(body.retryResults || []), answer];
       return retryFn();
     }
@@ -539,9 +539,12 @@ export class SparkService {
       defaultOption: retryOp.defaultOption ?? undefined,
       persistentObject: retryOp.persistentObject ?? undefined,
       message: retryOp.message ?? undefined,
+      cancellable: retryOp.cancellable === true,
     };
     const result = await this.retryActionService.show(payload);
-    if (result.option === 'Cancel' && !payload.options.includes('Cancel')) throw error;
+    // A dismissal of a prompt that did not ask for a Cancel abandons the request: the server never
+    // offered one, so it is not told of one. Whether it did is the flag, never an option's label.
+    if (result.option === SPARK_RETRY_CANCEL && !payload.cancellable) throw error;
 
     body.retryResults = [...(body.retryResults || []), result];
     return retryFn();

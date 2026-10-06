@@ -158,7 +158,8 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
 
         manager.Retry.Action(
             title: "Delete car",
-            options: ["Delete", "Cancel"],
+            options: ["Delete"],
+            cancellable: true,
             persistentObject: popup,
             message: $"Type the license plate to confirm deletion of {entity.LicensePlate}."
         );

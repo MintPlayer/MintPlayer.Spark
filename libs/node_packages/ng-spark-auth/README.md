@@ -57,8 +57,8 @@ The server-generated `spark-auth.setup.ts` wires the same calls for you
 
 ## `withAccount()`
 
-Mounts the account pages; each is also a standalone component from `/account` (passkeys from
-`/passkeys`, confirm-email from `/confirm-email`):
+Mounts the account pages; each is also a standalone component from `/account` (confirm-email from
+`/confirm-email`). The passkeys path is no component: it forwards to the generic passkeys page.
 
 | Page | Default path | Component |
 |---|---|---|
@@ -68,7 +68,7 @@ Mounts the account pages; each is also a standalone component from `/account` (p
 | Change / set password | `account/password` | `SparkChangePasswordComponent` |
 | Two-factor — authenticator (server-rendered QR), recovery codes | `account/two-factor` | `SparkTwoFactorSetupComponent` |
 | Connected logins | `account/logins` | `SparkExternalLoginsComponent` |
-| Passkeys | `account/passkeys` | `SparkPasskeysComponent` |
+| Passkeys — forwards to `/po/passkeys/me`, the Authorization library's `Passkeys` page (list, add, rename, remove) | `account/passkeys` | — |
 | Personal data export + account deletion | `account/personal-data` | `SparkPersonalDataComponent` |
 
 ```ts
@@ -102,7 +102,7 @@ button; both live on the account page.
 | `/core` | `SparkAuthService` (current user signal, `checkAuth()`, sign-in/out), `SparkAuthTranslationService` |
 | `/models` | `SPARK_AUTH_CONFIG`, `SPARK_AUTH_ROUTE_PATHS`, `SPARK_EXTERNAL_PROVIDERS`, `SPARK_ACCOUNT_PROFILE_FIELDS`, `provideSparkAccountProfileFields(...)` and the wire types |
 | `/login`, `/two-factor`, `/forgot-password`, `/reset-password`, `/register`, `/sign-in` | The individual pages the route features mount |
-| `/account`, `/confirm-email`, `/passkeys` | The account pages above |
+| `/account`, `/confirm-email` | The account pages above |
 | `/auth-bar` | `<spark-auth-bar>` — sign-in / user menu for a top bar |
 | `/pipes` | `TranslateKeyPipe` |
 

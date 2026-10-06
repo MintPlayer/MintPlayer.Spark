@@ -54,7 +54,8 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>, IBeforeDe
         manager.Retry.Action(
             title: "Confirm deletion",
             options: ["Delete"],
-            message: $"Are you sure you want to delete {entity.LicensePlate}?"
+            message: $"Are you sure you want to delete {entity.LicensePlate}?",
+            cancellable: true
         );
 
         // Cancel deletes nothing: a silent no-op, answered with 204 (#482).
@@ -73,7 +74,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>, IBeforeDe
 1. On the first invocation, `Action()` throws a `SparkRetryActionException` internally -- it never returns
 2. The endpoint catches the exception and responds with HTTP 449 and a JSON payload describing the dialog
 3. The Angular frontend displays a modal with the title, message, and option buttons
-4. The user clicks a button (or dismisses the modal, which sends "Cancel")
+4. The user clicks a button (or, on a `cancellable` prompt, Cancel or the modal's close, which send `"Cancel"`)
 5. The frontend re-submits the original request with the user's answer in `retryResults`
 6. On re-invocation, `Action()` replays the answered step, populates `Result`, and returns normally
 7. Your code inspects `Result.Option` and proceeds accordingly
@@ -111,7 +112,8 @@ public ValueTask OnBeforeSaveAsync(Car entity, SaveContext context)
             title: "Report vehicle as stolen",
             options: ["Confirm"],
             message: $"Are you sure you want to mark {entity.LicensePlate} as stolen? " +
-                     "This will lock the vehicle record."
+                     "This will lock the vehicle record.",
+            cancellable: true
         );
 
         if (manager.Retry.Result!.Option == "Cancel")
@@ -121,7 +123,8 @@ public ValueTask OnBeforeSaveAsync(Car entity, SaveContext context)
         manager.Retry.Action(
             title: "Notify fleet managers",
             options: ["Yes, notify", "No, skip"],
-            message: "Should all fleet managers be notified about this stolen vehicle?"
+            message: "Should all fleet managers be notified about this stolen vehicle?",
+            cancellable: true
         );
 
         if (manager.Retry.Result!.Option == "Cancel")
@@ -144,7 +147,9 @@ The user sees two sequential modals. The flow:
 
 ### The Cancel Option
 
-When the user dismisses the modal (clicking the X button or pressing Escape), the frontend sends `"Cancel"` as the option. You do not need to include "Cancel" in your `options` array -- it is always available as a dismiss action. Check for it in your code to abort the operation. In a save or delete interceptor, abort with `SparkCancelException` — the framework then writes nothing (a `return` would let the write go ahead); in a custom action, a plain `return` is enough, since the action itself is the work:
+Cancel is not one of your `options`: pass `cancellable: true`. The client then adds a Cancel button of its own, labelled in the user's language (`common.cancel`), and answers it, and the modal being closed (the X button or Escape), with `"Cancel"` (`RetryResult.CancelOption`). So the label is translated and the answer never is. `Action` refuses an `options` array that contains `"Cancel"` (`ArgumentException`). Without `cancellable`, closing the modal abandons the request and the action never hears of it.
+
+Check for it in your code to abort the operation. In a save or delete interceptor, abort with `SparkCancelException` — the framework then writes nothing (a `return` would let the write go ahead); in a custom action, a plain `return` is enough, since the action itself is the work:
 
 ```csharp
 if (manager.Retry.Result!.Option == "Cancel")
@@ -159,7 +164,8 @@ void Action(
     string[] options,          // Button labels shown in the modal footer
     string? defaultOption,     // Optional: which button gets primary styling
     PersistentObject? persistentObject,  // Optional: form fields to show in the modal body
-    string? message            // Optional: text message shown in the modal body
+    string? message,           // Optional: text message shown in the modal body
+    bool cancellable           // Optional: the client adds a translated Cancel, answered as "Cancel"
 );
 ```
 
@@ -170,6 +176,7 @@ void Action(
 | `defaultOption` | No | Which option gets primary (blue) button styling |
 | `persistentObject` | No | A virtual PO with attributes -- renders as a form in the modal body |
 | `message` | No | Plain text displayed in the modal body |
+| `cancellable` | No | Adds the client's own translated Cancel button; it and closing the modal answer `"Cancel"`. Never put `"Cancel"` in `options` |
 
 ## Custom Dialog Forms
 
@@ -179,6 +186,7 @@ You can display a form inside the retry modal by passing a `PersistentObject` wi
 manager.Retry.Action(
     title: "Enter reason",
     options: ["Submit"],
+    cancellable: true,
     persistentObject: manager.GetPersistentObject("ReasonForm",
         new PersistentObjectAttribute
         {
@@ -211,8 +219,9 @@ Use `GetTranslatedMessage()` to display localized modal text. The key is looked 
 ```csharp
 manager.Retry.Action(
     title: manager.GetTranslatedMessage("confirm_delete_title"),
-    options: [manager.GetTranslatedMessage("delete"), manager.GetTranslatedMessage("cancel")],
-    message: manager.GetTranslatedMessage("confirm_delete_message", entity.LicensePlate)
+    options: [manager.GetTranslatedMessage("delete")],
+    message: manager.GetTranslatedMessage("confirm_delete_message", entity.LicensePlate),
+    cancellable: true // the client's Cancel is translated already, and still answers "Cancel"
 );
 ```
 

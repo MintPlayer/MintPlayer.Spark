@@ -37,7 +37,8 @@ public sealed partial class DeleteReasonInterceptor : IBeforeDelete
 
         manager.Retry.Action(
             title: "Remove this post",
-            options: ["Delete", "Cancel"],
+            options: ["Delete"],
+            cancellable: true,
             persistentObject: await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.DeleteReason)),
             message: "Why is it being removed? The reason is kept with the post.");
 

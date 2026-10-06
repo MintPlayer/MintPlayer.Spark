@@ -51,8 +51,16 @@ internal sealed partial class RetryAccessor : IRetryAccessor
         string[] options,
         string? defaultOption = null,
         PersistentObject? persistentObject = null,
-        string? message = null)
+        string? message = null,
+        bool cancellable = false)
     {
+        // Cancel is an answer the client gives in the user's language, not a label the action spells:
+        // an option "Cancel" would show untranslated, and a translated one would never be recognised.
+        if (options.Contains(RetryResult.CancelOption, StringComparer.Ordinal))
+            throw new ArgumentException(
+                $"\"{RetryResult.CancelOption}\" is not an option to offer; pass cancellable: true and the client " +
+                "adds a translated Cancel that answers it.", nameof(options));
+
         var step = currentStep++;
 
         // If this step was already answered, expose the result and continue
@@ -65,8 +73,8 @@ internal sealed partial class RetryAccessor : IRetryAccessor
         // Push the retry operation onto the client accessor so the endpoint's
         // envelope serializer picks it up alongside any non-blocking operations
         // emitted before this call. Then throw to unwind.
-        ((ClientAccessor)clientAccessor).PushRetry(step, title, options, defaultOption, persistentObject, message);
-        throw new SparkRetryActionException(step, title, options, defaultOption, persistentObject, message);
+        ((ClientAccessor)clientAccessor).PushRetry(step, title, options, defaultOption, persistentObject, message, cancellable: cancellable);
+        throw new SparkRetryActionException(step, title, options, defaultOption, persistentObject, message, cancellable: cancellable);
     }
 
     public async Task Invoke(string clientMethod, Func<Task<object?>> arguments)

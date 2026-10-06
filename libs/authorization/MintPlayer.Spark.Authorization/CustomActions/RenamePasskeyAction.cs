@@ -2,6 +2,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Authorization.Actions;
 using MintPlayer.Spark.Authorization.Identity;
 
@@ -14,7 +15,7 @@ namespace MintPlayer.Spark.Authorization.CustomActions;
 /// <remarks>
 /// The selected row is rebuilt by re-running <c>Custom.MyPasskeys</c>, and the store is asked for the
 /// credential among the signed-in user's own, so another user's credential id is simply not found.
-/// The name is bounded and cleaned by the same <c>Sanitize</c> the enrollment endpoint used, whatever
+/// The name is bounded and cleaned by the same <c>Sanitize</c> the retired endpoints used, whatever
 /// the form's own <c>maxLength</c> rule let through.
 /// </remarks>
 internal sealed partial class RenamePasskeyAction : ICustomAction
@@ -38,17 +39,17 @@ internal sealed partial class RenamePasskeyAction : ICustomAction
         var prompt = await manager.GetPersistentObjectAsync("PasskeyRename", cancellationToken: cancellationToken);
         prompt["Name"].Value = passkey.Name;
 
-        // "Cancel" stays literal: the retry modal answers a dismissal with it only when it is one of
-        // the options.
+        // Cancel is the client's own, translated button (cancellable), answered as RetryResult.CancelOption.
         var save = manager.GetTranslatedMessage("auth.passkeySave");
         manager.Retry.Action(
             title: manager.GetTranslatedMessage("auth.passkeyRename"),
-            options: [save, "Cancel"],
+            options: [save],
             defaultOption: save,
-            persistentObject: prompt);
+            persistentObject: prompt,
+            cancellable: true);
 
         var answer = manager.Retry.Result!;
-        if (answer.Option == "Cancel")
+        if (answer.Option == RetryResult.CancelOption)
             return;
 
         var name = answer.PersistentObject is { } form && form.TryGetAttribute("Name", out var attribute)

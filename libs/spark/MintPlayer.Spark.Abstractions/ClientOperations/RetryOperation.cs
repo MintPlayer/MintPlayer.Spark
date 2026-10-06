@@ -19,6 +19,13 @@ public sealed class RetryOperation : ClientOperation
     public string? Message { get; init; }
 
     /// <summary>
+    /// Whether the client offers a Cancel of its own beside <see cref="Options"/>, labelled in the
+    /// user's language, and answers it, or a dismissed modal, with <c>RetryResult.CancelOption</c>.
+    /// When false, a dismissal abandons the request instead of answering.
+    /// </summary>
+    public bool Cancellable { get; init; }
+
+    /// <summary>
     /// The name of a client method (<c>provideSparkClientMethods</c>) to run instead of showing a
     /// modal, for example <c>"webauthn.create"</c>. Null for an ordinary prompt.
     /// </summary>

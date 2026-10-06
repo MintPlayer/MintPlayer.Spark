@@ -39,12 +39,14 @@ public sealed class RetryAnswer
         => new(option ?? throw new ArgumentNullException(nameof(option)), persistentObject);
 
     /// <summary>
-    /// Cancels the flow. Spark treats <c>"Cancel"</c> as a distinguished answer: the frontend sends it
-    /// when the user closes the modal, and a hook that reads it typically returns without acting. It
-    /// is <b>not</b> auto-appended to a prompt's options, so a hook that never offers it will reject
-    /// this — see <see cref="SparkClient.MaxRetryDepth"/> for the other way a conversation ends.
+    /// Cancels the flow. Spark treats <c>"Cancel"</c> as a distinguished answer, never a label: the
+    /// browser sends it for its own translated Cancel button and for a closed modal, and a hook that
+    /// reads it typically returns without acting. A prompt takes it only when it is
+    /// <see cref="RetryActionPayload.Cancellable"/> (or is a client-method step), so a hook that never
+    /// asked for it will reject this — see <see cref="SparkClient.MaxRetryDepth"/> for the other way a
+    /// conversation ends.
     /// </summary>
-    public static RetryAnswer Cancel() => new("Cancel", null);
+    public static RetryAnswer Cancel() => new(Abstractions.Retry.RetryResult.CancelOption, null);
 }
 
 /// <summary>

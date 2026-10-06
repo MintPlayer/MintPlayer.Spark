@@ -106,4 +106,14 @@ public sealed class RetryActionPayload
 
     /// <summary>The client method's argument, as the server serialized it.</summary>
     public System.Text.Json.JsonElement? Arguments { get; init; }
+
+    /// <summary>
+    /// Whether the prompt takes <see cref="RetryAnswer.Cancel"/> (<c>IRetryAccessor.Action(..., cancellable: true)</c>).
+    /// Cancel is never among <see cref="Options"/>: a browser shows its own translated Cancel button for it.
+    /// </summary>
+    public bool Cancellable { get; init; }
+
+    /// <summary>Every option this prompt accepts: <see cref="Options"/>, then <c>"Cancel"</c> when it is <see cref="Cancellable"/>.</summary>
+    public IReadOnlyList<string> AcceptedOptions
+        => Cancellable ? [.. Options, Abstractions.Retry.RetryResult.CancelOption] : Options;
 }

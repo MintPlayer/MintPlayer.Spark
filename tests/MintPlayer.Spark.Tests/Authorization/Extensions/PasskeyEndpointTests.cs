@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -83,18 +82,17 @@ public class PasskeyEndpointTests : SparkTestDriver
             .Should().BeEmpty("a disabled surface must be absent from the route table, not 404-shadowed");
     }
 
+    /// <summary>
+    /// Only sign-in is HTTP. Listing, adding, renaming and removing a passkey are the generic passkeys
+    /// page's query and actions (generic passkeys page PRD D8), so no management route may come back.
+    /// </summary>
     [Fact]
-    public async Task Enabled_mounts_the_whole_surface()
+    public async Task Enabled_mounts_only_the_sign_in_routes()
     {
         using var host = await StartAsync(SparkPasskeys.Enabled);
-        var routes = MappedRoutes(host);
 
-        routes.Should().Contain("/spark/auth/passkeys/creation-options");
-        routes.Should().Contain("/spark/auth/passkeys");
-        routes.Should().Contain("/spark/auth/passkeys/{id}");
-        routes.Should().Contain("/spark/auth/passkeys/{id}/name");
-        routes.Should().Contain("/spark/auth/passkeys/request-options");
-        routes.Should().Contain("/spark/auth/passkeys/sign-in");
+        MappedRoutes(host).Where(r => r.Contains("passkey", StringComparison.OrdinalIgnoreCase))
+            .Should().BeEquivalentTo(["/spark/auth/passkeys/request-options", "/spark/auth/passkeys/sign-in"]);
     }
 
     /// <summary>The capability is derived from the route table, so it cannot advertise a phantom.</summary>
@@ -113,36 +111,24 @@ public class PasskeyEndpointTests : SparkTestDriver
 
     #endregion
 
-    #region Authentication and antiforgery
+    #region Authentication
 
+    /// <summary>
+    /// The retired management routes (generic passkeys page PRD D8) answer like any unknown path. A
+    /// signed-in user's passkeys are reached only through the passkeys page, whose actions carry the
+    /// action pipeline's own authorization and antiforgery.
+    /// </summary>
     [Theory]
     [InlineData("/spark/auth/passkeys/creation-options")]
     [InlineData("/spark/auth/passkeys")]
-    public async Task Enrollment_requires_authentication(string path)
+    [InlineData("/spark/auth/passkeys/AQIDBA/name")]
+    public async Task The_retired_management_routes_are_gone(string path)
     {
         using var host = await StartAsync(SparkPasskeys.Enabled);
 
-        var (status, _) = await PostAsync(host, path, new { credentialJson = "{}" });
+        var (status, _) = await PostAsync(host, path, new { credentialJson = "{}", name = "laptop" });
 
-        status.Should().Be(HttpStatusCode.Unauthorized, "a passkey is added to an account that is already signed in");
-    }
-
-    [Fact]
-    public async Task Authenticated_routes_carry_antiforgery_metadata()
-    {
-        using var host = await StartAsync(SparkPasskeys.Enabled);
-
-        var gated = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
-            .OfType<RouteEndpoint>()
-            .Where(e => e.RoutePattern.RawText!.StartsWith("/spark/auth/passkeys", StringComparison.OrdinalIgnoreCase))
-            .Where(e => e.Metadata.GetMetadata<IAntiforgeryMetadata>()?.RequiresValidation == true)
-            .Select(e => e.RoutePattern.RawText!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        gated.Should().Contain("/spark/auth/passkeys/creation-options");
-        gated.Should().Contain("/spark/auth/passkeys");
-        gated.Should().Contain("/spark/auth/passkeys/{id}");
-        gated.Should().Contain("/spark/auth/passkeys/{id}/name");
+        status.Should().Be(HttpStatusCode.NotFound);
     }
 
     /// <summary>
