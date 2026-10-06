@@ -29,6 +29,29 @@ public static class SparkSecurityFiles
     public static string PathFor(string contentRootPath) => SparkAppData.Path(contentRootPath, FileName);
 
     /// <summary>
+    /// The libraries among <paramref name="libraries"/> (<see langword="null"/>: the process's) that ship a
+    /// <c>security.json</c> layer, in layer order, each with the first 12 hex digits of the SHA-256 of what
+    /// it states, whitespace aside (composition D7): the identity the posture table records per layer.
+    /// </summary>
+    public static IReadOnlyList<(string Alias, string Assembly, string Hash)> Layers(IEnumerable<SparkLibrary>? libraries = null)
+        => SparkLayerCatalog.Of(libraries ?? SparkLayerCatalog.Libraries, SparkLayerKinds.Security)
+            .Select(x => (x.Library.Alias, x.Library.AssemblyName, Model.SparkLayerProvenance.Sha256Hex(Canonical(x.Layer.Json))[..12]))
+            .ToList();
+
+    private static string Canonical(string json)
+    {
+        try
+        {
+            return SparkJson.Write(SparkJson.Parse(json));
+        }
+        catch (SparkJsonException)
+        {
+            // Composing refuses it with its own message; the hash only has to be stable.
+            return json;
+        }
+    }
+
+    /// <summary>
     /// <paramref name="appJson"/> composed over <paramref name="libraries"/> (<see langword="null"/>: the
     /// process's, <see cref="SparkLayerCatalog.Libraries"/>).
     /// </summary>

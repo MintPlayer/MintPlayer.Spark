@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using MintPlayer.Spark.Abstractions.Actions;
+using MintPlayer.Spark.Layering;
 
 namespace MintPlayer.Spark.Abstractions.Model;
 
@@ -40,8 +41,11 @@ public static class ConfigFileShape
     /// <summary>The action catalogue's file name, relative to <c>App_Data</c>.</summary>
     public const string ActionsFileName = "actions.json";
 
+    /// <summary>The menu's file name, relative to <c>App_Data</c>.</summary>
+    public const string ProgramUnitsFileName = "programUnits.json";
+
     /// <summary>The files this covers, relative to <c>App_Data</c>.</summary>
-    public static readonly string[] FileNames = [ActionsFileName, "programUnits.json"];
+    public static readonly string[] FileNames = [ActionsFileName, ProgramUnitsFileName];
 
     /// <summary>
     /// One structural hash per covered file, keyed by file name. <c>programUnits.json</c> is in the
@@ -66,12 +70,104 @@ public static class ConfigFileShape
 
             var describe = isActions
                 ? DescribeActions(exists ? File.ReadAllText(path) : null, libraries ?? SparkActionLayers.Libraries)
-                : Describe(File.ReadAllText(path), fileName);
+                : DescribeProgramUnits(File.ReadAllText(path), SparkLayerCatalog.Libraries);
             if (!string.IsNullOrEmpty(describe))
                 results[fileName] = Sha256Hex(describe);
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// The provenance of the covered files a library states a layer of (composition D7), keyed by file
+    /// name: each layer (a library's alias, <c>app</c> for the application's file) and the structural hash
+    /// of what that layer alone states. A file only the application states has no entry.
+    /// </summary>
+    /// <remarks>
+    /// A layer is rendered on its own: an action it removes (<c>"Edit": null</c>) is a line of its own, so
+    /// a library that starts or stops removing one moves its hash.
+    /// </remarks>
+    public static SortedDictionary<string, SortedDictionary<string, string>> ComputeLayerHashes(string appDataPath, IEnumerable<SparkLibrary> libraries)
+    {
+        var list = libraries.ToList();
+        var result = new SortedDictionary<string, SortedDictionary<string, string>>(StringComparer.Ordinal);
+
+        Add(ActionsFileName, SparkLayerKinds.Actions, json => DescribeLayerActions(json));
+        Add(ProgramUnitsFileName, SparkLayerKinds.ProgramUnits, json => Describe(json, ProgramUnitsFileName));
+        return result;
+
+        void Add(string fileName, string kind, Func<string, string?> describe)
+        {
+            var shipped = SparkLayerCatalog.Of(list, kind);
+            if (shipped.Count == 0) return;
+
+            var layers = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (library, layer) in shipped)
+                layers[library.Alias] = Sha256Hex(describe(layer.Json) ?? "unparseable\n");
+
+            var path = Path.Combine(appDataPath, fileName);
+            if (File.Exists(path))
+                layers[SparkLayerProvenance.App] = Sha256Hex(describe(File.ReadAllText(path)) ?? "unparseable\n");
+            result[fileName] = layers;
+        }
+    }
+
+    /// <summary>
+    /// The composed menu's structural rendering (<see cref="SparkProgramUnitsFiles"/>); <see langword="null"/>
+    /// when it does not compose, for the same reason <see cref="Describe"/> yields null.
+    /// </summary>
+    internal static string? DescribeProgramUnits(string appJson, IEnumerable<SparkLibrary> libraries)
+    {
+        string? composed;
+        try
+        {
+            composed = SparkProgramUnitsFiles.Compose(appJson, libraries);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+        return composed is null ? null : Describe(composed, ProgramUnitsFileName);
+    }
+
+    /// <summary>One <c>actions.json</c> layer on its own: each action it states, sorted, with the structural properties it states, or <c>removed</c>.</summary>
+    internal static string? DescribeLayerActions(string json)
+    {
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return string.Empty;
+
+            var builder = new StringBuilder();
+            foreach (var action in document.RootElement.EnumerateObject()
+                         .Where(p => p.Name != "$schema" && !p.Name.StartsWith('_'))
+                         .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                builder.Append(action.Name).Append('\n');
+                if (action.Value.ValueKind == JsonValueKind.Null)
+                {
+                    builder.Append("  removed\n");
+                    continue;
+                }
+                if (action.Value.ValueKind != JsonValueKind.Object) continue;
+                foreach (var field in StructuralActionFields)
+                {
+                    var property = action.Value.EnumerateObject().FirstOrDefault(p => string.Equals(p.Name, field, StringComparison.OrdinalIgnoreCase));
+                    if (property.Value.ValueKind != JsonValueKind.Undefined)
+                        builder.Append("  ").Append(field).Append('=').Append(Render(property.Value)).Append('\n');
+                }
+            }
+            return builder.ToString();
+        }
     }
 
     /// <summary>

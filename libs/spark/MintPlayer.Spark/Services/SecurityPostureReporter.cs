@@ -34,8 +34,15 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
         var table = config.Rights.Select(r => Row(config, r, inert: false, anonymousGroupId)).OrderBy(r => r, RowOrder.Instance).ToList();
         var inert = config.InertRights.Select(r => Row(config, r, inert: true, null)).OrderBy(r => r, RowOrder.Instance).ToList();
 
+        // Each library that ships rights, with the hash of what it states (composition D7): an update
+        // that changes them changes its line, and the drift message names it. The loader composes over
+        // the same catalogue, so the two cannot list different libraries.
+        var layers = SparkSecurityFiles.Layers()
+            .Select(l => new SecurityPostureLayer(l.Alias, l.Assembly, l.Hash, config.Libraries?.TryGetValue(l.Alias, out var on) == true && !on))
+            .ToList();
+
         if (anonymousGroupId is null)
-            return new SecurityPosture([], warnings, notes, table, inert);
+            return new SecurityPosture([], warnings, notes, table, inert, layers);
 
         // A caller who has not signed in belongs to the anonymous group and to nothing else: group
         // membership otherwise comes from claims, and an unauthenticated principal carries none that
@@ -74,7 +81,8 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
             warnings,
             notes,
             table,
-            inert);
+            inert,
+            layers);
     }
 
     /// <summary>One right as a table row. An inert right never resolved, so it shows its token.</summary>

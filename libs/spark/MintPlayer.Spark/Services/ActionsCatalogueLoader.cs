@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.Caching.Memory;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
@@ -14,13 +13,16 @@ public interface IActionsCatalogueLoader
     /// <summary>The composed catalogue: the libraries' <c>actions.json</c> layers with the application's on top.</summary>
     ActionsCatalogue GetCatalogue();
 
-    void InvalidateCache();
+    /// <summary>Composes the catalogue again now; the previous one stays when it does not compose.</summary>
+    void Reload();
 }
 
 /// <summary>
 /// Composes the action catalogue (#467, D7/S12): the libraries' compiled <c>actions.json</c> layers,
 /// core first, with the application's <c>App_Data/actions.json</c> on top. The application's file is
-/// read from disk and reloaded when it changes; the library layers are fixed at build time.
+/// read from disk and reloaded when it changes, and the labels follow a translations reload, through
+/// the one watcher policy (<see cref="AppLayerSnapshot{T}"/>, composition D8); the library layers are
+/// fixed at build time.
 /// </summary>
 [Register(typeof(IActionsCatalogueLoader), ServiceLifetime.Singleton)]
 internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDisposable
@@ -29,54 +31,36 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
     [Inject] private readonly ILogger<ActionsCatalogueLoader> logger;
     [Inject] private readonly ITranslationsLoader translationsLoader;
 
-    private readonly IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
-    private FileSystemWatcher? fileWatcher;
-    private const string CacheKey = "ActionsCatalogue";
-    private bool disposed;
+    private AppLayerSnapshot<ActionsCatalogue>? layer;
 
-    public ActionsCatalogue GetCatalogue()
-    {
-        if (cache.TryGetValue(CacheKey, out ActionsCatalogue? cached) && cached != null)
-            return cached;
+    private AppLayerSnapshot<ActionsCatalogue> Layer
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            SparkActionLayers.AppLayerName,
+            Path.GetDirectoryName(PathFor(hostEnvironment.ContentRootPath)),
+            [ConfigFileShape.ActionsFileName],
+            LoadFromDisk,
+            logger,
+            labels: translationsLoader));
 
-        var catalogue = LoadFromDisk();
-        cache.Set(CacheKey, catalogue, new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromMinutes(5)));
+    public ActionsCatalogue GetCatalogue() => Layer.Current;
 
-        if (fileWatcher == null)
-            SetupFileWatcher();
-
-        return catalogue;
-    }
-
-    public void InvalidateCache()
-    {
-        cache.Remove(CacheKey);
-        logger.LogInformation("Action catalogue cache invalidated");
-    }
+    public void Reload() => Layer.Reload();
 
     private ActionsCatalogue LoadFromDisk()
     {
         var fullPath = PathFor(hostEnvironment.ContentRootPath);
         var appJson = File.Exists(fullPath) ? File.ReadAllText(fullPath) : null;
 
-        try
+        var catalogue = Build(appJson, SparkActionLayers.Libraries, translationsLoader.GetAll());
+        foreach (var conflict in catalogue.Conflicts)
         {
-            var catalogue = Build(appJson, SparkActionLayers.Libraries, translationsLoader.GetAll());
-            foreach (var conflict in catalogue.Conflicts)
-            {
-                logger.LogWarning(
-                    "Libraries '{Winner}' and '{Loser}' both state '{Property}' of the action '{Action}', with different values. "
-                    + "'{Winner}' wins (libraries apply by assembly name). State it in {ActionsFile} to choose.",
-                    conflict.WinnerLayer, conflict.LoserLayer, conflict.Property, conflict.Action, conflict.WinnerLayer, SparkActionLayers.AppLayerName);
-            }
-            logger.LogInformation("Composed the action catalogue: {ActionCount} actions", catalogue.Actions.Count);
-            return catalogue;
+            logger.LogWarning(
+                "Libraries '{Winner}' and '{Loser}' both state '{Property}' of the action '{Action}', with different values. "
+                + "'{Winner}' wins (libraries apply by assembly name). State it in {ActionsFile} to choose.",
+                conflict.WinnerLayer, conflict.LoserLayer, conflict.Property, conflict.Action, conflict.WinnerLayer, SparkActionLayers.AppLayerName);
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to compose the action catalogue with {FilePath}", fullPath);
-            throw;
-        }
+        logger.LogInformation("Composed the action catalogue: {ActionCount} actions", catalogue.Actions.Count);
+        return catalogue;
     }
 
     /// <summary>The application layer's path for a content root.</summary>
@@ -224,47 +208,6 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
         };
     }
 
-    private void SetupFileWatcher()
-    {
-        var directory = Path.GetDirectoryName(PathFor(hostEnvironment.ContentRootPath));
-        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-            return;
-
-        fileWatcher = new FileSystemWatcher(directory, ConfigFileShape.ActionsFileName)
-        {
-            // Created and Renamed too: an editor that saves through a temporary file replaces the
-            // file rather than writing it, and an application without one may add it while running.
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
-        };
-
-        fileWatcher.Changed += OnFileChanged;
-        fileWatcher.Created += OnFileChanged;
-        fileWatcher.Deleted += OnFileChanged;
-        fileWatcher.Renamed += OnFileChanged;
-        fileWatcher.EnableRaisingEvents = true;
-    }
-
-    private void OnFileChanged(object sender, FileSystemEventArgs args)
-    {
-        Task.Delay(100).ContinueWith(_ => InvalidateCache());
-    }
-
     [NoInterfaceMember]
-    public void Dispose()
-    {
-        if (disposed) return;
-        disposed = true;
-
-        if (fileWatcher != null)
-        {
-            fileWatcher.Changed -= OnFileChanged;
-            fileWatcher.Created -= OnFileChanged;
-            fileWatcher.Deleted -= OnFileChanged;
-            fileWatcher.Renamed -= OnFileChanged;
-            fileWatcher.Dispose();
-            fileWatcher = null;
-        }
-
-        cache.Dispose();
-    }
+    public void Dispose() => layer?.Dispose();
 }

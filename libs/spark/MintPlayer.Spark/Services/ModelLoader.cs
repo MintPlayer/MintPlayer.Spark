@@ -15,24 +15,37 @@ public interface IModelLoader
     IEnumerable<SparkQuery> GetQueries();
 }
 
+/// <summary>
+/// The composed model (<see cref="IModelSource"/>), deserialized, with every label resolved against the
+/// translations.
+/// </summary>
+/// <remarks>
+/// The labels follow a translations reload (composition D8): the definitions are rebuilt from the
+/// same composed model and swapped whole, so a reader holds the old set or the new one. The model's
+/// structure does not reload: it is verified against this build's entity classes at startup
+/// (<c>modelHashes.json</c>), and a structure read later would never have passed that gate.
+/// </remarks>
 [Register(typeof(IModelLoader), ServiceLifetime.Singleton)]
-internal partial class ModelLoader : IModelLoader
+internal partial class ModelLoader : IModelLoader, IDisposable
 {
     [Inject] private readonly IModelSource modelSource;
     [Inject] private readonly ITranslationsLoader translationsLoader;
+    [Inject] private readonly ILogger<ModelLoader> logger;
 
-    private Lazy<(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries)>? _data;
+    private AppLayerSnapshot<ModelData>? layer;
 
-    private (Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries) Data
-    {
-        get
-        {
-            _data ??= new Lazy<(Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>, List<SparkQuery>)>(LoadData);
-            return _data.Value;
-        }
-    }
+    private sealed record ModelData(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries);
 
-    private (Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>, List<SparkQuery>) LoadData()
+    private ModelData Data
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            "the model's labels",
+            directory: null,
+            [],
+            LoadData,
+            logger,
+            labels: translationsLoader)).Current;
+
+    private ModelData LoadData()
     {
         var byId = new Dictionary<Guid, EntityTypeDefinition>();
         var byAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
@@ -107,7 +120,7 @@ internal partial class ModelLoader : IModelLoader
             }
         }
 
-        return (byId, byAlias, allQueries);
+        return new ModelData(byId, byAlias, allQueries);
     }
 
     /// <summary>
@@ -266,4 +279,7 @@ internal partial class ModelLoader : IModelLoader
 
     public IEnumerable<SparkQuery> GetQueries()
         => Data.Queries;
+
+    [NoInterfaceMember]
+    public void Dispose() => layer?.Dispose();
 }

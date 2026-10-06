@@ -437,6 +437,7 @@ public static class SparkExtensions
         // and the index registry is populated there. Before any request is served: a drifted model
         // shows up as missing columns and values silently dropped on save, which reads as data loss
         // rather than a configuration mistake.
+        LogSparkLibraryLayers(app);
         VerifySparkModelHash(app);
 
         VerifySparkSecurityConfiguration(app);
@@ -627,6 +628,34 @@ public static class SparkExtensions
             .VerifyAsync(sparkContext.GetType(), store, Console.WriteLine, CancellationToken.None)
             .GetAwaiter()
             .GetResult();
+    }
+
+    /// <summary>
+    /// Names the library layers this process composes, once (composition D9, grill Q4): with no composed
+    /// file to look at, the startup log is where a developer sees which libraries take part, and
+    /// <c>--spark-describe</c> what they state.
+    /// </summary>
+    private static void LogSparkLibraryLayers(IApplicationBuilder app)
+    {
+        var logger = app.ApplicationServices.GetService<ILoggerFactory>()?.CreateLogger("MintPlayer.Spark.Layers");
+        if (logger is null)
+            return;
+
+        var libraries = SparkLayerCatalog.Libraries;
+        if (libraries.Count == 0)
+        {
+            logger.LogInformation("Spark layers: no library ships App_Data layers.");
+            return;
+        }
+
+        foreach (var library in libraries)
+        {
+            logger.LogInformation(
+                "Spark layers: {Alias} ({Assembly}) ships {Kinds}.",
+                library.Alias,
+                library.AssemblyName,
+                string.Join(", ", library.Layers.GroupBy(l => l.Kind, StringComparer.Ordinal).Select(g => g.Count() == 1 ? g.Key : $"{g.Key} ×{g.Count()}")));
+        }
     }
 
     private static void VerifySparkModelHash(IApplicationBuilder app)

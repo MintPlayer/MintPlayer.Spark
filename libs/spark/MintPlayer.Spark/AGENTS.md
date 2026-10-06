@@ -305,7 +305,7 @@ in `translations.json` (`{count}` in a confirmation is the row count).
 
 **`actions.json` is layered** (#467, D7): the core library ships New, Edit and Delete, any library may
 ship a layer, and the app's file composes on top per property. `"Edit": null` removes an inherited
-action; a property set to `null` resets it. `--spark-print-effective-actions` prints the composed
+action; a property set to `null` resets it. `--spark-describe actions --layers` prints the composed
 catalogue with each property's source layer.
 
 **New, Edit and Delete are catalogue entries** (#460 D18, #467 D7). `/spark/actions/list` returns

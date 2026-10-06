@@ -1,14 +1,15 @@
 {
-  "version": 1,
-  "modelHash": "151967faeba730da33d60bd59a469f90f35d06a9daa1ffad2c410bf456c4c4ee",
+  "version": 2,
+  "modelHash": "184e7c85fa8849c8b43bcdc19f75b5a6b4b93dc48418acd82e75cd5f3ab4bec9",
   "contextRoots": "413ca4da55c2ba97081d85e13fd185f321b34ef2c0e2a098116947221739e1ff",
-  "modelFiles": "8d5d0664a0c205f2a0f2f3682e57a040f4e0957ea7fa25caa210a3d7aa0cde81",
+  "modelFiles": "328e1638a9d849e641b773e41a1c7c05fdb50de4c577d21604e683594900d95e",
   "files": {
     "Car.json": "053e3033622131890e403acc64810e53d058ea6b1cd500ddfda74abf01d9e493",
     "Company.json": "1b7533a122b384726ec7b84603b77363d4ff69e132aa1a248dc4bbaf0a3e6338",
     "ConfirmDeleteCar.json": "4900f18cceddd5385afab65520f7142aa285922ab4b33808200f0b9f2ba59fa5",
     "Person.json": "b9119d893271c2614eb1f8348ea5206b0b039708975065456757cadb2fc009e7",
-    "ServiceEntry.json": "b225fdb65bc53d04caa70c111ad4b079f3894362020ea996f129ef0fa91869b2"
+    "ServiceEntry.json": "b225fdb65bc53d04caa70c111ad4b079f3894362020ea996f129ef0fa91869b2",
+    "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
   },
   "entities": {
     "Car": "5e4bae4ffdcbf5af251b229dd43e5beb65b42a346c372de83ccfd80bfbdf576d",
@@ -19,5 +20,18 @@
   "configFiles": {
     "actions.json": "c58d6a2100a269a63480c59407adfe5a6bbd5e294cca6b6951aa04df612d92bc",
     "programUnits.json": "5dd378562df90275b4d4660ddb1395f9a8599915e8c97f2088db18feb27130b2"
+  },
+  "libraries": {
+    "authorization": "MintPlayer.Spark.Authorization",
+    "spark": "MintPlayer.Spark"
+  },
+  "layers": {
+    "Model/SparkUser.json": {
+      "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+    },
+    "actions.json": {
+      "app": "643e28354b6e5fd52bc633ff1ebc33163843fa60f8bb19a8a449e704cf4eaca8",
+      "spark": "178159b4155481a5718c310954503cdfb20f49fc10034ce9665c213f30ea3491"
+    }
   }
 }

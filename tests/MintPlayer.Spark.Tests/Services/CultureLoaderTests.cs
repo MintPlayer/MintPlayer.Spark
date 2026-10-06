@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Services;
 using NSubstitute;
@@ -27,7 +28,7 @@ public sealed class CultureLoaderTests : IDisposable
         try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
-    private CultureLoader CreateLoader() => new(_hostEnv, TranslationsLoader.For(_hostEnv, []));
+    private CultureLoader CreateLoader() => new(_hostEnv, TranslationsLoader.For(_hostEnv, []), NullLogger<CultureLoader>.Instance);
 
     private void WriteCulture(string json) =>
         File.WriteAllText(Path.Combine(_tempDir, "App_Data", "culture.json"), json);

@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "modelHash": "771498a0cd36fd5fb2a2c612fb70707a1a4d5b663325b76659bf78b98529adce",
+  "version": 2,
+  "modelHash": "2da222113fa968df728c375a854c731354ed7849224f4e2d0405fc761812a302",
   "contextRoots": "4e26fdaddf14f566fc802a5957f1680622690ae57c3cbb5a5ac50a9c1de40ca0",
   "modelFiles": "147c47fa3d27321a4c38940f2689d2bfbe95c66f7144acf32e74246f1fac3bbb",
   "files": {
@@ -33,5 +33,17 @@
   "configFiles": {
     "actions.json": "178159b4155481a5718c310954503cdfb20f49fc10034ce9665c213f30ea3491",
     "programUnits.json": "96c48f0fcc007c33414d888c8d0cbf91eb05fa201fb43361d5a4cf5e1becf09f"
+  },
+  "libraries": {
+    "authorization": "MintPlayer.Spark.Authorization",
+    "spark": "MintPlayer.Spark"
+  },
+  "layers": {
+    "Model/SparkUser.json": {
+      "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+    },
+    "actions.json": {
+      "spark": "178159b4155481a5718c310954503cdfb20f49fc10034ce9665c213f30ea3491"
+    }
   }
 }

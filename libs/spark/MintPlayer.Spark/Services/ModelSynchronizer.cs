@@ -510,16 +510,20 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var fileHashes = ModelHashFile.ComputeFileHashes(contentRootPath);
         var modelFiles = ModelHashFile.CombineFileHashes(fileHashes);
         var configHashes = ModelHashFile.ComputeConfigHashes(contentRootPath);
+        var (libraries, layers) = ModelHashFile.ComputeLayers(contentRootPath);
 
         return new ModelHashFile
         {
             ModelHash = SparkModelShape.ComputeModelHash(
                 perEntity, contextRoots, modelFiles,
-                configHashes.Count > 0 ? ModelHashFile.CombineFileHashes(configHashes) : null),
+                configHashes.Count > 0 ? ModelHashFile.CombineFileHashes(configHashes) : null,
+                ModelHashFile.CombineLayerHashes(layers)),
             ContextRoots = contextRoots,
             ModelFiles = modelFiles,
             Files = fileHashes,
             ConfigFiles = configHashes.Count > 0 ? configHashes : null,
+            Libraries = libraries.Count > 0 ? libraries : null,
+            Layers = layers.Count > 0 ? layers : null,
             Entities = new SortedDictionary<string, string>(perEntity.ToDictionary(e => e.Key, e => e.Value), StringComparer.Ordinal),
         };
     }

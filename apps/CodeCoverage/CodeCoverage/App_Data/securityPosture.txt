@@ -2,6 +2,9 @@
 # --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
 # Rows: group | effect | resource | key | layer
 
+## Layers: libraries that ship rights (alias | assembly | hash)
+(nothing)
+
 ## Reachable without signing in (expanded)
 Browse/Coverage
 Query/Account

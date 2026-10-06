@@ -155,7 +155,8 @@ public static class SparkModelShape
         IReadOnlyDictionary<string, string> perEntityHashes,
         string contextRootsHash,
         string modelFilesHash,
-        string? configFilesHash = null)
+        string? configFilesHash = null,
+        string? layersHash = null)
     {
         var builder = new StringBuilder();
         foreach (var entry in perEntityHashes.OrderBy(e => e.Key, StringComparer.Ordinal))
@@ -168,6 +169,10 @@ public static class SparkModelShape
         // model reading as drifted on the first run after the config files became covered.
         if (configFilesHash is not null)
             builder.Append("config:").Append(configFilesHash).Append('\n');
+
+        // The layers each composed entry came from (composition D7), when a library states any.
+        if (layersHash is not null)
+            builder.Append("layers:").Append(layersHash).Append('\n');
 
         return Sha256Hex(builder.ToString());
     }

@@ -197,19 +197,23 @@ internal sealed class SparkComposition
     /// One line per merged object or keyed element (<c>path @layer</c>) and per leaf
     /// (<c>path = json @layer</c>), then one per conflict and error. Deterministic: the golden format.
     /// </summary>
-    public string Describe()
+    /// <param name="layerName">How a layer is shown (<c>--spark-describe</c> shows a library by its alias); as composed when omitted.</param>
+    /// <param name="include">Which paths to show; every one when omitted. Conflicts and errors are always shown.</param>
+    public string Describe(Func<string, string>? layerName = null, Func<string, bool>? include = null)
     {
+        var name = layerName ?? (layer => layer);
         var builder = new StringBuilder();
         Walk((path, node, isLeaf) =>
         {
+            if (include is not null && !include(path)) return;
             builder.Append(path);
             if (isLeaf) builder.Append(" = ").Append(SparkJson.Write(node));
-            builder.Append(" @").Append(SourceOf(node)).Append('\n');
+            builder.Append(" @").Append(SourceOf(node) is { } source ? name(source) : null).Append('\n');
         });
         foreach (var conflict in Conflicts)
-            builder.Append("conflict ").Append(conflict.PathText).Append(": ").Append(conflict.WinnerLayer).Append(" over ").Append(conflict.LoserLayer).Append('\n');
+            builder.Append("conflict ").Append(conflict.PathText).Append(": ").Append(name(conflict.WinnerLayer)).Append(" over ").Append(name(conflict.LoserLayer)).Append('\n');
         foreach (var error in Errors)
-            builder.Append("error ").Append(error.Path).Append(" (").Append(error.Layer).Append("): ").Append(error.Message).Append('\n');
+            builder.Append("error ").Append(error.Path).Append(" (").Append(name(error.Layer)).Append("): ").Append(error.Message).Append('\n');
         return builder.ToString();
     }
 

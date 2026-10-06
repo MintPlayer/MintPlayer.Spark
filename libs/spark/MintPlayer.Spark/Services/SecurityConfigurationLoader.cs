@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Caching.Memory;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -18,9 +17,9 @@ namespace MintPlayer.Spark.Services;
 /// and the posture table lists every effective right with its layer.
 /// </para>
 /// <para>
-/// Structurally the twin of <see cref="ActionsCatalogueLoader"/> — same cache, same
-/// watcher, same fixed path — and deliberately so: both read one JSON file out of
-/// <see cref="SparkAppData"/> at startup and reload it when it changes. The file name is not
+/// Reloaded through the one watcher policy every application layer uses
+/// (<see cref="AppLayerSnapshot{T}"/>, composition D8), with a fixed path, and failing closed where
+/// the other kinds keep their previous snapshot. The file name is not
 /// configurable (only its directory is, through <c>SparkAppDataDir</c>) for the
 /// same reason that one is not: a second place to put the file is a second place to fail to find
 /// it, and the startup gate can only name one location in its message.
@@ -41,10 +40,7 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
 
     private const string FileName = "security.json";
 
-    private readonly IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
-    private FileSystemWatcher? fileWatcher;
-    private const string CacheKey = "SecurityConfiguration";
-    private bool disposed;
+    private AppLayerSnapshot<SecurityConfiguration>? layer;
 
     /// <summary>
     /// The expanded per-group index, keyed by the configuration it was derived from.
@@ -57,21 +53,19 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
     /// </summary>
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<SecurityConfiguration, IReadOnlyDictionary<Guid, GroupRights>> expanded = new();
 
-    public SecurityConfiguration GetConfiguration()
-    {
-        if (cache.TryGetValue(CacheKey, out SecurityConfiguration? cached) && cached != null)
-            return cached;
+    // Fail closed (AppLayerFailure.Refuse): a reload that does not compose is refused on every read
+    // until the file is fixed. Keeping the previous rights, as the other kinds keep their previous
+    // snapshot, would go on granting what the file no longer grants.
+    private AppLayerSnapshot<SecurityConfiguration> Layer
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            SparkSecurityFiles.AppLayerName,
+            Path.GetDirectoryName(SparkAppData.Path(hostEnvironment.ContentRootPath, FileName)),
+            [FileName],
+            LoadFromFile,
+            logger,
+            AppLayerFailure.Refuse));
 
-        var config = LoadFromFile();
-
-        cache.Set(CacheKey, config, new MemoryCacheEntryOptions()
-            .SetAbsoluteExpiration(TimeSpan.FromMinutes(5)));
-
-        if (fileWatcher == null)
-            SetupFileWatcher();
-
-        return config;
-    }
+    public SecurityConfiguration GetConfiguration() => Layer.Current;
 
     public RightsDecision GetResolvedRights(IReadOnlySet<Guid> groupIds)
     {
@@ -136,57 +130,10 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
         return loaded;
     }
 
-    public void InvalidateCache()
-    {
-        cache.Remove(CacheKey);
-        logger.LogInformation("Security configuration cache invalidated");
-    }
-
-    private void SetupFileWatcher()
-    {
-        var filePath = SparkAppData.Path(hostEnvironment.ContentRootPath, FileName);
-        var directory = Path.GetDirectoryName(filePath);
-        var fileName = Path.GetFileName(filePath);
-
-        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-            return;
-
-        fileWatcher = new FileSystemWatcher(directory, fileName)
-        {
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size
-        };
-
-        fileWatcher.Changed += OnFileChanged;
-        fileWatcher.EnableRaisingEvents = true;
-
-        logger.LogDebug("File watcher enabled for security configuration: {FilePath}", filePath);
-    }
-
-    private void OnFileChanged(object sender, FileSystemEventArgs args)
-    {
-        // Debounce: file system events can fire multiple times for a single save
-        Task.Delay(100).ContinueWith(_ =>
-        {
-            InvalidateCache();
-            logger.LogInformation("Security configuration file changed, cache invalidated");
-        });
-    }
+    public void Reload() => Layer.Reload();
 
     [NoInterfaceMember]
-    public void Dispose()
-    {
-        if (disposed) return;
-        disposed = true;
-
-        if (fileWatcher != null)
-        {
-            fileWatcher.Changed -= OnFileChanged;
-            fileWatcher.Dispose();
-            fileWatcher = null;
-        }
-
-        cache.Dispose();
-    }
+    public void Dispose() => layer?.Dispose();
 }
 
 /// <summary>

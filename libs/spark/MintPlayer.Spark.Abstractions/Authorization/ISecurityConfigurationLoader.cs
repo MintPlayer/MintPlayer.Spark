@@ -28,9 +28,10 @@ public interface ISecurityConfigurationLoader
     RightsDecision GetResolvedRights(IReadOnlySet<Guid> groupIds);
 
     /// <summary>
-    /// Invalidates the cached configuration, forcing a reload on next access.
+    /// Composes the configuration again now. One that does not compose is refused on every read until
+    /// it does (fail closed), never replaced by the previous rights.
     /// </summary>
-    void InvalidateCache();
+    void Reload();
 }
 
 /// <summary>

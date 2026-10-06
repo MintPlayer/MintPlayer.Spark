@@ -61,7 +61,7 @@ public sealed record SparkActionsComposition(
 /// </remarks>
 public static class SparkActionLayers
 {
-    /// <summary>The application layer's name in messages and in <c>--spark-print-effective-actions</c>.</summary>
+    /// <summary>The application layer's name in messages.</summary>
     public static string AppLayerName => SparkAppData.Relative("actions.json");
 
     private static readonly Lazy<IReadOnlyList<SparkActionsLayer>> libraries = new(() => From(SparkLayerCatalog.Libraries));

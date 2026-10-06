@@ -55,7 +55,7 @@ public sealed class ActionDefinition
     /// <summary>The layer that declared the action.</summary>
     public required string DeclaredBy { get; init; }
 
-    /// <summary>Each stated property and the layer that set it, for <c>--spark-print-effective-actions</c>.</summary>
+    /// <summary>Each stated property and the layer that set it.</summary>
     public required IReadOnlyDictionary<string, string> Sources { get; init; }
 
     /// <summary>Whether this is one of the framework's own actions (New, Edit, Delete), which run through their own endpoints.</summary>

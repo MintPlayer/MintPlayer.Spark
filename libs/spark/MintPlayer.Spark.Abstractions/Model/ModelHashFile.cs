@@ -34,7 +34,8 @@ public sealed class ModelHashFile
     };
 
     /// <summary>Format version, so a future change to the canonical text can be detected rather than misread.</summary>
-    public int Version { get; set; } = 1;
+    /// <remarks>2: the composed hashes carry their layers (<see cref="Libraries"/>, <see cref="Layers"/>; composition D7).</remarks>
+    public int Version { get; set; } = 2;
 
     /// <summary>Roll-up over <see cref="Entities"/> and <see cref="ContextRoots"/>.</summary>
     public string ModelHash { get; set; } = string.Empty;
@@ -84,6 +85,36 @@ public sealed class ModelHashFile
     /// </remarks>
     public SortedDictionary<string, string>? ConfigFiles { get; set; }
 
+    /// <summary>
+    /// The libraries whose layers the hashed entries compose, by alias (composition D16), with their
+    /// assembly. A drift message names a layer by alias; this says which assembly that is.
+    /// </summary>
+    /// <remarks>
+    /// The assembly's version is deliberately not recorded: every release bumps it, so a version would
+    /// turn the gate red on an update that changed nothing the gate covers. A layer's identity is the
+    /// structural hash of what it states, in <see cref="Layers"/>.
+    /// </remarks>
+    public SortedDictionary<string, string>? Libraries { get; set; }
+
+    /// <summary>
+    /// The provenance of every hashed entry a library states a layer of (composition D7): keyed
+    /// <c>Model/{file}</c> for a model type and by file name for a config file, then by layer (a
+    /// library's alias, <c>app</c> for the application's own file), the structural hash of what that
+    /// layer alone states.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Part of <see cref="ModelHash"/>, so the committed file cannot go stale against its layers: a
+    /// library update that moves a structure turns the gate red even where the application's delta
+    /// happens to restate the same value, and the re-synchronization that follows is the review.
+    /// </para>
+    /// <para>
+    /// An entry only the application states has no layers here: its own hash already is its one
+    /// layer's.
+    /// </para>
+    /// </remarks>
+    public SortedDictionary<string, SortedDictionary<string, string>>? Layers { get; set; }
+
     /// <summary>Absolute path of the hash file for a given content root.</summary>
     public static string PathFor(string contentRootPath)
         => SparkAppData.Path(contentRootPath, FileName);
@@ -103,6 +134,30 @@ public sealed class ModelHashFile
     /// <summary>Structural hashes of the App_Data config files outside the Model directory.</summary>
     public static SortedDictionary<string, string> ComputeConfigHashes(string contentRootPath)
         => ConfigFileShape.ComputeFileHashes(SparkAppData.Directory(contentRootPath));
+
+    /// <summary>The layers of every composed model type and config file a library states (<see cref="Layers"/>), and the libraries they name.</summary>
+    public static (SortedDictionary<string, string> Libraries, SortedDictionary<string, SortedDictionary<string, string>> Layers) ComputeLayers(string contentRootPath)
+        => ComputeLayers(SparkLayerCatalog.Libraries, contentRootPath);
+
+    /// <summary>As <see cref="ComputeLayers(string)"/>, over chosen libraries.</summary>
+    public static (SortedDictionary<string, string> Libraries, SortedDictionary<string, SortedDictionary<string, string>> Layers) ComputeLayers(IReadOnlyList<SparkLibrary> libraries, string contentRootPath)
+    {
+        var layers = ModelFileShape.ComputeLayerHashes(libraries, ModelDirectoryFor(contentRootPath));
+        foreach (var (file, fileLayers) in ConfigFileShape.ComputeLayerHashes(SparkAppData.Directory(contentRootPath), libraries))
+            layers[file] = fileLayers;
+        return (SparkLayerProvenance.Libraries(libraries, layers.Values), layers);
+    }
+
+    /// <summary>Roll-up over <see cref="Layers"/>; <see langword="null"/> when no library states a layer.</summary>
+    public static string? CombineLayerHashes(IReadOnlyDictionary<string, SortedDictionary<string, string>> layers)
+    {
+        if (layers.Count == 0) return null;
+        var builder = new StringBuilder();
+        foreach (var entry in layers.OrderBy(e => e.Key, StringComparer.Ordinal))
+            foreach (var layer in entry.Value.OrderBy(l => l.Key, StringComparer.Ordinal))
+                builder.Append(entry.Key).Append(' ').Append(layer.Key).Append(':').Append(layer.Value).Append('\n');
+        return Sha256Hex(builder.ToString());
+    }
 
     /// <summary>Roll-up over the per-file structural hashes.</summary>
     public static string CombineFileHashes(IReadOnlyDictionary<string, string> fileHashes)

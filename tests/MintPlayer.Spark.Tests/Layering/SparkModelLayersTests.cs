@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
@@ -224,7 +225,7 @@ public class SparkModelLayersTests : IDisposable
         var hostEnvironment = Substitute.For<IHostEnvironment>();
         hostEnvironment.ContentRootPath.Returns(contentRoot);
 
-        var loader = new ModelLoader(ModelSource.For(hostEnvironment, [Authorization]), TranslationsLoader.For(hostEnvironment, []));
+        var loader = new ModelLoader(ModelSource.For(hostEnvironment, [Authorization]), TranslationsLoader.For(hostEnvironment, []), NullLogger<ModelLoader>.Instance);
 
         var sparkUser = loader.GetEntityType(Guid.Parse(SparkUserId));
         sparkUser.Should().NotBeNull();

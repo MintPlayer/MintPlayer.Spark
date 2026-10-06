@@ -56,7 +56,7 @@ public class ModelHashWriteTests : IDisposable
 
         var hashes = ModelHashFile.Read(_contentRoot)!;
 
-        hashes.Version.Should().Be(1);
+        hashes.Version.Should().Be(2);
         hashes.ModelHash.Should().MatchRegex("^[0-9a-f]{64}$");
         hashes.ContextRoots.Should().MatchRegex("^[0-9a-f]{64}$");
         hashes.Entities.Should().ContainKey(nameof(HashProbe));

@@ -248,7 +248,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         WriteApp("""{ "Publish": {} }""");
         loader.GetCatalogue().Should().BeSameAs(first);
 
-        loader.InvalidateCache();
+        loader.Reload();
         loader.GetCatalogue().Find("Publish").Should().NotBeNull();
     }
 
@@ -264,19 +264,19 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         act.Should().NotThrow();
     }
 
-    // ── --spark-print-effective-actions and the model hash ─────────────────────────────────────
+    // ── --spark-describe actions and the model hash ────────────────────────────────────────────
 
     [Fact]
-    public void The_print_switch_names_each_property_with_its_source_layer()
+    public void Describe_with_layers_names_each_property_with_its_source_layer()
     {
         WriteApp("""{ "Delete": { "selectionRule": "=1" }, "Edit": null }""");
 
-        var output = SparkDevelopmentExtensions.DescribeEffectiveActions(_tempDir, SparkActionLayers.Libraries);
+        var output = SparkDescribeCommand.Describe(_tempDir, "actions", name: null, layers: true, SparkLayerCatalog.Libraries);
 
-        output.Should().Contain($"MintPlayer.Spark → {SparkActionLayers.AppLayerName}");
-        output.Should().MatchRegex(@"selectionRule\s+= =1\s+\[App_Data/actions\.json\]");
-        output.Should().MatchRegex(@"variant\s+= danger\s+\[MintPlayer\.Spark\]");
-        output.Should().NotContain("Edit  (declared by");
+        output.Should().Contain($"spark (MintPlayer.Spark) → app ({SparkActionLayers.AppLayerName})");
+        output.Should().Contain("Delete.selectionRule = \"=1\" @app");
+        output.Should().Contain("Delete.variant = \"danger\" @spark");
+        output.Should().NotContain("Edit @", "the application removed it");
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "modelHash": "f9309fbf4e8945d3e87de708ccc56c1c2f5ccf090159fff308e37f596dda4b83",
+  "version": 2,
+  "modelHash": "918b12dbf3c9032496f520b8aa5ffac823e4d1d88c3ac6afc54869014a5f54dc",
   "contextRoots": "69a7d18ccbd2883346e610e284c3bf485547edd95d1a02fb5583a30b938faa6b",
   "modelFiles": "1b4c4ac7f07b16b20dceb5c0a9aefd942ba6765a8a733ff3a985b3bcb0e0064c",
   "files": {
@@ -21,5 +21,14 @@
   "configFiles": {
     "actions.json": "20b8656f21257640b1e33f8d21f23b0f44b72965ce6918dca2608ee1af3ee514",
     "programUnits.json": "c49b77d8f9a94c86d970e1449e2e96efaa89df8d6f06837422f86f359c0daac4"
+  },
+  "libraries": {
+    "spark": "MintPlayer.Spark"
+  },
+  "layers": {
+    "actions.json": {
+      "app": "74627ae564a51eb57d74ed11a79b049d1677b6aefcd3a69c63eb318dbcf7b67e",
+      "spark": "178159b4155481a5718c310954503cdfb20f49fc10034ce9665c213f30ea3491"
+    }
   }
 }

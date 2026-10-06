@@ -71,7 +71,7 @@ public class SparkAuthorizeAttributeTests
         };
 
         public RightsDecision GetResolvedRights(IReadOnlySet<Guid> groupIds) => RightsDecision.None;
-        public void InvalidateCache() { }
+        public void Reload() { }
     }
 
     private const string WellKnownGroupId = "a1b2c3d4-0000-0000-0000-00000000000f";
@@ -240,7 +240,7 @@ public class SparkAuthorizeAttributeTests
         };
 
         public RightsDecision GetResolvedRights(IReadOnlySet<Guid> groupIds) => RightsDecision.None;
-        public void InvalidateCache() { }
+        public void Reload() { }
     }
 
     [Fact]

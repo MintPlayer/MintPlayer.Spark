@@ -68,6 +68,26 @@ internal static class SparkKinds
     /// </summary>
     public static readonly KindSpec Moderation = new("moderation", StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// <c>programUnits.json</c> (composition D3): the groups merge by <c>id</c>, and each group's units
+    /// by <c>id</c>, names ignoring case as the loader binds them. <c>{"id": "…", "$remove": true}</c>
+    /// removes a group or a unit; every other array is replaced whole.
+    /// </summary>
+    public static readonly KindSpec ProgramUnits = new(
+        "programUnits",
+        StringComparer.OrdinalIgnoreCase,
+        arrayKey: path => IsProgramUnitList(path) ? "id" : null);
+
+    private static bool IsProgramUnitList(IReadOnlyList<string> path)
+        => path.Count switch
+        {
+            1 => string.Equals(path[0], "programUnitGroups", StringComparison.OrdinalIgnoreCase),
+            3 => string.Equals(path[0], "programUnitGroups", StringComparison.OrdinalIgnoreCase)
+                 && path[1] == "[]"
+                 && string.Equals(path[2], "programUnits", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
+
     private static bool IsRights(IReadOnlyList<string> path)
         => path.Count == 1 && string.Equals(path[0], "rights", StringComparison.OrdinalIgnoreCase);
 

@@ -19,76 +19,27 @@ public static class SparkDevelopmentExtensions
 {
     internal const string SynchronizeFlag = "--spark-synchronize-model";
     internal const string VerifyFlag = "--spark-verify-model";
-    internal const string PrintActionsFlag = "--spark-print-effective-actions";
 
     /// <summary>
-    /// <c>--spark-print-effective-actions</c> (#467, D7): prints the composed action catalogue — each
-    /// action, each property it ends up with and the layer that set it, and the resolved English
-    /// label — then exits. Opens no database, like the model commands.
+    /// <c>--spark-describe &lt;kind&gt; [name] [--layers]</c> (composition D9): prints what a kind composes
+    /// to, optionally one element and the layer each leaf came from, then exits. Opens no database,
+    /// like the model commands. See <see cref="SparkDescribeCommand"/>.
     /// </summary>
-    private static bool PrintEffectiveActionsIfRequested(WebApplicationBuilder builder, string[] args)
+    private static bool DescribeIfRequested(WebApplicationBuilder builder, string[] args)
     {
-        if (!args.Contains(PrintActionsFlag))
+        if (!SparkDescribeCommand.TryParse(args, out var kind, out var name, out var layers))
             return false;
 
         try
         {
-            Console.Out.Write(DescribeEffectiveActions(builder.Environment.ContentRootPath, Abstractions.Actions.SparkActionLayers.Libraries));
+            Console.Out.Write(SparkDescribeCommand.Describe(builder.Environment.ContentRootPath, kind, name, layers, SparkLayerCatalog.Libraries));
         }
-        catch (FormatException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FormatException)
         {
             Console.Error.WriteLine(ex.Message);
             Environment.ExitCode = ExitMisconfigured;
         }
         return true;
-    }
-
-    /// <summary>The text <c>--spark-print-effective-actions</c> prints.</summary>
-    /// <exception cref="FormatException">The catalogue does not compose or bind.</exception>
-    internal static string DescribeEffectiveActions(string contentRootPath, IReadOnlyList<Abstractions.Actions.SparkActionsLayer> libraries)
-    {
-        var appPath = ActionsCatalogueLoader.PathFor(contentRootPath);
-        var appJson = File.Exists(appPath) ? File.ReadAllText(appPath) : null;
-        IReadOnlyDictionary<string, TranslatedString> translations;
-        try
-        {
-            translations = SparkTranslations.Compose(contentRootPath).All;
-        }
-        catch (InvalidOperationException ex)
-        {
-            throw new FormatException(ex.Message, ex);
-        }
-        var catalogue = ActionsCatalogueLoader.Build(appJson, libraries, translations);
-
-        var layerNames = libraries.Select(l => l.Name).ToList();
-        if (appJson is not null) layerNames.Add(Abstractions.Actions.SparkActionLayers.AppLayerName);
-
-        var output = new System.Text.StringBuilder();
-        output.AppendLine($"Effective actions, composed from: {string.Join(" → ", layerNames)}");
-        foreach (var action in catalogue.Actions)
-        {
-            output.AppendLine();
-            output.AppendLine($"{action.Name}  (declared by {action.DeclaredBy}{(action.IsBuiltIn ? ", built-in" : string.Empty)})");
-            output.AppendLine($"  label         = {action.Label.GetValue("en")}");
-            Line("showedOn", action.ShowedOn);
-            Line("selectionRule", action.SelectionRule ?? "(none)");
-            Line("icon", action.Icon ?? "(none)");
-            Line("variant", action.Variant ?? "(none)");
-            Line("confirmation", action.Confirmation?.GetValue("en") ?? "(none)");
-            Line("refreshOnCompleted", action.RefreshOnCompleted ? "true" : "false");
-            Line("offset", action.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture));
-
-            void Line(string property, string value)
-                => output.AppendLine($"  {property,-13} = {value}{(action.Sources.TryGetValue(property, out var layer) ? $"    [{layer}]" : "    [default]")}");
-        }
-
-        foreach (var conflict in catalogue.Conflicts)
-        {
-            output.AppendLine();
-            output.AppendLine($"⚠ Libraries '{conflict.WinnerLayer}' and '{conflict.LoserLayer}' both state '{conflict.Property}' of '{conflict.Action}'; '{conflict.WinnerLayer}' wins.");
-        }
-
-        return output.ToString();
     }
 
     /// <summary>Exit code for a Spark misconfiguration that prevented the command from running.</summary>
@@ -130,7 +81,7 @@ public static class SparkDevelopmentExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(args);
 
-        if (PrintEffectiveActionsIfRequested(builder, args))
+        if (DescribeIfRequested(builder, args))
             return true;
 
         var verifyOnly = args.Contains(VerifyFlag);
@@ -159,7 +110,7 @@ public static class SparkDevelopmentExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(args);
 
-        if (PrintEffectiveActionsIfRequested(builder, args))
+        if (DescribeIfRequested(builder, args))
             return true;
 
         var verifyOnly = args.Contains(VerifyFlag);
@@ -1113,19 +1064,19 @@ public static class SparkDevelopmentExtensions
     /// </remarks>
     private static void VerifyProgramUnitTargetsResolve(string contentRootPath)
     {
-        var unitsPath = SparkAppData.Path(contentRootPath, "programUnits.json");
-        if (!File.Exists(unitsPath))
-            return; // An app may legitimately ship no menu.
-
+        var unitsPath = SparkProgramUnitsFiles.PathFor(contentRootPath);
         var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
+        // The composed menu (composition D3): what the application serves, library units included.
         ProgramUnitsConfiguration? units;
         try
         {
-            units = System.Text.Json.JsonSerializer.Deserialize<ProgramUnitsConfiguration>(
-                File.ReadAllText(unitsPath), jsonOptions);
+            var composed = SparkProgramUnitsFiles.Compose(File.Exists(unitsPath) ? File.ReadAllText(unitsPath) : null);
+            if (composed is null)
+                return; // An app may legitimately ship no menu.
+            units = System.Text.Json.JsonSerializer.Deserialize<ProgramUnitsConfiguration>(composed, jsonOptions);
         }
-        catch (System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException)
         {
             // ProgramUnitsLoader reports this, with its own message. Reporting it twice,
             // differently, helps nobody — the same rule the alias-collision check follows.

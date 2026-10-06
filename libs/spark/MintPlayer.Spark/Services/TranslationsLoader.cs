@@ -9,6 +9,13 @@ public interface ITranslationsLoader
 
     /// <summary>The composed translations: one snapshot, replaced whole when the application's file changes.</summary>
     IReadOnlyDictionary<string, TranslatedString> GetAll();
+
+    /// <summary>
+    /// Raised after a reload replaced the snapshot. The labels other layers resolved against the
+    /// translations (the model's, the action catalogue's, the program units', the culture's) follow it
+    /// (composition D8).
+    /// </summary>
+    event Action? Reloaded;
 }
 
 /// <summary>
@@ -18,10 +25,9 @@ public interface ITranslationsLoader
 /// at build time.
 /// </summary>
 /// <remarks>
-/// The first read composes and throws when a layer cannot be read, so a broken file stops startup. A
-/// reload swaps the snapshot atomically: a reader sees the old one or the new one, never a mix. A file
-/// that does not compose on reload is logged and the previous snapshot stays, so a half-saved edit does
-/// not take the running application's texts away.
+/// Reloaded through the one watcher policy (<see cref="AppLayerSnapshot{T}"/>, D8). A file that does not
+/// compose on reload is logged and the previous snapshot stays, so a half-saved edit does not take the
+/// running application's texts away.
 /// </remarks>
 [Register(typeof(ITranslationsLoader), ServiceLifetime.Singleton)]
 internal partial class TranslationsLoader : ITranslationsLoader, IDisposable
@@ -29,10 +35,7 @@ internal partial class TranslationsLoader : ITranslationsLoader, IDisposable
     [Inject] private readonly IHostEnvironment hostEnvironment;
     [Inject] private readonly ILogger<TranslationsLoader> logger;
 
-    private readonly object gate = new();
-    private volatile IReadOnlyDictionary<string, TranslatedString>? snapshot;
-    private FileSystemWatcher? fileWatcher;
-    private bool disposed;
+    private AppLayerSnapshot<IReadOnlyDictionary<string, TranslatedString>>? layer;
 
     /// <summary>The libraries to compose; <see langword="null"/>: the process's (<see cref="SparkLayerCatalog"/>).</summary>
     private IReadOnlyList<SparkTranslationsLayer>? libraries;
@@ -44,42 +47,28 @@ internal partial class TranslationsLoader : ITranslationsLoader, IDisposable
     internal static TranslationsLoader For(IHostEnvironment hostEnvironment, IReadOnlyList<SparkTranslationsLayer>? libraries = null, ILogger<TranslationsLoader>? logger = null)
         => new(hostEnvironment, logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TranslationsLoader>.Instance) { libraries = libraries };
 
+    private AppLayerSnapshot<IReadOnlyDictionary<string, TranslatedString>> Layer
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            SparkTranslations.AppLayerName,
+            Path.GetDirectoryName(SparkTranslations.PathFor(hostEnvironment.ContentRootPath)),
+            ["translations.json"],
+            Compose,
+            logger));
+
+    public event Action? Reloaded
+    {
+        add => Layer.Reloaded += value;
+        remove => Layer.Reloaded -= value;
+    }
+
     public TranslatedString? Resolve(string key)
         => GetAll().TryGetValue(key, out var ts) ? ts : null;
 
-    public IReadOnlyDictionary<string, TranslatedString> GetAll()
-    {
-        if (snapshot is { } current) return current;
-
-        lock (gate)
-        {
-            if (snapshot is null)
-            {
-                snapshot = Compose();
-                SetupFileWatcher();
-            }
-            return snapshot;
-        }
-    }
+    public IReadOnlyDictionary<string, TranslatedString> GetAll() => Layer.Current;
 
     /// <summary>Composes the layers again and swaps the snapshot; keeps the previous one when they do not compose.</summary>
     /// <returns>Whether the snapshot was replaced.</returns>
-    internal bool Reload()
-    {
-        lock (gate)
-        {
-            try
-            {
-                snapshot = Compose();
-                return true;
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or IOException)
-            {
-                logger.LogError(ex, "Failed to reload {TranslationsFile}; the previous translations stay in use", SparkTranslations.AppLayerName);
-                return false;
-            }
-        }
-    }
+    internal bool Reload() => Layer.Reload();
 
     private IReadOnlyDictionary<string, TranslatedString> Compose()
     {
@@ -95,45 +84,6 @@ internal partial class TranslationsLoader : ITranslationsLoader, IDisposable
         return composition.All;
     }
 
-    private void SetupFileWatcher()
-    {
-        var directory = Path.GetDirectoryName(SparkTranslations.PathFor(hostEnvironment.ContentRootPath));
-        if (disposed || fileWatcher is not null || string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-            return;
-
-        fileWatcher = new FileSystemWatcher(directory, "translations.json")
-        {
-            // Created and Renamed too: an editor that saves through a temporary file replaces the
-            // file rather than writing it, and an application without one may add it while running.
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
-        };
-
-        fileWatcher.Changed += OnFileChanged;
-        fileWatcher.Created += OnFileChanged;
-        fileWatcher.Deleted += OnFileChanged;
-        fileWatcher.Renamed += OnFileChanged;
-        fileWatcher.EnableRaisingEvents = true;
-    }
-
-    private void OnFileChanged(object sender, FileSystemEventArgs args)
-    {
-        Task.Delay(100).ContinueWith(_ => { if (!disposed) Reload(); });
-    }
-
     [NoInterfaceMember]
-    public void Dispose()
-    {
-        if (disposed) return;
-        disposed = true;
-
-        if (fileWatcher != null)
-        {
-            fileWatcher.Changed -= OnFileChanged;
-            fileWatcher.Created -= OnFileChanged;
-            fileWatcher.Deleted -= OnFileChanged;
-            fileWatcher.Renamed -= OnFileChanged;
-            fileWatcher.Dispose();
-            fileWatcher = null;
-        }
-    }
+    public void Dispose() => layer?.Dispose();
 }

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Services;
 using NSubstitute;
@@ -29,7 +30,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
         try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
-    private ProgramUnitsLoader CreateLoader() => new(_hostEnv, TranslationsLoader.For(_hostEnv, []));
+    private ProgramUnitsLoader CreateLoader() => new(_hostEnv, TranslationsLoader.For(_hostEnv, []), NullLogger<ProgramUnitsLoader>.Instance);
 
     private void WriteUnits(string json) =>
         File.WriteAllText(Path.Combine(_tempDir, "App_Data", "programUnits.json"), json);

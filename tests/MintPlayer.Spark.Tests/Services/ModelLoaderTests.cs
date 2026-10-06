@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Services;
 using NSubstitute;
@@ -26,7 +27,7 @@ public sealed class ModelLoaderTests : IDisposable
         try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
-    private ModelLoader CreateLoader() => new(ModelSource.For(_hostEnv, []), TranslationsLoader.For(_hostEnv, []));
+    private ModelLoader CreateLoader() => new(ModelSource.For(_hostEnv, []), TranslationsLoader.For(_hostEnv, []), NullLogger<ModelLoader>.Instance);
 
     private string ModelDir
     {

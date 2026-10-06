@@ -9,13 +9,28 @@ public interface ICultureLoader
     CultureConfiguration GetCulture();
 }
 
+/// <summary>
+/// The application's <c>culture.json</c> (app-only: libraries may not ship it, composition D3), each
+/// language's name resolved against the translations. Reloaded when the file changes and when the
+/// translations do, through the one watcher policy (<see cref="AppLayerSnapshot{T}"/>, D8).
+/// </summary>
 [Register(typeof(ICultureLoader), ServiceLifetime.Singleton)]
-internal partial class CultureLoader : ICultureLoader
+internal partial class CultureLoader : ICultureLoader, IDisposable
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
     [Inject] private readonly ITranslationsLoader translationsLoader;
+    [Inject] private readonly ILogger<CultureLoader> logger;
 
-    private Lazy<CultureConfiguration>? _culture;
+    private AppLayerSnapshot<CultureConfiguration>? layer;
+
+    private AppLayerSnapshot<CultureConfiguration> Layer
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            SparkAppData.Relative("culture.json"),
+            SparkAppData.Directory(hostEnvironment.ContentRootPath),
+            ["culture.json"],
+            LoadCulture,
+            logger,
+            labels: translationsLoader));
 
     private CultureConfiguration LoadCulture()
     {
@@ -78,9 +93,8 @@ internal partial class CultureLoader : ICultureLoader
         DefaultLanguage = defaultLanguage,
     };
 
-    public CultureConfiguration GetCulture()
-    {
-        _culture ??= new Lazy<CultureConfiguration>(LoadCulture);
-        return _culture.Value;
-    }
+    public CultureConfiguration GetCulture() => Layer.Current;
+
+    [NoInterfaceMember]
+    public void Dispose() => layer?.Dispose();
 }

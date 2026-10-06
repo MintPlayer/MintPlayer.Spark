@@ -36,7 +36,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         }
     }
 
-    private SecurityConfigurationLoader CreateLoader() => new(_hostEnv, _logger, new ModelLoader(ModelSource.For(_hostEnv, []), TranslationsLoader.For(_hostEnv, [])));
+    private SecurityConfigurationLoader CreateLoader() => new(_hostEnv, _logger, new ModelLoader(ModelSource.For(_hostEnv, []), TranslationsLoader.For(_hostEnv, []), NullLogger<ModelLoader>.Instance));
 
     private void WriteModel(string name, params string[] attributes)
     {
@@ -138,7 +138,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
     }
 
     [Fact]
-    public void InvalidateCache_forces_next_call_to_reload()
+    public void Reload_composes_the_file_again()
     {
         WriteConfig(ValidJson);
         using var loader = CreateLoader();
@@ -147,7 +147,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
 
         WriteConfig("""{ "groups": {}, "rights": [] }""");
 
-        loader.InvalidateCache();
+        loader.Reload();
         var second = loader.GetConfiguration();
 
         second.Should().NotBeSameAs(first);
@@ -239,7 +239,7 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         loader.GetResolvedRights(new HashSet<Guid> { AdminsId }).Allows("Read/Person").Should().BeTrue();
 
         WriteConfig("""{ "groups": {}, "rights": [] }""");
-        loader.InvalidateCache();
+        loader.Reload();
 
         loader.GetResolvedRights(new HashSet<Guid> { AdminsId }).Allows("Read/Person").Should().BeFalse();
     }
@@ -297,13 +297,13 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         loader.GetConfiguration();
 
         WriteConfig(AttributeRightJson("Edit/Song/Genre"));
-        loader.InvalidateCache();
+        loader.Reload();
 
         var act = () => loader.GetConfiguration();
         act.Should().Throw<SparkSecurityConfigurationException>().Which.Message.Should().Contain("'Genre'");
 
         WriteConfig(AttributeRightJson("Edit/Song/Title"));
-        loader.InvalidateCache();
+        loader.Reload();
 
         loader.GetConfiguration().Rights.Should().Contain(r => r.Resource == "Edit/Song/Title");
     }

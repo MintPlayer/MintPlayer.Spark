@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Json.Schema;
@@ -132,7 +133,7 @@ public sealed class SparkSchemaGeneratorTests
             var host = Substitute.For<IHostEnvironment>();
             host.ContentRootPath.Returns(directory);
 
-            var culture = new CultureLoader(host, TranslationsLoader.For(host, [])).GetCulture();
+            var culture = new CultureLoader(host, TranslationsLoader.For(host, []), NullLogger<CultureLoader>.Instance).GetCulture();
 
             // Every mirrored property reached the loader: neither fell back to its default.
             culture.Languages.Keys.Should().BeEquivalentTo(["en", "nl"]);

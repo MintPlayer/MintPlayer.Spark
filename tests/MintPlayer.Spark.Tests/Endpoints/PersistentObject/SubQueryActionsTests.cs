@@ -160,7 +160,7 @@ public class SubQueryActionsTests : SparkTestDriver
         await File.WriteAllTextAsync(Path.Combine(root, "App_Data", "actions.json"),
             """{ "Delete": { "selectionRule": "=1" } }""");
         // The catalogue is composed at startup; the watcher would pick the file up a moment later.
-        host.Factory.GetService<IActionsCatalogueLoader>().InvalidateCache();
+        host.Factory.GetService<IActionsCatalogueLoader>().Reload();
 
         var (two, _) = await host.SendAsync("/spark/po/delete-many", await DeleteMany("BqChildren/a", "BqChildren/b"));
         two.Should().Be(HttpStatusCode.BadRequest, "the override narrowed Delete to exactly one row");

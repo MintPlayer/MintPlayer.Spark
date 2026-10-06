@@ -342,7 +342,7 @@ keep their minted ids.
     `ModelFileShape` (via `ModelHashFile`) and `ModerationInitCommand`: 16 sites.
     `QueryExecutor` and `SecurityConfigurationValidator` only named the directory in messages.
     `SparkEndpointFactory` writes test fixtures and is not a reader.
-  - **Hash keys (interim until D7).** `ModelFileShape` hashes each composed type under its file name,
+  - **Hash keys (interim until D7; the layers are recorded since M7, see D9 "As built in M7").** `ModelFileShape` hashes each composed type under its file name,
     a library type under the library's file name. A type moved from an application into a library
     therefore keeps its key and, ids not being structural, its hash: CodeCoverage's and QnA's
     `modelHashes.json` verified unchanged after `SparkUser` moved. HR references the library and gained
@@ -394,6 +394,92 @@ keep their minted ids.
 - The generated `AGENTS.md` documents the command.
 - ~~Optional composed view in `obj/spark/`~~: rejected (Q4 = A). `--layers` shows the raw layers on
   demand. Startup logs the active library layers.
+- **As built in M7 (2026-10-06): D7, D8 and D9.**
+  - **Hashes with provenance (D7).** `modelHashes.json` is version 2. Beside the composed hashes
+    (`files`, `configFiles`) it records `libraries` (alias → assembly) and `layers`: for every entry a
+    library states a layer of (`Model/<file>`, `actions.json`, `programUnits.json`), each layer (the
+    alias, `app` for the application's file) and the **structural** hash of what that layer alone
+    states (`ModelFileShape.DescribeJson` per model layer, `ConfigFileShape.DescribeLayerActions` per
+    actions layer, the units rendering per menu layer). An entry only the application states has no
+    `layers` entry. The layers are part of the `modelHash` roll-up (`layers:` line), so the file cannot
+    go stale against them: a library that starts stating what the application's delta already states
+    turns the gate red too, and the re-synchronization is the review.
+    - **Deviation: no assembly version.** D7 said "alias + version/hash". A version changes on every
+      release, so every bump would turn every application's gate red with nothing to review; the
+      identity is the per-layer structural hash, and `libraries` names the assembly.
+    - **Drift messages** name the layer: `file SparkUser.json: expected … actual … — layer library
+      'authorization' (MintPlayer.Spark.Authorization) changed`; `the application's file changed` for
+      an edit of the delta; `layers of Model/X.json: the composed structure is unchanged, but the layers
+      stating it moved: …`; `library <alias> (<assembly>): newly states a layer …`. A version 1 file
+      says it predates the layers instead of printing two bare hashes.
+    - **M4's leftover fixed:** a type a library newly ships reads `shipped by library 'authorization'
+      (…)` (with `, with the application's delta` when the app has one), never "present on disk".
+    - **Program units compose (D3).** `SparkKinds.ProgramUnits` (groups and their units keyed by `id`,
+      names ignoring case) and `SparkProgramUnitsFiles` (Abstractions) compose the libraries'
+      `programUnits.json` layers with the application's file; `ProgramUnitsLoader`, the
+      `--spark-verify-model` target check and the hash read the composed menu. No library ships one
+      yet, so every application's menu and its hash are unchanged.
+    - **Rights (D4/D7).** `securityPosture.txt` stays the gate and is compared as text, which is all a
+      hash of it would compare. New section `## Layers: libraries that ship rights (alias | assembly |
+      hash)`, one line per library with a `security.json` layer (`SparkSecurityFiles.Layers`: the first
+      12 hex digits of the SHA-256 of the layer, whitespace aside; `| switched off` when opted out).
+      `--spark-verify-security` now prints the changed lines (`-`/`+`) instead of both files whole, and
+      `Changed by layer: <alias> (<assembly>), app` from the changed rows' layer column and the changed
+      `## Layers` lines. No library ships rights yet (M6 deviation), so every posture file shows
+      `(nothing)` there.
+  - **One watcher policy (D8).** `AppLayerSnapshot<T>` (MintPlayer.Spark, internal) is the only
+    `FileSystemWatcher` left in the loaders: the snapshot is composed on first read (a failure throws, so
+    startup fails), recomposed on every watcher event for the named files (Changed, Created, Deleted,
+    Renamed; 100 ms debounce that restarts on each event, so one save composes once) and swapped
+    atomically; `Reloaded` is raised after a swap.
+    - **Reloads:** `actions.json`, `translations.json`, `security.json`, `programUnits.json`,
+      `culture.json` (newly: program units and culture were read once). The actions and security 5-minute
+      `MemoryCache` expiry is gone; `IActionsCatalogueLoader.InvalidateCache` and
+      `ISecurityConfigurationLoader.InvalidateCache` became `Reload()` (recompose now).
+    - **Failure policy per kind (deviation from "one policy").** Every kind keeps its previous snapshot
+      when a reload does not compose, except rights: `security.json` keeps its existing, tested
+      fail-closed behaviour (`AppLayerFailure.Refuse`: every read throws until the file composes again),
+      because the previous rights are no longer what the file says.
+    - **Labels follow a translations reload (M5's leftover).** `ITranslationsLoader.Reloaded`; a snapshot
+      given `labels:` recomposes at once (not debounced again) when it fires, so when
+      `TranslationsLoader.Reload()` returns, the action catalogue, the program units, the culture and
+      the model's labels have followed.
+    - **Not reloaded: the model's structure** (deviation from D8's "every kind"). `ModelLoader` rebuilds
+      its definitions from the same composed model when the translations reload, but `IModelSource` is
+      still read once: the model is verified against the compiled entity classes at startup
+      (`modelHashes.json`), and a structure read later would never have passed that gate.
+      **Moderation** does not reload either: its consumers read `IOptions<SparkModerationOptions>`, once.
+      Library layers never reload (D15).
+  - **`--spark-describe <kind> [name] [--layers]` (D9)**, handled by `SynchronizeSparkModelsIfRequested`
+    like the model verbs (no new call in any `Program.cs`), exits before the host is built. Kinds:
+    `actions`, `model`, `translations`, `security` (alias `rights`), `programUnits`, `moderation`.
+    Without `--layers` it prints the composed JSON (the rights as a `key | resource | group | effect`
+    table, resolved as the evaluator reads them, with inert rights and problems); with it, one line per
+    leaf, `path = value @layer` (the engine's `SparkComposition.Describe`, which gained a layer-name map
+    and a path filter), a library by alias, the application as `app`. A name narrows to an action, a
+    model type, a translation key prefix, a right's key or resource, a program unit or group id, or a
+    moderation section. Header: `actions, composed from: spark (MintPlayer.Spark) → app (App_Data/actions.json)`.
+    `--spark-print-effective-actions` is removed (no backward compatibility); `AGENTS.md` and the
+    custom-actions guide name the new verb. The schemas' descriptions are M10's.
+    - **Deviation:** D9 said the default output is annotated and `--layers` shows raw layers; as built,
+      the annotation is what `--layers` adds (the M7 brief), and the raw layers are the libraries'
+      files themselves.
+  - **Startup log.** `UseSpark` logs each library layer once at Information
+    (`Spark layers: authorization (MintPlayer.Spark.Authorization) ships model, translations.`), or that
+    none ships any.
+  - **Regenerated (evidence).** All five apps' `modelHashes.json` (`--spark-synchronize-model`) and
+    `securityPosture.txt` (`--spark-synchronize-security`); `git status` showed no other file touched, so
+    no model file changed. Then `--spark-verify-model` and `--spark-verify-security` exit 0 for QnA, Fleet,
+    HR, DemoApp and CodeCoverage. Before regenerating, every app's verify-model exited 3 (the `layers:`
+    roll-up line). What moved besides `version`, `modelHash`, `libraries` and `layers`:
+    - **CodeCoverage (production):** `configFiles.programUnits.json`. The old rendering read the root
+      `_comment` array of that file as menu entries (`_comment[0]`, …); the composed menu drops
+      annotations (D2), so the hash moved with no change to the menu. Its posture gained only the empty
+      `## Layers` section; every row is byte-identical.
+    - **Fleet:** `files.SparkUser.json` was missing since M4 (Fleet references Authorization; its gate was
+      already red, now reading `file SparkUser.json: shipped by library 'authorization'
+      (MintPlayer.Spark.Authorization) but not in modelHashes.json`).
+    - The other apps: only the new fields, and the empty `## Layers` posture section.
 
 ### D10 — Translations join the runtime engine
 - Translations stop being composed at compile time. The app layer is read from disk (and reloads)
@@ -451,7 +537,7 @@ keep their minted ids.
     were dumped by reflection from the compiled `SparkTranslationsRegistry.All` in each application's bin,
     before the aggregator was removed (398 and 586 keys, as in S3); `SparkTranslationLayersTests` composes
     the core and Authorization files plus the app's and compares, language order included.
-  - **Deviation: baked texts do not follow a reload yet.** The model's, the action catalogue's, the
+  - **Deviation: baked texts do not follow a reload yet** (fixed in M7, see D9 "As built in M7"). The model's, the action catalogue's, the
     program units' and the culture's labels are resolved when those loaders load (the model and culture
     once, the catalogue per its 5-minute cache or its own file change). `GET /spark/translations` and every
     `Resolve` follow a reload at once. Re-resolving the baked texts belongs to M7's uniform reload (D8).

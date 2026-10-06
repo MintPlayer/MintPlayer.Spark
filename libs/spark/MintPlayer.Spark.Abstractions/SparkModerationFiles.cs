@@ -17,6 +17,10 @@ public static class SparkModerationFiles
     /// <param name="appName">The application layer as messages name it.</param>
     /// <exception cref="InvalidOperationException">A layer is not strict JSON, or two unrelated libraries disagree.</exception>
     public static string Compose(string? appJson, string appName, IEnumerable<SparkLibrary>? libraries = null)
+        => SparkJson.Write(ComposeLayers(appJson, appName, libraries).Result);
+
+    /// <summary>As <see cref="Compose"/>, with the provenance of every leaf (for <c>--spark-describe</c>).</summary>
+    internal static SparkComposition ComposeLayers(string? appJson, string appName, IEnumerable<SparkLibrary>? libraries = null)
     {
         var layers = SparkLayerCatalog.Of(libraries ?? SparkLayerCatalog.Libraries, SparkLayerKinds.Moderation)
             .Select(x => SparkLayer.Parse(x.Library.AssemblyName, x.Layer.Json, isLibrary: true))
@@ -31,6 +35,6 @@ public static class SparkModerationFiles
                 .Concat(composition.Conflicts.Select(c => $"{c.WinnerLayer} and {c.LoserLayer} both state '{c.PathText}'"));
             throw new InvalidOperationException("moderation.json does not compose: " + string.Join("; ", problems));
         }
-        return SparkJson.Write(composition.Result);
+        return composition;
     }
 }

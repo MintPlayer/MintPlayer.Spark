@@ -211,7 +211,7 @@ on, by assembly name between unrelated ones. A library restating an action of a 
 on overrides it silently. Two **unrelated** libraries that state the same property of the same
 action differently get warning SPARK036 at build time and a warning in the log at startup; the
 later one wins, and your file decides by stating the property. Run the application with
-`--spark-print-effective-actions` to print the composed catalogue, with the layer each property
+`--spark-describe actions --layers` to print the composed catalogue, with the layer each property
 came from.
 
 A library ships its layer by keeping the file in its own `App_Data/actions.json` and naming itself
