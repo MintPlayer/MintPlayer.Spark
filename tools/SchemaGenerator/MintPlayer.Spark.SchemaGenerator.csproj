@@ -14,6 +14,8 @@
 
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
+		<!-- An Exe that is not a Spark application: opt out of the repo-wide Spark targets. -->
+		<SparkApplication>false</SparkApplication>
 		<TargetFramework>net11.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>

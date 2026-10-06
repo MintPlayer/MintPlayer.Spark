@@ -1,4 +1,35 @@
 <Project>
+	<!--
+	  Spark's app-level props/targets imported once, repo-wide, for applications only.
+	  Here and not in Directory.Build.props: OutputType (from the csproj body or the Web SDK) and
+	  IsTestProject (Microsoft.NET.Test.Sdk) are not known yet when Directory.Build.props is read, and
+	  an opt-out written in the csproj body would be invisible there too. spark.props and
+	  spark-authorization.props only set defaults-when-empty, so importing them after the body is
+	  equivalent as long as no csproj body READS those properties at evaluation time.
+	  Opt-out: <SparkApplication>false</SparkApplication> in the csproj.
+	-->
+	<PropertyGroup>
+		<SparkApplication Condition="'$(SparkApplication)' == '' And '$(OutputType)' == 'Exe' And '$(IsTestProject)' != 'true'">true</SparkApplication>
+	</PropertyGroup>
+	<Import Project="$(MSBuildThisFileDirectory)libs\spark\MintPlayer.Spark\Targets\spark.props" Condition="'$(SparkApplication)' == 'true'" />
+	<Import Project="$(MSBuildThisFileDirectory)libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" Condition="'$(SparkApplication)' == 'true'" />
+	<Import Project="$(MSBuildThisFileDirectory)libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.targets" Condition="'$(SparkApplication)' == 'true'" />
+	<Import Project="$(MSBuildThisFileDirectory)libs\spark\MintPlayer.Spark\Targets\spark.targets" Condition="'$(SparkApplication)' == 'true'" />
+
+	<!--
+	  A LIBRARY's targets must only act when the app actually references that library, directly or
+	  transitively, by project or by package. That is unknowable at evaluation time, but the resolved
+	  ReferencePath knows it once references are resolved, and every spark-authorization target runs
+	  later (BeforeTargets=Build/CoreCompile) and re-reads $(EnableSparkAuthSpa) when it is scheduled.
+	  Without this gate DemoApp (no Authorization reference) got SPARK030 and a generated
+	  ClientApp/src/spark-auth.setup.ts (measured in spike S4).
+	-->
+	<Target Name="_SparkGateAuthorizationTargets" AfterTargets="ResolveAssemblyReferences" Condition="'$(SparkApplication)' == 'true'">
+		<PropertyGroup Condition="'@(ReferencePath->WithMetadataValue('Filename', 'MintPlayer.Spark.Authorization'))' == ''">
+			<EnableSparkAuthSpa>false</EnableSparkAuthSpa>
+		</PropertyGroup>
+	</Target>
+
 	<!-- Suppress launchSettings.json generation for Web SDK class libraries -->
 	<PropertyGroup Condition="'$(OutputType)' == 'Library'">
 		<NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
