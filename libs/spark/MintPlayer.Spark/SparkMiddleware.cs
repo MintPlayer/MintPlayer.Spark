@@ -99,6 +99,11 @@ public static class SparkExtensions
         // Ensure HttpContextAccessor is available (needed for RequestCultureResolver)
         services.AddHttpContextAccessor();
 
+        // The boundary net (D13a): every persistent object a response serializes is checked for having
+        // been presented to this caller. PostConfigure, so it wraps whatever resolver the app set.
+        services.AddOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>()
+            .PostConfigure(options => Services.SparkPresentation.Install(options.SerializerOptions));
+
         // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
         // front of the pipeline by a startup filter. An application no longer configures or calls
         // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.

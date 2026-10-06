@@ -64,7 +64,7 @@ public class EntityMapperReferenceArrayTests
             ["Tags/2"] = "sports",
         });
 
-        var po = _mapper.ToPersistentObject(tagged, TaggedTypeId, breadcrumbs);
+        var po = _mapper.AsSystem().ToPersistentObject(tagged, TaggedTypeId, breadcrumbs);
 
         var tagIds = po.Attributes.Single(a => a.Name == "TagIds");
         tagIds.Value.Should().BeAssignableTo<IEnumerable<string>>();
@@ -80,7 +80,7 @@ public class EntityMapperReferenceArrayTests
     {
         var tagged = new EM_Tagged { Id = "Tagged/1", Title = "Post", TagIds = ["Tags/1"] };
 
-        var po = _mapper.ToPersistentObject(tagged, TaggedTypeId);
+        var po = _mapper.AsSystem().ToPersistentObject(tagged, TaggedTypeId);
 
         var tagIds = po.Attributes.Single(a => a.Name == "TagIds");
         ((IEnumerable<string>)tagIds.Value!).Should().Equal("Tags/1");

@@ -91,7 +91,7 @@ public class RemainingActionsTests : CoverageRavenTest
     private static IManager ManagerServing(PersistentObject page, IClientAccessor? client = null)
     {
         var manager = Substitute.For<IManager>();
-        manager.GetPersistentObject(page.Name).Returns(page);
+        manager.GetPersistentObjectAsync(page.Name, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(page);
         manager.Client.Returns(client ?? Substitute.For<IClientAccessor>());
         return manager;
     }
@@ -112,8 +112,8 @@ public class RemainingActionsTests : CoverageRavenTest
 
     /// <remarks>
     /// The counts are not hidden here any more: <c>security.json</c> denies them to the anonymous
-    /// role, and the load endpoint drops denied attributes from whatever this hook returns (#264;
-    /// proven over HTTP by <c>AttributeDenialEndToEndTests</c>). The hook only skips computing them.
+    /// role, and <c>IManager</c> builds the page without them for that caller (#264, D13a; proven over
+    /// HTTP by <c>AttributeDenialEndToEndTests</c>). The hook only skips computing them.
     /// </remarks>
     [Fact]
     public async Task An_anonymous_home_page_is_titled_prompts_to_sign_in_and_counts_nothing()
@@ -171,6 +171,7 @@ public class RemainingActionsTests : CoverageRavenTest
 
         var result = (await actions.OnLoadAsync("gitlab", null))!;
 
+        result.Id.Should().Be("gitlab", "the grid below is scoped by the page's id");
         result["Provider"].Value.Should().Be("gitlab");
         result.Breadcrumb.Should().Be(expected);
         result["AccountCount"].Value.Should().Be(1);
@@ -190,8 +191,9 @@ public class RemainingActionsTests : CoverageRavenTest
     };
 
     /// <summary>
-    /// Narrowed to one forge only on that forge's page, and only when the page names a forge it
-    /// knows; everywhere else the merged list.
+    /// Narrowed to one forge only on that forge's page, and only when the page's id names a forge it
+    /// knows; everywhere else the merged list. By the id and not the Provider attribute: the parent
+    /// is rebuilt for the caller, who is Read-denied Provider, so the attribute is absent (D13a).
     /// </summary>
     [Theory]
     [InlineData(null, null, null)]
@@ -206,8 +208,8 @@ public class RemainingActionsTests : CoverageRavenTest
         PersistentObject? parent = null;
         if (parentName is not null)
         {
-            parent = Page(parentName, provider is null ? [] : ["Provider"]);
-            if (provider is not null) parent["Provider"].Value = provider;
+            parent = Page(parentName);
+            parent.Id = provider;
         }
 
         var rows = (await actions.MyAccounts(QueryArgs(parent))).ToList();

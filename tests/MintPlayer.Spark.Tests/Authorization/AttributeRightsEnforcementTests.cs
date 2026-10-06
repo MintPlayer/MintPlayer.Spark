@@ -276,11 +276,15 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
         po!.Attributes.Select(a => a.Name).Should().NotContain("Secret").And.Contain("Name");
     }
 
-    /// <summary>History's revision view presents through <see cref="IPersistentObjectPresenter"/>.</summary>
+    /// <summary>
+    /// History's revision view presents through <see cref="IPersistentObjectPresenter"/>. Inside a
+    /// request: with no HTTP caller the presenter builds for the system and removes nothing (D13a).
+    /// </summary>
     [Fact]
     public async Task The_presenter_omits_a_Read_denied_attribute()
     {
         using var scope = _factory.CreateScope();
+        using var _ = AsCaller(scope.ServiceProvider);
         var presenter = scope.ServiceProvider.GetRequiredService<IPersistentObjectPresenter>();
         var revision = new AttrVault { Id = "vaults/1", Name = "Anna", Secret = "xold", Keeper = "keepers/1" };
 
@@ -288,6 +292,20 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
 
         po.Attributes.Select(a => a.Name).Should().NotContain("Secret").And.Contain("Name");
         po.Breadcrumb.Should().NotContain("xold");
+    }
+
+    /// <summary>Makes <paramref name="services"/> the current request's, for code reached outside HTTP.</summary>
+    internal static IDisposable AsCaller(IServiceProvider services)
+    {
+        var accessor = services.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>();
+        var previous = accessor.HttpContext;
+        accessor.HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = services };
+        return new Restore(() => accessor.HttpContext = previous);
+    }
+
+    private sealed class Restore(Action restore) : IDisposable
+    {
+        public void Dispose() => restore();
     }
 
     [Fact]

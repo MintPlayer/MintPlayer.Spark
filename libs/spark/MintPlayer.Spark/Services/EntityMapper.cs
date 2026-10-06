@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services.Breadcrumb;
 using Raven.Client.Documents.Session;
@@ -23,14 +24,23 @@ public interface IEntityMapper
     /// Value = null, Parent set. Throws <see cref="KeyNotFoundException"/> on unknown
     /// or ambiguous name.
     /// </summary>
-    PersistentObject GetPersistentObject(string name);
+    /// <remarks>
+    /// Every construction here is <b>for the current caller and <paramref name="verb"/></b> (D13a): the
+    /// static attribute rights are applied before anything else sees the object — see
+    /// <see cref="IManager.GetPersistentObjectAsync(string, string, CancellationToken)"/> for the verbs.
+    /// Outside a request the caller is the system and nothing is removed. Whole objects for system
+    /// work come from <see cref="AsSystem"/>.
+    /// </remarks>
+    Task<PersistentObject> GetPersistentObjectAsync(
+        string name, string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Scaffolds a blank PersistentObject by ObjectTypeId. Preferred over the name
     /// overload for apps that declare entities across multiple database schemas,
     /// since IDs are unambiguous by construction.
     /// </summary>
-    PersistentObject GetPersistentObject(Guid id);
+    Task<PersistentObject> GetPersistentObjectAsync(
+        Guid id, string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Scaffolds a blank PersistentObject for <typeparamref name="T"/>, resolving the
@@ -38,7 +48,14 @@ public interface IEntityMapper
     /// <see cref="KeyNotFoundException"/> when no entity type is registered under
     /// <c>typeof(T).FullName</c>.
     /// </summary>
-    PersistentObject GetPersistentObject<T>() where T : class;
+    Task<PersistentObject> GetPersistentObjectAsync<T>(
+        string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// The elevated construction (D13a): the same objects, whole. ⚠️ Not a presentation — see
+    /// <see cref="IManager.AsSystem"/>.
+    /// </summary>
+    ISystemEntityMapper AsSystem();
 
     /// <summary>
     /// Fills <paramref name="po"/> with values reflected from <paramref name="entity"/>:
@@ -60,19 +77,23 @@ public interface IEntityMapper
     void PopulateAttributeValues<T>(PersistentObject po, T entity, BreadcrumbResult? breadcrumbs = null) where T : class;
 
     /// <summary>
-    /// Convenience wrapper: <see cref="GetPersistentObject(Guid)"/> + <see cref="PopulateAttributeValues"/>.
-    /// Existing call sites (DatabaseAccess, QueryExecutor, StreamingQueryExecutor) keep this signature.
+    /// <see cref="GetPersistentObjectAsync(Guid, string, CancellationToken)"/> filled by
+    /// <see cref="PopulateAttributeValues"/>, for the current caller and <paramref name="verb"/>. The
+    /// row gate passes its own verb (<c>Query</c> for grid rows).
     /// </summary>
-    PersistentObject ToPersistentObject(object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs = null);
+    Task<PersistentObject> ToPersistentObjectAsync(
+        object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs = null,
+        string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Typed convenience overload that derives the ObjectTypeId from
     /// <c>typeof(T).FullName</c> via <see cref="IModelLoader.GetEntityTypeByClrType"/>.
     /// Throws <see cref="KeyNotFoundException"/> when no entity type is registered
-    /// for the CLR type. Callers in framework internals that already have a Guid
-    /// (DatabaseAccess, QueryExecutor) continue to use the non-generic overload.
+    /// for the CLR type.
     /// </summary>
-    PersistentObject ToPersistentObject<T>(T entity, BreadcrumbResult? breadcrumbs = null) where T : class;
+    Task<PersistentObject> ToPersistentObjectAsync<T>(
+        T entity, BreadcrumbResult? breadcrumbs = null,
+        string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
     /// Populates <paramref name="entity"/> in-place from <paramref name="po"/>'s attribute
@@ -102,6 +123,20 @@ public interface IEntityMapper
     /// </summary>
     void PopulateObjectValues(PersistentObject po, object entity,
         Dictionary<string, object>? includedDocuments = null);
+}
+
+/// <summary>
+/// <see cref="IEntityMapper.AsSystem"/>: the construction paths, whole (D13a). For the system work S5
+/// lists — replication (<see cref="SyncActionHandler"/>), the stored values save validation hands a
+/// refresh hook, the effective object of a refresh or save — and for code that maps without rendering.
+/// </summary>
+public interface ISystemEntityMapper : ISystemManager
+{
+    /// <summary>As <see cref="IEntityMapper.ToPersistentObjectAsync(object, Guid, BreadcrumbResult?, string, CancellationToken)"/>, whole.</summary>
+    PersistentObject ToPersistentObject(object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs = null);
+
+    /// <summary>As <see cref="IEntityMapper.ToPersistentObjectAsync{T}(T, BreadcrumbResult?, string, CancellationToken)"/>, whole.</summary>
+    PersistentObject ToPersistentObject<T>(T entity, BreadcrumbResult? breadcrumbs = null) where T : class;
 }
 
 [Register(typeof(IEntityMapper), ServiceLifetime.Scoped)]
@@ -151,25 +186,72 @@ internal partial class EntityMapper : IEntityMapper
         return entity;
     }
 
-    public PersistentObject GetPersistentObject(string name)
+    // Resolved on first use rather than injected: the rights it applies are decided from the caller's
+    // groups, and a group provider may itself map objects, which would make the constructor a cycle.
+    // Null when the mapper was built by hand (tests), where there is no caller to present for.
+    [Inject] private readonly IServiceProvider? services;
+    private IAttributeRightsEnforcement? presenter;
+
+    private IAttributeRightsEnforcement? Presenter => presenter ??= services?.GetService<IAttributeRightsEnforcement>();
+
+    public ISystemEntityMapper AsSystem() => new SystemConstruction(this);
+
+    public Task<PersistentObject> GetPersistentObjectAsync(
+        string name, string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default)
+        => PresentAsync(ScaffoldByName(name), verb, cancellationToken);
+
+    public Task<PersistentObject> GetPersistentObjectAsync(
+        Guid id, string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default)
+        => PresentAsync(ScaffoldById(id), verb, cancellationToken);
+
+    public Task<PersistentObject> GetPersistentObjectAsync<T>(
+        string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default) where T : class
+        => PresentAsync(ScaffoldFrom(ResolveDefByClrType(typeof(T))), verb, cancellationToken);
+
+    public Task<PersistentObject> ToPersistentObjectAsync(
+        object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs = null,
+        string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default)
+        => PresentAsync(ToPersistentObject(entity, objectTypeId, breadcrumbs), verb, cancellationToken);
+
+    public Task<PersistentObject> ToPersistentObjectAsync<T>(
+        T entity, BreadcrumbResult? breadcrumbs = null,
+        string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default) where T : class
+        => PresentAsync(ToPersistentObject(entity, ResolveDefByClrType(typeof(T)).Id, breadcrumbs), verb, cancellationToken);
+
+    private async Task<PersistentObject> PresentAsync(PersistentObject po, string verb, CancellationToken cancellationToken)
+    {
+        if (Presenter is { } enforcement)
+            await enforcement.PresentAsync([po], verb, cancellationToken);
+        return po;
+    }
+
+    private PersistentObject ScaffoldByName(string name)
     {
         var def = modelLoader.GetEntityTypeByName(name)
             ?? throw new KeyNotFoundException($"No entity type with Name '{name}' is registered.");
         return ScaffoldFrom(def);
     }
 
-    public PersistentObject GetPersistentObject(Guid id)
+    private PersistentObject ScaffoldById(Guid id)
     {
         var def = modelLoader.GetEntityType(id)
             ?? throw new KeyNotFoundException($"No entity type with ObjectTypeId '{id}' is registered.");
         return ScaffoldFrom(def);
     }
 
-    public PersistentObject GetPersistentObject<T>() where T : class
-        => ScaffoldFrom(ResolveDefByClrType(typeof(T)));
+    /// <summary>The elevated view: the same scaffolding and mapping, with no presentation.</summary>
+    private sealed class SystemConstruction(EntityMapper mapper) : ISystemEntityMapper
+    {
+        public PersistentObject GetPersistentObject(string name) => mapper.ScaffoldByName(name);
+        public PersistentObject GetPersistentObject(Guid id) => mapper.ScaffoldById(id);
+        public PersistentObject GetPersistentObject<T>() where T : class => mapper.ScaffoldFrom(mapper.ResolveDefByClrType(typeof(T)));
 
-    public PersistentObject ToPersistentObject<T>(T entity, BreadcrumbResult? breadcrumbs = null) where T : class
-        => ToPersistentObject(entity, ResolveDefByClrType(typeof(T)).Id, breadcrumbs);
+        public PersistentObject ToPersistentObject(object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs = null)
+            => mapper.ToPersistentObject(entity, objectTypeId, breadcrumbs);
+
+        public PersistentObject ToPersistentObject<T>(T entity, BreadcrumbResult? breadcrumbs = null) where T : class
+            => mapper.ToPersistentObject(entity, mapper.ResolveDefByClrType(typeof(T)).Id, breadcrumbs);
+    }
 
     public void PopulateAttributeValues<T>(PersistentObject po, T entity, BreadcrumbResult? breadcrumbs = null) where T : class
         => PopulateAttributeValues(po, (object)entity, breadcrumbs);
@@ -181,7 +263,7 @@ internal partial class EntityMapper : IEntityMapper
             ?? throw new KeyNotFoundException($"No entity type registered for CLR type '{name}'.");
     }
 
-    public PersistentObject ToPersistentObject(object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs = null)
+    private PersistentObject ToPersistentObject(object entity, Guid objectTypeId, BreadcrumbResult? breadcrumbs)
     {
         // `GetEntityType` may legitimately return null for projection / anonymous types
         // that don't have a declared EntityTypeDefinition. In that case we produce an
@@ -396,8 +478,8 @@ internal partial class EntityMapper : IEntityMapper
 
     /// <summary>
     /// Builds a scaffold PO (metadata only, values null) from an entity type definition.
-    /// Shared by <see cref="GetPersistentObject(string)"/>, <see cref="GetPersistentObject(Guid)"/>,
-    /// and <see cref="ToPersistentObject(object, Guid, Dictionary{string, object}?)"/>.
+    /// Shared by <see cref="ScaffoldByName(string)"/>, <see cref="ScaffoldById(Guid)"/>,
+    /// and <see cref="ToPersistentObject(object, Guid, BreadcrumbResult?)"/>.
     /// Recurses through AsDetail attributes: for single AsDetail, the nested child PO is
     /// pre-scaffolded so UIs render an empty-but-structured form; for array AsDetail,
     /// <see cref="PersistentObjectAttributeAsDetail.Objects"/> starts as an empty list.

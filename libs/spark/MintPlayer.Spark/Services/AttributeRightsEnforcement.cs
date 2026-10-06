@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -63,13 +64,30 @@ internal interface IAttributeRightsEnforcement
         EntityTypeDefinition definition, string verb = SparkCoreActions.Edit, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Removes the attributes denied for <paramref name="removeVerb"/> from each object and marks
-    /// those denied for <paramref name="readOnlyVerb"/> read-only, recursing into AsDetail rows (each
-    /// judged by its own row type's rights).
+    /// Presents each object for the current caller and <paramref name="verb"/> (D13a), recursing into
+    /// AsDetail rows (each judged by its own row type's rights), and marks it presented for the boundary
+    /// net:
+    /// <list type="bullet">
+    /// <item><c>Read</c>, <c>Edit</c>: Read-denied removed, Edit-denied read-only.</item>
+    /// <item><c>New</c>: Read-denied removed, New-denied read-only.</item>
+    /// <item><c>Query</c>: Query-denied removed.</item>
+    /// </list>
+    /// Removed, not blanked, and remembered, so a write to a removed attribute is a no-op. Outside a
+    /// request the caller is the system: nothing is removed, and nothing is marked.
     /// </summary>
-    Task PresentAsync(
-        IEnumerable<PersistentObject> objects, string removeVerb, string? readOnlyVerb = null,
-        CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// The mapper's construction paths call this; an endpoint calls it only for an object that was
+    /// not constructed for the caller — the posted object a save answers with, the effective object
+    /// of a refresh.
+    /// </remarks>
+    Task PresentAsync(IEnumerable<PersistentObject> objects, string verb, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The caller's view of a query's metadata (<c>Queries/Get|List</c>, S7): sort columns, column
+    /// overrides and the parent reference that name a <c>Query</c>-denied attribute of the row type
+    /// are left out. The same reference when nothing changes.
+    /// </summary>
+    Task<SparkQuery> ForQueryMetadataAsync(SparkQuery query, CancellationToken cancellationToken = default);
 }
 
 [Register(typeof(IAttributeRightsEnforcement), ServiceLifetime.Scoped)]
@@ -77,6 +95,8 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
 {
     [Inject] private readonly IAttributeRights attributeRights;
     [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly IHttpContextAccessor? httpContextAccessor;
 
     private static readonly IReadOnlySet<string> None = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -105,11 +125,15 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
         EntityTypeDefinition definition, CancellationToken cancellationToken = default)
     {
         var refused = await GetDeniedAsync(definition, SparkCoreActions.Query, cancellationToken);
-        if (refused.Count == 0)
+        var unreadable = await GetDeniedAsync(definition, SparkCoreActions.Read, cancellationToken);
+        if (refused.Count == 0 && unreadable.Count == 0)
             return definition;
 
         var copy = definition.ShallowCopy();
-        copy.Attributes = [.. definition.Attributes.Where(a => !refused.Contains(a.Name))];
+        copy.Attributes = [.. definition.Attributes
+            .Where(a => !refused.Contains(a.Name))
+            .Select(a => WithoutRefusedOptions(a, refused))];
+        copy.Breadcrumb = WithoutRefusedTokens(definition.Breadcrumb, refused, unreadable);
         return copy;
     }
 
@@ -146,18 +170,20 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
         var unreadable = await GetDeniedAsync(definition, SparkCoreActions.Read, cancellationToken);
         var uncreatable = isNew ? await GetDeniedAsync(definition, SparkCoreActions.New, cancellationToken) : None;
         var uneditable = isNew ? None : await GetDeniedAsync(definition, SparkCoreActions.Edit, cancellationToken);
-        if (unreadable.Count == 0 && uncreatable.Count == 0 && uneditable.Count == 0)
+        var subQueries = await WithoutRefusedParentReferencesAsync(definition.Queries, cancellationToken);
+        if (unreadable.Count == 0 && uncreatable.Count == 0 && uneditable.Count == 0 && ReferenceEquals(subQueries, definition.Queries))
             return definition;
 
         var attributes = new List<EntityAttributeDefinition>(definition.Attributes.Length);
-        foreach (var attribute in definition.Attributes)
+        foreach (var declared in definition.Attributes)
         {
-            if (unreadable.Contains(attribute.Name) || uncreatable.Contains(attribute.Name))
+            if (unreadable.Contains(declared.Name) || uncreatable.Contains(declared.Name))
                 continue;
 
+            var attribute = WithoutRefusedOptions(WithoutRefusedOptions(declared, unreadable), uncreatable);
             if (uneditable.Contains(attribute.Name) && !attribute.IsReadOnly)
             {
-                var readOnly = attribute.ShallowCopy();
+                var readOnly = ReferenceEquals(attribute, declared) ? attribute.ShallowCopy() : attribute;
                 readOnly.IsReadOnly = true;
                 attributes.Add(readOnly);
             }
@@ -169,28 +195,176 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
 
         var copy = definition.ShallowCopy();
         copy.Attributes = [.. attributes];
+        // The client renders the type's breadcrumb template itself (S7): a token naming a removed
+        // attribute would say the attribute exists. The server renders a refused token empty, so
+        // dropping it here gives the client the same output.
+        copy.Breadcrumb = WithoutRefusedTokens(definition.Breadcrumb, unreadable, uncreatable);
+        copy.Queries = subQueries;
         return copy;
     }
 
-    public async Task PresentAsync(
-        IEnumerable<PersistentObject> objects, string removeVerb, string? readOnlyVerb = null,
-        CancellationToken cancellationToken = default)
+    public async Task<SparkQuery> ForQueryMetadataAsync(SparkQuery query, CancellationToken cancellationToken = default)
     {
-        foreach (var po in objects)
-            await PresentOneAsync(po, removeVerb, readOnlyVerb, depth: 0, cancellationToken);
+        if (query.EntityType is null || modelLoader.GetEntityTypeByName(query.EntityType) is not { } rowType)
+            return query;
+
+        var refused = await GetDeniedAsync(rowType, SparkCoreActions.Query, cancellationToken);
+        if (refused.Count == 0)
+            return query;
+
+        var sortColumns = query.SortColumns.Where(s => !refused.Contains(s.Property)).ToArray();
+        var columns = query.Columns?.Where(c => !refused.Contains(c.Name)).ToArray();
+        var parentReference = query.ParentReference is { } named && refused.Contains(named) ? null : query.ParentReference;
+        if (sortColumns.Length == query.SortColumns.Length
+            && (columns?.Length ?? 0) == (query.Columns?.Length ?? 0)
+            && ReferenceEquals(parentReference, query.ParentReference))
+        {
+            return query;
+        }
+
+        // WithSortColumns copies; the flag it sets is [JsonIgnore] and this copy is only serialized.
+        var copy = query.WithSortColumns(sortColumns);
+        copy.Columns = columns;
+        copy.ParentReference = parentReference;
+        return copy;
     }
 
+    /// <summary>
+    /// A sub-query's <c>parentReference</c> names an attribute of the <em>query's</em> row type (S7); it
+    /// is left out when the caller may not query that attribute. The same array when nothing changes.
+    /// </summary>
+    private async Task<SparkSubQuery[]> WithoutRefusedParentReferencesAsync(SparkSubQuery[] subQueries, CancellationToken cancellationToken)
+    {
+        SparkSubQuery[]? result = null;
+        for (var i = 0; i < subQueries.Length; i++)
+        {
+            var entry = subQueries[i];
+            if (string.IsNullOrEmpty(entry.ParentReference)
+                || queryLoader.ResolveQuery(entry.Query) is not { EntityType: { } rowTypeName }
+                || modelLoader.GetEntityTypeByName(rowTypeName) is not { } rowType
+                || !(await GetDeniedAsync(rowType, SparkCoreActions.Query, cancellationToken)).Contains(entry.ParentReference))
+            {
+                continue;
+            }
+
+            result ??= [.. subQueries];
+            result[i] = new SparkSubQuery { Query = entry.Query, SelectionMode = entry.SelectionMode };
+        }
+        return result ?? subQueries;
+    }
+
+    /// <summary>
+    /// <paramref name="attribute"/> without the renderer options whose value names a refused attribute
+    /// (<c>"titleAttribute": "Message"</c>, S7). The same reference when there is none.
+    /// </summary>
+    private static EntityAttributeDefinition WithoutRefusedOptions(EntityAttributeDefinition attribute, IReadOnlySet<string> refused)
+    {
+        if (refused.Count == 0 || attribute.RendererOptions is not { Count: > 0 } options
+            || !options.Values.Any(v => NamesRefused(v, refused)))
+        {
+            return attribute;
+        }
+
+        var copy = attribute.ShallowCopy();
+        copy.RendererOptions = WithoutRefused(options, refused);
+        return copy;
+    }
+
+    /// <summary>The options left, or null when none is: an empty object would still be sent.</summary>
+    private static Dictionary<string, object>? WithoutRefused(Dictionary<string, object> options, IReadOnlySet<string> refused)
+    {
+        var kept = options.Where(o => !NamesRefused(o.Value, refused)).ToDictionary(o => o.Key, o => o.Value);
+        return kept.Count == 0 ? null : kept;
+    }
+
+    private static bool NamesRefused(object? value, IReadOnlySet<string> refused) => value switch
+    {
+        string name => refused.Contains(name),
+        System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } element => refused.Contains(element.GetString()!),
+        _ => false,
+    };
+
+    /// <summary>
+    /// <paramref name="template"/> without the <c>{tokens}</c> in either set, literals kept and
+    /// re-escaped. The same string when no token is refused.
+    /// </summary>
+    internal static string? WithoutRefusedTokens(string? template, IReadOnlySet<string> refused, IReadOnlySet<string> alsoRefused)
+    {
+        if (string.IsNullOrEmpty(template) || (refused.Count == 0 && alsoRefused.Count == 0))
+            return template;
+
+        IReadOnlyList<Breadcrumb.BreadcrumbToken> tokens;
+        try
+        {
+            tokens = Breadcrumb.BreadcrumbTemplate.Parse(template);
+        }
+        catch (FormatException)
+        {
+            // Model validation refuses a malformed template at startup; nothing here can render one.
+            return null;
+        }
+
+        if (!tokens.OfType<Breadcrumb.FieldToken>().Any(t => refused.Contains(t.AttributeName) || alsoRefused.Contains(t.AttributeName)))
+            return template;
+
+        var sb = new System.Text.StringBuilder(template.Length);
+        foreach (var token in tokens)
+        {
+            switch (token)
+            {
+                case Breadcrumb.LiteralToken literal:
+                    sb.Append(literal.Text.Replace("{", "{{").Replace("}", "}}"));
+                    break;
+                case Breadcrumb.FieldToken field when !refused.Contains(field.AttributeName) && !alsoRefused.Contains(field.AttributeName):
+                    sb.Append('{').Append(field.AttributeName).Append('}');
+                    break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    public async Task PresentAsync(IEnumerable<PersistentObject> objects, string verb, CancellationToken cancellationToken = default)
+    {
+        // No HTTP caller (a background job, a message handler, a cron run) is the system, explicitly:
+        // presenting for "nobody" would evaluate the anonymous role and strip what the job writes.
+        // Nothing reaches a client from here, so there is nothing to mark either.
+        if (httpContextAccessor?.HttpContext is not { } httpContext)
+            return;
+
+        var (removeVerb, readOnlyVerb) = Verbs(verb);
+        var caller = SparkPresentation.CallerOf(httpContext);
+        foreach (var po in objects)
+            await PresentOneAsync(po, removeVerb, readOnlyVerb, caller, depth: 0, cancellationToken);
+    }
+
+    /// <summary>What a presentation verb removes and what it makes read-only.</summary>
+    internal static (string Remove, string? ReadOnly) Verbs(string verb) => verb switch
+    {
+        SparkCoreActions.New => (SparkCoreActions.Read, SparkCoreActions.New),
+        SparkCoreActions.Query => (SparkCoreActions.Query, null),
+        SparkCoreActions.Read or SparkCoreActions.Edit => (SparkCoreActions.Read, SparkCoreActions.Edit),
+        _ => throw new ArgumentException($"'{verb}' is not a presentation verb; use Read, Edit, New or Query.", nameof(verb)),
+    };
+
     private async Task PresentOneAsync(
-        PersistentObject po, string removeVerb, string? readOnlyVerb, int depth, CancellationToken cancellationToken)
+        PersistentObject po, string removeVerb, string? readOnlyVerb, object caller, int depth, CancellationToken cancellationToken)
     {
         if (depth > MaxDepth)
             return;
 
+        po.PresentedFor = caller;
         if (modelLoader.GetEntityType(po.ObjectTypeId) is { } definition)
         {
             var refused = await GetDeniedAsync(definition, removeVerb, cancellationToken);
             if (refused.Count > 0)
-                po.RetainAttributes(a => !refused.Contains(a.Name));
+            {
+                po.PruneAttributes(refused);
+                foreach (var attribute in po.Attributes)
+                {
+                    if (attribute.RendererOptions is { Count: > 0 } options && options.Values.Any(v => NamesRefused(v, refused)))
+                        attribute.RendererOptions = WithoutRefused(options, refused);
+                }
+            }
 
             if (readOnlyVerb is not null)
             {
@@ -212,9 +386,9 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
                 continue;
 
             if (asDetail.Object is not null)
-                await PresentOneAsync(asDetail.Object, removeVerb, readOnlyVerb, depth + 1, cancellationToken);
+                await PresentOneAsync(asDetail.Object, removeVerb, readOnlyVerb, caller, depth + 1, cancellationToken);
             foreach (var row in asDetail.Objects ?? [])
-                await PresentOneAsync(row, removeVerb, readOnlyVerb, depth + 1, cancellationToken);
+                await PresentOneAsync(row, removeVerb, readOnlyVerb, caller, depth + 1, cancellationToken);
         }
     }
 }

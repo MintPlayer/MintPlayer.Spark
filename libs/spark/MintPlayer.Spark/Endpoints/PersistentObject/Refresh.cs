@@ -159,7 +159,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
                 return ClientResult.Envelope(clientAccessor, new { errors = new[] { "Not found." } }, StatusCodes.Status404NotFound);
 
             await InvokeFor(row.EntityType, row.Object, nested.Column, isNew, httpContext);
-            await attributeRights.PresentAsync([row.Object], "Read", isNew ? "New" : "Edit", httpContext.RequestAborted);
+            await attributeRights.PresentAsync([row.Object], isNew ? "New" : "Edit", httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, row.Object, StatusCodes.Status200OK);
         }
 
@@ -168,8 +168,10 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
         ApplyRedactionOf(redactedOnLoad, effective);
 
         // Static attribute rights (M2c-2a): after the hook, so a value a server hook wrote onto a
-        // Read-denied attribute is removed with it rather than shipped.
-        await attributeRights.PresentAsync([effective], "Read", isNew ? "New" : "Edit", httpContext.RequestAborted);
+        // Read-denied attribute is removed with it rather than shipped. Still presented here, unlike
+        // the load: the effective object is a system construction (it carries the values the hook
+        // computes from), so it is the one object of this response not built for the caller (D13a).
+        await attributeRights.PresentAsync([effective], isNew ? "New" : "Edit", httpContext.RequestAborted);
 
         return ClientResult.Envelope(clientAccessor, effective, StatusCodes.Status200OK);
     }

@@ -17,7 +17,7 @@ run only in the final sweep.
 | M5 Translations at runtime (D10) | ✅ 2026-10-06 (PRD D10 "As built in M5") |
 | M6 Library rights (D4), if Q2 adopts it | ✅ 2026-10-06 (PRD D4 "As built in M6"; Moderation joins the engine, Q6) |
 | M7 Gates with provenance + uniform reload + describe (D7–D9) | ✅ 2026-10-06 (PRD D9 "As built in M7": D7–D9) |
-| M8 IManager rights at construction (D13) | ⏳ |
+| M8 IManager rights at construction (D13) | ✅ 2026-10-06 (PRD D13a "As built in M8") |
 | M9 Migrate libraries and apps | ⏳ |
 | M10 Docs and versions | ⏳ |
 | M11 Sweep | ⏳ |

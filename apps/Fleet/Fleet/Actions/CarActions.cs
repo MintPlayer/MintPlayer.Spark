@@ -148,12 +148,12 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
     /// framework makes of a car — a soft-deleting interceptor cannot skip it — and, being a before-interceptor,
     /// before anything is written.
     /// </summary>
-    public ValueTask OnBeforeDeleteAsync(Car entity, DeleteContext context)
+    public async ValueTask OnBeforeDeleteAsync(Car entity, DeleteContext context)
     {
         // Virtual PO confirmation form — user must retype the plate. The Virtual PO is
         // scaffolded from apps/Fleet/Fleet/App_Data/Model/ConfirmDeleteCar.json; the
         // populated values come back through manager.Retry.Result.PersistentObject.
-        var popup = manager.GetPersistentObject(Guid.Parse(PersistentObjectIds.Default.ConfirmDeleteCar));
+        var popup = await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.ConfirmDeleteCar));
         popup["LicensePlate"].Value = entity.LicensePlate;
 
         manager.Retry.Action(
@@ -171,8 +171,6 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
         if (!string.Equals(typed, entity.LicensePlate, StringComparison.Ordinal))
             throw new SparkValidationException(
                 $"Confirmation '{typed}' does not match license plate '{entity.LicensePlate}'.");
-
-        return ValueTask.CompletedTask;
     }
 
     /// <summary>

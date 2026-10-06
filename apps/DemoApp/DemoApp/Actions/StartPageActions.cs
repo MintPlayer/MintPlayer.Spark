@@ -32,7 +32,7 @@ public partial class StartPageActions : ISparkOwnsRowSecurity
 
     public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
-        var obj = manager.GetPersistentObject("StartPage");
+        var obj = await manager.GetPersistentObjectAsync("StartPage");
 
         var peopleCount = await session.Query<Person>().CountAsync();
         var companyCount = await session.Query<Company>().CountAsync();

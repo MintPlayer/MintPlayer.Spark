@@ -14,7 +14,7 @@ public sealed class EntityTypeDefinition
     /// save, row security). <see langword="null"/> for a JSON-only virtual type: a page that
     /// exists in the model but not in the database, served exclusively through
     /// <c>OnLoadAsync(id, parent)</c> on a <c>{Name}Actions</c> class (resolved by name, and
-    /// scaffolding its object via <c>IManager.GetPersistentObject</c> instead of loading one).
+    /// scaffolding its object via <c>IManager.GetPersistentObjectAsync</c> instead of loading one).
     /// Everything document-shaped 404s for such a type.
     /// </summary>
     public string? ClrType { get; set; }

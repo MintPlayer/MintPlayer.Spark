@@ -38,7 +38,10 @@ internal partial class EffectiveObjectFactory : IEffectiveObjectFactory
         // client cannot claim an attribute is optional, visible, or writable when the model says
         // otherwise. What it legitimately owns is what the user typed, and that is all that is
         // copied across.
-        var effective = entityMapper.GetPersistentObject(entityType.Id);
+        //
+        // A system construction (D13a, S5): the refresh hook and save validation compute from the whole
+        // form. The refresh endpoint presents the result for the caller after its hook has run.
+        var effective = entityMapper.AsSystem().GetPersistentObject(entityType.Id);
         effective.Id = submitted?.Id;
 
         if (submitted is null)

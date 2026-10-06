@@ -112,7 +112,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
     /// <c>IsValueChanged</c> reflects whether the data dictionary carried a value.
     /// </para>
     /// When an <see cref="EntityTypeDefinition"/> is registered for the entity type the
-    /// schema path runs through <see cref="IEntityMapper.GetPersistentObject(Guid)"/>, so
+    /// schema path runs through <see cref="ISystemManager.GetPersistentObject(Guid)"/> (system construction), so
     /// every attribute gets the canonical 14-field metadata; otherwise the CLR-reflection
     /// fallback inventories the entity's public read/write properties (no schema available).
     /// </summary>
@@ -127,7 +127,9 @@ internal partial class SyncActionHandler : ISyncActionHandler
             return BuildFromClrReflection(entityType, documentId, data, propertySet);
 
         // Schema path — full metadata scaffolded by IEntityMapper, values overlaid from data dict.
-        var po = entityMapper.GetPersistentObject(entityTypeDef.Id);
+        // A system construction (D13a, S5): replication writes every synced field, and pruning for a
+        // viewer would drop the ones that viewer may not read.
+        var po = entityMapper.AsSystem().GetPersistentObject(entityTypeDef.Id);
         po.Id = documentId;
 
         // A partial update must carry ONLY the attributes it updates. The scaffold starts with

@@ -18,55 +18,65 @@ public class ManagerTests
     private Manager CreateManager() => new(_retry, _client, _translations, _culture, _entityMapper);
 
     [Fact]
-    public void GetPersistentObject_ByName_ForwardsToEntityMapper()
+    public async Task GetPersistentObject_ByName_ForwardsToEntityMapper()
     {
         var expected = new PersistentObject { Name = "Car", ObjectTypeId = Guid.NewGuid() };
-        _entityMapper.GetPersistentObject("Car").Returns(expected);
+        _entityMapper.GetPersistentObjectAsync("Car", "Read", Arg.Any<CancellationToken>()).Returns(expected);
         var manager = CreateManager();
 
-        var actual = manager.GetPersistentObject("Car");
+        var actual = await manager.GetPersistentObjectAsync("Car");
 
         actual.Should().BeSameAs(expected);
-        _entityMapper.Received(1).GetPersistentObject("Car");
+        await _entityMapper.Received(1).GetPersistentObjectAsync("Car", "Read", Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public void GetPersistentObject_ByGuid_ForwardsToEntityMapper()
+    public async Task GetPersistentObject_ByGuid_ForwardsToEntityMapper_with_the_verb()
     {
         var carId = Guid.Parse("11111111-2222-3333-4444-555555555555");
         var expected = new PersistentObject { Name = "Car", ObjectTypeId = carId };
-        _entityMapper.GetPersistentObject(carId).Returns(expected);
+        _entityMapper.GetPersistentObjectAsync(carId, "New", Arg.Any<CancellationToken>()).Returns(expected);
         var manager = CreateManager();
 
-        var actual = manager.GetPersistentObject(carId);
+        var actual = await manager.GetPersistentObjectAsync(carId, "New");
 
         actual.Should().BeSameAs(expected);
-        _entityMapper.Received(1).GetPersistentObject(carId);
+        await _entityMapper.Received(1).GetPersistentObjectAsync(carId, "New", Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public void GetPersistentObject_UnknownName_PropagatesEntityMapperException()
+    public async Task GetPersistentObject_UnknownName_PropagatesEntityMapperException()
     {
-        _entityMapper.GetPersistentObject("Unknown")
+        _entityMapper.GetPersistentObjectAsync("Unknown", Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Throws(new KeyNotFoundException("No entity type with Name 'Unknown' is registered."));
         var manager = CreateManager();
 
-        var act = () => manager.GetPersistentObject("Unknown");
+        var act = () => manager.GetPersistentObjectAsync("Unknown");
 
-        act.Should().Throw<KeyNotFoundException>()
+        (await act.Should().ThrowAsync<KeyNotFoundException>())
             .WithMessage("*Unknown*");
     }
 
     [Fact]
-    public void GetPersistentObject_Generic_ForwardsToEntityMapper()
+    public async Task GetPersistentObject_Generic_ForwardsToEntityMapper()
     {
         var expected = new PersistentObject { Name = "Person", ObjectTypeId = Guid.NewGuid() };
-        _entityMapper.GetPersistentObject<Person>().Returns(expected);
+        _entityMapper.GetPersistentObjectAsync<Person>(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(expected);
         var manager = CreateManager();
 
-        var actual = manager.GetPersistentObject<Person>();
+        var actual = await manager.GetPersistentObjectAsync<Person>();
 
         actual.Should().BeSameAs(expected);
+    }
+
+    /// <summary>The elevated construction is the mapper's own, by name, so it can be reviewed (D13a).</summary>
+    [Fact]
+    public void AsSystem_is_the_entity_mappers_system_construction()
+    {
+        var system = Substitute.For<ISystemEntityMapper>();
+        _entityMapper.AsSystem().Returns(system);
+
+        CreateManager().AsSystem().Should().BeSameAs(system);
     }
 
     [Fact]

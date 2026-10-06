@@ -86,7 +86,7 @@ public partial class MyAccountRowActions : ISparkOwnsRowSecurity
     /// </summary>
     /// <remarks>
     /// The same query serves two pages: <c>Home</c>, which fans out across every linked forge, and
-    /// <c>ForgeAccounts</c>, which is one forge and says which in its <c>Provider</c> attribute.
+    /// <c>ForgeAccounts</c>, which is one forge and says which in its id (the route's forge).
     /// Reading the scope off the parent is what keeps that ONE aggregation instead of two that
     /// drift — the bug this service was extracted to prevent in the first place.
     /// <para>
@@ -102,10 +102,9 @@ public partial class MyAccountRowActions : ISparkOwnsRowSecurity
         if (parent is null || !string.Equals(parent.Name, "ForgeAccounts", StringComparison.Ordinal))
             return null;
 
-        // Attributes[] rather than the indexer: the indexer THROWS on a missing name, and a page
-        // that lost its Provider attribute should fall back to the merged list rather than 500.
-        var value = parent.Attributes
-            .FirstOrDefault(a => a.Name == "Provider")?.Value?.ToString();
-        return ForgeProviders.TryParse(value, out var provider) ? provider : null;
+        // The id, not the Provider attribute: the parent is rebuilt server-side for this caller, and
+        // Provider is Read-denied to every signed-in user, so it is absent from that object (D13a).
+        // Reading it scoped nothing and showed every forge's accounts on each forge's page.
+        return ForgeProviders.TryParse(parent.Id, out var provider) ? provider : null;
     }
 }

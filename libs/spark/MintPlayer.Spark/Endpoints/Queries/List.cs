@@ -12,6 +12,7 @@ internal sealed partial class ListQueries : IGetEndpoint
 
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -25,7 +26,7 @@ internal sealed partial class ListQueries : IGetEndpoint
             if (query.EntityType is null)
                 continue;
             if (await permissionService.IsAllowedAsync("Query", query.EntityType, httpContext.RequestAborted))
-                visible.Add(query);
+                visible.Add(await attributeRights.ForQueryMetadataAsync(query, httpContext.RequestAborted));
         }
         return Results.Json(visible);
     }

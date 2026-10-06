@@ -37,7 +37,6 @@ internal sealed partial class PersistentObjectPresenter : IPersistentObjectPrese
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
-    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
 
     public async Task<PersistentObject> PresentAsync(Guid objectTypeId, object entity, object? alsoRedactAs = null, CancellationToken cancellationToken = default)
     {
@@ -46,16 +45,14 @@ internal sealed partial class PersistentObjectPresenter : IPersistentObjectPrese
         var entityType = entity.GetType();
 
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, [entity], definition, cancellationToken);
-        var po = entityMapper.ToPersistentObject(entity, objectTypeId, breadcrumbs);
+        // Built for the caller (D13a): a Read-denied attribute is absent from an old revision exactly as
+        // from the current row (contributions M2c-2a).
+        var po = await entityMapper.ToPersistentObjectAsync(entity, objectTypeId, breadcrumbs, cancellationToken: cancellationToken);
 
         // Redaction nulls attributes, so running it once per subject hides the union.
         await rowSecurity.RedactAsync(session, [(po, entity)], entityType, entityType, "Read", cancellationToken);
         if (alsoRedactAs is not null)
             await rowSecurity.RedactAsync(session, [(po, alsoRedactAs)], entityType, entityType, "Read", cancellationToken);
-
-        // Static attribute rights: a Read-denied attribute is absent from an old revision exactly as
-        // from the current row (contributions M2c-2a).
-        await attributeRights.PresentAsync([po], "Read", cancellationToken: cancellationToken);
 
         return po;
     }

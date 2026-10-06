@@ -81,7 +81,13 @@ internal sealed partial class ClientAccessor : IClientAccessor
         if (string.IsNullOrEmpty(po.Id))
             throw new InvalidOperationException(
                 "Cannot RefreshAttribute on a PersistentObject without an Id.");
-        var attr = po[attributeName];
+        // An attribute the caller's rights removed from the object (D13a) is not refreshed: the patch
+        // would name it. Silent, like a write to it; an attribute the type never had still throws.
+        if (!po.TryGetAttribute(attributeName, out var attr))
+        {
+            _ = po[attributeName];
+            return;
+        }
         _operations.Add(new RefreshAttributeOperation
         {
             ObjectTypeId = po.ObjectTypeId,

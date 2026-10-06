@@ -670,6 +670,79 @@ The decision: **construction-time pruning plus one boundary safety net.**
 - **Trap.** Hooks that read a hidden attribute now see it missing, and silently compute something
   wrong. S5 lists every `GetPersistentObject` caller and every attribute-reading hook before
   pruning is switched on. Each one that needs hidden data moves to `AsSystem()`. Writing to a pruned attribute is a silent no-op, and hooks get `TryGet`, because ForgeAccountsActions.cs:51 writes a Read-denied attribute (§9 S5).
+- **As built in M8 (2026-10-06).**
+  - **The construction API is async.** The rights decision is async (the caller's groups come from a
+    pluggable provider), so `IEntityMapper`/`IManager` expose `GetPersistentObjectAsync(name|id|<T>, verb = "Read")`
+    and `ToPersistentObjectAsync(entity, …, verb)`. The sync names are gone (no backward compatibility).
+    `AsSystem()` returns `ISystemManager` / `ISystemEntityMapper`, whose methods stay sync because they
+    decide nothing.
+  - **Verbs** (`AttributeRightsEnforcement.Verbs`): `Read`/`Edit` remove Read-denied and mark Edit-denied
+    read-only; `New` removes Read-denied and marks New-denied read-only; `Query` removes Query-denied.
+    These are the pairs the old `PresentAsync` call sites passed. The row gate passes its own verb
+    (`Query`). History's presenter now also marks Edit-denied read-only, which it did not before.
+  - **No HTTP caller is the system for presentation only.** `PresentAsync` returns untouched when there
+    is no `HttpContext`. `IAttributeRights` (and with it the write shield) and row security are
+    unchanged: `SparkSystemContext` stays positive-claim-only for them. Evidence: the deny-in-a-scope
+    tests (`MaterializeInterceptorTests`, `HistoryTests`) rely on that.
+  - **Pruning is recorded on the object** (`PersistentObject.PruneAttributes`). The indexer answers a
+    detached attribute for a pruned name (write = no-op, read = null) and still throws for a name the
+    type never had. `TryGetAttribute` is the honest read. `IClientAccessor.RefreshAttribute(po, name)` is
+    a no-op for a pruned name, because the patch would name it.
+  - **The net is a `JsonTypeInfo.OnSerializing` hook on `PersistentObject`** (`SparkPresentation`). It is
+    installed into the HTTP `JsonOptions` (PostConfigure) and into the streaming endpoint's own options.
+    A result filter was rejected: it sees opaque `IResult`s, would need a reflection walk, and misses the
+    middleware's 449 and WebSocket frames. The serializer already visits every object written, including
+    an `object`-typed result and AsDetail rows. Each presentation stamps a per-request token kept in
+    `HttpContext.Items`. Outside Development an unstamped object is presented, failing closed (Query- and
+    Read-denied removed, Edit-denied read-only), and a warning is logged. That fallback blocks on the
+    rights decision, which the request's type check has normally already made. The test host runs as
+    `Testing`, so it takes the pruning path.
+  - **Deviation: three explicit presentations remain.** The net cannot collapse a site whose object was
+    not built for the caller, because Development would throw there by design:
+    - Refresh ×2: the effective object is a system construction.
+    - `SaveResponsePresenter`, the posted-object branch: the object is read off the wire.
+
+    Removed: Get, New ×2, ExecuteCustomAction ×2, `RowSecurityGate`, `RetryPresentation` (static half),
+    `PersistentObjectPresenter`, and `SaveResponsePresenter`'s reload. Per-row `RedactAsync` stays
+    everywhere.
+  - **System constructions:**
+    - `EffectiveObjectFactory`
+    - `SaveValidation`'s stored object
+    - `SyncActionHandler`
+    - History's revert input. This is a save input, judged by the write shield as a posted object is.
+  - **S7:**
+    - The type breadcrumb template drops refused tokens and keeps and re-escapes its literals.
+      `ForFormAsync` drops Read- and New-denied tokens; `ForQueryAsync` drops Query- and Read-denied ones.
+    - `RendererOptions` entries whose string value names a refused attribute are dropped, on definitions
+      and on objects; an emptied map becomes null.
+    - A `SparkSubQuery.ParentReference` naming a Query-denied attribute of the query's row type is
+      dropped.
+    - `Queries/Get|List` go through `ForQueryMetadataAsync`, which filters `SortColumns`, `Columns` and
+      `ParentReference`.
+    - Query rows are `QueryResultItem`s projected from rows the gate built for the caller, so they are not
+      persistent objects on the wire.
+  - **Production change in CodeCoverage (deviation).** `MyAccountRowActions.ProviderOf` read `Provider`
+    off the rebuilt parent. That attribute is Read-denied to the page's only readers, so pruning would
+    have scoped nothing and shown every forge's accounts on each forge page. `ForgeAccountsActions` now
+    sets the page's id to the forge (the route's id), and the grid scopes by `parent.Id`. No other app
+    hook reads an attribute any real caller is denied: only CodeCoverage's `security.json` has attribute
+    denies, and library layers may only grant.
+  - **Known gaps.**
+    - `IClientAccessor.RefreshAttribute(Guid, id, name, value)` names an attribute without an object, and
+      nothing checks it.
+    - The leak test does not cover a sub-query `parentReference`, because startup validation needs a
+      real reference.
+    - A create whose required attribute is hidden would still report it by name in its validation error.
+  - **Tests.** `ConstructionRightsTests` covers:
+    - the canary leak test: the name and value of a hidden attribute, over PO get/new/refresh/save, query
+      rows, type metadata, query metadata, an action result, a retry prompt, the net's fallback and a 404,
+      every response body recorded raw;
+    - §7 acceptance;
+    - the New verb;
+    - the write no-op;
+    - system outside a request;
+    - `AsSystem`, sync and save validation keeping hidden data;
+    - Development throws, other environments prune.
 
 ### D16 — Library alias (grill Q7 = B)
 - Every library that ships layers declares `<SparkLibraryAlias>authorization</SparkLibraryAlias>` in

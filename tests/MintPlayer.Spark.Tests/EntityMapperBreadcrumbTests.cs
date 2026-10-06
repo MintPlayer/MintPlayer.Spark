@@ -69,7 +69,7 @@ public class EntityMapperBreadcrumbTests
             ["Companies/abc-123"] = "Acme Corp",
         });
 
-        var result = _mapper.ToPersistentObject(Person(), PersonTypeId, breadcrumbs);
+        var result = _mapper.AsSystem().ToPersistentObject(Person(), PersonTypeId, breadcrumbs);
 
         result.Breadcrumb.Should().Be("Doe", "the PO's own breadcrumb comes from the result by its id");
         var companyAttr = result.Attributes.Single(a => a.Name == "Company");
@@ -80,7 +80,7 @@ public class EntityMapperBreadcrumbTests
     [Fact]
     public void Without_a_result_reference_breadcrumb_is_null()
     {
-        var result = _mapper.ToPersistentObject(Person(), PersonTypeId);
+        var result = _mapper.AsSystem().ToPersistentObject(Person(), PersonTypeId);
 
         var companyAttr = result.Attributes.Single(a => a.Name == "Company");
         companyAttr.Value.Should().Be("Companies/abc-123");
@@ -90,7 +90,7 @@ public class EntityMapperBreadcrumbTests
     [Fact]
     public void Reference_id_absent_from_the_result_yields_null_breadcrumb()
     {
-        var result = _mapper.ToPersistentObject(Person(), PersonTypeId, new BreadcrumbResult(new Dictionary<string, string>()));
+        var result = _mapper.AsSystem().ToPersistentObject(Person(), PersonTypeId, new BreadcrumbResult(new Dictionary<string, string>()));
 
         var companyAttr = result.Attributes.Single(a => a.Name == "Company");
         companyAttr.Breadcrumb.Should().BeNull();
@@ -102,7 +102,7 @@ public class EntityMapperBreadcrumbTests
         var person = Person();
         person.Company = null;
 
-        var result = _mapper.ToPersistentObject(person, PersonTypeId, new BreadcrumbResult(new Dictionary<string, string>()));
+        var result = _mapper.AsSystem().ToPersistentObject(person, PersonTypeId, new BreadcrumbResult(new Dictionary<string, string>()));
 
         var companyAttr = result.Attributes.Single(a => a.Name == "Company");
         companyAttr.Value.Should().BeNull();
