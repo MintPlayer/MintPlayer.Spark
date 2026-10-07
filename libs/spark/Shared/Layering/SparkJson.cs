@@ -84,6 +84,20 @@ internal sealed class SparkJsonObject : SparkJsonNode
 
     public SparkJsonNode? this[string key] => members.TryGetValue(key, out var member) ? member.Value : null;
 
+    /// <summary>
+    /// The member <paramref name="key"/> names under <paramref name="comparer"/>, the kind's own rules.
+    /// A parsed layer's objects are ordinal, so the indexer alone would miss <c>"Key"</c> in a kind
+    /// whose names ignore case.
+    /// </summary>
+    public SparkJsonNode? Get(string key, StringComparer comparer)
+    {
+        if (members.TryGetValue(key, out var member)) return member.Value;
+        if (ReferenceEquals(comparer, Comparer)) return null;
+        foreach (var candidate in Members)
+            if (comparer.Equals(candidate.Key, key)) return candidate.Value;
+        return null;
+    }
+
     public bool TryGetValue(string key, out SparkJsonNode value)
     {
         var found = members.TryGetValue(key, out var member);

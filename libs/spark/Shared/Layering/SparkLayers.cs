@@ -319,14 +319,14 @@ internal static class SparkLayers
             {
                 var index = new Dictionary<string, SparkJsonObject>(spec.Keys);
                 foreach (var item in lowerArray.Items)
-                    if (item is SparkJsonObject element && element[key] is SparkJsonString { Value: var id })
+                    if (item is SparkJsonObject element && element.Get(key, spec.Keys) is SparkJsonString { Value: var id })
                         index[id] = element;
 
                 var elementSchema = new List<string>(childSchema) { "[]" };
                 var changed = new SparkJsonArray();
                 foreach (var item in desiredArray.Items)
                 {
-                    if (item is not SparkJsonObject element || element[key] is not SparkJsonString { Value: var id }) continue;
+                    if (item is not SparkJsonObject element || element.Get(key, spec.Keys) is not SparkJsonString { Value: var id }) continue;
                     if (!index.TryGetValue(id, out var lowerElement))
                     {
                         changed.Items.Add(element.DeepClone());
@@ -481,7 +481,7 @@ internal static class SparkLayers
             var seen = new HashSet<string>(spec.Keys);
             foreach (var item in source.Items)
             {
-                if (item is not SparkJsonObject element || element[elementKey] is not SparkJsonString { Value: var id })
+                if (item is not SparkJsonObject element || element.Get(elementKey, spec.Keys) is not SparkJsonString { Value: var id })
                     throw new SparkLayerException($"{layer.Name}: every element of '{PathText(path)}' must be an object with a string '{elementKey}'.");
                 if (!seen.Add(id))
                     throw new SparkLayerException($"{layer.Name}: '{PathText(path)}' states '{id}' twice{CaseNote()}.");

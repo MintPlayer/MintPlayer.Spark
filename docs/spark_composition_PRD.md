@@ -234,6 +234,11 @@ raw JSON trees and records which layer each leaf came from.
     a slot bound to several groups composes into one right per group. New root members (app only):
     `"bindings": { "<alias>:<slot>": ["<group id or name>", …] }` (names match ignoring case, D24) and
     `"libraries": { "<alias>": false }`. A library layer may state only `rights` and `reservedTargets`.
+    **Fixed 2026-10-07 (first full sweep):** the keyed-set merge looked `key` up ordinally in the parsed
+    layer although the kind's names ignore case, so `"Key"` — what `JsonSerializer` writes for `Right.Key`,
+    and so every `SparkTestSecurity` builder file — refused startup ("every element of 'Rights' must be an
+    object with a string 'key'"; 151 tests). The element key is now read through the kind's comparer
+    (`SparkJsonObject.Get(key, comparer)`); `SecurityConfigurationLoaderTests.A_right_keyed_in_pascal_case_loads`.
   - **Code.** `SparkSecurityLayers` (shared source, `libs/spark/Shared/Layering/`, kind
     `SparkKinds.Security`, keys ignoring case as the loader always read them) composes, checks the guard
     rails and resolves tokens; `SparkSecurityFiles.Compose` (Abstractions) turns it into the

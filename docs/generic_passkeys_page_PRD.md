@@ -505,3 +505,15 @@ Tests, specs and the E2E are written and run in M8.
   `Spark-API-Specification.md`). Fleet's stolen-car steps never offered Cancel and are unchanged.
 - **Plan M8** gained two manual browser checks: CodeCoverage `/po/forge-accounts/github` (composition M8 changed
   how its forge is chosen) and the passkeys page at 375 px.
+
+### Sweep fixes (2026-10-07): what the first full local sweep found
+
+- **Row actions on `PasskeyRow` never ran (real bug).** `SparkSelectionResolver` (#467 D11/D29a) required the
+  `Read` right on the selection's type, and D2 withholds `Read` from `PasskeyRow` — as the grid's own rule
+  says to for any clrType-less row a `Custom.*` query fabricates. So every Rename and Remove answered
+  `404 {"error":"Not found"}` before the action ran. Evidence: the E2E `PasskeyCeremonyTests` Rename and
+  last-way-in tests timed out; the captured `/spark/actions/execute` response was that 404, and granting
+  `Read/PasskeyRow` as an experiment turned it into the expected 449 retry. Fix: a virtual type (no
+  clrType, so no documents and no row rule) passes its `Query` right instead of `Read`; a stored type still
+  needs `Read`. The library's rights are unchanged (no `Read`, so still no detail page).
+  `SparkSelectionResolverTests` (two red without the fix, one control).

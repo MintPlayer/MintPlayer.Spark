@@ -137,7 +137,9 @@ public class LibraryActionsConflictAnalyzerTests
             .GetMethod("Compose", BindingFlags.Public | BindingFlags.Static)!
             .Invoke(null, [parsed, actions])!;
 
-        return (string)composition.GetType().GetMethod("Describe")!.Invoke(composition, null)!;
+        // Describe takes optional naming/filter arguments (M7); reflection must pass them explicitly.
+        var describe = composition.GetType().GetMethod("Describe")!;
+        return (string)describe.Invoke(composition, describe.GetParameters().Select(_ => Type.Missing).ToArray())!;
     }
 
     private static string Golden(string name) => File.ReadAllText(GoldenFile(name)).Replace("\r\n", "\n");

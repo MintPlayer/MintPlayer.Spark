@@ -42,13 +42,38 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
     {
         var dir = Path.Combine(_tempDir, "App_Data", "Model");
         Directory.CreateDirectory(dir);
-        var attrs = string.Join(",", attributes.Select(a => $$"""{ "key": "{{Guid.NewGuid()}}", "name": "{{a}}" }"""));
+        var attrs = string.Join(",", attributes.Select(a => $$"""{ "id": "{{Guid.NewGuid()}}", "name": "{{a}}" }"""));
         File.WriteAllText(Path.Combine(dir, name + ".json"),
-            $$"""{ "persistentObject": { "key": "{{Guid.NewGuid()}}", "name": "{{name}}", "attributes": [{{attrs}}] } }""");
+            $$"""{ "persistentObject": { "id": "{{Guid.NewGuid()}}", "name": "{{name}}", "attributes": [{{attrs}}] } }""");
     }
 
     private void WriteConfig(string json) =>
-        File.WriteAllText(Path.Combine(_tempDir, _securityFilePath), json);
+        File.WriteAllText(Path.Combine(_tempDir, _securityFilePath), WithLibraryRightsOff(json));
+
+    /// <summary>
+    /// These tests are about the application's own file. The libraries this process loads ship rights
+    /// (Authorization's passkeys grants to <c>@authenticated</c>, composition M9 and passkeys M5), which
+    /// a fixture binding no <c>wellKnown</c> group could never resolve; they are switched off, as
+    /// <see cref="SparkTestSecurity"/>'s builder files switch them off. A fixture that states its own
+    /// <c>libraries</c>, or is not an object, is written as given.
+    /// </summary>
+    private static string WithLibraryRightsOff(string json)
+    {
+        System.Text.Json.Nodes.JsonNode? node;
+        try { node = System.Text.Json.Nodes.JsonNode.Parse(json); }
+        catch (System.Text.Json.JsonException) { return json; }
+
+        if (node is not System.Text.Json.Nodes.JsonObject root
+            || root.Any(m => string.Equals(m.Key, "libraries", StringComparison.OrdinalIgnoreCase))
+            || SparkTestSecurity.LibraryRightsOff() is not { } off)
+            return json;
+
+        var libraries = new System.Text.Json.Nodes.JsonObject();
+        foreach (var (alias, enabled) in off)
+            libraries[alias] = enabled;
+        root["libraries"] = libraries;
+        return root.ToJsonString();
+    }
 
     private const string ValidJson = """
         {
@@ -110,6 +135,25 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         config.Groups.Should().ContainKey("aaaa0000-0000-0000-0000-000000000002");
     }
 
+    /// <summary>
+    /// The right's own members ignore case too, its <c>key</c> included: the keyed-set merge looked the
+    /// key up ordinally in the parsed file, so <c>"Key"</c> (what <c>JsonSerializer</c> writes for
+    /// <see cref="Right.Key"/> by default) refused startup with "must be an object with a string 'key'".
+    /// </summary>
+    [Fact]
+    public void A_right_keyed_in_pascal_case_loads()
+    {
+        WriteConfig("""
+            {
+              "Groups": { "11111111-1111-1111-1111-111111111111": "Admins" },
+              "Rights": [ { "Key": "aaaa0000-0000-0000-0000-000000000001", "Resource": "Read/Person", "GroupId": "11111111-1111-1111-1111-111111111111" } ]
+            }
+            """);
+        using var loader = CreateLoader();
+
+        loader.GetConfiguration().Rights.Should().ContainSingle(r => r.Key == "aaaa0000-0000-0000-0000-000000000001" && r.Resource == "Read/Person");
+    }
+
     [Fact]
     public void GetConfiguration_throws_on_malformed_json()
     {
@@ -157,13 +201,29 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
     [Fact]
     public void GetConfiguration_returns_empty_when_file_content_is_literal_null()
     {
+        // A literal null states no application layer at all, so it cannot switch the libraries off.
+        // Composed over no library, it is empty.
+        var composed = SparkSecurityFiles.Compose("null", libraries: []);
+        composed.Problems.Should().BeEmpty();
+        composed.Configuration.Groups.Should().BeEmpty();
+        composed.Configuration.Rights.Should().BeEmpty();
+
         WriteConfig("null");
         using var loader = CreateLoader();
 
-        var config = loader.GetConfiguration();
-
-        config.Groups.Should().BeEmpty();
-        config.Rights.Should().BeEmpty();
+        if (SparkTestSecurity.LibraryRightsOff() is null)
+        {
+            var config = loader.GetConfiguration();
+            config.Groups.Should().BeEmpty();
+            config.Rights.Should().BeEmpty();
+        }
+        else
+        {
+            // This process loads libraries that ship grants (composition M9, passkeys M5). Over a null
+            // file they resolve to no group, and the loader fails closed naming that, not the null.
+            var act = () => loader.GetConfiguration();
+            act.Should().Throw<SparkSecurityConfigurationException>().Which.Message.Should().Contain("cannot be trusted");
+        }
     }
 
     [Fact]

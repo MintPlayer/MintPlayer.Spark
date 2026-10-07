@@ -5,7 +5,14 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   plugins: [angular()],
   resolve: {
-    alias: {
+    alias: [
+      // Mirrors tsconfig.base.json, secondary entry points first: a plain-string
+      // `@mintplayer/ng-spark` alias is a prefix match, so it would rewrite
+      // `@mintplayer/ng-spark/client-operations` to `public-api.ts/client-operations`.
+      {
+        find: /^@mintplayer\/ng-spark\/(.+)$/,
+        replacement: fileURLToPath(new URL('../ng-spark/', import.meta.url)) + '$1/index.ts',
+      },
       // Mirrors tsconfig.base.json. Without it `@mintplayer/ng-spark` does not resolve
       // here, and the cost was not a failing test — it was a SILENT hole in the
       // measurement: provide-spark-auth.ts imports it, so vitest could not transform the
@@ -13,8 +20,8 @@ export default defineConfig({
       // `config?: Partial<SparkAuthConfig>`, logged "Excluding it from coverage" and
       // carried on. The file disappeared from the denominator rather than reporting 0%,
       // which is why this package looked like 20 source files when it has 21.
-      '@mintplayer/ng-spark': fileURLToPath(new URL('../ng-spark/src/public-api.ts', import.meta.url)),
-    },
+      { find: '@mintplayer/ng-spark', replacement: fileURLToPath(new URL('../ng-spark/src/public-api.ts', import.meta.url)) },
+    ],
   },
   test: {
     globals: true,

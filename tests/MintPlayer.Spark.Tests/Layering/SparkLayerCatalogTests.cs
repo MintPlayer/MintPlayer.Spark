@@ -47,7 +47,16 @@ public class SparkLayerCatalogTests
             ("MintPlayer.Spark", "spark"),
             ("MintPlayer.Spark.Authorization", "authorization"));
         libraries[0].Layers.Select(l => (l.Kind, l.Path)).Should().Equal(("actions", "actions.json"), ("translations", "translations.json"));
-        libraries[1].Layers.Select(l => (l.Kind, l.Path)).Should().Equal(("translations", "translations.json"));
+        // The passkeys page ships its model, actions and rights (passkeys M3–M5; composition M9), in
+        // ordinal path order.
+        libraries[1].Layers.Select(l => (l.Kind, l.Path)).Should().Equal(
+            ("model", "Model/PasskeyRename.json"),
+            ("model", "Model/PasskeyRow.json"),
+            ("model", "Model/Passkeys.json"),
+            ("model", "Model/SparkUser.json"),
+            ("actions", "actions.json"),
+            ("security", "security.json"),
+            ("translations", "translations.json"));
     }
 
     [Fact]

@@ -17,7 +17,7 @@ public class ListQueriesEndpointTests(SparkSharedDatabase database)
     public async Task List_returns_empty_when_no_queries_defined()
     {
         var personType = TestModels.Person(Guid.NewGuid()); // no Queries
-        await using var factory = new SparkEndpointFactory(Store, [personType]);
+        await using var factory = new SparkEndpointFactory(Store, [personType], services => services.UseFixtureModelOnly());
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var queries = await client.ListQueriesAsync();
@@ -35,7 +35,7 @@ public class ListQueriesEndpointTests(SparkSharedDatabase database)
             new SparkQuery { Id = OnlyAdminsQueryId, Name = "OnlyAdmins", Source = "Custom.GetAdmins", EntityType = "Person" },
         ];
 
-        await using var factory = new SparkEndpointFactory(Store, [personType]);
+        await using var factory = new SparkEndpointFactory(Store, [personType], services => services.UseFixtureModelOnly());
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var queries = await client.ListQueriesAsync();

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Testing;
@@ -29,6 +30,24 @@ public sealed class SparkEndpointFactory : SparkEndpointFactory<TestSparkContext
         SparkTestSecurity? security = null)
         : base(testStore, models, configureServices, configureSpark, security: security)
     {
+    }
+}
+
+/// <summary>Scoping a test host's composed model (composition M4).</summary>
+public static class TestModelScope
+{
+    /// <summary>
+    /// The host's model is its fixture files alone, without the types the layered libraries in this
+    /// process ship (Authorization's passkeys page: <c>Passkeys</c>, <c>PasskeyRow</c>, the
+    /// <c>MyPasskeys</c> query). For a test whose subject is "every type" or "every query" of the
+    /// application, which would otherwise depend on what the test process happens to reference.
+    /// </summary>
+    public static IServiceCollection UseFixtureModelOnly(this IServiceCollection services)
+    {
+        services.RemoveAll<MintPlayer.Spark.Services.IModelSource>();
+        services.AddSingleton<MintPlayer.Spark.Services.IModelSource>(sp =>
+            MintPlayer.Spark.Services.ModelSource.For(sp.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>(), []));
+        return services;
     }
 }
 

@@ -88,6 +88,14 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
         public string RowSecurityRationale => "Test fixture: every row is visible; the subject is attribute rights.";
     }
 
+    // The fixture grants QueryReadEditNew/CanaryVaultEntry anonymously too, so its rows need the same
+    // recorded decision or the row-policy gate (#236) refuses startup.
+    public class CanaryVaultEntryActions(IEntityMapper mapper)
+        : DefaultPersistentObjectActions<CanaryVaultEntry>(mapper), Abstractions.Authorization.ISparkOwnsRowSecurity
+    {
+        public string RowSecurityRationale => "Test fixture: every row is visible; the subject is attribute rights.";
+    }
+
     /// <summary>A loaded object in an action's result.</summary>
     public sealed class CanaryEchoAction(IDatabaseAccess databaseAccess) : ICustomAction
     {
@@ -150,6 +158,7 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
             configureServices: services =>
             {
                 services.AddScoped<CanaryVaultActions>();
+                services.AddScoped<CanaryVaultEntryActions>();
                 services.AddScoped<CanaryEchoAction>();
                 services.AddScoped<CanaryPromptAction>();
                 services.AddScoped<CanaryLeakAction>();
@@ -221,7 +230,9 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
         // An error: a row that does not exist.
         await Client.GetPersistentObjectAsync(VaultTypeId, "canaryvaults/404");
 
-        _bodies.Should().HaveCountGreaterThanOrEqualTo(19);
+        // One body per call above (18). No antiforgery warmup adds one: the first response already
+        // sets the XSRF cookie.
+        _bodies.Should().HaveCountGreaterThanOrEqualTo(18);
         foreach (var body in _bodies)
         {
             body.Should().NotContain(CanaryValue, "a hidden attribute's value must never reach a response");
@@ -449,7 +460,9 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
         var stored = new CanaryVault { Id = "canaryvaults/1", Name = "Anna", ZqxCanaryAttr = CanaryValue };
 
         validation.Request(shielded);
-        var act = () => validation.ValidateAsync(shielded, definition, stored, new HashSet<string>([CanaryName]));
+        // What AttributeWriteShield hands over: neither hidden attribute was posted, and the caller may
+        // read neither (M9 added the write-only, required ZqxBlindAttr), so both are unwritable.
+        var act = () => validation.ValidateAsync(shielded, definition, stored, new HashSet<string>([CanaryName, BlindName]));
 
         await act.Should().NotThrowAsync();
     }
@@ -538,7 +551,14 @@ public class ConstructionRightsTests(ConstructionRightsTests.Host host)
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var response = await inner.SendAsync(request, cancellationToken);
+            // A copy: the outer HttpClient has already marked `request` as sent, and the inner one
+            // refuses a message twice ("The request message was already sent"). Not disposed, so the
+            // shared content stays with the caller's request.
+            var forwarded = new HttpRequestMessage(request.Method, request.RequestUri) { Content = request.Content, Version = request.Version };
+            foreach (var header in request.Headers)
+                forwarded.Headers.TryAddWithoutValidation(header.Key, header.Value);
+
+            var response = await inner.SendAsync(forwarded, cancellationToken);
             var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
             lock (bodies)
                 bodies.Add(System.Text.Encoding.UTF8.GetString(bytes));

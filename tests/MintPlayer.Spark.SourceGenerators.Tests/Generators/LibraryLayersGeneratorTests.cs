@@ -82,9 +82,10 @@ public class LibraryLayersGeneratorTests
         result.GeneratorDiagnostics.Should().BeEmpty();
         var layers = Compile(result).GetCustomAttributes<SparkLayerAttribute>().ToList();
 
+        // Emitted in ordinal path order, so "Model/…" sorts before the lower-case files.
         layers.Select(l => (l.Kind, l.Path)).Should().Equal(
-            ("actions", "actions.json"),
             ("model", "Model/SparkUser.json"),
+            ("actions", "actions.json"),
             ("moderation", "moderation.json"),
             ("programUnits", "programUnits.json"),
             ("security", "security.json"),

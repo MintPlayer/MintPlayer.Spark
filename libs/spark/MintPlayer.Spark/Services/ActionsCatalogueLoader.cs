@@ -33,6 +33,16 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
 
     private AppLayerSnapshot<ActionsCatalogue>? layer;
 
+    /// <summary>The library layers to compose; <see langword="null"/>: the process's (<see cref="SparkActionLayers.Libraries"/>).</summary>
+    private IReadOnlyList<SparkActionsLayer>? libraries;
+
+    /// <summary>
+    /// A loader over chosen library layers (<c>[]</c>: the application's file alone), for a test that
+    /// must not depend on which layered libraries its process happens to reference.
+    /// </summary>
+    internal static ActionsCatalogueLoader For(IHostEnvironment hostEnvironment, ITranslationsLoader translationsLoader, IReadOnlyList<SparkActionsLayer>? libraries = null)
+        => new(hostEnvironment, Microsoft.Extensions.Logging.Abstractions.NullLogger<ActionsCatalogueLoader>.Instance, translationsLoader) { libraries = libraries };
+
     private AppLayerSnapshot<ActionsCatalogue> Layer
         => LazyInitializer.EnsureInitialized(ref layer, () => new(
             SparkActionLayers.AppLayerName,
@@ -51,7 +61,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
         var fullPath = PathFor(hostEnvironment.ContentRootPath);
         var appJson = File.Exists(fullPath) ? File.ReadAllText(fullPath) : null;
 
-        var catalogue = Build(appJson, SparkActionLayers.Libraries, translationsLoader.GetAll());
+        var catalogue = Build(appJson, libraries ?? SparkActionLayers.Libraries, translationsLoader.GetAll());
         foreach (var conflict in catalogue.Conflicts)
         {
             logger.LogWarning(
