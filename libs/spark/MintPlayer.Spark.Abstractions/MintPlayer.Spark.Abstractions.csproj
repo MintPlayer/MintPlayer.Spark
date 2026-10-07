@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Abstractions</PackageId>
-		<Version>11.0.0-preview.100</Version>
+		<Version>11.0.0-preview.101</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Abstractions and shared models for MintPlayer.Spark low-code framework.</Description>
@@ -20,9 +20,25 @@
 		<RepositoryType>git</RepositoryType>
 	</PropertyGroup>
 
+	<PropertyGroup>
+		<!--
+		  The /// summaries of the App_Data file types become the descriptions in schemas/*.schema.json
+		  (tools/SchemaGenerator reads this XML file next to the assembly), so editors show them on hover.
+		  CS1591 (missing XML comment) and CS1573 (a parameter without a param tag beside one that has
+		  one) are noise: only the schema-facing members need a comment, and notable parameters a tag.
+		-->
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\..\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
 		<ProjectReference Include="..\..\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The layering engine, one source with the generators (composition D14). -->
+		<Compile Include="..\Shared\Layering\*.cs" Link="Layering\%(Filename)%(Extension)" />
 	</ItemGroup>
 
 	<ItemGroup>

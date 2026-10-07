@@ -4,7 +4,7 @@
 -->
 <bs-card class="d-block my-3">
   <bs-card-header>
-    <div class="d-flex align-items-center gap-2">
+    <div class="spark-query-card-header d-flex align-items-center gap-2">
       @if (iconTpl(); as tpl) {
         <ng-container *ngTemplateOutlet="tpl; context: { $implicit: query() }"></ng-container>
       }
@@ -34,7 +34,7 @@
           @for (action of toolbarActions(); track action.name) {
             <button *bsPriorityNavItem="action.priority" type="button" [class]="actionClass(action)"
                     [attr.data-action]="action.name"
-                    [disabled]="!isEnabled(action)" (click)="run(action)">
+                    [disabled]="!isEnabled(action)" [attr.title]="unavailableReason(action)" (click)="run(action)">
               @if (action.definition.icon && action.kind !== 'custom') {
                 <spark-icon [name]="action.definition.icon" />
               }

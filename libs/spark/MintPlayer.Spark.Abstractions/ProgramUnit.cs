@@ -1,23 +1,41 @@
 namespace MintPlayer.Spark.Abstractions;
 
+/// <summary>The application's navigation menu (<c>App_Data/programUnits.json</c>): groups of menu entries.</summary>
 public sealed class ProgramUnitsConfiguration
 {
+    /// <summary>The menu's groups, matched across layers by <c>id</c>.</summary>
     public ProgramUnitGroup[] ProgramUnitGroups { get; set; } = [];
 }
 
+/// <summary>A titled group of menu entries.</summary>
 public sealed class ProgramUnitGroup
 {
+    /// <summary>The group's stable id; its identity across layers.</summary>
     public required Guid Id { get; set; }
+
+    /// <summary>The group's caption.</summary>
     public required TranslatedString Name { get; set; }
+
+    /// <summary>A Bootstrap Icons name, e.g. <c>bi-house</c>.</summary>
     public string? Icon { get; set; }
+
+    /// <summary>The group's position in the menu.</summary>
     public int Order { get; set; }
+
+    /// <summary>The group's entries.</summary>
     public ProgramUnit[] ProgramUnits { get; set; } = [];
 }
 
+/// <summary>One menu entry: opens a query, an entity type's list or page, or an external URL.</summary>
 public sealed class ProgramUnit
 {
+    /// <summary>The entry's stable id; its identity across layers.</summary>
     public required Guid Id { get; set; }
+
+    /// <summary>The entry's caption.</summary>
     public required TranslatedString Name { get; set; }
+
+    /// <summary>A Bootstrap Icons name, e.g. <c>bi-house-door</c>.</summary>
     public string? Icon { get; set; }
 
     /// <summary>
@@ -33,7 +51,10 @@ public sealed class ProgramUnit
     /// </summary>
     public required string Type { get; set; }
 
+    /// <summary>For a <c>query</c> unit: the id of the query to open.</summary>
     public Guid? QueryId { get; set; }
+
+    /// <summary>For a <c>persistentObject</c> unit: the id of the entity type to open.</summary>
     public Guid? PersistentObjectId { get; set; }
 
     /// <summary>
@@ -52,6 +73,7 @@ public sealed class ProgramUnit
     /// </summary>
     public string? Url { get; set; }
 
+    /// <summary>The entry's position within its group.</summary>
     public int Order { get; set; }
     /// <summary>
     /// Optional URL-friendly alias for this program unit's target.

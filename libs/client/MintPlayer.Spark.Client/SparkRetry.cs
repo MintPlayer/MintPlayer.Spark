@@ -9,11 +9,21 @@ namespace MintPlayer.Spark.Client;
 /// </summary>
 public sealed class RetryAnswer
 {
-    private RetryAnswer(string option, PersistentObject? persistentObject)
+    private RetryAnswer(string option, PersistentObject? persistentObject, object? value = null)
     {
         Option = option;
         PersistentObject = persistentObject;
+        Value = value;
     }
+
+    /// <summary>What a client-method step resolved with (<see cref="Return"/>); null otherwise.</summary>
+    public object? Value { get; }
+
+    /// <summary>
+    /// Answers a client-method step (<see cref="RetryActionPayload.ClientMethod"/>) with what the method
+    /// resolved to, as the browser would. The option is <c>"OK"</c>.
+    /// </summary>
+    public static RetryAnswer Return(object? value) => new("OK", null, value);
 
     /// <summary>The label of the option chosen, exactly as it appeared in the prompt's options.</summary>
     public string Option { get; }
@@ -29,12 +39,14 @@ public sealed class RetryAnswer
         => new(option ?? throw new ArgumentNullException(nameof(option)), persistentObject);
 
     /// <summary>
-    /// Cancels the flow. Spark treats <c>"Cancel"</c> as a distinguished answer: the frontend sends it
-    /// when the user closes the modal, and a hook that reads it typically returns without acting. It
-    /// is <b>not</b> auto-appended to a prompt's options, so a hook that never offers it will reject
-    /// this — see <see cref="SparkClient.MaxRetryDepth"/> for the other way a conversation ends.
+    /// Cancels the flow. Spark treats <c>"Cancel"</c> as a distinguished answer, never a label: the
+    /// browser sends it for its own translated Cancel button and for a closed modal, and a hook that
+    /// reads it typically returns without acting. A prompt takes it only when it is
+    /// <see cref="RetryActionPayload.Cancellable"/> (or is a client-method step), so a hook that never
+    /// asked for it will reject this — see <see cref="SparkClient.MaxRetryDepth"/> for the other way a
+    /// conversation ends.
     /// </summary>
-    public static RetryAnswer Cancel() => new("Cancel", null);
+    public static RetryAnswer Cancel() => new(Abstractions.Retry.RetryResult.CancelOption, null);
 }
 
 /// <summary>

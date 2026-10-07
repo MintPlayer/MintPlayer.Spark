@@ -780,10 +780,10 @@ public partial class SparkClient : IDisposable
                 "ContinueAsync needs a result that is asking a question. Check IsRetry first — a completed "
                 + "action has nothing to continue.");
 
-        if (result.Retry.Options.Length > 0 && !result.Retry.Options.Contains(option, StringComparer.Ordinal))
+        if (result.Retry.Options.Length > 0 && !result.Retry.AcceptedOptions.Contains(option, StringComparer.Ordinal))
             throw new ArgumentException(
                 $"\"{option}\" is not one of the options offered for step {result.Retry.Step} "
-                + $"(\"{result.Retry.Title}\"): {string.Join(" / ", result.Retry.Options)}.", nameof(option));
+                + $"(\"{result.Retry.Title}\"): {string.Join(" / ", result.Retry.AcceptedOptions)}.", nameof(option));
 
         if (result.Answers.Count >= MaxRetryDepth)
             throw new SparkClientException((HttpStatusCode)449, null,
@@ -914,12 +914,12 @@ public partial class SparkClient : IDisposable
             // an option it never offered from one a hook stopped offering between attempts: both
             // simply fail to match, and the hook then runs its else-branch as if the user had chosen
             // something. A typo in a test would silently assert the wrong path.
-            if (prompt.Options.Length > 0 && !prompt.Options.Contains(answer.Option, StringComparer.Ordinal))
+            if (prompt.Options.Length > 0 && !prompt.AcceptedOptions.Contains(answer.Option, StringComparer.Ordinal))
                 throw new ArgumentException(
                     $"\"{answer.Option}\" is not one of the options offered for step {prompt.Step} " +
-                    $"(\"{prompt.Title}\"): {string.Join(" / ", prompt.Options)}.", nameof(onRetry));
+                    $"(\"{prompt.Title}\"): {string.Join(" / ", prompt.AcceptedOptions)}.", nameof(onRetry));
 
-            answers.Add(new { step = prompt.Step, option = answer.Option, persistentObject = answer.PersistentObject });
+            answers.Add(new { step = prompt.Step, option = answer.Option, persistentObject = answer.PersistentObject, value = answer.Value });
             body["retryResults"] = answers.ToArray();
         }
     }

@@ -83,13 +83,15 @@ public class GenerateIndexGenerator : IncrementalGenerator
         // generator has no DI, so CultureLoader -- the singleton that reads this file at runtime -- is out of
         // reach; the file has to arrive as an AdditionalFiles item. Absent means the single default language,
         // matching what CultureLoader itself falls back to.
+        var appDataDirProvider = context.AnalyzerConfigOptionsProvider
+            .Select(static (options, _) => SparkAppDataDir.Read(options.GlobalOptions));
+
         var languagesProvider = context.AdditionalTextsProvider
-            // Separator-agnostic on purpose: paths arrive with backslashes from a csproj glob and with forward
-            // slashes from tests.
             .Where(static text =>
-                Path.GetFileName(text.Path).Equals("culture.json", System.StringComparison.OrdinalIgnoreCase)
-                && text.Path.IndexOf("App_Data", System.StringComparison.OrdinalIgnoreCase) >= 0)
-            .Select(static (text, ct) => CultureJsonReader.ReadLanguages(text.GetText(ct)?.ToString()))
+                Path.GetFileName(text.Path).Equals("culture.json", System.StringComparison.OrdinalIgnoreCase))
+            .Combine(appDataDirProvider)
+            .Where(static p => SparkAppDataDir.Contains(p.Left.Path, p.Right))
+            .Select(static (p, ct) => CultureJsonReader.ReadLanguages(p.Left.GetText(ct)?.ToString()))
             .Collect()
             .Select(static (perFile, ct) => perFile.Length > 0
                 ? perFile[0]

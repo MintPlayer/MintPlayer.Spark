@@ -65,7 +65,7 @@ public class SyncActionAuthorizationTests
         _modelLoader.GetEntityType(CarTypeId).Returns(definition);
         _modelLoader.GetEntityTypes().Returns([definition]);
 
-        _entityMapper.GetPersistentObject(CarTypeId).Returns(_ => new PersistentObject
+        _entityMapper.AsSystem().GetPersistentObject(CarTypeId).Returns(_ => new PersistentObject
         {
             Name = "Car",
             ObjectTypeId = CarTypeId,

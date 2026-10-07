@@ -41,7 +41,9 @@ export const routes: Routes = [
         withExternalLogin(githubProvider()),
         withAccount({ exclude: ['changePassword', 'twoFactorSetup'] }),
       ),
-      // The passkey page lived at /passkeys before it moved under the account area.
+      // The passkey page lived at /passkeys before it moved under the account area. It goes through
+      // account/passkeys rather than straight to the generic page (/po/passkeys/me) on purpose: that
+      // path runs the sign-in guard first, so a signed-out visitor is asked to sign in, not shown a 404.
       { path: 'passkeys', redirectTo: 'account/passkeys', pathMatch: 'full' },
       // poDetail override: the generic detail page plus the app panels that
       // can't be expressed as attribute renderers (badge, trend chart, CI

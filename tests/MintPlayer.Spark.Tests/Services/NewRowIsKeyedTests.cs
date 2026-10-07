@@ -69,7 +69,7 @@ public class NewRowIsKeyedTests
     {
         var mapper = Mapper();
 
-        var po = mapper.GetPersistentObject(VisitTypeId);
+        var po = mapper.AsSystem().GetPersistentObject(VisitTypeId);
 
         // Not a bug to fix here — this is the honest behaviour of a model-only scaffold, and it is
         // the reason New.cs must go on to construct the entity. If this ever starts returning a key,
@@ -82,7 +82,7 @@ public class NewRowIsKeyedTests
     public void Constructing_the_entity_is_what_mints_the_key()
     {
         var mapper = Mapper();
-        var po = mapper.GetPersistentObject(VisitTypeId);
+        var po = mapper.AsSystem().GetPersistentObject(VisitTypeId);
 
         mapper.PopulateAttributeValues(po, Activator.CreateInstance(typeof(Visit))!);
 
@@ -95,10 +95,10 @@ public class NewRowIsKeyedTests
     {
         var mapper = Mapper();
 
-        var first = mapper.GetPersistentObject(VisitTypeId);
+        var first = mapper.AsSystem().GetPersistentObject(VisitTypeId);
         mapper.PopulateAttributeValues(first, Activator.CreateInstance(typeof(Visit))!);
 
-        var second = mapper.GetPersistentObject(VisitTypeId);
+        var second = mapper.AsSystem().GetPersistentObject(VisitTypeId);
         mapper.PopulateAttributeValues(second, Activator.CreateInstance(typeof(Visit))!);
 
         // Adding two rows before saving is ordinary. If they shared a key the save would merge them
@@ -110,7 +110,7 @@ public class NewRowIsKeyedTests
     public void Property_initializers_become_the_row_s_defaults()
     {
         var mapper = Mapper();
-        var po = mapper.GetPersistentObject(VisitTypeId);
+        var po = mapper.AsSystem().GetPersistentObject(VisitTypeId);
 
         mapper.PopulateAttributeValues(po, Activator.CreateInstance(typeof(Visit))!);
 

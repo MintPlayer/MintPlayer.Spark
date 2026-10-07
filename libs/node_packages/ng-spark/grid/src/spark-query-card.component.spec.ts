@@ -9,6 +9,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { By } from '@angular/platform-browser';
 import { SparkQueryCardComponent } from './spark-query-card.component';
 import { SparkSearchBoxComponent } from './spark-search-box.component';
+import { BsPriorityNavComponent } from '@mintplayer/ng-bootstrap/priority-nav';
 import {
   SparkQueryActionsDirective,
   SparkQueryCaptionDirective,
@@ -118,6 +119,27 @@ describe('SparkQueryCardComponent', () => {
 
       const label = fixture.nativeElement.querySelector('bs-priority-nav .priority-nav-more-label');
       expect(label?.textContent?.trim()).toBe('common.more');
+    });
+
+    it('closes the "More" overflow once one of its actions is chosen', async () => {
+      // At phone width every action lives in the overflow, and it stayed open after each one ran.
+      const { fixture } = await bare([exportAction]);
+      const nav = fixture.debugElement.query(By.directive(BsPriorityNavComponent)).componentInstance as BsPriorityNavComponent;
+      nav.isMoreOpen.set(true);
+
+      (fixture.nativeElement.querySelector('.priority-nav-overflow button[data-action]') as HTMLElement).click();
+
+      expect(nav.isMoreOpen()).toBe(false);
+    });
+
+    it('wraps its header below sm, so caption, "More" and search are never clipped by the card', async () => {
+      // jsdom does no layout, so this pins the rule rather than the geometry; the 320–375 px
+      // geometry was measured in the browser (search right edge 335 vs card 324 before).
+      const { fixture } = await bare([exportAction]);
+      const header = fixture.nativeElement.querySelector('bs-card-header .spark-query-card-header') as HTMLElement;
+      expect(header).not.toBeNull();
+      const css = Array.from(document.querySelectorAll('style')).map(s => s.textContent ?? '').join('\n');
+      expect(css).toMatch(/@media\s*\(max-width:\s*575\.98px\)\s*\{[^}]*\.spark-query-card-header[^{]*\{\s*flex-wrap:\s*wrap/);
     });
 
     it('renders the header action buttons with square corners', async () => {

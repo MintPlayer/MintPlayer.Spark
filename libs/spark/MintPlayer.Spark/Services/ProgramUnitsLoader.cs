@@ -9,12 +9,20 @@ public interface IProgramUnitsLoader
     ProgramUnitsConfiguration GetProgramUnits();
 }
 
+/// <summary>
+/// The menu: the libraries' <c>programUnits.json</c> layers with the application's on top
+/// (<see cref="SparkProgramUnitsFiles"/>, composition D3), names resolved against the translations.
+/// Reloaded when the application's file changes and when the translations do, through the one watcher
+/// policy (<see cref="AppLayerSnapshot{T}"/>, D8); a reload that does not compose keeps the previous menu.
+/// </summary>
 [Register(typeof(IProgramUnitsLoader), ServiceLifetime.Singleton)]
-internal partial class ProgramUnitsLoader : IProgramUnitsLoader
+internal partial class ProgramUnitsLoader : IProgramUnitsLoader, IDisposable
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
+    [Inject] private readonly ILogger<ProgramUnitsLoader> logger;
 
-    private Lazy<ProgramUnitsConfiguration>? _programUnits;
+    private AppLayerSnapshot<ProgramUnitsConfiguration>? layer;
 
     // The canonical unit types. The loader is the single place that tolerates case — everything
     // above it (the endpoint's rights-per-type switch, the client's router-link mapping) compares
@@ -24,14 +32,32 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
     internal const string TypePersistentObject = "persistentObject";
     internal const string TypeUrl = "url";
 
+    private AppLayerSnapshot<ProgramUnitsConfiguration> Layer
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            SparkProgramUnitsFiles.AppLayerName,
+            Path.GetDirectoryName(SparkProgramUnitsFiles.PathFor(hostEnvironment.ContentRootPath)),
+            ["programUnits.json"],
+            LoadProgramUnits,
+            logger,
+            labels: translationsLoader));
+
     private ProgramUnitsConfiguration LoadProgramUnits()
     {
-        var filePath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "programUnits.json");
+        var filePath = SparkProgramUnitsFiles.PathFor(hostEnvironment.ContentRootPath);
 
         // Fail-soft on absence only: an app without a menu is a valid app. A file that exists but
         // cannot be parsed or validated throws instead — the silent alternative is an empty menu
         // that reads exactly like a rights problem.
-        if (!File.Exists(filePath))
+        string? composed;
+        try
+        {
+            composed = SparkProgramUnitsFiles.Compose(File.Exists(filePath) ? File.ReadAllText(filePath) : null);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new SparkProgramUnitsConfigurationException(ex.Message, ex);
+        }
+        if (composed is null)
             return new ProgramUnitsConfiguration();
 
         var jsonOptions = new JsonSerializerOptions
@@ -42,21 +68,20 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
         ProgramUnitsConfiguration config;
         try
         {
-            var json = File.ReadAllText(filePath);
-            config = JsonSerializer.Deserialize<ProgramUnitsConfiguration>(json, jsonOptions)
+            config = JsonSerializer.Deserialize<ProgramUnitsConfiguration>(composed, jsonOptions)
                 ?? new ProgramUnitsConfiguration();
         }
         catch (JsonException ex)
         {
             throw new SparkProgramUnitsConfigurationException(
-                $"App_Data/programUnits.json is not valid JSON: {ex.Message}", ex);
+                $"{SparkProgramUnitsFiles.AppLayerName} is not valid JSON: {ex.Message}", ex);
         }
 
         Validate(config);
         return config;
     }
 
-    private static void Validate(ProgramUnitsConfiguration config)
+    private void Validate(ProgramUnitsConfiguration config)
     {
         foreach (var group in config.ProgramUnitGroups)
         {
@@ -94,21 +119,20 @@ internal partial class ProgramUnitsLoader : IProgramUnitsLoader
     /// A menu entry's <c>name</c> is a <c>translations.json</c> key (#467, D1), e.g.
     /// <c>"programUnits.cars"</c>; its last segment, humanized, is shown when no layer translates it.
     /// </summary>
-    private static TranslatedString ResolveName(TranslatedString? name, string owner)
+    private TranslatedString ResolveName(TranslatedString? name, string owner)
     {
         if (name?.Key is not { Length: > 0 } key)
             throw new SparkProgramUnitsConfigurationException(name is { Translations.Count: > 0 }
                 ? $"{owner} embeds translated text in its 'name' (\"{name.GetDefaultValue()}\"). " +
                   "Move it into translations.json and set 'name' to that key, e.g. \"programUnits.cars\"."
                 : $"{owner} has no 'name'. Set it to a translations.json key, e.g. \"programUnits.cars\".");
-        return SparkText.Resolve(name, key, key)!;
+        return SparkText.Resolve(translationsLoader.GetAll(), name, key, key)!;
     }
 
-    public ProgramUnitsConfiguration GetProgramUnits()
-    {
-        _programUnits ??= new Lazy<ProgramUnitsConfiguration>(LoadProgramUnits);
-        return _programUnits.Value;
-    }
+    public ProgramUnitsConfiguration GetProgramUnits() => Layer.Current;
+
+    [NoInterfaceMember]
+    public void Dispose() => layer?.Dispose();
 }
 
 /// <summary>

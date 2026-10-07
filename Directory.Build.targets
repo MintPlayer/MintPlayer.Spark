@@ -1,4 +1,103 @@
 <Project>
+	<!--
+	  Spark's app-level props/targets imported once, repo-wide, for applications only.
+	  Here and not in Directory.Build.props: OutputType (from the csproj body or the Web SDK) and
+	  IsTestProject (Microsoft.NET.Test.Sdk) are not known yet when Directory.Build.props is read, and
+	  an opt-out written in the csproj body would be invisible there too. spark.props and
+	  spark-authorization.props only set defaults-when-empty, so importing them after the body is
+	  equivalent as long as no csproj body READS those properties at evaluation time.
+	  Opt-out: <SparkApplication>false</SparkApplication> in the csproj.
+	-->
+	<PropertyGroup>
+		<SparkApplication Condition="'$(SparkApplication)' == '' And '$(OutputType)' == 'Exe' And '$(IsTestProject)' != 'true'">true</SparkApplication>
+	</PropertyGroup>
+	<Import Project="$(MSBuildThisFileDirectory)libs\spark\MintPlayer.Spark\Targets\spark.props" Condition="'$(SparkApplication)' == 'true'" />
+	<Import Project="$(MSBuildThisFileDirectory)libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" Condition="'$(SparkApplication)' == 'true'" />
+	<Import Project="$(MSBuildThisFileDirectory)libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.targets" Condition="'$(SparkApplication)' == 'true'" />
+	<Import Project="$(MSBuildThisFileDirectory)libs\spark\MintPlayer.Spark\Targets\spark.targets" Condition="'$(SparkApplication)' == 'true'" />
+
+	<!--
+	  The library-layer items for every in-repo project (composition D1): what the generator package's
+	  build/ targets do for a project that references it from NuGet. The file guards itself: only a class
+	  library that has App_Data layer files gets items, and the generator embeds them only when the
+	  project references it.
+	-->
+	<Import Project="$(MSBuildThisFileDirectory)libs\source_generators\MintPlayer.Spark.SourceGenerators\build\MintPlayer.Spark.SourceGenerators.targets" Condition="'$(_SparkLibraryLayersImported)' != 'true'" />
+
+	<!--
+	  A LIBRARY's targets must only act when the app actually references that library, directly or
+	  transitively, by project or by package. That is unknowable at evaluation time, but the resolved
+	  ReferencePath knows it once references are resolved, and every spark-authorization target runs
+	  later (BeforeTargets=Build/CoreCompile) and re-reads $(EnableSparkAuthSpa) when it is scheduled.
+	  Without this gate DemoApp (no Authorization reference) got SPARK030 and a generated
+	  ClientApp/src/spark-auth.setup.ts (measured in spike S4).
+	-->
+	<Target Name="_SparkGateAuthorizationTargets" AfterTargets="ResolveAssemblyReferences" Condition="'$(SparkApplication)' == 'true'">
+		<PropertyGroup Condition="'@(ReferencePath->WithMetadataValue('Filename', 'MintPlayer.Spark.Authorization'))' == ''">
+			<EnableSparkAuthSpa>false</EnableSparkAuthSpa>
+		</PropertyGroup>
+	</Target>
+
+	<!--
+	  A generator package packs the dll this build wrote, never a fixed bin path.
+
+	  MintPlayer.SourceGenerators.Tools' build props pack
+	  `$(MSBuildProjectDirectory)\bin\$(Configuration)\netstandard2.0\$(AssemblyName).dll` into
+	  analyzers/dotnet/roslyn5.9/cs. A build whose output goes elsewhere (`dotnet pack -artifacts-path`,
+	  a custom OutputPath) then packs whatever an earlier build left in bin/, or fails when nothing is
+	  there. Measured 2026-10-07 by `npm run test:layer-transport`: the packed
+	  MintPlayer.Spark.SourceGenerators.dll was byte-identical to a bin/Release build of 2026-10-05,
+	  from before ApplicationLayersGenerator existed, so the package-consuming app recorded no
+	  [assembly: SparkLayerAssemblies] and lost core MintPlayer.Spark's actions and translations
+	  (composition PRD §9, "Layer transport over packages").
+	-->
+	<ItemGroup Condition="'$(IsRoslynComponent)' == 'true' And '$(PkgMintPlayer_SourceGenerators_Tools)' != '' And '$(IncludeBuildOutput)' == 'false'">
+		<None Remove="$(MSBuildProjectDirectory)\bin\$(Configuration)\netstandard2.0\$(AssemblyName).dll" />
+	</ItemGroup>
+	<PropertyGroup Condition="'$(IsRoslynComponent)' == 'true' And '$(PkgMintPlayer_SourceGenerators_Tools)' != '' And '$(IncludeBuildOutput)' == 'false'">
+		<TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);SparkPackBuiltGenerator</TargetsForTfmSpecificContentInPackage>
+	</PropertyGroup>
+	<Target Name="SparkPackBuiltGenerator">
+		<ItemGroup>
+			<TfmSpecificPackageFile Include="$(TargetPath)" PackagePath="analyzers/dotnet/roslyn5.9/cs" />
+		</ItemGroup>
+	</Target>
+
+	<!--
+	  The same for a package that ships another project's generator (AllFeatures, Contributions): mark
+	  the analyzer ProjectReference with SparkPackAnalyzer="true" and the dll that reference resolved to
+	  is packed into analyzers/dotnet/cs. Only the referenced project's own dll: a generator built
+	  against MintPlayer.SourceGenerators.Tools also returns Tools' dll from GetTargetPath.
+	-->
+	<PropertyGroup>
+		<TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);SparkPackReferencedAnalyzers</TargetsForTfmSpecificContentInPackage>
+	</PropertyGroup>
+	<Target Name="SparkPackReferencedAnalyzers"
+	        DependsOnTargets="ResolveProjectReferences"
+	        Condition="'@(ProjectReference->WithMetadataValue('SparkPackAnalyzer', 'true'))' != ''">
+		<ItemGroup>
+			<_SparkPackCandidate Include="@(Analyzer->WithMetadataValue('SparkPackAnalyzer', 'true'))" />
+			<_SparkPackedAnalyzer Include="@(_SparkPackCandidate)"
+			                      Condition="'%(Filename)' == '$([System.IO.Path]::GetFileNameWithoutExtension(%(OriginalItemSpec)))'" />
+			<TfmSpecificPackageFile Include="@(_SparkPackedAnalyzer)" PackagePath="analyzers/dotnet/cs" />
+		</ItemGroup>
+		<Error Code="SPARKPACK001"
+		       Condition="'@(_SparkPackedAnalyzer)' == ''"
+		       Text="$(MSBuildProjectName) marks an analyzer ProjectReference SparkPackAnalyzer=&quot;true&quot;, but no generator dll resolved from it, so the package would ship without its generator." />
+	</Target>
+
+	<!--
+	  An Nx project.json is workspace metadata, never build output. The Web SDK turns every *.json in
+	  a project folder into publish Content, so a Web SDK library with its own project.json
+	  (MintPlayer.Spark.Abstractions, added for its Nx inputs) collided with the app's in
+	  `dotnet publish`: NETSDK1152 "Found multiple publish output files with the same relative path:
+	  .../MintPlayer.Spark.Abstractions/project.json, .../CodeCoverage/project.json" (CodeCoverage image
+	  build, PR #491, 2026-10-07).
+	-->
+	<ItemGroup>
+		<Content Remove="project.json" />
+	</ItemGroup>
+
 	<!-- Suppress launchSettings.json generation for Web SDK class libraries -->
 	<PropertyGroup Condition="'$(OutputType)' == 'Library'">
 		<NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
@@ -117,6 +216,17 @@
 	<PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
 		<WarningsAsErrors>$(WarningsAsErrors);RS0030</WarningsAsErrors>
 	</PropertyGroup>
+
+	<!--
+	  No test process consults the machine's proxy. With Windows' WPAD auto-detection on, the first
+	  HttpClient request to a host name in a process waited 1-10+ s for proxy discovery (measured
+	  2026-10-07; 33 ms with the proxy off), and a 10 s test bound failed on an idle machine. The
+	  linked module initializer sets HttpClient.DefaultProxy to no proxy before any test runs.
+	  Details: tests/Shared/NoSystemProxy.cs and docs/test-suite-performance-PRD.md §3, "No proxy in test processes".
+	-->
+	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+		<Compile Include="$(MSBuildThisFileDirectory)tests\Shared\NoSystemProxy.cs" Link="_Shared\NoSystemProxy.cs" />
+	</ItemGroup>
 	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
 		<PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4">
 			<PrivateAssets>all</PrivateAssets>

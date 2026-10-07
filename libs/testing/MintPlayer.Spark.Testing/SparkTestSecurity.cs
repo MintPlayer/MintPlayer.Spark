@@ -70,8 +70,8 @@ public sealed class SparkTestSecurity
     {
         foreach (var resource in resources)
         {
-            _rights.Add(new Right { Id = DeriveId("grant:" + resource), Resource = resource, GroupId = AnonymousGroupId });
-            _rights.Add(new Right { Id = DeriveId("grantauth:" + resource), Resource = resource, GroupId = AuthenticatedGroupId });
+            _rights.Add(new Right { Key = DeriveId("grant:" + resource).ToString(), Resource = resource, GroupId = AnonymousGroupId });
+            _rights.Add(new Right { Key = DeriveId("grantauth:" + resource).ToString(), Resource = resource, GroupId = AuthenticatedGroupId });
         }
 
         return this;
@@ -82,8 +82,8 @@ public sealed class SparkTestSecurity
     {
         foreach (var resource in resources)
         {
-            _rights.Add(new Right { Id = DeriveId("deny:" + resource), Resource = resource, GroupId = AnonymousGroupId, IsDenied = true });
-            _rights.Add(new Right { Id = DeriveId("denyauth:" + resource), Resource = resource, GroupId = AuthenticatedGroupId, IsDenied = true });
+            _rights.Add(new Right { Key = DeriveId("deny:" + resource).ToString(), Resource = resource, GroupId = AnonymousGroupId, IsDenied = true });
+            _rights.Add(new Right { Key = DeriveId("denyauth:" + resource).ToString(), Resource = resource, GroupId = AuthenticatedGroupId, IsDenied = true });
         }
 
         return this;
@@ -132,7 +132,7 @@ public sealed class SparkTestSecurity
         {
             Rights = _rights
                 .Where(r => r.IsDenied && r.GroupId == AnonymousGroupId)
-                .Select(r => new Right { Id = r.Id, Resource = r.Resource, GroupId = AnonymousGroupId })
+                .Select(r => new Right { Key = r.Key, Resource = r.Resource, GroupId = AnonymousGroupId })
                 .ToList(),
         };
 
@@ -149,8 +149,8 @@ public sealed class SparkTestSecurity
 
         foreach (var target in _withoutTargets.OrderBy(t => t, StringComparer.Ordinal))
         {
-            rights.Add(new Right { Id = DeriveId("without:" + target), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AnonymousGroupId, IsDenied = true });
-            rights.Add(new Right { Id = DeriveId("withoutauth:" + target), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AuthenticatedGroupId, IsDenied = true });
+            rights.Add(new Right { Key = DeriveId("without:" + target).ToString(), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AnonymousGroupId, IsDenied = true });
+            rights.Add(new Right { Key = DeriveId("withoutauth:" + target).ToString(), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AuthenticatedGroupId, IsDenied = true });
         }
 
         var config = new SecurityConfiguration
@@ -167,9 +167,31 @@ public sealed class SparkTestSecurity
                 [AuthenticatedGroupId.ToString()] = "Signed-in users",
             },
             Rights = rights,
+            Libraries = LibraryRightsOff(),
         };
 
         return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    /// <summary>
+    /// <c>"libraries": { alias: false }</c> for every library in the process that ships rights
+    /// (composition D4, M9), or <see langword="null"/> when none does.
+    /// </summary>
+    /// <remarks>
+    /// A builder file states the fixture's rights exactly, so the libraries' grants are switched off,
+    /// as the test host already gets no library <c>moderation.json</c> defaults. Without this, a
+    /// library granting to its own slot (<c>moderation:moderators</c>) would refuse every host in a
+    /// test process that merely references it, since a builder file binds no slot. A hand-written
+    /// file (<see cref="FromJson"/>) states its own <c>libraries</c> or <c>bindings</c>; it can use
+    /// this for the former.
+    /// </remarks>
+    public static Dictionary<string, bool>? LibraryRightsOff()
+    {
+        var aliases = SparkLayerCatalog.Libraries
+            .Where(l => l.Layers.Any(x => x.Kind == "security"))
+            .Select(l => l.Alias)
+            .ToList();
+        return aliases.Count == 0 ? null : aliases.ToDictionary(a => a, _ => false, StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -240,7 +262,7 @@ public static class SparkTestSecurityFile
     /// <summary>Writes <paramref name="security"/> (permissive by default) into <paramref name="contentRootPath"/>.</summary>
     public static void Write(string contentRootPath, SparkTestSecurity? security = null)
     {
-        var path = Path.Combine(contentRootPath, "App_Data", "security.json");
+        var path = SparkAppData.Path(contentRootPath, "security.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, (security ?? SparkTestSecurity.Permissive).Build());
     }

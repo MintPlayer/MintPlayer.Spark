@@ -131,66 +131,22 @@ public class SourceGeneratorSnapshots
     }
 
     [Fact]
-    public Task LibraryTranslationsGenerator_emits_assembly_attribute_for_two_keys()
+    public Task LibraryLayersGenerator_emits_one_attribute_per_layer_file()
     {
-        const string translations = """
-            {
-              "greeting": { "en": "Hello", "nl": "Hallo" },
-              "farewell": { "en": "Bye", "nl": "Tot ziens" }
-            }
-            """;
+        const string actions = """{ "Edit": { "icon": "pen" } }""";
+        const string translations = """{ "greeting": { "en": "Hello" } }""";
 
         var result = GeneratorHarness.Run(
-            "LibraryTranslationsGenerator",
+            "LibraryLayersGenerator",
             sources: [],
-            rootNamespace: "TestApp",
-            additionalTexts: [("translations.json", translations)]);
-
-        return Verifier.Verify(Render(result));
-    }
-
-    /// <summary>
-    /// Pin the host-side aggregator: it walks referenced assemblies' [SparkTranslations]
-    /// attributes, reassembles chunked JSON payloads, merges them with the host's own
-    /// translations.json (host wins on conflict), and emits the merged dictionary. The
-    /// generator only fires for ConsoleApplication/WindowsApplication output, so we
-    /// build the test compilation as a console app and inject a synthetic referenced
-    /// library carrying two [SparkTranslations] attributes (chunked) plus a host-side
-    /// translations.json that overrides one key.
-    /// </summary>
-    [Fact]
-    public Task HostTranslationsAggregatorGenerator_aggregates_chunks_and_host_overrides_a_key()
-    {
-        // Synthetic referenced library with chunked [SparkTranslations]. Two chunks, each a
-        // standalone JSON object — the generator concatenates members on reassembly.
-        const string libSource = """
-            using MintPlayer.Spark.Abstractions;
-            [assembly: SparkTranslations(0, 2, "{\"greeting\":{\"en\":\"Hello\",\"nl\":\"Hallo\"}}")]
-            [assembly: SparkTranslations(1, 2, "{\"shared\":{\"en\":\"FromLib\",\"nl\":\"VanLib\"}}")]
-            """;
-
-        var libRef = GeneratorHarness.CompileToMetadataReference(
-            assemblyName: "FixtureLib",
-            sources: [libSource],
-            referenceTypes: [typeof(SparkTranslationsAttribute)]);
-
-        // The host overrides only "shared"/en: composition is per (key, language) (#467, D2), so the
-        // library's nl survives, and an app override is never reported as a conflict (D3).
-        const string hostTranslations = """
+            rootNamespace: "TestLib",
+            additionalTexts: [("App_Data/translations.json", translations), ("App_Data/actions.json", actions)],
+            globalOptions: new Dictionary<string, string> { ["build_property.SparkLibraryAlias"] = "spark" },
+            additionalTextOptions: new Dictionary<string, IReadOnlyDictionary<string, string>>
             {
-              "shared": { "en": "FromHost" },
-              "farewell": { "en": "Bye", "nl": "Tot ziens" }
-            }
-            """;
-
-        var result = GeneratorHarness.Run(
-            "HostTranslationsAggregatorGenerator",
-            sources: [],
-            referenceTypes: [typeof(SparkTranslationsAttribute)],
-            rootNamespace: "TestApp",
-            additionalTexts: [("translations.json", hostTranslations)],
-            outputKind: OutputKind.ConsoleApplication,
-            additionalReferences: [libRef]);
+                ["App_Data/translations.json"] = new Dictionary<string, string> { ["build_metadata.AdditionalFiles.SparkLayerPath"] = "translations.json" },
+                ["App_Data/actions.json"] = new Dictionary<string, string> { ["build_metadata.AdditionalFiles.SparkLayerPath"] = "actions.json" },
+            });
 
         return Verifier.Verify(Render(result));
     }

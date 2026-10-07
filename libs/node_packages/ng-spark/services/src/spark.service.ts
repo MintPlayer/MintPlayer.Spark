@@ -1,8 +1,8 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
-import { ClientOperationEnvelope, RetryOperation, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
+import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult, SPARK_RETRY_CANCEL } from '@mintplayer/ng-spark/models';
+import { ClientOperationEnvelope, RetryOperation, SparkClientMethodRegistry, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
@@ -98,6 +98,7 @@ export class SparkService {
    */
   private static readonly MAX_RETRY_DEPTH = 16;
   private readonly dispatcher = inject(SparkClientOperationDispatcher);
+  private readonly clientMethods = inject(SparkClientMethodRegistry);
 
   // Entity Types
   async getEntityTypes(): Promise<EntityType[]> {
@@ -518,6 +519,18 @@ export class SparkService {
         `Retry.Result first will do this — it re-raises on every resubmission.`);
     }
 
+    // A client-method step (`IRetryAccessor.Invoke`): no modal, the registered method answers. Any
+    // failure, an unknown name included, is sent to the server as Cancel rather than thrown, because
+    // the server action decides what a cancelled browser step means (PRD D7, Q9).
+    if (retryOp.clientMethod) {
+      const outcome = await this.clientMethods.invoke(retryOp.clientMethod, retryOp.arguments);
+      const answer: RetryActionResult = outcome.ok
+        ? { step: retryOp.step, option: 'OK', value: outcome.value }
+        : { step: retryOp.step, option: SPARK_RETRY_CANCEL };
+      body.retryResults = [...(body.retryResults || []), answer];
+      return retryFn();
+    }
+
     const payload: RetryActionPayload = {
       type: 'retry-action',
       step: retryOp.step,
@@ -526,9 +539,12 @@ export class SparkService {
       defaultOption: retryOp.defaultOption ?? undefined,
       persistentObject: retryOp.persistentObject ?? undefined,
       message: retryOp.message ?? undefined,
+      cancellable: retryOp.cancellable === true,
     };
     const result = await this.retryActionService.show(payload);
-    if (result.option === 'Cancel' && !payload.options.includes('Cancel')) throw error;
+    // A dismissal of a prompt that did not ask for a Cancel abandons the request: the server never
+    // offered one, so it is not told of one. Whether it did is the flag, never an option's label.
+    if (result.option === SPARK_RETRY_CANCEL && !payload.cancellable) throw error;
 
     body.retryResults = [...(body.retryResults || []), result];
     return retryFn();

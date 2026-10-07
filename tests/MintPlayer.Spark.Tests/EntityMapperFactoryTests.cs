@@ -80,7 +80,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void GetPersistentObject_ByName_CopiesAllMetadataFieldsWithValuesNull()
     {
-        var po = _mapper.GetPersistentObject("Car");
+        var po = _mapper.AsSystem().GetPersistentObject("Car");
 
         po.Name.Should().Be("Car");
         po.ObjectTypeId.Should().Be(CarTypeId);
@@ -106,7 +106,7 @@ public class EntityMapperFactoryTests
     {
         _modelLoader.GetEntityTypeByName("Unknown").Returns((EntityTypeDefinition?)null);
 
-        var act = () => _mapper.GetPersistentObject("Unknown");
+        var act = () => _mapper.AsSystem().GetPersistentObject("Unknown");
 
         act.Should().Throw<KeyNotFoundException>().WithMessage("*Unknown*");
     }
@@ -116,8 +116,8 @@ public class EntityMapperFactoryTests
     [Fact]
     public void GetPersistentObject_ById_ReturnsEquivalentScaffold()
     {
-        var byName = _mapper.GetPersistentObject("Car");
-        var byId = _mapper.GetPersistentObject(CarTypeId);
+        var byName = _mapper.AsSystem().GetPersistentObject("Car");
+        var byId = _mapper.AsSystem().GetPersistentObject(CarTypeId);
 
         byId.Name.Should().Be(byName.Name);
         byId.ObjectTypeId.Should().Be(byName.ObjectTypeId);
@@ -130,7 +130,7 @@ public class EntityMapperFactoryTests
         var unknown = Guid.NewGuid();
         _modelLoader.GetEntityType(unknown).Returns((EntityTypeDefinition?)null);
 
-        var act = () => _mapper.GetPersistentObject(unknown);
+        var act = () => _mapper.AsSystem().GetPersistentObject(unknown);
 
         act.Should().Throw<KeyNotFoundException>().WithMessage($"*{unknown}*");
     }
@@ -140,7 +140,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void GetPersistentObject_Generic_ResolvesByClrType()
     {
-        var po = _mapper.GetPersistentObject<TestCar>();
+        var po = _mapper.AsSystem().GetPersistentObject<TestCar>();
 
         po.ObjectTypeId.Should().Be(CarTypeId);
         po.Attributes.Should().HaveCount(4);
@@ -149,7 +149,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void GetPersistentObject_Generic_Throws_WhenClrTypeNotRegistered()
     {
-        var act = () => _mapper.GetPersistentObject<UnrelatedClass>();
+        var act = () => _mapper.AsSystem().GetPersistentObject<UnrelatedClass>();
 
         act.Should().Throw<KeyNotFoundException>()
             .WithMessage($"*{typeof(UnrelatedClass).FullName}*");
@@ -160,7 +160,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_FillsValueOnMatchingProperties()
     {
-        var po = _mapper.GetPersistentObject("Car");
+        var po = _mapper.AsSystem().GetPersistentObject("Car");
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123", Status = TestCarStatus.Active };
 
         _mapper.PopulateAttributeValues(po, car);
@@ -172,7 +172,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_SetsId_and_copies_the_Breadcrumb_from_result_keeping_the_type_Name()
     {
-        var po = _mapper.GetPersistentObject("Car");
+        var po = _mapper.AsSystem().GetPersistentObject("Car");
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123" };
         var breadcrumbs = new BreadcrumbResult(new Dictionary<string, string> { ["cars/1"] = "ABC-123" });
 
@@ -188,7 +188,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_without_a_result_falls_back_to_the_type_name_for_the_Breadcrumb()
     {
-        var po = _mapper.GetPersistentObject("Car");
+        var po = _mapper.AsSystem().GetPersistentObject("Car");
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123" };
 
         _mapper.PopulateAttributeValues(po, car);
@@ -201,7 +201,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_SkipsAttributesWithDotNotation()
     {
-        var po = _mapper.GetPersistentObject("Car");
+        var po = _mapper.AsSystem().GetPersistentObject("Car");
         var car = new TestCar { LicensePlate = "ABC-123" };
 
         _mapper.PopulateAttributeValues(po, car);
@@ -214,7 +214,7 @@ public class EntityMapperFactoryTests
     {
         // Attribute "Color" exists on Car def; property exists on TestCar.
         // Confirms: matching properties DO get populated, non-matching fall through silently.
-        var po = _mapper.GetPersistentObject("Car");
+        var po = _mapper.AsSystem().GetPersistentObject("Car");
         var car = new TestCar { LicensePlate = "ABC-123" }; // Color not set → stays default (empty)
 
         _mapper.PopulateAttributeValues(po, car);
@@ -226,7 +226,7 @@ public class EntityMapperFactoryTests
     [Fact]
     public void PopulateAttributeValues_ConvertsColorToHex()
     {
-        var po = _mapper.GetPersistentObject("Car");
+        var po = _mapper.AsSystem().GetPersistentObject("Car");
         var car = new TestCar { LicensePlate = "ABC", Color = Color.FromArgb(0x12, 0x34, 0x56) };
 
         _mapper.PopulateAttributeValues(po, car);
@@ -241,7 +241,7 @@ public class EntityMapperFactoryTests
     {
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123", Status = TestCarStatus.Retired };
 
-        var po = _mapper.ToPersistentObject(car);
+        var po = _mapper.AsSystem().ToPersistentObject(car);
 
         po.ObjectTypeId.Should().Be(CarTypeId);
         po["LicensePlate"].Value.Should().Be("ABC-123");
@@ -253,8 +253,8 @@ public class EntityMapperFactoryTests
     {
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123" };
 
-        var viaGeneric = _mapper.ToPersistentObject(car);
-        var viaGuid = _mapper.ToPersistentObject(car, CarTypeId);
+        var viaGeneric = _mapper.AsSystem().ToPersistentObject(car);
+        var viaGuid = _mapper.AsSystem().ToPersistentObject(car, CarTypeId);
 
         viaGeneric.Id.Should().Be(viaGuid.Id);
         viaGeneric.Name.Should().Be(viaGuid.Name);

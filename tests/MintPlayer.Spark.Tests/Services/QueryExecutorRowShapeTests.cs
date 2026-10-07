@@ -73,12 +73,12 @@ public class QueryExecutorRowShapeTests : SparkTestDriver
     private void MapRowsByReflection(params string[] attributeNames)
     {
         _entityMapper
-            .ToPersistentObject(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult?>())
+            .ToPersistentObjectAsync(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 var row = call.ArgAt<object>(0);
                 var type = row.GetType();
-                return new PersistentObject
+                return Task.FromResult(new PersistentObject
                 {
                     Id = type.GetProperty("Id")?.GetValue(row)?.ToString(),
                     Name = TypeName,
@@ -90,7 +90,7 @@ public class QueryExecutorRowShapeTests : SparkTestDriver
                         DataType = "string",
                         Value = type.GetProperty(name)?.GetValue(row),
                     })],
-                };
+                });
             });
     }
 

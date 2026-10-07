@@ -72,6 +72,38 @@ wrong subsystem entirely.
 General form: **a loop that can exit before doing any work, whose failure path then interprets "no
 data" as evidence.**
 
+### No proxy in test processes: a machine setting behind a "flaky" timeout (2026-10-07)
+
+`DevWebSocketEndpointTests.A_developer_outside_the_allow_list_is_closed` failed in both full local
+sweeps of `feat/spark-composition-passkeys` and passed when run alone. It was first written off as
+load; that was wrong. Timing every step of the test (stopwatch laps on the client, a timing hook in
+the test's `IGitHubClientFactory`, WireMock's own arrival timestamp) put all of it in milliseconds
+except one gap: from Octokit's `User.Current()` to WireMock receiving `GET /api/v3/user`.
+
+| Probe (same process, same WireMock) | Time |
+|---|---|
+| `Dns.GetHostAddresses("localhost")` | 1.8 ms |
+| TCP connect to `::1` / `127.0.0.1` | 0.6 / 0.4 ms |
+| `HttpClient` GET `http://localhost:{port}/…`, default handler | 1.0, 1.1, 1.6, 2.6 s; once **> 9.9 s** (the failure, idle machine, first run after a build) |
+| the same with `UseProxy = false` | 33 ms |
+
+**Cause.** The machine has Windows' "Automatically detect settings" (WPAD) on, with no proxy server
+and no PAC URL (`HKCU\…\Internet Settings\Connections`, `DefaultConnectionSettings` flag `0x08`).
+.NET's default proxy then makes the **first** `HttpClient` request to a host **name** in each process
+wait for network proxy discovery; later requests use the cached "direct" answer. The wait depends on
+the network the machine is on, so the test passed or failed by environment, and never on Linux CI.
+
+**Fix.** `tests/Shared/NoSystemProxy.cs`, a `[ModuleInitializer]` setting
+`HttpClient.DefaultProxy = new WebProxy()`, is compiled into every `*.Tests` project by
+`Directory.Build.targets`. It must be process-wide, not per client: production code under test builds
+its own handlers (`GitHubInstallationService`'s shared Octokit adapter). `tests/Shared/**` and the
+`Directory.Build.*` files are in Nx `sharedGlobals`, so a change to them rebuilds every project rather
+than replaying a stale cache. After the fix the class passed 3 of 3 runs straight after a build; the
+~1 s left on whichever test runs first is WireMock start-up and first-use JIT, the same for any test.
+
+Not covered: browsers driven by Playwright resolve proxies themselves (Chromium reads the system
+settings); this initializer does not reach them, and nothing has been measured there.
+
 ## 4. The two drivers
 
 |  | `SparkTestDriver` | `SparkSharedDatabase` + `SparkSharedTestDriver` |
@@ -167,6 +199,11 @@ be recreated, but its parent *directory* can still be renamed, sidestepping the 
 ## 7. Rules that came out of this
 
 - **Bisect before theorising.** Stash and re-run is cheap and decisive.
+- **A failure that "only happens in the sweep" is a defect to locate, not load.** Time each step of
+  the test before naming a cause; the WPAD wait above looked exactly like contention and was not.
+- **A test may not depend on the machine's network configuration.** Every test process runs without
+  a system proxy (`tests/Shared/NoSystemProxy.cs`); keep it that way for new test projects (name
+  them `*.Tests` and `Directory.Build.targets` includes it).
 - **Failures in classes you did not touch are a clue about *scope*, not proof of contamination.**
   "Everything after a point, regardless of class" points at shared process state.
 - **Never write an unverified diagnosis into documentation**, and never attach a measured-sounding

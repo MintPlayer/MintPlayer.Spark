@@ -135,7 +135,7 @@ public class SecurityConfigurationValidatorTests
         var config = Config(
             groups: MigratedGroups(),
             wellKnown: Migrated(),
-            new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = "EditNewDelete/Person", IsDenied = true });
+            new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = "EditNewDelete/Person", IsDenied = true });
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
@@ -148,7 +148,7 @@ public class SecurityConfigurationValidatorTests
         var config = Config(
             groups: MigratedGroups(),
             wellKnown: Migrated(),
-            new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = "EditNewDelete/Person" });
+            new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = "EditNewDelete/Person" });
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
@@ -164,7 +164,7 @@ public class SecurityConfigurationValidatorTests
         var config = Config(
             groups: MigratedGroups(),
             wellKnown: Migrated(),
-            new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = resource });
+            new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = resource });
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
@@ -188,7 +188,7 @@ public class SecurityConfigurationValidatorTests
         var config = Config(
             groups: MigratedGroups(),
             wellKnown: Migrated(),
-            new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = resource, IsDenied = isDenied });
+            new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = resource, IsDenied = isDenied });
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 
@@ -197,20 +197,23 @@ public class SecurityConfigurationValidatorTests
     }
 
     [Fact]
-    public void A_duplicated_right_id_is_rejected()
+    public void A_duplicated_right_key_is_rejected()
     {
-        // Found in the HR demo. Nothing reads Right.Id today, so it is currently harmless — which is
-        // exactly why it should be caught before something does.
-        var id = Guid.Parse("b0000002-0000-0000-0000-000000000012");
-        var config = Config(
-            groups: MigratedGroups(),
-            wellKnown: Migrated(),
-            new Right { Id = id, GroupId = AdminsId, Resource = "ReadEditNew/Person" },
-            new Right { Id = id, GroupId = AdminsId, Resource = "Replicate/Companies" });
+        // Found in the HR demo as a duplicated id. The id became the key of the keyed set (composition
+        // D4), and the key is what a removal names, so one layer stating it twice is refused.
+        const string json = """
+            {
+              "groups": { "11111111-1111-1111-1111-111111111111": "Admins" },
+              "rights": [
+                { "key": "b0000002-0000-0000-0000-000000000012", "resource": "ReadEditNew/Person", "groupId": "11111111-1111-1111-1111-111111111111" },
+                { "key": "b0000002-0000-0000-0000-000000000012", "resource": "Replicate/Companies", "groupId": "11111111-1111-1111-1111-111111111111" }
+              ]
+            }
+            """;
 
-        var act = () => SecurityConfigurationValidator.Validate(config);
+        var act = () => SparkSecurityFiles.Compose(json, libraries: []);
 
-        act.Should().Throw<SparkSecurityConfigurationException>().WithMessage("*two rights with id*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*'b0000002-0000-0000-0000-000000000012' twice*");
     }
 
     [Fact]
@@ -219,7 +222,7 @@ public class SecurityConfigurationValidatorTests
         var config = Config(
             groups: new() { [AdminsId] = "Admins" },
             wellKnown: null,
-            new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = "QueryRead/Person" });
+            new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = "QueryRead/Person" });
 
         var act = () => SecurityConfigurationValidator.Validate(config);
 

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
@@ -45,7 +46,7 @@ public static class SparkSecurityInitExtensions
         if (!args.Contains(InitFlag))
             return false;
 
-        var path = Path.Combine(builder.Environment.ContentRootPath, SecurityConfigurationLoader.FilePath);
+        var path = SparkAppData.Path(builder.Environment.ContentRootPath, "security.json");
 
         // Never overwrite. A file that already exists is the application's authorization model, and
         // regenerating a starter over it would be the single most destructive thing this command
@@ -105,10 +106,18 @@ public static class SparkSecurityInitExtensions
             "the caller's group claims. Its display label is security.groups.<name>.label in",
             "translations.json.",
             "",
-            "A right looks like this:",
-            "  { \"id\": \"<new guid>\", \"resource\": \"QueryRead/Person\",",
+            "A right looks like this ('key' is its stable name, anything without ':'):",
+            "  { \"key\": \"<new guid>\", \"resource\": \"QueryRead/Person\",",
             "    \"groupId\": \"00000000-0000-0000-0000-000000000001\",",
-            "    \"isDenied\": false, \"isImportant\": false }"
+            "    \"isDenied\": false, \"isImportant\": false }",
+            "'groupId' may also be a token: @anonymous or @authenticated (resolved through wellKnown).",
+            "",
+            "LIBRARIES ship default rights too, keyed '<alias>:<key>' (authorization:passkeys-read).",
+            "--spark-synchronize-security writes every effective right to securityPosture.txt, with",
+            "the layer it came from. To drop one:      { \"key\": \"<alias>:<key>\", \"$remove\": true }",
+            "To drop all of a library's:               \"libraries\": { \"<alias>\": false }",
+            "A library grants to SLOTS you bind:       \"bindings\": { \"<alias>:<slot>\": [\"<group id or name>\"] }",
+            "An unbound slot refuses startup."
           ],
 
           "wellKnown": {

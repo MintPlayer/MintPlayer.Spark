@@ -17,6 +17,14 @@ namespace MintPlayer.Spark.SourceGenerators.Tests.Diagnostics;
 /// anything is packed, and the failure it guards is an omission in a csproj, which is exactly what
 /// it reads.
 /// </para>
+/// <para>
+/// How a component is packed changed on feat/spark-composition-passkeys (3f38c798). It used to be a
+/// <c>&lt;None Include="...\bin\$(Configuration)\...dll" PackagePath="analyzers/dotnet/cs"&gt;</c> item,
+/// and that fixed path packed a stale dll left from an earlier build into the generator package.
+/// Now the analyzer ProjectReference carries <c>SparkPackAnalyzer="true"</c>, and
+/// <c>SparkPackReferencedAnalyzers</c> in Directory.Build.targets packs the dll that reference
+/// resolved to (failing with SPARKPACK001 if none did). The tests below pin both halves.
+/// </para>
 /// </remarks>
 public class AnalyzerPackagingTests
 {
@@ -53,12 +61,34 @@ public class AnalyzerPackagingTests
 
         var packed = Regex.IsMatch(
             csproj,
-            $@"<None\s+Include=""[^""]*{Regex.Escape(assemblyName)}\.dll""[^>]*PackagePath=""analyzers/dotnet/cs""",
+            $@"<ProjectReference\s+Include=""[^""]*{Regex.Escape(assemblyName)}\.csproj""[^>]*OutputItemType=""Analyzer""[^>]*SparkPackAnalyzer=""true""",
             RegexOptions.Singleline);
 
         packed.Should().BeTrue(
-            $"'{assemblyName}.dll' must be packed into analyzers/dotnet/cs of MintPlayer.Spark.AllFeatures, " +
-            "or none of its generators, diagnostics or code fixes reach a NuGet consumer");
+            $"'{assemblyName}' must be an analyzer ProjectReference of MintPlayer.Spark.AllFeatures marked " +
+            "SparkPackAnalyzer=\"true\", so its built dll is packed into analyzers/dotnet/cs; otherwise none of " +
+            "its generators, diagnostics or code fixes reach a NuGet consumer");
+    }
+
+    /// <summary>
+    /// The other half of <see cref="Every_roslyn_component_is_packed_into_the_AllFeatures_package"/>:
+    /// the marker only works because Directory.Build.targets turns it into a package file at
+    /// analyzers/dotnet/cs, and refuses the pack when no dll resolved.
+    /// </summary>
+    [Fact]
+    public void The_pack_target_puts_marked_analyzers_into_analyzers_dotnet_cs()
+    {
+        var targets = File.ReadAllText(Path.Combine(RepoRoot, "Directory.Build.targets"));
+
+        targets.Should().Contain("SparkPackReferencedAnalyzers",
+            "the target that packs SparkPackAnalyzer references must exist");
+        Regex.IsMatch(
+                targets,
+                @"<TfmSpecificPackageFile\s+Include=""@\(_SparkPackedAnalyzer\)""\s+PackagePath=""analyzers/dotnet/cs""",
+                RegexOptions.Singleline)
+            .Should().BeTrue("the marked analyzers must be packed into analyzers/dotnet/cs, where NuGet loads analyzers from");
+        targets.Should().Contain("SPARKPACK001",
+            "a marked reference that resolves to no dll must fail the pack rather than ship a package without its generator");
     }
 
     /// <summary>

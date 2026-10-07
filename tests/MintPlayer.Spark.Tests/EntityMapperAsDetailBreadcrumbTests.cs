@@ -82,7 +82,7 @@ public class EntityMapperAsDetailBreadcrumbTests
             ["Artists/42"] = "Khalid",
         });
 
-        var po = _mapper.ToPersistentObject(RepoSong(), SongTypeId, breadcrumbs);
+        var po = _mapper.AsSystem().ToPersistentObject(RepoSong(), SongTypeId, breadcrumbs);
 
         var artists = po.Attributes.OfType<PersistentObjectAttributeAsDetail>().Single(a => a.Name == "Artists");
         var rows = artists.Objects!;
@@ -105,7 +105,7 @@ public class EntityMapperAsDetailBreadcrumbTests
             ["Artists/42"] = "Khalid",
         });
 
-        var po = _mapper.ToPersistentObject(RepoSong(), SongTypeId, breadcrumbs);
+        var po = _mapper.AsSystem().ToPersistentObject(RepoSong(), SongTypeId, breadcrumbs);
 
         var artists = po.Attributes.OfType<PersistentObjectAttributeAsDetail>().Single(a => a.Name == "Artists");
         var rowBreadcrumbs = artists.Objects!.Select(r => r.Breadcrumb).ToList();
@@ -212,7 +212,7 @@ public class EntityMapperKeyedAsDetailBreadcrumbTests
     [Fact]
     public void Keyed_embedded_row_renders_a_reference_template_not_the_clr_type_name()
     {
-        var po = MapperFor("{ArtistId}").ToPersistentObject(RepoAlbum(), AlbumTypeId, Resolved());
+        var po = MapperFor("{ArtistId}").AsSystem().ToPersistentObject(RepoAlbum(), AlbumTypeId, Resolved());
 
         // Before #384's fix this is ["KeyedCredit", "KeyedCredit"]: the row key makes po.Id
         // non-empty, the gate's IsNullOrEmpty(po.Id) term is false, and the renderer is skipped.
@@ -223,7 +223,7 @@ public class EntityMapperKeyedAsDetailBreadcrumbTests
     public void Keyed_embedded_row_renders_a_scalar_template()
     {
         // Not just reference resolution — a plain scalar token is skipped by the same gate.
-        var po = MapperFor("{Role}").ToPersistentObject(RepoAlbum(), AlbumTypeId, Resolved());
+        var po = MapperFor("{Role}").AsSystem().ToPersistentObject(RepoAlbum(), AlbumTypeId, Resolved());
 
         CreditBreadcrumbs(po).Should().Equal("Vocals", "Producer");
     }
@@ -232,7 +232,7 @@ public class EntityMapperKeyedAsDetailBreadcrumbTests
     public void The_row_key_is_still_carried_so_a_save_can_match_rows()
     {
         // Guards the fix against being "achieved" by reverting #382's key round-trip.
-        var po = MapperFor("{Role}").ToPersistentObject(RepoAlbum(), AlbumTypeId, Resolved());
+        var po = MapperFor("{Role}").AsSystem().ToPersistentObject(RepoAlbum(), AlbumTypeId, Resolved());
 
         po.Attributes.OfType<PersistentObjectAttributeAsDetail>().Single(a => a.Name == "Credits")
           .Objects!.Select(r => r.Id).Should().Equal("a1b2c3", "d4e5f6");
@@ -242,7 +242,7 @@ public class EntityMapperKeyedAsDetailBreadcrumbTests
     public void A_root_object_still_takes_its_breadcrumb_from_the_resolved_result()
     {
         // FR3 — the root's id IS in the map, so it must be read from there and never re-rendered.
-        var po = MapperFor("{Role}").ToPersistentObject(RepoAlbum(), AlbumTypeId, Resolved());
+        var po = MapperFor("{Role}").AsSystem().ToPersistentObject(RepoAlbum(), AlbumTypeId, Resolved());
 
         po.Breadcrumb.Should().Be("Everybody");
     }
@@ -258,7 +258,7 @@ public class EntityMapperKeyedAsDetailBreadcrumbTests
             ["Artists/42"] = "Khalid",
         });
 
-        var po = MapperFor("{ArtistId}").ToPersistentObject(RepoAlbum(), AlbumTypeId, redacted);
+        var po = MapperFor("{ArtistId}").AsSystem().ToPersistentObject(RepoAlbum(), AlbumTypeId, redacted);
 
         po.Breadcrumb.Should().Be("*****");
         // And the embedded rows resolve their reference tokens through the same map, so the

@@ -6,11 +6,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { By } from '@angular/platform-browser';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
-import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
+import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { SparkQueryRowAction, provideSparkQueryRowActions } from '@mintplayer/ng-spark/panels';
 import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 import { settle } from '../../src/test-utils';
@@ -423,6 +424,29 @@ describe('SparkQueryGridComponent', () => {
     });
   });
 
+  describe('column labels', () => {
+    it('labels each column by its translated header text, and passes the translated resize strings', async () => {
+      // Without bsDatatableColumnLabel the datatable named a column by its NAME: "Resize column
+      // Created" under a header reading "Added".
+      const t = vi.spyOn(langStub, 't').mockImplementation((k: string) =>
+        k === 'common.resizeColumn' ? 'Kolom {column} aanpassen' : k === 'common.fitColumn' ? 'Aanpassen aan inhoud' : k);
+      try {
+        const { fixture } = await setup({}, {
+          data: [{ id: 'r/1', values: [{ key: 'Created', value: '2026-10-07' }] }],
+          columns: [{ name: 'Created', label: { en: 'Added' }, dataType: 'string', order: 1 }, { name: 'Plain', dataType: 'string', order: 2 }] as any,
+        });
+        const columns = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives();
+        expect(columns.map(c => [c.name(), c.label()])).toEqual([['Created', 'Added'], ['Plain', 'Plain']]);
+
+        const datatable = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>;
+        expect(datatable.labels()!.resizeColumn!('Added')).toBe('Kolom Added aanpassen');
+        expect(datatable.labels()!.fitColumn).toBe('Aanpassen aan inhoud');
+      } finally {
+        t.mockRestore();
+      }
+    });
+  });
+
   describe('composed rows have no default detail link (R10)', () => {
     it('withholds the row link when the type has no clrType', async () => {
       // Live in DemoApp before this: Read/StartPage implies Query/StartPage, so a composed grid
@@ -645,6 +669,37 @@ describe('SparkQueryGridComponent', () => {
       expect(c.isActionEnabled(copyAction)).toBe(false);
       c.selection.set([rows[0]]);
       expect(c.isActionEnabled(copyAction)).toBe(true);
+    });
+
+    // Q9: an action whose client method this browser lacks is shown disabled, with the reason.
+    it('disables an action whose required client method is not registered, and says why', async () => {
+      const { c } = await grid();
+      const needsWebAuthn = { ...copyAction, requiresClient: 'webauthn.create' };
+      c.selection.set([rows[0]]);
+
+      expect(c.isActionEnabled(needsWebAuthn)).toBe(false);
+      expect(c.actionUnavailableReason(needsWebAuthn)).toBe('common.clientUnsupported');
+      expect(c.actionUnavailableReason(copyAction)).toBeNull();
+    });
+
+    it('a required client method that is available leaves the selection rule in charge', async () => {
+      const { c } = await grid();
+      vi.spyOn(TestBed.inject(SparkClientMethodRegistry), 'unavailableReason').mockReturnValue(null);
+      const needsWebAuthn = { ...copyAction, requiresClient: 'webauthn.create' };
+
+      expect(c.isActionEnabled(needsWebAuthn)).toBe(false);
+      c.selection.set([rows[0]]);
+      expect(c.isActionEnabled(needsWebAuthn)).toBe(true);
+      expect(c.actionUnavailableReason(needsWebAuthn)).toBeNull();
+    });
+
+    it('a row-menu action whose client method is unavailable does nothing when chosen', async () => {
+      const { c, service } = await grid();
+      const needsWebAuthn = { ...copyAction, requiresClient: 'webauthn.create' };
+
+      await c.chooseRowAction({ kind: 'custom', name: needsWebAuthn.name, definition: needsWebAuthn, priority: 10 }, rows[0] as any);
+
+      expect(service.executeCustomAction).not.toHaveBeenCalled();
     });
   });
 
@@ -1241,10 +1296,16 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
       run: async ctx => { inject(SparkLanguageService); ran.push(ctx.row.id); ctx.reload(); },
     };
     const hidden: SparkQueryRowAction = { id: 'hidden', labelKey: 'x', isOffered: () => false, run: async () => undefined };
-    const { c, service } = await setupWith([offered, hidden]);
+    const { fixture, c, service } = await setupWith([offered, hidden]);
 
     const actions = c.rowActions();
     expect(actions.map(a => a.name)).toEqual(['addon']);
+
+    // The row-actions column: announced as "Actions", and never resizable.
+    const actionsColumn = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives()
+      .find(col => col.name() === c.rowActionsColumn)!;
+    expect(actionsColumn.label()).toBe('common.actions');
+    expect(actionsColumn.resizable()).toBe(false);
     expect(actions[0].kind).toBe('addon');
     expect(actions[0].definition.label).toEqual({ en: 'addon.label' });
 

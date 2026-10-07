@@ -43,7 +43,7 @@ public static class ReflectedTypeExtensions
     }
 
     /// <summary>
-    /// Returns <see cref="MemberInfo.GetCustomAttribute{T}"/>, cached per
+    /// Returns <see cref="CustomAttributeExtensions.GetCustomAttribute{T}(MemberInfo)"/>, cached per
     /// <c>(MemberInfo, attribute Type)</c>. Includes negative caching for "no such
     /// attribute on this member".
     /// </summary>

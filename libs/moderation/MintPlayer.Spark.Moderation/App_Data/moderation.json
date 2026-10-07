@@ -1,0 +1,50 @@
+{
+  "_comment": [
+    "Moderation's defaults, shipped as a library layer (composition D3, grill Q6). An application's",
+    "App_Data/moderation.json composes on top per key: a privilege or reputation event by name,",
+    "\"Review\": null removes a privilege, and arrays are replaced whole. The composed result is the",
+    "lowest-precedence IConfiguration source under Spark:Moderation, so appsettings and environment",
+    "variables still override every value.",
+    "",
+    "Each privilege confers a SLOT, never a group id. The application binds it in security.json:",
+    "  \"bindings\": { \"moderation:voters\": [\"Voters\"] }",
+    "An unbound slot refuses startup. Grants lists the rights --spark-init-moderation prints."
+  ],
+  "Reputation": {
+    "UpvoteReceived": 10,
+    "DownvoteReceived": -2,
+    "DownvoteCast": -1,
+    "FlagUpheld": 2,
+    "FlagDeclined": 0
+  },
+  "Privileges": {
+    "Upvote": {
+      "Group": "moderation:voters",
+      "Rep": 10,
+      "MinAccountAgeDays": 0,
+      "MinActiveDays": 0,
+      "Grants": [ "Vote" ]
+    },
+    "Flag": {
+      "Group": "moderation:flaggers",
+      "Rep": 15,
+      "MinAccountAgeDays": 1,
+      "MinActiveDays": 1,
+      "Grants": [ "Flag" ]
+    },
+    "Downvote": {
+      "Group": "moderation:downvoters",
+      "Rep": 125,
+      "MinAccountAgeDays": 7,
+      "MinActiveDays": 3,
+      "Grants": [ "Downvote" ]
+    },
+    "Review": {
+      "Group": "moderation:reviewers",
+      "Rep": 500,
+      "MinAccountAgeDays": 30,
+      "MinActiveDays": 10,
+      "Grants": [ "Review" ]
+    }
+  }
+}

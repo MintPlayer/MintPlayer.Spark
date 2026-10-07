@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
-using System;
-using System.Collections.Generic;
+using MintPlayer.Spark.Layering;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 
@@ -11,7 +11,8 @@ namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 /// (#467, D7 — mirrors SPARK_TRANS_005 for translations).
 /// </summary>
 /// <remarks>
-/// The libraries' <c>actions.json</c> layers compose by assembly name, so the later one silently
+/// The libraries' <c>actions.json</c> layers compose in dependency order, by assembly name between
+/// unrelated ones (<c>SparkLibraryOrder</c>), so the later one silently
 /// wins. The application's own file is never part of a conflict: overriding a library is what it
 /// is for. The same conflict is logged at startup by the run-time composition.
 /// </remarks>
@@ -21,7 +22,7 @@ public sealed class LibraryActionsConflictAnalyzer : DiagnosticAnalyzer
     internal static readonly DiagnosticDescriptor ConflictRule = new(
         id: "SPARK036",
         title: "Two libraries define the same action differently",
-        messageFormat: "Libraries '{2}' and '{3}' both state '{1}' of the action '{0}', with different values. '{2}' wins (libraries apply by assembly name). State '{1}' of '{0}' in the app's actions.json to choose.",
+        messageFormat: "Libraries '{2}' and '{3}' both state '{1}' of the action '{0}', with different values. '{2}' wins (libraries apply in dependency order, by assembly name between unrelated ones). State '{1}' of '{0}' in the app's actions.json to choose.",
         category: "Spark",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
@@ -37,43 +38,32 @@ public sealed class LibraryActionsConflictAnalyzer : DiagnosticAnalyzer
 
     private static void Analyze(CompilationAnalysisContext context)
     {
-        var layers = LibraryActionsReader.Read(context.Compilation);
-        if (layers.Count < 2) return;
+        var libraries = LibraryLayersReader.Read(context.Compilation)
+            .Where(l => l.Files.Any(f => f.Kind == SparkLayerKinds.Actions))
+            .ToList();
+        if (libraries.Count < 2) return;
 
-        // action → property → (canonical value, layer)
-        var composed = new Dictionary<string, Dictionary<string, (string Value, string Layer)>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var layer in layers)
+        // The run time's own engine (composition D14), so the two can never disagree on a conflict.
+        SparkComposition composition;
+        try
         {
-            foreach (var entry in LibraryActionsReader.Entries(layer.Json))
-            {
-                if (entry.Value is null)
-                {
-                    composed.Remove(entry.Key);
-                    continue;
-                }
+            composition = SparkLayers.Compose(LibraryLayersReader.Parse(libraries, SparkLayerKinds.Actions), SparkKinds.Actions);
+        }
+        catch (SparkLayerException)
+        {
+            // The run time refuses a layer that does not compose, in its own words.
+            return;
+        }
 
-                if (!composed.TryGetValue(entry.Key, out var properties))
-                    composed[entry.Key] = properties = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase);
+        // A library overriding a library it depends on means it (grill Q3); only unrelated ones conflict.
+        var dependsOn = libraries.ToDictionary(l => l.Assembly, l => l.DependsOn, System.StringComparer.Ordinal);
+        foreach (var conflict in composition.Conflicts)
+        {
+            if (dependsOn.TryGetValue(conflict.WinnerLayer, out var below) && below.Contains(conflict.LoserLayer))
+                continue;
 
-                foreach (var property in entry.Value)
-                {
-                    if (property.Value == "null")
-                    {
-                        properties.Remove(property.Key);
-                        continue;
-                    }
-
-                    if (properties.TryGetValue(property.Key, out var earlier)
-                        && !string.Equals(earlier.Layer, layer.Assembly, StringComparison.OrdinalIgnoreCase)
-                        && earlier.Value != property.Value)
-                    {
-                        context.ReportDiagnostic(Diagnostic.Create(
-                            ConflictRule, Location.None, entry.Key, property.Key, layer.Assembly, earlier.Layer));
-                    }
-
-                    properties[property.Key] = (property.Value, layer.Assembly);
-                }
-            }
+            context.ReportDiagnostic(Diagnostic.Create(
+                ConflictRule, Location.None, conflict.Path[0], conflict.Path[1], conflict.WinnerLayer, conflict.LoserLayer));
         }
     }
 }

@@ -276,17 +276,17 @@ public class StreamingQueryExecutorUnitTests : MintPlayer.Spark.Testing.SparkTes
     private void StubMapperToEcho()
     {
         _entityMapper
-            .ToPersistentObject(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult?>())
+            .ToPersistentObjectAsync(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             // Distinct ids per row. A constant would now fail the projection's uniqueness check,
             // and rightly so — two streamed rows sharing an id collide in the diff engine's state
             // and in client-side selection alike.
-            .Returns(ci => new PersistentObject
+            .Returns(ci => Task.FromResult(new PersistentObject
             {
                 Id = $"echo/{Interlocked.Increment(ref _echoCounter)}",
                 Name = "TestEntity",
                 ObjectTypeId = (Guid)ci.Args()[1]!,
                 Attributes = [],
-            });
+            }));
     }
 
     // --- fixture entity + actions classes --------------------------------

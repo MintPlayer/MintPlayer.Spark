@@ -39,17 +39,39 @@ public class Answer : IModeratable, ISoftDeletable
 
 ## 2. Privileges are groups
 
+The library ships its own `App_Data/moderation.json` as a [library layer](guide-library-layers.md):
+the reputation table and four privileges, `Upvote`, `Flag`, `Downvote` and `Review`. Each privilege
+confers a **slot** (`"Group": "moderation:voters"`), never a group id, so the application decides who
+holds it:
+
 1. Add one group per privilege to `App_Data/security.json` (`"groups": { "<guid>": "Voters" }`).
-2. Reference it by id in `App_Data/moderation.json`, with its gates and the actions it grants:
+2. Bind each slot to it, by name or id, in the same file:
 
    ```json
-   { "Privileges": { "Upvote": { "GroupId": "<guid>", "Rep": 15, "MinAccountAgeDays": 0, "MinActiveDays": 1, "Grants": [ "Vote" ] } } }
+   "bindings": {
+     "moderation:voters": ["Voters"], "moderation:flaggers": ["Flaggers"],
+     "moderation:downvoters": ["Downvoters"], "moderation:reviewers": ["Reviewers"],
+     "moderation:moderators": ["Moderators"]
+   }
    ```
 
+   An unbound slot refuses startup (SPARK048 at build time). A privilege's slot must bind exactly
+   one group, because the privilege confers that group; `moderation:moderators` confers nothing and
+   may bind several.
 3. Run `dotnet run -- --spark-init-moderation`, review the printed rights and add them to
-   `security.json` (`Vote/Answer`, `Vote/Question`, …), plus the moderators group's
-   `Lock/T`, `Review/Moderation`, `Suspend/Moderation`, `Audit/Moderation`, `Restore/T`, `Purge/T`,
-   `ViewDeleted/T`, `Revert/T`.
+   `security.json` (`Vote/Answer`, `Vote/Question`, …), plus the moderators' `Lock/T`, `Restore/T`,
+   `Purge/T`, `ViewDeleted/T`, `Revert/T`. These are per type, on types your application owns, so a
+   library cannot ship them. `Review/Moderation`, `Suspend/Moderation` and `Audit/Moderation` are on
+   the library's own `Moderation` pseudo-type, so they ship with it, granted to the slots; the report
+   leaves them out.
+4. Your `App_Data/moderation.json` holds only what differs. A privilege or reputation event composes
+   per key, `"Review": null` removes a privilege, and arrays are replaced whole. QnA's file is one
+   line, `"DownvoteCastTypes": [ "Answer" ]`. `--spark-describe moderation --layers` shows where each
+   value came from.
+
+`"libraries": { "moderation": false }` in `security.json` switches the shipped rights off. They then
+show as inert in `securityPosture.txt`, and `--spark-init-moderation` prints them for you to grant.
+Setting `GroupId` in code (`AddModeration(o => …)`) still works and needs no slot.
 
 Startup refuses a privilege whose group is missing, well-known, holds a right that is not
 earnable (`Delete`, custom actions — unless listed under `Earnable`), or has no grant. `Lock`,

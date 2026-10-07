@@ -1,5 +1,6 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 
@@ -17,14 +18,17 @@ internal sealed partial class Manager : IManager
     public IRetryAccessor Retry => retry;
     public IClientAccessor Client => client;
 
-    public PersistentObject GetPersistentObject(string name)
-        => entityMapper.GetPersistentObject(name);
+    // Only delegates: construction, and with it the caller's attribute rights, is the mapper's (S5).
+    public Task<PersistentObject> GetPersistentObjectAsync(string name, string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default)
+        => entityMapper.GetPersistentObjectAsync(name, verb, cancellationToken);
 
-    public PersistentObject GetPersistentObject(Guid id)
-        => entityMapper.GetPersistentObject(id);
+    public Task<PersistentObject> GetPersistentObjectAsync(Guid id, string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default)
+        => entityMapper.GetPersistentObjectAsync(id, verb, cancellationToken);
 
-    public PersistentObject GetPersistentObject<T>() where T : class
-        => entityMapper.GetPersistentObject<T>();
+    public Task<PersistentObject> GetPersistentObjectAsync<T>(string verb = SparkCoreActions.Read, CancellationToken cancellationToken = default) where T : class
+        => entityMapper.GetPersistentObjectAsync<T>(verb, cancellationToken);
+
+    public ISystemManager AsSystem() => entityMapper.AsSystem();
 
     public string GetTranslatedMessage(string key, params object[] parameters)
     {

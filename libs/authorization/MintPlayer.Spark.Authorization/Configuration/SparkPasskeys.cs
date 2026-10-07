@@ -35,7 +35,8 @@ public enum SparkPasskeys
     Disabled = 0,
 
     /// <summary>
-    /// Passkey enrollment, management and sign-in are all mounted.
+    /// Passkey sign-in is mounted, and the passkeys page (<c>/po/passkeys/me</c>) lists, adds,
+    /// renames and removes the signed-in user's passkeys.
     /// </summary>
     Enabled = 1,
 }

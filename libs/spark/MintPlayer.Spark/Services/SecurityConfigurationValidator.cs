@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 
 namespace MintPlayer.Spark.Services;
@@ -87,7 +88,7 @@ internal static class SecurityConfigurationValidator
             definition = definition
                 ?? throw new SparkSecurityConfigurationException(
                     $"security.json declares a right with resource '{right.Resource}', but no persistent object "
-                    + $"named '{type}' exists in App_Data/Model. An attribute right must name the type by its "
+                    + $"named '{type}' exists in {SparkAppData.Relative("Model")}. An attribute right must name the type by its "
                     + "name (not its alias, a query or a reserved target such as LookupReferences).");
 
             if (!definition.Attributes.Any(a => string.Equals(a.Name, attribute, StringComparison.OrdinalIgnoreCase)))
@@ -129,19 +130,24 @@ internal static class SecurityConfigurationValidator
             .Distinct(StringComparer.Ordinal);
 
     /// <summary>
-    /// Three rules about the rights list, all about a file meaning something other than it looks
+    /// Two rules about the rights list, both about a file meaning something other than it looks
     /// like — a wildcard included, because it silently grows to cover every type added later.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// There used to be a third, rejecting a combined action in a denial, because expansion ran on
     /// the grant side only and such a denial denied nothing. Expansion is symmetric now — see
     /// <see cref="SparkCombinedActions"/> — so the shape it refused is the shape that works, and
     /// keeping the rule would refuse valid files.
+    /// </para>
+    /// <para>
+    /// And one refusing two rights with one id, which became the keyed set (composition D4): the
+    /// engine refuses a key stated twice in one layer, and a library's keys are namespaced by its
+    /// alias, so the composed set cannot hold one twice.
+    /// </para>
     /// </remarks>
     private static void ValidateRights(SecurityConfiguration config)
     {
-        var seenIds = new HashSet<Guid>();
-
         foreach (var right in config.Rights)
         {
             var slash = right.Resource?.IndexOf('/') ?? -1;
@@ -161,14 +167,6 @@ internal static class SecurityConfigurationValidator
                     + "do not exist yet. Name every target, and use a combined action to cover several "
                     + "actions at once — for example 'QueryReadEditNewDelete/Person' instead of "
                     + "'*/Person' (see SparkCombinedActions).");
-            }
-
-            if (right.Id != Guid.Empty && !seenIds.Add(right.Id))
-            {
-                throw new SparkSecurityConfigurationException(
-                    $"security.json declares two rights with id '{right.Id}'. Nothing reads the id "
-                    + "today, so the duplicate is currently harmless — which is exactly why it should "
-                    + "be fixed before something does.");
             }
         }
     }

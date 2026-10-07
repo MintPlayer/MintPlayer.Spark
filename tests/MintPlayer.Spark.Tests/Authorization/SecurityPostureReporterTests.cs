@@ -39,8 +39,8 @@ public class SecurityPostureReporterTests
             WellKnown = new() { ["anonymous"] = AnonymousId.ToString() },
             Rights =
             [
-                .. resources.Select(r => new Right { Id = Guid.NewGuid(), GroupId = AnonymousId, Resource = r }),
-                new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = "QueryReadEditNewDelete/Secret" },
+                .. resources.Select(r => new Right { Key = Guid.NewGuid().ToString(), GroupId = AnonymousId, Resource = r }),
+                new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = "QueryReadEditNewDelete/Secret" },
             ],
         };
 
@@ -82,7 +82,7 @@ public class SecurityPostureReporterTests
         var config = new SecurityConfiguration
         {
             Groups = { [AdminsId.ToString()] = "Admins" },
-            Rights = [new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = "QueryRead/Person" }],
+            Rights = [new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = "QueryRead/Person" }],
         };
 
         Reporter(config).Describe().AnonymouslyReachable.Should().BeEmpty();
@@ -94,7 +94,7 @@ public class SecurityPostureReporterTests
         var config = ConfigWithAnonymousGrants("QueryRead/Company");
         config.Rights.Add(new Right
         {
-            Id = Guid.NewGuid(),
+            Key = Guid.NewGuid().ToString(),
             GroupId = AnonymousId,
             Resource = "Delete/Company",
             IsDenied = true,
@@ -114,7 +114,7 @@ public class SecurityPostureReporterTests
         var config = ConfigWithAnonymousGrants("QueryReadEditNewDelete/Company");
         config.Rights.Add(new Right
         {
-            Id = Guid.NewGuid(),
+            Key = Guid.NewGuid().ToString(),
             GroupId = AnonymousId,
             Resource = "EditNewDelete/Company",
             IsDenied = true,
@@ -169,7 +169,7 @@ public class SecurityPostureReporterTests
     }
 
     private static Right AdminRight(string resource, bool denied = false)
-        => new() { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = resource, IsDenied = denied };
+        => new() { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = resource, IsDenied = denied };
 
     /// <summary>
     /// The stale-deny trap (PRD §5 Q13): a group restricts Edit on some attributes of Song, and Genre
@@ -213,7 +213,7 @@ public class SecurityPostureReporterTests
                 [SignedInId.ToString()] = "Signed in",
             },
             WellKnown = new() { ["anonymous"] = AnonymousId.ToString(), ["authenticated"] = SignedInId.ToString() },
-            Rights = [.. rights.Select(r => new Right { Id = Guid.NewGuid(), GroupId = r.Group, Resource = r.Resource, IsDenied = r.Denied })],
+            Rights = [.. rights.Select(r => new Right { Key = Guid.NewGuid().ToString(), GroupId = r.Group, Resource = r.Resource, IsDenied = r.Denied })],
         };
 
     /// <summary>

@@ -15,11 +15,12 @@ public static class SparkText
     /// <paramref name="conventionKey"/>; <paramref name="fallbackName"/> humanized when neither is
     /// translated. Returns <see langword="null"/> only when there is no fallback either.
     /// </summary>
-    public static TranslatedString? Resolve(TranslatedString? value, string conventionKey, string? fallbackName)
+    /// <param name="translations">The composed translations (the host's <c>ITranslationsLoader</c> snapshot).</param>
+    public static TranslatedString? Resolve(IReadOnlyDictionary<string, TranslatedString> translations, TranslatedString? value, string conventionKey, string? fallbackName)
     {
         RejectInlineText(value, conventionKey);
         var key = value?.Key ?? conventionKey;
-        if (Lookup(key) is { } translated)
+        if (Lookup(translations, key) is { } translated)
             return translated;
         return fallbackName is null ? null : TranslatedString.Create(Humanize(fallbackName));
     }
@@ -28,8 +29,9 @@ public static class SparkText
     /// The text under <paramref name="key"/>, or <see langword="null"/> when no layer defines it
     /// in any language. Used for optional text such as an attribute's description.
     /// </summary>
-    public static TranslatedString? Lookup(string key)
-        => SparkTranslations.All.TryGetValue(key, out var ts) && ts.Translations.Count > 0
+    /// <param name="translations">The composed translations (the host's <c>ITranslationsLoader</c> snapshot).</param>
+    public static TranslatedString? Lookup(IReadOnlyDictionary<string, TranslatedString> translations, string key)
+        => translations.TryGetValue(key, out var ts) && ts.Translations.Count > 0
             ? new TranslatedString { Translations = new Dictionary<string, string>(ts.Translations) }
             : null;
 

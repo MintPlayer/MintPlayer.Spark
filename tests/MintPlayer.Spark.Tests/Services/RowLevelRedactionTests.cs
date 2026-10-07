@@ -94,8 +94,8 @@ public class RowLevelRedactionTests : SparkTestDriver
         var mine = new Repo { Id = "repos/1", Name = "mine", Owner = "alice", BadgeToken = "tok-1" };
         var foreign = new Repo { Id = "repos/2", Name = "public", Owner = "bob", BadgeToken = "tok-2" };
 
-        var minePo = mapper.ToPersistentObject(mine, RepoTypeId);
-        var foreignPo = mapper.ToPersistentObject(foreign, RepoTypeId);
+        var minePo = mapper.AsSystem().ToPersistentObject(mine, RepoTypeId);
+        var foreignPo = mapper.AsSystem().ToPersistentObject(foreign, RepoTypeId);
 
         using var session = Store.OpenAsyncSession();
         await rowSecurity.RedactAsync(
@@ -166,7 +166,7 @@ public class RowLevelRedactionTests : SparkTestDriver
         var rowSecurity = new RowSecurity(actionsResolver);
 
         var repo = new Repo { Id = "repos/1", Name = "n", Owner = "bob", BadgeToken = "tok" };
-        var po = mapper.ToPersistentObject(repo, RepoTypeId);
+        var po = mapper.AsSystem().ToPersistentObject(repo, RepoTypeId);
 
         using var session = Store.OpenAsyncSession();
         await rowSecurity.RedactAsync(session, [(po, repo)], typeof(Repo), typeof(Repo), "Query");
@@ -229,7 +229,7 @@ public class RowLevelRedactionTests : SparkTestDriver
 
         var (rowSecurity, mapper) = CreateSubjects(accessor);
         var foreign = new Repo { Id = "repos/2", Name = "public", Owner = "bob", BadgeToken = "tok-2" };
-        var po = mapper.ToPersistentObject(foreign, RepoTypeId);
+        var po = mapper.AsSystem().ToPersistentObject(foreign, RepoTypeId);
 
         using var session = Store.OpenAsyncSession();
         await rowSecurity.RedactAsync(session, [(po, foreign)], typeof(Repo), typeof(Repo), "Query");

@@ -35,10 +35,10 @@ internal sealed partial class PasskeySignIn<TUser> : IPostEndpoint
         // uncaught JsonException here answers 500 with a stack trace — which is precisely the
         // failure IsCeremonyInputFailure was written to prevent, on precisely the route its remarks
         // name: a bare POST to the anonymous sign-in endpoint.
-        PasskeyRegistrationRequest? request;
+        PasskeySignInRequest? request;
         try
         {
-            request = await httpContext.Request.ReadFromJsonAsync<PasskeyRegistrationRequest>();
+            request = await httpContext.Request.ReadFromJsonAsync<PasskeySignInRequest>();
         }
         catch (Exception ex) when (PasskeyEndpoints.IsCeremonyInputFailure(ex))
         {

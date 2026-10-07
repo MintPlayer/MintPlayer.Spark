@@ -2,6 +2,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
+using MintPlayer.Spark.Layering;
 using MintPlayer.Spark.Services.Breadcrumb;
 using Raven.Client.Documents.Linq;
 using System.Reflection;
@@ -32,6 +33,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// <summary>Description seeds collected during the run, written into translations.json at its end (#467, D5).</summary>
     private readonly List<(string Key, string Text)> seeds = new();
 
+    /// <summary>The library model types (composition D6): never copied into the application, only their delta written.</summary>
+    private Dictionary<string, (string Library, SparkJsonObject Layer)> libraryTypes = new(StringComparer.Ordinal);
+
+    /// <summary>The libraries whose model layers the run composes; <see langword="null"/>: the process's (<see cref="SparkLayerCatalog"/>). Set by tests.</summary>
+    internal IReadOnlyList<SparkLibrary>? Libraries { get; init; }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -43,13 +50,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     public void SynchronizeModels(Type contextType)
     {
         ArgumentNullException.ThrowIfNull(contextType);
-        var modelPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Model");
+        var modelPath = SparkAppData.Path(hostEnvironment.ContentRootPath, "Model");
 
         // Ensure directory exists
         Directory.CreateDirectory(modelPath);
 
-        // Load existing entity types and their inline queries
-        var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles(modelPath);
+        // Load existing entity types and their inline queries: the composed model, library types included
+        libraryTypes = LoadLibraryTypes();
+        var (existingEntityTypes, existingQueries) = LoadExistingEntityTypeFiles();
 
         // Find all IRavenQueryable<T> properties on the SparkContext
         var queryableProperties = contextType.GetCachedProperties()
@@ -204,8 +212,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
-            var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
-            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, json));
+            WriteModelFile(fileName, entityTypeFile);
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
@@ -269,7 +276,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
-            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, JsonSerializer.Serialize(entityTypeFile, JsonOptions)));
+            WriteModelFile(fileName, entityTypeFile);
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
             Console.WriteLine($"Synchronized model (satellite of {satellite.OwnerType.Name}): {satelliteType.Name} -> {fileName}");
@@ -301,8 +308,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(q => q.Name, StringComparer.Ordinal)]
             };
-            var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
-            File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, json));
+            WriteModelFile(fileName, entityTypeFile);
             writtenFiles.Add(fileName);
             processedTypes.Add(clrType);
 
@@ -420,7 +426,8 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// </remarks>
     private void CollectDescriptionSeed(string entityName, EntityAttributeDefinition attribute, string? seed)
     {
-        if (seed is not null)
+        // A library type's descriptions belong in the library's translations.json, not the app's (D6).
+        if (seed is not null && !libraryTypes.ContainsKey(entityName))
             seeds.Add((DescriptionKey(entityName, attribute), seed));
     }
 
@@ -436,10 +443,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// </summary>
     internal static IReadOnlyList<string> DescribeDescriptionDrift(Type contextType, string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
-        if (!Directory.Exists(modelPath))
-            return [];
-
         var entityTypes = contextType.GetCachedProperties()
             .Where(p => IsRavenQueryable(p.PropertyType))
             .Select(p => GetQueryableEntityType(p.PropertyType))
@@ -452,13 +455,17 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var catalog = new AttributeDescriptionCatalog(_ => { });
         var seeds = new List<(string Key, string Text)>();
 
-        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json").OrderBy(f => f, StringComparer.Ordinal))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
+            // A library type's descriptions are the library's to ship; synchronize seeds none (D6).
+            if (file.Library is not null)
+                continue;
+
             EntityTypeFile? model;
             try
             {
                 model = JsonSerializer.Deserialize<EntityTypeFile>(
-                    File.ReadAllText(file),
+                    file.Json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (JsonException)
@@ -503,16 +510,20 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var fileHashes = ModelHashFile.ComputeFileHashes(contentRootPath);
         var modelFiles = ModelHashFile.CombineFileHashes(fileHashes);
         var configHashes = ModelHashFile.ComputeConfigHashes(contentRootPath);
+        var (libraries, layers) = ModelHashFile.ComputeLayers(contentRootPath);
 
         return new ModelHashFile
         {
             ModelHash = SparkModelShape.ComputeModelHash(
                 perEntity, contextRoots, modelFiles,
-                configHashes.Count > 0 ? ModelHashFile.CombineFileHashes(configHashes) : null),
+                configHashes.Count > 0 ? ModelHashFile.CombineFileHashes(configHashes) : null,
+                ModelHashFile.CombineLayerHashes(layers)),
             ContextRoots = contextRoots,
             ModelFiles = modelFiles,
             Files = fileHashes,
             ConfigFiles = configHashes.Count > 0 ? configHashes : null,
+            Libraries = libraries.Count > 0 ? libraries : null,
+            Layers = layers.Count > 0 ? layers : null,
             Entities = new SortedDictionary<string, string>(perEntity.ToDictionary(e => e.Key, e => e.Value), StringComparer.Ordinal),
         };
     }
@@ -604,28 +615,29 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return result;
     }
 
-    private (Dictionary<Guid, EntityTypeDefinition> EntityTypes, List<SparkQuery> Queries) LoadExistingEntityTypeFiles(string modelPath)
+    /// <summary>
+    /// The composed model (composition D6) as the run starts from: a library type arrives with the
+    /// application's delta already on top, so what is synchronized is what the server would load.
+    /// </summary>
+    private (Dictionary<Guid, EntityTypeDefinition> EntityTypes, List<SparkQuery> Queries) LoadExistingEntityTypeFiles()
     {
         var entityTypes = new Dictionary<Guid, EntityTypeDefinition>();
         var queries = new List<SparkQuery>();
-
-        if (!Directory.Exists(modelPath))
-            return (entityTypes, queries);
 
         var jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         };
 
-        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        foreach (var file in SparkModelFiles.Compose(Libraries ?? SparkLayerCatalog.Libraries, SparkAppData.Path(hostEnvironment.ContentRootPath, "Model")))
         {
             try
             {
-                var json = File.ReadAllText(file);
+                var json = file.Json;
                 // Rewriting the file would strip "isVisible": false and show a hidden attribute, so a
                 // legacy hidden attribute stops the command (#264, G-Q8); the catch below lets it
                 // through. "isVisible": true is dropped by the rewrite, the property no longer existing.
-                ModelLoader.RefuseLegacyIsVisible(json, file);
+                ModelLoader.RefuseLegacyIsVisible(json, file.Source);
                 var entityTypeFile = JsonSerializer.Deserialize<EntityTypeFile>(json, jsonOptions);
                 if (entityTypeFile?.PersistentObject != null)
                 {
@@ -642,11 +654,54 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
             catch (Exception ex) when (ex is not InvalidOperationException)
             {
-                Console.WriteLine($"Error loading model file {file}: {ex.Message}");
+                Console.WriteLine($"Error loading model file {file.Source}: {ex.Message}");
             }
         }
 
         return (entityTypes, queries);
+    }
+
+    /// <summary>
+    /// The library model types by name, each as this synchronizer would serialize it, so that a
+    /// delta compares like with like: a default the library leaves out is not a difference (D6).
+    /// </summary>
+    private Dictionary<string, (string Library, SparkJsonObject Layer)> LoadLibraryTypes()
+    {
+        var result = new Dictionary<string, (string, SparkJsonObject)>(StringComparer.Ordinal);
+        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        foreach (var type in SparkModelFiles.LibraryTypes(Libraries ?? SparkLayerCatalog.Libraries))
+        {
+            if (type.Name is null || type.Library is null) continue;
+            var file = JsonSerializer.Deserialize<EntityTypeFile>(type.Json, jsonOptions);
+            if (file?.PersistentObject is null) continue;
+            result[type.Name] = (type.Library, (SparkJsonObject)SparkJson.Parse(JsonSerializer.Serialize(file, JsonOptions)));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Writes a type's model file (composition D6). A type the application owns is written whole. A
+    /// library type is written as the delta against the library's layer: only what differs, never an
+    /// id the library states; nothing at all when nothing differs, in which case no file is created.
+    /// </summary>
+    /// <returns>Whether a file was written.</returns>
+    private bool WriteModelFile(string fileName, EntityTypeFile entityTypeFile)
+    {
+        var json = JsonSerializer.Serialize(entityTypeFile, JsonOptions);
+        if (libraryTypes.TryGetValue(entityTypeFile.PersistentObject.Name, out var library))
+        {
+            var delta = SparkModelLayers.Delta(library.Layer, (SparkJsonObject)SparkJson.Parse(json));
+            if (delta is null)
+            {
+                Console.WriteLine($"Library model: {entityTypeFile.PersistentObject.Name} is {library.Library}'s and nothing differs; no file written.");
+                return false;
+            }
+            json = SparkJson.Write(delta, indented: true);
+            Console.WriteLine($"Library model: {entityTypeFile.PersistentObject.Name} is {library.Library}'s; only the delta is written.");
+        }
+
+        File.WriteAllText(fileName, SparkSchemaReference.CarryOver(fileName, json));
+        return true;
     }
 
     private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing, Dictionary<string, string>? entityTypeToQueryName = null)
@@ -702,7 +757,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             throw new InvalidOperationException(
                 $"Model for '{entityTypeDef.Name}' declares the attribute '{duplicateAttributeName}' more than once. " +
                 $"Attribute names must be unique within a persistent object — remove the duplicate from " +
-                $"App_Data/Model/{entityTypeDef.Name}.json.");
+                $"{SparkAppData.Relative("Model")}/{entityTypeDef.Name}.json.");
         }
 
         var existingAttrs = entityTypeDef.Attributes.ToDictionary(a => a.Name, a => a);
@@ -1252,17 +1307,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         if (missing.Count == 0) return;
 
         Console.WriteLine($"Info: {missing.Count} label key(s) have no translation in every declared language " +
-                          "(the humanized name is shown instead). Add them to App_Data/translations.json:");
+                          $"(the humanized name is shown instead). Add them to {SparkAppData.Relative("translations.json")}:");
         foreach (var line in missing)
             Console.WriteLine($"  {line}");
     }
 
     internal static IReadOnlyList<string> DescribeMissingTranslations(string contentRootPath)
     {
-        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
-        if (!Directory.Exists(modelPath)) return [];
-
-        var cultureFile = Path.Combine(contentRootPath, "App_Data", "culture.json");
+        var cultureFile = SparkAppData.Path(contentRootPath, "culture.json");
         var languages = File.Exists(cultureFile)
             ? JsonDocument.Parse(File.ReadAllText(cultureFile)).RootElement.EnumerateObject()
                 .Where(p => string.Equals(p.Name, "languages", StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind == JsonValueKind.Array)
@@ -1271,13 +1323,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 .ToList()
             : ["en"];
 
+        var translations = SparkTranslations.Compose(contentRootPath).All;
         var keys = new List<string>();
-        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json").OrderBy(f => f, StringComparer.Ordinal))
+        foreach (var file in SparkModelFiles.Compose(contentRootPath))
         {
             EntityTypeFile? model;
             try
             {
-                model = JsonSerializer.Deserialize<EntityTypeFile>(File.ReadAllText(file),
+                model = JsonSerializer.Deserialize<EntityTypeFile>(file.Json,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
             catch (JsonException)
@@ -1297,7 +1350,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var lines = new List<string>();
         foreach (var key in keys.Distinct(StringComparer.Ordinal))
         {
-            SparkTranslations.All.TryGetValue(key, out var translated);
+            translations.TryGetValue(key, out var translated);
             var absent = languages
                 .Where(l => translated is null || !translated.Translations.TryGetValue(l, out var v) || string.IsNullOrWhiteSpace(v))
                 .ToList();

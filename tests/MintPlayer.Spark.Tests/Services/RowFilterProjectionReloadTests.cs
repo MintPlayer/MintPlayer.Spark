@@ -184,8 +184,8 @@ public class RowFilterProjectionReloadTests : SparkTestDriver
         var (aliceId, bobId) = await SeedAsync(clrTypeResolves: false);
         var (rowSecurity, mapper) = CreateSubjects();
 
-        var alicePo = mapper.ToPersistentObject(new Ledger { Id = aliceId, Title = "Alice's", Owner = "alice", Secret = "tok-a" }, LedgerTypeId);
-        var bobPo = mapper.ToPersistentObject(new Ledger { Id = bobId, Title = "Bob's", Owner = "bob", Secret = "tok-b" }, LedgerTypeId);
+        var alicePo = mapper.AsSystem().ToPersistentObject(new Ledger { Id = aliceId, Title = "Alice's", Owner = "alice", Secret = "tok-a" }, LedgerTypeId);
+        var bobPo = mapper.AsSystem().ToPersistentObject(new Ledger { Id = bobId, Title = "Bob's", Owner = "bob", Secret = "tok-b" }, LedgerTypeId);
         var rows = Projections(aliceId, bobId);
 
         using var session = Store.OpenAsyncSession();

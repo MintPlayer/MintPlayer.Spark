@@ -93,11 +93,11 @@ public class StreamingRowSecurityTests : SparkTestDriver
         documentStore.OpenAsyncSession().Returns(_ => Store.OpenAsyncSession());
 
         entityMapper
-            .ToPersistentObject(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult>())
+            .ToPersistentObjectAsync(Arg.Any<object>(), Arg.Any<Guid>(), Arg.Any<BreadcrumbResult>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
                 var doc = (StreamedDoc)ci.Arg<object>();
-                return new PersistentObject { Id = doc.Id, Name = "StreamedDoc", ObjectTypeId = TypeId };
+                return Task.FromResult(new PersistentObject { Id = doc.Id, Name = "StreamedDoc", ObjectTypeId = TypeId });
             });
 
         return new StreamingQueryExecutor(

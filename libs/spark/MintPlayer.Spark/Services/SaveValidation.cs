@@ -89,7 +89,9 @@ internal sealed partial class SaveValidation : ISaveValidation
 
         // What the refresh hook is handed: the caller's values for what they may write, the stored
         // values for what they may not (the CLR default on a create — the scaffold's empty value).
-        var storedObject = stored is not null && unwritable.Count > 0 ? entityMapper.ToPersistentObject(stored, definition.Id) : null;
+        // The stored values are a system construction (D13a, S5): they are what the caller may NOT
+        // write, often because they may not read them either, and they never reach the response.
+        var storedObject = stored is not null && unwritable.Count > 0 ? entityMapper.AsSystem().ToPersistentObject(stored, definition.Id) : null;
         var submitted = new PersistentObject
         {
             Id = shielded.Id,

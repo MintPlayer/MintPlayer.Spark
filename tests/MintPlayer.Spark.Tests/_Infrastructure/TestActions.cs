@@ -30,6 +30,6 @@ internal static class TestActions
     private sealed class Fixed(ActionsCatalogue catalogue) : IActionsCatalogueLoader
     {
         public ActionsCatalogue GetCatalogue() => catalogue;
-        public void InvalidateCache() { }
+        public void Reload() { }
     }
 }

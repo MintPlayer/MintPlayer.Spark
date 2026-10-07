@@ -1,0 +1,82 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!--
+	  Library layers (composition D1, D16). A class library that ships App_Data files hands them to
+	  LibraryLayersGenerator, which compiles each into [assembly: SparkLayer(alias, kind, path, json)].
+	  Applications compose their own files on top at run time; they need nothing from here, because
+	  the layers travel inside the library's dll over ProjectReference and PackageReference alike (S1).
+
+	  In build/, not buildTransitive/: the generator package is a development dependency referenced
+	  with PrivateAssets="all", so NuGet imports this file into exactly the project that references
+	  it. In this repository Directory.Build.targets imports it instead, since a ProjectReference
+	  imports nothing.
+
+	  The path under App_Data decides the kind, so only the files a kind ships are added:
+	  actions.json, translations.json, Model/*.json, security.json, programUnits.json and
+	  moderation.json. culture.json is the application's alone.
+
+	  A library that ships any of them must set <SparkLibraryAlias> (SPARK041). Executables and test
+	  projects never ship layers; <SparkLibraryLayers>false</SparkLibraryLayers> opts a library out.
+	-->
+
+	<PropertyGroup>
+		<_SparkLibraryLayersImported>true</_SparkLibraryLayersImported>
+		<_SparkLibraryLayersApply Condition="'$(SparkLibraryLayers)' != 'false' And '$(OutputType)' != 'Exe' And '$(OutputType)' != 'WinExe' And '$(IsTestProject)' != 'true'">true</_SparkLibraryLayersApply>
+		<_SparkLibraryLayersDir>$(SparkAppDataDir)</_SparkLibraryLayersDir>
+		<_SparkLibraryLayersDir Condition="'$(_SparkLibraryLayersDir)' == ''">App_Data</_SparkLibraryLayersDir>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<CompilerVisibleProperty Include="SparkLibraryAlias" />
+		<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SparkLayerPath" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(_SparkLibraryLayersApply)' == 'true'">
+		<_SparkLibraryLayer Include="$(_SparkLibraryLayersDir)\Model\*.json" SparkLayerPath="Model/%(Filename)%(Extension)" />
+		<_SparkLibraryLayer Include="$(_SparkLibraryLayersDir)\actions.json" SparkLayerPath="actions.json"
+		                    Condition="Exists('$(_SparkLibraryLayersDir)\actions.json')" />
+		<_SparkLibraryLayer Include="$(_SparkLibraryLayersDir)\translations.json" SparkLayerPath="translations.json"
+		                    Condition="Exists('$(_SparkLibraryLayersDir)\translations.json')" />
+		<_SparkLibraryLayer Include="$(_SparkLibraryLayersDir)\security.json" SparkLayerPath="security.json"
+		                    Condition="Exists('$(_SparkLibraryLayersDir)\security.json')" />
+		<_SparkLibraryLayer Include="$(_SparkLibraryLayersDir)\programUnits.json" SparkLayerPath="programUnits.json"
+		                    Condition="Exists('$(_SparkLibraryLayersDir)\programUnits.json')" />
+		<_SparkLibraryLayer Include="$(_SparkLibraryLayersDir)\moderation.json" SparkLayerPath="moderation.json"
+		                    Condition="Exists('$(_SparkLibraryLayersDir)\moderation.json')" />
+
+		<AdditionalFiles Include="@(_SparkLibraryLayer)" />
+
+		<!--
+		  The Web SDK includes App_Data as Content with CopyToPublishDirectory, which flows through
+		  ProjectReferences and fails a consuming app's publish with NETSDK1152 (two outputs with the
+		  same relative path). The files travel inside the dll, so they are not content.
+		-->
+		<Content Remove="@(_SparkLibraryLayer)" />
+	</ItemGroup>
+
+	<!--
+	  SPARK044: a library references this package without PrivateAssets="all". The generator then
+	  flows into every application that references the library and runs there a second time, which
+	  fails the application's build with CS0101 (spike S1). Mirrors SPARK002, which checks the same
+	  for applications in spark.targets. Only a PackageReference can be wrong: a ProjectReference with
+	  OutputItemType="Analyzer" never flows.
+	-->
+	<Target Name="SparkValidateLibraryGeneratorReference"
+	        BeforeTargets="CoreCompile"
+	        Condition="'$(_SparkLibraryLayersApply)' == 'true' And '@(_SparkLibraryLayer)' != ''">
+
+		<ItemGroup>
+			<_SparkLibraryGeneratorPackageRef Include="@(PackageReference)"
+			                                  Condition="'%(Identity)' == 'MintPlayer.Spark.SourceGenerators'" />
+		</ItemGroup>
+
+		<PropertyGroup Condition="'@(_SparkLibraryGeneratorPackageRef)' != ''">
+			<_SparkLibraryGeneratorPrivateAssets>%(_SparkLibraryGeneratorPackageRef.PrivateAssets)</_SparkLibraryGeneratorPrivateAssets>
+		</PropertyGroup>
+
+		<Warning Code="SPARK044"
+		         Text="$(MSBuildProjectName) ships Spark layers but references MintPlayer.Spark.SourceGenerators without PrivateAssets=&quot;all&quot; (found: '$(_SparkLibraryGeneratorPrivateAssets)'). The generator would flow into every application referencing this library and run there twice (CS0101). Update the entry to:%0A  &lt;PackageReference Include=&quot;MintPlayer.Spark.SourceGenerators&quot; Version=&quot;...&quot; PrivateAssets=&quot;all&quot; IncludeAssets=&quot;runtime; build; native; contentfiles; analyzers; buildtransitive&quot; /&gt;"
+		         Condition="'@(_SparkLibraryGeneratorPackageRef)' != '' And '$(_SparkLibraryGeneratorPrivateAssets)' != 'all'" />
+	</Target>
+
+</Project>

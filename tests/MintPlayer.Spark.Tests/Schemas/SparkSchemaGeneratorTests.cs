@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Json.Schema;
@@ -93,7 +94,7 @@ public sealed class SparkSchemaGeneratorTests
 
         Validate(translations, """{ "$schema": "x", "_c": "c", "app": { "title": { "_c": "c", "en": "T", "nl": "T" } } }""").Should().BeEmpty();
         Validate(translations, """{ "app": { "title": { "en": "T" }, "en": "T" } }""").Should().NotBeEmpty();
-        // The generators' parser (MiniJson) refuses numbers and arrays in translations.json, comments included.
+        // A comment is a string, as every file in the repository writes it.
         Validate(translations, """{ "_c": 1, "app": { "title": { "en": "T" } } }""").Should().NotBeEmpty();
     }
 
@@ -102,9 +103,10 @@ public sealed class SparkSchemaGeneratorTests
     {
         var types = SparkSchemaGenerator.Files.ToDictionary(f => f.Name, f => f.Type);
 
-        // ModelLoader, SecurityConfigurationLoader and ProgramUnitsLoader deserialize these types.
+        // ModelLoader and ProgramUnitsLoader deserialize these types; security.json is composed on the raw
+        // JSON (composition D4), and SecurityFile describes one layer as written.
         types["model"].Should().Be(typeof(EntityTypeFile));
-        types["security"].Should().Be(typeof(SecurityConfiguration));
+        types["security"].Should().Be(typeof(SecurityFile));
         types["programUnits"].Should().Be(typeof(ProgramUnitsConfiguration));
         // A tree read by the translations source generator; no CLR type describes it.
         types["translations"].Should().BeNull();
@@ -131,7 +133,7 @@ public sealed class SparkSchemaGeneratorTests
             var host = Substitute.For<IHostEnvironment>();
             host.ContentRootPath.Returns(directory);
 
-            var culture = new CultureLoader(host).GetCulture();
+            var culture = new CultureLoader(host, TranslationsLoader.For(host, []), NullLogger<CultureLoader>.Instance).GetCulture();
 
             // Every mirrored property reached the loader: neither fell back to its default.
             culture.Languages.Keys.Should().BeEquivalentTo(["en", "nl"]);

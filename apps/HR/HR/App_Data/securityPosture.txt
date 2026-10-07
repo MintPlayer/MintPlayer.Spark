@@ -1,2 +1,50 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+
+## Reachable without signing in (expanded)
 Query/Company
 Read/Company
+
+## Granted to @anonymous
+Anonymous visitors | grant | QueryRead/Company | 00000000-0000-0000-0000-000000000001 | app
+
+## Rights
+Administrators | grant | Edit/LookupReferences | e0000009-0000-0000-0000-000000000002 | app
+Administrators | grant | QueryRead/Car | a0000001-0000-0000-0000-000000000004 | app
+Administrators | grant | QueryReadEditNewDelete/Address | a0000001-0000-0000-0000-000000000003 | app
+Administrators | grant | QueryReadEditNewDelete/AddressDescription | a0000001-0000-0000-0000-000000000007 | app
+Administrators | grant | QueryReadEditNewDelete/CarreerJob | a0000001-0000-0000-0000-000000000006 | app
+Administrators | grant | QueryReadEditNewDelete/Company | a0000001-0000-0000-0000-000000000002 | app
+Administrators | grant | QueryReadEditNewDelete/OidcApplication | a0000001-0000-0000-0000-000000000008 | app
+Administrators | grant | QueryReadEditNewDelete/OidcScope | a0000001-0000-0000-0000-000000000009 | app
+Administrators | grant | QueryReadEditNewDelete/Person | a0000001-0000-0000-0000-000000000001 | app
+Administrators | grant | QueryReadEditNewDelete/Profession | a0000001-0000-0000-0000-000000000005 | app
+HR managers | grant | QueryRead/Car | b0000002-0000-0000-0000-000000000004 | app
+HR managers | grant | QueryReadEditNew/Address | b0000002-0000-0000-0000-000000000003 | app
+HR managers | grant | QueryReadEditNew/CarreerJob | b0000002-0000-0000-0000-000000000006 | app
+HR managers | grant | QueryReadEditNew/Company | b0000002-0000-0000-0000-000000000002 | app
+HR managers | grant | QueryReadEditNew/Person | b0000002-0000-0000-0000-000000000001 | app
+HR managers | grant | QueryReadEditNew/Profession | b0000002-0000-0000-0000-000000000005 | app
+Module:Fleet | grant | ReadEditNew/Person | b0000002-0000-0000-0000-000000000012 | app
+Module:Fleet | grant | Replicate/Companies | b0000002-0000-0000-0000-000000000022 | app
+Module:Fleet | grant | Replicate/People | b0000002-0000-0000-0000-000000000011 | app
+Signed-in users | grant | QueryRead/Company | 00000000-0000-0000-0000-00000000000f | app
+Signed-in users | grant | Read/LookupReferences | e0000009-0000-0000-0000-000000000001 | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+Viewers | grant | QueryRead/Address | c0000003-0000-0000-0000-000000000003 | app
+Viewers | grant | QueryRead/Car | c0000003-0000-0000-0000-000000000004 | app
+Viewers | grant | QueryRead/CarreerJob | c0000003-0000-0000-0000-000000000006 | app
+Viewers | grant | QueryRead/Company | c0000003-0000-0000-0000-000000000002 | app
+Viewers | grant | QueryRead/Person | c0000003-0000-0000-0000-000000000001 | app
+Viewers | grant | QueryRead/Profession | c0000003-0000-0000-0000-000000000005 | app
+
+## Inert: libraries switched off in "libraries"
+(nothing)

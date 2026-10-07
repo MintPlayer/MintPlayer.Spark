@@ -54,12 +54,14 @@ internal sealed partial class SaveResponsePresenter : ISaveResponsePresenter
 
         if (reloaded is null)
         {
-            await attributeRights.PresentAsync([saved], SparkCoreActions.Read, isNew ? SparkCoreActions.New : SparkCoreActions.Edit, cancellationToken);
+            // The posted object was read off the wire, not built for the caller (D13a), so it is the one
+            // object here that still needs presenting.
+            await attributeRights.PresentAsync([saved], isNew ? SparkCoreActions.New : SparkCoreActions.Edit, cancellationToken);
             return saved;
         }
 
+        // The reload was built for the caller (D13a); only the page-load affordances are added here.
         await disabledActions.ApplyOnLoadAsync(reloaded);
-        await attributeRights.PresentAsync([reloaded], SparkCoreActions.Read, SparkCoreActions.Edit, cancellationToken);
         return reloaded;
     }
 }

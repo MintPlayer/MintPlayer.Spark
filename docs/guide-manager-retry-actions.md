@@ -9,7 +9,8 @@ The `IManager` interface exposes:
 | Member | Purpose |
 |---|---|
 | `Retry` | Access to the Retry Action subsystem (`IRetryAccessor`) |
-| `GetPersistentObject()` | Create a virtual PersistentObject for custom dialog forms |
+| `GetPersistentObjectAsync(name, verb)` | Build a PersistentObject from its model, **for the current caller** ([below](#construction-applies-the-callers-rights)) — dialog forms, composed pages |
+| `AsSystem()` | The elevated construction: whole objects, for system work. Named so it can be reviewed |
 | `GetTranslatedMessage()` | Get a translated string for the current request culture |
 | `GetMessage()` | Get a translated string for a specific language |
 
@@ -54,7 +55,8 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>, IBeforeDe
         manager.Retry.Action(
             title: "Confirm deletion",
             options: ["Delete"],
-            message: $"Are you sure you want to delete {entity.LicensePlate}?"
+            message: $"Are you sure you want to delete {entity.LicensePlate}?",
+            cancellable: true
         );
 
         // Cancel deletes nothing: a silent no-op, answered with 204 (#482).
@@ -73,7 +75,7 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>, IBeforeDe
 1. On the first invocation, `Action()` throws a `SparkRetryActionException` internally -- it never returns
 2. The endpoint catches the exception and responds with HTTP 449 and a JSON payload describing the dialog
 3. The Angular frontend displays a modal with the title, message, and option buttons
-4. The user clicks a button (or dismisses the modal, which sends "Cancel")
+4. The user clicks a button (or, on a `cancellable` prompt, Cancel or the modal's close, which send `"Cancel"`)
 5. The frontend re-submits the original request with the user's answer in `retryResults`
 6. On re-invocation, `Action()` replays the answered step, populates `Result`, and returns normally
 7. Your code inspects `Result.Option` and proceeds accordingly
@@ -111,7 +113,8 @@ public ValueTask OnBeforeSaveAsync(Car entity, SaveContext context)
             title: "Report vehicle as stolen",
             options: ["Confirm"],
             message: $"Are you sure you want to mark {entity.LicensePlate} as stolen? " +
-                     "This will lock the vehicle record."
+                     "This will lock the vehicle record.",
+            cancellable: true
         );
 
         if (manager.Retry.Result!.Option == "Cancel")
@@ -121,7 +124,8 @@ public ValueTask OnBeforeSaveAsync(Car entity, SaveContext context)
         manager.Retry.Action(
             title: "Notify fleet managers",
             options: ["Yes, notify", "No, skip"],
-            message: "Should all fleet managers be notified about this stolen vehicle?"
+            message: "Should all fleet managers be notified about this stolen vehicle?",
+            cancellable: true
         );
 
         if (manager.Retry.Result!.Option == "Cancel")
@@ -144,7 +148,9 @@ The user sees two sequential modals. The flow:
 
 ### The Cancel Option
 
-When the user dismisses the modal (clicking the X button or pressing Escape), the frontend sends `"Cancel"` as the option. You do not need to include "Cancel" in your `options` array -- it is always available as a dismiss action. Check for it in your code to abort the operation. In a save or delete interceptor, abort with `SparkCancelException` — the framework then writes nothing (a `return` would let the write go ahead); in a custom action, a plain `return` is enough, since the action itself is the work:
+Cancel is not one of your `options`: pass `cancellable: true`. The client then adds a Cancel button of its own, labelled in the user's language (`common.cancel`), and answers it, and the modal being closed (the X button or Escape), with `"Cancel"` (`RetryResult.CancelOption`). So the label is translated and the answer never is. `Action` refuses an `options` array that contains `"Cancel"` (`ArgumentException`). Without `cancellable`, closing the modal abandons the request and the action never hears of it.
+
+Check for it in your code to abort the operation. In a save or delete interceptor, abort with `SparkCancelException` — the framework then writes nothing (a `return` would let the write go ahead); in a custom action, a plain `return` is enough, since the action itself is the work:
 
 ```csharp
 if (manager.Retry.Result!.Option == "Cancel")
@@ -159,7 +165,8 @@ void Action(
     string[] options,          // Button labels shown in the modal footer
     string? defaultOption,     // Optional: which button gets primary styling
     PersistentObject? persistentObject,  // Optional: form fields to show in the modal body
-    string? message            // Optional: text message shown in the modal body
+    string? message,           // Optional: text message shown in the modal body
+    bool cancellable           // Optional: the client adds a translated Cancel, answered as "Cancel"
 );
 ```
 
@@ -170,28 +177,22 @@ void Action(
 | `defaultOption` | No | Which option gets primary (blue) button styling |
 | `persistentObject` | No | A virtual PO with attributes -- renders as a form in the modal body |
 | `message` | No | Plain text displayed in the modal body |
+| `cancellable` | No | Adds the client's own translated Cancel button; it and closing the modal answer `"Cancel"`. Never put `"Cancel"` in `options` |
 
 ## Custom Dialog Forms
 
-You can display a form inside the retry modal by passing a `PersistentObject` with attributes. Use `manager.GetPersistentObject()` to create one:
+You can display a form inside the retry modal by passing a `PersistentObject`. Declare its shape as a
+virtual type in `App_Data/Model/ReasonForm.json` (no `clrType`; attributes `Reason`, a required
+string, and `NotifyManager`, a boolean) and build it with `GetPersistentObjectAsync`:
 
 ```csharp
+var form = await manager.GetPersistentObjectAsync("ReasonForm");
+
 manager.Retry.Action(
     title: "Enter reason",
     options: ["Submit"],
-    persistentObject: manager.GetPersistentObject("ReasonForm",
-        new PersistentObjectAttribute
-        {
-            Name = "Reason",
-            DataType = "string",
-            IsRequired = true,
-        },
-        new PersistentObjectAttribute
-        {
-            Name = "NotifyManager",
-            DataType = "boolean",
-        }
-    )
+    cancellable: true,
+    persistentObject: form
 );
 
 if (manager.Retry.Result!.Option == "Cancel")
@@ -202,7 +203,126 @@ var reason = manager.Retry.Result.PersistentObject?
     .Attributes.FirstOrDefault(a => a.Name == "Reason")?.Value?.ToString();
 ```
 
-The `PersistentObject` in `Result` contains the attribute values as filled in by the user.
+The `PersistentObject` in `Result` contains the attribute values as filled in by the user. A prompt
+form needs no right of its own: it is only shown, never loaded through an endpoint. The passkeys page's
+`PasskeyRename` form is a worked example (`MintPlayer.Spark.Authorization`, `RenamePasskeyAction`).
+
+### Construction applies the caller's rights
+
+`GetPersistentObjectAsync(name | id | <T>, verb = "Read")` builds the object **for the current
+caller**, the same way the endpoints present one, so no hook can hand out what the caller may not
+see:
+
+| `verb` | Removed | Read-only |
+|---|---|---|
+| `Read` (default), `Edit` | Read-denied attributes | Edit-denied attributes |
+| `New` | Read-denied attributes | New-denied attributes |
+| `Query` | Query-denied attributes | — |
+
+- **A refused attribute is removed, not blanked**, so not even its existence reaches the client.
+- **Writing to a removed attribute is a silent no-op** (`obj["Salary"].Value = …` does nothing), and
+  reading it gives `null`. A name the type never had still throws. Ask
+  `obj.TryGetAttribute("Salary", out var attribute)` when the difference matters.
+  `manager.Client.RefreshAttribute(...)` for a removed attribute is a no-op too.
+- **A hook that needs a value the caller may not see** builds the object with
+  `manager.AsSystem().GetPersistentObject(name)`: whole, synchronous, decides nothing. The name is
+  there so a reviewer can find every elevation.
+- **Outside a request** (a background job, a cron task) the caller is the system, and nothing is
+  removed.
+- **The boundary net.** Every persistent object written to a response (the envelope, query rows,
+  retry prompts, client operations) passes one serialization hook. An object that was not built for
+  the caller — `new PersistentObject { … }`, or one from `AsSystem()` — **throws in Development**, and
+  outside Development is pruned (fail closed: Query- and Read-denied removed, Edit-denied read-only)
+  with a warning in the log. So build prompt and page objects with `GetPersistentObjectAsync`, never
+  by hand.
+- A static `Read` deny on a required attribute the caller **did not post** makes it unwritable for
+  that save: it keeps its stored value (on a create, what your actions class or an interceptor
+  fills in), and validation skips it. Fill such an attribute server-side, or that caller's create
+  stores the default.
+
+## Client-method retries: a step that runs in the browser
+
+Some steps can only run in the browser: a WebAuthn ceremony, a file picked from disk, a clipboard
+read. `Retry.Invoke` asks the client to run a **registered** method and hands its answer back to the
+same action:
+
+```csharp
+Task Invoke(string clientMethod, Func<Task<object?>> arguments);
+```
+
+On the first pass `Invoke` throws the retry signal, and the 449 carries a `retry` operation with
+`clientMethod` and the serialized `arguments` (`options` is empty). The client awaits its method
+instead of showing a modal and re-sends the request with `{ step, option: "OK", value }`. On that
+pass `Invoke` returns, and `Result.Value` (a `JsonElement`) holds the method's answer. `Invoke` and
+`Action` share one step counter, so "ask the browser, then ask the user, then ask the browser again"
+is three calls in one action.
+
+**The worked example: adding a passkey** (`AddPasskeyAction`, `MintPlayer.Spark.Authorization`).
+
+```csharp
+public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
+{
+    if (!await passkeys.IsAvailableAsync()) { /* notify, return */ }   // side-effect free: runs on both passes
+
+    // Pass 1: mint the challenge (sets the ceremony's state cookie) and ask the browser.
+    await manager.Retry.Invoke("webauthn.create", async () => (object?)await passkeys.CreationOptionsAsync());
+
+    // Pass 2: the browser's credential.
+    var answer = manager.Retry.Result!;
+    if (answer.Option == RetryResult.CancelOption || answer.Value is not { ValueKind: JsonValueKind.Object } credential)
+        return;                                    // the user dismissed the authenticator prompt
+    var outcome = await passkeys.RegisterAsync(credential.GetRawText());
+    // notify, refresh the query
+}
+```
+
+On the client, `@mintplayer/ng-spark-auth`'s `provideSparkAuth()` registers `webauthn.create`. An
+application registers its own the same way:
+
+```typescript
+import { provideSparkClientMethods } from '@mintplayer/ng-spark/client-operations';
+
+provideSparkClientMethods({
+  'files.pick': {
+    invoke: async (args) => { /* runs in an injection context; resolve the answer */ },
+    supported: () => 'showOpenFilePicker' in window,   // optional
+    unsupportedReason: 'files.pickUnsupported',        // optional translation key
+  },
+});
+```
+
+The registration is multi-provided, and a later registration of a name wins.
+
+⚠️ **The trap: the action re-runs from the top on every pass.** Everything before `Invoke` runs again
+when the answer arrives. Had the passkey action called `CreationOptionsAsync()` before `Invoke`, pass
+2 would have minted a new challenge and overwritten the state cookie, and the attestation would have
+failed. That is why `arguments` is a **factory**: it runs only while the step is unanswered. Keep
+every line before a retry — `Invoke` or `Action` — side-effect free or idempotent, and put the
+expensive or stateful work inside the factory or after the retry returns.
+
+- **The set of methods is closed.** The server can only name a method the client registered; nothing
+  it sends is evaluated. An unknown name (one `console.warn`), a method that rejects or throws, and an
+  unsupported one (which is not run) all answer `option: "Cancel"`. A client-method Cancel is always
+  sent to the server, never swallowed, so the action decides what a cancelled browser step means.
+- **Arguments are serialized at `Invoke` time** with the application's HTTP JSON options, so their
+  spelling matches the envelope, and a persistent object inside them still meets the boundary net.
+- **State that must survive to pass 2** travels with the request: the 449 can set cookies (the passkey
+  ceremony's state cookie does), and the answers ride in `retryResults`.
+- **From .NET**, `MintPlayer.Spark.Client` sees `RetryActionPayload.ClientMethod` and `Arguments` and
+  answers with `RetryAnswer.Return(value)`.
+
+### `requiresClient`: disable an action the browser cannot run
+
+An `actions.json` entry can name the client method it depends on:
+
+```json
+"AddPasskey": { "icon": "plus-lg", "showedOn": "detail", "selectionRule": "=0", "requiresClient": "webauthn.create" }
+```
+
+`/spark/actions/list` passes it on. Where the method is missing or its `supported()` says no, the grid
+toolbar, query card, query list, row menu and detail action bar show the action disabled, with the
+translated reason as its tooltip: the method's `unsupportedReason`, or `common.clientUnsupported`.
+`requiresClient` is presentation; the server still runs whatever a caller with the right posts.
 
 ## Translated Messages
 
@@ -211,8 +331,9 @@ Use `GetTranslatedMessage()` to display localized modal text. The key is looked 
 ```csharp
 manager.Retry.Action(
     title: manager.GetTranslatedMessage("confirm_delete_title"),
-    options: [manager.GetTranslatedMessage("delete"), manager.GetTranslatedMessage("cancel")],
-    message: manager.GetTranslatedMessage("confirm_delete_message", entity.LicensePlate)
+    options: [manager.GetTranslatedMessage("delete")],
+    message: manager.GetTranslatedMessage("confirm_delete_message", entity.LicensePlate),
+    cancellable: true // the client's Cancel is translated already, and still answers "Cancel"
 );
 ```
 

@@ -108,7 +108,7 @@ public sealed class WrPromptAction(IDatabaseAccess databaseAccess, IRetryAccesso
     {
         var po = await databaseAccess.GetPersistentObjectAsync(AttributeWriteEnforcementTests.ItemTypeId, "items/1");
         po!["Pin"].Value = "p0-stored";
-        retry.Action("Confirm", ["OK", "Cancel"], persistentObject: po);
+        retry.Action("Confirm", ["OK"], persistentObject: po, cancellable: true);
     }
 }
 

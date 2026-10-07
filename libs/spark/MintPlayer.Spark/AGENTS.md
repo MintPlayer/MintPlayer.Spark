@@ -54,7 +54,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 });
 
 // Build-time commands. Each returns true when it handled the invocation and the host should stop.
-if (builder.SynchronizeSparkModelsIfRequested(args)) return;    // --spark-synchronize-model / --spark-verify-model
+if (builder.SynchronizeSparkModelsIfRequested(args)) return;    // --spark-synchronize-model / --spark-verify-model / --spark-describe
 if (builder.InitializeSparkSecurityIfRequested(args)) return;   // --spark-init-security
 if (builder.VerifySparkSecurityIfRequested(args)) return;       // --spark-verify-security / --spark-synchronize-security
 
@@ -104,6 +104,39 @@ to be a *declared* property on the model type.
 **`modelHashes.json` gates startup.** Outside Development a mismatch stops the process before it
 serves a request, because a drifted model surfaces as missing columns and values silently dropped on
 save — data loss wearing a configuration mistake's clothes. In Development it warns instead.
+
+---
+
+## Library layers: what a referenced package already ships
+
+A referenced Spark library can ship its own `App_Data` files — `Model/*.json`, `actions.json`,
+`translations.json`, `security.json`, `programUnits.json`, `moderation.json` — compiled into its
+assembly. Your application's files compose **on top**, per key; you never copy a library's file.
+`MintPlayer.Spark.Authorization` ships `SparkUser` and the passkeys page (`Passkeys`, `PasskeyRow`,
+`PasskeyRename`, their actions, rights and texts); `MintPlayer.Spark.Moderation` ships its defaults and
+rights. Before writing a file for a type you did not create, look at what is already there:
+
+```
+dotnet run -- --spark-describe model SparkUser            # the composed result
+dotnet run -- --spark-describe model SparkUser --layers   # one line per value: path = value @layer
+dotnet run -- --spark-describe security                   # every effective right, as the evaluator reads it
+```
+
+Kinds: `actions`, `model`, `translations`, `security` (or `rights`), `programUnits`, `moderation`.
+
+- **A model file naming a library type is a delta.** State only what differs (QnA's `SparkUser.json`
+  sets one attribute's `showedOn`). Never copy or change an `id`: library ids are derived and fixed.
+  `--spark-synchronize-model` writes only your delta, and no file at all when nothing differs.
+- **`null` removes or resets** a property; a keyed array element (an attribute, a right) is removed
+  with `{ "name": "X", "$remove": true }` / `{ "key": "alias:key", "$remove": true }`.
+- **Library rights are active as soon as the library is referenced.** Remove one grant by key, or all
+  of a library's with `"libraries": { "<alias>": false }` in `security.json`. Slots such as
+  `moderation:moderators` must be bound in `"bindings"`, or startup refuses.
+- **Library layers change only with a rebuild**; your own files reload on save (except the model's
+  structure, which is checked against the entity classes at startup).
+- Writing a library? See `docs/guide-library-layers.md`: `<SparkLibraryAlias>`, the generator
+  reference with `PrivateAssets="all"`, derived model ids (SPARK045), and what its rights may grant
+  (SPARK047).
 
 ---
 
@@ -305,7 +338,7 @@ in `translations.json` (`{count}` in a confirmation is the row count).
 
 **`actions.json` is layered** (#467, D7): the core library ships New, Edit and Delete, any library may
 ship a layer, and the app's file composes on top per property. `"Edit": null` removes an inherited
-action; a property set to `null` resets it. `--spark-print-effective-actions` prints the composed
+action; a property set to `null` resets it. `--spark-describe actions --layers` prints the composed
 catalogue with each property's source layer.
 
 **New, Edit and Delete are catalogue entries** (#460 D18, #467 D7). `/spark/actions/list` returns
@@ -442,10 +475,16 @@ Votes, reputation, privileges, flags, locks and suspensions are a package — ne
   **lowest-precedence** source — env vars (`Spark__Moderation__Fraud__…`) override it. Startup
   validates the *layered* result: unknown reputation event names, privilege groups that are missing /
   well-known / hold a non-earnable right / have no grant, a destructive `Earnable` entry.
-- **Privileges are `security.json` groups by id**, conferred by a composed group-membership provider
+- **The library ships `moderation.json` as a layer**: the reputation table and four privileges, each
+  conferring a **slot** (`"Group": "moderation:voters"`). The app's `moderation.json` states only its
+  delta, and its `security.json` binds every slot (`"bindings": { "moderation:voters": ["Voters"] }`);
+  an unbound slot refuses startup.
+- **Privileges are `security.json` groups**, conferred by a composed group-membership provider
   (never a claim). `Lock`, `Suspend`, `Audit`, `Purge`, `Restore`, `Revert`, `ViewDeleted` are never
-  earnable. Rights: `Vote/T`, `Downvote/T`, `Flag/T`, `Lock/T`, `Review/Moderation`,
-  `Suspend/Moderation`, `Audit/Moderation` — by name. `--spark-init-moderation` prints the grants.
+  earnable. Rights: `Vote/T`, `Downvote/T`, `Flag/T`, `Lock/T` (yours to grant, per type —
+  `--spark-init-moderation` prints them), and `Review/Moderation`, `Suspend/Moderation`,
+  `Audit/Moderation`, which the library ships granted to `moderation:reviewers` /
+  `moderation:moderators`.
 - **All ten fraud measures are on**; tune thresholds in configuration, do not disable them in
   code. The ledger is append-only: a correction is a compensating entry, never an edit or delete.
 - A lock refuses save / AsDetail change / custom-action write / revert / delete / restore / purge

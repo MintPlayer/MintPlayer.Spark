@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "Authorization's rights, shipped as a library layer (composition D4): the passkeys page, granted to",
+    "signed-in users and only on the types this library ships (Passkeys, PasskeyRow). Every one is the",
+    "caller's own account -- PasskeysActions and PasskeyRowActions start from the request principal and",
+    "nothing else -- so an application needs no grant to have the page. PasskeyRow gets Query and never",
+    "Read: its rows have no detail page. PasskeyRename is a retry prompt and needs no right.",
+    "Drop one grant with { \"key\": \"authorization:<key>\", \"$remove\": true }, or all of them with",
+    "\"libraries\": { \"authorization\": false }."
+  ],
+  "rights": [
+    { "key": "passkeys-read", "resource": "Read/Passkeys", "groupId": "@authenticated" },
+    { "key": "passkeys-add", "resource": "AddPasskey/Passkeys", "groupId": "@authenticated" },
+    { "key": "passkey-rows-query", "resource": "Query/PasskeyRow", "groupId": "@authenticated" },
+    { "key": "passkey-rows-rename", "resource": "RenamePasskey/PasskeyRow", "groupId": "@authenticated" },
+    { "key": "passkey-rows-remove", "resource": "RemovePasskey/PasskeyRow", "groupId": "@authenticated" }
+  ]
+}

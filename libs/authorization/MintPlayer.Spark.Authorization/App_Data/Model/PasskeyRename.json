@@ -1,0 +1,41 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "PasskeyRename, the form RenamePasskeyAction prompts with through a retry (generic passkeys page",
+    "PRD D4, S3), shipped by MintPlayer.Spark.Authorization. A virtual prompt type: no clrType, no",
+    "documents, no rights needed, never a page of its own. Its own type rather than PasskeyRow, whose",
+    "attributes are grid columns and read-only.",
+    "",
+    "HAND-AUTHORED. The ids are UUIDv5 of 'authorization:PasskeyRename[.attributes.<Name>]' (D5),",
+    "verified by the generator (SPARK045).",
+    "",
+    "Name is optional (an empty name shows as 'Unnamed passkey'). The maxLength rule guides the form;",
+    "the action sanitizes whatever arrives anyway (64 characters, no control characters)."
+  ],
+  "persistentObject": {
+    "id": "da8a90fd-91ae-593a-8b48-0ad102082412",
+    "name": "PasskeyRename",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "778f6bc4-56fd-5b4a-b06f-151b3a93bdf5",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [
+          {
+            "type": "maxLength",
+            "value": 64
+          }
+        ]
+      }
+    ]
+  },
+  "queries": []
+}

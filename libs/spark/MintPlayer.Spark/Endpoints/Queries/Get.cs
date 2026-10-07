@@ -27,6 +27,7 @@ internal sealed partial class GetQuery : IPostEndpoint
 
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -50,6 +51,8 @@ internal sealed partial class GetQuery : IPostEndpoint
             return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
 
-        return Results.Json(query);
+        // Sort columns, column overrides and the parent reference name attributes of the row type; one
+        // the caller may not query is left out, so the metadata does not say it exists (S7).
+        return Results.Json(await attributeRights.ForQueryMetadataAsync(query, httpContext.RequestAborted));
     }
 }

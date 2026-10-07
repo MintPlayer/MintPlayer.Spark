@@ -35,7 +35,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK010 | Warning | `MapControllers()` mounts controllers outside Spark's pipeline | `MapControllersAnalyzer` | — |
 | SPARK011 | Warning | Security right names an action Spark never asks for | `SecurityConfigurationAnalyzer` | — |
 | SPARK012 | Warning | Security right names a type no model file declares | `SecurityConfigurationAnalyzer` | — |
-| SPARK013 | Warning | Security right is granted to an undeclared group | `SecurityConfigurationAnalyzer` | — |
+| SPARK013 | Warning | Security right is granted to an undeclared group id. A token (`@anonymous`, `@authenticated`) or a library slot (`alias:slot`) is judged by SPARK048 instead (composition M6) | `SecurityConfigurationAnalyzer` | — |
 | SPARK014 | Error | Attribute-level right (`{verb}/{Type}/{Attr}`) is refused at startup: a verb with no attribute form, an unknown type or an unknown attribute ([guide](guide-authorization.md#attribute-level-rights-verbtypeattribute)) | `SecurityConfigurationAnalyzer` | — |
 | SPARK015 | — | **Unallocated.** Never used; do not reuse without checking release notes | — | — |
 | SPARK016 | Error | Value object must be partial | `ValueObjectKeyReporter` (a *generator*, not an analyzer) | ✅ Declare the value object 'partial' |
@@ -58,16 +58,30 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK033 | Warning | MintPlayer.Spark.SoftDelete is not referenced, so contributions are hard-deleted (PRD Q4) | `ContributionsAnalyzer` | — |
 | SPARK034 | Error | Unsupported `[Contribution]` declaration: owner generic or not a class; static/indexer property; unknown collection type; no setter on a non-`List`/`IList`/`ICollection` property; element not a non-abstract, non-generic class/record with a parameterless constructor; slot without a public getter and setter | `ContributionsAnalyzer` | — |
 | SPARK035 | Error | Contribution element clashes with generated members: a reserved name (`Key`, `Id`, `TargetId`, `ContributorId`, `ContributionId`, `UpdatedAt`, `ContributionCount`, `ContributorName`, the `ISoftDeletable` members), `[ValueKey]`, or `[ValueObject]` | `ContributionsAnalyzer` | — |
-| SPARK036 | Warning | Two referenced libraries state the same property of the same action differently in their `actions.json`; the later library by assembly name wins. State the property in the app's `actions.json` to choose (#467, D7) | `LibraryActionsConflictAnalyzer` | — |
+| SPARK036 | Warning | Two unrelated referenced libraries state the same property of the same action differently in their `actions.json`; the later one in layer order (dependency order, by assembly name between unrelated libraries) wins. A library overriding a library it depends on is silent. State the property in the app's `actions.json` to choose (#467, D7; composition D2) | `LibraryActionsConflictAnalyzer` | — |
 | SPARK037 | Warning | A library declares an `ISparkMigration` that is not `public` (or sits in a non-public type). The application's generated `AddMigrations()` registers a package's migrations by name, so this one would never run (#388) | `LibraryMigrationVisibilityAnalyzer` | — |
 | SPARK038 | Error | A type implementing a framework-stamped interface (`IAuditCreated`, `IAuditModified`, `IAuditable`, `ISoftDeletable`, `IModeratable`) leaves members undeclared and is not `partial` (nor is every type containing it), so they cannot be generated (#271) | `AuditMembersReporter` (a *generator*, in LibraryGenerators) | ✅ Declare the type 'partial' (and its containers) |
 | SPARK039 | Warning | An application's entity implements a framework-stamped interface, but the application does not reference the package that stamps it (`MintPlayer.Spark.History`, `.SoftDelete` or `.Moderation`), so the members exist and are never stamped (#271) | `StampedContractRuntimeAnalyzer` | — |
 | SPARK040 | Info | User-id members (`CreatedBy`, `ModifiedBy`, `DeletedBy`, `AuthorId`) were generated as plain strings because the library cannot see `SparkUser`; reference `MintPlayer.Spark.Authorization.Abstractions` to make them `[Reference(typeof(SparkUser))]` (#271) | `AuditMembersReporter` (a *generator*, in LibraryGenerators) | — |
+| SPARK041 | Error | A class library ships `App_Data` layer files (`actions.json`, `translations.json`, `Model/*.json`, `security.json`, `programUnits.json`, `moderation.json`) but its `<SparkLibraryAlias>` is missing or not lower-kebab (`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`); nothing is embedded (composition D16) | `LibraryLayersGenerator` (a *generator*) | — |
+| SPARK042 | Warning | The `SparkLibraryAlias` is too generic (`app`, `core`, `common`, `lib`, `shared`, …) to stay unique among an application's libraries; it is embedded anyway (composition D16) | `LibraryLayersGenerator` (a *generator*) | — |
+| SPARK043 | Error | Two libraries an application references declare the same `SparkLibraryAlias`; the run time refuses to start with them too (composition D16) | `ApplicationLayersGenerator` (a *generator*) | — |
+| SPARK044 | Warning | A library that ships layers references the `MintPlayer.Spark.SourceGenerators` package without `PrivateAssets="all"`, so the generator flows into every consuming application and runs twice there (CS0101) (composition D16, S1) | MSBuild target `SparkValidateLibraryGeneratorReference` (the generator package's `build/` targets) | — |
+| SPARK045 | Error | An id in a library's `App_Data/Model/*.json` (the type, an attribute, tab, group or query) is missing or is not the UUIDv5 derived from the alias and the name. The message names the path, the expected id and its seed. Run `npm run stamp:library-model-ids -- <library folder>` (composition D5) | `LibraryLayersGenerator` (a *generator*) | — |
+| SPARK046 | Error | A library's model file is not strict JSON or names no type, so it cannot be shipped as a layer; applications would refuse to start with it (composition D5) | `LibraryLayersGenerator` (a *generator*) | — |
+| SPARK047 | Error | A library's `security.json` breaks a guard rail: a deny or `isImportant`, a target the library does not ship (its own model's types and queries, plus its `reservedTargets`), a group by id or another library's slot, an application-only member (`groups`, `wellKnown`, `bindings`, `libraries`), a key containing `:`, or a `$remove` (composition D4) | `LibraryLayersGenerator` in the library's build; `SecurityConfigurationAnalyzer` for referenced libraries in the application's | — |
+| SPARK048 | Error | A group token or slot does not resolve: `@anonymous`/`@authenticated` without its `wellKnown` entry, an unknown `@token`, a slot no `bindings` entry binds, or a binding to an undeclared group. A right that resolves to nothing would grant to no one while reading as granted, so the run time refuses it too (composition D4) | `SecurityConfigurationAnalyzer` | — |
+| SPARK049 | Error | The application states something about library rights that cannot mean what it says: a library key stated other than to remove it, a `$remove` of a key no library ships, or a key prefix, binding or `libraries` opt-out naming no referenced library (composition D4) | `SecurityConfigurationAnalyzer` | — |
 | SPARKLIB001 | Error | A project marked `<SparkEntityLibrary>true</SparkEntityLibrary>` depends on the ASP.NET Core shared framework (`Microsoft.AspNetCore.App`), directly or through a reference to a Web-SDK project such as `MintPlayer.Spark.Abstractions` or `MintPlayer.Spark.Authorization`. Reference `MintPlayer.Spark.Attributes`, `MintPlayer.Spark.Model` and the plain `*.Abstractions` packages instead (#388) | MSBuild target `SparkEntityLibraryGuard` (repository `Directory.Build.targets`) | — |
 
 SPARK030 is an **MSBuild** warning, not a Roslyn diagnostic: it is raised before `Build` in a project
 that references `MintPlayer.Spark.Authorization`, has `EnableSparkAuthSpa=true` and a
 `$(SpaRoot)package.json`. `#pragma` and `.editorconfig` severities do not apply to it.
+
+SPARK044 is an **MSBuild** warning as well. It ships in the generator package's `build/` folder, so NuGet
+imports it into exactly the project that references the package; it reads that `PackageReference`'s
+`PrivateAssets`, the way SPARK002's check in `spark.targets` does for applications. A
+`ProjectReference` with `OutputItemType="Analyzer"` never flows, so it is not checked.
 
 SPARKLIB001 is an **MSBuild** error too, and it applies to this repository only: the target lives in
 the root `Directory.Build.targets`, which is not shipped in any package. It runs after
@@ -75,8 +89,19 @@ the root `Directory.Build.targets`, which is not shipped in any package. It runs
 because a framework reference inherited through a `ProjectReference` arrives as the latter.
 
 Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
-(`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…`
-(`TranslationsDiagnostics.cs`).
+(`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…006`
+(`TranslationsDiagnostics.cs`). The exception is `SPARK_TRANS_005` (two unrelated libraries translate
+a key into a language differently), which `LibraryTranslationsConflictAnalyzer` reports since
+composition M5, when the host aggregator generator was removed. `SPARK_TRANS_006` (one key stated
+twice, dotted and nested, error) is new in M5; the run time refuses such a file. `LibraryLayersGenerator`
+checks every library's `translations.json` through the same flattener the run time uses, so
+`SPARK_TRANS_001…004` and `006` read the same in a library's build as at an application's startup.
+
+SPARK045–049 are the composition gates at build time. SPARK046–049 have run-time twins: the startup
+check refuses an unreadable model layer, and `SecurityConfigurationLoader` lists every guard-rail, token
+and library-key problem at once, in the same sentences. SPARK045 has none, because the run time never
+derives an id; it only requires every composed element to have one and refuses an `id` a later layer
+changed. See [library layers](guide-library-layers.md).
 
 ## `MPEP*` — not ours, but they appear in our builds
 

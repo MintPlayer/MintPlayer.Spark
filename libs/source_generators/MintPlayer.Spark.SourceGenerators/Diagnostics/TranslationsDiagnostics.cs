@@ -17,7 +17,7 @@ internal static class TranslationsDiagnostics
     public static readonly DiagnosticDescriptor MixedLeafAndNamespace = new(
         id: "SPARK_TRANS_002",
         title: "Mixed leaf/namespace object in translations.json",
-        messageFormat: "Object at '{0}' mixes string and object values. A translation leaf must have only string values; a namespace must have only object values.",
+        messageFormat: "Object at '{0}' mixes string and object values. A translation leaf must have only string values; a namespace must have only object values (or null, to remove a namespace a library ships).",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -38,10 +38,18 @@ internal static class TranslationsDiagnostics
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor DuplicateKey = new(
+        id: "SPARK_TRANS_006",
+        title: "Translation key stated twice in translations.json",
+        messageFormat: "'{0}' is stated twice, e.g. once as a dotted key and once nested. The application refuses the file at startup.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public static readonly DiagnosticDescriptor ConflictingKey = new(
         id: "SPARK_TRANS_005",
         title: "Two libraries translate the same key differently",
-        messageFormat: "Libraries '{2}' and '{3}' both translate '{0}' into '{1}', with different values. '{2}' wins (libraries apply alphabetically). Define '{0}' in the app's translations.json to choose.",
+        messageFormat: "Libraries '{2}' and '{3}' both translate '{0}' into '{1}', with different values. '{2}' wins (libraries apply in dependency order, alphabetically between unrelated ones). Define '{0}' in the app's translations.json to choose.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);

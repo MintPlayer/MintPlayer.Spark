@@ -35,7 +35,7 @@ public partial class HomeActions
     /// </remarks>
     public async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
     {
-        var obj = manager.GetPersistentObject("Home");
+        var obj = await manager.GetPersistentObjectAsync("Home");
         var lang = culture.GetCurrentCulture();
 
         // The page title is the breadcrumb, set here directly: Home.json declares no breadcrumb

@@ -1,0 +1,1 @@
+{ "$schema": "x", "Archive": { "icon": "archive", "offset": 2 }, "Delete": null, "Publish": { "label": "actions.Publish.label", "refreshOnCompleted": false } }

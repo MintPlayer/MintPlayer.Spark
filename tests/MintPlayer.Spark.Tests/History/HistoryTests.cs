@@ -481,7 +481,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         var databaseAccess = scope.ServiceProvider.GetRequiredService<IDatabaseAccess>();
         using var session = Store.OpenAsyncSession();
         var revision = await session.Advanced.Revisions.GetAsync<HiNote>(changeVector);
-        var po = mapper.ToPersistentObject(revision, NoteTypeId);
+        var po = mapper.AsSystem().ToPersistentObject(revision, NoteTypeId);
         po.Id = id;
         foreach (var attribute in po.Attributes)
             attribute.IsValueChanged = true;

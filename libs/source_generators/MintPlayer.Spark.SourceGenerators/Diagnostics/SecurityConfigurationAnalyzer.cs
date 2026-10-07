@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Text;
+using MintPlayer.Spark.Layering;
 using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using System;
@@ -16,8 +17,8 @@ namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The runtime validator checks that a resource has the <c>{action}/{target}</c> shape and that no
-/// two rights share an id. It does not check that either half <em>means</em> anything — so
+/// The runtime validator checks that a resource has the <c>{action}/{target}</c> shape, and the composer that no
+/// layer keys two rights alike. It does not check that either half <em>means</em> anything — so
 /// <c>"Raed/Person"</c> parses, loads, and silently matches no request forever. Nothing fails; the
 /// permission simply never applies, and the only symptom is a user who cannot do something they were
 /// granted.
@@ -101,7 +102,8 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true);
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        [UnknownActionRule, UnknownTargetRule, DanglingGroupRule, AttributeRightRule, WildcardRightRule, StaleAttributeDenyRule];
+        [UnknownActionRule, UnknownTargetRule, DanglingGroupRule, AttributeRightRule, WildcardRightRule, StaleAttributeDenyRule,
+         SecurityLayersDiagnostics.GuardRail, SecurityLayersDiagnostics.Unresolved, SecurityLayersDiagnostics.Composition];
 
     /// <summary>The verbs with an attribute-level form (mirrors <c>SparkAttributeRights.Verbs</c>).</summary>
     private static readonly string[] AttributeVerbs = ["Query", "Read", "Edit", "New"];
@@ -133,6 +135,15 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
         // no diagnostics rather than a false one. spark.targets wires it for every consumer.
         if (security is null) return;
 
+        // A library's security.json is a layer, not an application's file (composition D4): it binds
+        // no slot and declares no group, so judged as one every right it ships would read as SPARK048.
+        // LibraryLayersGenerator holds it to the library guard rails (SPARK047) instead, and the
+        // application that references it composes it here, under its own file. Moderation was the first
+        // library to ship rights (composition M9).
+        if (context.Options.AnalyzerConfigOptionsProvider.GlobalOptions.TryGetValue(LibraryLayersDiagnostics.AliasProperty, out var alias)
+            && !string.IsNullOrWhiteSpace(alias))
+            return;
+
         var reserved = ReservedActionsReader.Read(context.Compilation);
         var builtInActions = reserved.Where(r => !r.IsCombined).Select(r => r.Verb)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -156,16 +167,20 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             if (text is null) return;
 
             var content = text.ToString();
+            var appDataDir = SparkAppDataDir.Read(end.Options.AnalyzerConfigOptionsProvider.GlobalOptions);
+            ReportComposition(end, security, content, () => ReadModel(end.Options.AdditionalFiles, appDataDir, end.Compilation));
+
             var rights = SecurityJsonReader.ReadRights(content);
             if (rights.Count == 0) return;
 
             var groupIds = SecurityJsonReader.ReadGroupIds(content);
             var customActions = ReadNames(end.Options.AdditionalFiles, "actions.json", TopLevelKeys);
             // Library layers (#467, S12): an action a referenced library ships is one Spark asks for.
-            foreach (var layer in LibraryActionsReader.Read(end.Compilation))
-                foreach (var name in LibraryActionsReader.Names(layer.Json))
-                    customActions.Add(name);
-            var model = ReadModel(end.Options.AdditionalFiles);
+            foreach (var library in LibraryLayersReader.Read(end.Compilation))
+                foreach (var file in library.Files.Where(f => f.Kind == SparkLayerKinds.Actions))
+                    foreach (var name in LibraryLayersReader.ActionNames(file.Json))
+                        customActions.Add(name);
+            var model = ReadModel(end.Options.AdditionalFiles, appDataDir, end.Compilation);
             var knownTargets = model.Targets;
             var combinedVerbs = reserved.Where(r => r.IsCombined).Select(r => r.Verb).ToArray();
             var staleDeny = new StaleDenyCollector();
@@ -199,7 +214,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                     else if (expanded is not null)
                         staleDeny.Add(right, location, expanded, typeName!, attributeName!);
 
-                    if (right.GroupId.Length > 0 && groupIds.Count > 0 && !groupIds.Contains(right.GroupId))
+                    if (IsGroupId(right.GroupId) && groupIds.Count > 0 && !groupIds.Contains(right.GroupId))
                     {
                         end.ReportDiagnostic(Diagnostic.Create(
                             DanglingGroupRule, location, right.Resource, right.GroupId));
@@ -230,7 +245,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                         UnknownTargetRule, location, right.Resource, target));
                 }
 
-                if (right.GroupId.Length > 0 && groupIds.Count > 0 && !groupIds.Contains(right.GroupId))
+                if (IsGroupId(right.GroupId) && groupIds.Count > 0 && !groupIds.Contains(right.GroupId))
                 {
                     end.ReportDiagnostic(Diagnostic.Create(
                         DanglingGroupRule, location, right.Resource, right.GroupId));
@@ -253,6 +268,45 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
             }
         });
     }
+
+    /// <summary>
+    /// The rights the referenced libraries ship composed under this file (composition D4), through the
+    /// host's own composer: SPARK047 for a library breaking a guard rail, SPARK048 for a token or slot
+    /// that resolves to no group, SPARK049 for an edit of a library grant. A file that does not compose
+    /// at all is the host's to refuse, in its own words.
+    /// </summary>
+    private static void ReportComposition(CompilationAnalysisContext end, AdditionalText security, string content, Func<ModelIndex> model)
+    {
+        var libraries = LibraryLayersReader.Read(end.Compilation)
+            .Select(l => new SparkSecurityLibrary(
+                l.Alias,
+                l.Files.FirstOrDefault(f => f.Kind == SparkLayerKinds.Security)?.Json,
+                SparkSecurityLayers.ModelTargets(l.Files.Where(f => f.Kind == SparkLayerKinds.Model).Select(f => f.Json))))
+            .ToList();
+
+        // Only libraries that ship rights can make a reserved target collide with a model type.
+        var types = libraries.Any(l => l.Json is not null) && model() is { Types.Count: > 0 } index
+            ? new HashSet<string>(index.Types.Keys, StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        IReadOnlyList<SparkSecurityProblem> problems;
+        try
+        {
+            problems = SparkSecurityLayers.Compose(libraries, content, "security.json", types).Problems;
+        }
+        catch (SparkLayerException)
+        {
+            return;
+        }
+
+        var location = Location.Create(security.Path, default, default);
+        foreach (var problem in problems)
+            end.ReportDiagnostic(Diagnostic.Create(SecurityLayersDiagnostics.For(problem.Kind), location, problem.Layer, problem.Message));
+    }
+
+    /// <summary>A concrete group id, not a token (<c>@authenticated</c>) or a slot (<c>moderation:moderators</c>), which SPARK048 judges.</summary>
+    private static bool IsGroupId(string group)
+        => group.Length > 0 && !group.StartsWith("@", StringComparison.Ordinal) && group.IndexOf(':') < 0;
 
     private static string Adjective(string verb) => verb switch
     {
@@ -308,7 +362,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                 .OfType<INamedTypeSymbol>().FirstOrDefault();
             if (declared is null)
             {
-                return $"targets '{type}', which is not a persistent object in App_Data/Model — an attribute right "
+                return $"targets '{type}', which is not a persistent object in {model.Directory} — an attribute right "
                        + "names the type by its name, not an alias, a query or a reserved target";
             }
 
@@ -517,6 +571,9 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     {
         public ISet<string> Targets { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, ModelType> Types { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The model directory as messages name it, e.g. <c>App_Data/Model</c>.</summary>
+        public string Directory { get; set; } = SparkAppDataDir.Default + "/Model";
     }
 
     /// <summary>
@@ -564,21 +621,25 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     /// model declares — read by position (<see cref="ModelNamesReader"/>), so an attribute, tab or
     /// group name no longer counts as a type target — plus each persistent object's attributes.
     /// </summary>
-    private static ModelIndex ReadModel(IEnumerable<AdditionalText> files)
+    private static ModelIndex ReadModel(IEnumerable<AdditionalText> files, string appDataDir, Compilation compilation)
     {
-        var index = new ModelIndex();
+        var index = new ModelIndex { Directory = string.IsNullOrEmpty(appDataDir) ? "Model" : appDataDir + "/Model" };
         foreach (var reserved in ReservedTargets) index.Targets.Add(reserved);
 
-        var any = false;
+        // The composed model (composition D6): a library type is a target although the application
+        // has no file for it, and an application delta on it composes onto the library's.
+        var appFiles = new List<AppModelFileInfo>();
         foreach (var file in files)
         {
-            if (file.Path.IndexOf("App_Data", StringComparison.OrdinalIgnoreCase) < 0) continue;
-            if (file.Path.IndexOf("Model", StringComparison.OrdinalIgnoreCase) < 0) continue;
+            if (!SparkAppDataDir.Contains(file.Path, appDataDir, "Model")) continue;
             if (file.GetText() is not { } text) continue;
+            appFiles.Add(new AppModelFileInfo { Path = file.Path, Text = text.ToString() });
+        }
 
-            any = true;
-            var content = text.ToString();
-
+        // No application model files means nothing to compare against (below), library types or not.
+        var any = appFiles.Count > 0;
+        foreach (var content in ComposedModel.Compose(ComposedModel.LibraryFiles(compilation), appFiles))
+        {
             if (ModelNamesReader.Read(content) is { } parsed)
             {
                 if (!string.IsNullOrEmpty(parsed.TypeName))

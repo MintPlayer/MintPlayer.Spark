@@ -7,8 +7,9 @@ const payload: RetryActionPayload = {
   step: 0,
   title: 'Overwrite?',
   message: 'A newer version exists.',
-  options: ['Overwrite', 'Cancel'],
-  defaultOption: 'Cancel',
+  options: ['Overwrite'],
+  defaultOption: 'Overwrite',
+  cancellable: true,
   persistentObject: { id: 'p/1', name: 'Person', objectTypeId: 't/1', attributes: [] } as any,
 };
 

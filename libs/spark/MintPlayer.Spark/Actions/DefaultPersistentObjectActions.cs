@@ -163,9 +163,11 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         var breadcrumbs = await services.GetRequiredService<Services.Breadcrumb.IBreadcrumbResolver>()
             .ResolveAsync(session, [.. entities.Cast<object>()], definition);
 
-        var mapped = entities
-            .Select(entity => (Po: entityMapper.ToPersistentObject(entity, breadcrumbs), Row: (object)entity))
-            .ToList();
+        // Built for the caller (D13a): a Read-denied attribute is absent before any OnLoadAsync override
+        // or interceptor sees the object, and an Edit-denied one read-only.
+        var mapped = new List<(Abstractions.PersistentObject Po, object Row)>(entities.Count);
+        foreach (var entity in entities)
+            mapped.Add((await entityMapper.ToPersistentObjectAsync(entity, breadcrumbs), entity));
 
         // Per-viewer attribute redaction (#236 G4) — GetProtectedAttributesAsync may hide specific
         // attributes of a row from this caller (e.g. a secret only managers may view). Already plural.

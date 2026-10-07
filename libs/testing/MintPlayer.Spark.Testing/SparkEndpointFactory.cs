@@ -127,7 +127,7 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(models);
 
         _contentRoot = Path.Combine(Path.GetTempPath(), "spark-endpoint-tests-" + Guid.NewGuid().ToString("N"));
-        var modelDir = Path.Combine(_contentRoot, "App_Data", "Model");
+        var modelDir = SparkAppData.Path(_contentRoot, "Model");
         Directory.CreateDirectory(modelDir);
 
         foreach (var model in models)
@@ -244,12 +244,14 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
             .GetRequiredService<Abstractions.Authorization.ISecurityConfigurationLoader>()
             .GetConfiguration();
 
-        if (loaded.Rights.Count != expected.Rights.Count || loaded.Groups.Count != expected.Groups.Count)
+        // The application's own rights: the libraries' grants compose underneath (composition D4).
+        var loadedOwn = loaded.Rights.Count(r => r.Layer is null);
+        if (loadedOwn != expected.Rights.Count || loaded.Groups.Count != expected.Groups.Count)
         {
             throw new InvalidOperationException(
                 "SparkEndpointFactory wrote a security.json the host did not load "
                 + $"(expected {expected.Rights.Count} rights in {expected.Groups.Count} groups, "
-                + $"loaded {loaded.Rights.Count} in {loaded.Groups.Count}). Every authorization "
+                + $"loaded {loadedOwn} in {loaded.Groups.Count}). Every authorization "
                 + "assertion in this fixture would be meaningless.");
         }
     }

@@ -193,6 +193,7 @@ message naming the key to use.
 | `refreshOnCompleted` | boolean | Whether the UI should refresh after successful execution |
 | `variant` | string | `"primary"`, `"secondary"`, `"danger"`, `"warning"`: presentation only |
 | `offset` | number | Display order (lower values appear first). Default: `0` |
+| `requiresClient` | string | A client method the action needs (`provideSparkClientMethods`), e.g. `"webauthn.create"`. Where the browser lacks it, the action is shown disabled with the reason as its tooltip. Presentation only: the server does not check it. See [client-method retries](guide-manager-retry-actions.md#requiresclient-disable-an-action-the-browser-cannot-run) |
 
 ### Layers: the libraries' actions.json and yours (#467, D7)
 
@@ -206,18 +207,22 @@ property**:
   decide who may run what.
 - A name no library declares adds an action.
 
-Two libraries that state the same property of the same action differently get warning SPARK036 at
-build time and a warning in the log at startup; the later library by assembly name wins, and your
-file decides by stating the property. Run the application with `--spark-print-effective-actions`
-to print the composed catalogue, with the layer each property came from.
+Libraries stack in dependency order: the core first, each library above the libraries it depends
+on, by assembly name between unrelated ones. A library restating an action of a library it depends
+on overrides it silently. Two **unrelated** libraries that state the same property of the same
+action differently get warning SPARK036 at build time and a warning in the log at startup; the
+later one wins, and your file decides by stating the property. Run the application with
+`--spark-describe actions --layers` to print the composed catalogue, with the layer each property
+came from.
 
-A library ships its layer by marking the file for the source generator, which compiles it into the
-assembly:
+A library ships its layer by keeping the file in its own `App_Data/actions.json` and naming itself
+with an alias; the Spark source generator compiles every `App_Data` layer file into the assembly
+(SPARK041 when the alias is missing):
 
 ```xml
-<AdditionalFiles Include="App_Data\actions.json" SparkActionsLayer="library" />
-<CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="SparkActionsLayer" />
-<Content Remove="App_Data\actions.json" />
+<PropertyGroup>
+  <SparkLibraryAlias>my-library</SparkLibraryAlias>
+</PropertyGroup>
 ```
 
 ### Selection Rules
@@ -271,13 +276,13 @@ If your application uses Spark Authorization, add entries to `App_Data/security.
   },
   "rights": [
     {
-      "id": "ca000001-0000-0000-0000-000000000001",
+      "key": "ca000001-0000-0000-0000-000000000001",
       "resource": "CarCopy/Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "ca000001-0000-0000-0000-000000000002",
+      "key": "ca000001-0000-0000-0000-000000000002",
       "resource": "CarCopy/Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false

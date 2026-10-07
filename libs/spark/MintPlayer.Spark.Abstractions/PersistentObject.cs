@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -130,9 +131,52 @@ public sealed class PersistentObject : IDisablable
     /// Looks up an attribute by name. Throws <see cref="KeyNotFoundException"/>
     /// if no attribute with that name is on this PO.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>An attribute the caller's rights removed at construction (D13a) does not throw.</b> It answers
+    /// a detached attribute that belongs to no list: a write to it is a silent no-op and a read gives
+    /// null. That keeps a hook that fills a page for every caller (<c>obj["Provider"].Value = …</c>)
+    /// working for a caller who may not see the attribute. A hook that has to <em>know</em> whether the
+    /// attribute is there asks <see cref="TryGetAttribute"/>.
+    /// </remarks>
     public PersistentObjectAttribute this[string name]
         => _attributes.FirstOrDefault(a => a.Name == name)
+           ?? (_pruned?.Contains(name) == true ? new PersistentObjectAttribute { Name = name, Parent = this } : null)
            ?? throw new KeyNotFoundException($"Attribute '{name}' not on PersistentObject '{Name}'.");
+
+    /// <summary>
+    /// The attribute named <paramref name="name"/>, or false when it is not on this object — never
+    /// declared, or removed for the caller by their attribute rights. The honest read for a hook.
+    /// </summary>
+    public bool TryGetAttribute(string name, [NotNullWhen(true)] out PersistentObjectAttribute? attribute)
+    {
+        attribute = _attributes.FirstOrDefault(a => a.Name == name);
+        return attribute is not null;
+    }
+
+    /// <summary>The attributes construction removed for the caller; see the indexer.</summary>
+    private HashSet<string>? _pruned;
+
+    /// <summary>
+    /// The request this object was presented for (a per-request token), or null when it never was:
+    /// built with <c>new</c>, by a system construction, or read off the wire. The boundary net reads it
+    /// (D13a).
+    /// </summary>
+    internal object? PresentedFor { get; set; }
+
+    /// <summary>
+    /// Removes the attributes in <paramref name="refused"/> and remembers their names, so writes to
+    /// them through the indexer become no-ops.
+    /// </summary>
+    internal void PruneAttributes(IReadOnlySet<string> refused)
+    {
+        for (var i = _attributes.Count - 1; i >= 0; i--)
+        {
+            if (!refused.Contains(_attributes[i].Name))
+                continue;
+            (_pruned ??= new HashSet<string>(StringComparer.Ordinal)).Add(_attributes[i].Name);
+            _attributes.RemoveAt(i);
+        }
+    }
 
     /// <summary>
     /// Single mutation point for the attributes collection. Sets the child's
@@ -350,7 +394,7 @@ public sealed class PersistentObjectAttributeAsDetail : PersistentObjectAttribut
     /// <summary>
     /// For <see cref="PersistentObjectAttribute.IsArray"/> = <c>false</c>: the single nested
     /// PO (or <c>null</c> when the CLR field is null). The mapper always scaffolds this on
-    /// <c>GetPersistentObject</c> so UIs can start from an empty-but-structured form.
+    /// <c>GetPersistentObjectAsync</c> so UIs can start from an empty-but-structured form.
     /// </summary>
     public PersistentObject? Object { get; set; }
 

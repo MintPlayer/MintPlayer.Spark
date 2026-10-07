@@ -171,7 +171,9 @@ MintPlayer.Spark/
 | [Queries & Sorting](docs/guide-queries-and-sorting.md) | Index-based queries, projections, column sorting, query definitions |
 | [Dates & Sort Companions](docs/guide-dates-and-sorting.md) | What you write for a `DateTimeOffset`, why `*Sort` companions are only for `[Search]` strings, and the sorting beliefs that measurement refuted |
 | [Full-Text Search](docs/guide-search.md) | What a search term matches, why `[Search]` is not the gate, the breadcrumb narrowing, and why fuzzy search is not offered |
-| [The model hash](docs/model-hash.md) | Why a deployed app refuses to start on a stale model, verifying in CI, merge conflicts, the override |
+| [The model hash](docs/model-hash.md) | Why a deployed app refuses to start on a stale model, verifying in CI, merge conflicts, the override, and which library layer moved |
+| [JSON schemas](docs/guide-json-schemas.md) | Validation, completion and hover descriptions for the six `App_Data` files, the managed `$schema`, `_` comments, and regenerating them in this repository |
+| [Library layers](docs/guide-library-layers.md) | What a referenced library ships in `App_Data` (model, actions, rights, translations, program units) and how your files override it: merge rules, keyed rights and `bindings`, the `libraries` opt-out, `--spark-describe`, the gates |
 | [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |
 | [Custom Attribute Renderers](docs/guide-custom-attribute-renderers.md) | Replace default attribute display/editing with custom Angular components |
 | [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |

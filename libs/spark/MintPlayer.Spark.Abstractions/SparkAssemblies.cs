@@ -4,7 +4,8 @@ namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>
 /// The assemblies that can declare something Spark reads by reflection: reserved verbs
-/// (<c>[assembly: SparkReservedActions]</c>) and library actions (<c>[assembly: SparkActions]</c>).
+/// (<c>[assembly: SparkReservedActions]</c>), and library layers (<c>[assembly: SparkLayer]</c>) when the
+/// application recorded none (<see cref="SparkLayerCatalog"/>).
 /// </summary>
 public static class SparkAssemblies
 {
@@ -73,7 +74,7 @@ public static class SparkAssemblies
         }.Select(a => a.GetName().Name!),
         StringComparer.OrdinalIgnoreCase);
 
-    private static bool IsPlatform(string name)
+    internal static bool IsPlatform(string name)
         => name.StartsWith("System", StringComparison.Ordinal)
            || name.StartsWith("Microsoft.", StringComparison.Ordinal)
            || name is "netstandard" or "mscorlib";

@@ -425,7 +425,7 @@ provideSparkAccountProfileFields(
 | Password | `account/password` | `SparkChangePasswordComponent` | `POST manage/password` |
 | Two-factor | `account/two-factor` | `SparkTwoFactorSetupComponent` | `POST manage/2fa`, `GET manage/2fa/authenticator-uri` |
 | Connected logins | `account/logins` | `SparkExternalLoginsComponent` | `GET external-logins`, link / unlink |
-| Passkeys | `account/passkeys` | `SparkPasskeysComponent` | `passkeys/*` |
+| Passkeys | `account/passkeys`, forwarding to `/po/passkeys/me` | — (the generic page) | the `Passkeys` page, the `my-passkeys` query, the `AddPasskey` / `RenamePasskey` / `RemovePasskey` actions |
 | Personal data + deletion | `account/personal-data` | `SparkPersonalDataComponent` | `GET manage/personal-data`, `DELETE manage/account` |
 
 - **Guarding and paths.** Every page except confirm-email is guarded by `sparkAuthGuard`
@@ -515,19 +515,16 @@ Example - disable automatic frontend setup:
 
 ## Local Development (ProjectReference)
 
-When referencing the Authorization project directly (instead of via NuGet), add explicit imports to your `.csproj` since `buildTransitive` only applies to NuGet package references:
+A `PackageReference` brings the targets through `buildTransitive`; a `ProjectReference` imports
+nothing. **In this repository you write no `<Import>`:** the root `Directory.Build.targets` imports
+`spark-authorization.props` and `.targets` once, for every project that is an `Exe` and not a test
+project, and the targets gate themselves at execution time on the resolved references, so an
+application without Authorization gets none of them. A tool that is an `Exe` but no Spark application
+opts out with `<SparkApplication>false</SparkApplication>`. See
+[Library layers](../../../docs/guide-library-layers.md#in-this-repository).
 
-```xml
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-    <Import Project="..\path\to\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" />
-
-    <!-- ... your project content ... -->
-
-    <Import Project="..\path\to\MintPlayer.Spark.Authorization\Targets\spark-authorization.targets" />
-
-</Project>
-```
+A repository of your own that references this project by path needs the same: import the two files
+from its own `Directory.Build.targets` (or the app's csproj), not from each library.
 
 ## Example: Role-Based Access Control
 
@@ -556,19 +553,19 @@ The corresponding `security.json`:
     "a1b2c3d4-0000-0000-0000-000000000003": "Viewers"
   },
   "rights": [
-    { "id": "...", "resource": "QueryRead/Company", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
+    { "key": "...", "resource": "QueryRead/Company", "groupId": "00000000-0000-0000-0000-000000000000", "isDenied": false },
 
-    { "id": "...", "resource": "QueryReadEditNewDelete/Company", "groupId": "a1b2c3d4-0000-0000-0000-000000000001", "isDenied": false },
-    { "id": "...", "resource": "QueryReadEditNewDelete/Car", "groupId": "a1b2c3d4-0000-0000-0000-000000000001", "isDenied": false },
-    { "id": "...", "resource": "QueryReadEditNewDelete/Person", "groupId": "a1b2c3d4-0000-0000-0000-000000000001", "isDenied": false },
+    { "key": "...", "resource": "QueryReadEditNewDelete/Company", "groupId": "a1b2c3d4-0000-0000-0000-000000000001", "isDenied": false },
+    { "key": "...", "resource": "QueryReadEditNewDelete/Car", "groupId": "a1b2c3d4-0000-0000-0000-000000000001", "isDenied": false },
+    { "key": "...", "resource": "QueryReadEditNewDelete/Person", "groupId": "a1b2c3d4-0000-0000-0000-000000000001", "isDenied": false },
 
-    { "id": "...", "resource": "QueryReadEditNew/Car", "groupId": "a1b2c3d4-0000-0000-0000-000000000002", "isDenied": false },
-    { "id": "...", "resource": "QueryReadEditNew/Person", "groupId": "a1b2c3d4-0000-0000-0000-000000000002", "isDenied": false },
-    { "id": "...", "resource": "QueryRead/Company", "groupId": "a1b2c3d4-0000-0000-0000-000000000002", "isDenied": false },
+    { "key": "...", "resource": "QueryReadEditNew/Car", "groupId": "a1b2c3d4-0000-0000-0000-000000000002", "isDenied": false },
+    { "key": "...", "resource": "QueryReadEditNew/Person", "groupId": "a1b2c3d4-0000-0000-0000-000000000002", "isDenied": false },
+    { "key": "...", "resource": "QueryRead/Company", "groupId": "a1b2c3d4-0000-0000-0000-000000000002", "isDenied": false },
 
-    { "id": "...", "resource": "QueryRead/Car", "groupId": "a1b2c3d4-0000-0000-0000-000000000003", "isDenied": false },
-    { "id": "...", "resource": "QueryRead/Person", "groupId": "a1b2c3d4-0000-0000-0000-000000000003", "isDenied": false },
-    { "id": "...", "resource": "QueryRead/Company", "groupId": "a1b2c3d4-0000-0000-0000-000000000003", "isDenied": false }
+    { "key": "...", "resource": "QueryRead/Car", "groupId": "a1b2c3d4-0000-0000-0000-000000000003", "isDenied": false },
+    { "key": "...", "resource": "QueryRead/Person", "groupId": "a1b2c3d4-0000-0000-0000-000000000003", "isDenied": false },
+    { "key": "...", "resource": "QueryRead/Company", "groupId": "a1b2c3d4-0000-0000-0000-000000000003", "isDenied": false }
   ]
 }
 ```

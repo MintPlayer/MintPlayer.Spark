@@ -19,8 +19,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// <para>
 /// The Home counts are the case worth an HTTP round-trip. Home is a virtual type: its attributes are
 /// whatever <c>HomeActions.OnLoadAsync</c> returned, and nothing guarantees a deny applies to an
-/// object no document stands behind — except that <c>/spark/po/load</c> runs
-/// <c>attributeRights.PresentAsync</c> on whatever the load produced. Before #264 the hook hid the
+/// object no document stands behind — except that <c>IManager.GetPersistentObjectAsync</c> builds the
+/// page for the caller (D13a), and the boundary net checks whatever the load returns. Before #264 the hook hid the
 /// counts itself, with a runtime <c>ShowedOn</c>; a missing deny would now show "0 accounts" to every
 /// signed-out visitor, which reads as a fact about their GitHub rather than about their being signed
 /// out.

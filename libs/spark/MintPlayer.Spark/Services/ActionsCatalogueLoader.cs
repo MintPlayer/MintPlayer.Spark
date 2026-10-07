@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.Caching.Memory;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
@@ -14,77 +13,74 @@ public interface IActionsCatalogueLoader
     /// <summary>The composed catalogue: the libraries' <c>actions.json</c> layers with the application's on top.</summary>
     ActionsCatalogue GetCatalogue();
 
-    void InvalidateCache();
+    /// <summary>Composes the catalogue again now; the previous one stays when it does not compose.</summary>
+    void Reload();
 }
 
 /// <summary>
 /// Composes the action catalogue (#467, D7/S12): the libraries' compiled <c>actions.json</c> layers,
 /// core first, with the application's <c>App_Data/actions.json</c> on top. The application's file is
-/// read from disk and reloaded when it changes; the library layers are fixed at build time.
+/// read from disk and reloaded when it changes, and the labels follow a translations reload, through
+/// the one watcher policy (<see cref="AppLayerSnapshot{T}"/>, composition D8); the library layers are
+/// fixed at build time.
 /// </summary>
 [Register(typeof(IActionsCatalogueLoader), ServiceLifetime.Singleton)]
 internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDisposable
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
     [Inject] private readonly ILogger<ActionsCatalogueLoader> logger;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
 
-    private readonly IMemoryCache cache = new MemoryCache(new MemoryCacheOptions());
-    private FileSystemWatcher? fileWatcher;
-    private const string CacheKey = "ActionsCatalogue";
-    private bool disposed;
+    private AppLayerSnapshot<ActionsCatalogue>? layer;
 
-    public ActionsCatalogue GetCatalogue()
-    {
-        if (cache.TryGetValue(CacheKey, out ActionsCatalogue? cached) && cached != null)
-            return cached;
+    /// <summary>The library layers to compose; <see langword="null"/>: the process's (<see cref="SparkActionLayers.Libraries"/>).</summary>
+    private IReadOnlyList<SparkActionsLayer>? libraries;
 
-        var catalogue = LoadFromDisk();
-        cache.Set(CacheKey, catalogue, new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromMinutes(5)));
+    /// <summary>
+    /// A loader over chosen library layers (<c>[]</c>: the application's file alone), for a test that
+    /// must not depend on which layered libraries its process happens to reference.
+    /// </summary>
+    internal static ActionsCatalogueLoader For(IHostEnvironment hostEnvironment, ITranslationsLoader translationsLoader, IReadOnlyList<SparkActionsLayer>? libraries = null)
+        => new(hostEnvironment, Microsoft.Extensions.Logging.Abstractions.NullLogger<ActionsCatalogueLoader>.Instance, translationsLoader) { libraries = libraries };
 
-        if (fileWatcher == null)
-            SetupFileWatcher();
+    private AppLayerSnapshot<ActionsCatalogue> Layer
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            SparkActionLayers.AppLayerName,
+            Path.GetDirectoryName(PathFor(hostEnvironment.ContentRootPath)),
+            [ConfigFileShape.ActionsFileName],
+            LoadFromDisk,
+            logger,
+            labels: translationsLoader));
 
-        return catalogue;
-    }
+    public ActionsCatalogue GetCatalogue() => Layer.Current;
 
-    public void InvalidateCache()
-    {
-        cache.Remove(CacheKey);
-        logger.LogInformation("Action catalogue cache invalidated");
-    }
+    public void Reload() => Layer.Reload();
 
     private ActionsCatalogue LoadFromDisk()
     {
         var fullPath = PathFor(hostEnvironment.ContentRootPath);
         var appJson = File.Exists(fullPath) ? File.ReadAllText(fullPath) : null;
 
-        try
+        var catalogue = Build(appJson, libraries ?? SparkActionLayers.Libraries, translationsLoader.GetAll());
+        foreach (var conflict in catalogue.Conflicts)
         {
-            var catalogue = Build(appJson, SparkActionLayers.Libraries);
-            foreach (var conflict in catalogue.Conflicts)
-            {
-                logger.LogWarning(
-                    "Libraries '{Winner}' and '{Loser}' both state '{Property}' of the action '{Action}', with different values. "
-                    + "'{Winner}' wins (libraries apply by assembly name). State it in App_Data/actions.json to choose.",
-                    conflict.WinnerLayer, conflict.LoserLayer, conflict.Property, conflict.Action, conflict.WinnerLayer);
-            }
-            logger.LogInformation("Composed the action catalogue: {ActionCount} actions", catalogue.Actions.Count);
-            return catalogue;
+            logger.LogWarning(
+                "Libraries '{Winner}' and '{Loser}' both state '{Property}' of the action '{Action}', with different values. "
+                + "'{Winner}' wins (libraries apply by assembly name). State it in {ActionsFile} to choose.",
+                conflict.WinnerLayer, conflict.LoserLayer, conflict.Property, conflict.Action, conflict.WinnerLayer, SparkActionLayers.AppLayerName);
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to compose the action catalogue with {FilePath}", fullPath);
-            throw;
-        }
+        logger.LogInformation("Composed the action catalogue: {ActionCount} actions", catalogue.Actions.Count);
+        return catalogue;
     }
 
     /// <summary>The application layer's path for a content root.</summary>
     public static string PathFor(string contentRootPath)
-        => Path.Combine(contentRootPath, "App_Data", ConfigFileShape.ActionsFileName);
+        => SparkAppData.Path(contentRootPath, ConfigFileShape.ActionsFileName);
 
     /// <summary>The library layers composed with <paramref name="appJson"/> (null: no application file), bound and validated.</summary>
+    /// <param name="translations">The texts the labels resolve against; <see langword="null"/>: none, so every label is the humanized name.</param>
     /// <exception cref="FormatException">The composed catalogue is invalid; the message names every offender.</exception>
-    internal static ActionsCatalogue Build(string? appJson, IReadOnlyList<SparkActionsLayer> libraries)
+    internal static ActionsCatalogue Build(string? appJson, IReadOnlyList<SparkActionsLayer> libraries, IReadOnlyDictionary<string, TranslatedString>? translations = null)
     {
         var layers = appJson is null
             ? libraries
@@ -102,7 +98,7 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
 
         var problems = new List<string>();
         var actions = composition.Actions
-            .Select(action => Bind(action, problems))
+            .Select(action => Bind(action, translations ?? NoTranslations, problems))
             .ToList();
 
         if (problems.Count > 0)
@@ -113,9 +109,11 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
     }
 
     internal static readonly string[] KnownProperties =
-        ["label", "description", "confirmation", "icon", "showedOn", "selectionRule", "refreshOnCompleted", "variant", "offset"];
+        ["label", "description", "confirmation", "icon", "showedOn", "selectionRule", "refreshOnCompleted", "variant", "offset", "requiresClient"];
 
-    private static ActionDefinition Bind(SparkComposedAction action, List<string> problems)
+    private static readonly IReadOnlyDictionary<string, TranslatedString> NoTranslations = new Dictionary<string, TranslatedString>();
+
+    private static ActionDefinition Bind(SparkComposedAction action, IReadOnlyDictionary<string, TranslatedString> translations, List<string> problems)
     {
         var name = action.Name;
         var where = $"'{name}' ({action.DeclaredBy})";
@@ -184,10 +182,10 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
 
         // Text is resolved here, once, on the server (#467, D26): the wire carries a TranslatedString.
         var labelKey = Text("label");
-        var label = SparkText.Resolve(labelKey is null ? null : TranslatedString.FromKey(labelKey), $"actions.{name}.label", name)!;
+        var label = SparkText.Resolve(translations, labelKey is null ? null : TranslatedString.FromKey(labelKey), $"actions.{name}.label", name)!;
 
         var descriptionKey = Text("description");
-        var description = SparkText.Lookup(descriptionKey ?? $"actions.{name}.description");
+        var description = SparkText.Lookup(translations, descriptionKey ?? $"actions.{name}.description");
 
         TranslatedString? confirmation;
         if (action.Properties.TryGetValue("confirmation", out var confirm) && confirm.Value.GetValueKind() == JsonValueKind.False)
@@ -198,9 +196,9 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
         else
         {
             var confirmationKey = Text("confirmation");
-            confirmation = SparkText.Lookup(confirmationKey ?? $"actions.{name}.confirmation")
+            confirmation = SparkText.Lookup(translations, confirmationKey ?? $"actions.{name}.confirmation")
                 // An explicit key asks for a confirmation even before somebody translates it.
-                ?? (confirmationKey is null ? null : SparkText.Lookup("common.areYouSure") ?? TranslatedString.Create("Are you sure?"));
+                ?? (confirmationKey is null ? null : SparkText.Lookup(translations, "common.areYouSure") ?? TranslatedString.Create("Are you sure?"));
         }
 
         return new ActionDefinition
@@ -215,52 +213,12 @@ internal partial class ActionsCatalogueLoader : IActionsCatalogueLoader, IDispos
             Confirmation = confirmation,
             Variant = String("variant"),
             Offset = offset,
+            RequiresClient = String("requiresClient") is { Length: > 0 } requiresClient ? requiresClient : null,
             DeclaredBy = action.DeclaredBy,
             Sources = action.Properties.ToDictionary(p => p.Key, p => p.Value.Layer, StringComparer.OrdinalIgnoreCase),
         };
     }
 
-    private void SetupFileWatcher()
-    {
-        var directory = Path.GetDirectoryName(PathFor(hostEnvironment.ContentRootPath));
-        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-            return;
-
-        fileWatcher = new FileSystemWatcher(directory, ConfigFileShape.ActionsFileName)
-        {
-            // Created and Renamed too: an editor that saves through a temporary file replaces the
-            // file rather than writing it, and an application without one may add it while running.
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
-        };
-
-        fileWatcher.Changed += OnFileChanged;
-        fileWatcher.Created += OnFileChanged;
-        fileWatcher.Deleted += OnFileChanged;
-        fileWatcher.Renamed += OnFileChanged;
-        fileWatcher.EnableRaisingEvents = true;
-    }
-
-    private void OnFileChanged(object sender, FileSystemEventArgs args)
-    {
-        Task.Delay(100).ContinueWith(_ => InvalidateCache());
-    }
-
     [NoInterfaceMember]
-    public void Dispose()
-    {
-        if (disposed) return;
-        disposed = true;
-
-        if (fileWatcher != null)
-        {
-            fileWatcher.Changed -= OnFileChanged;
-            fileWatcher.Created -= OnFileChanged;
-            fileWatcher.Deleted -= OnFileChanged;
-            fileWatcher.Renamed -= OnFileChanged;
-            fileWatcher.Dispose();
-            fileWatcher = null;
-        }
-
-        cache.Dispose();
-    }
+    public void Dispose() => layer?.Dispose();
 }

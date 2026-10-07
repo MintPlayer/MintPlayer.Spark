@@ -1115,7 +1115,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// type's name (there is no CLR type to resolve over) and invoke its load hook — duck-typed
     /// with the exact same signature every actions class has, no base class required:
     /// <code>public Task&lt;PersistentObject?&gt; OnLoadAsync(string id, PersistentObject? parent)</code>
-    /// The class scaffolds its own object (the <c>IManager.GetPersistentObject</c> idiom dialogs
+    /// The class scaffolds its own object (the <c>IManager.GetPersistentObjectAsync</c> idiom dialogs
     /// already use), fills values and <see cref="PersistentObject.Breadcrumb"/> (the page title),
     /// and returns it — free to ignore the id. The result is served read-only (<c>Can</c> forced
     /// to none unless the hook set it) — anything interactive on such a page is a custom action

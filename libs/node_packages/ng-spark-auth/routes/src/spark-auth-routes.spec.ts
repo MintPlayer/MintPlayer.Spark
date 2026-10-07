@@ -2,7 +2,25 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Routes, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// The loaders are asserted by WHICH export of WHICH entry point they resolve to, so each page entry
+// point is stubbed with classes of the real export names. Loading the real pages compiled and
+// evaluated the whole sign-in UI (Angular forms, ng-bootstrap and its Lit web components) inside the
+// test's 5 s window, in a fresh VM context per spec file (analog's vmThreads pool caches nothing
+// across files). Measured for the account loaders: 2.5 s in an unloaded run of this package's whole
+// suite, 3.5-6.7 s under 8 CPU burners, past 5 s in the parallel sweep; with the stubs, 1-6 ms. Every
+// loader still resolves (no hang), and master's vitest config measured the same. The pages
+// themselves are covered by their own specs.
+const { stubPages } = vi.hoisted(() => ({
+  stubPages: (...names: string[]) => Object.fromEntries(names.map(n => [n, ({ [n]: class {} })[n]])),
+}));
+vi.mock('@mintplayer/ng-spark-auth/login', () => stubPages('SparkLoginComponent'));
+vi.mock('@mintplayer/ng-spark-auth/two-factor', () => stubPages('SparkTwoFactorComponent'));
+vi.mock('@mintplayer/ng-spark-auth/forgot-password', () => stubPages('SparkForgotPasswordComponent'));
+vi.mock('@mintplayer/ng-spark-auth/reset-password', () => stubPages('SparkResetPasswordComponent'));
+vi.mock('@mintplayer/ng-spark-auth/register', () => stubPages('SparkRegisterComponent'));
+vi.mock('@mintplayer/ng-spark-auth/sign-in', () => stubPages('SparkSignInComponent'));
 
 import {
   externalProvider,
@@ -143,7 +161,10 @@ describe('sparkAuthRoutes', () => {
     // path names — a swapped import would mount the wrong page with nothing failing.
     const routes = sparkAuthRoutes(withLocalLogin(), withRegistration(), withExternalLogin(), withPasskeys());
     const loaded = await Promise.all(
-      routes[0].children.map(async (c: any) => [c.path, (await c.loadComponent()).name]),
+      routes[0].children
+        // The passkeys path forwards to the generic page and loads nothing (see withAccount's spec).
+        .filter((c: any) => c.loadComponent)
+        .map(async (c: any) => [c.path, (await c.loadComponent()).name]),
     );
 
     expect(Object.fromEntries(loaded)).toEqual({
@@ -153,7 +174,6 @@ describe('sparkAuthRoutes', () => {
       'reset-password': 'SparkResetPasswordComponent',
       'register': 'SparkRegisterComponent',
       'sign-in': 'SparkSignInComponent',
-      'passkeys': 'SparkPasskeysComponent',
     });
   });
 

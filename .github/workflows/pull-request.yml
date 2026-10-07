@@ -157,9 +157,12 @@ jobs:
     # The same idea one layer up: security.json is a data file, and widening the set of rights
     # reachable WITHOUT signing in is a one-line diff that reads no differently from narrowing it.
     # The committed App_Data/securityPosture.txt turns that into something a reviewer sees change.
+    # It is the table of every effective right with the layer it came from (composition D4), so a
+    # library that ships rights, or an update that changes them, shows up here too.
     #
     # Needs no database either -- the posture is computed from configuration alone. Exit 3 means
-    # the anonymous surface moved; run --spark-synchronize-security and commit the baseline.
+    # the posture moved (with a ::warning:: of its own when the anonymous surface did); run
+    # --spark-synchronize-security and commit the baseline. Exit 2: security.json does not compose.
     - name: Verify the anonymous surface has not widened
       run: |
         for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/CodeCoverage/CodeCoverage; do

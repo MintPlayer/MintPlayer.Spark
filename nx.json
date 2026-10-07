@@ -19,7 +19,10 @@
     "sharedGlobals": [
       "{workspaceRoot}/tsconfig.base.json",
       "{workspaceRoot}/package.json",
-      "{workspaceRoot}/nx.json"
+      "{workspaceRoot}/nx.json",
+      "{workspaceRoot}/Directory.Build.props",
+      "{workspaceRoot}/Directory.Build.targets",
+      "{workspaceRoot}/tests/Shared/**/*"
     ]
   },
   "targetDefaults": {

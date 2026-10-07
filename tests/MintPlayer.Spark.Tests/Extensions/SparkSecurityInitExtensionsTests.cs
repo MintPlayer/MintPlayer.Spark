@@ -105,6 +105,9 @@ public class SparkSecurityInitExtensionsTests : IDisposable
             new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
 
         parse.Should().NotThrow("the file this command writes has to be loadable by the file it is written for");
+        // Strict JSON, and a keyed set the composer accepts (composition D4).
+        MintPlayer.Spark.Abstractions.Authorization.SparkSecurityFiles.Compose(File.ReadAllText(SecurityPath), libraries: [])
+            .Problems.Should().BeEmpty();
     }
 
     [Fact]
@@ -127,7 +130,7 @@ public class SparkSecurityInitExtensionsTests : IDisposable
     {
         // The destructive case. This must stay true even though the command reports success.
         Directory.CreateDirectory(Path.Combine(root, "App_Data"));
-        const string RealModel = """{"groups":{},"wellKnown":{},"rights":[{"id":"real"}]}""";
+        const string RealModel = """{"groups":{},"wellKnown":{},"rights":[{"key":"real"}]}""";
         File.WriteAllText(SecurityPath, RealModel);
 
         var handled = Builder().InitializeSparkSecurityIfRequested(["--spark-init-security"]);

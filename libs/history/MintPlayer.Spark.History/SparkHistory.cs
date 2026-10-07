@@ -100,7 +100,9 @@ internal sealed partial class SparkHistory : ISparkHistory
 
         var revision = await LoadRevisionOfAsync(definition, entityType, id, changeVector);
 
-        var mapped = entityMapper.ToPersistentObject(revision, objectTypeId);
+        // A system construction (D13a): this is the save's input, not a response, and the write shield
+        // judges each attribute by the caller's Edit right exactly as for a posted object.
+        var mapped = entityMapper.AsSystem().ToPersistentObject(revision, objectTypeId);
         var satellites = entityType.GetSparkSatellitePropertyNames();
         var po = new PersistentObject
         {

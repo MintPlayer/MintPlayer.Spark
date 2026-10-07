@@ -39,7 +39,6 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
     [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
-    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -81,13 +80,11 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
             // row-gated read every mutating path starts with, and those never render the object.
             await disabledActions.ApplyOnLoadAsync(obj);
 
-            // Static attribute rights (contributions M2c-2a): a Read-denied attribute is absent, an
-            // Edit-denied one read-only. Here, at the presentation, and not inside
-            // GetPersistentObjectAsync, for the reason above: that is also the server-side read the
-            // mutating paths and custom actions start from, and those are not a caller's view.
-            // This is also what the M1c conflict dialog re-fetches, so a removed attribute can
-            // never reach it.
-            await attributeRights.PresentAsync([obj], "Read", "Edit", httpContext.RequestAborted);
+            // Static attribute rights (contributions M2c-2a) are no longer applied here: the object was
+            // built for this caller (D13a) — a Read-denied attribute absent, an Edit-denied one
+            // read-only — before OnLoadAsync saw it, and the boundary net checks it on the way out.
+            // This is also what the M1c conflict dialog re-fetches, so a removed attribute can never
+            // reach it.
 
             // ⚠️ Still a bare object, not an envelope, even though this is a POST now. The verb moved
             // so that a load could carry a retry answer; the response shape is a separate decision

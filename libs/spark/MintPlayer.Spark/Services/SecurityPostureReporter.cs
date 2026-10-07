@@ -4,7 +4,8 @@ using MintPlayer.Spark.Abstractions.Authorization;
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// Computes what an unauthenticated caller can reach, from <c>security.json</c> alone.
+/// Computes what an unauthenticated caller can reach, and the table of every effective right with
+/// the layer it came from, from the composed <c>security.json</c> alone.
 /// <para>
 /// This is the mirror image of SPARK004. Middleware order is a property of the code and undetectable
 /// at runtime, so it ships as an analyzer; the anonymous surface is a property of a hot-reloadable
@@ -28,8 +29,20 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
 
         var anonymousGroupId = ResolveAnonymousGroupId(config);
 
+        // The whole effective table (composition D4), not only the anonymous surface: the review point
+        // for a library's rights is this table changing in the pull request that adds or updates it.
+        var table = config.Rights.Select(r => Row(config, r, inert: false, anonymousGroupId)).OrderBy(r => r, RowOrder.Instance).ToList();
+        var inert = config.InertRights.Select(r => Row(config, r, inert: true, null)).OrderBy(r => r, RowOrder.Instance).ToList();
+
+        // Each library that ships rights, with the hash of what it states (composition D7): an update
+        // that changes them changes its line, and the drift message names it. The loader composes over
+        // the same catalogue, so the two cannot list different libraries.
+        var layers = SparkSecurityFiles.Layers()
+            .Select(l => new SecurityPostureLayer(l.Alias, l.Assembly, l.Hash, config.Libraries?.TryGetValue(l.Alias, out var on) == true && !on))
+            .ToList();
+
         if (anonymousGroupId is null)
-            return new SecurityPosture([], warnings, notes);
+            return new SecurityPosture([], warnings, notes, table, inert, layers);
 
         // A caller who has not signed in belongs to the anonymous group and to nothing else: group
         // membership otherwise comes from claims, and an unauthenticated principal carries none that
@@ -66,7 +79,48 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
         return new SecurityPosture(
             granted.OrderBy(r => r, StringComparer.OrdinalIgnoreCase).ToList(),
             warnings,
-            notes);
+            notes,
+            table,
+            inert,
+            layers);
+    }
+
+    /// <summary>One right as a table row. An inert right never resolved, so it shows its token.</summary>
+    private static SecurityPostureRow Row(SecurityConfiguration config, Right right, bool inert, Guid? anonymousGroupId)
+    {
+        var token = right.Group is { } g && !Guid.TryParse(g, out _) ? g : null;
+        string group;
+        if (inert)
+            group = right.Group ?? right.GroupId.ToString();
+        else
+        {
+            var name = config.Groups.FirstOrDefault(e => Guid.TryParse(e.Key, out var id) && id == right.GroupId).Value
+                       ?? right.GroupId.ToString();
+            group = token is null ? name : $"{name} ({token})";
+        }
+
+        var effect = (right.IsDenied ? "deny" : "grant") + (right.IsImportant ? " important" : "");
+        return new SecurityPostureRow(group, effect, right.Resource, right.Key, right.Layer ?? "app", !inert && right.GroupId == anonymousGroupId);
+    }
+
+    /// <summary>Group, resource, effect, key, layer: a reordering of security.json never reads as drift.</summary>
+    private sealed class RowOrder : IComparer<SecurityPostureRow>
+    {
+        public static readonly RowOrder Instance = new();
+
+        public int Compare(SecurityPostureRow? x, SecurityPostureRow? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+            foreach (var (a, b) in new[] { (x.Group, y.Group), (x.Resource, y.Resource), (x.Effect, y.Effect), (x.Key, y.Key), (x.Layer, y.Layer) })
+            {
+                var c = StringComparer.OrdinalIgnoreCase.Compare(a, b);
+                if (c == 0) c = StringComparer.Ordinal.Compare(a, b);
+                if (c != 0) return c;
+            }
+            return 0;
+        }
     }
 
     private static HashSet<string> Expand(IEnumerable<Right> rights, bool withImplications)

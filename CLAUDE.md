@@ -83,8 +83,17 @@ The evidence is in `docs/contributions_PRD.md` §5d items 10–14. Three tests u
 fully loaded sweep (`S_M3`, `ModerationVoteTests.M5`, `ComplexFieldIndexingTests.Verbatim_…`). All
 three are fixed at the root (§5c): S_M3 exposed a real sweeper bug, stale-index patches that
 rewrote completed messages. M5 and the Corax test waited on the wrong condition. A test that fails
-only under load is a race to explain, not noise. Reproduce it with CPU burners
-(`node -e "for(;;){}"` × cores) and read the documents' revision histories before changing a wait.
+only in the sweep is a **defect to locate**, never "load" or "flakiness": none of these turned out to
+be CPU. Time each step of the failing test (stopwatch laps, the server's own timestamps) and read the
+documents' revision histories before naming a cause or changing a wait. **Do not run CPU burners**
+(`node -e "for(;;){}"`) on the owner's machine: the owner works on it (2026-10-07).
+
+**No test process uses the machine's proxy.** With Windows' WPAD auto-detection on, the first
+`HttpClient` request to a host name in a process waited 1–10+ s for proxy discovery and failed a 10 s
+test bound on an idle machine (`DevWebSocketEndpointTests`, 2026-10-07; 33 ms with the proxy off).
+`tests/Shared/NoSystemProxy.cs` turns the proxy off for every `*.Tests` project through
+`Directory.Build.targets`; a new test project gets it by being named `*.Tests`. Evidence in
+`docs/test-suite-performance-PRD.md` §3, "No proxy in test processes".
 
 Measured 2026-10-01 on this machine (`--skip-nx-cache`, Developer licence, everything affected):
 **21m49s wall for everything including E2E and builds, all green.** Compare the earlier serial

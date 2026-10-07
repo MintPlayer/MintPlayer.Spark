@@ -25,20 +25,21 @@ public sealed partial class DeleteReasonInterceptor : IBeforeDelete
 
     public bool AppliesTo(Type entityType) => entityType == typeof(Question) || entityType == typeof(Answer);
 
-    public ValueTask OnBeforeDeleteAsync(DeleteContext context)
+    public async ValueTask OnBeforeDeleteAsync(DeleteContext context)
     {
         // Only a soft delete is recorded with a reason; a purge removes the row and its reason with it.
         if (!context.IsReplaced || context.IsSystemContext
             || context.Entity is not ISoftDeletable deletable || context.Entity is not IModeratable post)
-            return ValueTask.CompletedTask;
+            return;
 
         if (!string.IsNullOrWhiteSpace(deletable.DeleteReason) || post.AuthorId == access.UserId)
-            return ValueTask.CompletedTask;
+            return;
 
         manager.Retry.Action(
             title: "Remove this post",
-            options: ["Delete", "Cancel"],
-            persistentObject: manager.GetPersistentObject(Guid.Parse(PersistentObjectIds.Default.DeleteReason)),
+            options: ["Delete"],
+            cancellable: true,
+            persistentObject: await manager.GetPersistentObjectAsync(Guid.Parse(PersistentObjectIds.Default.DeleteReason)),
             message: "Why is it being removed? The reason is kept with the post.");
 
         var result = manager.Retry.Result!;
@@ -51,6 +52,5 @@ public sealed partial class DeleteReasonInterceptor : IBeforeDelete
 
         deletable.DeleteReason = reason;
         context.Facts[SparkFacts.Reason] = reason;
-        return ValueTask.CompletedTask;
     }
 }

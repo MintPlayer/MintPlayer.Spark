@@ -40,10 +40,15 @@ internal sealed partial class StreamExecuteQuery : IEndpoint
     [Inject] private readonly IStreamingQueryExecutor streamingQueryExecutor;
     [Inject] private readonly IPermissionService permissionService;
 
-    private static readonly JsonSerializerOptions jsonOptions = new()
+    private static readonly JsonSerializerOptions jsonOptions = CreateJsonOptions();
+
+    /// <summary>Its own options, so the boundary net (D13a) is installed here as well as on HTTP JSON.</summary>
+    private static JsonSerializerOptions CreateJsonOptions()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        Services.SparkPresentation.Install(options);
+        return options;
+    }
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {

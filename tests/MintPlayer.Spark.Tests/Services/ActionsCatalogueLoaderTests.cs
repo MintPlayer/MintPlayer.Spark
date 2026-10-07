@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Services;
@@ -28,7 +29,12 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true); } catch { /* watcher locks — best-effort */ }
     }
 
-    private ActionsCatalogueLoader CreateLoader() => new(_hostEnv, NullLogger<ActionsCatalogueLoader>.Instance);
+    private ActionsCatalogueLoader CreateLoader() => ActionsCatalogueLoader.For(_hostEnv, TranslationsLoader.For(_hostEnv, []), Core);
+
+    // The core layer alone: these tests are about the engine over Spark's own New/Edit/Delete, not
+    // about which layered libraries this process references (Authorization ships passkey actions).
+    private static readonly IReadOnlyList<SparkActionsLayer> Core =
+        [.. SparkActionLayers.Libraries.Where(l => l.Name == "MintPlayer.Spark")];
 
     private void WriteApp(string json) => File.WriteAllText(ActionsCatalogueLoader.PathFor(_tempDir), json);
 
@@ -66,7 +72,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [Fact]
     public void An_app_property_overrides_the_inherited_one_and_the_rest_is_kept()
     {
-        var catalogue = ActionsCatalogueLoader.Build("""{ "delete": { "selectionRule": "=1" } }""", SparkActionLayers.Libraries);
+        var catalogue = ActionsCatalogueLoader.Build("""{ "delete": { "selectionRule": "=1" } }""", Core);
 
         var delete = catalogue.Find("Delete")!;
         delete.Name.Should().Be("Delete", "the name keeps the declaring layer's spelling");
@@ -79,7 +85,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [Fact]
     public void Null_removes_an_inherited_action()
     {
-        var catalogue = ActionsCatalogueLoader.Build("""{ "Edit": null }""", SparkActionLayers.Libraries);
+        var catalogue = ActionsCatalogueLoader.Build("""{ "Edit": null }""", Core);
 
         catalogue.Find("Edit").Should().BeNull();
         catalogue.Actions.Select(a => a.Name).Should().Equal("New", "Delete");
@@ -88,7 +94,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [Fact]
     public void A_property_set_to_null_resets_it_to_the_default()
     {
-        var catalogue = ActionsCatalogueLoader.Build("""{ "Delete": { "selectionRule": null, "showedOn": null } }""", SparkActionLayers.Libraries);
+        var catalogue = ActionsCatalogueLoader.Build("""{ "Delete": { "selectionRule": null, "showedOn": null } }""", Core);
 
         var delete = catalogue.Find("Delete")!;
         delete.SelectionRule.Should().BeNull();
@@ -99,7 +105,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [Fact]
     public void A_name_no_layer_declares_adds_an_action_after_the_inherited_ones()
     {
-        var catalogue = ActionsCatalogueLoader.Build("""{ "Archive": { "showedOn": "detail" } }""", SparkActionLayers.Libraries);
+        var catalogue = ActionsCatalogueLoader.Build("""{ "Archive": { "showedOn": "detail" } }""", Core);
 
         catalogue.Actions.Select(a => a.Name).Should().Equal("New", "Edit", "Delete", "Archive");
         catalogue.Find("Archive")!.IsBuiltIn.Should().BeFalse();
@@ -131,12 +137,12 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     }
 
     [Fact]
-    public void Library_layers_are_discovered_core_first_then_by_assembly_name()
+    public void Library_layers_are_discovered_core_first_in_layer_order()
     {
         SparkActionLayers.Libraries.Should().NotBeEmpty();
         SparkActionLayers.Libraries[0].Name.Should().Be("MintPlayer.Spark");
-        SparkActionLayers.Libraries.Select(l => l.Name).Skip(1)
-            .Should().BeInAscendingOrder(StringComparer.OrdinalIgnoreCase);
+        SparkActionLayers.Libraries.Select(l => l.Name).Should().Equal(
+            SparkLayerCatalog.Of("actions").Select(x => x.Library.AssemblyName));
     }
 
     // ── Validation ──────────────────────────────────────────────────────────────────────────────
@@ -146,7 +152,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     {
         var act = () => ActionsCatalogueLoader.Build("""
             { "Archive": { "selectionRule": "1-5" }, "Publish": { "selectionRule": "=abc" } }
-            """, SparkActionLayers.Libraries);
+            """, Core);
 
         var message = act.Should().Throw<FormatException>().Which.Message;
         message.Should().Contain("Archive").And.Contain("1-5").And.Contain("Publish").And.Contain("=abc");
@@ -162,7 +168,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [InlineData("=0")]
     public void A_well_formed_rule_loads(string rule)
     {
-        var catalogue = ActionsCatalogueLoader.Build($$"""{ "Copy": { "selectionRule": "{{rule}}" } }""", SparkActionLayers.Libraries);
+        var catalogue = ActionsCatalogueLoader.Build($$"""{ "Copy": { "selectionRule": "{{rule}}" } }""", Core);
 
         catalogue.Find("Copy")!.SelectionRule.Should().Be(rule);
     }
@@ -172,7 +178,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [InlineData("confirmationMessageKey", "actions.Archive.confirmation")]
     public void The_pre_467_properties_are_refused_with_the_key_to_use(string property, string key)
     {
-        var act = () => ActionsCatalogueLoader.Build($$"""{ "Archive": { "{{property}}": "x" } }""", SparkActionLayers.Libraries);
+        var act = () => ActionsCatalogueLoader.Build($$"""{ "Archive": { "{{property}}": "x" } }""", Core);
 
         act.Should().Throw<FormatException>().WithMessage($"*{property}*{key}*");
     }
@@ -180,7 +186,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [Fact]
     public void Embedded_text_is_refused_naming_the_key_it_belongs_under()
     {
-        var act = () => ActionsCatalogueLoader.Build("""{ "Archive": { "label": { "en": "Archive" } } }""", SparkActionLayers.Libraries);
+        var act = () => ActionsCatalogueLoader.Build("""{ "Archive": { "label": { "en": "Archive" } } }""", Core);
 
         act.Should().Throw<FormatException>().WithMessage("*actions.Archive.label*");
     }
@@ -188,7 +194,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [Fact]
     public void An_unknown_property_and_a_bad_showedOn_are_refused()
     {
-        var act = () => ActionsCatalogueLoader.Build("""{ "Archive": { "colour": "red", "showedOn": "sidebar" } }""", SparkActionLayers.Libraries);
+        var act = () => ActionsCatalogueLoader.Build("""{ "Archive": { "colour": "red", "showedOn": "sidebar" } }""", Core);
 
         act.Should().Throw<FormatException>().Which.Message.Should().Contain("colour").And.Contain("sidebar");
     }
@@ -196,7 +202,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [Fact]
     public void Malformed_json_is_refused_naming_the_layer()
     {
-        var act = () => ActionsCatalogueLoader.Build("{ not valid", SparkActionLayers.Libraries);
+        var act = () => ActionsCatalogueLoader.Build("{ not valid", Core);
 
         act.Should().Throw<FormatException>().WithMessage($"*{SparkActionLayers.AppLayerName}*");
     }
@@ -204,7 +210,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     [Fact]
     public void An_action_declared_twice_in_different_casing_is_refused()
     {
-        var act = () => ActionsCatalogueLoader.Build("""{ "Archive": {}, "archive": {} }""", SparkActionLayers.Libraries);
+        var act = () => ActionsCatalogueLoader.Build("""{ "Archive": {}, "archive": {} }""", Core);
 
         act.Should().Throw<FormatException>().WithMessage("*twice*");
     }
@@ -229,7 +235,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     {
         var catalogue = ActionsCatalogueLoader.Build("""
             { "Archive": { "confirmation": "nobody.translated.this" }, "Delete": { "confirmation": false } }
-            """, SparkActionLayers.Libraries);
+            """, Core);
 
         catalogue.Find("Archive")!.Confirmation.Should().NotBeNull();
         catalogue.Find("Delete")!.Confirmation.Should().BeNull();
@@ -247,7 +253,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         WriteApp("""{ "Publish": {} }""");
         loader.GetCatalogue().Should().BeSameAs(first);
 
-        loader.InvalidateCache();
+        loader.Reload();
         loader.GetCatalogue().Find("Publish").Should().NotBeNull();
     }
 
@@ -263,19 +269,19 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         act.Should().NotThrow();
     }
 
-    // ── --spark-print-effective-actions and the model hash ─────────────────────────────────────
+    // ── --spark-describe actions and the model hash ────────────────────────────────────────────
 
     [Fact]
-    public void The_print_switch_names_each_property_with_its_source_layer()
+    public void Describe_with_layers_names_each_property_with_its_source_layer()
     {
         WriteApp("""{ "Delete": { "selectionRule": "=1" }, "Edit": null }""");
 
-        var output = SparkDevelopmentExtensions.DescribeEffectiveActions(_tempDir, SparkActionLayers.Libraries);
+        var output = SparkDescribeCommand.Describe(_tempDir, "actions", name: null, layers: true, SparkLayerCatalog.Libraries.Where(l => l.Alias == "spark").ToList());
 
-        output.Should().Contain($"MintPlayer.Spark → {SparkActionLayers.AppLayerName}");
-        output.Should().MatchRegex(@"selectionRule\s+= =1\s+\[App_Data/actions\.json\]");
-        output.Should().MatchRegex(@"variant\s+= danger\s+\[MintPlayer\.Spark\]");
-        output.Should().NotContain("Edit  (declared by");
+        output.Should().Contain($"spark (MintPlayer.Spark) → app ({SparkActionLayers.AppLayerName})");
+        output.Should().Contain("Delete.selectionRule = \"=1\" @app");
+        output.Should().Contain("Delete.variant = \"danger\" @spark");
+        output.Should().NotContain("Edit @", "the application removed it");
     }
 
     [Fact]

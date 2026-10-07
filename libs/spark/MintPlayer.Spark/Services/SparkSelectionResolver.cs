@@ -21,6 +21,8 @@ namespace MintPlayer.Spark.Services;
 /// rule, on top of whatever the action itself checks afterwards. Without this a Delete rule wider than
 /// the Read rule let delete-many remove rows the caller could not see, and the action's own gates —
 /// <c>OnDisableActionsAsync</c> answering 403 — turned an unreadable row into an existence oracle.
+/// A virtual type (no clrType, no documents, no row rule) passes its <c>Query</c> right instead: its
+/// rows are what its query generates, and they withhold <c>Read</c> because no detail page loads them.
 /// </para>
 /// <para>
 /// A row failing any check counts as missing: the whole call is refused, the same as for an id that
@@ -71,7 +73,15 @@ internal sealed partial class SparkSelectionResolver : ISparkSelectionResolver
         }
 
         // D11: the Read right first — a caller who may not read the type may not act on its rows.
-        if (!await permissionService.IsAllowedAsync("Read", entityType.Name))
+        //
+        // ⚠️ Except for a virtual type (no clrType): its rows exist only as its query generates them, no
+        // detail page can load one, and the grid's rule is to withhold Read from exactly such rows (a
+        // Custom.* query fabricating rows in memory: PasskeyRow, MyAccountRow). Requiring Read made
+        // every row action on them unreachable — the passkeys page's Rename and Remove answered 404
+        // and never ran. Their counterpart of "may read the row" is "may run the query that yields
+        // it", so they need the Query right; the action's own right is checked by the caller as ever.
+        var readVerb = string.IsNullOrEmpty(entityType.ClrType) ? "Query" : "Read";
+        if (!await permissionService.IsAllowedAsync(readVerb, entityType.Name))
             return null;
 
         IReadOnlyList<QueryResultItem> rows;

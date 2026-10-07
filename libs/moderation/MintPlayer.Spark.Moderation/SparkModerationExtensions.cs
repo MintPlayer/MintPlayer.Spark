@@ -47,6 +47,10 @@ public static class SparkModerationExtensions
             optionsBuilder.Configure(configure);
         // After the code defaults: configuration wins (D14).
         optionsBuilder.BindConfiguration(SparkModerationConfigurationExtensions.SectionName);
+        // A privilege's slot resolves through security.json's bindings (grill Q6); a problem is kept for
+        // the startup check, which refuses startup with every one of them.
+        optionsBuilder.PostConfigure<MintPlayer.Spark.Abstractions.Authorization.ISecurityConfigurationLoader>(
+            (options, security) => ModerationStartupCheck.ResolveGroups(options, security.GetConfiguration()));
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddHttpContextAccessor();

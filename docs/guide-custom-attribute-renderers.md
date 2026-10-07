@@ -418,6 +418,26 @@ provideSparkAttributeRenderers([
 ])
 ```
 
+## Core renderers (no registration)
+
+ng-spark ships these in `SPARK_ATTRIBUTE_RENDERERS` itself (`sparkCoreRenderers`), so every app has
+them. An app's own registration of the same name wins.
+
+- **`paragraph`** — a read-only string shown as body text on the detail page, **full width and
+  without a label**: an explanatory text block, typically filled from a translation by the actions
+  class (the passkeys page's description is one). Pair it with `"showedOn": "PersistentObject"`, so
+  it never becomes a grid column. The value is **escaped**: markup shows as text, a blank line starts
+  a new paragraph and a single newline is a line break. `"rendererOptions": { "sanitize": false }`
+  renders it as HTML instead, through Angular's `[innerHTML]`, whose sanitizer still strips scripts,
+  event handlers and `javascript:` URLs; nothing on this path bypasses the sanitizer.
+
+  ```json
+  { "name": "Description", "dataType": "string", "isReadOnly": true,
+    "showedOn": "PersistentObject", "renderer": "paragraph" }
+  ```
+
+A registration of your own can draw across the whole row too: `fullWidth: true`.
+
 ## Built-in renderers you register
 
 - `@mintplayer/ng-spark/contributions` → `sparkContributionRenderers`: `contributionAttribution` (row

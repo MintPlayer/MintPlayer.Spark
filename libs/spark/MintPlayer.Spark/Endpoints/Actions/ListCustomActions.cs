@@ -88,7 +88,8 @@ internal sealed partial class ListCustomActions : IPostEndpoint
         definition.Confirmation,
         definition.Variant,
         definition.Offset,
-        definition.IsBuiltIn ? true : null);
+        definition.IsBuiltIn ? true : null,
+        definition.RequiresClient);
 
     /// <summary>
     /// One listed action. Lower-case members because this is the wire shape, serialized as-is. Text is
@@ -108,6 +109,8 @@ internal sealed partial class ListCustomActions : IPostEndpoint
         string? variant,
         int offset,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-        bool? isDefault);
+        bool? isDefault,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        string? requiresClient);
 #pragma warning restore IDE1006
 }

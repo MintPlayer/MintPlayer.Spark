@@ -338,6 +338,21 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     }
 
     /// <summary>
+    /// Drops a seeded user's password hash, leaving the session it already holds intact: the shape of
+    /// an account whose only way in is a passkey (or an external login), which no public endpoint
+    /// produces, since every account starts with a password or a provider.
+    /// </summary>
+    public async Task RemovePasswordAsync(string userId)
+    {
+        using var appStore = OpenAppStore();
+        using var session = appStore.OpenAsyncSession();
+        var user = await session.LoadAsync<SparkUser>(userId)
+            ?? throw new InvalidOperationException($"User '{userId}' is not stored.");
+        user.PasswordHash = null;
+        await session.SaveChangesAsync();
+    }
+
+    /// <summary>
     /// Point-loads a document from the app database by id. Deliberately not a query: these
     /// assertions include "this was NOT written", and an absence assertion against an
     /// eventually-consistent index passes whether or not the property holds.

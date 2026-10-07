@@ -9,7 +9,6 @@ public partial class TranslationsLibraryInfo
     public string FilePath { get; set; } = string.Empty;
     public bool Parsed { get; set; }
     public string ParseError { get; set; } = string.Empty;
-    public List<string> Chunks { get; set; } = new();
     public List<TranslationsIssueInfo> Issues { get; set; } = new();
 }
 

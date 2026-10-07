@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MintPlayer.Spark.Abstractions.Authorization;
 
 /// <summary>
@@ -6,9 +8,27 @@ namespace MintPlayer.Spark.Abstractions.Authorization;
 public class Right
 {
     /// <summary>
-    /// Unique identifier for this right assignment.
+    /// The right's stable key in the composed set (composition D4): the application's own key as
+    /// written (any text without <c>:</c>, conventionally the id it always had), or
+    /// <c>{alias}:{key}</c> for a grant a library ships (<c>authorization:passkeys-read</c>). The
+    /// application removes a library grant by this key and never edits it.
     /// </summary>
-    public Guid Id { get; set; }
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The library alias that ships this right, or <see langword="null"/> for the application's own:
+    /// the posture table's provenance column. Not part of the file.
+    /// </summary>
+    [JsonIgnore]
+    public string? Layer { get; set; }
+
+    /// <summary>
+    /// The group as the layer named it — <c>@anonymous</c>, <c>@authenticated</c>, a slot such as
+    /// <c>moderation:moderators</c>, or the id — before it resolved to <see cref="GroupId"/>. Not part
+    /// of the file: <c>groupId</c> holds it there.
+    /// </summary>
+    [JsonIgnore]
+    public string? Group { get; set; }
 
     /// <summary>
     /// The resource this right applies to, as <c>{Action}/{Target}</c>:
@@ -30,8 +50,10 @@ public class Right
     public string Resource { get; set; } = string.Empty;
 
     /// <summary>
-    /// The ID of the group this right is assigned to.
-    /// Must match a key in SecurityConfiguration.Groups.
+    /// The ID of the group this right is assigned to, once resolved. Must match a key in
+    /// SecurityConfiguration.Groups. In the file, <c>groupId</c> may also be a token
+    /// (<c>@anonymous</c>, <c>@authenticated</c>) or a slot the application binds; a slot bound to
+    /// several groups composes into one right per group.
     /// </summary>
     public Guid GroupId { get; set; }
 

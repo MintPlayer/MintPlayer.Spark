@@ -99,6 +99,11 @@ public static class SparkExtensions
         // Ensure HttpContextAccessor is available (needed for RequestCultureResolver)
         services.AddHttpContextAccessor();
 
+        // The boundary net (D13a): every persistent object a response serializes is checked for having
+        // been presented to this caller. PostConfigure, so it wraps whatever resolver the app set.
+        services.AddOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>()
+            .PostConfigure(options => Services.SparkPresentation.Install(options.SerializerOptions));
+
         // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
         // front of the pipeline by a startup filter. An application no longer configures or calls
         // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.
@@ -437,6 +442,7 @@ public static class SparkExtensions
         // and the index registry is populated there. Before any request is served: a drifted model
         // shows up as missing columns and values silently dropped on save, which reads as data loss
         // rather than a configuration mistake.
+        LogSparkLibraryLayers(app);
         VerifySparkModelHash(app);
 
         VerifySparkSecurityConfiguration(app);
@@ -627,6 +633,34 @@ public static class SparkExtensions
             .VerifyAsync(sparkContext.GetType(), store, Console.WriteLine, CancellationToken.None)
             .GetAwaiter()
             .GetResult();
+    }
+
+    /// <summary>
+    /// Names the library layers this process composes, once (composition D9, grill Q4): with no composed
+    /// file to look at, the startup log is where a developer sees which libraries take part, and
+    /// <c>--spark-describe</c> what they state.
+    /// </summary>
+    private static void LogSparkLibraryLayers(IApplicationBuilder app)
+    {
+        var logger = app.ApplicationServices.GetService<ILoggerFactory>()?.CreateLogger("MintPlayer.Spark.Layers");
+        if (logger is null)
+            return;
+
+        var libraries = SparkLayerCatalog.Libraries;
+        if (libraries.Count == 0)
+        {
+            logger.LogInformation("Spark layers: no library ships App_Data layers.");
+            return;
+        }
+
+        foreach (var library in libraries)
+        {
+            logger.LogInformation(
+                "Spark layers: {Alias} ({Assembly}) ships {Kinds}.",
+                library.Alias,
+                library.AssemblyName,
+                string.Join(", ", library.Layers.GroupBy(l => l.Kind, StringComparer.Ordinal).Select(g => g.Count() == 1 ? g.Key : $"{g.Key} ×{g.Count()}")));
+        }
     }
 
     private static void VerifySparkModelHash(IApplicationBuilder app)

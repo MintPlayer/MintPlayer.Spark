@@ -46,7 +46,7 @@ public class RowPolicyDeclarationTests
             [SparkWellKnownGroups.Anonymous] = AnonymousGroup.ToString(),
             [SparkWellKnownGroups.Authenticated] = AuthenticatedGroup.ToString(),
         },
-        Rights = [new Right { Id = Guid.NewGuid(), Resource = resource, GroupId = group, IsDenied = denied }],
+        Rights = [new Right { Key = Guid.NewGuid().ToString(), Resource = resource, GroupId = group, IsDenied = denied }],
     };
 
     private static IReadOnlyList<string> Validate(
@@ -158,7 +158,7 @@ public class RowPolicyDeclarationTests
     {
         var config = new SecurityConfiguration
         {
-            Rights = [new Right { Id = Guid.NewGuid(), Resource = "QueryRead/Widget", GroupId = AnonymousGroup }],
+            Rights = [new Right { Key = Guid.NewGuid().ToString(), Resource = "QueryRead/Widget", GroupId = AnonymousGroup }],
         };
 
         Validate(config).Should().BeEmpty();
@@ -171,7 +171,7 @@ public class RowPolicyDeclarationTests
         var config = Config(AnonymousGroup, "QueryRead/Widget");
         config.Rights.Add(new Right
         {
-            Id = Guid.NewGuid(),
+            Key = Guid.NewGuid().ToString(),
             Resource = "Query/Widget",
             GroupId = AuthenticatedGroup,
         });

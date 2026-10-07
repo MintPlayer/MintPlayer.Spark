@@ -2,6 +2,7 @@ using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
+using System.Text.Json;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -33,6 +34,50 @@ public class RetryAccessorTests
         op.Title.Should().Be("Pick one");
         op.Options.Should().Equal("a", "b");
         op.DefaultOption.Should().Be("a");
+    }
+
+    /// <summary>
+    /// Cancel is asked for, not offered: the client adds a Cancel in the user's language and answers
+    /// it as <see cref="RetryResult.CancelOption"/>, whatever the button says.
+    /// </summary>
+    [Fact]
+    public void A_cancellable_prompt_carries_the_flag_and_not_a_Cancel_option()
+    {
+        var clientAccessor = new ClientAccessor();
+        var retry = new RetryAccessor(clientAccessor);
+
+        var act = () => retry.Action("Rename", ["Save"], persistentObject: null, cancellable: true);
+
+        act.Should().Throw<SparkRetryActionException>().Which.Cancellable.Should().BeTrue();
+        var op = clientAccessor.Operations.OfType<RetryOperation>().Should().ContainSingle().Which;
+        op.Options.Should().Equal("Save");
+        op.Cancellable.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_prompt_is_not_cancellable_unless_it_asks()
+    {
+        var clientAccessor = new ClientAccessor();
+
+        var act = () => new RetryAccessor(clientAccessor).Action("Confirm", ["Confirm"]);
+
+        act.Should().Throw<SparkRetryActionException>();
+        clientAccessor.Operations.OfType<RetryOperation>().Single().Cancellable.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// ⚠️ A literal <c>"Cancel"</c> option is the bug this flag replaced: shown untranslated, and a
+    /// translated one would never have been recognised as a cancel. Refused before anything is pushed.
+    /// </summary>
+    [Fact]
+    public void Cancel_among_the_options_is_refused()
+    {
+        var clientAccessor = new ClientAccessor();
+
+        var act = () => new RetryAccessor(clientAccessor).Action("Delete car", ["Delete", RetryResult.CancelOption]);
+
+        act.Should().Throw<ArgumentException>().Which.Message.Should().Contain("cancellable");
+        clientAccessor.Operations.Should().BeEmpty();
     }
 
     [Fact]
@@ -99,5 +144,159 @@ public class RetryAccessorTests
         var act = () => retry.Action("Pick", ["a"]);
 
         act.Should().Throw<SparkRetryActionException>().Which.Step.Should().Be(0);
+    }
+
+    // --- Invoke: client-method steps (generic passkeys page, D7) -----------
+
+    [Fact]
+    public async Task Invoke_pushes_a_RetryOperation_carrying_the_method_and_its_arguments_and_throws()
+    {
+        var clientAccessor = new ClientAccessor();
+        var retry = new RetryAccessor(clientAccessor);
+
+        var act = () => retry.Invoke("webauthn.create", () => Task.FromResult<object?>(new { challenge = "abc", timeout = 60000 }));
+
+        var ex = (await act.Should().ThrowAsync<SparkRetryActionException>()).Which;
+        ex.Step.Should().Be(0);
+        ex.ClientMethod.Should().Be("webauthn.create");
+
+        var op = clientAccessor.Operations.OfType<RetryOperation>().Should().ContainSingle().Which;
+        op.Step.Should().Be(0);
+        op.ClientMethod.Should().Be("webauthn.create");
+        op.Options.Should().BeEmpty();
+        op.Arguments.Should().NotBeNull();
+        op.Arguments!.Value.GetProperty("challenge").GetString().Should().Be("abc");
+        op.Arguments!.Value.GetProperty("timeout").GetInt32().Should().Be(60000);
+    }
+
+    [Fact]
+    public async Task Invoke_wire_shape_names_the_method_and_an_answer_carries_its_value_back()
+    {
+        var clientAccessor = new ClientAccessor();
+        var retry = new RetryAccessor(clientAccessor);
+        var act = () => retry.Invoke("clipboard.read", () => Task.FromResult<object?>(new { format = "text" }));
+        await act.Should().ThrowAsync<SparkRetryActionException>();
+
+        // The 449's operation, as the envelope serializes it (polymorphic, discriminated by "type").
+        var json = JsonSerializer.Serialize<ClientOperation>(clientAccessor.Operations.OfType<RetryOperation>().Single(), JsonSerializerOptions.Web);
+        using (var wire = JsonDocument.Parse(json))
+        {
+            wire.RootElement.GetProperty("type").GetString().Should().Be("retry");
+            wire.RootElement.GetProperty("clientMethod").GetString().Should().Be("clipboard.read");
+            wire.RootElement.GetProperty("arguments").GetProperty("format").GetString().Should().Be("text");
+        }
+
+        // The browser's answer, as the resubmitted request carries it.
+        var answer = JsonSerializer.Deserialize<RetryResult>("""{ "step": 0, "option": "OK", "value": { "text": "hello" } }""", JsonSerializerOptions.Web)!;
+        answer.Value!.Value.GetProperty("text").GetString().Should().Be("hello");
+    }
+
+    [Fact]
+    public async Task Invoke_on_an_answered_step_exposes_the_value_and_does_not_throw()
+    {
+        var clientAccessor = new ClientAccessor();
+        using var value = JsonDocument.Parse("""{ "id": "cred-1" }""");
+        var answered = new RetryResult { Option = "OK", Value = value.RootElement.Clone() };
+        var retry = new RetryAccessor(clientAccessor)
+        {
+            AnsweredResults = new Dictionary<int, RetryResult> { [0] = answered }
+        };
+
+        await retry.Invoke("webauthn.create", () => Task.FromResult<object?>(null));
+
+        retry.Result.Should().BeSameAs(answered);
+        retry.Result!.Value!.Value.GetProperty("id").GetString().Should().Be("cred-1");
+        clientAccessor.Operations.OfType<RetryOperation>().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Invoke_reports_a_failed_client_method_as_Cancel()
+    {
+        var retry = new RetryAccessor(new ClientAccessor())
+        {
+            AnsweredResults = new Dictionary<int, RetryResult> { [0] = new() { Option = "Cancel" } }
+        };
+
+        await retry.Invoke("webauthn.create", () => Task.FromResult<object?>(null));
+
+        retry.Result!.Option.Should().Be("Cancel");
+        retry.Result.Value.Should().BeNull();
+    }
+
+    // ⚠️ The trap of D7: the action re-runs from the top on every pass, so building the arguments
+    // again on the answering pass would, for WebAuthn, issue a fresh challenge and overwrite the
+    // state the answer is checked against.
+    [Fact]
+    public async Task Invoke_does_not_run_the_arguments_factory_for_an_answered_step()
+    {
+        var calls = 0;
+        var retry = new RetryAccessor(new ClientAccessor())
+        {
+            AnsweredResults = new Dictionary<int, RetryResult> { [0] = new() { Option = "OK" } }
+        };
+
+        await retry.Invoke("webauthn.create", () => { calls++; return Task.FromResult<object?>(new { }); });
+
+        calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Invoke_runs_the_arguments_factory_exactly_once_for_an_unanswered_step()
+    {
+        var calls = 0;
+        var retry = new RetryAccessor(new ClientAccessor());
+
+        var act = () => retry.Invoke("webauthn.create", () => { calls++; return Task.FromResult<object?>(new { }); });
+
+        await act.Should().ThrowAsync<SparkRetryActionException>();
+        calls.Should().Be(1);
+    }
+
+    /// <summary>
+    /// One action asking the browser, then the user, then the browser again: three passes, each one
+    /// answering one more step, all through one step counter.
+    /// </summary>
+    [Fact]
+    public async Task Invoke_and_Action_share_one_step_counter_so_mixed_steps_round_trip_in_order()
+    {
+        var answers = new Dictionary<int, RetryResult>();
+        var log = new List<string>();
+
+        async Task RunAction(RetryAccessor retry)
+        {
+            await retry.Invoke("first", () => { log.Add("args first"); return Task.FromResult<object?>(1); });
+            log.Add($"first -> {retry.Result!.Value!.Value.GetInt32()}");
+            retry.Action("Continue?", ["Yes", "No"]);
+            log.Add($"prompt -> {retry.Result!.Option}");
+            await retry.Invoke("second", () => { log.Add("args second"); return Task.FromResult<object?>(2); });
+            log.Add($"second -> {retry.Result!.Value!.Value.GetInt32()}");
+        }
+
+        async Task<SparkRetryActionException?> Pass()
+        {
+            var retry = new RetryAccessor(new ClientAccessor()) { AnsweredResults = new(answers) };
+            try { await RunAction(retry); return null; }
+            catch (SparkRetryActionException ex) { return ex; }
+        }
+
+        var pass1 = await Pass();
+        pass1!.Step.Should().Be(0);
+        pass1.ClientMethod.Should().Be("first");
+        answers[0] = new() { Step = 0, Option = "OK", Value = JsonSerializer.SerializeToElement(10) };
+
+        var pass2 = await Pass();
+        pass2!.Step.Should().Be(1);
+        pass2.ClientMethod.Should().BeNull();
+        pass2.Title.Should().Be("Continue?");
+        answers[1] = new() { Step = 1, Option = "Yes" };
+
+        var pass3 = await Pass();
+        pass3!.Step.Should().Be(2);
+        pass3.ClientMethod.Should().Be("second");
+        answers[2] = new() { Step = 2, Option = "OK", Value = JsonSerializer.SerializeToElement(20) };
+
+        log.Clear();
+        (await Pass()).Should().BeNull();
+        log.Should().Equal("first -> 10", "prompt -> Yes", "second -> 20");
     }
 }

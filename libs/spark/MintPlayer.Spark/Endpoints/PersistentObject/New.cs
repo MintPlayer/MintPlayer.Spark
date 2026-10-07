@@ -40,7 +40,6 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
     [Inject] private readonly ISparkTypeResolver typeResolver;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IQueryLoader queryLoader;
-    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
     [Inject] private readonly ILogger<NewPersistentObject> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -97,11 +96,10 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
             : new SparkNewSubQueryContext(entityType, resolved.ParentType, resolved.Query, resolved.ParentReference, logger);
 
         var clrType = typeResolver.Resolve(entityType.ClrType);
-        var po = Scaffold(entityType, clrType);
+        // Built for the caller (D13a): Read-denied absent, New-denied read-only, before the hook runs;
+        // a value the hook writes onto a removed attribute goes nowhere.
+        var po = await ScaffoldAsync(entityType, clrType, httpContext.RequestAborted);
         await InvokeHookAsync(clrType, po, parent, asDetailParent: null, request, httpContext, subQuery);
-        // Static attribute rights (M2c-2a): Read-denied absent, New-denied read-only — after the hook,
-        // so a value it wrote onto a removed attribute goes with it.
-        await attributeRights.PresentAsync([po], "Read", "New", httpContext.RequestAborted);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
     }
 
@@ -190,12 +188,11 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
         // Resolving the CLR type through the same resolver the rest of the framework uses keeps an
         // undeclared type unreachable here, exactly as it is on the save path.
         var clrType = typeResolver.Resolve(entityType.ClrType);
-        var po = Scaffold(entityType, clrType);
+        var po = await ScaffoldAsync(entityType, clrType, httpContext.RequestAborted);
 
         // Both references, and deliberately the same instance: they differ in meaning, not identity.
         // AsDetailParent is the narrow one that says the parent owns the save.
         await InvokeHookAsync(clrType, po, parent, asDetailParent: parent, request, httpContext);
-        await attributeRights.PresentAsync([po], "Read", "New", httpContext.RequestAborted);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
     }
 
@@ -204,7 +201,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
     /// instance reflected over it.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>The second half is not decoration.</b> <c>GetPersistentObject</c> scaffolds from the
+    /// ⚠️ <b>The second half is not decoration.</b> <c>GetPersistentObjectAsync</c> scaffolds from the
     /// model file and never constructs the entity, so the row-key field initializer that every
     /// <c>[ValueObject]</c> has carried since #382 never runs — the row reaches the hook, and the
     /// client, with <b>no key at all</b>.
@@ -221,9 +218,9 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
     /// user sees, which is the ordinary way a .NET developer expects to state one.
     /// </para>
     /// </remarks>
-    private Po Scaffold(EntityTypeDefinition entityType, Type? clrType)
+    private async Task<Po> ScaffoldAsync(EntityTypeDefinition entityType, Type? clrType, CancellationToken cancellationToken)
     {
-        var po = entityMapper.GetPersistentObject(entityType.Id);
+        var po = await entityMapper.GetPersistentObjectAsync(entityType.Id, SparkCoreActions.New, cancellationToken);
         if (clrType is null)
             return po;
 

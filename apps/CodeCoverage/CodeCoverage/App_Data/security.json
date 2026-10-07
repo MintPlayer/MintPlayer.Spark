@@ -10,223 +10,223 @@
   },
   "rights": [
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000001",
+      "key": "c0e5a9e1-0000-4000-8000-000000000001",
       "resource": "QueryRead/Account",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000002",
+      "key": "c0e5a9e1-0000-4000-8000-000000000002",
       "resource": "QueryRead/Repository",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000003",
+      "key": "c0e5a9e1-0000-4000-8000-000000000003",
       "resource": "QueryRead/Commit",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000004",
+      "key": "c0e5a9e1-0000-4000-8000-000000000004",
       "resource": "QueryRead/Build",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000011",
+      "key": "c0e5a9e1-0000-4000-8000-000000000011",
       "resource": "QueryRead/Account",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000012",
+      "key": "c0e5a9e1-0000-4000-8000-000000000012",
       "resource": "QueryRead/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000013",
+      "key": "c0e5a9e1-0000-4000-8000-000000000013",
       "resource": "QueryRead/Commit",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000014",
+      "key": "c0e5a9e1-0000-4000-8000-000000000014",
       "resource": "QueryRead/Build",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000021",
+      "key": "c0e5a9e1-0000-4000-8000-000000000021",
       "resource": "Browse/Coverage",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000022",
+      "key": "c0e5a9e1-0000-4000-8000-000000000022",
       "resource": "Browse/Coverage",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000032",
+      "key": "c0e5a9e1-0000-4000-8000-000000000032",
       "resource": "Manage/RepoSettings",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000033",
+      "key": "c0e5a9e1-0000-4000-8000-000000000033",
       "resource": "Upload/Coverage",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000041",
+      "key": "c0e5a9e1-0000-4000-8000-000000000041",
       "resource": "Read/Home",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000042",
+      "key": "c0e5a9e1-0000-4000-8000-000000000042",
       "resource": "Read/Home",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000053",
+      "key": "c0e5a9e1-0000-4000-8000-000000000053",
       "resource": "Read/ForgeAccounts",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000051",
+      "key": "c0e5a9e1-0000-4000-8000-000000000051",
       "resource": "Query/MyAccountRow",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000052",
+      "key": "c0e5a9e1-0000-4000-8000-000000000052",
       "resource": "Resync/Home",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000061",
+      "key": "c0e5a9e1-0000-4000-8000-000000000061",
       "resource": "DeleteData/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000062",
+      "key": "c0e5a9e1-0000-4000-8000-000000000062",
       "resource": "QueryRead/GitHubProject",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000063",
+      "key": "c0e5a9e1-0000-4000-8000-000000000063",
       "resource": "Edit/GitHubProject",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000064",
+      "key": "c0e5a9e1-0000-4000-8000-000000000064",
       "resource": "SyncColumns/GitHubProject",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000066",
+      "key": "c0e5a9e1-0000-4000-8000-000000000066",
       "resource": "QueryReadEditNewDelete/EventColumnMapping",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000069",
+      "key": "c0e5a9e1-0000-4000-8000-000000000069",
       "resource": "QueryReadEditNew/ApiToken",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-00000000006a",
+      "key": "c0e5a9e1-0000-4000-8000-00000000006a",
       "resource": "Revoke/ApiToken",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000068",
+      "key": "c0e5a9e1-0000-4000-8000-000000000068",
       "resource": "Read/LookupReferences",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000065",
+      "key": "c0e5a9e1-0000-4000-8000-000000000065",
       "resource": "QueryRead/ProjectColumn",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-00000000006b",
+      "key": "c0e5a9e1-0000-4000-8000-00000000006b",
       "resource": "Edit/Account",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-00000000006c",
+      "key": "c0e5a9e1-0000-4000-8000-00000000006c",
       "resource": "Edit/Repository",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000081",
+      "key": "c0e5a9e1-0000-4000-8000-000000000081",
       "resource": "QueryRead/Account/OwnerKey",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": true
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000082",
+      "key": "c0e5a9e1-0000-4000-8000-000000000082",
       "resource": "QueryRead/Account/OwnerKey",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": true
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000083",
+      "key": "c0e5a9e1-0000-4000-8000-000000000083",
       "resource": "QueryRead/Repository/OwnerKey",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": true
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000084",
+      "key": "c0e5a9e1-0000-4000-8000-000000000084",
       "resource": "QueryRead/Repository/OwnerKey",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": true
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000085",
+      "key": "c0e5a9e1-0000-4000-8000-000000000085",
       "resource": "QueryRead/Repository/PreviousFullNames",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": true
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000086",
+      "key": "c0e5a9e1-0000-4000-8000-000000000086",
       "resource": "QueryRead/Repository/PreviousFullNames",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": true
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000087",
+      "key": "c0e5a9e1-0000-4000-8000-000000000087",
       "resource": "Read/ForgeAccounts/Provider",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": true
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000088",
+      "key": "c0e5a9e1-0000-4000-8000-000000000088",
       "resource": "QueryRead/Home/AccountCount",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": true
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000089",
+      "key": "c0e5a9e1-0000-4000-8000-000000000089",
       "resource": "QueryRead/Home/RepoCount",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": true

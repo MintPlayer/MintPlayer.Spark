@@ -61,9 +61,10 @@
         <bs-datatable
           [(settings)]="settings"
           [data]="rows()"
+          [labels]="datatableLabels()"
           (rowClick)="select($event.row)">
           @for (attr of visibleAttributes(); track attr.id) {
-            <div *bsDatatableColumn="attr.name; sortable: true">
+            <div *bsDatatableColumn="attr.name; sortable: true; label: attr.label | resolveTranslation:attr.name">
               {{ attr.label | resolveTranslation:attr.name }}
               <spark-attribute-description [description]="attr.description" />
             </div>

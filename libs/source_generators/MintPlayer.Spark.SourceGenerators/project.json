@@ -1,0 +1,12 @@
+{
+  "name": "MintPlayer.Spark.SourceGenerators",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "namedInputs": {
+    "production": [
+      "default",
+      "{workspaceRoot}/libs/spark/Shared/**/*.cs",
+      "!{projectRoot}/**/bin/**/*",
+      "!{projectRoot}/**/obj/**/*"
+    ]
+  }
+}

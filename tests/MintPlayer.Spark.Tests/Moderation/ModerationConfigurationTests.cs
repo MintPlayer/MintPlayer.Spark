@@ -67,6 +67,76 @@ public class ModerationConfigurationTests : SparkTestDriver
     }
 
     [Fact]
+    public void The_library_defaults_sit_below_the_application_file_and_below_appsettings()
+    {
+        // Grill Q6: Moderation ships its reputation table and privileges as a layer; the application's
+        // moderation.json composes on top per key ("Review": null removes a privilege), and the result
+        // is one IConfiguration source below appsettings and environment variables.
+        var folder = Directory.CreateTempSubdirectory("spark-moderation-layers-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(folder, "App_Data"));
+            File.WriteAllText(Path.Combine(folder, "App_Data", "moderation.json"),
+                """{ "Privileges": { "Review": null, "Flag": { "Rep": 50 } } }""");
+
+            var fileOnly = Bind(new ConfigurationBuilder().SetBasePath(folder).AddSparkModerationFile().Build());
+            var withAppSettings = Bind(new ConfigurationBuilder().SetBasePath(folder)
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Spark:Moderation:Privileges:Flag:Rep"] = "60" })
+                .AddSparkModerationFile().Build());
+
+            fileOnly.Privileges.Keys.Should().BeEquivalentTo(["Upvote", "Flag", "Downvote"]); // The application removed Review.
+            fileOnly.Privileges["Upvote"].Group.Should().Be("moderation:voters", "what the application does not state comes from the library");
+            fileOnly.Privileges["Upvote"].Rep.Should().Be(10);
+            fileOnly.Privileges["Flag"].Rep.Should().Be(50, "the application's file wins over the library");
+            fileOnly.Privileges["Flag"].Group.Should().Be("moderation:flaggers", "it merges per key, not per privilege");
+            withAppSettings.Privileges["Flag"].Rep.Should().Be(60, "appsettings wins over the composed file");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Without_an_application_file_the_library_defaults_apply()
+    {
+        var folder = Directory.CreateTempSubdirectory("spark-moderation-defaults-").FullName;
+        try
+        {
+            var options = Bind(new ConfigurationBuilder().SetBasePath(folder).AddSparkModerationFile().Build());
+
+            options.Privileges.Keys.Should().BeEquivalentTo(["Upvote", "Flag", "Downvote", "Review"]);
+            options.Privileges["Review"].Group.Should().Be("moderation:reviewers");
+            options.Privileges["Review"].Rep.Should().Be(500);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_privilege_slot_resolves_through_the_security_bindings()
+    {
+        var security = MoSecurity.Configuration();
+        security.Bindings = new() { ["moderation:voters"] = ["MoVoters"], ["moderation:flaggers"] = [MoSecurity.Flaggers.ToString(), MoSecurity.Voters.ToString()] };
+        var options = new SparkModerationOptions();
+        options.Privileges["Upvote"] = new ModerationPrivilegeOptions { Group = "moderation:voters", Grants = ["Vote"] };
+        options.Privileges["Flag"] = new ModerationPrivilegeOptions { Group = "moderation:flaggers", Grants = ["Flag"] };
+        options.Privileges["Review"] = new ModerationPrivilegeOptions { Group = "moderation:reviewers", Grants = ["Review"] };
+        options.Privileges["Token"] = new ModerationPrivilegeOptions { Group = "@authenticated" };
+
+        ModerationStartupCheck.ResolveGroups(options, security);
+        var problems = ModerationStartupCheck.Validate(options, security);
+
+        options.Privileges["Upvote"].GroupId.Should().Be(MoSecurity.Voters, "bound by the group's name");
+        problems.Should().Contain(p => p.Contains("'Flag'") && p.Contains("binds to 2 groups"));
+        problems.Should().Contain(p => p.Contains("'Review'") && p.Contains("does not bind"), "an unbound slot refuses startup");
+        problems.Should().Contain(p => p.Contains("'Token'") && p.Contains("a token or a group id is refused"));
+        problems.Should().NotContain(p => p.Contains("'Upvote'"));
+    }
+
+    [Fact]
     public void A_valid_configuration_has_no_problems()
     {
         var options = new SparkModerationOptions();
@@ -143,12 +213,40 @@ public class ModerationConfigurationTests : SparkTestDriver
         MoSecurity.OpenPrivileges(options);
         options.Privileges["Upvote"].Grants.Add("Purge");
 
-        var report = SparkModerationInitExtensions.Render(options, ["MoPost", "MoAnswer"]);
+        var report = SparkModerationInitExtensions.Render(options, ["MoPost", "MoAnswer"], new HashSet<string>());
 
         report.Should().Contain("\"resource\": \"Vote/MoPost\"").And.Contain("\"resource\": \"Vote/MoAnswer\"");
         report.Should().Contain("\"resource\": \"Review/Moderation\"");
         report.Should().Contain($"\"groupId\": \"{MoSecurity.Voters}\"");
         report.Should().Contain("'Purge', which is never earnable; it is left out");
-        report.Should().Contain("\"resource\": \"Lock/MoPost\"").And.Contain("<moderators group id>");
+        report.Should().Contain("\"resource\": \"Lock/MoPost\"").And.Contain("\"groupId\": \"moderation:moderators\"");
+    }
+
+    /// <summary>
+    /// Composition M9: the library ships the Moderation pseudo-type's grants to its own slots, so the
+    /// report leaves them out and says so. Read from the library's real embedded layer.
+    /// </summary>
+    [Fact]
+    public void Init_leaves_out_the_rights_the_library_ships()
+    {
+        var shipped = SparkModerationInitExtensions.ShippedRights();
+        shipped.Should().BeEquivalentTo(
+        [
+            "Review/Moderation|moderation:reviewers",
+            "Review/Moderation|moderation:moderators",
+            "Suspend/Moderation|moderation:moderators",
+            "Audit/Moderation|moderation:moderators",
+        ]);
+
+        var options = new SparkModerationOptions();
+        var library = new ConfigurationBuilder().AddSparkModerationFile().Build();
+        library.GetSection(SparkModerationConfigurationExtensions.SectionName).Bind(options);
+        var report = SparkModerationInitExtensions.Render(options, ["MoPost"], shipped);
+
+        report.Should().NotContain("\"resource\": \"Review/Moderation\"")
+            .And.NotContain("\"resource\": \"Suspend/Moderation\"")
+            .And.NotContain("\"resource\": \"Audit/Moderation\"");
+        report.Should().Contain("Shipped by the library").And.Contain("Suspend/Moderation to moderation:moderators");
+        report.Should().Contain("\"resource\": \"Lock/MoPost\"").And.Contain("\"resource\": \"Vote/MoPost\"");
     }
 }

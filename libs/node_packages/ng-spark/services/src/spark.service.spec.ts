@@ -8,7 +8,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
 import { SparkService } from './spark.service';
 import { RetryActionService } from './retry-action.service';
-import { SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
+import { SparkClientOperationDispatcher, provideSparkClientMethods, type SparkClientMethodMap } from '@mintplayer/ng-spark/client-operations';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 
 /**
@@ -234,8 +234,9 @@ describe('SparkService', () => {
             type: 'retry',
             step: 'overwrite',
             title: 'Overwrite?',
-            options: ['Overwrite', 'Cancel'],
-            defaultOption: 'Cancel',
+            options: ['Overwrite'],
+            defaultOption: 'Overwrite',
+            cancellable: true,
           },
         ],
       },
@@ -258,7 +259,7 @@ describe('SparkService', () => {
     await expect(promise).resolves.toMatchObject({ id: 'people/1' });
   });
 
-  it('rethrows the 449 when the user cancels and Cancel was not an explicit option', async () => {
+  it('rethrows the 449 when the user dismisses a prompt that is not cancellable', async () => {
     retryService.show.mockResolvedValueOnce({ step: 'overwrite', option: 'Cancel' });
 
     const promise = service.create('Person', { name: 'Alice' });
@@ -269,13 +270,48 @@ describe('SparkService', () => {
           type: 'retry',
           step: 'overwrite',
           title: 'Overwrite?',
-          options: ['Overwrite'], // Cancel NOT in options → cancellation rethrows.
+          options: ['Overwrite'], // not cancellable → a dismissal rethrows.
         }],
       },
       { status: 449, statusText: 'Retry With' }
     );
 
     await expect(promise).rejects.toMatchObject({ status: 449 });
+    await flushMicrotasks();
+  });
+
+  // Cancel is identified by the flag, never by an option's label: the modal shows its own translated
+  // Cancel, and a label 'Cancel' among the options is just a label.
+  it('sends Cancel for a cancellable prompt, and hands the modal the flag', async () => {
+    retryService.show.mockResolvedValueOnce({ step: 0, option: 'Cancel' });
+
+    const promise = service.create('Person', { name: 'Alice' });
+
+    httpTesting.expectOne('/spark/po/create').flush(
+      { operations: [{ type: 'retry', step: 0, title: 'Rename', options: ['Save'], cancellable: true }] },
+      { status: 449, statusText: 'Retry With' }
+    );
+    await flushMicrotasks();
+
+    expect(retryService.show).toHaveBeenCalledWith(expect.objectContaining({ options: ['Save'], cancellable: true }));
+    const second = httpTesting.expectOne('/spark/po/create');
+    expect(second.request.body.retryResults).toEqual([{ step: 0, option: 'Cancel' }]);
+    second.flush(null, { status: 204, statusText: 'No Content' });
+    await promise;
+  });
+
+  it('does not treat an option labelled Cancel as a cancel', async () => {
+    retryService.show.mockResolvedValueOnce({ step: 0, option: 'Cancel' });
+
+    const promise = service.create('Person', { name: 'Alice' });
+
+    httpTesting.expectOne('/spark/po/create').flush(
+      { operations: [{ type: 'retry', step: 0, title: 'Delete?', options: ['Delete', 'Cancel'] }] },
+      { status: 449, statusText: 'Retry With' }
+    );
+
+    await expect(promise).rejects.toMatchObject({ status: 449 });
+    expect(retryService.show).toHaveBeenCalledWith(expect.objectContaining({ cancellable: false }));
     await flushMicrotasks();
   });
 
@@ -607,5 +643,113 @@ describe('SparkService', () => {
     httpTesting.expectOne('/spark/po/create').flush(null, { status: 449, statusText: 'Retry With' });
     await expect(promise).rejects.toMatchObject({ status: 449 });
     expect(dispatcher.dispatch).not.toHaveBeenCalled();
+  });
+
+  // --- client-method retries (IRetryAccessor.Invoke, generic passkeys page D7) ---------------
+
+  describe('client-method retries', () => {
+    function withMethods(methods: SparkClientMethodMap) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideSparkClientMethods(methods),
+          { provide: SparkClientOperationDispatcher, useValue: dispatcher },
+          { provide: RetryActionService, useValue: retryService },
+        ],
+      });
+      service = TestBed.inject(SparkService);
+      httpTesting = TestBed.inject(HttpTestingController);
+    }
+
+    const invokeOp = (clientMethod: string, args: unknown = { challenge: 'abc' }) => ({
+      result: null,
+      operations: [{ type: 'retry', step: 0, title: clientMethod, options: [], clientMethod, arguments: args }],
+    });
+
+    it('awaits the registered method and re-sends with its value, without opening the modal', async () => {
+      const invoke = vi.fn(async (args: unknown) => ({ id: 'cred-1', echoed: args }));
+      withMethods({ 'webauthn.create': { invoke } });
+
+      const promise = service.executeCustomAction('Passkeys', 'AddPasskey', { id: 'me' } as any);
+      httpTesting.expectOne('/spark/actions/execute').flush(invokeOp('webauthn.create'), { status: 449, statusText: 'Retry With' });
+      await flushMicrotasks();
+
+      expect(invoke).toHaveBeenCalledWith({ challenge: 'abc' });
+      expect(retryService.show).not.toHaveBeenCalled();
+
+      const second = httpTesting.expectOne('/spark/actions/execute');
+      expect(second.request.body.retryResults).toEqual([
+        { step: 0, option: 'OK', value: { id: 'cred-1', echoed: { challenge: 'abc' } } },
+      ]);
+      second.flush({ result: null, operations: [] });
+      await promise;
+    });
+
+    it('answers Cancel for a method the app never registered', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      withMethods({});
+
+      const promise = service.executeCustomAction('Passkeys', 'AddPasskey', { id: 'me' } as any);
+      httpTesting.expectOne('/spark/actions/execute').flush(invokeOp('webauthn.create'), { status: 449, statusText: 'Retry With' });
+      await flushMicrotasks();
+
+      const second = httpTesting.expectOne('/spark/actions/execute');
+      expect(second.request.body.retryResults).toEqual([{ step: 0, option: 'Cancel' }]);
+      expect(warn).toHaveBeenCalled();
+      second.flush({ result: null, operations: [] });
+      await promise;
+      warn.mockRestore();
+    });
+
+    it('answers Cancel when the method rejects, and when it throws', async () => {
+      withMethods({
+        'webauthn.create': { invoke: () => Promise.reject(new DOMException('cancelled', 'NotAllowedError')) },
+        'boom': { invoke: () => { throw new Error('boom'); } },
+      });
+
+      for (const name of ['webauthn.create', 'boom']) {
+        const promise = service.executeCustomAction('Passkeys', 'AddPasskey', { id: 'me' } as any);
+        httpTesting.expectOne('/spark/actions/execute').flush(invokeOp(name), { status: 449, statusText: 'Retry With' });
+        await flushMicrotasks();
+
+        const second = httpTesting.expectOne('/spark/actions/execute');
+        expect(second.request.body.retryResults).toEqual([{ step: 0, option: 'Cancel' }]);
+        second.flush({ result: null, operations: [] });
+        await promise;
+      }
+    });
+
+    it('answers Cancel without running a method that reports itself unsupported', async () => {
+      const invoke = vi.fn(async () => 'never');
+      withMethods({ 'webauthn.create': { invoke, supported: () => false } });
+
+      const promise = service.executeCustomAction('Passkeys', 'AddPasskey', { id: 'me' } as any);
+      httpTesting.expectOne('/spark/actions/execute').flush(invokeOp('webauthn.create'), { status: 449, statusText: 'Retry With' });
+      await flushMicrotasks();
+
+      expect(invoke).not.toHaveBeenCalled();
+      const second = httpTesting.expectOne('/spark/actions/execute');
+      expect(second.request.body.retryResults).toEqual([{ step: 0, option: 'Cancel' }]);
+      second.flush({ result: null, operations: [] });
+      await promise;
+    });
+
+    it('the depth cap still bounds a server that invokes forever', async () => {
+      withMethods({ 'again': { invoke: async () => 1 } });
+
+      const promise = service.executeCustomAction('Passkeys', 'AddPasskey', { id: 'me' } as any);
+      const settled = promise.then(() => null, (e: Error) => e);
+
+      for (let i = 0; i <= 16; i++) {
+        httpTesting.expectOne('/spark/actions/execute').flush(invokeOp('again'), { status: 449, statusText: 'Retry With' });
+        await flushMicrotasks();
+      }
+
+      const error = await settled;
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain('Gave up after answering 16');
+    });
   });
 });

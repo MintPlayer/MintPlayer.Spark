@@ -17,6 +17,11 @@ Spark does not read, or a removed one such as `isVisible` is flagged before the 
 Generated files (`modelHashes.json`, `oidc-signing-key.json`, `securityPosture.txt`) have none: you
 never edit them.
 
+**Hovering a key shows what it means.** Every property carries a `description` (`persistentObject`,
+`clrType`, `showedOn`, a right's `key`, `bindings`, `$remove`, …), and an enum lists what each of its
+values does. In a library's file the descriptions also say what a layer may state: a delta leaves
+`id` out, a library may only grant, `groups` is the application's only.
+
 ---
 
 ## Where they live
@@ -90,7 +95,9 @@ Synchronize leaves relative paths alone. ⚠️ A model file **copied from this 
 application should have its `$schema` line removed; the next synchronize then adds the hosted URL.
 
 The schemas are **build artifacts and are never committed**: `schemas/` at the repository root is in
-`.gitignore`.
+`.gitignore`. ⚠️ A fresh clone therefore has no schemas until it is built once; until then every
+relative `$schema` is unresolved and the editor validates nothing. After a build that changed the
+schemas, VS Code may keep the old ones cached: run **Developer: Reload Window**.
 
 ### Regenerating them locally
 
@@ -103,9 +110,15 @@ dotnet build tools/SchemaGenerator
 ```
 
 The schemas are exported with `System.Text.Json`'s `JsonSchemaExporter` from the types the loaders
-deserialize (`EntityTypeFile`, `SecurityConfiguration`, `ProgramUnitsConfiguration`, and mirrors of
-what the culture and actions loaders read), plus a hand-built tree for `translations.json`, which no
-CLR type describes. Output is deterministic, because CI compares it byte-for-byte with the latest
+deserialize (`EntityTypeFile`, `ProgramUnitsConfiguration`, and mirrors of what the security, culture
+and actions loaders read: `SecurityFile`, `CultureFile`, `ActionsFileEntry`), plus a hand-built tree
+for `translations.json`, which no CLR type describes.
+
+The descriptions are those types' `///` summaries. The projects holding them build with
+`GenerateDocumentationFile` (CS1591 is suppressed: only schema-facing members need a summary), and
+the generator reads the XML file next to each Spark assembly, flattening `<c>`, `<see cref>` and
+`<para>` to plain text. A description written by hand in the generator is kept. **A new property in
+an `App_Data` file needs a `<summary>`**, or it shows no help on hover. Output is deterministic, because CI compares it byte-for-byte with the latest
 release. Guard tests check that generation is deterministic, that every `App_Data` file under `apps/`
 and `libs/` validates, that strictness is falsifiable (`isVisible`, a bad flag name and an
 un-prefixed comment are rejected), and that each schema matches what its loader reads.

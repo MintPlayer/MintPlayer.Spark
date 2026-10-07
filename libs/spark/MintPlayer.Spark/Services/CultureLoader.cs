@@ -9,16 +9,32 @@ public interface ICultureLoader
     CultureConfiguration GetCulture();
 }
 
+/// <summary>
+/// The application's <c>culture.json</c> (app-only: libraries may not ship it, composition D3), each
+/// language's name resolved against the translations. Reloaded when the file changes and when the
+/// translations do, through the one watcher policy (<see cref="AppLayerSnapshot{T}"/>, D8).
+/// </summary>
 [Register(typeof(ICultureLoader), ServiceLifetime.Singleton)]
-internal partial class CultureLoader : ICultureLoader
+internal partial class CultureLoader : ICultureLoader, IDisposable
 {
     [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
+    [Inject] private readonly ILogger<CultureLoader> logger;
 
-    private Lazy<CultureConfiguration>? _culture;
+    private AppLayerSnapshot<CultureConfiguration>? layer;
+
+    private AppLayerSnapshot<CultureConfiguration> Layer
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            SparkAppData.Relative("culture.json"),
+            SparkAppData.Directory(hostEnvironment.ContentRootPath),
+            ["culture.json"],
+            LoadCulture,
+            logger,
+            labels: translationsLoader));
 
     private CultureConfiguration LoadCulture()
     {
-        var filePath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "culture.json");
+        var filePath = SparkAppData.Path(hostEnvironment.ContentRootPath, "culture.json");
 
         if (!File.Exists(filePath))
             return Build(["en"], "en");
@@ -49,7 +65,7 @@ internal partial class CultureLoader : ICultureLoader
                     // culture.languages.{code}. The old object form embedded the names, so it is refused.
                     if (property.Value.ValueKind != JsonValueKind.Array)
                         throw new InvalidOperationException(
-                            "App_Data/culture.json: 'languages' must be an array of language codes, e.g. " +
+                            $"{SparkAppData.Relative("culture.json")}: 'languages' must be an array of language codes, e.g. " +
                             "[\"en\", \"fr\", \"nl\"]. A language's display name is the translations.json key " +
                             "'culture.languages.{code}'.");
                     codes.AddRange(property.Value.EnumerateArray()
@@ -68,18 +84,17 @@ internal partial class CultureLoader : ICultureLoader
         }
     }
 
-    internal static CultureConfiguration Build(IEnumerable<string> codes, string defaultLanguage) => new()
+    private CultureConfiguration Build(IEnumerable<string> codes, string defaultLanguage) => new()
     {
         Languages = codes.ToDictionary(
             code => code,
             // An untranslated language shows its code as-is ("pt"), not humanized.
-            code => SparkText.Lookup($"culture.languages.{code}") ?? TranslatedString.Create(code)),
+            code => SparkText.Lookup(translationsLoader.GetAll(), $"culture.languages.{code}") ?? TranslatedString.Create(code)),
         DefaultLanguage = defaultLanguage,
     };
 
-    public CultureConfiguration GetCulture()
-    {
-        _culture ??= new Lazy<CultureConfiguration>(LoadCulture);
-        return _culture.Value;
-    }
+    public CultureConfiguration GetCulture() => Layer.Current;
+
+    [NoInterfaceMember]
+    public void Dispose() => layer?.Dispose();
 }

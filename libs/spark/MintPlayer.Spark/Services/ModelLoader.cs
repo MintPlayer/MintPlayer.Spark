@@ -15,48 +15,61 @@ public interface IModelLoader
     IEnumerable<SparkQuery> GetQueries();
 }
 
+/// <summary>
+/// The composed model (<see cref="IModelSource"/>), deserialized, with every label resolved against the
+/// translations.
+/// </summary>
+/// <remarks>
+/// The labels follow a translations reload (composition D8): the definitions are rebuilt from the
+/// same composed model and swapped whole, so a reader holds the old set or the new one. The model's
+/// structure does not reload: it is verified against this build's entity classes at startup
+/// (<c>modelHashes.json</c>), and a structure read later would never have passed that gate.
+/// </remarks>
 [Register(typeof(IModelLoader), ServiceLifetime.Singleton)]
-internal partial class ModelLoader : IModelLoader
+internal partial class ModelLoader : IModelLoader, IDisposable
 {
-    [Inject] private readonly IHostEnvironment hostEnvironment;
+    [Inject] private readonly IModelSource modelSource;
+    [Inject] private readonly ITranslationsLoader translationsLoader;
+    [Inject] private readonly ILogger<ModelLoader> logger;
 
-    private Lazy<(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries)>? _data;
+    private AppLayerSnapshot<ModelData>? layer;
 
-    private (Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries) Data
-    {
-        get
-        {
-            _data ??= new Lazy<(Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>, List<SparkQuery>)>(LoadData);
-            return _data.Value;
-        }
-    }
+    private sealed record ModelData(Dictionary<Guid, EntityTypeDefinition> ById, Dictionary<string, EntityTypeDefinition> ByAlias, List<SparkQuery> Queries);
 
-    private (Dictionary<Guid, EntityTypeDefinition>, Dictionary<string, EntityTypeDefinition>, List<SparkQuery>) LoadData()
+    private ModelData Data
+        => LazyInitializer.EnsureInitialized(ref layer, () => new(
+            "the model's labels",
+            directory: null,
+            [],
+            LoadData,
+            logger,
+            labels: translationsLoader)).Current;
+
+    private ModelData LoadData()
     {
         var byId = new Dictionary<Guid, EntityTypeDefinition>();
         var byAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
         var allQueries = new List<SparkQuery>();
-        var modelPath = Path.Combine(hostEnvironment.ContentRootPath, "App_Data", "Model");
-
-        if (!Directory.Exists(modelPath))
-            return (byId, byAlias, allQueries);
 
         var jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         };
 
-        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        // The composed model (composition D6): library types with the application's deltas on top,
+        // then the application's own files.
+        foreach (var type in modelSource.Types)
         {
+            var file = type.Source;
             try
             {
-                var json = File.ReadAllText(file);
+                var json = type.Json;
                 RefuseLegacyIsVisible(json, file);
                 var entityTypeFile = JsonSerializer.Deserialize<EntityTypeFile>(json, jsonOptions);
                 if (entityTypeFile?.PersistentObject != null)
                 {
                     var entityType = entityTypeFile.PersistentObject;
-                    ResolveText(entityType, entityTypeFile.Queries);
+                    ResolveText(translationsLoader.GetAll(), entityType, entityTypeFile.Queries);
 
                     // Auto-generate alias from Name if not explicitly set
                     entityType.Alias ??= entityType.Name.ToLowerInvariant();
@@ -70,7 +83,7 @@ internal partial class ModelLoader : IModelLoader
                     {
                         throw new InvalidOperationException(
                             $"Two entity types resolve to the alias '{entityType.Alias}': '{existing.Name}' and " +
-                            $"'{entityType.Name}' (in {Path.GetFileName(file)}). A URL identifies exactly one type, " +
+                            $"'{entityType.Name}' (in {file}). A URL identifies exactly one type, " +
                             $"so the second would be unreachable by alias. Give one of them an explicit, distinct " +
                             $"\"alias\" in its model file.");
                     }
@@ -107,7 +120,7 @@ internal partial class ModelLoader : IModelLoader
             }
         }
 
-        return (byId, byAlias, allQueries);
+        return new ModelData(byId, byAlias, allQueries);
     }
 
     /// <summary>
@@ -192,17 +205,17 @@ internal partial class ModelLoader : IModelLoader
     /// Done once here, so everything downstream (the wire, validation messages, breadcrumbs) keeps
     /// seeing a resolved <see cref="TranslatedString"/>.
     /// </summary>
-    internal static void ResolveText(EntityTypeDefinition entityType, IEnumerable<SparkQuery> queries)
+    internal static void ResolveText(IReadOnlyDictionary<string, TranslatedString> translations, EntityTypeDefinition entityType, IEnumerable<SparkQuery> queries)
     {
         var prefix = $"model.{entityType.Name}";
-        entityType.Label = SparkText.Resolve(entityType.Label, $"{prefix}.label", entityType.Name);
+        entityType.Label = SparkText.Resolve(translations, entityType.Label, $"{prefix}.label", entityType.Name);
 
         foreach (var attribute in entityType.Attributes)
         {
             var attributePrefix = $"{prefix}.attributes.{attribute.Name}";
-            attribute.Label = SparkText.Resolve(attribute.Label, $"{attributePrefix}.label", attribute.Name);
+            attribute.Label = SparkText.Resolve(translations, attribute.Label, $"{attributePrefix}.label", attribute.Name);
             // Help text has no fallback: an attribute without one shows no [i].
-            attribute.Description = SparkText.Resolve(attribute.Description, $"{attributePrefix}.description", fallbackName: null);
+            attribute.Description = SparkText.Resolve(translations, attribute.Description, $"{attributePrefix}.description", fallbackName: null);
 
             // A rule's custom message is an explicit key (conventionally {attr}.rules.{type}); an
             // untranslated one leaves the built-in validation.* message in charge.
@@ -210,18 +223,18 @@ internal partial class ModelLoader : IModelLoader
             {
                 var ruleKey = $"{attributePrefix}.rules.{rule.Type}";
                 SparkText.RejectInlineText(rule.Message, ruleKey);
-                rule.Message = rule.Message?.Key is { } key ? SparkText.Lookup(key) : null;
+                rule.Message = rule.Message?.Key is { } key ? SparkText.Lookup(translations, key) : null;
             }
         }
 
         foreach (var tab in entityType.Tabs)
-            tab.Label = SparkText.Resolve(tab.Label, $"{prefix}.tabs.{tab.Name}.label", tab.Name);
+            tab.Label = SparkText.Resolve(translations, tab.Label, $"{prefix}.tabs.{tab.Name}.label", tab.Name);
 
         foreach (var group in entityType.Groups)
-            group.Label = SparkText.Resolve(group.Label, $"{prefix}.groups.{group.Name}.label", group.Name);
+            group.Label = SparkText.Resolve(translations, group.Label, $"{prefix}.groups.{group.Name}.label", group.Name);
 
         foreach (var query in queries)
-            query.Label = SparkText.Resolve(query.Label, $"queries.{query.Name}.label", query.Name);
+            query.Label = SparkText.Resolve(translations, query.Label, $"queries.{query.Name}.label", query.Name);
     }
 
     public IEnumerable<EntityTypeDefinition> GetEntityTypes()
@@ -266,4 +279,7 @@ internal partial class ModelLoader : IModelLoader
 
     public IEnumerable<SparkQuery> GetQueries()
         => Data.Queries;
+
+    [NoInterfaceMember]
+    public void Dispose() => layer?.Dispose();
 }

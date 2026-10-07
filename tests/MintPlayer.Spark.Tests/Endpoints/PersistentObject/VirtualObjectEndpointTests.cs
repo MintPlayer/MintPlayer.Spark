@@ -127,13 +127,13 @@ public sealed class VirtualStartPageActions : ISparkOwnsRowSecurity
 
     public VirtualStartPageActions(IManager manager) => this.manager = manager;
 
-    public Task<Abstractions.PersistentObject?> OnLoadAsync(string id, Abstractions.PersistentObject? parent)
+    public async Task<Abstractions.PersistentObject?> OnLoadAsync(string id, Abstractions.PersistentObject? parent)
     {
         // Only the attribute values — Id, Breadcrumb (from the model's template) and Can are the
         // framework's job.
-        var obj = manager.GetPersistentObject("VirtualStartPage");
+        var obj = await manager.GetPersistentObjectAsync("VirtualStartPage");
         obj["Title"].Value = "Composed without a class";
         obj["Counter"].Value = 42;
-        return Task.FromResult<Abstractions.PersistentObject?>(obj);
+        return obj;
     }
 }

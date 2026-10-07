@@ -10,11 +10,10 @@ import {
   SparkExternalLoginOptions,
   SparkExternalLoginResult,
   SparkExternalLogins,
-  SparkPasskey,
   SparkPasskeyError,
-  SparkPasskeyRegistrationResult,
   SparkPasskeyResult,
   passkeysSupported,
+  sparkPasskeyError,
   SparkUnlinkResult,
   SparkAccountInfo,
   SparkAccountProfile,
@@ -373,40 +372,14 @@ export class SparkAuthService {
   // ---------------------------------------------------------------------------------------------
   // Passkeys (WebAuthn)
   //
-  // Both ceremonies are two round trips: ask the server for options, hand them to the authenticator,
-  // post what it produced back. The server keeps the challenge itself — nothing below carries it, and
-  // nothing below may start to, because a client that can choose its own challenge can replay an
-  // assertion and enroll a credential onto somebody else's account.
+  // Sign-in is two round trips: ask the server for options, hand them to the authenticator, post what
+  // it produced back. The server keeps the challenge itself — nothing below carries it, and nothing
+  // below may start to, because a client that can choose its own challenge can replay an assertion.
+  //
+  // Managing the signed-in user's passkeys is not here: it is the generic passkeys page
+  // (`/po/passkeys/me`), whose Add action runs the enrollment ceremony through the `webauthn.create`
+  // client method (`sparkAuthClientMethods`).
   // ---------------------------------------------------------------------------------------------
-
-  /**
-   * Enrolls a passkey against the signed-in account.
-   *
-   * Requires an existing session: this adds a credential to an account, it does not create one.
-   */
-  async registerPasskey(name?: string): Promise<SparkPasskeyRegistrationResult> {
-    if (!passkeysSupported()) return { success: false, error: 'unsupported' };
-
-    try {
-      const optionsJson = await firstValueFrom(
-        this.http.post(`${this.config.apiBasePath}/passkeys/creation-options`, {}, { responseType: 'text' }));
-
-      const options = PublicKeyCredential.parseCreationOptionsFromJSON(JSON.parse(optionsJson));
-      const credential = await navigator.credentials.create({ publicKey: options });
-      if (!credential) return { success: false, error: 'no_credential' };
-
-      const passkey = await firstValueFrom(
-        this.http.post<SparkPasskey>(`${this.config.apiBasePath}/passkeys`, {
-          credentialJson: JSON.stringify(credential),
-          name,
-        }));
-
-      await this.csrfRefresh();
-      return { success: true, passkey };
-    } catch (error) {
-      return { success: false, error: this.passkeyError(error) };
-    }
-  }
 
   /**
    * Signs in with a passkey.
@@ -440,54 +413,8 @@ export class SparkAuthService {
     }
   }
 
-  async passkeys(): Promise<SparkPasskey[]> {
-    return await firstValueFrom(this.http.get<SparkPasskey[]>(`${this.config.apiBasePath}/passkeys`));
-  }
-
-  async renamePasskey(id: string, name: string): Promise<SparkPasskeyResult> {
-    try {
-      await firstValueFrom(
-        this.http.post<SparkPasskey>(`${this.config.apiBasePath}/passkeys/${encodeURIComponent(id)}/name`, { name }));
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: this.passkeyError(error) };
-    }
-  }
-
-  /**
-   * Removes a passkey.
-   *
-   * Resolves `{ success: false, error: 'last_credential' }` rather than throwing when it was the
-   * account's only way in — the same shape `unlinkProvider` already uses, so a caller handles both
-   * the same way.
-   */
-  async removePasskey(id: string): Promise<SparkPasskeyResult> {
-    try {
-      await firstValueFrom(
-        this.http.delete<void>(`${this.config.apiBasePath}/passkeys/${encodeURIComponent(id)}`));
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: this.passkeyError(error) };
-    }
-  }
-
-  /**
-   * Collapses everything that can go wrong into the closed error union.
-   *
-   * `AbortError` and `NotAllowedError` are how a browser reports "the user dismissed the prompt" and
-   * "no credential was produced" — neither is a fault, and neither should surface as a red banner.
-   */
+  /** {@link sparkPasskeyError}; shared with the `webauthn.create` client method. */
   private passkeyError(error: unknown): SparkPasskeyError {
-    if (error instanceof DOMException) {
-      if (error.name === 'AbortError') return 'cancelled';
-      if (error.name === 'NotAllowedError') return 'no_credential';
-      return 'failed';
-    }
-
-    const code = (error as { error?: { error?: string } })?.error?.error;
-    if (code === 'locked_out') return 'locked_out';
-    if (code === 'last_credential') return 'last_credential';
-
-    return 'failed';
+    return sparkPasskeyError(error);
   }
 }

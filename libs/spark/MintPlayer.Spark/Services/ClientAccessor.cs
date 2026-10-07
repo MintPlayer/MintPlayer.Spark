@@ -13,11 +13,21 @@ internal sealed partial class ClientAccessor : IClientAccessor
 {
     private readonly List<ClientOperation> _operations = [];
     private readonly IRequestCultureResolver? cultureResolver;
+    private readonly IModelLoader? modelLoader;
+    private readonly IAttributeRightsEnforcement? attributeRights;
 
     public ClientAccessor() { }
 
-    /// <summary>The DI constructor: the culture resolves the plain text of a translated notice.</summary>
-    public ClientAccessor(IRequestCultureResolver cultureResolver) => this.cultureResolver = cultureResolver;
+    /// <summary>
+    /// The DI constructor: the culture resolves the plain text of a translated notice, and the model
+    /// and the caller's rights judge a refresh that names an attribute without an object.
+    /// </summary>
+    public ClientAccessor(IRequestCultureResolver cultureResolver, IModelLoader modelLoader, IAttributeRightsEnforcement attributeRights)
+    {
+        this.cultureResolver = cultureResolver;
+        this.modelLoader = modelLoader;
+        this.attributeRights = attributeRights;
+    }
 
     public IReadOnlyList<ClientOperation> Operations => _operations;
 
@@ -81,7 +91,13 @@ internal sealed partial class ClientAccessor : IClientAccessor
         if (string.IsNullOrEmpty(po.Id))
             throw new InvalidOperationException(
                 "Cannot RefreshAttribute on a PersistentObject without an Id.");
-        var attr = po[attributeName];
+        // An attribute the caller's rights removed from the object (D13a) is not refreshed: the patch
+        // would name it. Silent, like a write to it; an attribute the type never had still throws.
+        if (!po.TryGetAttribute(attributeName, out var attr))
+        {
+            _ = po[attributeName];
+            return;
+        }
         _operations.Add(new RefreshAttributeOperation
         {
             ObjectTypeId = po.ObjectTypeId,
@@ -98,13 +114,41 @@ internal sealed partial class ClientAccessor : IClientAccessor
     }
 
     public void RefreshAttribute(Guid objectTypeId, string id, string attributeName, object? value)
-        => _operations.Add(new RefreshAttributeOperation
+    {
+        // The object-less twin of the no-op above (composition M9): an attribute the caller may not
+        // read is not refreshed, because the patch would name it and carry its value.
+        if (IsReadDenied(objectTypeId, attributeName))
+            return;
+        _operations.Add(new RefreshAttributeOperation
         {
             ObjectTypeId = objectTypeId,
             Id = id,
             AttributeName = attributeName,
             Value = value,
         });
+    }
+
+    /// <summary>
+    /// Whether the caller's static rights remove <paramref name="attributeName"/> from a read of the
+    /// type. A type or attribute the model does not have throws, as the object overload does for an
+    /// attribute the type never had. Blocks on the rights decision, as the boundary net does
+    /// (<see cref="SparkPresentation"/>); the request's type check has normally made it already.
+    /// Outside a request the caller is the system, and nothing is denied.
+    /// </summary>
+    private bool IsReadDenied(Guid objectTypeId, string attributeName)
+    {
+        if (modelLoader is null || attributeRights is null)
+            return false;
+
+        var definition = modelLoader.GetEntityType(objectTypeId)
+            ?? throw new InvalidOperationException($"Cannot RefreshAttribute on type {objectTypeId}: the model has no such type.");
+        if (!definition.Attributes.Any(a => string.Equals(a.Name, attributeName, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"Cannot RefreshAttribute '{attributeName}': type '{definition.Name}' has no such attribute.");
+
+        return attributeRights.GetDeniedAsync(definition, Abstractions.Authorization.SparkCoreActions.Read)
+            .GetAwaiter().GetResult()
+            .Contains(attributeName);
+    }
 
     public void RefreshQuery(string queryId)
         => _operations.Add(new RefreshQueryOperation { QueryId = queryId });
@@ -123,7 +167,10 @@ internal sealed partial class ClientAccessor : IClientAccessor
         string[] options,
         string? defaultOption,
         PersistentObject? persistentObject,
-        string? message)
+        string? message,
+        string? clientMethod = null,
+        System.Text.Json.JsonElement? arguments = null,
+        bool cancellable = false)
         => _operations.Add(new RetryOperation
         {
             Step = step,
@@ -132,5 +179,8 @@ internal sealed partial class ClientAccessor : IClientAccessor
             DefaultOption = defaultOption,
             PersistentObject = persistentObject,
             Message = message,
+            ClientMethod = clientMethod,
+            Arguments = arguments,
+            Cancellable = cancellable,
         });
 }

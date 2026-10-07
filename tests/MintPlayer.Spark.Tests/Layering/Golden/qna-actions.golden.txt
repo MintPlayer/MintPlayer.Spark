@@ -1,0 +1,25 @@
+New @MintPlayer.Spark
+New.icon = "plus-lg" @MintPlayer.Spark
+New.showedOn = "query" @MintPlayer.Spark
+New.variant = "primary" @MintPlayer.Spark
+Edit @MintPlayer.Spark
+Edit.icon = "pencil" @MintPlayer.Spark
+Edit.showedOn = "both" @MintPlayer.Spark
+Edit.selectionRule = "=1" @MintPlayer.Spark
+Delete @MintPlayer.Spark
+Delete.icon = "trash" @MintPlayer.Spark
+Delete.showedOn = "both" @MintPlayer.Spark
+Delete.selectionRule = ">0" @MintPlayer.Spark
+Delete.variant = "danger" @MintPlayer.Spark
+CloseQuestion @app
+CloseQuestion.icon = "Lock" @app
+CloseQuestion.showedOn = "detail" @app
+CloseQuestion.refreshOnCompleted = true @app
+ReopenQuestion @app
+ReopenQuestion.icon = "Unlock" @app
+ReopenQuestion.showedOn = "detail" @app
+ReopenQuestion.refreshOnCompleted = true @app
+DuplicateAnswer @app
+DuplicateAnswer.showedOn = "query" @app
+DuplicateAnswer.selectionRule = "=1" @app
+DuplicateAnswer.refreshOnCompleted = true @app

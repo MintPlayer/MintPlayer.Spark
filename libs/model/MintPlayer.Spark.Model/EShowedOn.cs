@@ -2,6 +2,10 @@ using System.Text.Json.Serialization;
 
 namespace MintPlayer.Spark.Abstractions;
 
+/// <summary>
+/// The pages an attribute is drawn on, as comma-separated names (<c>"Query, PersistentObject"</c>).
+/// Layout only, never a write gate.
+/// </summary>
 [Flags]
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum EShowedOn
@@ -14,6 +18,8 @@ public enum EShowedOn
     /// Synchronize keeps an explicit <c>None</c>; only an absent <c>showedOn</c> is derived.
     /// </summary>
     None = 0,
+    /// <summary>A column in the query grids (list views).</summary>
     Query = 1,
+    /// <summary>A field on the detail and edit pages.</summary>
     PersistentObject = 2,
 }

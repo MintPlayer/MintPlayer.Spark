@@ -6,10 +6,12 @@
 		<Nullable>enable</Nullable>
 		<OutputType>Library</OutputType>
 		<IsPackable>true</IsPackable>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of every right key and model id the library ships. -->
+		<SparkLibraryAlias>authorization</SparkLibraryAlias>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Authorization</PackageId>
-		<Version>11.0.0-preview.97</Version>
+		<Version>11.0.0-preview.101</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Optional authorization package for MintPlayer.Spark low-code framework. Provides group-based access control for PersistentObjects and Queries.</Description>
@@ -70,18 +72,6 @@
 		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<AdditionalFiles Include="App_Data\translations.json" />
-		<!--
-		App_Data is implicitly included as Content by Microsoft.NET.Sdk.Web with
-		CopyToPublishDirectory=PreserveNewest, which propagates through ProjectReferences
-		and causes NETSDK1152 in consuming apps (multiple publish outputs with the same
-		relative path). This library only needs the file at build time as an
-		AdditionalFiles input for the translations source generator.
-		-->
-		<Content Remove="App_Data\translations.json" />
 	</ItemGroup>
 
 	<ItemGroup>

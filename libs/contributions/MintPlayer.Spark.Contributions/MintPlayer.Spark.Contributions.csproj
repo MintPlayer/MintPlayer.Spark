@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Contributions</PackageId>
-		<Version>11.0.0-preview.97</Version>
+		<Version>11.0.0-preview.101</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Per-user contributions with latest-wins for MintPlayer.Spark (preview): mark a property [Contribution] and every user edits their own version of each slot, the latest non-hidden one is shown, and the history is moderatable. Ships its own source generator and analyzer.</Description>
@@ -36,10 +36,10 @@
 		-->
 		<ProjectReference Include="..\..\soft_delete\MintPlayer.Spark.SoftDelete.Abstractions\MintPlayer.Spark.SoftDelete.Abstractions.csproj" PrivateAssets="all" />
 		<!--
-		  Build order only: the DLL must exist in its bin/ before it is packed below. Nothing in this
-		  project's own compilation carries [Contribution].
+		  So the generator is built and packed (SparkPackAnalyzer, Directory.Build.targets). Nothing in
+		  this project's own compilation carries [Contribution].
 		-->
-		<ProjectReference Include="..\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SparkPackAnalyzer="true" />
 	</ItemGroup>
 
 	<!--
@@ -47,12 +47,9 @@
 	  MintPlayer.Spark.SourceGenerators.dll reaches consumers through MintPlayer.Spark's own validated
 	  reference (SPARK001-003), and packing a second copy here would run every Spark generator twice.
 	  NuGet analyzers flow to transitive consumers by default, so a host that references a Domain
-	  library that references this package still gets the generator.
+	  library that references this package still gets the generator. Packed through SparkPackAnalyzer
+	  on the ProjectReference above, from wherever that build wrote it.
 	-->
-	<ItemGroup>
-		<None Include="..\MintPlayer.Spark.Contributions.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.Contributions.SourceGenerators.dll"
-			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-	</ItemGroup>
 
 	<ItemGroup>
 		<None Include="Targets\spark-contributions.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />

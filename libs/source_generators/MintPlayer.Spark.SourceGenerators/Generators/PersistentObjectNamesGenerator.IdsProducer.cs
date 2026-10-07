@@ -31,7 +31,7 @@ namespace MintPlayer.Spark.SourceGenerators.Generators;
 /// }
 ///
 /// // Consumer
-/// var po = manager.GetPersistentObject(new Guid(PersistentObjectIds.Default.Car));
+/// var po = await manager.GetPersistentObjectAsync(new Guid(PersistentObjectIds.Default.Car));
 /// </code>
 /// </example>
 public class PersistentObjectIdsProducer : Producer

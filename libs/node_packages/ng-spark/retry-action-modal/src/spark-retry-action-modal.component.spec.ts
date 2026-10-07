@@ -32,8 +32,9 @@ const samplePayload: RetryActionPayload = {
   step: 0,
   title: 'Overwrite the existing record?',
   message: 'This will replace the current values.',
-  options: ['Overwrite', 'Cancel'],
-  defaultOption: 'Cancel',
+  options: ['Overwrite'],
+  defaultOption: 'Overwrite',
+  cancellable: true,
   persistentObject: { id: 'p/1', name: 'Person', objectTypeId: 't/1', attributes: [] } as any,
 };
 
@@ -46,7 +47,7 @@ function setupWithTypes(types: EntityType[]) {
     providers: [
       provideNoopAnimations(),
       { provide: SparkService, useValue: sparkService },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k === 'common.cancel' ? 'Annuleren' : k } },
     ],
   });
   const service = TestBed.inject(RetryActionService);
@@ -91,6 +92,41 @@ describe('SparkRetryActionModalComponent', () => {
   });
 });
 
+// The prompt's Cancel is the client's: labelled in the user's language, answering the identifier
+// 'Cancel' whatever it reads. The server asks for it with `cancellable`, never with an option.
+describe('SparkRetryActionModalComponent Cancel', () => {
+  const settle = async (fixture: { detectChanges(): void; whenStable(): Promise<unknown> }) => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  };
+
+  it('adds a translated Cancel that answers Cancel when the prompt is cancellable', async () => {
+    const { service, fixture } = setupWithTypes([]);
+    const promise = service.show(samplePayload);
+    await settle(fixture);
+
+    // The modal renders in the overlay container, outside the component.
+    const labels = Array.from(document.querySelectorAll('button')).map(b => b.textContent?.trim());
+    expect(labels).toContain('Overwrite');
+    expect(labels).toContain('Annuleren');
+    expect(labels).not.toContain('Cancel');
+
+    (document.querySelector('button.spark-retry-cancel') as HTMLButtonElement).click();
+    expect((await promise).option).toBe('Cancel');
+  });
+
+  it('offers no Cancel of its own when the prompt is not cancellable', async () => {
+    const { service, fixture } = setupWithTypes([]);
+    const promise = service.show({ ...samplePayload, cancellable: false });
+    await settle(fixture);
+
+    expect(document.querySelector('button.spark-retry-cancel')).toBeNull();
+    service.respond({ step: 0, option: 'Overwrite' });
+    await promise;
+  });
+});
+
 describe('SparkRetryActionModalComponent with PersistentObject', () => {
   it('seeds formData from the scaffolded PO and synthesizes an EntityType from its attributes', async () => {
     // Note: the synthesized EntityType is built from the PO's attributes rather than
@@ -101,7 +137,8 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
       type: 'retry-action',
       step: 1,
       title: 'Delete car',
-      options: ['Delete', 'Cancel'],
+      options: ['Delete'],
+      cancellable: true,
       persistentObject: scaffoldedPo,
     });
     fixture.detectChanges();
@@ -123,7 +160,8 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
       type: 'retry-action',
       step: 1,
       title: 'Delete car',
-      options: ['Delete', 'Cancel'],
+      options: ['Delete'],
+      cancellable: true,
       persistentObject: scaffoldedPo,
     });
     fixture.detectChanges();
@@ -153,7 +191,8 @@ describe('SparkRetryActionModalComponent with PersistentObject', () => {
       type: 'retry-action',
       step: 1,
       title: 'Delete car',
-      options: ['Delete', 'Cancel'],
+      options: ['Delete'],
+      cancellable: true,
       persistentObject: scaffoldedPo,
     });
     fixture.detectChanges();

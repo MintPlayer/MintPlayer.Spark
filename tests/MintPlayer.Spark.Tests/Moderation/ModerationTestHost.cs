@@ -99,10 +99,13 @@ public static class MoSecurity
             },
             Rights = rights.Select((r, i) => new Right
             {
-                Id = new Guid($"46129999-0000-4000-8000-{i:D12}"),
+                Key = $"46129999-0000-4000-8000-{i:D12}",
                 Resource = r.Item1,
                 GroupId = r.Item2,
             }).ToList(),
+            // The library's own Review/Suspend/Audit grants (composition M9) are off: the fixture
+            // states every right it means, and binds no slot.
+            Libraries = SparkTestSecurity.LibraryRightsOff(),
         };
     }
 

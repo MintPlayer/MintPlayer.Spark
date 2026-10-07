@@ -64,7 +64,7 @@ public class SubQueryPruningTests(SparkSharedDatabase database)
             new SparkQuery { Id = ChildQueryId, Name = "ChildDocs", Alias = "childdocs", Source = "Database.Docs", EntityType = "GuardedDoc" },
         ];
 
-        await using var granted = new SparkEndpointFactory<GuardedContext>(Store, [model]);
+        await using var granted = new SparkEndpointFactory<GuardedContext>(Store, [model], services => services.UseFixtureModelOnly());
         using (var client = granted.CreateClient())
             (await QueriesFromListAsync(client)).Should().Equal("childdocs");
 
@@ -80,7 +80,7 @@ public class SubQueryPruningTests(SparkSharedDatabase database)
         ];
 
         await using var denied = new SparkEndpointFactory<GuardedContext>(
-            Store, [crossType],
+            Store, [crossType], services => services.UseFixtureModelOnly(),
             security: SparkTestSecurity.Permissive.Without("SecretDoc"));
 
         using (var client = denied.CreateClient())
@@ -106,6 +106,7 @@ public class SubQueryPruningTests(SparkSharedDatabase database)
             Store, [model],
             configureServices: services =>
             {
+                services.UseFixtureModelOnly();
                 services.RemoveAll<IAccessControl>();
                 services.AddSingleton<IAccessControl, DeniesFirstThenAllows>();
             });
@@ -138,7 +139,7 @@ public class SubQueryPruningTests(SparkSharedDatabase database)
         var model = GuardedDocModel.For(DocTypeId);
         model.PersistentObject.Queries = ["nosuchquery"];
 
-        await using var factory = new SparkEndpointFactory<GuardedContext>(Store, [model]);
+        await using var factory = new SparkEndpointFactory<GuardedContext>(Store, [model], services => services.UseFixtureModelOnly());
         using var client = factory.CreateClient();
 
         (await QueriesFromListAsync(client)).Should().Equal("nosuchquery");

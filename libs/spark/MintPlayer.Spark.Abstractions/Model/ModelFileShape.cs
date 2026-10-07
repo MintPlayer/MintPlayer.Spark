@@ -52,34 +52,73 @@ public static class ModelFileShape
     /// so a failure can name the file, and so unrelated files do not collide in a merge.
     /// </summary>
     public static SortedDictionary<string, string> ComputeFileHashes(string modelDirectory)
+        => ComputeFileHashes([], modelDirectory);
+
+    /// <summary>
+    /// Structural hash per type of the composed model (composition D6): <paramref name="libraries"/>'
+    /// model layers with the files in <paramref name="modelDirectory"/> on top. Keyed by file name, a
+    /// library type by the library's file name, so a type that moves from the application into a
+    /// library keeps its key, and its hash when its structure is unchanged (ids are not structural).
+    /// </summary>
+    /// <remarks>
+    /// Each layer's identity is <see cref="ComputeLayerHashes"/>'. A composition the run time would
+    /// refuse is hashed as composed here: the startup check reports it in its own words.
+    /// </remarks>
+    public static SortedDictionary<string, string> ComputeFileHashes(IEnumerable<SparkLibrary> libraries, string modelDirectory)
     {
         var result = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        if (!Directory.Exists(modelDirectory))
-            return result;
+        foreach (var type in SparkModelFiles.ComposeLenient(libraries, modelDirectory).Types)
+            result[type.FileName] = Sha256Hex(DescribeJson(type.Json));
 
-        foreach (var path in Directory.GetFiles(modelDirectory, "*.json"))
+        return result;
+    }
+
+    /// <summary>
+    /// The provenance of every composed type a library states (composition D7), keyed
+    /// <c>Model/{file name}</c> like <see cref="ComputeFileHashes(IEnumerable{SparkLibrary}, string)"/>'s
+    /// keys: each layer (<see cref="SparkLayerProvenance"/>: a library's alias, <c>app</c> for the
+    /// application's delta) and the structural hash of what that layer states. A type only the
+    /// application states has no entry: its file hash is its one layer's.
+    /// </summary>
+    /// <remarks>
+    /// Structural for the same reason the file hash is: a library update that only relabels its type
+    /// must not stop an application, and one that changes a structure must name itself.
+    /// </remarks>
+    public static SortedDictionary<string, SortedDictionary<string, string>> ComputeLayerHashes(IEnumerable<SparkLibrary> libraries, string? modelDirectory)
+    {
+        var list = libraries.ToList();
+        var result = new SortedDictionary<string, SortedDictionary<string, string>>(StringComparer.Ordinal);
+        foreach (var type in SparkModelFiles.ComposeLenient(list, modelDirectory).Types)
         {
-            var name = Path.GetFileName(path);
-            if (string.Equals(name, ModelHashFile.FileName, StringComparison.OrdinalIgnoreCase))
-                continue;
+            var inputs = type.Entry.Inputs;
+            if (!inputs.Any(i => i.IsLibrary)) continue;
 
-            result[name] = Sha256Hex(Describe(path));
+            var layers = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            foreach (var input in inputs)
+                layers[input.IsLibrary ? SparkLayerProvenance.AliasOf(list, input.Layer) : SparkLayerProvenance.App] = Sha256Hex(DescribeJson(input.Json));
+            result[LayerKey(type.FileName)] = layers;
         }
 
         return result;
     }
+
+    /// <summary>A model type's key among every gated entry's layers, apart from the config files'.</summary>
+    public static string LayerKey(string fileName) => "Model/" + fileName;
 
     /// <summary>
     /// Canonical structural text for one model file. Unparseable files yield a marker rather than
     /// throwing: a corrupt file must still be detectable, and it must not take the process down
     /// before the check can report it.
     /// </summary>
-    public static string Describe(string path)
+    public static string Describe(string path) => DescribeJson(File.ReadAllText(path));
+
+    /// <summary>As <see cref="Describe(string)"/>, for the text of a model file (a composed one, say).</summary>
+    public static string DescribeJson(string json)
     {
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(File.ReadAllText(path));
+            document = JsonDocument.Parse(json);
         }
         catch (JsonException)
         {

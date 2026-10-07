@@ -25,7 +25,7 @@ public interface ISparkQueryPage
 /// counting and paging, or the author does — never some of each. Returning a bare sequence keeps
 /// all five with the framework; returning a <see cref="SparkQueryPage{T}"/> transfers all five to
 /// the method, which then receives the request's skip/take/search/sort through
-/// <see cref="CustomQueryArgs"/> and is responsible for honouring them.
+/// <c>CustomQueryArgs</c> and is responsible for honouring them.
 /// </para>
 /// <para>
 /// The rule is binary because a half-delegated design fails invisibly. If the author pages and the

@@ -49,10 +49,10 @@ public class SecurityConfigurationAnalyzerTests
             "authenticated": "00000000-0000-0000-0000-000000000001"
           },
           "groups": {
-            "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users" }
+            "00000000-0000-0000-0000-000000000001": "Signed-in users"
           },
           "rights": [
-            { "id": "22222222-2222-2222-2222-222222222222", "resource": "{{resource}}", "groupId": "{{groupId}}" }
+            { "key": "22222222-2222-2222-2222-222222222222", "resource": "{{resource}}", "groupId": "{{groupId}}" }
           ]
         }
         """;
@@ -170,7 +170,7 @@ public class SecurityConfigurationAnalyzerTests
           "persistentObject": {
             "id": "33333333-3333-3333-3333-333333333333",
             "name": "Song",
-            "tabs": [ { "id": "44444444-4444-4444-4444-444444444444", "name": "General" } ],
+            "tabs": [ { "key": "44444444-4444-4444-4444-444444444444", "name": "General" } ],
             "attributes": [
               { "name": "Title" },
               { "name": "Lyrics" },
@@ -183,11 +183,11 @@ public class SecurityConfigurationAnalyzerTests
     private static Task<IReadOnlyList<Microsoft.CodeAnalysis.Diagnostic>> RunRightsAsync(params (string Resource, bool Denied)[] rights)
     {
         var entries = string.Join(",\n", rights.Select((r, i) =>
-            $$"""{ "id": "22222222-2222-2222-2222-00000000000{{i}}", "resource": "{{r.Resource}}", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": {{(r.Denied ? "true" : "false")}} }"""));
+            $$"""{ "key": "22222222-2222-2222-2222-00000000000{{i}}", "resource": "{{r.Resource}}", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": {{(r.Denied ? "true" : "false")}} }"""));
         var security = $$"""
             {
               "wellKnown": { "authenticated": "00000000-0000-0000-0000-000000000001" },
-              "groups": { "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users" } },
+              "groups": { "00000000-0000-0000-0000-000000000001": "Signed-in users" },
               "rights": [
                 {{entries}}
               ]
@@ -240,7 +240,7 @@ public class SecurityConfigurationAnalyzerTests
     private static Task<IReadOnlyList<Microsoft.CodeAnalysis.Diagnostic>> RunBothGroupsAsync(params (string Resource, string Group, bool Denied)[] rights)
     {
         var entries = string.Join(",\n", rights.Select((r, i) =>
-            $$"""{ "id": "22222222-2222-2222-2222-00000000000{{i}}", "resource": "{{r.Resource}}", "groupId": "{{r.Group}}", "isDenied": {{(r.Denied ? "true" : "false")}} }"""));
+            $$"""{ "key": "22222222-2222-2222-2222-00000000000{{i}}", "resource": "{{r.Resource}}", "groupId": "{{r.Group}}", "isDenied": {{(r.Denied ? "true" : "false")}} }"""));
         var security = $$"""
             {
               "wellKnown": {
@@ -248,8 +248,8 @@ public class SecurityConfigurationAnalyzerTests
                 "authenticated": "00000000-0000-0000-0000-000000000001"
               },
               "groups": {
-                "00000000-0000-0000-0000-000000000000": { "en": "Visitors" },
-                "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users" }
+                "00000000-0000-0000-0000-000000000000": "Visitors",
+                "00000000-0000-0000-0000-000000000001": "Signed-in users"
               },
               "rights": [
                 {{entries}}
@@ -337,10 +337,10 @@ public class SecurityConfigurationAnalyzerTests
         const string security = """
             {
               "wellKnown": { "anonymous": "00000000-0000-0000-0000-000000000002" },
-              "groups": { "00000000-0000-0000-0000-000000000002": { "en": "Visitors" } },
+              "groups": { "00000000-0000-0000-0000-000000000002": "Visitors" },
               "rights": [
-                { "id": "22222222-2222-2222-2222-000000000000", "resource": "Read/AppUser", "groupId": "00000000-0000-0000-0000-000000000002" },
-                { "id": "22222222-2222-2222-2222-000000000001", "resource": "Read/AppUser/Email", "groupId": "00000000-0000-0000-0000-000000000002", "isDenied": true }
+                { "key": "22222222-2222-2222-2222-000000000000", "resource": "Read/AppUser", "groupId": "00000000-0000-0000-0000-000000000002" },
+                { "key": "22222222-2222-2222-2222-000000000001", "resource": "Read/AppUser/Email", "groupId": "00000000-0000-0000-0000-000000000002", "isDenied": true }
               ]
             }
             """;

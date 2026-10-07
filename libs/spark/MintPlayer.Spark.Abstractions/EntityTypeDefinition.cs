@@ -1,8 +1,18 @@
 namespace MintPlayer.Spark.Abstractions;
 
+/// <summary>An entity type (persistent object) of the model: its CLR type, attributes, tabs, groups and sub-queries.</summary>
 public sealed class EntityTypeDefinition
 {
+    /// <summary>
+    /// The type's stable id, used on the wire (<c>/spark/po/{id}</c>). A library fixes the ids of what
+    /// it ships, and an application file cannot override them, so a delta leaves <c>id</c> out.
+    /// </summary>
     public required Guid Id { get; set; }
+
+    /// <summary>
+    /// The type's name, its identity across layers: an application file with the name of a type a
+    /// library ships is a delta on that type. Also the key prefix of its translations (<c>model.{name}.label</c>).
+    /// </summary>
     public required string Name { get; set; }
     /// <summary>
     /// The type's display name (#467, D6; formerly <c>description</c>). In the model file an optional
@@ -14,7 +24,7 @@ public sealed class EntityTypeDefinition
     /// save, row security). <see langword="null"/> for a JSON-only virtual type: a page that
     /// exists in the model but not in the database, served exclusively through
     /// <c>OnLoadAsync(id, parent)</c> on a <c>{Name}Actions</c> class (resolved by name, and
-    /// scaffolding its object via <c>IManager.GetPersistentObject</c> instead of loading one).
+    /// scaffolding its object via <c>IManager.GetPersistentObjectAsync</c> instead of loading one).
     /// Everything document-shaped 404s for such a type.
     /// </summary>
     public string? ClrType { get; set; }
@@ -150,8 +160,13 @@ public sealed class EntityTypeDefinition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public EntityRevisionsDefinition? Revisions { get; set; }
 
+    /// <summary>The tabs of the detail page, matched across layers by <c>name</c>.</summary>
     public AttributeTab[] Tabs { get; set; } = [];
+
+    /// <summary>The groups (sections) attributes are placed in, matched across layers by <c>name</c>.</summary>
     public AttributeGroup[] Groups { get; set; } = [];
+
+    /// <summary>The type's attributes (fields), matched across layers by <c>name</c>.</summary>
     public EntityAttributeDefinition[] Attributes { get; set; } = [];
     /// <summary>
     /// The queries displayed as related query tables (sub-queries) on the detail page. Each entry
@@ -201,10 +216,19 @@ public sealed class EntityRevisionsDefinition
     public bool PurgeOnDelete { get; set; }
 }
 
+/// <summary>One attribute of an entity type: a field shown, edited and validated on its pages.</summary>
 public sealed class EntityAttributeDefinition
 {
+    /// <summary>The attribute's stable id. Fixed by a library for what it ships; an application file cannot override it.</summary>
     public required Guid Id { get; set; }
+
+    /// <summary>The CLR property name; the attribute's identity across layers.</summary>
     public required string Name { get; set; }
+
+    /// <summary>
+    /// The attribute's display name: an optional translation key, resolved at load from
+    /// <c>model.{Type}.attributes.{Name}.label</c>, else the humanized name.
+    /// </summary>
     public TranslatedString? Label { get; set; }
     /// <summary>
     /// Help text for the person filling in or reading this attribute, rendered by the client as an
@@ -215,10 +239,23 @@ public sealed class EntityAttributeDefinition
     /// which is the page heading, this is explanatory prose.
     /// </summary>
     public TranslatedString? Description { get; set; }
+    /// <summary>
+    /// The value's kind, which picks the editor and renderer: <c>string</c>, <c>MultiLineString</c>,
+    /// <c>number</c>, <c>decimal</c>, <c>boolean</c>, <c>date</c>, <c>datetime</c>, <c>color</c>,
+    /// <c>image</c>, <c>TranslatedString</c>, <c>Reference</c> or <c>AsDetail</c>.
+    /// </summary>
     public string DataType { get; set; } = "string";
+
+    /// <summary>Whether a value is required; validated on save, by the server.</summary>
     public bool IsRequired { get; set; }
+
+    /// <summary>Whether the attribute is shown but not editable. Enforced: the server never writes a value a client sends for it.</summary>
     public bool IsReadOnly { get; set; }
+
+    /// <summary>The position among the type's attributes: column order in a grid, field order on the detail page.</summary>
     public int Order { get; set; }
+
+    /// <summary>For a Reference attribute: the name of the query that lists the items to pick from.</summary>
     public string? Query { get; set; }
     /// <summary>
     /// For reference attributes, specifies the target entity type's CLR type name.
@@ -330,6 +367,7 @@ public sealed class EntityAttributeDefinition
     /// Default is both (Query | PersistentObject).
     /// </summary>
     public EShowedOn ShowedOn { get; set; } = EShowedOn.Query | EShowedOn.PersistentObject;
+    /// <summary>Validation rules checked on save, on the server, in order.</summary>
     public ValidationRule[] Rules { get; set; } = [];
     /// <summary>
     /// References an AttributeGroup.Id to assign this attribute to a group.
@@ -362,11 +400,19 @@ public sealed class EntityAttributeDefinition
     public EntityAttributeDefinition ShallowCopy() => (EntityAttributeDefinition)MemberwiseClone();
 }
 
+/// <summary>A tab of the detail page; groups name the tab they are placed on.</summary>
 public sealed class AttributeTab
 {
+    /// <summary>The tab's stable id, referenced by a group's <c>tab</c>. Fixed by a library for what it ships; an application file cannot override it.</summary>
     public required Guid Id { get; set; }
+
+    /// <summary>The tab's name; its identity across layers.</summary>
     public required string Name { get; set; }
+
+    /// <summary>The tab's caption: an optional translation key, resolved at load from <c>model.{Type}.tabs.{Name}.label</c>, else the humanized name.</summary>
     public TranslatedString? Label { get; set; }
+
+    /// <summary>The tab's position among the type's tabs.</summary>
     public int Order { get; set; }
     /// <summary>
     /// Number of columns for the grid layout within this tab.
@@ -374,15 +420,23 @@ public sealed class AttributeTab
     public int? ColumnCount { get; set; }
 }
 
+/// <summary>A titled section of the detail page; attributes name the group they are placed in.</summary>
 public sealed class AttributeGroup
 {
+    /// <summary>The group's stable id, referenced by an attribute's <c>group</c>. Fixed by a library for what it ships; an application file cannot override it.</summary>
     public required Guid Id { get; set; }
+
+    /// <summary>The group's name; its identity across layers.</summary>
     public required string Name { get; set; }
+
+    /// <summary>The group's caption: an optional translation key, resolved at load from <c>model.{Type}.groups.{Name}.label</c>, else the humanized name.</summary>
     public TranslatedString? Label { get; set; }
     /// <summary>
     /// References an AttributeTab.Id to assign this group to a tab.
     /// When null, the group is placed on the first/default tab.
     /// </summary>
     public Guid? Tab { get; set; }
+
+    /// <summary>The group's position within its tab.</summary>
     public int Order { get; set; }
 }

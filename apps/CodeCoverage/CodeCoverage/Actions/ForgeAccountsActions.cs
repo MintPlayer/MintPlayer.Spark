@@ -45,9 +45,14 @@ public partial class ForgeAccountsActions
         if (!ForgeProviders.TryParse(id, out var provider))
             return null;
 
-        var obj = manager.GetPersistentObject("ForgeAccounts");
+        var obj = await manager.GetPersistentObjectAsync("ForgeAccounts");
         var canonical = provider.ToCanonicalString();
 
+        // The page's id is its forge, as the route says, and that is what MyAccountRowActions scopes the
+        // grid by. Provider is Read-denied to the only role that may open this page, so the object is
+        // built without it (D13a) and this write is a no-op for every real caller; it stays for a
+        // deployment that grants the attribute.
+        obj.Id = canonical;
         obj["Provider"].Value = canonical;
 
         // The forge's own name is a proper noun and never translated; only the sentence around it
