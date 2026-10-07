@@ -100,7 +100,7 @@ public static class SparkFacts
 public interface ISparkAfterCommitOutbox
 {
     /// <summary>
-    /// Stores one message for <paramref name="interceptorType"/> in <paramref name="session"/> (the RavenDB
+    /// Stores one message for the interceptor <paramref name="work"/> names in <paramref name="session"/> (the RavenDB
     /// <c>IAsyncDocumentSession</c> the write commits through), so it commits — or is taken back —
     /// with the write. Only stores: the caller saves.
     /// </summary>

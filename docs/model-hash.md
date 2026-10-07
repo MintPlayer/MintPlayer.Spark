@@ -27,6 +27,13 @@ Two independent things are hashed, because neither sees what the other does.
 - per attribute: name, data type, required, read-only, array-ness, reference target, detail type,
   lookup type, sortability, projection membership, and **validation rules**
 
+**`actions.json` and `programUnits.json`** (`configFiles`), structurally, for the same reason: an action
+absent from `actions.json` cannot run, and its `selectionRule` bounds how many rows it may be handed.
+
+The file and config hashes are of the **composed** files: the layers referenced libraries ship (see
+[Library layers](guide-library-layers.md)) with your own files on top. A type only a library ships,
+such as Authorization's `SparkUser`, has a hash like any file of yours.
+
 The file side is what makes the check tamper-evident. The shape hashes only describe what your
 classes require, so on their own they would not notice a `.json` planted in the model directory — and
 the loader reads whatever is in that directory.
@@ -51,6 +58,38 @@ Two CLR changes are also invisible, on purpose, because they generate a byte-ide
 > Validation rules are the one judgement call. They sit closer to presentation than to type shape,
 > but silently dropping a rule from a deployed model weakens what the server accepts — that is an
 > attack, not a restyling. So rules are hashed, and hand-adding one requires a synchronize run.
+
+## Version 2: which layer moved
+
+`modelHashes.json` is at `"version": 2`. Beside the hashes it records two things, only when a library
+states a layer:
+
+- **`libraries`** — alias → assembly (`"authorization": "MintPlayer.Spark.Authorization"`), so a
+  message can name the package behind an alias.
+- **`layers`** — for each composed entry a library states (`Model/<file>`, `actions.json`,
+  `programUnits.json`), the structural hash of what each layer alone states, keyed by alias, with
+  `app` for your own file. An entry only you state has no `layers` row: its hash already is its one
+  layer's.
+
+The layers are rolled up into `modelHash` (a `layers:` line in its canonical text), so the committed
+file cannot go stale against them. A library update that moves a structure turns the gate red even
+where your delta happens to restate the same value; the re-synchronization that follows is the
+review. The assembly **version** is deliberately not recorded: every release bumps it, so a version
+bump that changed nothing covered changes nothing here.
+
+A drift message names the layer:
+
+```
+file SparkUser.json: expected 1a2b3c4d5e6f…  actual 6f5e4d3c2b1a… — layer library 'authorization' (MintPlayer.Spark.Authorization) changed
+file Passkeys.json: shipped by library 'authorization' (MintPlayer.Spark.Authorization) but not in modelHashes.json (added since the model was generated)
+file SparkUser.json: … — layer library 'authorization' (MintPlayer.Spark.Authorization) changed, the application's file changed
+layers of Model/X.json: the composed structure is unchanged, but the layers stating it moved: …
+library authorization (MintPlayer.Spark.Authorization): newly states a layer of the model, actions or program units
+library authorization (MintPlayer.Spark.Authorization): no longer states a layer (removed, or its layers were dropped)
+```
+
+A layer is `changed`, `added` or `removed`. A version 1 file has no layers to compare; when nothing
+else differs, the message says so and asks for one synchronize to record them.
 
 ## Regenerating
 

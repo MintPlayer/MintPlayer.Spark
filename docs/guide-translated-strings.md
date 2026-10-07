@@ -233,6 +233,29 @@ last, and they merge **per (key, language)**:
 - An app's `""` counts as **not defined**: it never blanks a library value.
 - Only two *libraries* giving the same (key, language) different values is warned about, because
   their order is an arbitrary tiebreak. An app overriding a library is silent.
+- Each layer is flattened first, so `"auth.passkey.title"` and `{ "auth": { "passkey": { "title": … } } }`
+  are the same key.
+- **`"ns": null` removes a namespace**: the key `ns` and every key below it, as far as the layers
+  below state them. The removal applies before the layer's own keys, so the same file may remove a
+  namespace and restate part of it:
+
+  ```json
+  {
+    "auth.accountError": null,
+    "auth.accountError.notFound": { "en": "No such account." }
+  }
+  ```
+
+  A single language cannot be removed; override it instead.
+
+The composition happens **at run time**, in the host, from the layers compiled into each referenced
+library and your file on disk; `GET /spark/translations` serves the result. Nothing is copied into
+your `App_Data`. `dotnet run -- --spark-describe translations [prefix] --layers` prints each key and
+the layer it came from (see [Library layers](guide-library-layers.md)).
+
+Your `translations.json` **reloads on save** (debounced, swapped atomically); a file that no longer
+composes keeps the previous texts and logs why. Labels in the model follow the reload. The
+libraries' layers change only with a rebuild.
 
 ### Seeding and the missing-keys report
 

@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Model</PackageId>
-		<Version>11.0.0-preview.97</Version>
+		<Version>11.0.0-preview.101</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>The MintPlayer.Spark model vocabulary an entity library uses besides attributes: TranslatedString, lookup references, EShowedOn, IHasNaturalId, the reserved action names and ValidationError. Depends on nothing web, so a library of entities need not reference ASP.NET Core.</Description>
@@ -17,6 +17,16 @@
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<!--
+		  The /// summaries of the types App_Data files use (EShowedOn, …) become the descriptions in
+		  schemas/*.schema.json (tools/SchemaGenerator reads this XML file next to the assembly).
+		  CS1591 (missing XML comment) is noise: only the schema-facing members need one.
+		-->
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>

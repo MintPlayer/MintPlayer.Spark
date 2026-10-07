@@ -1,7 +1,9 @@
 namespace MintPlayer.Spark.Abstractions;
 
+/// <summary>One column of a query's sort order.</summary>
 public sealed class SortColumn
 {
+    /// <summary>The attribute to sort by.</summary>
     public required string Property { get; set; }
 
     /// <summary><c>asc</c> or <c>desc</c>, in any case. Anything else is refused.</summary>

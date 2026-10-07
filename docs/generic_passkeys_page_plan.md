@@ -16,7 +16,7 @@ in M8. Milestones are verified by reading the code and type-checking.
 | M4 Add / Rename / Remove actions | ✅ 2026-10-06 (tests and specs written, run in M8) |
 | M5 App wiring (CodeCoverage, Fleet, HR) | ✅ 2026-10-06 (gates regenerated; specs run in M8) |
 | M6 Retire component and endpoints, plus the retry modal's translated Cancel | ✅ 2026-10-06 (tests, specs and E2E written, run in M8; PRD §10b, M6) |
-| M7 Docs and versions | ⏳ |
+| M7 Docs and versions | ✅ 2026-10-07 (client-method retries, `requiresClient`, `paragraph` renderer, passkeys page docs; bumps shared with composition M10) |
 | M8 Sweep | ⏳ |
 
 Owner decisions O1, O3, O4 and O5 (PRD §5) must be settled before M3. O2 is decided: remove the

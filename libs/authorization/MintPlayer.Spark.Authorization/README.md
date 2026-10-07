@@ -515,19 +515,16 @@ Example - disable automatic frontend setup:
 
 ## Local Development (ProjectReference)
 
-When referencing the Authorization project directly (instead of via NuGet), add explicit imports to your `.csproj` since `buildTransitive` only applies to NuGet package references:
+A `PackageReference` brings the targets through `buildTransitive`; a `ProjectReference` imports
+nothing. **In this repository you write no `<Import>`:** the root `Directory.Build.targets` imports
+`spark-authorization.props` and `.targets` once, for every project that is an `Exe` and not a test
+project, and the targets gate themselves at execution time on the resolved references, so an
+application without Authorization gets none of them. A tool that is an `Exe` but no Spark application
+opts out with `<SparkApplication>false</SparkApplication>`. See
+[Library layers](../../../docs/guide-library-layers.md#in-this-repository).
 
-```xml
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-    <Import Project="..\path\to\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" />
-
-    <!-- ... your project content ... -->
-
-    <Import Project="..\path\to\MintPlayer.Spark.Authorization\Targets\spark-authorization.targets" />
-
-</Project>
-```
+A repository of your own that references this project by path needs the same: import the two files
+from its own `Directory.Build.targets` (or the app's csproj), not from each library.
 
 ## Example: Role-Based Access Control
 

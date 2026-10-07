@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Abstractions.Reflection;
 /// result is immutable for the lifetime of the AppDomain. Three tiers:
 /// <list type="bullet">
 ///   <item><c>GetOrAdd&lt;TOwner, TValue&gt;(string, Func&lt;TValue&gt;)</c> —
-///   per-type cache. Each <typeparamref name="TOwner"/> gets its own dictionary
+///   per-type cache. Each <c>TOwner</c> gets its own dictionary
 ///   via generic-static specialization, so keys never collide across owners.</item>
 ///   <item><c>GetOrAdd&lt;TValue&gt;(string, Func&lt;TValue&gt;)</c> —
 ///   global string-keyed cache for cross-type lookups whose natural key is a
@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.Abstractions.Reflection;
 ///   identity-keyed cache. Pass any <see cref="Type"/>, <see cref="System.Reflection.PropertyInfo"/>,
 ///   <see cref="System.Reflection.MemberInfo"/>, or <c>ValueTuple</c> thereof
 ///   directly — no string composition, no FullName ambiguity, equality is whatever
-///   <typeparamref name="TKey"/> defines.</item>
+///   <c>TKey</c> defines.</item>
 /// </list>
 /// Backed by <see cref="ConcurrentDictionary{TKey,TValue}"/> + <see cref="Lazy{T}"/>
 /// with <see cref="LazyThreadSafetyMode.ExecutionAndPublication"/>: lock-free reads,
@@ -131,7 +131,7 @@ public static class ReflectionCache
     }
 
     /// <summary>
-    /// Test-only helper: clears the global string-keyed tier. The per-<typeparamref name="TOwner"/>
+    /// Test-only helper: clears the global string-keyed tier. The per-<c>TOwner</c>
     /// and identity-keyed tiers are generic-static-specialized and have AppDomain lifetime
     /// by design — tests that exercise them must use unique TOwner/TKey marker types per case.
     /// </summary>

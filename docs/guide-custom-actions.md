@@ -193,6 +193,7 @@ message naming the key to use.
 | `refreshOnCompleted` | boolean | Whether the UI should refresh after successful execution |
 | `variant` | string | `"primary"`, `"secondary"`, `"danger"`, `"warning"`: presentation only |
 | `offset` | number | Display order (lower values appear first). Default: `0` |
+| `requiresClient` | string | A client method the action needs (`provideSparkClientMethods`), e.g. `"webauthn.create"`. Where the browser lacks it, the action is shown disabled with the reason as its tooltip. Presentation only: the server does not check it. See [client-method retries](guide-manager-retry-actions.md#requiresclient-disable-an-action-the-browser-cannot-run) |
 
 ### Layers: the libraries' actions.json and yours (#467, D7)
 

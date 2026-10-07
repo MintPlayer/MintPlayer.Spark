@@ -2,9 +2,13 @@ using System.Text.Json.Serialization;
 
 namespace MintPlayer.Spark.Abstractions;
 
+/// <summary>A query: a list of rows from a source, shown as a grid, a program unit's target or a sub-query.</summary>
 public sealed class SparkQuery
 {
+    /// <summary>The query's stable id. Fixed by a library for what it ships; an application file cannot override it.</summary>
     public required Guid Id { get; set; }
+
+    /// <summary>The query's name (e.g. <c>GetCars</c>); its identity across layers and the key prefix of its translations (<c>queries.{name}.label</c>).</summary>
     public required string Name { get; set; }
     /// <summary>
     /// The query's display name (#467; formerly <c>description</c>). In the model file an optional

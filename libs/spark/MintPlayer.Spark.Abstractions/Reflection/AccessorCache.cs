@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.Abstractions.Reflection;
 /// hit the same cached delegate without string-key composition.
 /// </para>
 /// <para>
-/// The setter expects <paramref name="value"/> to already be assignable to the
+/// The setter expects the value to already be assignable to the
 /// property type — type coercion (e.g. <c>Convert.ChangeType</c>, enum parsing,
 /// JSON unwrapping) must happen <em>before</em> calling the setter. Reflection-based
 /// callers that already do this coercion can swap in <see cref="GetSetter"/>

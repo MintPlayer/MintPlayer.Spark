@@ -19,7 +19,7 @@ run only in the final sweep.
 | M7 Gates with provenance + uniform reload + describe (D7–D9) | ✅ 2026-10-06 (PRD D9 "As built in M7": D7–D9) |
 | M8 IManager rights at construction (D13) | ✅ 2026-10-06 (PRD D13a "As built in M8") |
 | M9 Migrate libraries and apps | ✅ 2026-10-06 (PRD D4 "As built in M9"; M8's known gaps closed, PRD D13a; Passkeys moved to the passkeys plan) |
-| M10 Docs and versions | ⏳ |
+| M10 Docs and versions | ✅ 2026-10-07 (schema descriptions from `///` summaries on hover; composition docs, AGENTS.md, minor bumps to 11.0.0-preview.101 / ng-spark 22.30.0 / ng-spark-auth 22.20.0) |
 | M11 Sweep | ⏳ |
 
 ## M0 — Spikes

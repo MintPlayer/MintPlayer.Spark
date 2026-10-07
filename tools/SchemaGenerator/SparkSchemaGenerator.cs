@@ -175,13 +175,62 @@ public static class SparkSchemaGenerator
                     properties = new JsonObject();
                     obj["properties"] = properties;
                 }
-                properties["$schema"] = new JsonObject { ["type"] = "string" };
+                properties["$schema"] = SchemaProperty();
                 obj["patternProperties"] ??= new JsonObject { [CommentPattern] = new JsonObject() };
             }
         }
 
+        return Describe(context, type, schema);
+    }
+
+    /// <summary>
+    /// Adds the <c>///</c> summary of the property, else of its type, as the node's <c>description</c>,
+    /// which editors show on hover. A description already on the node is kept, except the generic one
+    /// of a translation key, which the property's own summary replaces.
+    /// </summary>
+    private static JsonNode Describe(JsonSchemaExporterContext context, Type type, JsonNode schema)
+    {
+        var member = context.PropertyInfo?.AttributeProvider as MemberInfo;
+        var description = Join((member is null ? null : XmlDocs.Summary(member)) ?? XmlDocs.Summary(type), EnumValues(type));
+        if (description is null)
+            return schema;
+
+        if (schema is JsonValue value && value.GetValueKind() == JsonValueKind.True)
+            return new JsonObject { ["description"] = description };
+        if (schema is not JsonObject obj)
+            return schema;
+
+        if (obj["description"] is null)
+            obj["description"] = description;
+        else if (type == typeof(TranslatedString) && member is not null && XmlDocs.Summary(member) is { } summary)
+            obj["description"] = summary.Contains("translation", StringComparison.OrdinalIgnoreCase)
+                ? summary
+                : $"{summary} A translations.json key.";
         return schema;
     }
+
+    /// <summary>For an enum, one line per documented value (<c>- name: summary</c>); otherwise null.</summary>
+    private static string? EnumValues(Type type)
+    {
+        if (!type.IsEnum)
+            return null;
+        var values = type.GetFields(BindingFlags.Public | BindingFlags.Static)
+            .OrderBy(f => Convert.ToInt64(f.GetRawConstantValue()))
+            .Select(f => (Name: f.GetCustomAttribute<JsonStringEnumMemberNameAttribute>()?.Name ?? f.Name, Summary: XmlDocs.Summary(f)))
+            .Where(v => v.Summary is not null)
+            .Select(v => $"- {v.Name}: {v.Summary}")
+            .ToList();
+        return values.Count == 0 ? null : string.Join("\n", values);
+    }
+
+    private static string? Join(string? first, string? second)
+        => first is null ? second : second is null ? first : $"{first}\n\n{second}";
+
+    private static JsonObject SchemaProperty() => new()
+    {
+        ["type"] = "string",
+        ["description"] = "The JSON schema this file is validated against; editors read it for completion and hover help.",
+    };
 
     /// <summary>The model elements whose <c>id</c> a delta on a library type leaves out.</summary>
     private static readonly HashSet<Type> DeltaOptionalId =
@@ -222,17 +271,24 @@ public static class SparkSchemaGenerator
             ["type"] = "object",
             ["properties"] = new JsonObject
             {
-                ["query"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 },
-                ["selectionMode"] = new JsonObject { ["anyOf"] = new JsonArray(selectionMode, new JsonObject { ["type"] = "null" }) },
-                ["parentReference"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
+                ["query"] = SubQueryMember(nameof(SparkSubQuery.Query), new JsonObject { ["type"] = "string", ["minLength"] = 1 }),
+                ["selectionMode"] = SubQueryMember(nameof(SparkSubQuery.SelectionMode), new JsonObject { ["anyOf"] = new JsonArray(selectionMode, new JsonObject { ["type"] = "null" }) }),
+                ["parentReference"] = SubQueryMember(nameof(SparkSubQuery.ParentReference), new JsonObject { ["type"] = new JsonArray("string", "null") }),
             },
             ["required"] = new JsonArray("query"),
         };
         Close(entry);
         return new JsonObject
         {
-            ["anyOf"] = new JsonArray(new JsonObject { ["type"] = "string" }, entry),
+            ["anyOf"] = new JsonArray(SubQueryMember(nameof(SparkSubQuery.Query), new JsonObject { ["type"] = "string" }), entry),
         };
+    }
+
+    private static JsonObject SubQueryMember(string property, JsonObject schema)
+    {
+        if (typeof(SparkSubQuery).GetProperty(property) is { } member && XmlDocs.Summary(member) is { } summary)
+            schema["description"] = summary;
+        return schema;
     }
 
     /// <summary>
@@ -267,62 +323,83 @@ public static class SparkSchemaGenerator
     /// translations.json is a tree: every object holds either only strings (a leaf, language → text)
     /// or only objects (a namespace). The generators and the run time report anything else
     /// (<c>SparkTranslationLayers</c>, composition D10), and skip underscore properties as comments. The schema
-    /// keeps a comment a string, as every file in the repository writes it. The run time also takes
-    /// <c>null</c> for a namespace a library ships (composition D3); the schema learns it with M10.
+    /// keeps a comment a string, as every file in the repository writes it. A namespace may also be
+    /// <c>null</c>, which removes that namespace as a library ships it (composition D3).
     /// </summary>
     private static JsonObject TranslationsSchema()
     {
         static JsonObject Comments() => new() { [CommentPattern] = new JsonObject { ["type"] = "string" } };
 
-        static JsonObject Branch(JsonNode values)
+        static JsonObject Branch(JsonNode values, string description)
         {
             var branch = new JsonObject
             {
+                ["description"] = description,
                 ["patternProperties"] = Comments(),
                 ["additionalProperties"] = values,
             };
             return branch;
         }
 
+        static JsonObject NodeOrRemoval() => new()
+        {
+            ["anyOf"] = new JsonArray(
+                new JsonObject { ["$ref"] = "#/$defs/node" },
+                new JsonObject
+                {
+                    ["type"] = "null",
+                    ["description"] = "Removes this namespace, with every key under it, as a referenced library ships it.",
+                }),
+        };
+
         return new JsonObject
         {
+            ["description"] = "Translation keys as a tree of namespaces; a key is the dotted path to a leaf (\"model.Car.label\"). The application's file is layered over the libraries' files: a key it states replaces theirs, and an empty text is ignored.",
             ["type"] = "object",
-            ["properties"] = new JsonObject { ["$schema"] = new JsonObject { ["type"] = "string" } },
+            ["properties"] = new JsonObject { ["$schema"] = SchemaProperty() },
             ["patternProperties"] = Comments(),
-            ["additionalProperties"] = new JsonObject { ["$ref"] = "#/$defs/node" },
+            ["additionalProperties"] = NodeOrRemoval(),
             ["$defs"] = new JsonObject
             {
                 ["node"] = new JsonObject
                 {
+                    ["description"] = "A namespace (only objects) or a leaf (only texts, language code → text).",
                     ["type"] = "object",
                     ["minProperties"] = 1,
                     ["anyOf"] = new JsonArray(
-                        Branch(new JsonObject { ["type"] = "string" }),
-                        Branch(new JsonObject { ["$ref"] = "#/$defs/node" })),
+                        Branch(new JsonObject { ["type"] = "string", ["description"] = "The text in this language (a code from culture.json)." },
+                            "A leaf: language code → text. A language missing here falls back to the first one."),
+                        Branch(NodeOrRemoval(), "A namespace: name → a nested namespace or leaf.")),
                 },
             },
         };
     }
 }
 
-/// <summary>
+/// <summary>The languages the application offers. Application only: a library cannot ship this file.</summary>
+/// <remarks>
 /// <c>App_Data/culture.json</c> as <c>CultureLoader</c> reads it. The loader walks a
 /// <see cref="JsonDocument"/> rather than deserializing a type, so this mirrors the two properties
 /// it looks for; a guard test keeps the two in step.
-/// </summary>
+/// </remarks>
 public sealed class CultureFile
 {
     /// <summary>The language codes, e.g. <c>["en", "fr", "nl"]</c>. Each name is the translations.json key <c>culture.languages.{code}</c>.</summary>
     public string[]? Languages { get; set; }
 
+    /// <summary>The language used when the user has not chosen one; one of <c>languages</c>.</summary>
     public string? DefaultLanguage { get; set; }
 }
 
 /// <summary>
+/// One action, by name. The application's file is layered over the libraries' (the built-in New, Edit
+/// and Delete come from Spark itself): a property it states replaces theirs, and <c>null</c> removes the action.
+/// </summary>
+/// <remarks>
 /// One action in <c>App_Data/actions.json</c>, as <c>ActionsCatalogueLoader</c> binds it. The loader
 /// composes the layers as JSON nodes and binds a fixed list of known properties, so this mirrors that
-/// list; a guard test keeps the two in step. A null entry removes the action.
-/// </summary>
+/// list; a guard test keeps the two in step.
+/// </remarks>
 public sealed class ActionsFileEntry
 {
     /// <summary>A translations.json key; defaults to <c>actions.{name}.label</c>.</summary>
@@ -334,18 +411,22 @@ public sealed class ActionsFileEntry
     /// <summary>A translations.json key, or <c>false</c> to never ask (even when <c>actions.{name}.confirmation</c> is translated).</summary>
     public JsonElement? Confirmation { get; set; }
 
+    /// <summary>The icon shown next to the label, a Bootstrap Icons name.</summary>
     public string? Icon { get; set; }
 
+    /// <summary>Where the action appears: on the detail page, on query grids, or both (the default).</summary>
     public ActionShowedOn? ShowedOn { get; set; }
 
     /// <summary>A cardinality expression over the selected rows: <c>=1</c>, <c>&gt;0</c>, <c>&lt;=5</c>, <c>1&lt;X&lt;5</c>.</summary>
     public string? SelectionRule { get; set; }
 
+    /// <summary>Whether the page reloads its object or rows after the action succeeds.</summary>
     public bool? RefreshOnCompleted { get; set; }
 
     /// <summary>Presentation only: <c>primary</c>, <c>secondary</c>, <c>danger</c>, <c>warning</c>.</summary>
     public string? Variant { get; set; }
 
+    /// <summary>The display order among the actions; lower comes first. Default <c>0</c>.</summary>
     public int? Offset { get; set; }
 
     /// <summary>A client method the action needs (<c>provideSparkClientMethods</c>), e.g. <c>webauthn.create</c>; shown disabled with a reason without it.</summary>
@@ -356,7 +437,10 @@ public sealed class ActionsFileEntry
 [JsonConverter(typeof(JsonStringEnumConverter<ActionShowedOn>))]
 public enum ActionShowedOn
 {
+    /// <summary>On the detail page only.</summary>
     [JsonStringEnumMemberName("detail")] Detail,
+    /// <summary>On query grids only, acting on the selected rows.</summary>
     [JsonStringEnumMemberName("query")] Query,
+    /// <summary>On both.</summary>
     [JsonStringEnumMemberName("both")] Both,
 }

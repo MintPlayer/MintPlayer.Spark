@@ -20,6 +20,9 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<IsPackable>false</IsPackable>
+		<!-- CultureFile and ActionsFileEntry live here, so their summaries become schema descriptions too. -->
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
 		<SparkSchemasDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'schemas'))</SparkSchemasDirectory>
 	</PropertyGroup>
 
@@ -31,14 +34,15 @@
 	  Runs the generator after every build that changed it or a type it exports, so a fresh clone has
 	  schemas/ after its first `dotnet build`. Incremental: an unchanged build skips the target
 	  entirely (Inputs/Outputs), so it costs nothing on the common path. The output list names all
-	  six files, so deleting one regenerates the set.
+	  six files, so deleting one regenerates the set. The referenced projects' XML documentation files
+	  are inputs too: a /// summary is a schema description, and editing one changes no reference assembly.
 
 	  An Nx cache hit replays bin/ and obj/ without running MSBuild, so schemas/ can be missing after
 	  one. Nothing depends on it being there except the editor: the guard tests generate in-process,
 	  and CI runs the generator explicitly.
 	-->
 	<Target Name="GenerateSparkSchemas" AfterTargets="Build"
-			Inputs="$(TargetPath);@(ReferencePath->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))"
+			Inputs="$(TargetPath);@(ReferencePath->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'));@(ReferenceCopyLocalPaths->WithMetadataValue('Extension', '.xml'))"
 			Outputs="$(SparkSchemasDirectory)model.schema.json;$(SparkSchemasDirectory)security.schema.json;$(SparkSchemasDirectory)programUnits.schema.json;$(SparkSchemasDirectory)translations.schema.json;$(SparkSchemasDirectory)culture.schema.json;$(SparkSchemasDirectory)actions.schema.json">
 		<PropertyGroup>
 			<_SparkDotnetHost>$(DOTNET_HOST_PATH)</_SparkDotnetHost>
