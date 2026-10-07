@@ -61,6 +61,7 @@
         <bs-datatable
           [(settings)]="settings"
           [data]="rows()"
+          [labels]="datatableLabels()"
           (rowClick)="select($event.row)">
           @for (attr of visibleAttributes(); track attr.id) {
             <div *bsDatatableColumn="attr.name; sortable: true">

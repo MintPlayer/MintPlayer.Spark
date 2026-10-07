@@ -6,7 +6,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
+import { By } from '@angular/platform-browser';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
@@ -420,6 +421,29 @@ describe('SparkQueryGridComponent', () => {
 
       expect(service.getQuery).toHaveBeenLastCalledWith('q-other');
       expect(c.allColumns()).toEqual([]);
+    });
+  });
+
+  describe('resize-handle labels', () => {
+    it('names each handle by the translated header label, and the row-actions column as "Actions"', async () => {
+      // The datatable only knows a template column's NAME, so it announced "Resize column Created"
+      // under a header reading "Added", and "Resize column __sparkRowActions", in English.
+      const t = vi.spyOn(langStub, 't').mockImplementation((k: string) =>
+        k === 'common.resizeColumn' ? 'Kolom {column} aanpassen' : k === 'common.actions' ? 'Acties' : k);
+      try {
+        const { fixture } = await setup({}, {
+          data: [{ id: 'r/1', values: [{ key: 'Created', value: '2026-10-07' }] }],
+          columns: [{ name: 'Created', label: { en: 'Added' }, dataType: 'string', order: 1 }, { name: 'Plain', dataType: 'string', order: 2 }] as any,
+        });
+        const datatable = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>;
+        const resize = datatable.labels()!.resizeColumn!;
+
+        expect(resize('Created')).toBe('Kolom Added aanpassen');
+        expect(resize('Plain')).toBe('Kolom Plain aanpassen');
+        expect(resize('__sparkRowActions')).toBe('Kolom Acties aanpassen');
+      } finally {
+        t.mockRestore();
+      }
     });
   });
 

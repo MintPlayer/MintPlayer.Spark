@@ -13,7 +13,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkQueryGridComponent, SparkQueryToolbarAction, SparkSearchBoxComponent, sparkActionClass } from '@mintplayer/ng-spark/grid';
+import { SparkPriorityNavCloseOnActionDirective, SparkQueryGridComponent, SparkQueryToolbarAction, SparkSearchBoxComponent, sparkActionClass } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   StreamingMessage,
@@ -52,7 +52,7 @@ import {
  */
 @Component({
   selector: 'spark-query-list',
-  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, NgComponentOutlet, BsAlertComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, NgComponentOutlet, BsAlertComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkPriorityNavCloseOnActionDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

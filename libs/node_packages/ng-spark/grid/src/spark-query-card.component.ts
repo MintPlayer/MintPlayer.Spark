@@ -11,6 +11,7 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
 import { inject } from '@angular/core';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
+import { SparkPriorityNavCloseOnActionDirective } from './spark-priority-nav-close.directive';
 import { SparkSearchBoxComponent } from './spark-search-box.component';
 import {
   SparkQueryActionsDirective,
@@ -43,9 +44,20 @@ import {
  */
 @Component({
   selector: 'spark-query-card',
-  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, SparkIconComponent],
+  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkPriorityNavCloseOnActionDirective, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, SparkIconComponent],
   // The search box keeps a steady width beside the actions; the priority nav gives way first.
-  styles: ['.spark-query-card-search { flex: 0 1 14rem; min-width: 8rem; }'],
+  //
+  // Below `sm` the nav has nothing left to give: `collapseAt="sm"` folds every action into "More",
+  // and that toggle never shrinks. Caption + "More" + the box's 8rem minimum then overran a 375 px
+  // header by ~11 px, which the card's `overflow: hidden` clipped. So below `sm` the header wraps,
+  // the box drops to its own line when it does not fit, and there it takes the full width.
+  styles: [`
+    .spark-query-card-search { flex: 0 1 14rem; min-width: 8rem; }
+    @media (max-width: 575.98px) {
+      .spark-query-card-header { flex-wrap: wrap; }
+      .spark-query-card-search { flex: 1 1 8rem; }
+    }
+  `],
   templateUrl: './spark-query-card.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

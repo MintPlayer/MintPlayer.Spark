@@ -9,7 +9,7 @@ import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModal
 import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse } from '@mintplayer/pagination';
-import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, sparkDatatableLabels } from '@mintplayer/ng-spark/services';
 import { EntityType, QueryResultItem, ShowedOn, hasShowedOnFlag } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
@@ -68,6 +68,9 @@ export class SparkReferencePickerComponent {
       .filter(a => hasShowedOnFlag(a.showedOn, ShowedOn.Query))
       .sort((a, b) => a.order - b.order) || [];
   });
+
+  /** Resize handles named by the translated header label, not the attribute name. */
+  datatableLabels = computed(() => sparkDatatableLabels(this.lang, this.visibleAttributes()));
 
   // Typed rows so the datatable generic infers the row type.
   rows = computed<QueryResultItem[]>(() => this.pagination()?.data ?? []);

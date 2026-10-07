@@ -1,6 +1,6 @@
 <div class="d-flex flex-column h-100">
   <div class="spark-actionbar py-2 flex-shrink-0" [class.spark-actionbar-wide]="isVirtualScrolling()">
-    <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
+    <bs-priority-nav sparkCloseOnAction [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
       <!-- The grid's toolbar model (#460 M15, #467 R3): New, Edit, Delete and the custom actions —
            the list the sub-query card renders too, labels and icons from the action catalogue.
            Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the

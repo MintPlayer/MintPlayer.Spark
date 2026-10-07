@@ -188,6 +188,7 @@ common.notSelected	en="(not selected)"	fr="(non sélectionné)"	nl="(niet gesele
 common.notSet	en="(not set)"	fr="(non défini)"	nl="(niet ingesteld)"
 common.onOtherPages	en="on other pages"	fr="sur d'autres pages"	nl="op andere pagina's"
 common.properties	en="Properties"	fr="Propriétés"	nl="Eigenschappen"
+common.resizeColumn	en="Resize column {column}"	fr="Redimensionner la colonne {column}"	nl="Breedte van kolom {column} aanpassen"
 common.resultFound	en="result found"	fr="résultat trouvé"	nl="resultaat gevonden"
 common.resultsFound	en="results found"	fr="résultats trouvés"	nl="resultaten gevonden"
 common.save	en="Save"	fr="Enregistrer"	nl="Opslaan"

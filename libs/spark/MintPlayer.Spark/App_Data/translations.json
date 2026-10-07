@@ -51,6 +51,7 @@
     "onOtherPages":      { "en": "on other pages", "fr": "sur d'autres pages", "nl": "op andere pagina's" },
     "clearSelection":    { "en": "Clear selection", "fr": "Effacer la sélection", "nl": "Selectie wissen" },
     "actions":           { "en": "Actions",        "fr": "Actions",          "nl": "Acties" },
+    "resizeColumn":      { "en": "Resize column {column}", "fr": "Redimensionner la colonne {column}", "nl": "Breedte van kolom {column} aanpassen" },
     "clearSearch":       { "en": "Clear search",   "fr": "Effacer la recherche", "nl": "Zoekopdracht wissen" },
     "filteredBy":        { "en": "Filtered by",    "fr": "Filtré par",       "nl": "Gefilterd op" },
     "clearFilter":       { "en": "Remove this filter", "fr": "Retirer ce filtre", "nl": "Deze filter verwijderen" },

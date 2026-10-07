@@ -22,7 +22,7 @@ import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer
 import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { QueryCellValuePipe, QueryReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
+import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkService, sparkDatatableLabels } from '@mintplayer/ng-spark/services';
 import { SparkColumnFilterPanelComponent } from '@mintplayer/ng-spark/column-filter';
 import {
   CustomActionDefinition,
@@ -665,6 +665,17 @@ export class SparkQueryGridComponent {
    * Every column that ships is drawn (#264): there is no shipped-but-hidden column.
    */
   allColumns = computed(() => this.columns() ?? this.fetchedColumns());
+
+  /** The internal name of the per-row ⋮ menu's column; never shown, so it must never be announced. */
+  readonly rowActionsColumn = '__sparkRowActions';
+
+  /**
+   * The datatable's `[labels]`: resize handles named by the label the header SHOWS, translated —
+   * the datatable only knows the column's name. See `sparkDatatableLabels`.
+   */
+  datatableLabels = computed(() => sparkDatatableLabels(this.lang, this.allColumns(), {
+    [this.rowActionsColumn]: this.lang.t('common.actions'),
+  }));
 
   /**
    * True when rows do not come from this component's own fetch.

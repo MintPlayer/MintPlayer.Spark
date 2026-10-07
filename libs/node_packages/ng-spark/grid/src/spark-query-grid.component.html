@@ -67,6 +67,7 @@
       [data]="data()"
       [fetch]="fetchFn()"
       [distincts]="distinctsFn"
+      [labels]="datatableLabels()"
       (filterChange)="onFilterChange($event)"
       (rowClick)="onRowClick($event)"
       [(settings)]="settings">
@@ -110,7 +111,7 @@
       unclipped headers ran into each other. With no column at all the datatable waits.
     -->
     @if (rowActions().length && allColumns().length) {
-      <div *bsDatatableColumn="'__sparkRowActions'; sortable: false; filterable: false">
+      <div *bsDatatableColumn="rowActionsColumn; sortable: false; filterable: false">
         <span class="visually-hidden">{{ 'common.actions' | t }}</span>
       </div>
     }

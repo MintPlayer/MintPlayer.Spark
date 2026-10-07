@@ -7,3 +7,4 @@ export * from './src/spark-grid-cell.component';
 export * from './src/spark-query-toolbar';
 export * from './src/spark-search-box.component';
 export * from './src/preset-filters';
+export * from './src/spark-priority-nav-close.directive';
