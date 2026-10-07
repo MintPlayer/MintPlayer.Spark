@@ -156,6 +156,17 @@
 	<PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
 		<WarningsAsErrors>$(WarningsAsErrors);RS0030</WarningsAsErrors>
 	</PropertyGroup>
+
+	<!--
+	  No test process consults the machine's proxy. With Windows' WPAD auto-detection on, the first
+	  HttpClient request to a host name in a process waited 1-10+ s for proxy discovery (measured
+	  2026-10-07; 33 ms with the proxy off), and a 10 s test bound failed on an idle machine. The
+	  linked module initializer sets HttpClient.DefaultProxy to no proxy before any test runs.
+	  Details: tests/Shared/NoSystemProxy.cs and docs/test-suite-performance-PRD.md §3, "No proxy in test processes".
+	-->
+	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+		<Compile Include="$(MSBuildThisFileDirectory)tests\Shared\NoSystemProxy.cs" Link="_Shared\NoSystemProxy.cs" />
+	</ItemGroup>
 	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
 		<PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4">
 			<PrivateAssets>all</PrivateAssets>
