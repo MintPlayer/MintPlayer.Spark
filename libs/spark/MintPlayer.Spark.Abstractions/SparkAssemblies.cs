@@ -74,7 +74,7 @@ public static class SparkAssemblies
         }.Select(a => a.GetName().Name!),
         StringComparer.OrdinalIgnoreCase);
 
-    private static bool IsPlatform(string name)
+    internal static bool IsPlatform(string name)
         => name.StartsWith("System", StringComparison.Ordinal)
            || name.StartsWith("Microsoft.", StringComparison.Ordinal)
            || name is "netstandard" or "mscorlib";

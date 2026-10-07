@@ -129,6 +129,33 @@ public class SparkLayerCatalogTests
     }
 
     [Fact]
+    public void The_fallback_finds_deployed_layered_libraries_from_their_files_not_from_references()
+    {
+        // Measured 2026-10-07 (layer-transport check, composition PRD §9): an application consuming the
+        // packages recorded nothing, and the reference walk alone lost core MintPlayer.Spark, because
+        // neither the application nor MintPlayer.Spark.Authorization references it in metadata. The
+        // fallback also reads the deployed files, which no compiler trimming affects.
+        var found = SparkLayerCatalog.DeployedLayeredAssemblies(
+        [
+            typeof(SparkLayerCatalogTests).Assembly.Location,   // no layers
+            typeof(object).Assembly.Location,                   // platform, skipped by name
+            Authorization.Location,
+            Core.Location,
+            Path.Combine(AppContext.BaseDirectory, "Does.Not.Exist.dll"),
+        ]);
+
+        found.Should().Equal(Authorization, Core);
+    }
+
+    [Fact]
+    public void The_fallback_reads_the_files_the_host_deployed()
+    {
+        SparkLayerCatalog.TrustedPlatformAssemblyPaths()
+            .Select(Path.GetFileNameWithoutExtension)
+            .Should().Contain("MintPlayer.Spark");
+    }
+
+    [Fact]
     public void A_library_overriding_a_library_it_depends_on_is_not_a_conflict()
     {
         // Grill Q3: overriding a dependency is intended; only unrelated libraries conflict.

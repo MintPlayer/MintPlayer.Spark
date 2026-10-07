@@ -37,33 +37,21 @@
 
 	<!-- Source generators (analyzer-only, no runtime assembly) -->
 	<ItemGroup>
-		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-		<ProjectReference Include="..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<!--
-		  Not for this project's own compilation, but so the DLL exists to be packed below: the
-		  <None Include="...\bin\$(Configuration)\..."> item reads from the referenced project's
-		  output directory, which nothing else here would have caused to be built.
+		  SparkPackAnalyzer="true": each reference's built dll is packed into analyzers/dotnet/cs
+		  (Directory.Build.targets, SparkPackReferencedAnalyzers), so both generators run for consumers.
 		-->
-		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SparkPackAnalyzer="true" />
+		<ProjectReference Include="..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SparkPackAnalyzer="true" />
+		<!--
+		  Not for this project's own compilation, but so it is built and packed: LibraryGenerators was
+		  packed nowhere until now, so SPARK016 reached no external consumer at all: the diagnostic
+		  that guards the generated row key was in-repo only. It also carries both [ValueObject] code
+		  fixes, so without this the lightbulbs ship to nobody.
+		-->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SparkPackAnalyzer="true" />
 	</ItemGroup>
 
-	<!--
-	  Pack the source generator DLLs into the NuGet package's analyzers/ folder.
-	  When consumers install the NuGet package, both generators run automatically.
-	-->
-	<ItemGroup>
-		<None Include="..\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll"
-			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-		<None Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll"
-			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-		<!--
-		  LibraryGenerators was packed nowhere until now, so SPARK016 reached no external consumer
-		  at all: the diagnostic that guards the generated row key was in-repo only. It also
-		  carries both [ValueObject] code fixes, so without this the lightbulbs ship to nobody.
-		-->
-		<None Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.dll"
-			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-	</ItemGroup>
 
 	<!--
 	  Pack the targets file for NuGet consumers.

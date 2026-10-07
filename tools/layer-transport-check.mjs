@@ -76,6 +76,10 @@ for (const project of packed) {
   ]);
 }
 
+// The generator dll the packs built; read now, because AppProj's build rebuilds it without -p:Version.
+const generatorName = path.basename(generator, '.csproj');
+const builtGenerator = fs.readFileSync(path.join(work, 'artifacts', 'bin', generatorName, 'release', `${generatorName}.dll`));
+
 // Keep MSBuild from looking above the work directory, and NuGet on the feed plus nuget.org.
 fs.writeFileSync(path.join(work, 'Directory.Build.props'), '<Project />\n');
 fs.writeFileSync(path.join(work, 'Directory.Build.targets'), '<Project />\n');
@@ -144,6 +148,18 @@ for (const [name, csproj] of Object.entries(apps)) {
   run(`build-${name}`, 'dotnet', ['build', dir, '-c', 'Release', '--artifacts-path', path.join(work, 'artifacts')]);
   const dll = path.join(work, 'artifacts', 'bin', name, 'release', `${name}.dll`);
   outputs[name] = run(`run-${name}`, 'dotnet', [dll]).replace(/\r\n/g, '\n').trim();
+}
+
+// AppPkg must have run the generator this check built. MintPlayer.SourceGenerators.Tools' props pack a
+// fixed bin/<Configuration> path, so before Directory.Build.targets' SparkPackBuiltGenerator the package
+// silently carried a stale bin/Release build from before ApplicationLayersGenerator, and AppPkg recorded
+// nothing (measured 2026-10-07, composition PRD §9). NuGet restore extracted the package here.
+{
+  const restored = path.join(work, 'packages', generatorName.toLowerCase(), version, 'analyzers', 'dotnet', 'roslyn5.9', 'cs', `${generatorName}.dll`);
+  if (!fs.existsSync(restored) || !fs.readFileSync(restored).equals(builtGenerator)) {
+    console.error(`[layer-transport] FAILED: the ${generatorName} package does not carry the generator this run built (${restored})`);
+    process.exit(1);
+  }
 }
 
 const expected = [

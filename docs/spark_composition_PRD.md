@@ -150,6 +150,9 @@ those, so both views agree. Layer paths are embedded relative, with `/`. Web SDK
   name that does not load fails) and falls back to `SparkAssemblies.SparkAware()` when the entry
   assembly recorded nothing (a `WebApplicationFactory` host, whose entry assembly is the test
   runner). Cached; two libraries with one alias throw at first use, which is startup.
+  **Amended 2026-10-07** (§9, "Layer transport over packages"): the fallback also loads every
+  deployed assembly (the host's trusted-platform list, i.e. deps.json) whose metadata carries
+  `[assembly: SparkLayer]`, because the walk alone dropped core `MintPlayer.Spark`.
 - **Package vs project** (acceptance item 3) is `npm run test:layer-transport`
   (`tools/layer-transport-check.mjs`): S1's `run.sh` against the real libraries, packed at a
   throw-away version to a local feed with `--artifacts-path`, so neither `bin`/`obj` nor the Nx cache
@@ -962,6 +965,48 @@ between the two apps**.
 5. **Web SDK libraries** keep `Content Remove` (NETSDK1152).
 
 The prototype is in the session scratchpad (`s1/`, driven by `run.sh`) and is not committed.
+
+### Layer transport over packages — two defects found by the check (2026-10-07)
+
+**Symptom.** `npm run test:layer-transport` failed. AppProj (ProjectReference) recorded
+`MintPlayer.Spark, MintPlayer.Spark.Authorization` and saw 9 layers. AppPkg (PackageReference)
+recorded **nothing** and saw only Authorization's 7 layers: core `MintPlayer.Spark`'s `actions.json`
+(New/Edit/Delete) and `translations.json` were missing. A NuGet consumer would have lost them.
+
+**Defect 1: the generator package shipped a stale dll.** Not a gating problem:
+`ApplicationLayersGenerator` reads no build property, only `OutputKind` and the referenced
+assemblies. The packed `analyzers/dotnet/roslyn5.9/cs/MintPlayer.Spark.SourceGenerators.dll` was
+**byte-identical** (`cmp`) to `libs/source_generators/MintPlayer.Spark.SourceGenerators/bin/Release/netstandard2.0/`
+from 2026-10-05. It contained `LibraryActionsGenerator`/`LibraryTranslationsGenerator` and no
+`ApplicationLayersGenerator`. AppPkg's obj held only `SparkMigrationRegistrations.g.cs` from Spark's
+generators. The cause is `MintPlayer.SourceGenerators.Tools` 12.1.1 `build/MintPlayer.SourceGenerators.Tools.props:38`,
+which packs `$(MSBuildProjectDirectory)\bin\$(Configuration)\netstandard2.0\$(AssemblyName).dll`, a
+fixed path. The check packs with `--artifacts-path`, so the fresh build went elsewhere and the pack
+took whatever an earlier build had left in `bin/`. `MintPlayer.Spark.AllFeatures` and
+`MintPlayer.Spark.Contributions` packed their generators from fixed `bin\$(Configuration)` paths too.
+- **Fix.** In `Directory.Build.targets`:
+  - `SparkPackBuiltGenerator` removes the Tools item and packs `$(TargetPath)`.
+  - `SparkPackReferencedAnalyzers` packs the dll each `SparkPackAnalyzer="true"` analyzer
+    ProjectReference resolved to (AllFeatures ×3, Contributions ×1). It fails with SPARKPACK001
+    when none resolves.
+- **Proven.** Packing with `--artifacts-path`, the generator and Contributions nupkgs carry dlls
+  byte-identical to the ones that build wrote. The check now also fails unless AppPkg's restored
+  generator equals the dll it built.
+
+**Defect 2: the fallback walk cannot reach core.** `SparkAssemblies.SparkAware()` follows metadata
+references from the loaded assemblies. AppPkg.dll references Abstractions, Attributes, Migrations,
+Endpoints and Authorization. `MintPlayer.Spark.Authorization.dll` references Abstractions,
+Authorization.Abstractions, Attributes, Migrations, MailManager.Abstractions and Endpoints. Neither
+references `MintPlayer.Spark` (read with `System.Reflection.Metadata`), so the walk never loads it.
+This is S1 pitfall 1 again, inside the fallback.
+- **Choice: fix the fallback rather than fail at startup.** The fallback exists for hosts whose entry
+  assembly is not the application: test runners (xunit v3 test executables included) and tools. Those
+  cannot be told apart from an application that lacks the record, so throwing would break them. The
+  fallback now also scans the host's `TRUSTED_PLATFORM_ASSEMBLIES`, which the host builds from
+  deps.json, the same closure the compiler saw. It reads each non-platform file's metadata and
+  `Assembly.Load`s only those carrying `[assembly: SparkLayer]`. A single-file bundle has no list and
+  keeps the walk.
+  (`SparkLayerCatalog.LayeredAssemblies`/`DeployedLayeredAssemblies`; tests in `SparkLayerCatalogTests`.)
 
 ### S4 — repo-wide import of the Spark targets (2026-10-06, worktree, not committed)
 

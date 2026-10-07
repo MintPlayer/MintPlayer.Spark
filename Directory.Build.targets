@@ -38,6 +38,54 @@
 		</PropertyGroup>
 	</Target>
 
+	<!--
+	  A generator package packs the dll this build wrote, never a fixed bin path.
+
+	  MintPlayer.SourceGenerators.Tools' build props pack
+	  `$(MSBuildProjectDirectory)\bin\$(Configuration)\netstandard2.0\$(AssemblyName).dll` into
+	  analyzers/dotnet/roslyn5.9/cs. A build whose output goes elsewhere (`dotnet pack -artifacts-path`,
+	  a custom OutputPath) then packs whatever an earlier build left in bin/, or fails when nothing is
+	  there. Measured 2026-10-07 by `npm run test:layer-transport`: the packed
+	  MintPlayer.Spark.SourceGenerators.dll was byte-identical to a bin/Release build of 2026-10-05,
+	  from before ApplicationLayersGenerator existed, so the package-consuming app recorded no
+	  [assembly: SparkLayerAssemblies] and lost core MintPlayer.Spark's actions and translations
+	  (composition PRD §9, "Layer transport over packages").
+	-->
+	<ItemGroup Condition="'$(IsRoslynComponent)' == 'true' And '$(PkgMintPlayer_SourceGenerators_Tools)' != '' And '$(IncludeBuildOutput)' == 'false'">
+		<None Remove="$(MSBuildProjectDirectory)\bin\$(Configuration)\netstandard2.0\$(AssemblyName).dll" />
+	</ItemGroup>
+	<PropertyGroup Condition="'$(IsRoslynComponent)' == 'true' And '$(PkgMintPlayer_SourceGenerators_Tools)' != '' And '$(IncludeBuildOutput)' == 'false'">
+		<TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);SparkPackBuiltGenerator</TargetsForTfmSpecificContentInPackage>
+	</PropertyGroup>
+	<Target Name="SparkPackBuiltGenerator">
+		<ItemGroup>
+			<TfmSpecificPackageFile Include="$(TargetPath)" PackagePath="analyzers/dotnet/roslyn5.9/cs" />
+		</ItemGroup>
+	</Target>
+
+	<!--
+	  The same for a package that ships another project's generator (AllFeatures, Contributions): mark
+	  the analyzer ProjectReference with SparkPackAnalyzer="true" and the dll that reference resolved to
+	  is packed into analyzers/dotnet/cs. Only the referenced project's own dll: a generator built
+	  against MintPlayer.SourceGenerators.Tools also returns Tools' dll from GetTargetPath.
+	-->
+	<PropertyGroup>
+		<TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);SparkPackReferencedAnalyzers</TargetsForTfmSpecificContentInPackage>
+	</PropertyGroup>
+	<Target Name="SparkPackReferencedAnalyzers"
+	        DependsOnTargets="ResolveProjectReferences"
+	        Condition="'@(ProjectReference->WithMetadataValue('SparkPackAnalyzer', 'true'))' != ''">
+		<ItemGroup>
+			<_SparkPackCandidate Include="@(Analyzer->WithMetadataValue('SparkPackAnalyzer', 'true'))" />
+			<_SparkPackedAnalyzer Include="@(_SparkPackCandidate)"
+			                      Condition="'%(Filename)' == '$([System.IO.Path]::GetFileNameWithoutExtension(%(OriginalItemSpec)))'" />
+			<TfmSpecificPackageFile Include="@(_SparkPackedAnalyzer)" PackagePath="analyzers/dotnet/cs" />
+		</ItemGroup>
+		<Error Code="SPARKPACK001"
+		       Condition="'@(_SparkPackedAnalyzer)' == ''"
+		       Text="$(MSBuildProjectName) marks an analyzer ProjectReference SparkPackAnalyzer=&quot;true&quot;, but no generator dll resolved from it, so the package would ship without its generator." />
+	</Target>
+
 	<!-- Suppress launchSettings.json generation for Web SDK class libraries -->
 	<PropertyGroup Condition="'$(OutputType)' == 'Library'">
 		<NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>

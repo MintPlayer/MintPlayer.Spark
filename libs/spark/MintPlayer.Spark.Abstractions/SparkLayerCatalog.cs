@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using MintPlayer.Spark.Layering;
 
 namespace MintPlayer.Spark.Abstractions;
@@ -26,7 +28,9 @@ public sealed record SparkLibrary(string Alias, string AssemblyName, IReadOnlyLi
 /// (<c>[assembly: SparkLayerAssemblies]</c>), and exactly those are loaded: the compiler drops a
 /// reference whose types the application never uses, so a reference walk alone misses a library that
 /// ships only layers (S1). A host whose entry assembly records nothing (a test runner hosting the
-/// application through <c>WebApplicationFactory</c>, a tool) falls back to <see cref="SparkAssemblies.SparkAware"/>.
+/// application through <c>WebApplicationFactory</c>, a tool) falls back to <see cref="SparkAssemblies.SparkAware"/>
+/// plus every deployed assembly whose metadata carries <c>[assembly: SparkLayer]</c>, so the fallback is not
+/// subject to the same trimming.
 /// </para>
 /// <para>
 /// Read once and cached: library layers are compiled in and never reload (D15).
@@ -95,9 +99,94 @@ public static class SparkLayerCatalog
     internal static IEnumerable<Assembly> LayeredAssemblies(Assembly? entry)
     {
         var recorded = entry?.GetCustomAttribute<SparkLayerAssembliesAttribute>();
-        if (recorded is null) return SparkAssemblies.SparkAware();
+        if (recorded is null)
+        {
+            // The reference walk alone repeats S1's pitfall: it starts from metadata references, which
+            // the compiler trims, so a library whose types nothing loaded uses is missed. Measured
+            // 2026-10-07 (layer-transport check, PRD §9): an application consuming the packages and
+            // recording nothing lost core MintPlayer.Spark's actions and translations, because neither
+            // it nor MintPlayer.Spark.Authorization references MintPlayer.Spark in metadata. The host's
+            // trusted-platform list is built from deps.json, the same closure the compiler saw.
+            return SparkAssemblies.SparkAware()
+                .Concat(DeployedLayeredAssemblies(TrustedPlatformAssemblyPaths()))
+                .ToList();
+        }
 
         // A recorded name that does not load is a broken deployment, not something to skip quietly.
         return recorded.AssemblyNames.Select(name => Assembly.Load(new AssemblyName(name))).ToList();
+    }
+
+    /// <summary>The files the host resolved for this process from deps.json; empty for a single-file bundle.</summary>
+    internal static IEnumerable<string> TrustedPlatformAssemblyPaths()
+        => (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string)?.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries) ?? [];
+
+    /// <summary>
+    /// The assemblies among <paramref name="paths"/> that carry <c>[assembly: SparkLayer]</c>, decided from
+    /// their metadata so nothing else is loaded; each one is then loaded by name.
+    /// </summary>
+    internal static IEnumerable<Assembly> DeployedLayeredAssemblies(IEnumerable<string> paths)
+    {
+        var found = new List<Assembly>();
+        foreach (var path in paths)
+        {
+            if (SparkAssemblies.IsPlatform(Path.GetFileNameWithoutExtension(path))) continue;
+
+            AssemblyName? name;
+            try { name = LayeredAssemblyName(path); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or BadImageFormatException or InvalidOperationException) { continue; }
+            if (name is null) continue;
+
+            try { found.Add(Assembly.Load(name)); }
+            catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException) { }
+        }
+
+        return found;
+    }
+
+    private static AssemblyName? LayeredAssemblyName(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var pe = new PEReader(stream);
+        if (!pe.HasMetadata) return null;
+
+        var metadata = pe.GetMetadataReader();
+        if (!metadata.IsAssembly) return null;
+
+        var definition = metadata.GetAssemblyDefinition();
+        foreach (var handle in definition.GetCustomAttributes())
+        {
+            if (IsLayerAttribute(metadata, metadata.GetCustomAttribute(handle).Constructor))
+                return definition.GetAssemblyName();
+        }
+
+        return null;
+    }
+
+    private static bool IsLayerAttribute(MetadataReader metadata, EntityHandle constructor)
+    {
+        EntityHandle type;
+        if (constructor.Kind == HandleKind.MemberReference)
+            type = metadata.GetMemberReference((MemberReferenceHandle)constructor).Parent;
+        else if (constructor.Kind == HandleKind.MethodDefinition)
+            type = metadata.GetMethodDefinition((MethodDefinitionHandle)constructor).GetDeclaringType();
+        else
+            return false;
+
+        StringHandle ns, name;
+        if (type.Kind == HandleKind.TypeReference)
+        {
+            var reference = metadata.GetTypeReference((TypeReferenceHandle)type);
+            (ns, name) = (reference.Namespace, reference.Name);
+        }
+        else if (type.Kind == HandleKind.TypeDefinition)
+        {
+            var definition = metadata.GetTypeDefinition((TypeDefinitionHandle)type);
+            (ns, name) = (definition.Namespace, definition.Name);
+        }
+        else
+            return false;
+
+        return metadata.StringComparer.Equals(name, nameof(SparkLayerAttribute))
+            && metadata.StringComparer.Equals(ns, typeof(SparkLayerAttribute).Namespace!);
     }
 }
