@@ -43,7 +43,7 @@
     "@mintplayer/video-player": "^20.0.0",
     "@mintplayer/vimeo-player": "^20.0.0",
     "@mintplayer/web-components": "^2.19.0",
-    "@mintplayer/youtube-player": "^20.0.0",
+    "@mintplayer/youtube-player": "^20.1.0",
     "bootstrap": "5.3.8",
     "bootstrap-icons": "1.13.1",
     "highlight.js": "^11.11.1",
