@@ -7,6 +7,19 @@ import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, defaultSparkAuthConfig } fro
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 import { sparkAuthGuard, sparkAuthenticatedGuard } from '@mintplayer/ng-spark-auth/guards';
 
+// Stubbed with classes of the real export names, for the reason given in spark-auth-routes.spec.ts:
+// the loaders are asserted by which export they resolve to, and loading the real pages blew the
+// 5 s test timeout under the parallel sweep. Every export of the account entry point is stubbed, so
+// a loader that picks the wrong page from the right module still fails.
+const { stubPages } = vi.hoisted(() => ({
+  stubPages: (...names: string[]) => Object.fromEntries(names.map(n => [n, ({ [n]: class {} })[n]])),
+}));
+vi.mock('@mintplayer/ng-spark-auth/confirm-email', () => stubPages('SparkConfirmEmailComponent'));
+vi.mock('@mintplayer/ng-spark-auth/account', () => stubPages(
+  'SparkAccountOverviewComponent', 'SparkAccountProfileComponent', 'SparkChangePasswordComponent',
+  'SparkExternalLoginsComponent', 'SparkPersonalDataComponent', 'SparkTwoFactorSetupComponent',
+));
+
 describe('withAccount (#460, D16)', () => {
   const children = (...features: Parameters<typeof sparkAuthRoutes>) => sparkAuthRoutes(...features)[0].children;
   const paths = (...features: Parameters<typeof sparkAuthRoutes>) =>
