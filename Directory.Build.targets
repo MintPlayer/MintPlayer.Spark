@@ -86,6 +86,18 @@
 		       Text="$(MSBuildProjectName) marks an analyzer ProjectReference SparkPackAnalyzer=&quot;true&quot;, but no generator dll resolved from it, so the package would ship without its generator." />
 	</Target>
 
+	<!--
+	  An Nx project.json is workspace metadata, never build output. The Web SDK turns every *.json in
+	  a project folder into publish Content, so a Web SDK library with its own project.json
+	  (MintPlayer.Spark.Abstractions, added for its Nx inputs) collided with the app's in
+	  `dotnet publish`: NETSDK1152 "Found multiple publish output files with the same relative path:
+	  .../MintPlayer.Spark.Abstractions/project.json, .../CodeCoverage/project.json" (CodeCoverage image
+	  build, PR #491, 2026-10-07).
+	-->
+	<ItemGroup>
+		<Content Remove="project.json" />
+	</ItemGroup>
+
 	<!-- Suppress launchSettings.json generation for Web SDK class libraries -->
 	<PropertyGroup Condition="'$(OutputType)' == 'Library'">
 		<NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
