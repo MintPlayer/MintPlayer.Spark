@@ -19,6 +19,12 @@
 //
 // Licence: the embedded RavenDB reads RAVENDB_LICENSE. Point it at the DEVELOPER licence file
 // (.secrets/raven-license.log); the Community one caps the server at 3 cores and has no ETL.
+//
+// Leftover processes: MSBuild keeps its worker nodes alive after a build for the next one to reuse,
+// and with four parallel build+test chains that left 15+ MSBuild/dotnet processes of 100-200 MB
+// each behind every sweep (measured 2026-10-07, with only 4.6 GB of 40 GB free afterwards). The
+// sweep therefore builds with node reuse off and shuts the build servers down when it ends,
+// whether it passed or failed. An explicit MSBUILDDISABLENODEREUSE in the environment still wins.
 import { spawnSync } from 'node:child_process';
 
 const E2E = 'MintPlayer.Spark.E2E.Tests';
@@ -40,6 +46,14 @@ function nx(args, { env = process.env, capture = false } = {}) {
   return { status: result.status ?? 1, stdout: result.stdout ?? '' };
 }
 
+const env = { MSBUILDDISABLENODEREUSE: '1', ...process.env };
+
+function finish(status) {
+  // The compiler server and any reusable nodes another tool started would otherwise outlive the run.
+  spawnSync('dotnet', ['build-server', 'shutdown'], { stdio: 'ignore', shell: true, env });
+  process.exit(status);
+}
+
 if (!process.env.RAVENDB_LICENSE) {
   console.warn('[test:affected] RAVENDB_LICENSE is not set: RavenDB tests run unlicensed or fail. ' +
     'Set it to the path of .secrets/raven-license.log (Developer licence).');
@@ -47,16 +61,15 @@ if (!process.env.RAVENDB_LICENSE) {
 
 // Same base/head arguments as the test run, so both agree on what is affected.
 const affectedArgs = passthrough.filter(a => /^--(base|head|files|uncommitted|untracked)\b/.test(a));
-const shown = nx(['show', 'projects', '--affected', '--json', ...affectedArgs], { capture: true });
-if (shown.status !== 0) process.exit(shown.status);
+const shown = nx(['show', 'projects', '--affected', '--json', ...affectedArgs], { env, capture: true });
+if (shown.status !== 0) finish(shown.status);
 const affected = JSON.parse(shown.stdout.slice(shown.stdout.indexOf('[')));
 
-const env = { ...process.env };
 if (affected.includes(E2E)) {
-  const built = nx(['run-many', '-t', 'build', `--projects=${E2E_APPS.join(',')}`]);
-  if (built.status !== 0) process.exit(built.status);
+  const built = nx(['run-many', '-t', 'build', `--projects=${E2E_APPS.join(',')}`], { env });
+  if (built.status !== 0) finish(built.status);
   env.SPARK_E2E_SKIP_APP_BUILD = '1';
 }
 
 const parallel = passthrough.some(a => /^--parallel\b/.test(a)) ? [] : ['--parallel=4'];
-process.exit(nx(['affected', '-t', 'test', '-c', 'local', ...parallel, ...passthrough], { env }).status);
+finish(nx(['affected', '-t', 'test', '-c', 'local', ...parallel, ...passthrough], { env }).status);

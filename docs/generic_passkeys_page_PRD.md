@@ -273,6 +273,7 @@ that the cookie survives the 449.
 | 4 | Prior art is concepts only | Owner, 2026-10-05: no 1:1 copying of private code |
 | 5 | No backward compatibility: the endpoints, the component and the entry point are deleted outright | Owner, 2026-10-05: "the libraries are still in preview, so no backward compat is needed" |
 | 6 | No retry protocol change for multiple phases; `Invoke` takes lazy arguments | Steps are already numbered and keyed (`RetryAccessor.cs:32-33, :51-58`), with depth up to 16 (`spark.service.ts:99`). The rerun-from-the-top trap is in D7 |
+| 7 | `SparkSelectionResolver` requires **Query** (not Read) on a clrType-less type before rows can be acted on; stored types keep #467 D11/D29a's Read requirement | Owner, 2026-10-07 ("yes, i accept"). Evidence: `PasskeyRow` has no Read by design (D2), so Rename/Remove answered 404 `{"error":"Not found"}` in the E2E; a temporary Read grant turned it into the 449; `SparkSelectionResolverTests` are red without the fix. Rejected alternative: a Read/PasskeyRow grant, which reads nothing and would appear in every app's posture table |
 
 ## 9. Spike results (2026-10-06)
 
