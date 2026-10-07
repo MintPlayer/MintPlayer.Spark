@@ -30,7 +30,7 @@
 
              Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
              priority nav on every selection change. The server enforces the same rules. -->
-        <bs-priority-nav sparkCloseOnAction class="spark-query-card-actions" [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
+        <bs-priority-nav class="spark-query-card-actions" [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
           @for (action of toolbarActions(); track action.name) {
             <button *bsPriorityNavItem="action.priority" type="button" [class]="actionClass(action)"
                     [attr.data-action]="action.name"

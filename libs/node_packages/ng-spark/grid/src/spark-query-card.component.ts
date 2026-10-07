@@ -11,7 +11,6 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
 import { inject } from '@angular/core';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
-import { SparkPriorityNavCloseOnActionDirective } from './spark-priority-nav-close.directive';
 import { SparkSearchBoxComponent } from './spark-search-box.component';
 import {
   SparkQueryActionsDirective,
@@ -44,7 +43,7 @@ import {
  */
 @Component({
   selector: 'spark-query-card',
-  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkPriorityNavCloseOnActionDirective, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, SparkIconComponent],
+  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, SparkIconComponent],
   // The search box keeps a steady width beside the actions; the priority nav gives way first.
   //
   // Below `sm` the nav has nothing left to give: `collapseAt="sm"` folds every action into "More",

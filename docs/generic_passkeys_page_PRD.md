@@ -518,3 +518,27 @@ Tests, specs and the E2E are written and run in M8.
   clrType, so no documents and no row rule) passes its `Query` right instead of `Read`; a stored type still
   needs `Read`. The library's rights are unchanged (no `Read`, so still no detail page).
   `SparkSelectionResolverTests` (two red without the fix, one control).
+
+### ng-bootstrap 22.22.0 / web-components 2.19.0 adopted (2026-10-07)
+
+The display defects found while checking this page (§9 S4, commit `9f195914`) were fixed upstream in
+MintPlayer/mintplayer-ng-bootstrap#426 (PR #427), and Spark now uses those releases. The stopgaps are gone:
+
+- **`sparkCloseOnAction` removed.** `bs-priority-nav` closes its More panel after an action itself and
+  returns focus to More. The directive, its spec and its use on the detail page, query list and query card
+  are deleted.
+- **Columns are labelled at the source.** Every `*bsDatatableColumn` in the query grid and the reference
+  picker binds `label:` to the translated header text. The row-actions column is labelled `common.actions`
+  and has `resizable: false`, so it gets no resize handle. `sparkDatatableLabels` no longer maps names to
+  labels. It now only translates the resize strings: `common.resizeColumn` and the 2.19.0 resize-dialog keys
+  `common.resizeColumnHint`, `resizeColumnOptions`, `narrowerColumn`, `widerColumn`, `columnWidth`,
+  `fitColumn` and `resetColumn` (en/fr/nl).
+- **Phantom scrollbar fixed upstream** with `Math.floor` and a re-fit.
+- **Measured in CodeCoverage on `/po/passkeys/me`** with `playwright_node`:
+  - At 1440×900, `.datatable-scroll` was 1094/1094 (before: 1097/1094).
+  - At 375×800 it was 508/254 and `scrollLeft` stuck at 100, so the grid still scrolls.
+  - The handles read "Resize column Name / Added / Synced", and the Actions column has no handle.
+  - Enter on a handle opened "Resize options for Added" (− 319 px + / Fit to content / Reset width).
+  - "Add a passkey" in the More overflow closed it (`aria-expanded=false`), and focus went back to More.
+  - In Dutch the strings read "Breedte van kolom Toegevoegd aanpassen" and "Opties voor de breedte van
+    Naam", and the keymap announcement was translated too.

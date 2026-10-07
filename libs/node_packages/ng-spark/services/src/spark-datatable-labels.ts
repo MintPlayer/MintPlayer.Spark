@@ -1,32 +1,44 @@
-import { TranslatedString } from '@mintplayer/ng-spark/models';
 import { SparkLanguageService } from './spark-language.service';
 
+/** The `<bs-datatable>` strings Spark translates: the column-resize handle and its options dialog. */
+export interface SparkDatatableLabels {
+  resizeColumn: (column: string) => string;
+  resizeColumnHint: string;
+  resizeColumnOptions: (column: string) => string;
+  narrowerColumn: (column: string) => string;
+  widerColumn: (column: string) => string;
+  columnWidth: (px: number) => string;
+  fitColumn: string;
+  resetColumn: string;
+}
+
 /**
- * The `[labels]` a Spark `<bs-datatable>` passes so the column-resize handles carry the column's
- * DISPLAYED, translated label in the viewer's language.
+ * The `[labels]` a Spark `<bs-datatable>` passes so the column-resize handle, its keymap
+ * announcement and its resize options dialog (ng-bootstrap 22.22.0 / web-components 2.19.0) speak
+ * the viewer's language.
  *
- * Why this exists: `*bsDatatableColumn` hands the web component only the column's `name`, so its
- * default `Resize column ${label ?? name}` announced the internal name ("Resize column Created"
- * under a header reading "Added", "Resize column __sparkRowActions"), in English. Mapping the name
- * back to the label here is what Spark controls; the directive itself has no label input.
+ * The `column` these formatters receive is the column's label: every Spark grid binds
+ * `bsDatatableColumnLabel` to the header's translated text (and the row-actions column to
+ * "Actions"), so the datatable no longer falls back to the internal name. The keys omitted here
+ * keep the web component's English defaults.
  *
  * Every translation is read EAGERLY, so a `computed` that calls this tracks the language and the
  * translation map, and hands the datatable a new object — which re-renders it — when either changes.
- *
- * @param columns the grid's data columns: `name` as bound to `*bsDatatableColumn`, `label` as shown.
- * @param extra labels for columns that are not data columns (the row-actions column), by name.
  */
-export function sparkDatatableLabels(
-  lang: SparkLanguageService,
-  columns: readonly { name: string; label?: TranslatedString }[],
-  extra: Readonly<Record<string, string>> = {},
-): { resizeColumn: (column: string) => string } {
-  const template = lang.t('common.resizeColumn');
-  const labels = new Map<string, string>(Object.entries(extra));
-  for (const column of columns) {
-    labels.set(column.name, lang.resolve(column.label) || column.name);
-  }
+export function sparkDatatableLabels(lang: SparkLanguageService): SparkDatatableLabels {
+  const column = (key: string) => {
+    const template = lang.t(key);
+    return (name: string) => template.replace('{column}', name);
+  };
+  const columnWidth = lang.t('common.columnWidth');
   return {
-    resizeColumn: (column: string) => template.replace('{column}', labels.get(column) ?? column),
+    resizeColumn: column('common.resizeColumn'),
+    resizeColumnHint: lang.t('common.resizeColumnHint'),
+    resizeColumnOptions: column('common.resizeColumnOptions'),
+    narrowerColumn: column('common.narrowerColumn'),
+    widerColumn: column('common.widerColumn'),
+    columnWidth: (px: number) => columnWidth.replace('{px}', String(px)),
+    fitColumn: lang.t('common.fitColumn'),
+    resetColumn: lang.t('common.resetColumn'),
   };
 }

@@ -69,8 +69,8 @@ export class SparkReferencePickerComponent {
       .sort((a, b) => a.order - b.order) || [];
   });
 
-  /** Resize handles named by the translated header label, not the attribute name. */
-  datatableLabels = computed(() => sparkDatatableLabels(this.lang, this.visibleAttributes()));
+  /** The resize handle and its options dialog, translated; columns are named by `bsDatatableColumnLabel`. */
+  datatableLabels = computed(() => sparkDatatableLabels(this.lang));
 
   // Typed rows so the datatable generic infers the row type.
   rows = computed<QueryResultItem[]>(() => this.pagination()?.data ?? []);

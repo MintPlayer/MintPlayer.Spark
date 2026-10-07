@@ -424,23 +424,23 @@ describe('SparkQueryGridComponent', () => {
     });
   });
 
-  describe('resize-handle labels', () => {
-    it('names each handle by the translated header label, and the row-actions column as "Actions"', async () => {
-      // The datatable only knows a template column's NAME, so it announced "Resize column Created"
-      // under a header reading "Added", and "Resize column __sparkRowActions", in English.
+  describe('column labels', () => {
+    it('labels each column by its translated header text, and passes the translated resize strings', async () => {
+      // Without bsDatatableColumnLabel the datatable named a column by its NAME: "Resize column
+      // Created" under a header reading "Added".
       const t = vi.spyOn(langStub, 't').mockImplementation((k: string) =>
-        k === 'common.resizeColumn' ? 'Kolom {column} aanpassen' : k === 'common.actions' ? 'Acties' : k);
+        k === 'common.resizeColumn' ? 'Kolom {column} aanpassen' : k === 'common.fitColumn' ? 'Aanpassen aan inhoud' : k);
       try {
         const { fixture } = await setup({}, {
           data: [{ id: 'r/1', values: [{ key: 'Created', value: '2026-10-07' }] }],
           columns: [{ name: 'Created', label: { en: 'Added' }, dataType: 'string', order: 1 }, { name: 'Plain', dataType: 'string', order: 2 }] as any,
         });
-        const datatable = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>;
-        const resize = datatable.labels()!.resizeColumn!;
+        const columns = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives();
+        expect(columns.map(c => [c.name(), c.label()])).toEqual([['Created', 'Added'], ['Plain', 'Plain']]);
 
-        expect(resize('Created')).toBe('Kolom Added aanpassen');
-        expect(resize('Plain')).toBe('Kolom Plain aanpassen');
-        expect(resize('__sparkRowActions')).toBe('Kolom Acties aanpassen');
+        const datatable = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>;
+        expect(datatable.labels()!.resizeColumn!('Added')).toBe('Kolom Added aanpassen');
+        expect(datatable.labels()!.fitColumn).toBe('Aanpassen aan inhoud');
       } finally {
         t.mockRestore();
       }
@@ -1296,10 +1296,16 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
       run: async ctx => { inject(SparkLanguageService); ran.push(ctx.row.id); ctx.reload(); },
     };
     const hidden: SparkQueryRowAction = { id: 'hidden', labelKey: 'x', isOffered: () => false, run: async () => undefined };
-    const { c, service } = await setupWith([offered, hidden]);
+    const { fixture, c, service } = await setupWith([offered, hidden]);
 
     const actions = c.rowActions();
     expect(actions.map(a => a.name)).toEqual(['addon']);
+
+    // The row-actions column: announced as "Actions", and never resizable.
+    const actionsColumn = (fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<unknown>).columnDirectives()
+      .find(col => col.name() === c.rowActionsColumn)!;
+    expect(actionsColumn.label()).toBe('common.actions');
+    expect(actionsColumn.resizable()).toBe(false);
     expect(actions[0].kind).toBe('addon');
     expect(actions[0].definition.label).toEqual({ en: 'addon.label' });
 

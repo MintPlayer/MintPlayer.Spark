@@ -18,8 +18,8 @@
     "@angular/common": "^22.0.0",
     "@angular/router": "^22.0.0",
     "@angular/forms": "^22.0.0",
-    "@mintplayer/ng-bootstrap": "^22.21.0",
-    "@mintplayer/web-components": "^2.18.0",
+    "@mintplayer/ng-bootstrap": "^22.22.0",
+    "@mintplayer/web-components": "^2.19.0",
     "@mintplayer/pagination": "*",
     "rxjs": "~7.8.0"
   },

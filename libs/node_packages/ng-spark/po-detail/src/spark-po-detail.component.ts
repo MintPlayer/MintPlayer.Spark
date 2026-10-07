@@ -30,7 +30,7 @@ import {
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SparkQueryCardComponent, SparkGridCellComponent, SparkPriorityNavCloseOnActionDirective } from '@mintplayer/ng-spark/grid';
+import { SparkQueryCardComponent, SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
 import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rendererValue, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   AttributeGroup,
@@ -62,7 +62,7 @@ import { combineLatest } from 'rxjs';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkPriorityNavCloseOnActionDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

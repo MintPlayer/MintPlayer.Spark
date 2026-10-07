@@ -85,7 +85,7 @@
         ticked, until it is closed and reopened. The cost is that a filtered column carries no
         visual marker yet, which is worth far less than a panel that dies on first use. See #431 F7.
       -->
-      <div *bsDatatableColumn="col.name; sortable: col.canSort !== false; filterable: col.canFilter !== false">
+      <div *bsDatatableColumn="col.name; sortable: col.canSort !== false; filterable: col.canFilter !== false; label: (col.label | resolveTranslation) || col.name">
         {{ (col.label | resolveTranslation) || col.name }}
         <spark-attribute-description [description]="col.description" />
 
@@ -111,7 +111,7 @@
       unclipped headers ran into each other. With no column at all the datatable waits.
     -->
     @if (rowActions().length && allColumns().length) {
-      <div *bsDatatableColumn="rowActionsColumn; sortable: false; filterable: false">
+      <div *bsDatatableColumn="rowActionsColumn; sortable: false; filterable: false; resizable: false; label: 'common.actions' | t">
         <span class="visually-hidden">{{ 'common.actions' | t }}</span>
       </div>
     }

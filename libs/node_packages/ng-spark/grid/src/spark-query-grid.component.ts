@@ -666,16 +666,14 @@ export class SparkQueryGridComponent {
    */
   allColumns = computed(() => this.columns() ?? this.fetchedColumns());
 
-  /** The internal name of the per-row ⋮ menu's column; never shown, so it must never be announced. */
+  /** The internal name of the per-row ⋮ menu's column; never shown or announced (its `label` is "Actions"). */
   readonly rowActionsColumn = '__sparkRowActions';
 
   /**
-   * The datatable's `[labels]`: resize handles named by the label the header SHOWS, translated —
-   * the datatable only knows the column's name. See `sparkDatatableLabels`.
+   * The datatable's `[labels]`: the resize handle and its options dialog, translated. The column
+   * each string names comes from `bsDatatableColumnLabel` in the template. See `sparkDatatableLabels`.
    */
-  datatableLabels = computed(() => sparkDatatableLabels(this.lang, this.allColumns(), {
-    [this.rowActionsColumn]: this.lang.t('common.actions'),
-  }));
+  datatableLabels = computed(() => sparkDatatableLabels(this.lang));
 
   /**
    * True when rows do not come from this component's own fetch.
