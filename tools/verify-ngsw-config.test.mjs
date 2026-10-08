@@ -56,7 +56,6 @@ export function findClientApps(root = path.join(REPO, 'apps')) {
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const appName = (clientApp) => path.relative(path.join(REPO, 'apps'), clientApp).split(path.sep)[0];
-const ngSparkVersion = readJson(path.join(REPO, 'libs', 'node_packages', 'ng-spark', 'package.json')).version;
 
 const clientApps = findClientApps();
 
@@ -94,10 +93,12 @@ for (const clientApp of clientApps) {
     }
   });
 
-  test(`${name}: appData.build is the ng-spark version, not a commit sha`, () => {
+  test(`${name}: appData.build is set and is not a commit sha`, () => {
     // A sha changes on every commit: it busts the Nx cache and makes every client see an update (S4).
-    assert.equal(config.appData?.build, ngSparkVersion,
-      `appData.build must equal @mintplayer/ng-spark's version (${ngSparkVersion}); update it when the package is bumped`);
+    // The value itself is not pinned (owner, 2026-10-08), so a package bump doesn't touch every app.
+    const build = config.appData?.build;
+    assert.ok(typeof build === 'string' && build.trim() !== '', 'appData.build must be a non-empty string');
+    assert.ok(!/^[0-9a-f]{7,40}$/i.test(build), `appData.build looks like a commit sha (${build})`);
   });
 
   test(`${name}: the production build uses this ngsw-config.json`, () => {

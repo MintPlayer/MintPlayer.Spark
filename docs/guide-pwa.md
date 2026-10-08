@@ -22,8 +22,8 @@ does not exist`), and forced through, Nx's `angular.json` shim rewrites **every*
    - `index`: `/index.html`
    - `appData`: `{ "build": "<@mintplayer/ng-spark version>" }`. Not a commit sha: a sha in this
      file changes the Nx cache key on every commit, and patched into `ngsw.json` after the build it
-     makes every client see an update on every deploy. The guard test pins it to
-     `libs/node_packages/ng-spark/package.json`'s version, so bump both together.
+     makes every client see an update on every deploy. The guard test only requires it to be set
+     and not sha-shaped; it is not pinned, so an ng-spark bump doesn't have to touch every app.
    - `assetGroups`: `app` (prefetch: `/favicon.ico`, `/index.html`, `/manifest.webmanifest`,
      `/*.css`, `/*.js`, `/bs-theme-preboot.js`, minus `/safety-worker.js` and
      `/worker-basic.min.js`) and `assets` (lazy, `updateMode: prefetch`: icons, images, fonts).
@@ -87,8 +87,7 @@ exclusion list is what actually protects it.
 
 **Guard test:** `tools/verify-ngsw-config.test.mjs` (`npm run test:tools`, run in CI by
 `pull-request.yml`) finds every `apps/**/ClientApp` and fails when its `ngsw-config.json` is missing,
-lacks one of these exclusions, has a `dataGroup` for `/spark`, carries an `appData.build` other
-than the ng-spark version, or when the production build does not use the file.
+lacks one of these exclusions, has a `dataGroup` for `/spark`, has an empty or sha-shaped `appData.build`, or when the production build does not use the file.
 
 ## `provideSparkServiceWorker()`
 
