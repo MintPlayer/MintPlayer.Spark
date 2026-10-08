@@ -100,6 +100,8 @@ app.UseSpark();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSpark();
+    // The app's own generator endpoints (Api/FleetCarsProxyEndpoint.cs, the I12 resource-server demo).
+    MintPlayer.AspNetCore.Endpoints.Generated.HREndpointsExtensions.MapHREndpoints(endpoints);
 });
 
 app.UseWhen(

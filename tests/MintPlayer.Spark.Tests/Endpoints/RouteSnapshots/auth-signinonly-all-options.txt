@@ -4,7 +4,7 @@ GET /connect/applications
 POST /connect/applications/revoke | antiforgery=required
 POST /connect/applications/revoke-scope | antiforgery=required
 GET /connect/authorize
-POST /connect/authorize
+POST /connect/authorize | antiforgery=not-required
 GET /connect/consent
 POST /connect/consent | antiforgery=required
 GET /connect/device
