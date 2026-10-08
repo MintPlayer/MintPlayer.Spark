@@ -111,8 +111,6 @@ if (builder.InitializeSparkModerationIfRequested(args))
 if (builder.VerifySparkSecurityIfRequested(args))
     return;
 
-var testSeams = QnATestSeams.IsEnabled(builder.Configuration, builder.Environment);
-
 var app = builder.Build();
 
 if (builder.Configuration.GetValue("Spark:HttpsRedirection", true))
@@ -126,8 +124,9 @@ app.UseSpark();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSpark();
-    if (testSeams)
-        QnATestSeams.Map(endpoints);
+    // The test seams (/qna-test/moderation/*). Their group maps itself only when
+    // QnA:TestSeams:Enabled is true, and refuses to start in Production (QnATestSeams).
+    endpoints.MapQnAEndpoints();
 });
 
 app.UseWhen(

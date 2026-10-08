@@ -1,6 +1,6 @@
 POST /qna-test/moderation/credit | antiforgery=required
 POST /qna-test/moderation/detect | antiforgery=required
-POST /qna-test/moderation/recompute | accepts(application/json) | antiforgery=required
+POST /qna-test/moderation/recompute | antiforgery=required
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required
