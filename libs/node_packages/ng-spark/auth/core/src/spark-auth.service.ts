@@ -1,14 +1,26 @@
-import { computed, inject, Injectable, NgZone, signal } from '@angular/core';
+import { computed, inject, Injectable, Injector, NgZone, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import {
   AuthUser,
   SPARK_AUTH_CONFIG,
   SparkAuthCapabilities,
+  SPARK_EXTERNAL_LOGIN_ACK_TYPE,
+  SPARK_EXTERNAL_LOGIN_CHANNEL,
+  SPARK_EXTERNAL_LOGIN_ERRORS,
   SPARK_EXTERNAL_LOGIN_MESSAGE_TYPE,
+  SPARK_EXTERNAL_LOGIN_QUERY_PARAM,
+  SPARK_EXTERNAL_LOGIN_TIMEOUT_MS,
+  SparkExternalLoginAck,
   SparkExternalLoginError,
+  SparkExternalLoginMessage,
   SparkExternalLoginOptions,
   SparkExternalLoginResult,
+  resolveSparkExternalLoginMode,
+  sparkExternalLoginDoneKey,
+  sparkExternalLoginNonce,
+  sparkExternalLoginStorageKey,
   SparkExternalLogins,
   SparkPasskeyError,
   SparkPasskeyResult,
@@ -37,6 +49,24 @@ export class SparkAuthService {
 
   readonly user = this.currentUser.asReadonly();
   readonly isAuthenticated = computed(() => this.currentUser()?.isAuthenticated === true);
+
+  /** Resolved lazily: only {@link takeExternalLoginResult} needs the router. */
+  private readonly injector = inject(Injector);
+
+  private readonly pendingExternalLogin = signal(false);
+
+  /**
+   * `true` while a popup sign-in or link attempt is open and its popup has not been seen closed.
+   *
+   * ⚠️ Drive button and spinner state from this, **not** from the promise settling. When the
+   * provider's login page sends COOP the popup reads closed long before its result arrives, so this
+   * turns `false` early (the buttons re-enable) while the attempt keeps listening, and a late result
+   * still settles it.
+   */
+  readonly externalLoginPending = this.pendingExternalLogin.asReadonly();
+
+  /** Settles the open popup attempt; `null` when none is open. */
+  private activeExternalAttempt: ((error?: SparkExternalLoginError) => void) | null = null;
 
   constructor() {
     this.checkAuth();
@@ -132,14 +162,21 @@ export class SparkAuthService {
    * Signs in through an external provider (GitHub, Google, …) and leaves this service's
    * `user()` signal up to date, exactly as `login()` does.
    *
-   * The whole handshake lives here: opening the window, listening for the callback's
-   * message, checking its origin, detecting a popup the user closed by hand, tearing the
-   * listener and poll down on every exit path, and re-reading the session afterwards.
-   * Callers get an outcome, not a protocol — which is the point, because the previous
-   * hand-rolled version leaked its listener whenever the user simply closed the window.
+   * The whole handshake lives here: a per-attempt nonce, four ways for the result to come back
+   * (`postMessage` from the opener-held popup, a BroadcastChannel, a `localStorage` entry and its
+   * `storage` event, and a re-read of that entry when this tab is shown again), the acknowledgement
+   * that lets the callback page close itself, teardown on every exit path, and re-reading the
+   * session afterwards. Callers get an outcome, not a protocol.
    *
-   * In `'redirect'` mode the returned promise never settles: this document is being
-   * replaced, and the outcome arrives as the next page load rather than as a value.
+   * A popup attempt settles only when its result arrives, when another attempt starts (the old one
+   * settles `popup_closed`), or after 10 minutes (`popup_closed`). A popup that *looks* closed does
+   * not settle it: the provider's COOP header severs the handle while the user is still signing in.
+   * ⚠️ Take button and spinner state from {@link externalLoginPending}, not from this promise.
+   *
+   * The mode is the call's `mode`, else the configured `externalLoginMode` (`'auto'`: redirect in an
+   * installed web app, popup otherwise). In `'redirect'` mode the returned promise never settles:
+   * this document is being replaced, and the outcome arrives as the next page load
+   * ({@link takeExternalLoginResult}) rather than as a value.
    */
   loginWithProvider(provider: string, options: SparkExternalLoginOptions = {}): Promise<SparkExternalLoginResult> {
     return this.externalFlow('/external-login', provider, options);
@@ -190,36 +227,94 @@ export class SparkAuthService {
     }
   }
 
+  /**
+   * Reads the `?sparkExternalLogin=<code>` a redirect-mode round trip came back with, and strips it
+   * from the address bar (a `replaceUrl` navigation, so Back does not bring it back and a reload
+   * does not show it twice).
+   *
+   * Answers `null` when the URL carries none. A value that is not a known
+   * {@link SparkExternalLoginError} is answered as `no_login_info` rather than echoed, so a crafted
+   * link cannot put text of its choosing on the page.
+   *
+   * Only failures carry the parameter: a successful redirect lands on the `returnUrl` signed in.
+   * The shipped sign-in and account pages call this on load. An app whose `returnUrl` is some other
+   * page calls it there (or in its shell) to show the failure.
+   */
+  takeExternalLoginResult(): SparkExternalLoginError | null {
+    const router = this.injector.get(Router, null);
+    if (!router) return null;
+    const tree = router.parseUrl(router.url);
+    const raw = tree.queryParams[SPARK_EXTERNAL_LOGIN_QUERY_PARAM];
+    if (raw === undefined) return null;
+
+    const { [SPARK_EXTERNAL_LOGIN_QUERY_PARAM]: _, ...rest } = tree.queryParams;
+    tree.queryParams = rest;
+    // Deferred: this is called from a component constructor, inside the navigation that is
+    // activating it; starting another navigation synchronously there would cancel that one.
+    queueMicrotask(() => void router.navigateByUrl(tree, { replaceUrl: true }));
+
+    const code = Array.isArray(raw) ? raw[0] : raw;
+    return SPARK_EXTERNAL_LOGIN_ERRORS.includes(code as SparkExternalLoginError)
+      ? code as SparkExternalLoginError
+      : 'no_login_info';
+  }
+
   private externalFlow(
     path: string,
     provider: string,
     options: SparkExternalLoginOptions,
   ): Promise<SparkExternalLoginResult> {
-    const { returnUrl = this.config.defaultRedirectUrl, mode = 'popup' } = options;
+    const returnUrl = options.returnUrl ?? this.config.defaultRedirectUrl;
+    const mode = options.mode ?? resolveSparkExternalLoginMode(this.config.externalLoginMode);
     const url = `${this.config.apiBasePath}${path}?provider=${encodeURIComponent(provider)}`
       + `&returnUrl=${encodeURIComponent(returnUrl)}`;
+
+    // D2: a new attempt supersedes the open one, which settles 'popup_closed' and is torn down.
+    this.activeExternalAttempt?.('popup_closed');
 
     if (mode === 'redirect') {
       window.location.assign(url);
       return new Promise<SparkExternalLoginResult>(() => { /* the page is going away */ });
     }
 
+    const nonce = sparkExternalLoginNonce();
+    const popup = window.open(
+      `${url}&popup=1&nonce=${nonce}&ngsw-bypass=true`, 'spark-external-login', 'width=600,height=700');
+    // No automatic redirect fallback (F10): in Firefox's installed web app a null handle may still
+    // have started the flow inside the app, and redirecting too would run a second one. The shipped
+    // sign-in page offers "Continue in this tab" instead.
+    if (!popup) return Promise.resolve({ success: false, error: 'popup_blocked' });
+
     return new Promise<SparkExternalLoginResult>((resolve) => {
-      const popup = window.open(`${url}&popup=1`, 'spark-external-login', 'width=600,height=700');
-      if (!popup) {
-        resolve({ success: false, error: 'popup_blocked' });
-        return;
+      const storageKey = sparkExternalLoginStorageKey(nonce);
+      const doneKey = sparkExternalLoginDoneKey(nonce);
+
+      let channel: BroadcastChannel | null = null;
+      try {
+        channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(SPARK_EXTERNAL_LOGIN_CHANNEL) : null;
+      } catch {
+        channel = null;
       }
 
-      // One settle path, so the listener and the poll cannot outlive the flow no matter
-      // which of the four ways it ends.
+      // One settle path, so no listener, channel or timer outlives the attempt whichever way it ends.
       let settled = false;
       const settle = (error?: SparkExternalLoginError) => {
         if (settled) return;
         settled = true;
         window.removeEventListener('message', onMessage);
+        window.removeEventListener('storage', onStorage);
+        window.removeEventListener('focus', reread);
+        document.removeEventListener('visibilitychange', onVisibility);
+        if (channel) {
+          channel.removeEventListener('message', onChannel);
+          channel.close();
+        }
         clearInterval(poll);
-        popup.close();
+        clearTimeout(timeout);
+        if (this.activeExternalAttempt === settle) {
+          this.activeExternalAttempt = null;
+          this.pendingExternalLogin.set(false);
+        }
 
         this.zone.run(async () => {
           if (!error) {
@@ -234,19 +329,65 @@ export class SparkAuthService {
         });
       };
 
-      const onMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        if (event.data?.type !== SPARK_EXTERNAL_LOGIN_MESSAGE_TYPE) return;
-        settle(event.data.success ? undefined : (event.data.error ?? 'no_login_info'));
+      /** The first payload for this nonce wins, from whichever of the four sources brings it. */
+      const deliver = (data: unknown) => {
+        if (settled) return;
+        const message = data as Partial<SparkExternalLoginMessage> | null;
+        if (!message || typeof message !== 'object') return;
+        if (message.type !== SPARK_EXTERNAL_LOGIN_MESSAGE_TYPE) return;
+        // A payload for another attempt (another tab, an older popup) is not ours.
+        if (message.nonce !== nonce) return;
+
+        const ack: SparkExternalLoginAck = { type: SPARK_EXTERNAL_LOGIN_ACK_TYPE, nonce };
+        try { channel?.postMessage(ack); } catch { /* the callback page falls back to its own close */ }
+        try {
+          localStorage.setItem(doneKey, '1');
+          localStorage.removeItem(storageKey);
+        } catch { /* storage may be unavailable (private mode); the result is already in hand */ }
+        try { popup.close(); } catch { /* cut off by COOP: nothing to close from here */ }
+
+        settle(message.success ? undefined : (message.error ?? 'no_login_info'));
       };
 
-      // A user who closes the window never posts anything, so without this the promise
-      // and its listener would both live forever.
+      const onMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        deliver(event.data);
+      };
+      const onChannel = (event: MessageEvent) => deliver(event.data);
+      const readStored = () => {
+        let stored: string | null = null;
+        try { stored = localStorage.getItem(storageKey); } catch { return; }
+        if (!stored) return;
+        try { deliver(JSON.parse(stored)); } catch { /* not a payload */ }
+      };
+      const onStorage = (event: StorageEvent) => {
+        if (event.key === storageKey && event.newValue) readStored();
+      };
+      // A frozen background tab may have missed both the channel and the storage event.
+      const reread = () => readStored();
+      const onVisibility = () => {
+        if (document.visibilityState === 'visible') readStored();
+      };
+
+      // D2 final: the poll drives UI only. Under COOP (F6) the popup reads closed while the user is
+      // still signing in, so a closed popup only re-enables the buttons; the listeners stay.
       const poll = setInterval(() => {
-        if (popup.closed) settle('popup_closed');
+        let closed = false;
+        try { closed = popup.closed; } catch { closed = false; }
+        if (!closed) return;
+        clearInterval(poll);
+        if (this.activeExternalAttempt === settle) this.pendingExternalLogin.set(false);
       }, POPUP_CLOSE_POLL_MS);
+      const timeout = setTimeout(() => settle('popup_closed'), SPARK_EXTERNAL_LOGIN_TIMEOUT_MS);
 
       window.addEventListener('message', onMessage);
+      window.addEventListener('storage', onStorage);
+      window.addEventListener('focus', reread);
+      document.addEventListener('visibilitychange', onVisibility);
+      channel?.addEventListener('message', onChannel);
+
+      this.activeExternalAttempt = settle;
+      this.pendingExternalLogin.set(true);
     });
   }
 
