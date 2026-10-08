@@ -106,13 +106,17 @@ internal sealed class OidcRequestObjects(IDocumentStore store, OidcClientKeys cl
             && !await OidcReplayCache.TryUseAsync(store, $"jar:{app.ClientId}:{jwt.Id}", jwt.ValidTo == DateTime.MinValue ? DateTime.UtcNow.AddHours(1) : jwt.ValidTo, ct))
             return new(null, Error: "invalid_request_object", ErrorDescription: "The request object was already used.");
 
-        var parameters = OidcAuthorizeParameters.From(name => Read(jwt, name)) with { ClientId = app.ClientId, Request = null, RequestUri = null };
+        // The payload as JSON, read directly: Wilson keeps claims as parsed CLR values, so asking it for a
+        // JsonElement answers false for every claim and the request object read as empty.
+        using var payload = JsonDocument.Parse(Base64UrlEncoder.Decode(jwt.EncodedPayload));
+        var root = payload.RootElement;
+        var parameters = OidcAuthorizeParameters.From(name => Read(root, name)) with { ClientId = app.ClientId, Request = null, RequestUri = null };
         return new(parameters);
     }
 
-    private static StringValues Read(JsonWebToken jwt, string name)
+    private static StringValues Read(JsonElement payload, string name)
     {
-        if (!jwt.TryGetPayloadValue<JsonElement>(name, out var value))
+        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty(name, out var value))
             return StringValues.Empty;
         return value.ValueKind switch
         {

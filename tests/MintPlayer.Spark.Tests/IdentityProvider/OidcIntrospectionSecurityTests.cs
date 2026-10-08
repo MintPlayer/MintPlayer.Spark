@@ -182,7 +182,7 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
         var response = await Client.PostAsync("/connect/introspect",
             new FormUrlEncodedContent(new Dictionary<string, string> { ["token"] = "anything" }));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "no client credentials is a failed client authentication (RFC 6749 §5.2)");
     }
 
     /// <summary>R-A2/R-A3 — unknown client and bad secret must look the same.</summary>

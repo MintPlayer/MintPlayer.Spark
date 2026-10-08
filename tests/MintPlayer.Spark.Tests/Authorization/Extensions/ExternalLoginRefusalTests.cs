@@ -82,7 +82,7 @@ public class ExternalLoginRefusalTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
         });
         using var client = server.CreateClient();
@@ -110,7 +110,7 @@ public class ExternalLoginRefusalTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
         });
         using var client = server.CreateClient();
@@ -129,7 +129,7 @@ public class ExternalLoginRefusalTests : SparkTestDriver
     /// </summary>
     [Theory]
     [InlineData("lockedOut", "locked_out")]
-    [InlineData("twoFactor", "requires_two_factor")]
+    // twoFactor is no longer a refusal: #490 D11 sends it to the two-factor page (ExternalLoginTwoFactorTests).
     [InlineData("notAllowed", "not_allowed")]
     [InlineData("plain", "sign_in_refused")]
     public async Task A_refused_sign_in_for_a_linked_account_says_why(string kind, string expected)
@@ -147,7 +147,7 @@ public class ExternalLoginRefusalTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(refusal);
             um.FindByLoginAsync(info.LoginProvider, info.ProviderKey).Returns(linked);
         });
@@ -174,7 +174,7 @@ public class ExternalLoginRefusalTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
             um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
             um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
@@ -198,7 +198,7 @@ public class ExternalLoginRefusalTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
             um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
             um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
@@ -224,7 +224,7 @@ public class ExternalLoginRefusalTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
             um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
             um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);

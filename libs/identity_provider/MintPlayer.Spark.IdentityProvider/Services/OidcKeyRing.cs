@@ -194,7 +194,8 @@ internal sealed class OidcKeyRing(
             try
             {
                 using var session = store.OpenSession();
-                var reloaded = session.Query<OidcKey>().Where(k => k.Use == "sig").ToList().Select(Open).ToList();
+                // The whole collection, filtered here: a where clause would be answered by an auto-index.
+                var reloaded = session.Advanced.RawQuery<OidcKey>("from OidcKeys").ToList().Where(k => k.Use == "sig").Select(Open).ToList();
                 if (reloaded.Count > 0)
                     keys = reloaded;
                 loadedAt = DateTime.UtcNow;
@@ -215,10 +216,12 @@ internal sealed class OidcKeyRing(
 
     private async Task<List<Loaded>> LoadAllAsync(IAsyncDocumentSession session, CancellationToken ct)
     {
-        // A collection query, not an index read: the ring is a handful of documents, and a stale view
-        // could miss the key that is signing.
-        var docs = await session.Advanced.AsyncRawQuery<OidcKey>("from OidcKeys where Use = $use").AddParameter("use", "sig").ToListAsync(ct);
-        return docs.Select(Open).ToList();
+        // A collection scan, not an index read: the ring is a handful of documents, and a stale view
+        // could miss the key that is signing. Filtered in memory, because any where clause, even on a
+        // collection query, is answered by an auto-index (which made a rotation right after another one
+        // load no active key).
+        var docs = await session.Advanced.AsyncRawQuery<OidcKey>("from OidcKeys").ToListAsync(ct);
+        return docs.Where(d => d.Use == "sig").Select(Open).ToList();
     }
 
     private Loaded Open(OidcKey document)

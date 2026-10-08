@@ -26,9 +26,13 @@ internal static class ExternalLoginTwoFactor
 
     /// <summary>Configuration (<c>Spark:Auth:ExternalLogin:TwoFactor:*</c>) wins over the code options when set.</summary>
     public static SparkExternalLoginTwoFactorOptions Resolve(IServiceProvider services)
+        => Resolve(services.GetRequiredService<IOptions<SparkAuthenticationOptions>>().Value, services.GetService<IConfiguration>());
+
+    /// <inheritdoc cref="Resolve(IServiceProvider)"/>
+    public static SparkExternalLoginTwoFactorOptions Resolve(SparkAuthenticationOptions options, IConfiguration? configuration)
     {
-        var configured = services.GetRequiredService<IOptions<SparkAuthenticationOptions>>().Value.ExternalLoginTwoFactor;
-        var section = services.GetService<IConfiguration>()?.GetSection("Spark:Auth:ExternalLogin:TwoFactor");
+        var configured = options.ExternalLoginTwoFactor;
+        var section = configuration?.GetSection("Spark:Auth:ExternalLogin:TwoFactor");
         return new SparkExternalLoginTwoFactorOptions
         {
             Enabled = bool.TryParse(section?["Enabled"], out var enabled) ? enabled : configured.Enabled,
@@ -40,27 +44,27 @@ internal static class ExternalLoginTwoFactor
     /// The page's URL, carrying the callback's hand-off flags (popup, nonce) and the return URL. <c>ngsw-bypass</c>
     /// keeps a service worker's navigation fallback off it (#464 D8).
     /// </summary>
-    public static string Url(HttpContext context, bool popup, string? nonce, string returnUrl, string? error = null, bool recovery = false)
+    public static string Url(PathString pathBase, bool popup, string? nonce, string returnUrl, string? error = null, bool recovery = false)
     {
         var query = new Dictionary<string, string?> { ["returnUrl"] = returnUrl, ["ngsw-bypass"] = "true" };
         if (popup) query["popup"] = "true";
         if (nonce is not null) query[SparkExternalLoginNonce.QueryParameter] = nonce;
         if (error is not null) query["error"] = error;
         if (recovery) query["recovery"] = "true";
-        return QueryHelpers.AddQueryString(context.Request.PathBase + PagePath, query);
+        return QueryHelpers.AddQueryString(pathBase + PagePath, query);
     }
 
     /// <summary>The page's language: the SPA's <c>spark-lang</c> cookie when it is a culture name, else the request's.</summary>
-    public static string Text(IManager manager, HttpContext context, string key)
+    public static string Text(IManager manager, IRequestCookieCollection cookies, string key)
     {
-        var cookie = context.Request.Cookies["spark-lang"];
+        var cookie = cookies["spark-lang"];
         return cookie is not null && CultureName().IsMatch(cookie)
             ? manager.GetMessage("auth." + key, cookie)
             : manager.GetTranslatedMessage("auth." + key);
     }
 
-    public static string? Culture(HttpContext context)
-        => context.Request.Cookies["spark-lang"] is { } cookie && CultureName().IsMatch(cookie) ? cookie : null;
+    public static string? Culture(IRequestCookieCollection cookies)
+        => cookies["spark-lang"] is { } cookie && CultureName().IsMatch(cookie) ? cookie : null;
 
     private static readonly Regex CultureNameRegex = new("^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$", RegexOptions.CultureInvariant);
     private static Regex CultureName() => CultureNameRegex;
@@ -89,6 +93,9 @@ internal sealed partial class ExternalLoginTwoFactorPage<TUser> : IGetEndpoint
     [QueryParam] public string? ReturnUrl { get; set; }
     [QueryParam] public string? Error { get; set; }
     [QueryParam] public string? Recovery { get; set; }
+    /// <summary>Present (any value) in popup mode, as on the callback.</summary>
+    [QueryParam("popup")] public string? Popup { get; set; }
+    [QueryParam("nonce")] public string? Nonce { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly IAntiforgery antiforgery;
@@ -97,8 +104,8 @@ internal sealed partial class ExternalLoginTwoFactorPage<TUser> : IGetEndpoint
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(ReturnUrl);
-        var popup = httpContext.Request.Query.ContainsKey("popup");
-        var nonce = SparkExternalLoginNonce.Accept(httpContext.Request.Query[SparkExternalLoginNonce.QueryParameter]);
+        var popup = Popup is not null;
+        var nonce = SparkExternalLoginNonce.Accept(Nonce);
 
         if (await signInManager.GetTwoFactorAuthenticationUserAsync() is null)
             return SparkAuthenticationExtensions.ExternalLoginOutcome(popup, nonce, returnUrl, ExternalLoginErrors.RequiresTwoFactor);
@@ -109,7 +116,7 @@ internal sealed partial class ExternalLoginTwoFactorPage<TUser> : IGetEndpoint
 
     private string BuildHtml(HttpContext context, string returnUrl, bool popup, string? nonce, bool useRecoveryCode)
     {
-        string T(string key) => ExternalLoginTwoFactor.Text(manager, context, key);
+        string T(string key) => ExternalLoginTwoFactor.Text(manager, context.Request.Cookies, key);
         var errorKey = Error switch
         {
             "missing_code" or "invalid_code" => "externalTwoFactorInvalidCode",
@@ -118,7 +125,7 @@ internal sealed partial class ExternalLoginTwoFactorPage<TUser> : IGetEndpoint
         };
 
         var sb = new StringBuilder();
-        ConnectPageTheme.AppendDocumentStart(sb, context, T("externalTwoFactorTitle"), ExternalLoginTwoFactor.Culture(context));
+        ConnectPageTheme.AppendDocumentStart(sb, context, T("externalTwoFactorTitle"), ExternalLoginTwoFactor.Culture(context.Request.Cookies));
         sb.Append("body{max-width:400px;margin:80px auto;padding:0 20px}");
         sb.Append("h2{margin-bottom:24px}");
         sb.Append(".form-group{margin-bottom:16px}");
@@ -162,7 +169,7 @@ internal sealed partial class ExternalLoginTwoFactorPage<TUser> : IGetEndpoint
         sb.Append("<button type=\"submit\" class=\"btn btn-primary\">").Append(SparkPageHtml.Encode(T("externalTwoFactorVerify"))).Append("</button>");
         sb.Append("</form>");
 
-        var switchUrl = ExternalLoginTwoFactor.Url(context, popup, nonce, returnUrl, recovery: !useRecoveryCode);
+        var switchUrl = ExternalLoginTwoFactor.Url(context.Request.PathBase, popup, nonce, returnUrl, recovery: !useRecoveryCode);
         sb.Append("<a class=\"btn-link\" href=\"").Append(SparkPageHtml.Encode(switchUrl)).Append("\">")
           .Append(SparkPageHtml.Encode(T(useRecoveryCode ? "externalTwoFactorUseAuthenticator" : "externalTwoFactorUseRecovery"))).Append("</a>");
         sb.Append("</body></html>");
@@ -245,5 +252,5 @@ internal sealed partial class ExternalLoginTwoFactorSubmit<TUser> : IPostEndpoin
     }
 
     private static IResult Back(HttpContext context, ExternalLoginTwoFactorSubmission submission, string returnUrl, string error)
-        => Results.Redirect(ExternalLoginTwoFactor.Url(context, submission.Popup, submission.Nonce, returnUrl, error, submission.UseRecoveryCode));
+        => Results.Redirect(ExternalLoginTwoFactor.Url(context.Request.PathBase, submission.Popup, submission.Nonce, returnUrl, error, submission.UseRecoveryCode));
 }

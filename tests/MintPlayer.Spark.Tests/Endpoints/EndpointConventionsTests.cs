@@ -60,6 +60,10 @@ public class EndpointConventionsTests
             + "is a helper called with the callback's context, not an endpoint. Plan M3/M3b."),
         new("SparkAntiforgeryMiddleware", "UseSparkAntiforgery", Rule.RequestServices,
             "middleware (PRD §3 non-goal) resolving IAntiforgery per request; no endpoint instance exists yet."),
+        new("OidcAuthorize", "HandleAsync", Rule.RequestQuery,
+            "the OAuth authorization request is an open parameter set (RFC 6749 §3.1: unknown parameters are "
+            + "ignored; PAR and JAR merge into it), parsed once by OidcAuthorizeParameters.FromQuery and shared "
+            + "with the POST form; a [QueryParam] per member would duplicate that parser. IdP PRD D8."),
         new("SparkPresentation", "Check", Rule.RequestServices,
             "a System.Text.Json serialization hook, which has no DI of its own; it only asks whether the host "
             + "is Development to throw on an unpresented object."),
@@ -116,6 +120,11 @@ public class EndpointConventionsTests
         new("ConnectResults", "the OIDC error/redirect result shapes shared by the /connect endpoints"),
         new("ConnectPageTheme", "reads the theme cookie to pick the page's colour scheme; no route"),
         new("InteractiveUserExtensions", "reads the signed-in interactive user off HttpContext.User; no service lookup"),
+        new("OidcRegistrationAccess", "loads the registration a registration access token (RFC 7592) names; shared by the three /connect/register/{client_id} endpoints"),
+        new("OidcAuthorizationFlow", "the code response shared by /connect/authorize and the consent POST (IssueCodeResponseAsync); its services arrive as arguments"),
+        new("OidcAuthorizationResponse", "delivers an authorization response by query or form_post (OAuth 2.0 Form Post Response Mode) from values the endpoint resolved"),
+        new("SparkPageHtml", "HTML helpers of the server-rendered pages; AppendAntiforgery writes the form field from the IAntiforgery the endpoint injected"),
+        new("SparkProofOfPossession", "resource-server token checks (DPoP, cnf) called from the JwtBearer events and the introspection handler, which are not endpoints"),
     ];
 
     [Fact]

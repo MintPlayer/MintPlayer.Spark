@@ -61,8 +61,9 @@ public static class SparkDpopProof
         if (!result.IsValid)
             return (null, "The DPoP proof's signature is not valid.");
 
-        var htm = jwt.GetPayloadValue<string?>("htm");
-        var htu = jwt.GetPayloadValue<string?>("htu");
+        // TryGet: GetPayloadValue throws on an absent claim, which turned a proof missing one into a 500.
+        var htm = Claim(jwt, "htm");
+        var htu = Claim(jwt, "htu");
         if (!string.Equals(htm, method, StringComparison.Ordinal))
             return (null, "The DPoP proof is for another method.");
         if (!Uri.TryCreate(htu, UriKind.Absolute, out var htuUri)
@@ -73,7 +74,7 @@ public static class SparkDpopProof
         if (iat == DateTime.MinValue || iat < DateTime.UtcNow - Lifetime || iat > DateTime.UtcNow.AddMinutes(1))
             return (null, "The DPoP proof is not fresh.");
 
-        if (accessToken is not null && jwt.GetPayloadValue<string?>("ath") != AccessTokenHash(accessToken))
+        if (accessToken is not null && Claim(jwt, "ath") != AccessTokenHash(accessToken))
             return (null, "The DPoP proof is not for this access token.");
 
         var jkt = Base64UrlEncoder.Encode(jwk.ComputeJwkThumbprint());
@@ -82,6 +83,9 @@ public static class SparkDpopProof
 
         return (jkt, null);
     }
+
+    private static string? Claim(JsonWebToken jwt, string name)
+        => jwt.TryGetPayloadValue<string>(name, out var value) ? value : null;
 
     /// <summary>The <c>ath</c> claim: base64url SHA-256 of the access token's ASCII bytes.</summary>
     public static string AccessTokenHash(string accessToken)

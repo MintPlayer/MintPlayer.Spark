@@ -58,10 +58,16 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8) for the issuer; the endpoint is created per request.</summary>
     private HttpContext httpContext = null!;
 
-    protected override ValueTask<OidcClientTokenRequest?> BindRequestAsync(HttpContext context)
+    /// <summary>The form the binder read, kept for client authentication (which needs the raw fields).</summary>
+    private IFormCollection form = null!;
+
+    protected override async ValueTask<OidcClientTokenRequest?> BindRequestAsync(HttpContext context)
     {
         httpContext = context;
-        return OidcClientTokenRequest.BindAsync(context);
+        var request = await OidcClientTokenRequest.BindAsync(context);
+        // Read once by the binder above; ReadFormAsync returns the cached collection.
+        form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return request;
     }
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
@@ -81,7 +87,7 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
         using var session = store.OpenAsyncSession();
 
         // Authenticate client (D8). A public client may revoke its own tokens (RFC 7009 §2.1).
-        var client = await clientAuthenticator.AuthenticateAsync(httpContext, httpContext.Request.Form, session, ct);
+        var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
         if (!client.Succeeded)
             return client.ToResult(httpContext);
         var app = client.Application!;

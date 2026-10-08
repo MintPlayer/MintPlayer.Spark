@@ -268,12 +268,19 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     /// and against a stale auto-index an absence assertion passes for the wrong reason.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// Issued tokens only. Pending authorization requests, pushed requests and sessions are stored as
+    /// <see cref="OidcToken"/>s too (D1), but they are bookkeeping, not something a client holds.
+    /// </remarks>
     protected async Task<List<OidcToken>> CaseTokensAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => [.. (await session.Query<OidcToken>().ToListAsync()).Where(t => seededApplicationIds.Contains(t.ApplicationId))];
+        => [.. (await CaseRecordsAsync(session)).Where(t => t.Type is not (OidcTokenTypes.AuthorizationRequest or OidcTokenTypes.PushedRequest or OidcTokenTypes.Session))];
 
     /// <summary>The authorization requests (<see cref="OidcTokenTypes.AuthorizationRequest"/> tokens) counterpart of <see cref="CaseTokensAsync"/>.</summary>
     protected async Task<List<OidcToken>> CaseAuthorizationRequestsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => [.. (await CaseTokensAsync(session)).Where(t => t.Type == OidcTokenTypes.AuthorizationRequest)];
+        => [.. (await CaseRecordsAsync(session)).Where(t => t.Type == OidcTokenTypes.AuthorizationRequest)];
+
+    private async Task<List<OidcToken>> CaseRecordsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
+        => [.. (await session.Query<OidcToken>().ToListAsync()).Where(t => seededApplicationIds.Contains(t.ApplicationId))];
 
     protected const string Password = "Aa1!test-password";
 

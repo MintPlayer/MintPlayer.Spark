@@ -181,7 +181,7 @@ internal sealed partial class OidcTokenEndpoint<TUser>
             if (!string.Equals(actorRecord.ApplicationId, app.Id, StringComparison.Ordinal)
                 || string.Equals(actorRecord.Id, record.Id, StringComparison.Ordinal))
                 return Results.Json(new { error = "invalid_grant", error_description = "The actor token must be this client's own token." }, statusCode: 400);
-            actorSubject = actor.Subject ?? $"client:{app.ClientId}";
+            actorSubject = actor.Subject ?? actor.ClientId ?? app.ClientId;
         }
         else if (!app.AllowImpersonation)
         {

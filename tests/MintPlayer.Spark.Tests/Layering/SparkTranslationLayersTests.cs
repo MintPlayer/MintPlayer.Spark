@@ -41,7 +41,9 @@ public class SparkTranslationLayersTests
 
         var composition = Compose([.. Libraries(), app]);
 
-        Describe(composition).Should().Be(SparkLayersGoldenTests.Golden(golden));
+        var described = Describe(composition);
+        SparkLayersGoldenTests.UpdateGoldenIfRequested(golden, described);
+        described.Should().Be(SparkLayersGoldenTests.Golden(golden));
         composition.Conflicts.Should().BeEmpty();
     }
 

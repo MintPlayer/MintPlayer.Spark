@@ -736,7 +736,32 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         return (proc.ExitCode, $"stdout: {await stdoutTask}\nstderr: {await stderrTask}");
     }
 
+    /// <summary>
+    /// Starts the app, on fresh ports again when the ones picked were taken before it could bind them.
+    /// GetFreeTcpPort releases its port before the app binds it, so in a parallel sweep another process
+    /// (an embedded RavenDB, another host) can take it first and the app exits with "address already in
+    /// use". That used to fail the whole collection, after a 120 s wait for a process that had exited.
+    /// </summary>
     private async Task<string> StartAppAsync(string[] ravenUrls)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await StartAppOnceAsync(ravenUrls);
+            }
+            catch (PortTakenException) when (attempt < 3)
+            {
+                _appProcess?.Dispose();
+                _appProcess = null;
+                lock (_logLock) _appLog.Clear();
+            }
+        }
+    }
+
+    private sealed class PortTakenException(string message, Exception inner) : Exception(message, inner);
+
+    private async Task<string> StartAppOnceAsync(string[] ravenUrls)
     {
         var httpsPort = GetFreeTcpPort();
         var httpPort = GetFreeTcpPort();
@@ -849,8 +874,20 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         catch (TimeoutException ex)
         {
             string dump;
-            lock (_logLock) dump = string.Join('\n', _appLog.TakeLast(120));
-            throw new TimeoutException($"{ex.Message}\n\n--- {App.AppName} process output (last 120 lines) ---\n{dump}", ex);
+            bool portTaken;
+            // An exited process's last lines may still be in the pipes; WaitForExit drains them.
+            if (_appProcess.HasExited)
+                _appProcess.WaitForExit();
+            lock (_logLock)
+            {
+                dump = string.Join('\n', _appLog.TakeLast(120));
+                portTaken = _appProcess.HasExited
+                    && _appLog.Any(l => l.Contains("address already in use", StringComparison.OrdinalIgnoreCase));
+            }
+            var message = $"{ex.Message}\n\n--- {App.AppName} process output (last 120 lines) ---\n{dump}";
+            if (portTaken)
+                throw new PortTakenException(message, ex);
+            throw new TimeoutException(message, ex);
         }
         return httpsUrl;
     }
@@ -866,6 +903,10 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(120);
         while (DateTime.UtcNow < deadline)
         {
+            // An exited process never becomes ready: say so now, not after the full wait.
+            if (_appProcess is { HasExited: true } exited)
+                throw new TimeoutException($"{App.AppName} exited with code {exited.ExitCode} before it became ready at {baseUrl}");
+
             try
             {
                 using var response = await client.GetAsync($"{baseUrl}/");

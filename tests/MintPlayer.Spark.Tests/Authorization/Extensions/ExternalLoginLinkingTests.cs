@@ -75,7 +75,7 @@ public class ExternalLoginLinkingTests : SparkTestDriver
         _sender = new RecordingSender();
 
         _signInManager.GetExternalLoginInfoAsync().Returns(info);
-        _signInManager.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+        _signInManager.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
             .Returns(SignInResult.Failed);
         _userManager.FindByEmailAsync("alice@test.org").Returns(existing);
         _userManager.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
@@ -185,7 +185,7 @@ public class ExternalLoginLinkingTests : SparkTestDriver
     public async Task A_successful_sign_in_redirects_without_a_code()
     {
         using var server = await StartHostAsync(SparkExternalLoginLinking.Disabled, existing: null);
-        _signInManager.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+        _signInManager.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
             .Returns(SignInResult.Success);
         using var client = server.CreateClient();
 

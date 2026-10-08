@@ -34,6 +34,9 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
     }
 
     [QueryParam] public string? ReturnUrl { get; set; }
+    /// <summary>Present (any value) in popup mode; read again by ExternalLoginOutcome.</summary>
+    [QueryParam("popup")] public string? Popup { get; set; }
+    [QueryParam("nonce")] public string? Nonce { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly UserManager<TUser> userManager;
@@ -42,6 +45,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly SparkAccountMail<TUser> accountMail;
     [Inject] private readonly IEnumerable<SparkExternalProviderRegistration> providerRegistrations;
+    [Inject] private readonly Microsoft.Extensions.Configuration.IConfiguration? configuration;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -59,7 +63,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
 
         // #490 D11: the application's own second factor. Off, or skipped by a user who chose that
         // while AllowUserBypass is on, the external sign-in alone suffices.
-        var twoFactor = ExternalLoginTwoFactor.Resolve(httpContext.RequestServices);
+        var twoFactor = ExternalLoginTwoFactor.Resolve(options.Value, configuration);
         var linked = await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
         var bypassTwoFactor = !twoFactor.Enabled
             || (twoFactor.AllowUserBypass && linked is { BypassTwoFactorForExternalLogin: true });
@@ -78,9 +82,9 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
             // #490 D11: ExternalLoginSignInAsync has set Identity's two-factor cookie; the page asks for
             // the code and then ends the flow exactly as this callback would (popup hand-off or redirect).
             return Results.Redirect(ExternalLoginTwoFactor.Url(
-                httpContext,
-                popup: httpContext.Request.Query.ContainsKey("popup"),
-                nonce: SparkExternalLoginNonce.Accept(httpContext.Request.Query[SparkExternalLoginNonce.QueryParameter]),
+                httpContext.Request.PathBase,
+                popup: Popup is not null,
+                nonce: SparkExternalLoginNonce.Accept(Nonce),
                 safeReturnUrl));
         }
         else if (linked is not null)

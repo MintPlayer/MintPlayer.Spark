@@ -1,19 +1,4 @@
-GET /.well-known/jwks
-GET /.well-known/openid-configuration
-GET /connect/applications
-POST /connect/applications/revoke | antiforgery=required
-GET /connect/authorize
-GET /connect/consent
-POST /connect/consent | antiforgery=required
-POST /connect/introspect
-GET /connect/login
-POST /connect/login | antiforgery=required
-GET /connect/logout
-POST /connect/revoke
-POST /connect/token
-GET /connect/two-factor
-POST /connect/two-factor | antiforgery=required
-GET /connect/userinfo
+GET /api/fleet/cars | authorize(policy=;roles=;schemes=Spark:JwtBearer)
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required
@@ -25,6 +10,8 @@ GET /spark/auth/confirmEmail
 POST /spark/auth/csrf-refresh | antiforgery=not-required
 GET /spark/auth/external-login
 GET /spark/auth/external-login-callback | allow-anonymous
+GET /spark/auth/external-login/two-factor | allow-anonymous
+POST /spark/auth/external-login/two-factor | allow-anonymous | antiforgery=required
 POST /spark/auth/forgotPassword | antiforgery=required
 POST /spark/auth/login | accepts(application/json) | antiforgery=required
 POST /spark/auth/logout | antiforgery=required

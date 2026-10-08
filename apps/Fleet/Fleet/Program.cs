@@ -10,8 +10,6 @@ using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Replication.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.ResourceServer;
-using Fleet.Entities;
-using Raven.Client.Documents;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -162,23 +160,6 @@ app.UseSparkFull();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSparkFull();
-
-    // The resource-server demo (PRD I12): a plain API outside Spark's PersistentObject endpoints,
-    // answering only a SparkId access token for this audience that carries fleet.read. The scope is
-    // the whole authorization here: the raw session reads past security.json, so it returns only
-    // non-personal fields.
-    if (!string.IsNullOrWhiteSpace(builder.Configuration["Spark:JwtBearer:Authority"]))
-    {
-        endpoints.MapGet("/api/fleet/cars", async (IDocumentStore store, CancellationToken ct) =>
-        {
-            using var session = store.OpenAsyncSession();
-            var cars = await session.Query<Car>()
-                .Select(c => new { c.LicensePlate, c.Model, c.Year })
-                .Take(100)
-                .ToListAsync(ct);
-            return Results.Ok(cars);
-        }).RequireScope("fleet.read");
-    }
 });
 
 app.UseWhen(

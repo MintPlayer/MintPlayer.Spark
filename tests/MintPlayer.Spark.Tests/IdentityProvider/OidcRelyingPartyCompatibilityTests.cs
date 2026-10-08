@@ -117,7 +117,7 @@ public class OidcRelyingPartyCompatibilityTests(OidcSharedHost host) : OidcTestH
     {
         var document = JsonDocument.Parse(await (await Client.GetAsync("/.well-known/openid-configuration")).Content.ReadAsStringAsync()).RootElement;
 
-        document.GetProperty("response_modes_supported").EnumerateArray().Select(e => e.GetString()).Should().Equal("query");
+        document.GetProperty("response_modes_supported").EnumerateArray().Select(e => e.GetString()).Should().Equal("query", "form_post");
         var claims = document.GetProperty("claims_supported").EnumerateArray().Select(e => e.GetString()).ToArray();
         new[] { "sub", "iss", "aud", "exp", "iat", "nonce", "at_hash", "auth_time" }.Except(claims).Should().BeEmpty();
     }

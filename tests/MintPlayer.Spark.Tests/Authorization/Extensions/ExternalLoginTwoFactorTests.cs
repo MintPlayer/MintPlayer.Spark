@@ -545,7 +545,7 @@ public class ExternalLoginTwoFactorTests(SparkSharedDatabase database)
         var context = new DefaultHttpContext();
         context.Request.PathBase = "/app";
 
-        var url = ExternalLoginTwoFactor.Url(context, popup: true, nonce: ValidNonce, returnUrl: "/home?a=1&b=2", error: "invalid_code", recovery: true);
+        var url = ExternalLoginTwoFactor.Url(context.Request.PathBase, popup: true, nonce: ValidNonce, returnUrl: "/home?a=1&b=2", error: "invalid_code", recovery: true);
 
         PathOf(url).Should().Be("/app" + PagePath);
         var query = QueryOf(url);
@@ -560,7 +560,7 @@ public class ExternalLoginTwoFactorTests(SparkSharedDatabase database)
     [Fact]
     public void Url_leaves_out_the_flags_that_are_not_set()
     {
-        var url = ExternalLoginTwoFactor.Url(new DefaultHttpContext(), popup: false, nonce: null, returnUrl: "/");
+        var url = ExternalLoginTwoFactor.Url(new DefaultHttpContext().Request.PathBase, popup: false, nonce: null, returnUrl: "/");
 
         var query = QueryOf(url);
         query.Keys.ToList().Should().BeEquivalentTo(["returnUrl", "ngsw-bypass"]);

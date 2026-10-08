@@ -49,7 +49,7 @@ public class OidcResponseShapeTests(OidcSharedHost host) : OidcTestHost(host), I
             .Should().Be("""400 | application/json; charset=utf-8 | - | {"error":"invalid_request","error_description":"Missing required parameters."}""");
 
         (await ShapeAsync(await Client.GetAsync($"/connect/authorize?client_id={app.ClientId}&redirect_uri={redirect}&response_type=token&scope=openid")))
-            .Should().Be("""400 | application/json; charset=utf-8 | - | {"error":"unsupported_response_type","error_description":"Only 'code' response type is supported."}""");
+            .Should().StartWith($"302 | - | {app.RedirectUris[0]}?error=unsupported_response_type&");
 
         (await ShapeAsync(await Client.GetAsync($"/connect/authorize?client_id=nobody-{Scope}&redirect_uri={redirect}&response_type=code&scope=openid")))
             .Should().Be("""400 | application/json; charset=utf-8 | - | {"error":"invalid_client","error_description":"Unknown or disabled client."}""");
@@ -58,7 +58,7 @@ public class OidcResponseShapeTests(OidcSharedHost host) : OidcTestHost(host), I
             .Should().Be("""400 | application/json; charset=utf-8 | - | {"error":"invalid_request","error_description":"Invalid redirect_uri."}""");
 
         (await ShapeAsync(await Client.GetAsync($"/connect/authorize?client_id={app.ClientId}&redirect_uri={redirect}&response_type=code&scope=openid&code_challenge=abc&code_challenge_method=plain&state=s1")))
-            .Should().Be($"302 | - | {app.RedirectUris[0]}?error=invalid_request&error_description=Only%20S256%20code_challenge_method%20is%20supported.&state=s1 | ");
+            .Should().StartWith($"302 | - | {app.RedirectUris[0]}?error=invalid_request&error_description=Only%20S256%20code_challenge_method%20is%20supported.&state=s1&iss=");
 
         // Valid, but nobody is signed in: the login hop carries the whole original query.
         var query = $"?client_id={app.ClientId}&redirect_uri={redirect}&response_type=code&scope=openid";
@@ -98,7 +98,7 @@ public class OidcResponseShapeTests(OidcSharedHost host) : OidcTestHost(host), I
     public async Task Consent_refusals_keep_their_shape()
     {
         (await ShapeAsync(await Client.GetAsync("/connect/consent")))
-            .Should().Be("400 | - | - | Missing parameters.");
+            .Should().StartWith("400 | text/html; charset=utf-8 | - | <!DOCTYPE html>");
 
         (await ShapeAsync(await Client.GetAsync("/connect/consent?request_id=abc")))
             .Should().Be($"302 | - | /connect/login?returnUrl={Uri.EscapeDataString("/connect/consent?request_id=abc")} | ");
@@ -109,19 +109,19 @@ public class OidcResponseShapeTests(OidcSharedHost host) : OidcTestHost(host), I
         {
             ["decision"] = "allow",
             ["__RequestVerificationToken"] = token,
-        }))).Should().Be("400 | - | - | Missing parameters.");
+        }))).Should().StartWith("400 | text/html; charset=utf-8 | - | <!DOCTYPE html>");
 
         (await ShapeAsync(await browser.PostFormAsync("/connect/consent", new Dictionary<string, string>
         {
             ["request_id"] = "abc",
             ["decision"] = "allow",
             ["__RequestVerificationToken"] = token,
-        }))).Should().Be("401 | - | - | Not authenticated.");
+        }))).Should().StartWith("401 | text/html; charset=utf-8 | - | <!DOCTYPE html>");
 
         await SeedUserAsync(UserEmail("consent"));
         var signedIn = await SignInAsync(UserEmail("consent"));
         (await ShapeAsync(await signedIn.GetAsync("/connect/consent?request_id=never-issued")))
-            .Should().Be("400 | - | - | This authorization request is no longer valid. Please start again.");
+            .Should().StartWith("400 | text/html; charset=utf-8 | - | <!DOCTYPE html>");
     }
 
     // --- /connect/applications -------------------------------------------------------------------
@@ -137,7 +137,7 @@ public class OidcResponseShapeTests(OidcSharedHost host) : OidcTestHost(host), I
         {
             ["application_id"] = "OidcApplications/1",
             ["__RequestVerificationToken"] = token,
-        }))).Should().Be("401 | - | - | Not authenticated.");
+        }))).Should().StartWith("401 | text/html; charset=utf-8 | - | <!DOCTYPE html>");
 
         await SeedUserAsync(UserEmail("apps"));
         var signedIn = await SignInAsync(UserEmail("apps"));
@@ -168,10 +168,10 @@ public class OidcResponseShapeTests(OidcSharedHost host) : OidcTestHost(host), I
         var app = await SeedApplicationAsync(ClientId("logout"), postLogoutRedirectUris: ["https://logout.test/bye"]);
 
         (await ShapeAsync(await Client.GetAsync("/connect/logout")))
-            .Should().Be("200 | text/html | - | <html><body><h2>You have been signed out.</h2><p>You may close this window.</p></body></html>");
+            .Should().StartWith("200 | text/html; charset=utf-8 | - | <!DOCTYPE html>");
 
         (await ShapeAsync(await Client.GetAsync($"/connect/logout?post_logout_redirect_uri=https%3A%2F%2Fevil.test%2F&client_id={app.ClientId}")))
-            .Should().Be("400 | text/html | - | <html><body><h2>Invalid post_logout_redirect_uri</h2><p>The provided redirect URI is not registered for this client.</p></body></html>");
+            .Should().StartWith("400 | text/html; charset=utf-8 | - | <!DOCTYPE html>");
 
         (await ShapeAsync(await Client.GetAsync($"/connect/logout?post_logout_redirect_uri=https%3A%2F%2Flogout.test%2Fbye&client_id={app.ClientId}&state=st")))
             .Should().Be("302 | - | https://logout.test/bye?state=st | ");
@@ -207,14 +207,14 @@ public class OidcResponseShapeTests(OidcSharedHost host) : OidcTestHost(host), I
             .Should().Be("""400 | application/json; charset=utf-8 | - | {"error":"invalid_request"}""");
 
         (await ShapeAsync(await Client.PostAsync(path, new FormUrlEncodedContent(new Dictionary<string, string> { ["token"] = "x" }))))
-            .Should().Be("""400 | application/json; charset=utf-8 | - | {"error":"invalid_request","error_description":"token, client_id, and client_secret are required."}""");
+            .Should().Be("""401 | application/json; charset=utf-8 | - | {"error":"invalid_client","error_description":"Client authentication failed."}""");
 
         (await ShapeAsync(await Client.PostAsync(path, new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["token"] = "x",
             ["client_id"] = app.ClientId,
             ["client_secret"] = "wrong",
-        })))).Should().Be("""401 | application/json; charset=utf-8 | - | {"error":"invalid_client"}""");
+        })))).Should().Be("""401 | application/json; charset=utf-8 | - | {"error":"invalid_client","error_description":"Client authentication failed."}""");
 
         var unknown = await Client.PostAsync(path, new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -236,13 +236,13 @@ public class OidcResponseShapeTests(OidcSharedHost host) : OidcTestHost(host), I
     {
         var none = await Client.GetAsync("/connect/userinfo");
         (await ShapeAsync(none)).Should().Be("""401 | application/json; charset=utf-8 | - | {"error":"invalid_token"}""");
-        none.Headers.WwwAuthenticate.ToString().Should().Be("Bearer");
+        none.Headers.WwwAuthenticate.ToString().Should().Be("Bearer, DPoP");
 
         var request = new HttpRequestMessage(HttpMethod.Get, "/connect/userinfo");
         request.Headers.TryAddWithoutValidation("Authorization", "Bearer not-a-jwt");
         var garbage = await Client.SendAsync(request);
         (await ShapeAsync(garbage)).Should().Be("""401 | application/json; charset=utf-8 | - | {"error":"invalid_token"}""");
-        garbage.Headers.WwwAuthenticate.ToString().Should().Be("Bearer error=\"invalid_token\"");
+        garbage.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer error=\"invalid_token\"");
     }
 
     // --- /connect/login and /connect/two-factor --------------------------------------------------

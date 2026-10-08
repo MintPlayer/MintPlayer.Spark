@@ -155,6 +155,9 @@ public class OidcApplicationActionsTests
     public async Task A_custom_scheme_is_still_accepted_for_native_clients()
     {
         var app = Valid();
+        // A native app is a public client (RFC 8252 §8.4); the scheme is refused for a confidential one.
+        app.ClientType = "public";
+        app.Secrets = [];
         app.RedirectUris = ["com.example.app:/oauth2redirect"];
 
         (await SaveAsync(app)).Should().BeNull(

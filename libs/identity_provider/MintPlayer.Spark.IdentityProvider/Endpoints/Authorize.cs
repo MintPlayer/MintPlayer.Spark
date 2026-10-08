@@ -35,6 +35,11 @@ internal sealed partial class OidcAuthorizeByPost : IPostEndpoint<OidcAuthorizeP
 {
     public static string Path => "/authorize";
 
+    // The exemption stated, not implied: without it Spark's antiforgery gate refused a signed-in
+    // browser's POST, which is exactly the request this endpoint exists for.
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(new Microsoft.AspNetCore.Antiforgery.RequireAntiforgeryTokenAttribute(false));
+
     [Inject] private readonly OidcAuthorizeHandler handler;
 
     private HttpContext context = null!;

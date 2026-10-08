@@ -493,6 +493,6 @@ internal static class OidcAuthorizationReferenceProbe
     public static string DocumentId(string subject, string applicationId)
     {
         var key = System.Text.Encoding.UTF8.GetBytes($"{subject.Length}:{subject}|{applicationId}");
-        return "OidcAuthorizations/" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(key));
+        return "OidcGrants/" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(key));
     }
 }

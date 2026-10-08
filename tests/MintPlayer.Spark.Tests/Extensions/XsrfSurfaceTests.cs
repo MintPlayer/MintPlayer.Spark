@@ -114,6 +114,7 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
     [
         "DELETE /spark/auth/manage/account",
         "POST /spark/auth/confirm-email",
+        "POST /spark/auth/external-login/two-factor",
         "POST /spark/auth/forgotPassword",
         "POST /spark/auth/login",
         "POST /spark/auth/logout",

@@ -33,10 +33,16 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8) for the issuer; the endpoint is created per request.</summary>
     private HttpContext httpContext = null!;
 
-    protected override ValueTask<OidcClientTokenRequest?> BindRequestAsync(HttpContext context)
+    /// <summary>The form the binder read, kept for client authentication (which needs the raw fields).</summary>
+    private IFormCollection form = null!;
+
+    protected override async ValueTask<OidcClientTokenRequest?> BindRequestAsync(HttpContext context)
     {
         httpContext = context;
-        return OidcClientTokenRequest.BindAsync(context);
+        var request = await OidcClientTokenRequest.BindAsync(context);
+        // Read once by the binder above; ReadFormAsync returns the cached collection.
+        form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return request;
     }
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
@@ -55,7 +61,7 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
 
         // Authenticate client (D8). Introspection discloses a token's subject and scopes, so a public
         // client, which proves nothing about who it is, may not use it.
-        var client = await clientAuthenticator.AuthenticateAsync(httpContext, httpContext.Request.Form, session, ct);
+        var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
         if (!client.Succeeded)
             return client.ToResult(httpContext);
         if (client.Method == OidcClientAuthMethods.None)

@@ -85,7 +85,7 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: true)
+            sim.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: Arg.Is(true), bypassTwoFactor: Arg.Any<bool>())
                 .Returns(SignInResult.Success);
             um.FindByLoginAsync(info.LoginProvider, info.ProviderKey).Returns(existingUser);
         });
@@ -142,7 +142,7 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, true)
+            sim.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, Arg.Is(true), Arg.Any<bool>())
                 .Returns(SignInResult.Success);
             um.FindByLoginAsync(info.LoginProvider, info.ProviderKey).Returns(existingUser);
         });
@@ -164,7 +164,7 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
             um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
             um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
@@ -206,7 +206,7 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
             um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
             um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
@@ -230,7 +230,7 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
             um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
             um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
@@ -261,7 +261,7 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
         });
         using var client = server.CreateClient();
@@ -285,7 +285,7 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         using var server = await StartHostAsync((sim, um) =>
         {
             sim.GetExternalLoginInfoAsync().Returns(info);
-            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>())
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
                 .Returns(SignInResult.Failed);
             um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
             um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
