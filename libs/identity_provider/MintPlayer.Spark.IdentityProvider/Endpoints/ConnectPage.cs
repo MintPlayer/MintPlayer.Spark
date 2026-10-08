@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 /// </summary>
 internal static class ConnectPage
 {
-    public static string Encode(string value) => System.Net.WebUtility.HtmlEncode(value);
+    public static string Encode(string value) => SparkPageHtml.Encode(value);
 
     /// <summary>
     /// The text key (<c>identityProvider.connect.*</c>, resolved through <c>ConnectText</c>) of the message
@@ -73,22 +73,10 @@ internal static class ConnectPage
     public static bool IsExternalLoginNotice(string? code)
         => code is "link_confirmation_sent" or "confirm_email_sent";
 
-    public static void AppendHidden(StringBuilder sb, string name, string? value)
-    {
-        sb.Append("<input type=\"hidden\" name=\"").Append(Encode(name))
-          .Append("\" value=\"").Append(Encode(value ?? "")).Append("\" />");
-    }
+    public static void AppendHidden(StringBuilder sb, string name, string? value) => SparkPageHtml.AppendHidden(sb, name, value);
 
-    /// <summary>
-    /// Writes the antiforgery field for a form whose POST route is marked with
-    /// <c>RequireAntiforgeryTokenAttribute</c>. Must be called inside the <c>&lt;form&gt;</c>.
-    /// The page passes the <see cref="IAntiforgery"/> it injected.
-    /// </summary>
-    public static void AppendAntiforgery(StringBuilder sb, IAntiforgery antiforgery, HttpContext context)
-    {
-        var tokens = antiforgery.GetAndStoreTokens(context);
-        AppendHidden(sb, tokens.FormFieldName, tokens.RequestToken);
-    }
+    /// <summary>Writes the antiforgery field (<see cref="SparkPageHtml.AppendAntiforgery"/>).</summary>
+    public static void AppendAntiforgery(StringBuilder sb, IAntiforgery antiforgery, HttpContext context) => SparkPageHtml.AppendAntiforgery(sb, antiforgery, context);
 }
 
 /// <summary>

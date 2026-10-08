@@ -40,7 +40,7 @@ public class SparkIdentityProviderTwoFactorOptions
 }
 
 /// <summary><c>Spark:IdentityProvider:Branding</c>: how the <c>/connect/*</c> pages present the provider (D7).</summary>
-public class SparkIdentityProviderBranding
+public class SparkIdentityProviderBranding : MintPlayer.Spark.Authorization.Pages.ISparkPageBranding
 {
     /// <summary>The provider's name, shown beside the logo and in the window title.</summary>
     public string? ProductName { get; set; }

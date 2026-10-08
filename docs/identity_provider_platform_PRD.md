@@ -26,10 +26,10 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
 | I9 protocol II | ✅ | 8c27d926, 2b8d23e1 | PAR (`/connect/par`), JAR (`OidcRequestObjects`), DPoP and cnf-bound tokens (`OidcProofOfPossession`), the device grant (`/connect/device_authorization`, `/connect/device`), token exchange, gated DCR (`/connect/register[/{client_id}]` plus `POST /spark/identity-provider/developer/registration-token`) |
 | I10 keys, sessions | ✅ | 3758cfe4 | `OidcKeyRing` (RSA and EC, Data Protection, rotation by `OidcKeyRotationService`, legacy key import). `sid` in the cookie (OnSigningIn). `OidcSessionStore`: back-channel logout tokens, front-channel iframes, logout revokes the session's refresh tokens |
 | I11 operations | ✅ | 495e5a70, (I11+I12 commit) | The audit query (`OidcAuditEventActions`: admins all, app Admins their apps), the grants query with `RevokeGrant`, the menu fragment. `INC:Tokens` on the application per access token (`OidcExpiry.StoreExpiringAsync`). The disable cascade (`OidcDisableCascade`, from both interceptors' `OnAfterSaveAsync`). The named policy `SparkIdentityProviderMachine` on `OidcConnectCorsGroup` and the client-auth failure throttle (`Spark:IdentityProvider:RateLimits`). `GET /spark/identity-provider/admin/keys`, `POST .../admin/keys/rotate` |
-| I12 resource servers | ✅ (HR half open) | (I11+I12 commit) | `spark.AddSparkResourceServer(authority, audience, …)` in `MintPlayer.Spark.Authorization.ResourceServer`: at+jwt only, DPoP scheme and `cnf` (jkt, x5t#S256) enforced, or `UseIntrospection` (`SparkIntrospectionHandler`). `[RequireScope]` / `.RequireScope()`. `SparkDpopProof` is shared with the IdP's token endpoint. Introspection now answers `iss`, `cnf`, `group(s)`, `act`. Fleet: `GET /api/fleet/cars` needs `fleet.read`; SparkId seeds the `fleet` API resource and offers `fleet.read` to HR (`M_202610091000_FleetApi`) |
+| I12 resource servers | ✅ | (I11+I12 commit) | `spark.AddSparkResourceServer(authority, audience, …)` in `MintPlayer.Spark.Authorization.ResourceServer`: at+jwt only, DPoP scheme and `cnf` (jkt, x5t#S256) enforced, or `UseIntrospection` (`SparkIntrospectionHandler`). `[RequireScope]` / `.RequireScope()`. `SparkDpopProof` is shared with the IdP's token endpoint. Introspection now answers `iss`, `cnf`, `group(s)`, `act`. Fleet: `GET /api/fleet/cars` needs `fleet.read`; SparkId seeds the `fleet` API resource and offers `fleet.read` to HR (`M_202610091000_FleetApi`). HR asks for `fleet.read`, saves SparkId's tokens, and `GET /api/hr/fleet-cars` calls Fleet with the user's access token |
 | I13 tests, conformance | ⏳ | | |
 | I14 docs, versions | ⏳ | | |
-| #490 D11 external-login 2FA | ⏳ | | Not started |
+| #490 D11 external-login 2FA | ✅ | (D11 commit) | `/spark/auth/external-login/two-factor` (GET/POST), `Spark:Auth:ExternalLogin:TwoFactor:{Enabled,AllowUserBypass}`, `SparkUser.BypassTwoFactorForExternalLogin` with `GET/POST /spark/auth/manage/external-login-two-factor` and the capability `externalLoginTwoFactorBypass`. `ConnectPageTheme` and the HTML helpers (`SparkPageHtml`, `ISparkPageBranding`) moved to `MintPlayer.Spark.Authorization.Pages`. The account-page toggle (SPA) is part of I7 |
 
 **Decisions taken during implementation** (each also stated where it applies):
 - **Scope-name uniqueness is structural** (natural ids plus prefixes), not a compare-exchange
@@ -64,6 +64,11 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
   the grants. Both are set-based patches with parameters, waited on for at most 30 s.
 - **The resource server's DPoP replay cache is in memory**, so a replay on another instance of the same
   resource server within the 2-minute proof lifetime is not detected. The IdP's own cache is in RavenDB.
+- **D11 keeps the text service in the IdP:** Authorization references only Spark's abstractions, so the
+  external-login two-factor page translates through `IManager` (`auth.externalTwoFactor*`) and honours
+  the `spark-lang` cookie when it is a culture name. Only the theme and the HTML helpers moved.
+- **D11 `requires_two_factor`** now means "the two-factor cookie is gone", as the PRD says; a sign-in
+  that needs the code is redirected to the page.
 - **Fleet's development audience is `fleet`** (the API resource's name). The E2E hosts and
   `JwtBearerCredentialTests` keep `fleet-api` with their own seeded resource.
 
@@ -79,11 +84,8 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
      rotation, links to the queues);
    - the account-overview card; fix the doc comment on `SparkAuthRoutesFeature`;
    - SparkId's `app.routes.ts` and menu.
-3. **I12 rest:** the HR half of the demo, where HR calls Fleet's `/api/fleet/cars` with the signed-in
-   user's SparkId access token (`SaveTokens` on HR's `SparkId` scheme and a small HR endpoint or page).
-   The Fleet half is done.
-4. **#490 D11:** the external-login 2FA page (see that PRD). `ConnectPage`/`ConnectPageTheme` move to
-   Authorization.
+3. ~~I12~~ ✅
+4. ~~#490 D11~~ ✅ (server side; the account-page toggle is in I7)
 5. **I13:**
    - new unit tests per milestone: authenticator, authorize handler, PAR/JAR, DPoP, device,
      exchange, DCR, key ring, sessions, invitations, approvals;

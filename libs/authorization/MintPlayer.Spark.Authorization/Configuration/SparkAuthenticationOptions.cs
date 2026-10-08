@@ -171,6 +171,32 @@ public class SparkAuthenticationOptions
     /// <see langword="true"/>; the pass is a no-op after its completion marker exists.
     /// </summary>
     public bool BackfillUsersOnStartup { get; set; } = true;
+
+    /// <summary>
+    /// The application's own second factor after an external sign-in (#490 D11). Also read from
+    /// <c>Spark:Auth:ExternalLogin:TwoFactor:Enabled</c> and <c>…:AllowUserBypass</c>, which win when set.
+    /// </summary>
+    public SparkExternalLoginTwoFactorOptions ExternalLoginTwoFactor { get; set; } = new();
+}
+
+/// <summary>
+/// Whether a user who signs in through an external provider (SparkId, Google, GitHub, …) and has two-factor
+/// authentication on this application's account is also asked for this application's code (#490 D11).
+/// </summary>
+public class SparkExternalLoginTwoFactorOptions
+{
+    /// <summary>
+    /// Ask for the code. Defaults to <see langword="true"/>: a provider's sign-in proves the provider account,
+    /// not possession of this account's authenticator, so a user with two-factor on both sides is asked twice.
+    /// Off, the external sign-in alone suffices (the pre-D11 behaviour refused the sign-in instead).
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Let each user skip the step for external sign-ins from their account's two-factor settings, which needs a
+    /// valid authenticator code to switch on. Defaults to <see langword="false"/>.
+    /// </summary>
+    public bool AllowUserBypass { get; set; }
 }
 
 /// <summary>

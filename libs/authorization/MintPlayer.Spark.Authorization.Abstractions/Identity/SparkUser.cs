@@ -57,6 +57,12 @@ public class SparkUser
     /// </summary>
     public string? PreferredCulture { get; set; }
 
+    /// <summary>
+    /// The user chose to skip this application's two-factor step after an external sign-in (#490 D11). Honoured
+    /// only while <c>Spark:Auth:ExternalLogin:TwoFactor:AllowUserBypass</c> is on; switching it on needs a valid code.
+    /// </summary>
+    public bool BypassTwoFactorForExternalLogin { get; set; }
+
     public List<string> Roles { get; set; } = [];
     public List<SparkUserClaim> Claims { get; set; } = [];
     public List<SparkUserLogin> Logins { get; set; } = [];

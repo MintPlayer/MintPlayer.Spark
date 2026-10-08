@@ -201,6 +201,13 @@ internal static class SparkAuthenticationExtensions
         // External login: handle the OAuth callback.
         endpoints.MapEndpoint<ExternalLoginCallback<TUser>>();
 
+        // #490 D11: the application's own second factor after an external sign-in, server-rendered
+        // because the popup shows it.
+        endpoints.MapEndpoint<ExternalLoginTwoFactorPage<TUser>>();
+        endpoints.MapEndpoint<ExternalLoginTwoFactorSubmit<TUser>>();
+        endpoints.MapEndpoint<ExternalLoginTwoFactorBypassState<TUser>>();
+        endpoints.MapEndpoint<SetExternalLoginTwoFactorBypass<TUser>>();
+
         // 4e: the other half of ConfirmByEmail. Reached from a link in a mailbox, so it is a plain
         // top-level GET — there is no popup to post back to and no session to carry an antiforgery
         // token. The single-use token *is* the credential; that is what a confirmation link is.
@@ -329,7 +336,11 @@ internal static class SparkAuthenticationExtensions
         /// </remarks>
         public const string LockedOut = "locked_out";
 
-        /// <summary>The account needs a second factor, which this flow does not collect.</summary>
+        /// <summary>
+        /// The account needs a second factor and the two-factor step could not collect it: Identity's two-factor
+        /// cookie is missing or expired (#490 D11). A sign-in that needs the code is sent to
+        /// <c>/spark/auth/external-login/two-factor</c> instead.
+        /// </summary>
         public const string RequiresTwoFactor = "requires_two_factor";
 
         /// <summary>Sign-in is not permitted — typically an unconfirmed account.</summary>

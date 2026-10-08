@@ -2,10 +2,11 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 
-namespace MintPlayer.Spark.IdentityProvider.Endpoints;
+namespace MintPlayer.Spark.Authorization.Pages;
 
 /// <summary>
-/// Light/dark theming for the server-rendered <c>/connect</c> pages (#462, PRD D10/G3). These
+/// Light/dark theming for Spark's server-rendered pages: the identity provider's <c>/connect</c> pages and
+/// the external-login two-factor step (#462, PRD D10/G3; moved here by #490 D11 so both packages share it). These
 /// pages ship no script, so the theme is decided on the server from the same
 /// <c>bs-theme-mode</c> cookie the Spark SPA's theme toggle writes:
 /// <list type="bullet">
@@ -79,17 +80,17 @@ internal static partial class ConnectPageTheme
     /// raw text and is HTML-encoded here.
     /// </summary>
     public static void AppendDocumentStart(
-        StringBuilder sb, HttpContext context, string title, string? lang = null, Configuration.SparkIdentityProviderBranding? branding = null)
+        StringBuilder sb, HttpContext context, string title, string? lang = null, ISparkPageBranding? branding = null)
     {
         sb.Append("<!DOCTYPE html><html");
         // D7: the page language, for screen readers and the browser's own translation offer.
-        if (!string.IsNullOrEmpty(lang)) sb.Append(" lang=\"").Append(ConnectPage.Encode(lang)).Append('"');
+        if (!string.IsNullOrEmpty(lang)) sb.Append(" lang=\"").Append(SparkPageHtml.Encode(lang)).Append('"');
         var theme = ExplicitTheme(context.Request);
         if (theme is not null) sb.Append(" data-bs-theme=\"").Append(theme).Append('"');
         sb.Append("><head><meta charset=\"utf-8\"><meta name=\"color-scheme\" content=\"light dark\">");
         sb.Append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
         var product = branding?.ProductName;
-        sb.Append("<title>").Append(ConnectPage.Encode(string.IsNullOrEmpty(product) ? title : $"{title} - {product}")).Append("</title>");
+        sb.Append("<title>").Append(SparkPageHtml.Encode(string.IsNullOrEmpty(product) ? title : $"{title} - {product}")).Append("</title>");
         sb.Append("<style>").Append(Css);
         sb.Append(".idp-brand{display:flex;align-items:center;gap:10px;margin-bottom:24px;font-weight:600}.idp-brand img{max-height:40px;max-width:160px}");
         // The operator's own CSS, from configuration: trusted like the rest of the host's settings,
@@ -99,15 +100,15 @@ internal static partial class ConnectPageTheme
     }
 
     /// <summary>The product's logo and name at the top of the page (D7, <c>Branding</c>), when configured.</summary>
-    public static void AppendBrand(StringBuilder sb, Configuration.SparkIdentityProviderBranding? branding)
+    public static void AppendBrand(StringBuilder sb, ISparkPageBranding? branding)
     {
         if (branding is null || (string.IsNullOrEmpty(branding.LogoUrl) && string.IsNullOrEmpty(branding.ProductName)))
             return;
         sb.Append("<div class=\"idp-brand\">");
         if (!string.IsNullOrEmpty(branding.LogoUrl))
-            sb.Append("<img src=\"").Append(ConnectPage.Encode(branding.LogoUrl)).Append("\" alt=\"\">");
+            sb.Append("<img src=\"").Append(SparkPageHtml.Encode(branding.LogoUrl)).Append("\" alt=\"\">");
         if (!string.IsNullOrEmpty(branding.ProductName))
-            sb.Append("<span>").Append(ConnectPage.Encode(branding.ProductName)).Append("</span>");
+            sb.Append("<span>").Append(SparkPageHtml.Encode(branding.ProductName)).Append("</span>");
         sb.Append("</div>");
     }
 }

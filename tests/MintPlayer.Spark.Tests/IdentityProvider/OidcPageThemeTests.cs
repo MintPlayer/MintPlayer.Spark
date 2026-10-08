@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Authorization.Pages;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
 using MintPlayer.Spark.Testing;

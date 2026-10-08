@@ -41,7 +41,14 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // (the demo identity provider, https://localhost:5011) as the OpenID Connect scheme "SparkId";
     // SparkId seeds the matching "hr" client in Development. HR hosted the provider itself until
     // SparkId existed (docs/identity_provider_platform_PRD.md R1).
-    spark.AddExternalProviders(builder.Configuration);
+    // The resource-server demo (docs/identity_provider_platform_PRD.md I12): HR also asks SparkId for
+    // fleet.read (optional, so the consent page lets the user untick it) and keeps the tokens, which
+    // the external-login callback stores on the user, so /api/hr/fleet-cars can call Fleet's API.
+    spark.AddExternalProviders(builder.Configuration, hooks => hooks.OpenIdConnect("SparkId", oidc =>
+    {
+        oidc.Scope.Add("fleet.read");
+        oidc.SaveTokens = true;
+    }));
 
     spark.AddMessaging();
     // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written
@@ -52,6 +59,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // Assemblies are the one setting configuration cannot express.
     spark.AddReplication(opt => opt.AssembliesToScan = [typeof(HR.Replicated.Car).Assembly]);
 });
+
+// For /api/hr/fleet-cars (the I12 demo).
+builder.Services.AddHttpClient();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -90,6 +100,29 @@ app.UseSpark();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSpark();
+
+    // I12 demo: Fleet's cars, read with the signed-in user's SparkId access token (fleet.read).
+    // 409 when the user signed in another way, or did not grant fleet.read, or the token expired:
+    // signing in through SparkId again fetches a fresh one.
+    endpoints.MapGet("/api/hr/fleet-cars", async (
+        HttpContext http,
+        Microsoft.AspNetCore.Identity.UserManager<SparkUser> users,
+        IHttpClientFactory clients,
+        IConfiguration configuration) =>
+    {
+        if (await users.GetUserAsync(http.User) is not { } user
+            || await users.GetAuthenticationTokenAsync(user, "SparkId", "access_token") is not { Length: > 0 } accessToken)
+            return Results.Problem("Sign in through Spark Identity first.", statusCode: StatusCodes.Status409Conflict);
+
+        var fleet = configuration["Demo:FleetBaseUrl"] ?? "https://localhost:5003";
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{fleet.TrimEnd('/')}/api/fleet/cars");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await clients.CreateClient().SendAsync(request, http.RequestAborted);
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+            return Results.Problem("Fleet refused the token: it lacks fleet.read or has expired. Sign in through Spark Identity again.", statusCode: StatusCodes.Status409Conflict);
+        response.EnsureSuccessStatusCode();
+        return Results.Content(await response.Content.ReadAsStringAsync(http.RequestAborted), "application/json");
+    }).RequireAuthorization();
 });
 
 app.UseWhen(

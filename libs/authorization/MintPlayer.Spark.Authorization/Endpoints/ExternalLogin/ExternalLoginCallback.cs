@@ -57,16 +57,33 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
         if (info is null)
             return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, ExternalLoginErrors.NoLoginInfo);
 
+        // #490 D11: the application's own second factor. Off, or skipped by a user who chose that
+        // while AllowUserBypass is on, the external sign-in alone suffices.
+        var twoFactor = ExternalLoginTwoFactor.Resolve(httpContext.RequestServices);
+        var linked = await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
+        var bypassTwoFactor = !twoFactor.Enabled
+            || (twoFactor.AllowUserBypass && linked is { BypassTwoFactorForExternalLogin: true });
+
         // Try signing in with existing external login
         var result = await signInManager.ExternalLoginSignInAsync(
-            info.LoginProvider, info.ProviderKey, isPersistent: true);
+            info.LoginProvider, info.ProviderKey, isPersistent: true, bypassTwoFactor);
 
         TUser? user;
         if (result.Succeeded)
         {
             user = await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
         }
-        else if (await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey) is not null)
+        else if (result.RequiresTwoFactor && linked is not null)
+        {
+            // #490 D11: ExternalLoginSignInAsync has set Identity's two-factor cookie; the page asks for
+            // the code and then ends the flow exactly as this callback would (popup hand-off or redirect).
+            return Results.Redirect(ExternalLoginTwoFactor.Url(
+                httpContext,
+                popup: httpContext.Request.Query.ContainsKey("popup"),
+                nonce: SparkExternalLoginNonce.Accept(httpContext.Request.Query[SparkExternalLoginNonce.QueryParameter]),
+                safeReturnUrl));
+        }
+        else if (linked is not null)
         {
             // ⚠️ 4h: the login IS attached, so this is a refusal — lockout, two-factor, or a
             // confirmation requirement — not a first-time sign-in. Falling through to provisioning
