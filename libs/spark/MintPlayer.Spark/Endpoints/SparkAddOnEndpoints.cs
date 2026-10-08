@@ -28,23 +28,15 @@ namespace MintPlayer.Spark.Endpoints;
 public interface ISparkAddOnEndpoints
 {
     /// <summary>
-    /// Reads a typed request body and resolves the entity type it names. Both are null when the body
-    /// is malformed or names no type the model declares — answer that with <see cref="Refusal"/>,
-    /// never with a distinguishable error.
-    /// </summary>
-    /// <remarks>
-    /// For an endpoint that reads its body by hand. A typed endpoint (<c>IPostEndpoint&lt;TRequest&gt;</c>)
-    /// gets the body bound and resolves the type with <see cref="ResolveType"/>, answering a bind
-    /// failure with <see cref="Refusal"/> from <c>OnBindFailedAsync</c>.
-    /// </remarks>
-    Task<(TRequest? Request, EntityTypeDefinition? EntityType)> ReadTypedRequestAsync<TRequest>(HttpContext httpContext)
-        where TRequest : class, ISparkTypedRequest;
-
-    /// <summary>
     /// The entity type <paramref name="request"/> names, or null when it names none or one the model
     /// does not declare — answer that with <see cref="Refusal"/>. The type always comes from the
     /// request's top-level <c>objectTypeId</c>, never from the document it carries.
     /// </summary>
+    /// <remarks>
+    /// An add-on endpoint is typed (<c>IPostEndpoint&lt;TRequest&gt;</c>), so the body arrives bound: it
+    /// resolves the type with this and answers a body that cannot be bound with <see cref="Refusal"/>
+    /// from <c>OnBindFailedAsync</c>, as core's endpoints do (endpoints generator completion, PRD D3a).
+    /// </remarks>
     EntityTypeDefinition? ResolveType(ISparkTypedRequest? request);
 
     /// <summary>The standard <c>{ result, operations }</c> envelope with <paramref name="statusCode"/>.</summary>
@@ -110,10 +102,6 @@ internal sealed partial class SparkAddOnEndpoints : ISparkAddOnEndpoints
     [Inject] private readonly IClientAccessor client;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
-
-    public Task<(TRequest? Request, EntityTypeDefinition? EntityType)> ReadTypedRequestAsync<TRequest>(HttpContext httpContext)
-        where TRequest : class, ISparkTypedRequest
-        => SparkRequestType.ReadAsync<TRequest>(httpContext, modelLoader);
 
     public EntityTypeDefinition? ResolveType(ISparkTypedRequest? request)
         => SparkRequestType.Resolve(modelLoader, request);

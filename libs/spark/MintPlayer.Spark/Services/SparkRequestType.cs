@@ -32,6 +32,12 @@ namespace MintPlayer.Spark.Services;
 /// itself.
 /// </para>
 /// <para>
+/// ⚠️ <b>The body is read before anything can be authorized</b>, because the body is where the type is.
+/// A body that cannot be bound is therefore answered exactly like an unknown type: every typed endpoint
+/// gives the same refusal from <c>OnBindFailedAsync</c> that it gives a null from <see cref="Resolve"/>,
+/// so a parse failure never tells an unauthorized caller which entity types exist (N23).
+/// </para>
+/// <para>
 /// ⚠️ None of this may be left to <c>MintPlayer.Spark.Authorization</c> to enforce. That package is
 /// optional and may be absent from the service container entirely; the resolved type decides which
 /// collection is read and written, not merely which permission is consulted.
@@ -49,33 +55,4 @@ internal static class SparkRequestType
         => string.IsNullOrEmpty(request?.ObjectTypeId)
             ? null
             : modelLoader.ResolveEntityType(request.ObjectTypeId);
-
-    /// <summary>
-    /// Reads <typeparamref name="TRequest"/> from the body and resolves the type it names, in one step.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// ⚠️ <b>The body must now be read before anything can be authorized</b>, because the body is where
-    /// the type is. That inverts the order <c>Create</c> used to rely on: it checked the type-level
-    /// "New" right <i>before</i> reading the body, so that a caller with no right to create a type got a
-    /// refusal rather than a parse error (N23 — POSTing rubbish used to tell an unauthorized caller
-    /// which entity types exist).
-    /// </para>
-    /// <para>
-    /// The property survives the inversion because a malformed body is answered <b>the same way as an
-    /// unknown type</b>: both return <see langword="null"/> here, and every caller turns that into the
-    /// same refusal. A parse failure therefore reveals only that the JSON was bad, which the caller
-    /// already knows — it never distinguishes a type that exists from one that does not, and it never
-    /// reaches the 500 that an unhandled <c>JsonException</c> would produce.
-    /// </para>
-    /// </remarks>
-    public static async Task<(TRequest? Request, EntityTypeDefinition? EntityType)> ReadAsync<TRequest>(
-        HttpContext httpContext,
-        IModelLoader modelLoader)
-        where TRequest : class, ISparkTypedRequest
-    {
-        var request = await SparkRequestBody.ReadAsync<TRequest>(httpContext);
-
-        return request is null ? (null, null) : (request, Resolve(modelLoader, request));
-    }
 }

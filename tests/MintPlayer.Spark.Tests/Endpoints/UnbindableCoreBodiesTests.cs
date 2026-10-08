@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
@@ -40,7 +41,7 @@ public class UnbindableCoreBodiesTests : SparkTestDriver
         [
             new SparkQuery { Id = AllPeopleQueryId, Name = "AllPeople", Source = "Database.People" },
         ];
-        _factory = new SparkEndpointFactory(Store, [model]);
+        _factory = new SparkEndpointFactory(Store, [model], configureServices: ConfigureServices);
         _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
 
         await SeedAsync(async session =>
@@ -50,6 +51,9 @@ public class UnbindableCoreBodiesTests : SparkTestDriver
             await session.StoreAsync(new Person { FirstName = "Carol", LastName = "White" }, "people/3");
         });
     }
+
+    /// <summary>The host's extra services; none here, MVC in <see cref="UnbindableCoreBodiesWithMvcTests"/>.</summary>
+    protected virtual void ConfigureServices(IServiceCollection services) { }
 
     public override async Task DisposeAsync()
     {
@@ -227,4 +231,14 @@ public class UnbindableCoreBodiesTests : SparkTestDriver
         actions/list: 200
         actions/execute: 404
         """;
+}
+
+/// <summary>
+/// The same answers in a host that calls <c>AddControllers()</c>, as every application does: there a
+/// typed endpoint binds its body through MVC's input formatters instead of <c>ReadFromJsonAsync</c>, so
+/// this proves the two binders agree on every pinned case.
+/// </summary>
+public class UnbindableCoreBodiesWithMvcTests : UnbindableCoreBodiesTests
+{
+    protected override void ConfigureServices(IServiceCollection services) => services.AddControllers();
 }
