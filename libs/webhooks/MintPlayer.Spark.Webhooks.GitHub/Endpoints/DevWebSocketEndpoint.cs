@@ -15,9 +15,10 @@ namespace MintPlayer.Spark.Webhooks.GitHub.Endpoints;
 /// <remarks>
 /// <para>
 /// <b>Exists only when <see cref="GitHubWebhooksOptions.DevelopmentAppId"/> is set</b>
-/// (<see cref="IEndpointBase.IsEnabled"/>). That is also the condition under which
-/// <see cref="IDevWebSocketService"/> is registered, so an unmapped endpoint is never activated and its
-/// <c>[Inject]</c> dependency is never asked for.
+/// (<see cref="IEndpointBase.IsEnabled"/>), read from <c>IOptions</c> so that a value set through
+/// <c>Configure&lt;GitHubWebhooksOptions&gt;()</c> counts too. <see cref="IDevWebSocketService"/> is
+/// registered unconditionally, so a mapped endpoint can always be activated, while an unmapped one is
+/// never activated and its <c>[Inject]</c> dependency never built.
 /// </para>
 /// <para>
 /// ⚠️ A GET, not a bare <c>Map</c>. A bare <c>Map()</c> constrains no HTTP method, so this endpoint used

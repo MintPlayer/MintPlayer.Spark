@@ -32,11 +32,13 @@ public static class SparkBuilderExtensions
         // Register services (source-generated from [Register] attributes)
         builder.Services.AddSparkWebhooksGitHubServices();
 
-        // Register dev WebSocket forwarding service if DevelopmentAppId is configured
-        if (options.DevelopmentAppId.HasValue)
-        {
-            builder.Services.AddSingleton<IDevWebSocketService, DevWebSocketService>();
-        }
+        // The dev WebSocket's client list, registered whatever DevelopmentAppId says here. Whether the
+        // dev tunnel is on is decided from IOptions<GitHubWebhooksOptions>, by the endpoint's IsEnabled
+        // and by the webhook processor, and an app may set DevelopmentAppId through Configure<>()
+        // after this call; a registration keyed on the local copy then left the mapped endpoint
+        // unable to activate. Registering it costs nothing: it is a plain singleton that starts no
+        // work, built only when the endpoint or the processor first asks for it.
+        builder.Services.AddSingleton<IDevWebSocketService, DevWebSocketService>();
 
         // Apply deferred registrations from dev-tunnel extension methods
         options.ApplyRegistrations(builder.Services);

@@ -52,9 +52,13 @@ class:
 - `GetPath(services)` returns `options.DevWebSocketPath`, read from the root provider at map time.
   The default has no route parameters, so a configured path that adds one fails at startup with an
   `InvalidOperationException` naming the endpoint and both patterns.
-- `IsEnabled(services)` checks `DevelopmentAppId.HasValue`. That is the condition under which
-  `IDevWebSocketService` is registered, so a disabled endpoint is never mapped, never activated, and
-  never asks for the service.
+- `IsEnabled(services)` checks `DevelopmentAppId.HasValue` on `IOptions<GitHubWebhooksOptions>`, so a
+  value an app sets through `Configure<GitHubWebhooksOptions>()` counts too. `IDevWebSocketService` is
+  registered unconditionally (a plain singleton that starts no work). A mapped endpoint can therefore
+  always be activated, and a disabled one is never mapped, never activated, and never builds the
+  service. It used to be registered from the options passed to `AddGithubWebhooks`, which diverged
+  from `IsEnabled` when `DevelopmentAppId` came from `Configure`: the endpoint was mapped and failed
+  to activate (`SparkBuilderExtensionsTests`, red before the change).
 - `[Inject]` brings in `IGitHubClientFactory`, `IOptions<GitHubWebhooksOptions>` and
   `IDevWebSocketService`. Nothing is pulled from `RequestServices`.
 - It stays a GET, with no antiforgery or authorization metadata (the route table snapshot

@@ -59,8 +59,8 @@ public class DevWebSocketEndpointMappingTests
     }
 
     /// <summary>
-    /// <see cref="IDevWebSocketService"/> is registered only with a <c>DevelopmentAppId</c>, and the
-    /// endpoint <c>[Inject]</c>s it, so a mapped-but-unconfigured endpoint would fail every request.
+    /// <see cref="IDevWebSocketService"/> is registered whatever the options say, and the endpoint
+    /// <c>[Inject]</c>s it, so a disabled endpoint must not even be activated.
     /// The host registers a service that records its own construction, so the assertion is
     /// falsifiable: were the endpoint mapped (the <c>IsEnabled</c> gate removed), the upgrade below
     /// would reach it and its activation would construct the service.
@@ -97,6 +97,25 @@ public class DevWebSocketEndpointMappingTests
         // 400, not 404: the route exists and refuses a request that is not a WebSocket upgrade.
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         host.Services.GetRequiredService<EndpointDataSource>().IsEndpointMapped<DevWebSocketEndpoint>().Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The bug: <c>AddGithubWebhooks</c> registered <see cref="IDevWebSocketService"/> only when its own
+    /// options had a <c>DevelopmentAppId</c>, while <c>IsEnabled</c> reads <c>IOptions</c>. An app that
+    /// set the id through <c>Configure&lt;GitHubWebhooksOptions&gt;()</c> got the endpoint mapped and
+    /// every request to it failed to activate the endpoint.
+    /// </summary>
+    [Fact]
+    public async Task A_development_app_set_through_Configure_maps_a_working_endpoint()
+    {
+        using var host = await StartAsync(
+            _ => { },
+            s => s.Configure<GitHubWebhooksOptions>(o => o.DevelopmentAppId = 1));
+
+        var response = await host.GetTestClient().GetAsync(DevWebSocketEndpoint.Path);
+
+        // 400, not 404 and not an activation failure: the endpoint was mapped and built.
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
