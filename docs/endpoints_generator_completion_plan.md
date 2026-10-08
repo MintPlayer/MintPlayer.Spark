@@ -5,11 +5,10 @@ decisions are in its §6 (locked 2026-10-07). **One unit of work:** an upstream
 `MintPlayer.AspNetCore.Tools` release (published first) plus **one** Spark pull request. Test suites
 run once, at the end (M9). Intermediate milestones are verified by build and by reading the code.
 
-**Status:** decisions locked. The upstream release is planned as
-[MintPlayer.AspNetCore.Tools#41](https://github.com/MintPlayer/MintPlayer.AspNetCore.Tools/pull/41)
-(11.4.0-rc.0, PRD Draft 3 accepts all of Spark's review); its implementation has not started. Spark:
-nothing implemented. Next: the Spark spikes S2–S4, run against a local build of the #41 branch or the
-published rc.
+**Status (2026-10-08):** upstream 11.4.0-rc.0 is published (#41). M0 and M1 are done. Spikes S2–S4
+pass, and their code is adopted: S2 starts M4, S3 completes M5, and S4 is M7's dev WebSocket. The
+merged tree builds with 0 errors. Open owner decision: the `accepts(application/json)` fixture
+change (S3 verdict). Next: M2, M3, the rest of M4, M6, M7's leftovers, M8, M9.
 
 ---
 
@@ -43,12 +42,63 @@ What remains for Spark, checked in M3 and M5 rather than in a spike:
 **Pass:** the OIDC E2E flow (authorize → login → consent → token → userinfo) is unchanged; a
 form-encoded token request with a missing `grant_type` gives the same RFC 6749 error as today.
 
+**Verdict (2026-10-08, adopted by M4): ✅ pass.**
+- **`/connect/token`** is `OidcTokenEndpoint<TUser> : IPostEndpoint<OidcTokenRequest>`. It has:
+  - a form-urlencoded `BindRequestAsync`;
+  - an `OnBindFailedAsync` that answers in the RFC 6749 §5.2 shape;
+  - `[Inject]` `IDocumentStore`, `OidcTokenGenerator` and `UserManager<TUser>`. `OidcSigningKeyService` is not injected, because only `OidcTokenGenerator` uses it.
+- **`POST /connect/login`** is `OidcLoginSubmit<TUser>` with `[Inject] SignInManager<TUser>`. The GET is `OidcLoginPage`.
+- **Closing at startup:** `OidcUserEndpoints.Map` closes both endpoints once at startup through one reflective `MakeGenericMethod(userType)` call into a typed `MapFor<TUser>()`, and throws when `IdentityUserType` is null. Each `MapEndpoint<T>()` builds its own group chain, so `/connect`, `OidcCors` and the local-credentials group's `IsEnabled` all still apply. The generator leaves the open generics out of the generated method.
+- **Evidence:**
+  - 350/351 tests passed across `IdentityProvider.*`, `RouteTableSnapshotTests` and `SignInIdentifierTests`. The one failure was the new startup test asserting in the wrong place; after the fix it passes (`OidcLocalCredentialModeTests` 4/4).
+  - `OidcTokenEndpointGuardTests` shows the missing-`grant_type` response (400 `unsupported_grant_type`), the JSON-body response and the no-body response (400 `invalid_request`) are byte-identical before and after. There is no 415.
+  - All 10 route snapshots are unchanged.
+  - The build has 0 errors.
+  - Fleet's snapshot also passes after the change.
+- **For M4:**
+  - **(a)** Because of failing at startup, a host that adds the identity provider must also register a user type. `OidcAdminRouteTests` needed `AddAuthentication<SparkUser>`. The no-`AddAuthentication` fallback in `SparkIdentityProviderExtensions.LocalCredentialsOf` is now dead; delete it.
+  - **(b)** A generic endpoint must not share a model's name. `OidcToken<TUser>` hid `Models.OidcToken` from every other file in that namespace (CS0117/CS0104).
+  - **(c)** A typed handler gets no `HttpContext`, so `BindRequestAsync` keeps it in a field. That is safe because endpoints are created per request.
+  - **(d)** `OidcLoginSubmit<TUser>` still reads its form by hand; make it typed per D3.
+  - **(e)** Every refusal is now `Results.Json(…, statusCode:)` with the same body.
+  - **(f)** Logout, TwoFactor and UserInfo join `MapFor<TUser>()`.
+  - The E2E `JwtBearerCredentialTests` (Fleet) was not run; it is part of the M9 sweep.
+
 ### S3 — Account routes with endpoint-level `IsEnabled` (Spark side of upstream R5)
 The API itself is specified upstream (R5): it is evaluated after the group chain, and a disabled
 endpoint has no `GetPath`/`Configure` call and `IsEndpointMapped<T>` false. In Spark, model the
 account routes with one `SparkAuthManageGroup` (which carries `RequireAuthorization` in
 `Configure(group, services)`) plus a `LocalCredentialMode` helper used by each endpoint's `IsEnabled`.
 **Pass:** for each of the three modes, the account route table matches today's (M0 snapshot).
+
+**Verdict (2026-10-08; it also completes every M5 bullet): ✅ pass, with one fixture change that the owner must confirm.**
+- **Endpoints:** the 15 routes are 14 generic classes in `Authorization/Endpoints/Account/`.
+  - Typed: `Register`, `ResendConfirmationEmail`, `ForgotPassword`, `ResetPassword`, `UpdateInfo`, `SetPassword`, `ConfirmEmail`, `UpdateProfile` and `ConfirmEmailLink` (`[QueryParam] required`).
+  - Raw: `Profile`, `AuthenticatorUri`, `PersonalData` and `DeleteAccount`. `DeleteAccount` keeps its optional body read by hand, a stated exception: a typed DELETE body would be required.
+- **Mapping:** `MapSparkIdentityApi<TUser>` makes only unconditional `MapEndpoint<…>()` calls.
+  - `SparkAuthManageGroup` (`/manage`) carries `RequireAuthorization`.
+  - `LocalCredentialMode` and `SparkAuthFeatures` read root-provider `IOptions` only. The `localCredentials` parameter is gone, so Microsoft's filter and `IsEnabled` share one source.
+- **The rest of M5:**
+  - Passkey and linking endpoints have their own `IsEnabled`, so `MapPasskeyApi` and `MapExternalLoginManagement` are gone.
+  - `GetAuthCapabilities` and `ExternalLoginCallback` use `[Inject]`.
+  - The dead `authGroup` is deleted.
+  - The `SparkIdentityEndpoints` stand-ins for routes Spark owns are deleted, because an endpoint carries only one `EndpointTypeMetadata`. This is a minor API break.
+- **Fixture change, for the owner to confirm:** the 8 typed POSTs lose `accepts(application/json)`. That is 40 fixture lines in Spark.Tests and 26 in the app projects; routes, authorization and antiforgery are otherwise identical.
+  - Cause: the Endpoints rc deliberately declares the body with no content types (`EndpointDocumentation.DeclareRequestBody`).
+  - Effect: the 415 for a wrong content type now comes from the endpoint, after authorization and antiforgery have run, so an anonymous `text/plain` POST to `/manage/info` gets 401 where it got 415.
+  - Every typed body endpoint in M3 and M4 will show the same diff.
+  - The alternative is `.Accepts<T>("application/json")` in each endpoint's `Configure`.
+- **Response shapes, measured before and after:**
+  - A missing, empty, `null` or malformed body, or a missing query value, gets a bare 400. Any other content type gets a bare 415.
+  - Keeping these needs `OnBindFailedAsync → SparkAccount.BindFailed`, because the typed binder would answer 415 or problem+json.
+  - Pinned by `AccountFlowTests.Unbindable_requests_answer_a_bare_status_as_before`.
+  - Trap: a `[QueryParam]` with an initializer becomes optional.
+- **Evidence:** 659/659 tests passed across `Authorization.*`, `XsrfSurfaceTests`, `OidcLocalCredentialModeTests` and `RouteTableSnapshotTests`; the four app snapshot projects passed 1/1 each; the build has 0 errors.
+- **Open for M3/M9:**
+  - Typed handlers reach `HttpContext` through `[Inject] IHttpContextAccessor`; S2 instead keeps it from `BindRequestAsync`. Pick one in M3.
+  - With `AddControllers`, typed bodies bind through MVC's JSON options.
+  - The logger category for account deletion changed.
+  - `QnAAccountTests` (E2E) and `Client.Tests` were not run.
 
 ### S4 — #36 and #37 in Spark (consumer side of upstream R1, R2)
 - **#36:** rewrite `OidcCors.Apply` on `Configure(group, services)` and delete the
@@ -63,6 +113,23 @@ account routes with one `SparkAuthManageGroup` (which carries `RequireAuthorizat
   disabled. `DevWebSocketEndpointTests` must stay green, the CSWSH guard (`SparkMiddleware.cs:387`)
   must still apply, and a path with mismatched route parameters must fail at startup (upstream
   R2.10).
+
+**Verdict (2026-10-08, adopted by M7): ✅ pass.**
+- **#36:** no `IEndpointRouteBuilder` cast is left in identity_provider (done in M1).
+- **#37:** the dev WebSocket is `DevWebSocketEndpoint`: `IGetEndpoint`, `partial`, with `[Inject]` `IGitHubClientFactory`, `IOptions<GitHubWebhooksOptions>` and `IDevWebSocketService`.
+  - `GetPath` returns `options.DevWebSocketPath`, whose default is `DevWebSocketEndpoint.DefaultPath`.
+  - `IsEnabled` checks `DevelopmentAppId`.
+  - The generated `MapSparkWebhooksGitHubEndpoints()` maps it; the webhook POST stays on `MapGitHubWebhooks`.
+- **Evidence:**
+  - A disabled endpoint never resolves `IDevWebSocketService`. `DevWebSocketEndpointMappingTests` registers a factory that throws and passes; it fails red when the gate is forced open. `GetPath` is not called while the endpoint is disabled, also shown red→green.
+  - A configured path containing `{tenant}` throws `InvalidOperationException` at startup.
+  - The cross-origin upgrade still gets 403 through `UseSpark()` (`DevWebSocketOriginGuardTests`), with a 101 control.
+  - The `webhooks` and `webhooks-dev-app` snapshots are unchanged.
+  - 88/88 tests passed across `Webhooks.GitHub.*` and `RouteTableSnapshotTests`.
+- **For M7/M9:**
+  - **(a)** PRD D4's reason must drop "dispatch". `ProcessWebhookAsync` is public, and Spark re-verifies the signature itself (`SparkWebhookEventProcessor.cs:45-56`). Octokit owns only the request-level refusal. The decision stands.
+  - **(b)** `IDevWebSocketService` is registered from the options passed to `AddGithubWebhooks`, while `IsEnabled` reads `IOptions`. They diverge when an app sets `DevelopmentAppId` through `Configure`. Register the service unconditionally.
+  - **(c)** In a test process with freshly built binaries, the first Octokit `User.Current()` call to WireMock took 8.9 s against the 10 s bound of `DevWebSocketEndpointTests.A_developer_outside_the_allow_list_is_closed`; warm, it takes 0.7–1.0 s. S4 did not change that code. Locate the cause before M9; do not call it a flake.
 
 ---
 
