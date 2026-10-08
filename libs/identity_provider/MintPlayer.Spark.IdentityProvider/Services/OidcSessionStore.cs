@@ -31,6 +31,15 @@ internal sealed class OidcSessionStore(IDocumentStore store, OidcKeyRing keys, I
     /// <summary>A new session id, for the sign-in cookie.</summary>
     public static string NewSessionId() => OidcTokenReference.GenerateValue();
 
+    /// <summary>
+    /// Whether the session <paramref name="sid"/> was ended (logout). A point-load, so unlike the index read in
+    /// <see cref="EndAsync"/> it cannot miss a refresh token minted just before the logout. A session whose record
+    /// is gone (expired, or never recorded) is not "ended": the refresh token's own expiry governs it.
+    /// </summary>
+    public static async Task<bool> HasEndedAsync(IAsyncDocumentSession session, string? sid, CancellationToken ct)
+        => !string.IsNullOrEmpty(sid)
+            && await session.LoadAsync<OidcToken>(DocumentId(sid), ct) is { Type: OidcTokenTypes.Session, Status: not "valid" };
+
     /// <summary>Records that <paramref name="applicationId"/> received tokens in session <paramref name="sid"/>.</summary>
     public static async Task JoinAsync(IAsyncDocumentSession session, string? sid, string userId, string applicationId, CancellationToken ct)
     {

@@ -123,19 +123,28 @@ internal sealed class OidcAuthorizeHandler(
             return Error("invalid_request", "The claims parameter is not valid JSON.");
 
         // --- 3. Who is answering, and is that good enough -----------------------------------------
+        // A signed request object sent by value cannot ride the sign-in bounce as plain query values:
+        // they would be editable on the way back, and a client that requires signed requests would be
+        // refused on return. It is pushed, as PAR does, so the bounce carries only its request_uri and
+        // the "_jar" flag. The 90 s pushed-request lifetime applies.
+        async Task<OidcAuthorizeParameters> BounceableAsync()
+            => resolved.FromRequestObject && !resolved.FromPushedRequest
+                ? p with { RequestUri = await requestObjects.PushAsync(session, app!, p, fromRequestObject: true, ct), Request = null }
+                : p;
+
         var reauthenticated = context.Request.Query.ContainsKey(ReauthenticatedMarker);
         var signedIn = await OidcInteractiveSession.ReadAsync(context);
         if (signedIn is null)
         {
             if (prompts.Contains("none"))
                 return Error("login_required", "The user is not signed in.");
-            return RedirectToLogin(p, reauthenticate: false);
+            return RedirectToLogin(await BounceableAsync(), reauthenticate: false);
         }
 
         // prompt=login / select_account: one fresh sign-in, then on. There is no account picker; signing
         // in again is how another account is selected.
         if (!reauthenticated && (prompts.Contains("login") || prompts.Contains("select_account")))
-            return RedirectToLogin(p, reauthenticate: true);
+            return RedirectToLogin(await BounceableAsync(), reauthenticate: true);
 
         var maxAge = p.MaxAgeSeconds ?? app.DefaultMaxAge;
         if (maxAge is { } seconds && (signedIn.AuthTime is null || DateTimeOffset.UtcNow - signedIn.AuthTime > TimeSpan.FromSeconds(seconds) + MaxAgeSkew))
@@ -143,7 +152,7 @@ internal sealed class OidcAuthorizeHandler(
             if (prompts.Contains("none"))
                 return Error("login_required", "The sign-in is older than max_age.");
             if (!reauthenticated)
-                return RedirectToLogin(p, reauthenticate: true);
+                return RedirectToLogin(await BounceableAsync(), reauthenticate: true);
         }
 
         // acr_values: step up once (a fresh sign-in passes two-factor where the account has it); a
@@ -153,7 +162,7 @@ internal sealed class OidcAuthorizeHandler(
         if (!OidcAcr.Satisfies(signedIn.Acr, requestedAcr))
         {
             if (!reauthenticated && !prompts.Contains("none"))
-                return RedirectToLogin(p, reauthenticate: true);
+                return RedirectToLogin(await BounceableAsync(), reauthenticate: true);
             if (EssentialAcr(p.Claims) is not null)
                 return Error("unmet_authentication_requirements", "The requested authentication level could not be met.");
         }

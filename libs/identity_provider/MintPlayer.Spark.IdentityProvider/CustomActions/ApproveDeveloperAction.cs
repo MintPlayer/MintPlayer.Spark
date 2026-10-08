@@ -24,10 +24,16 @@ internal sealed partial class ApproveDeveloperAction : ICustomAction
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcPortalMail mail;
     [Inject] private readonly OidcPortalLinks links;
+    [Inject] private readonly OidcPortalAccess access;
 
-    public Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
-        => OidcDeveloperDecision.DecideAsync(
+    // security.json grants the action to the administrators slot; checked here as well, as the go-live
+    // decision is, so a misbound right cannot let a developer approve developers.
+    public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
+    {
+        if (!await access.IsAdministratorAsync()) return;
+        await OidcDeveloperDecision.DecideAsync(
             args, approve: true, manager, session, httpContextAccessor, developers, audit, mail, links, cancellationToken);
+    }
 }
 
 /// <summary>The rejecting counterpart of <see cref="ApproveDeveloperAction"/>.</summary>
@@ -40,10 +46,16 @@ internal sealed partial class RejectDeveloperAction : ICustomAction
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcPortalMail mail;
     [Inject] private readonly OidcPortalLinks links;
+    [Inject] private readonly OidcPortalAccess access;
 
-    public Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
-        => OidcDeveloperDecision.DecideAsync(
+    // security.json grants the action to the administrators slot; checked here as well, as the go-live
+    // decision is, so a misbound right cannot let a developer approve developers.
+    public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
+    {
+        if (!await access.IsAdministratorAsync()) return;
+        await OidcDeveloperDecision.DecideAsync(
             args, approve: false, manager, session, httpContextAccessor, developers, audit, mail, links, cancellationToken);
+    }
 }
 
 internal static class OidcDeveloperDecision

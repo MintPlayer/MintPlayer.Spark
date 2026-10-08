@@ -410,7 +410,9 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Find refresh token
         // Point-load for the same reason as the authorization-code path above.
         var refreshTokenDoc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refreshToken), ct);
-        if (refreshTokenDoc is { Type: "refresh_token", Status: not "valid" })
+        // Only a rotated token counts as reuse. One revoked by logout, a withdrawal, the disable cascade or
+        // RevokeGrant is simply refused below; treating it as theft would write a false audit event.
+        if (refreshTokenDoc is { Type: "refresh_token", Status: "redeemed" })
         {
             // Reuse of an already-rotated refresh token. Per RFC 6819 §5.2.2.3 this is
             // treated as theft: revoke the entire chain rather than just refusing.
@@ -447,6 +449,15 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
             await session.SaveChangesAsync(ct);
 
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
+        }
+
+        // D8 sessions: logout revokes the session's refresh tokens through an index read, which can
+        // miss one minted moments before. The session record itself decides here.
+        if (await OidcSessionStore.HasEndedAsync(session, refreshTokenDoc.SessionId, ct))
+        {
+            refreshTokenDoc.Status = "revoked";
+            await TrySaveAsync(session, ct);
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 

@@ -173,9 +173,15 @@ internal sealed partial class OidcTokenEndpoint<TUser>
         if (!string.IsNullOrEmpty(actorToken))
         {
             var actor = await AccessTokens.ResolveAsync(session, signingKeyService, actorToken, issuer, ct);
-            if (actor is not { IsActive: true })
+            if (actor is not { IsActive: true, Record: { } actorRecord })
                 return Results.Json(new { error = "invalid_grant", error_description = "The actor token is not active." }, statusCode: 400);
-            actorSubject = actor.Subject ?? actor.ClientId;
+            // The actor is the caller: its token must have been issued to this client, and it cannot be
+            // the subject token over again. Otherwise any client could pass the user's own token as the
+            // actor and get a delegation it was never given, bypassing AllowImpersonation.
+            if (!string.Equals(actorRecord.ApplicationId, app.Id, StringComparison.Ordinal)
+                || string.Equals(actorRecord.Id, record.Id, StringComparison.Ordinal))
+                return Results.Json(new { error = "invalid_grant", error_description = "The actor token must be this client's own token." }, statusCode: 400);
+            actorSubject = actor.Subject ?? $"client:{app.ClientId}";
         }
         else if (!app.AllowImpersonation)
         {

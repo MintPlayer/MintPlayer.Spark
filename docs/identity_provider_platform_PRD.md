@@ -73,6 +73,21 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
   read through `SparkAuthTranslationService` like the auth pages), not a client-side table. The account
   overview link label is the one inline `{en, fr, nl}`: the link type carries its own translations.
 - **Accepting an invitation takes a click** on the page; opening the link does nothing by itself.
+- **Fixed from the I13 unit tests (red before the fix, by design of the test):**
+  1. A signed request object sent by value is pushed internally (as PAR) before the sign-in bounce, so
+     the bounce carries only `request_uri` and the `_jar` flag (`OidcAuthorizeHandler.BounceableAsync`).
+  2. Token exchange: the `actor_token` must be the calling client's own token and not the subject token
+     (`TokenGrants.cs`), so it cannot be used to bypass `AllowImpersonation`.
+  3. Refresh checks the session record by point-load (`OidcSessionStore.HasEndedAsync`), so a refresh
+     token that logout's index read missed is still refused.
+  4. Only a rotated (`redeemed`) refresh token counts as reuse; a revoked one is refused without a
+     false `RefreshTokenReuse` audit event.
+  5. `ApproveDeveloper`/`RejectDeveloper` check for an administrator themselves, as the go-live decision
+     does.
+- **Known and accepted:** `SparkIntrospectionHandler` fetches discovery through a static
+  `ConfigurationManager` with a plain `HttpDocumentRetriever` (not `IHttpClientFactory`); its test seeds
+  that field by reflection. `OidcInvitations` finds the invited account through an index, so an
+  account registered seconds earlier may get no mail; the answer is "Invitation sent" either way.
 - **Fleet's development audience is `fleet`** (the API resource's name). The E2E hosts and
   `JwtBearerCredentialTests` keep `fleet-api` with their own seeded resource.
 

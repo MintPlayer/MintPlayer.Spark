@@ -89,10 +89,14 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     /// The provider host every OIDC test boots. Shared with <see cref="OidcSharedHost"/>, which
     /// boots it once per class for the classes that write nothing.
     /// </summary>
-    internal static SparkEndpointFactory<OidcTestContext> CreateFactory(IDocumentStore store) =>
+    internal static SparkEndpointFactory<OidcTestContext> CreateFactory(
+        IDocumentStore store,
+        Action<MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions>? configureIdentityProvider = null,
+        Action<IServiceCollection>? configureServices = null) =>
         new SparkEndpointFactory<OidcTestContext>(
             store,
             models: [],
+            configureServices: configureServices,
             configureSpark: spark =>
             {
                 // Explicit since preview.60: LocalCredentials now defaults to Disabled, and these
@@ -106,6 +110,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
                     // assert the value the endpoints actually stamp.
                     options.Issuer = Issuer;
                     options.SigningKeyPath = CopyOfSharedSigningKey();
+                    configureIdentityProvider?.Invoke(options);
                 });
             },
             // Development so the provider generates its own signing key. Production refusing to
@@ -670,7 +675,19 @@ public sealed class OidcTestContext : SparkContext
 /// derive from <see cref="OidcTestHost"/>, which scopes their identifiers per case; classes that
 /// seed nothing and only read pages may take it directly.
 /// </summary>
-public sealed class OidcSharedHost : SharedSparkHost<OidcTestContext>
+/// <remarks>
+/// A class needing different provider options derives a host of its own and overrides
+/// <see cref="ConfigureIdentityProvider"/> / <see cref="ConfigureServices"/>, then takes that host
+/// through <c>IClassFixture&lt;TheDerivedHost&gt;</c>.
+/// </remarks>
+public class OidcSharedHost : SharedSparkHost<OidcTestContext>
 {
-    protected override SparkEndpointFactory<OidcTestContext> CreateFactory() => OidcTestHost.CreateFactory(Store);
+    /// <summary>Runs after the defaults (issuer, signing key) inside <c>AddIdentityProvider</c>.</summary>
+    protected virtual void ConfigureIdentityProvider(MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions options) { }
+
+    /// <summary>Runs last on the host's services: swap a service for a stub here.</summary>
+    protected virtual void ConfigureServices(IServiceCollection services) { }
+
+    protected override SparkEndpointFactory<OidcTestContext> CreateFactory()
+        => OidcTestHost.CreateFactory(Store, ConfigureIdentityProvider, ConfigureServices);
 }
