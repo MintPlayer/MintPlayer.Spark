@@ -36,6 +36,88 @@ public class ModerationToolsTests : SparkTestDriver
         response.Body.GetRawText().Should().Contain("This post is locked.", path);
     }
 
+    /// <summary>
+    /// A body a moderation endpoint cannot bind answers what it answered while the endpoints read their
+    /// bodies by hand (measured before they became typed endpoints, endpoints generator completion M3):
+    /// the standard refusal, except that a body-less request to an untyped endpoint is an empty request,
+    /// and an anonymous reputation request is answered with no reputation whatever it carries.
+    /// </summary>
+    [Fact]
+    public async Task Unbindable_bodies_answer_as_before()
+    {
+        await using var host = await StartAsync();
+
+        async Task<string> Probe(string url, string? user, params string[] groups)
+        {
+            var lines = new List<string>();
+            foreach (var (label, content) in MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.UnbindableBodies())
+            {
+                try
+                {
+                    var (status, body) = await host.SendRawAsync(url, content, user, groups);
+                    lines.Add($"{label}: {status} {body}");
+                }
+                catch (Exception ex)
+                {
+                    lines.Add($"{label}: throws {ex.GetType().Name}");
+                }
+            }
+            return string.Join("\n", lines);
+        }
+
+        var all = string.Join("\n",
+            "# vote (typed), signed in", await Probe("/spark/moderation/vote", Alice),
+            "# vote (typed), anonymous", await Probe("/spark/moderation/vote", null),
+            "# cases (untyped), moderator", await Probe("/spark/moderation/cases", "users/mod", MoSecurity.ModeratorsName),
+            "# cases (untyped), anonymous", await Probe("/spark/moderation/cases", null),
+            "# reputation, anonymous", await Probe("/spark/moderation/reputation", null),
+            "# reputation, signed in", await Probe("/spark/moderation/reputation", Alice));
+
+        // Measured on the hand-read endpoints first. Identical, except "none" (no content type) for a
+        // signed-in caller, which escaped as an unhandled InvalidOperationException (a 500) and is now the
+        // refusal, like "text/plain", which did the same.
+        const string refused = """{"result":{"error":"Not found"},"operations":[]}""";
+        const string none = """{"result":null,"operations":[]}""";
+        all.Should().Be($$"""
+            # vote (typed), signed in
+            none: 404 {{refused}}
+            empty: 404 {{refused}}
+            null: 404 {{refused}}
+            malformed: 404 {{refused}}
+            text/plain: 404 {{refused}}
+            # vote (typed), anonymous
+            none: 404 {{refused}}
+            empty: 404 {{refused}}
+            null: 404 {{refused}}
+            malformed: 404 {{refused}}
+            text/plain: 404 {{refused}}
+            # cases (untyped), moderator
+            none: 404 {{refused}}
+            empty: 200 {"result":[],"operations":[]}
+            null: 404 {{refused}}
+            malformed: 404 {{refused}}
+            text/plain: 404 {{refused}}
+            # cases (untyped), anonymous
+            none: 404 {{refused}}
+            empty: 404 {{refused}}
+            null: 404 {{refused}}
+            malformed: 404 {{refused}}
+            text/plain: 404 {{refused}}
+            # reputation, anonymous
+            none: 200 {{none}}
+            empty: 200 {{none}}
+            null: 200 {{none}}
+            malformed: 200 {{none}}
+            text/plain: 200 {{none}}
+            # reputation, signed in
+            none: 404 {{refused}}
+            empty: 200 {"result":{"userId":"users/alice","total":0,"pending":0,"privileges":["Upvote","Downvote","Flag"],"suspended":false,"canReview":false},"operations":[]}
+            null: 404 {{refused}}
+            malformed: 404 {{refused}}
+            text/plain: 404 {{refused}}
+            """.ReplaceLineEndings("\n"));
+    }
+
     // ---- S-MOD-D: one falsifiable test per write path ----------------------------------------------
 
     [Fact]

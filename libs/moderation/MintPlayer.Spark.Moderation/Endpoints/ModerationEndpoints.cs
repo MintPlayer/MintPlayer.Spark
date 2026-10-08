@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -83,102 +82,117 @@ internal static class ModerationEndpoint
         }
     }
 
-    public static async Task<IResult> TypedAsync<TRequest>(HttpContext httpContext, ISparkAddOnEndpoints addOn, Func<TRequest, Guid, Task<object?>> operation)
-        where TRequest : class, ISparkTypedRequest
-    {
-        var (request, entityType) = await addOn.ReadTypedRequestAsync<TRequest>(httpContext);
-        if (request is null || entityType is null)
-            return addOn.Refusal(httpContext);
-        return await RunAsync(httpContext, addOn, () => operation(request, entityType.Id));
-    }
+    /// <summary>
+    /// A typed request: the type it names (top-level <c>objectTypeId</c>), or the standard refusal when
+    /// it names none the model declares.
+    /// </summary>
+    public static Task<IResult> TypedAsync(HttpContext httpContext, ISparkAddOnEndpoints addOn, ISparkTypedRequest request, Func<Guid, Task<object?>> operation)
+        => addOn.ResolveType(request) is { } entityType
+            ? RunAsync(httpContext, addOn, () => operation(entityType.Id))
+            : Task.FromResult(addOn.Refusal(httpContext));
 
-    public static async Task<IResult> UntypedAsync(HttpContext httpContext, ISparkAddOnEndpoints addOn, ISparkCurrentUser user, Func<ModerationRequest, Task<object?>> operation)
-    {
-        if (!user.IsAuthenticated)
-            return addOn.Refusal(httpContext);
-        ModerationRequest? request;
-        try
-        {
-            request = httpContext.Request.ContentLength is 0 ? new ModerationRequest() : await httpContext.Request.ReadFromJsonAsync<ModerationRequest>();
-        }
-        catch (Exception ex) when (ex is JsonException or BadHttpRequestException)
-        {
-            request = null;
-        }
-        if (request is null)
-            return addOn.Refusal(httpContext);
-        return await RunAsync(httpContext, addOn, () => operation(request));
-    }
+    /// <summary>An untyped request (accounts, cases, pages): signed-in callers only.</summary>
+    public static Task<IResult> UntypedAsync(HttpContext httpContext, ISparkAddOnEndpoints addOn, ISparkCurrentUser user, Func<Task<object?>> operation)
+        => user.IsAuthenticated
+            ? RunAsync(httpContext, addOn, operation)
+            : Task.FromResult(addOn.Refusal(httpContext));
+
+    /// <summary>
+    /// The binding of an untyped request: a body-less one (<c>Content-Length: 0</c>) is an empty request,
+    /// as it was while these endpoints read their bodies by hand; anything else is bound as JSON.
+    /// </summary>
+    public static ValueTask<ModerationRequest?> BindAsync(HttpContext context, Func<HttpContext, ValueTask<ModerationRequest?>> bindBody)
+        => context.Request.ContentLength is 0 ? new(new ModerationRequest()) : bindBody(context);
 }
+
+// Every endpoint below is typed (endpoints generator completion M3). A body that cannot be bound is
+// the standard refusal, never a parse error: measured before the change, a malformed or JSON-null body
+// was that refusal already, while a request with no content type escaped as an unhandled
+// InvalidOperationException (a 500) and is now the refusal too (ModerationToolsTests.Unbindable_bodies_answer_as_before).
 
 /// <summary><c>POST /spark/moderation/vote { objectTypeId, id, direction }</c> → the target's vote state.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class VoteEndpoint : IPostEndpoint
+internal sealed partial class VoteEndpoint : IPostEndpoint<ModerationTargetRequest>
 {
     public static string Path => "/vote";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.TypedAsync<ModerationTargetRequest>(httpContext, addOn,
-            async (r, type) => await moderation.VoteAsync(type, r.Id ?? string.Empty, r.Direction, httpContext.RequestAborted));
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationTargetRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.TypedAsync(httpContextAccessor.HttpContext!, addOn, r,
+            async type => await moderation.VoteAsync(type, r.Id ?? string.Empty, r.Direction, cancellationToken));
 }
 
 /// <summary><c>POST /spark/moderation/votes { objectTypeId, ids }</c> → vote states of the visible ids (≤ 100).</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class VotesEndpoint : IPostEndpoint
+internal sealed partial class VotesEndpoint : IPostEndpoint<ModerationTargetsRequest>
 {
     public static string Path => "/votes";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.TypedAsync<ModerationTargetsRequest>(httpContext, addOn,
-            async (r, type) => await moderation.GetVotesAsync(type, r.Ids ?? [], httpContext.RequestAborted));
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationTargetsRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.TypedAsync(httpContextAccessor.HttpContext!, addOn, r,
+            async type => await moderation.GetVotesAsync(type, r.Ids ?? [], cancellationToken));
 }
 
 /// <summary><c>POST /spark/moderation/flag { objectTypeId, id, reason }</c> → 204.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class FlagEndpoint : IPostEndpoint
+internal sealed partial class FlagEndpoint : IPostEndpoint<ModerationTargetRequest>
 {
     public static string Path => "/flag";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.TypedAsync<ModerationTargetRequest>(httpContext, addOn,
-            async (r, type) => { await moderation.FlagAsync(type, r.Id ?? string.Empty, r.Reason ?? string.Empty, httpContext.RequestAborted); return null; });
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationTargetRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.TypedAsync(httpContextAccessor.HttpContext!, addOn, r,
+            async type => { await moderation.FlagAsync(type, r.Id ?? string.Empty, r.Reason ?? string.Empty, cancellationToken); return null; });
 }
 
 /// <summary><c>POST /spark/moderation/lock { objectTypeId, id, reason }</c>. Requires <c>Lock/T</c>.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class LockEndpoint : IPostEndpoint
+internal sealed partial class LockEndpoint : IPostEndpoint<ModerationTargetRequest>
 {
     public static string Path => "/lock";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.TypedAsync<ModerationTargetRequest>(httpContext, addOn,
-            async (r, type) => { await moderation.LockAsync(type, r.Id ?? string.Empty, r.Reason, httpContext.RequestAborted); return null; });
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationTargetRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.TypedAsync(httpContextAccessor.HttpContext!, addOn, r,
+            async type => { await moderation.LockAsync(type, r.Id ?? string.Empty, r.Reason, cancellationToken); return null; });
 }
 
 /// <summary><c>POST /spark/moderation/unlock { objectTypeId, id }</c>. Requires <c>Lock/T</c>.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class UnlockEndpoint : IPostEndpoint
+internal sealed partial class UnlockEndpoint : IPostEndpoint<ModerationTargetRequest>
 {
     public static string Path => "/unlock";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.TypedAsync<ModerationTargetRequest>(httpContext, addOn,
-            async (r, type) => { await moderation.UnlockAsync(type, r.Id ?? string.Empty, httpContext.RequestAborted); return null; });
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationTargetRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.TypedAsync(httpContextAccessor.HttpContext!, addOn, r,
+            async type => { await moderation.UnlockAsync(type, r.Id ?? string.Empty, cancellationToken); return null; });
 }
 
 /// <summary>
@@ -186,7 +200,7 @@ internal sealed partial class UnlockEndpoint : IPostEndpoint
 /// open flag case, and which moderator actions the caller holds.
 /// </summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class StatusEndpoint : IPostEndpoint
+internal sealed partial class StatusEndpoint : IPostEndpoint<ModerationTargetRequest>
 {
     public static string Path => "/status";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
@@ -194,9 +208,12 @@ internal sealed partial class StatusEndpoint : IPostEndpoint
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly Raven.Client.Documents.IDocumentStore documentStore;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.TypedAsync<ModerationTargetRequest>(httpContext, addOn, async (r, type) =>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationTargetRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.TypedAsync(httpContextAccessor.HttpContext!, addOn, r, async type =>
         {
             var target = await targets.ResolveAsync(type, r.Id ?? string.Empty);
             var canLock = await permissions.IsAllowedAsync(ModerationRights.Lock, target.TypeName);
@@ -228,24 +245,32 @@ internal sealed partial class StatusEndpoint : IPostEndpoint
 /// anonymous visitor may read (every author cell of a question list), and ng-spark-auth's interceptor
 /// sends the whole app to the sign-in page on any 401 outside <c>/spark/auth</c>. An anonymous caller
 /// has no reputation of its own and is shown nobody else's, so the honest answer is "none" — the
-/// badge stays empty. Nothing is disclosed that the 401 withheld.
+/// badge stays empty. Nothing is disclosed that the 401 withheld. That holds for a body that cannot be
+/// bound too, as it did before the endpoint was typed.
 /// </remarks>
 [MemberOf<ModerationGroup>]
-internal sealed partial class ReputationEndpoint : IPostEndpoint
+internal sealed partial class ReputationEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/reputation";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(currentUser.IsAuthenticated ? addOn.Refusal(context) : addOn.Envelope(null, StatusCodes.Status200OK));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
         => !currentUser.IsAuthenticated
             ? Task.FromResult(addOn.Envelope(null, StatusCodes.Status200OK))
-            : ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async r =>
+            : ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async () =>
         {
             var userId = string.IsNullOrEmpty(r.UserId) ? currentUser.Id! : r.UserId;
-            var reputation = await moderation.GetReputationAsync(userId, httpContext.RequestAborted);
+            var reputation = await moderation.GetReputationAsync(userId, cancellationToken);
             // Someone else's badge shows the number only; privileges and suspension are the owner's business.
             return userId == currentUser.Id ? reputation : new ModerationReputation { UserId = userId, Total = reputation.Total };
         });
@@ -253,132 +278,180 @@ internal sealed partial class ReputationEndpoint : IPostEndpoint
 
 /// <summary><c>POST /spark/moderation/reputation/history</c> → the caller's own ledger, voters never named.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class ReputationHistoryEndpoint : IPostEndpoint
+internal sealed partial class ReputationHistoryEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/reputation/history";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
         => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser,
-            async r => await review.MyHistoryAsync(r.Take, httpContext.RequestAborted));
+            async () => await review.MyHistoryAsync(r.Take, cancellationToken));
 }
 
 /// <summary><c>POST /spark/moderation/cases { status?, skip, take }</c> → the review queue. Requires <c>Review/Moderation</c>.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class CasesEndpoint : IPostEndpoint
+internal sealed partial class CasesEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/cases";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
         => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser,
-            async r => await review.ListCasesAsync(r.Status, r.Skip, r.Take, httpContext.RequestAborted));
+            async () => await review.ListCasesAsync(r.Status, r.Skip, r.Take, cancellationToken));
 }
 
 /// <summary><c>POST /spark/moderation/case { caseId }</c> → the case's review surface. Requires <c>Review/Moderation</c>.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class CaseEndpoint : IPostEndpoint
+internal sealed partial class CaseEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/case";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
         => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser,
-            async r => await review.GetCaseAsync(r.CaseId ?? string.Empty, httpContext.RequestAborted));
+            async () => await review.GetCaseAsync(r.CaseId ?? string.Empty, cancellationToken));
 }
 
 /// <summary><c>POST /spark/moderation/case/decide { caseId, decision, accountId?, reason? }</c> → 204.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class DecideEndpoint : IPostEndpoint
+internal sealed partial class DecideEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/case/decide";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async r =>
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async () =>
         {
-            await moderation.DecideAsync(r.CaseId ?? string.Empty, r.Decision ?? string.Empty, r.AccountId, r.Reason, httpContext.RequestAborted);
+            await moderation.DecideAsync(r.CaseId ?? string.Empty, r.Decision ?? string.Empty, r.AccountId, r.Reason, cancellationToken);
             return null;
         });
 }
 
 /// <summary><c>POST /spark/moderation/suspend { userId, days?, reason? }</c>. Requires <c>Suspend/Moderation</c>.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class SuspendEndpoint : IPostEndpoint
+internal sealed partial class SuspendEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/suspend";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async r =>
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async () =>
         {
-            await moderation.SuspendAsync(r.UserId ?? string.Empty, r.Days, r.Reason, r.CaseId, httpContext.RequestAborted);
+            await moderation.SuspendAsync(r.UserId ?? string.Empty, r.Days, r.Reason, r.CaseId, cancellationToken);
             return null;
         });
 }
 
 /// <summary><c>POST /spark/moderation/unsuspend { userId }</c>. Requires <c>Suspend/Moderation</c>.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class UnsuspendEndpoint : IPostEndpoint
+internal sealed partial class UnsuspendEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/unsuspend";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async r =>
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async () =>
         {
-            await moderation.UnsuspendAsync(r.UserId ?? string.Empty, httpContext.RequestAborted);
+            await moderation.UnsuspendAsync(r.UserId ?? string.Empty, cancellationToken);
             return null;
         });
 }
 
 /// <summary><c>POST /spark/moderation/merge { userId, intoUserId }</c>: reverses every vote the duplicate cast. Requires <c>Suspend/Moderation</c>.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class MergeEndpoint : IPostEndpoint
+internal sealed partial class MergeEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/merge";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
-        => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async r =>
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
+        => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser, async () =>
         {
-            await moderation.MergeAccountsAsync(r.UserId ?? string.Empty, r.IntoUserId ?? string.Empty, r.CaseId, httpContext.RequestAborted);
+            await moderation.MergeAccountsAsync(r.UserId ?? string.Empty, r.IntoUserId ?? string.Empty, r.CaseId, cancellationToken);
             return null;
         });
 }
 
 /// <summary><c>POST /spark/moderation/audit { skip, take }</c> → the audit log, newest first. Requires <c>Audit/Moderation</c>.</summary>
 [MemberOf<ModerationGroup>]
-internal sealed partial class AuditEndpoint : IPostEndpoint
+internal sealed partial class AuditEndpoint : IPostEndpoint<ModerationRequest>
 {
     public static string Path => "/audit";
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    private HttpContext httpContext = null!;
 
-    public Task<IResult> HandleAsync(HttpContext httpContext)
+    protected override ValueTask<ModerationRequest?> BindRequestAsync(HttpContext context)
+        => ModerationEndpoint.BindAsync(httpContext = context, base.BindRequestAsync);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(addOn.Refusal(context));
+
+    public override Task<IResult> HandleAsync(ModerationRequest r, CancellationToken cancellationToken)
         => ModerationEndpoint.UntypedAsync(httpContext, addOn, currentUser,
-            async r => await review.ListAuditAsync(r.Skip, r.Take, httpContext.RequestAborted));
+            async () => await review.ListAuditAsync(r.Skip, r.Take, cancellationToken));
 }

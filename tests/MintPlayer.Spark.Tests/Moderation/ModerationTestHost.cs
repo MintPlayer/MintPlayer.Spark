@@ -230,6 +230,18 @@ public sealed class MoHost : IAsyncDisposable
         return (response.StatusCode, string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone());
     }
 
+    /// <summary>As <see cref="SendAsync"/> with any body (or none), answering the raw status and text.</summary>
+    public async Task<(int Status, string Body)> SendRawAsync(string url, HttpContent? content, string? user, params string[] groups)
+    {
+        var (cookie, xsrf) = await MintAsync(user, groups);
+        var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+        request.Headers.Add("Cookie", cookie);
+        request.Headers.Add("X-XSRF-TOKEN", xsrf);
+        AddIdentity(request, user, groups);
+        var response = await Client.SendAsync(request);
+        return ((int)response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
     /// <summary>The source IP the next requests claim (X-Mo-Ip), for the network-observation tests.</summary>
     public string? RemoteIp { get; set; }
 
