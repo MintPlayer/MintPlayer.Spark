@@ -116,22 +116,38 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
    - SparkId's `app.routes.ts` and menu.
 3. ~~I12~~ ✅
 4. ~~#490 D11~~ ✅ (server side; the account-page toggle is in I7)
-5. **I13:**
-   - new unit tests per milestone: authenticator, authorize handler, PAR/JAR, DPoP, device,
-     exchange, DCR, key ring, sessions, invitations, approvals;
-   - fix the existing tests; regenerate the route snapshots (`SPARK_UPDATE_ROUTE_SNAPSHOT=1`: HR,
-     Fleet, SparkId);
-   - the E2E journey (§7 I13);
-   - the conformance suite in Docker;
-   - then **one local sweep** (`RAVENDB_LICENSE=... npm run test:affected`).
-6. **I14:**
-   - the IdP README (endpoints, options, keys, the layer);
-   - a developer-portal guide;
-   - release notes;
-   - the minor ng-spark bump, the NuGet preview bump;
-   - close items in the audit doc and the matrix.
+5. ~~I13~~ ✅ unit tests, journey, snapshots, sweep. **Conformance (2026-10-09, local Docker, prebuilt
+   suite images, SparkId at `https://host.docker.internal:5011`, static clients, scripted browser):**
 
-   Then the single push (R4).
+   | Plan | Result |
+   |---|---|
+   | `oidcc-basic-certification-test-plan` (discovery, static) | **0 failed**: 21 passed, 5 warnings, 3 REVIEW, 6 skipped |
+   | `oidcc-config-certification-test-plan` | passed |
+   | `oidcc-formpost-basic-certification-test-plan` (discovery, static) | **0 failed**: 22 passed, 4 warnings, 3 REVIEW, 6 skipped |
+   | RP-initiated, front-channel, back-channel logout (static, code) | **not verified**: the suite's headless browser fails on its own post-logout page (`bootstrap.min.js` syntax error in HtmlUnit), so the modules time out. The checks that ran passed (`CheckPostLogoutState`, the post-logout redirect parameters, `login_required` after logout). The back channel would also need SparkId to trust the suite's self-signed certificate |
+   | Dynamic OP | **not run**: registration is gated by an initial access token (D8), which the dynamic plans do not send |
+   | FAPI 2.0 | **not run**: needs mTLS or DPoP client setups and a TLS front the local setup does not have |
+
+   - **REVIEW** means the suite wants a human to look at a screenshot (prompt=login, max_age=1, the
+     redirect-URI error page); the browser scripts update the placeholders.
+   - **Skipped:** the `address`/`phone`/all-scopes modules (not offered), refresh token (no
+     `offline_access` on the conformance clients), request objects by value without a registered key.
+   - **Warnings, accepted:** `email` is also in the id_token for scope `email` (OIDC §5.4 prefers userinfo
+     when an access token is issued; RPs read it from either); profile claims the test user does not
+     have; `claims` essential `name` without the profile scope (the claims parameter never widens
+     consent, see the decisions above).
+   - **Fixed because of the suite:** userinfo by POST (header and form body), `max_age` with no
+     allowance (it was 60 s), a missing `response_type`/`scope` reported to the client, and the
+     data-model migration's InvalidCastException on a freshly seeded database.
+   - Reproduce: `docker compose -f docker-compose-prebuilt.yml up -d` in a clone of
+     `gitlab.com/openid/conformance-suite`; seed two clients with redirect
+     `https://localhost.emobix.co.uk:8443/test/a/sparkid/callback`, `RequirePkce=false`,
+     `client_secret_basic`; run `scripts/run-test-plan.py` with `CONFORMANCE_DEV_MODE=1`.
+6. ~~I14~~ ✅, including the reconciliation of `findings-identity-provider-audit.md` and
+   `idp-e2e-test-matrix.md` (2026-10-09). **Still open there:** `/connect/userinfo` does not check the token's
+   audience (N2 residual); a seeder or migration that writes an application directly bypasses the client-id
+   reservation (O17); the expired-code message (O15, needs the 256-bit code); login without a dummy hash
+   (O27, accepted, rate limit); and the matrix rows marked "not written".
 
 Origin: an owner request made while testing #464/#490 SSO (HR as the IdP, QnA as the RP):
 
