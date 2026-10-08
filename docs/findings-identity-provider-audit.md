@@ -201,6 +201,13 @@ The first attempt at this surface never reported, leaving `OidcSigningKeyService
 
 ## 5. Also missing: no way to register an application
 
+> **Superseded (2026-10-08).** M12.7 shipped an admin surface: the PersistentObject screens through
+> `IOidcApplicationContext`, for Administrators only. Developer self-service, secret generation
+> (show-once), O10, O13, O15, O17, O20, O22, O23 and N4 are planned in
+> [identity_provider_platform_PRD.md](identity_provider_platform_PRD.md). O13's status filter is
+> already gone (`OidcTokenCleanupService.cs:60-61` filters on `ExpiresAt` only), but `Take(1000)` and
+> the missing `@expires` remain. The original text follows.
+
 There is **no admin surface for `OidcApplication`**. It lived in `Demo/SparkId` on the branch (`OidcApplicationActions.cs` + `App_Data/Model/OidcApplication.json`), which was deliberately not ported. Today the documents — `RedirectUris`, `AllowedScopes`, `AllowedGrantTypes`, hashed secrets — must be seeded by hand.
 
 Coverage cannot use `client_credentials` until a client can be registered and a secret minted. This is where `RedirectUris` and `AllowedScopes` get set correctly or not, so it is also a security surface. Either port the SparkId management screens or add a minimal registration API.
