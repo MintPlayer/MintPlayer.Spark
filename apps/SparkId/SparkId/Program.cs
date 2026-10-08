@@ -68,7 +68,10 @@ if (builder.VerifySparkSecurityIfRequested(args))
 
 var app = builder.Build();
 
-app.UseHttpsRedirection();
+// The E2E host serves the issuer over plain http (its relying parties fetch discovery without a trusted
+// certificate) and turns this off, as Fleet and QnA allow. On by default.
+if (builder.Configuration.GetValue("Spark:HttpsRedirection", true))
+    app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 

@@ -90,7 +90,8 @@ if (builder.VerifySparkSecurityIfRequested(args))
 
 var app = builder.Build();
 
-app.UseHttpsRedirection();
+if (builder.Configuration.GetValue("Spark:HttpsRedirection", true))
+    app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
