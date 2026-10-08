@@ -7,7 +7,6 @@ using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
-using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication;
@@ -38,17 +37,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             auth.Passkeys = SparkPasskeys.Enabled;
         });
 
-    // HR doubles as the identity provider: it serves /connect/* and administers its own clients
-    // and scopes through the PersistentObject screens (see HRContext). Issuer is pinned rather
-    // than derived from the Host header — outside Development the provider requires it, because a
-    // caller-controlled issuer is a caller-controlled token audience.
-    spark.AddIdentityProvider(options =>
-    {
-        options.Issuer = builder.Configuration["SparkIdentityProvider:Issuer"]
-            // HR's own https launch profile; it said 5002, a port HR never listens on, so a relying
-            // party's Authority (5005) and the tokens' iss disagreed (#490 M6, QnA signs in here).
-            ?? "https://localhost:5005";
-    });
+    // External providers from Spark:Auth:Providers. appsettings.Development.json registers SparkId
+    // (the demo identity provider, https://localhost:5011) as the OpenID Connect scheme "SparkId";
+    // SparkId seeds the matching "hr" client in Development. HR hosted the provider itself until
+    // SparkId existed (docs/identity_provider_platform_PRD.md R1).
+    spark.AddExternalProviders(builder.Configuration);
 
     spark.AddMessaging();
     // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written

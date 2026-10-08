@@ -1,0 +1,24 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+
+## Reachable without signing in (expanded)
+(nothing)
+
+## Granted to @anonymous
+(nothing)
+
+## Rights
+Administrators | grant | QueryReadEditNewDelete/OidcApplication | a0000001-0000-0000-0000-000000000001 | app
+Administrators | grant | QueryReadEditNewDelete/OidcScope | a0000001-0000-0000-0000-000000000002 | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+
+## Inert: libraries switched off in "libraries"
+(nothing)

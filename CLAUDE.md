@@ -2,9 +2,16 @@
 
 ## `apps/` holds applications, and one of them is production
 
-`apps/` (renamed from `Demo/`) holds the four demos **and `apps/CodeCoverage`**, which is not a demo:
+`apps/` (renamed from `Demo/`) holds the five demos **and `apps/CodeCoverage`**, which is not a demo:
 it is the coverage server running at coverage.mintplayer.com, absorbed from `MintPlayer/CodeCoverage`.
 Treat changes to it as production changes. Its docs are in [docs/code-coverage/](docs/code-coverage/README.md).
+
+- **`apps/SparkId`** is the demo identity provider (https 5011). HR, Fleet and QnA sign in against it,
+  and Fleet validates the machine tokens it issues. Identity-provider work lands there, not in HR
+  (`docs/identity_provider_platform_PRD.md`).
+- **`apps/DemoApp`** is the minimal Spark app: core only, no Authorization, no identity provider. It
+  is the guides' running example and the only app on plain `AddSpark` (SPARK030). New features don't
+  land there.
 
 Two consequences worth knowing before editing it:
 
@@ -17,7 +24,7 @@ Two consequences worth knowing before editing it:
 
 ## Running the apps: never start the Angular dev server yourself
 
-Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`) hosts its SPA through
+Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`, `apps/QnA`, `apps/SparkId`) hosts its SPA through
 **`UseAngularCliServer`** — the ASP.NET Core host spawns `npm start` itself and proxies it. So:
 
 - **`dotnet run` is the whole command.** Do not run `ng serve` / `npm start` alongside it; a second

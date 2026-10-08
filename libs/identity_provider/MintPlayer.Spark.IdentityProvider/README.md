@@ -35,24 +35,25 @@ The stock ASP.NET Core OpenIdConnect handler works against it unchanged. From an
 preset, which sets code + PKCE, `response_mode=query` and `openid profile email`:
 
 ```csharp
-spark.AddOpenIdConnect("HR", "Spark HR", o =>
+spark.AddOpenIdConnect("SparkId", "Spark Identity", o =>
 {
-    o.Authority = "https://hr.example";
+    o.Authority = "https://id.example";
     o.ClientId = "qna";
     o.ClientSecret = builder.Configuration["…"];
 });
-// or: spark.AddExternalProviders(builder.Configuration) with Spark:Auth:Providers:OpenIdConnect:HR
+// or: spark.AddExternalProviders(builder.Configuration) with Spark:Auth:Providers:OpenIdConnect:SparkId
 ```
 
-Register that client here with `RedirectUris = ["https://<rp-host>/signin-HR"]` and
-`PostLogoutRedirectUris = ["https://<rp-host>/signout-callback-HR"]` — the preset's `CallbackPath` and
+Register that client here with `RedirectUris = ["https://<rp-host>/signin-SparkId"]` and
+`PostLogoutRedirectUris = ["https://<rp-host>/signout-callback-SparkId"]` — the preset's `CallbackPath` and
 `SignedOutCallbackPath` are `/signin-<scheme>` and `/signout-callback-<scheme>` with the scheme's exact
-casing. On the client side: `withExternalLogin(oidcProvider('HR', 'Spark HR'))`.
+casing. On the client side: `withExternalLogin(oidcProvider('SparkId', 'Spark Identity'))`.
 
-The demo wiring: HR is the provider (`https://localhost:5005`), QnA the relying party
-(`https://localhost:5009`). HR's migration `M_202610081200_QnARelyingParty` seeds the scopes below and the
-`qna` client in Development only, with a published development-only secret that QnA's
-`appsettings.Development.json` repeats.
+The demo wiring: `apps/SparkId` is the provider (`https://localhost:5011`). QnA (5009), HR (5005) and
+Fleet (5003) are its relying parties, and Fleet validates SparkId's machine tokens. SparkId's migration
+`M_202610081200_RelyingParties` seeds the scopes below and the `qna`, `hr` and `fleet` clients in
+Development only, with published development-only secrets that each app's `appsettings.Development.json`
+repeats.
 
 ## Scopes and claims
 

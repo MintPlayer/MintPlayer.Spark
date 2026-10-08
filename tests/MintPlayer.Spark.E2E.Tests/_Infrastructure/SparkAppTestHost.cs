@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 /// <param name="DatabasePrefix">Prefix of the per-host app database; a random suffix is appended.</param>
 /// <param name="CoverageSlug">
 /// Prefix of the host's coverage report directory (<c>coverage/{slug}-host-{env}-{suffix}/</c>).
-/// ⚠️ <c>tools/verify-coverage-paths.mjs</c> knows each slug by name (<c>fleet</c>, <c>qna</c>); another app's
+/// ⚠️ <c>tools/verify-coverage-paths.mjs</c> knows each slug by name (<c>fleet</c>, <c>qna</c>, <c>hr</c>, <c>sparkid</c>); another app's
 /// slug must be added there, or its report is rejected.
 /// </param>
 public sealed record SparkAppDescriptor(

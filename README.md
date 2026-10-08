@@ -152,10 +152,11 @@ MintPlayer.Spark/
 ├── tests/                                        # Test projects (unit, source-generator, client, E2E)
 ├── apps/                                         # Applications: the demos, and CodeCoverage
 │   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
-│   ├── DemoApp/                                  # Sample ASP.NET Core + Angular application
+│   ├── DemoApp/                                  # The minimal Spark app: core only, no Authorization, no identity provider
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
 │   ├── HR/                                       # HR demo (auth, messaging, replication)
-│   └── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
+│   ├── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
+│   └── SparkId/                                  # The demo identity provider (HR, Fleet and QnA sign in here)
 └── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```
 
@@ -285,10 +286,11 @@ The other demos run the same way, each from its own project directory:
 
 | Demo | Directory | Host | Shows |
 | --- | --- | --- | --- |
-| DemoApp | `apps/DemoApp/DemoApp` | `https://localhost:5007` | the core PersistentObject pattern |
-| Fleet | `apps/Fleet/Fleet` | `https://localhost:5003` | authentication, messaging, replication (with HR) |
-| HR | `apps/HR/HR` | `https://localhost:5005` | authentication, the identity provider, replication (with Fleet) |
+| DemoApp | `apps/DemoApp/DemoApp` | `https://localhost:5007` | the minimal Spark app: core only, no Authorization, no identity provider |
+| Fleet | `apps/Fleet/Fleet` | `https://localhost:5003` | authentication, messaging, replication (with HR), a resource server for SparkId's machine tokens |
+| HR | `apps/HR/HR` | `https://localhost:5005` | authentication, replication (with Fleet) |
 | QnA | `apps/QnA/QnA` | `https://localhost:5009` | the #460 packages: Moderation, SoftDelete, History, MailManager, the account pages — see [apps/QnA/README.md](apps/QnA/README.md) |
+| SparkId | `apps/SparkId/SparkId` | `https://localhost:5011` | the identity provider: HR, Fleet and QnA sign in here ("Spark Identity" on their sign-in pages) |
 
 **Docker image (DemoApp).** DemoApp is the only demo with a Dockerfile. Build it from the repository root, since it needs the whole workspace as context:
 
@@ -433,7 +435,7 @@ A pull request must pass these before merging.
 [`pull-request.yml`](.github/workflows/pull-request.yml), job `pull-request`:
 - **Build affected projects** — `nx affected --target=build`, .NET and Angular.
 - **Type-check the npm packages' specs** — `tsc --noEmit` on ng-spark's `tsconfig.spec.json` (auth entries included) (vitest does not type-check, and ng-packagr skips specs).
-- **Verify Spark models are in sync** — `--spark-verify-model` for every app (DemoApp, HR, Fleet, QnA, CodeCoverage).
+- **Verify Spark models are in sync** — `--spark-verify-model` for every app (DemoApp, HR, Fleet, QnA, SparkId, CodeCoverage).
 - **Verify the anonymous surface has not widened** — `--spark-verify-security` against each app's committed `securityPosture.txt`.
 - **Verify a changed package was version-bumped** — every touched `libs/` package must carry a new version.
 - **Run tests** — `nx run-many --target=test`: all .NET test projects (including E2E) and vitest.
@@ -457,7 +459,7 @@ A pull request must pass these before merging.
 
 - **MintPlayer.Spark** - Core library, no application-specific code
 - **MintPlayer.Spark.Abstractions** - Interfaces and models shared across projects
-- **apps/DemoApp** - Sample application for testing features
+- **apps/DemoApp** - The minimal Spark app (core only); new features land in the other demos
 - **apps/DemoApp.Library** - Example of shared entity definitions
 
 ## License

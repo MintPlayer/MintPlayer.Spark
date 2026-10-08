@@ -16,6 +16,7 @@
     "apps/Fleet/Fleet/ClientApp",
     "apps/HR/HR/ClientApp",
     "apps/QnA/QnA/ClientApp",
+    "apps/SparkId/SparkId/ClientApp",
     "apps/CodeCoverage/CodeCoverage/ClientApp",
     "apps/CodeCoverage/action"
   ],

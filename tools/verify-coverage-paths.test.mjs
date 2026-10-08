@@ -201,5 +201,5 @@ test('an absolute workspace path with no <source> resolves', () => {
 });
 
 test('no upload glob reaches a demo app', () => {
-  for (const g of UPLOAD_GLOBS) assert.doesNotMatch(g, /^apps\/(\*|DemoApp|Fleet|HR|QnA)\//);
+  for (const g of UPLOAD_GLOBS) assert.doesNotMatch(g, /^apps\/(\*|DemoApp|Fleet|HR|QnA|SparkId)\//);
 });

@@ -1,0 +1,118 @@
+using System.Text.Json.Nodes;
+using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Services;
+using MintPlayer.Spark.Testing;
+using Raven.Client.Documents;
+
+namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
+
+/// <summary>
+/// Runs SparkId, the demo identity provider, on <see cref="SparkAppTestHost"/>
+/// (<c>docs/identity_provider_platform_PRD.md</c> I0). HR, Fleet and QnA are its relying parties; in
+/// the E2E suite it issues the machine tokens Fleet validates.
+/// </summary>
+/// <remarks>
+/// The issuer runs on <b>http</b>: a resource server fetches the discovery document from the issuer
+/// itself, and over https that means trusting the host's development certificate, which a CI runner
+/// does not.
+/// </remarks>
+public sealed class SparkIdTestHost : SparkAppTestHost
+{
+    public static readonly SparkAppDescriptor SparkId = new(
+        AppName: "SparkId",
+        ProjectDirectory: Path.Combine("apps", "SparkId", "SparkId"),
+        ProjectFileName: "SparkId.csproj",
+        DatabasePrefix: "SparkIdE2E",
+        CoverageSlug: "sparkid")
+    {
+        UsesMailPickup = true,
+    };
+
+    public SparkIdTestHost() : base(SparkId) { }
+
+    /// <summary>The issuer: the plain-http base URL.</summary>
+    public string Issuer => AppHttpUrl;
+
+    protected override async Task ConfigureAppSettings(JsonObject settings, SparkAppHostContext context)
+    {
+        // The provider auto-generates a signing key only in Development, and deliberately: a key
+        // that materialises on first use in production is a key nobody backed up, and it silently
+        // invalidates every token still in flight when the host restarts. Tests are not Development,
+        // so they supply one, which also exercises the configured-key path.
+        var signingKeyFileName = $"oidc-signing-key.{EnvironmentName}.json";
+        var signingKeyFile = Path.Combine(context.ProjectDirectory, signingKeyFileName);
+        RegisterTemporaryFile(signingKeyFile);
+        await File.WriteAllTextAsync(signingKeyFile, NewSigningKeyJson());
+
+        settings["SparkIdentityProvider"] = new JsonObject
+        {
+            ["Issuer"] = $"http://localhost:{context.HttpPort}",
+            ["SigningKeyPath"] = signingKeyFileName,
+        };
+    }
+
+    /// <summary>An RSA key in the shape <c>OidcSigningKeyService</c> reads: base64url RSA parameters.</summary>
+    private static string NewSigningKeyJson()
+    {
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var p = rsa.ExportParameters(true);
+        static string B64(byte[] data) =>
+            Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            N = B64(p.Modulus!),
+            E = B64(p.Exponent!),
+            D = B64(p.D!),
+            P = B64(p.P!),
+            Q = B64(p.Q!),
+            DP = B64(p.DP!),
+            DQ = B64(p.DQ!),
+            QI = B64(p.InverseQ!),
+        });
+    }
+
+    /// <summary>
+    /// Registers a confidential <c>client_credentials</c> application and the scope that gives its
+    /// tokens an audience, then returns the client secret.
+    /// <para>
+    /// The <c>group</c> claim is the entire authorization integration: a machine token carrying
+    /// <c>group = "{group}"</c> is governed by the resource server's <c>security.json</c> like a person,
+    /// because group membership is resolved from claims and nothing else knows what a client is.
+    /// </para>
+    /// </summary>
+    public async Task<string> SeedMachineClientAsync(string clientId, string scopeName, string audience, string group)
+    {
+        var secret = $"S{Guid.NewGuid():N}!a";
+
+        using var appStore = OpenAppStore();
+        using var session = appStore.OpenAsyncSession();
+
+        await session.StoreAsync(new OidcScope
+        {
+            Name = scopeName,
+            DisplayName = scopeName,
+            Enabled = true,
+            // The audience comes from the scope, not the client, so this is what makes the issued
+            // token addressed to this resource server rather than to everything the issuer serves.
+            Audiences = [audience],
+        });
+
+        await session.StoreAsync(new OidcApplication
+        {
+            ClientId = clientId,
+            DisplayName = clientId,
+            ClientType = "confidential",
+            Enabled = true,
+            Secrets = [new ClientSecret { Hash = ClientSecretHasher.Hash(secret), CreatedAt = DateTime.UtcNow }],
+            AllowedGrantTypes = ["client_credentials"],
+            AllowedScopes = [scopeName],
+            Claims = [new ClientClaim { Type = "group", Value = group }],
+        });
+
+        await session.SaveChangesAsync();
+        await appStore.WaitForIndexingAsync(TestDatabase);
+
+        return secret;
+    }
+}

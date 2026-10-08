@@ -59,9 +59,9 @@ const appName = (clientApp) => path.relative(path.join(REPO, 'apps'), clientApp)
 
 const clientApps = findClientApps();
 
-test('finds the five Spark apps', () => {
+test('finds the six Spark apps', () => {
   const names = clientApps.map(appName);
-  for (const name of ['CodeCoverage', 'DemoApp', 'Fleet', 'HR', 'QnA']) {
+  for (const name of ['CodeCoverage', 'DemoApp', 'Fleet', 'HR', 'QnA', 'SparkId']) {
     assert.ok(names.includes(name), `no ClientApp found for ${name} (found: ${names.join(', ')})`);
   }
 });

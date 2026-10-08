@@ -1,0 +1,9 @@
+<spark-shell title="Spark Demo">
+  <!-- Replaces the topbar's trailing default (the bare language selector) to put the auth bar
+       next to it. The menu itself is fully server-driven — see programUnits.json. -->
+  <ng-container *sparkShellTopbarEnd>
+    <spark-language-selector />
+    <spark-auth-bar />
+  </ng-container>
+  <router-outlet />
+</spark-shell>

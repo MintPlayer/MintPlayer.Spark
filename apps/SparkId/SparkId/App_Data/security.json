@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "d1000000-0000-0000-0000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "d1000000-0000-0000-0000-00000000000f": "Signed-in users",
+    "d1000000-0000-0000-0000-000000000001": "Administrators",
+    "d1000000-0000-0000-0000-000000000002": "Developers"
+  },
+  "rights": [
+    {
+      "key": "a0000001-0000-0000-0000-000000000001",
+      "resource": "QueryReadEditNewDelete/OidcApplication",
+      "groupId": "d1000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "a0000001-0000-0000-0000-000000000002",
+      "resource": "QueryReadEditNewDelete/OidcScope",
+      "groupId": "d1000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    }
+  ]
+}

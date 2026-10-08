@@ -44,8 +44,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         auth.RequireConfirmedEmail = true;
     });
     // #490 M6: external providers from Spark:Auth:Providers. appsettings.Development.json registers
-    // HR (the demo identity provider, https://localhost:5005) as the OpenID Connect scheme "HR";
-    // HR seeds the matching "qna" client in Development. No other environment configures any.
+    // SparkId (the demo identity provider, https://localhost:5011) as the OpenID Connect scheme
+    // "SparkId"; SparkId seeds the matching "qna" client in Development. No other environment configures any.
     spark.AddExternalProviders(builder.Configuration);
 
     // Mail is queued through Messaging and written as .eml files into Spark:Mail:PickupFolder

@@ -1,0 +1,83 @@
+{
+  "name": "@spark-demo/sparkid-demo",
+  "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "apps/SparkId/SparkId/ClientApp",
+  "sourceRoot": "apps/SparkId/SparkId/ClientApp/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": [
+        "{workspaceRoot}/apps/SparkId/SparkId/ClientApp/dist/ClientApp"
+      ],
+      "options": {
+        "outputPath": "apps/SparkId/SparkId/ClientApp/dist/ClientApp",
+        "browser": "apps/SparkId/SparkId/ClientApp/src/main.ts",
+        "tsConfig": "apps/SparkId/SparkId/ClientApp/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/SparkId/SparkId/ClientApp/public"
+          },
+          {
+            "glob": "bs-theme-preboot.js",
+            "input": "node_modules/@mintplayer/web-components/theming",
+            "output": "/"
+          }
+        ],
+        "styles": [
+          "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+          "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+          "apps/SparkId/SparkId/ClientApp/src/styles.scss"
+        ],
+        "loader": {
+          ".svg": "text"
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "1MB",
+              "maximumError": "1.5MB"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "4kB",
+              "maximumError": "8kB"
+            }
+          ],
+          "outputHashing": "all",
+          "serviceWorker": "apps/SparkId/SparkId/ClientApp/ngsw-config.json"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@nx/angular:dev-server",
+      "options": {
+        "hmr": true
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "@spark-demo/sparkid-demo:build:production"
+        },
+        "development": {
+          "buildTarget": "@spark-demo/sparkid-demo:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@nx/angular:unit-test"
+    }
+  }
+}

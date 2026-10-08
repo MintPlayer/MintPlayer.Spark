@@ -19,8 +19,6 @@ Administrators | grant | QueryReadEditNewDelete/Address | a0000001-0000-0000-000
 Administrators | grant | QueryReadEditNewDelete/AddressDescription | a0000001-0000-0000-0000-000000000007 | app
 Administrators | grant | QueryReadEditNewDelete/CarreerJob | a0000001-0000-0000-0000-000000000006 | app
 Administrators | grant | QueryReadEditNewDelete/Company | a0000001-0000-0000-0000-000000000002 | app
-Administrators | grant | QueryReadEditNewDelete/OidcApplication | a0000001-0000-0000-0000-000000000008 | app
-Administrators | grant | QueryReadEditNewDelete/OidcScope | a0000001-0000-0000-0000-000000000009 | app
 Administrators | grant | QueryReadEditNewDelete/Person | a0000001-0000-0000-0000-000000000001 | app
 Administrators | grant | QueryReadEditNewDelete/Profession | a0000001-0000-0000-0000-000000000005 | app
 HR managers | grant | QueryRead/Car | b0000002-0000-0000-0000-000000000004 | app

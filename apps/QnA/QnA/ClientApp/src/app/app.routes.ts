@@ -12,10 +12,10 @@ export const routes: Routes = [
       // The password family (the server runs LocalCredentials = Full) and the #460 D16 account pages:
       // confirm-email (the target of the confirmation mail), profile, password, two-factor and personal
       // data / account deletion. QnA has no passkeys, and its connected-logins page is left out.
-      // #490 M6: the sign-in page offers the HR app as an OpenID Connect provider; the scheme must
-      // equal the server's Spark:Auth:Providers entry, "HR". It links on to the password login.
+      // #490 M6: the sign-in page offers SparkId as an OpenID Connect provider; the scheme must
+      // equal the server's Spark:Auth:Providers entry, "SparkId". It links on to the password login.
       ...sparkAuthRoutes(
-        withExternalLogin(oidcProvider('HR', 'Spark HR')),
+        withExternalLogin(oidcProvider('SparkId', 'Spark Identity')),
         withLocalLogin(),
         withRegistration(),
         withAccount({ exclude: ['externalLogins', 'passkeys'] }),

@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.E2E.Tests.QnA;
 /// </summary>
 /// <remarks>
 /// <para>
-/// QnA, because its sign-in page declares a provider (<c>oidcProvider('HR', …)</c>) and
+/// QnA, because its sign-in page declares a provider (<c>oidcProvider('SparkId', …)</c>) and
 /// <see cref="QnATestHost"/> configures that scheme. The authority is never contacted: without an
 /// external cookie the real callback answers the refusal <c>no_login_info</c>, which is the result
 /// these tests expect to see arrive.
@@ -149,14 +149,14 @@ public class ExternalLoginHandoffBrowserTests
             BaseURL = fixture.Host.AppUrl,
         });
 
-    /// <summary>Opens the sign-in page, clicks the HR button and returns the attempt's nonce.</summary>
+    /// <summary>Opens the sign-in page, clicks the SparkId button and returns the attempt's nonce.</summary>
     private static async Task<(IPage Page, string Nonce)> StartAttemptAsync(IBrowserContext context)
     {
         var page = await context.NewPageAsync();
         await page.AddInitScriptAsync(StubWindowOpen);
         await page.GotoAsync("/sign-in");
 
-        var button = page.Locator(".spark-provider-button").Filter(new() { HasTextString = "Spark HR" });
+        var button = page.Locator(".spark-provider-button").Filter(new() { HasTextString = "Spark Identity" });
         await button.WaitForAsync(new() { Timeout = 15_000 });
         await button.ClickAsync();
 
@@ -167,7 +167,7 @@ public class ExternalLoginHandoffBrowserTests
         var url = new Uri(RelativeBase, opened[0]);
         url.AbsolutePath.Should().Be("/spark/auth/external-login");
         var query = System.Web.HttpUtility.ParseQueryString(url.Query);
-        query["provider"].Should().Be("HR");
+        query["provider"].Should().Be("SparkId");
         query["popup"].Should().Be("1");
         query["ngsw-bypass"].Should().Be("true");
         var nonce = query["nonce"];

@@ -103,7 +103,7 @@ public class HiddenAttributesStayProtectedTests
             .Select(app => (App: Path.GetFileName(app), Model: Path.Combine(app, Path.GetFileName(app), "App_Data", "Model")))
             .Where(x => Directory.Exists(x.Model))
             .ToList();
-        modelDirectories.Count.Should().BeGreaterThanOrEqualTo(5, "the scan must find every application's model directory");
+        modelDirectories.Count.Should().BeGreaterThanOrEqualTo(6, "the scan must find every application's model directory");
 
         var offenders = new List<string>();
         foreach (var (app, modelDirectory) in modelDirectories)

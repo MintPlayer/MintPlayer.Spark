@@ -1,6 +1,4 @@
 using System.Text.Json.Nodes;
-using MintPlayer.Spark.IdentityProvider.Models;
-using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Testing;
@@ -12,8 +10,8 @@ namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 
 /// <summary>
 /// Runs the Fleet demo app on <see cref="SparkAppTestHost"/>. Adds what only Fleet needs: the shared
-/// SparkModules database and replication settings, the OIDC issuer (with a generated signing key) and
-/// JWT audience, and the seeding helpers for modules and machine clients.
+/// SparkModules database and replication settings, the JWT audience and the issuer it trusts, and the
+/// seeding helpers for modules.
 /// </summary>
 public sealed class FleetTestHost : SparkAppTestHost
 {
@@ -48,26 +46,20 @@ public sealed class FleetTestHost : SparkAppTestHost
     public string FleetUrl => AppUrl;
 
     /// <summary>
-    /// The plain-http base URL. The OIDC issuer runs here in tests: the JWT handler fetches the
-    /// discovery document from the issuer itself, and over https that means the host trusting its
-    /// own development certificate — which is true on a dev machine and not on a CI runner.
+    /// The plain-http base URL.
     /// </summary>
     public string FleetHttpUrl => AppHttpUrl;
 
     protected override IEnumerable<string> ExtraDatabases => [TestModulesDatabase];
 
-    protected override async Task ConfigureAppSettings(JsonObject settings, SparkAppHostContext context)
-    {
-        // The provider auto-generates a signing key only in Development, and deliberately: a key
-        // that materialises on first use in production is a key nobody backed up, and it silently
-        // invalidates every token still in flight when the host restarts. Tests are not Development,
-        // so they supply one — which also means the E2E exercises the configured-key path rather
-        // than the convenience path.
-        var signingKeyFileName = $"oidc-signing-key.{EnvironmentName}.json";
-        var signingKeyFile = Path.Combine(context.ProjectDirectory, signingKeyFileName);
-        RegisterTemporaryFile(signingKeyFile);
-        await File.WriteAllTextAsync(signingKeyFile, NewSigningKeyJson());
+    /// <summary>
+    /// The issuer whose tokens Fleet accepts (<c>Spark:JwtBearer:Authority</c>), typically a running
+    /// <see cref="SparkIdTestHost"/>'s http URL. Null leaves bearer tokens off, as in the shared host.
+    /// </summary>
+    public string? JwtBearerAuthority { get; init; }
 
+    protected override Task ConfigureAppSettings(JsonObject settings, SparkAppHostContext context)
+    {
         var spark = settings["Spark"]!.AsObject();
         spark["Replication"] = new JsonObject
         {
@@ -77,36 +69,10 @@ public sealed class FleetTestHost : SparkAppTestHost
             ["SparkModulesDatabase"] = TestModulesDatabase,
             ["ClientCertificate"] = new JsonObject { ["Mode"] = CertificateMode.ToString() },
         };
-        spark["JwtBearer"] = new JsonObject { ["Audience"] = "fleet-api" };
+        if (JwtBearerAuthority is not null)
+            spark["JwtBearer"] = new JsonObject { ["Authority"] = JwtBearerAuthority, ["Audience"] = "fleet-api" };
 
-        settings["SparkIdentityProvider"] = new JsonObject
-        {
-            ["Issuer"] = $"http://localhost:{context.HttpPort}",
-            ["SigningKeyPath"] = signingKeyFileName,
-        };
-    }
-
-    /// <summary>
-    /// An RSA key in the shape <c>OidcSigningKeyService</c> reads: base64url RSA parameters.
-    /// </summary>
-    private static string NewSigningKeyJson()
-    {
-        using var rsa = System.Security.Cryptography.RSA.Create(2048);
-        var p = rsa.ExportParameters(true);
-        static string B64(byte[] data) =>
-            Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-        return System.Text.Json.JsonSerializer.Serialize(new
-        {
-            N = B64(p.Modulus!),
-            E = B64(p.Exponent!),
-            D = B64(p.D!),
-            P = B64(p.P!),
-            Q = B64(p.Q!),
-            DP = B64(p.DP!),
-            DQ = B64(p.DQ!),
-            QI = B64(p.InverseQ!),
-        });
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -181,50 +147,6 @@ public sealed class FleetTestHost : SparkAppTestHost
 
         return $"db='{TestModulesDatabase}' urls=[{string.Join(",", RavenServer.Store.Urls)}] docs=[{string.Join(", ", ids)}]"
              + (elsewhere.Count > 0 ? $" ALSO-IN {string.Join(" ", elsewhere)}" : " (no module docs in any other database)");
-    }
-
-    /// <summary>
-    /// Registers a confidential <c>client_credentials</c> application and the scope that gives its
-    /// tokens an audience, then returns the client secret.
-    /// <para>
-    /// The <c>group</c> claim is the entire authorization integration: a machine token carrying
-    /// <c>group = "{group}"</c> is governed by the same <c>security.json</c> as a person, because
-    /// group membership is resolved from claims and nothing else knows what a client is.
-    /// </para>
-    /// </summary>
-    public async Task<string> SeedMachineClientAsync(string clientId, string scopeName, string audience, string group)
-    {
-        var secret = $"S{Guid.NewGuid():N}!a";
-
-        using var appStore = OpenAppStore();
-        using var session = appStore.OpenAsyncSession();
-
-        await session.StoreAsync(new OidcScope
-        {
-            Name = scopeName,
-            DisplayName = scopeName,
-            Enabled = true,
-            // The audience comes from the scope, not the client — so this is what makes the issued
-            // token addressed to this resource server rather than to everything the issuer serves.
-            Audiences = [audience],
-        });
-
-        await session.StoreAsync(new OidcApplication
-        {
-            ClientId = clientId,
-            DisplayName = clientId,
-            ClientType = "confidential",
-            Enabled = true,
-            Secrets = [new ClientSecret { Hash = ClientSecretHasher.Hash(secret), CreatedAt = DateTime.UtcNow }],
-            AllowedGrantTypes = ["client_credentials"],
-            AllowedScopes = [scopeName],
-            Claims = [new ClientClaim { Type = "group", Value = group }],
-        });
-
-        await session.SaveChangesAsync();
-        await appStore.WaitForIndexingAsync(TestDatabase);
-
-        return secret;
     }
 
     /// <summary>
