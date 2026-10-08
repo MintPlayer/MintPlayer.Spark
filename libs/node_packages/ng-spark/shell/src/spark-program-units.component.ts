@@ -18,7 +18,7 @@ import { SparkSidebarTab } from './spark-shell-slots';
  * instead.
  *
  * Because the response is caller-scoped it must be re-fetched when the caller changes: the
- * component tracks the optional `SPARK_AUTH_STATE` signal (supplied by ng-spark-auth's
+ * component tracks the optional `SPARK_AUTH_STATE` signal (supplied by ng-spark/auth's
  * `provideSparkAuth()`, or by the app's own auth stack) and reloads on every change. Without a
  * provider it fetches once. `reloadToken` is the manual escape hatch (any changed value triggers
  * a reload), and `reload()` the imperative one.

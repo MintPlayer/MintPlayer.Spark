@@ -34,6 +34,7 @@
     "**/*.spec.ts",
     "src/test-setup.ts",
     "src/test-utils.ts",
+    "auth/src/test-utils.ts",
     "dist/**",
     "out-tsc/**",
     "node_modules/**"

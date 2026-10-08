@@ -50,7 +50,7 @@ public class SparkAuthenticationOptions
     /// <para>
     /// A disallowed kind is refused exactly like an unknown account — the same 401, and no lookup —
     /// so the setting is invisible to someone probing for accounts. It is not a secret either:
-    /// <c>/spark/auth/capabilities</c> reports it, and ng-spark-auth's login page labels its field from
+    /// <c>/spark/auth/capabilities</c> reports it, and ng-spark/auth's login page labels its field from
     /// it.
     /// </para>
     /// <para>
@@ -192,6 +192,6 @@ public class SparkAuthLinkOptions
     /// <summary>The page that confirms an email (and a changed email). Default <c>/confirm-email</c>; receives <c>userId</c>, <c>code</c> and, for a change, <c>changedEmail</c>.</summary>
     public string ConfirmEmailPath { get; set; } = "/confirm-email";
 
-    /// <summary>The page that completes a password reset. Default <c>/reset-password</c> (ng-spark-auth's); receives <c>email</c> and <c>code</c>.</summary>
+    /// <summary>The page that completes a password reset. Default <c>/reset-password</c> (ng-spark/auth's); receives <c>email</c> and <c>code</c>.</summary>
     public string ResetPasswordPath { get; set; } = "/reset-password";
 }

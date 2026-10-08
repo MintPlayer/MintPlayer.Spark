@@ -242,7 +242,7 @@ internal sealed partial class StatusEndpoint : IPostEndpoint<ModerationTargetReq
 /// </summary>
 /// <remarks>
 /// ⚠️ Anonymous is answered, not refused: the reputation badge is a background widget on pages an
-/// anonymous visitor may read (every author cell of a question list), and ng-spark-auth's interceptor
+/// anonymous visitor may read (every author cell of a question list), and ng-spark/auth's interceptor
 /// sends the whole app to the sign-in page on any 401 outside <c>/spark/auth</c>. An anonymous caller
 /// has no reputation of its own and is shown nobody else's, so the honest answer is "none" — the
 /// badge stays empty. Nothing is disclosed that the 401 withheld. That holds for a body that cannot be

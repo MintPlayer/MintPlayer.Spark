@@ -38,7 +38,7 @@ export class SparkShellTopbarStartDirective {
 /**
  * Topbar, trailing edge. Default: the language selector (which hides itself when the app has
  * one language). This is where an auth bar goes — the shell cannot ship one itself, since
- * `@mintplayer/ng-spark` does not (and must not) depend on `@mintplayer/ng-spark-auth`.
+ * the non-auth entry points of `@mintplayer/ng-spark` do not (and must not) import `@mintplayer/ng-spark/auth/*`.
  */
 @Directive({ selector: '[sparkShellTopbarEnd]' })
 export class SparkShellTopbarEndDirective {

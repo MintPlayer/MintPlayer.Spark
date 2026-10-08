@@ -4,7 +4,7 @@
     "The passkeys page's custom actions (generic passkeys page PRD D3, D4), shipped as a library layer",
     "(composition D1). The classes are CustomActions/*Action.cs in this library; their rights are in",
     "this library's security.json. Labels and the confirmation are actions.<Name>.* in translations.json.",
-    "AddPasskey needs the browser's WebAuthn: ng-spark-auth registers 'webauthn.create', and where it",
+    "AddPasskey needs the browser's WebAuthn: ng-spark/auth registers 'webauthn.create', and where it",
     "is missing or unsupported the button is shown disabled with the reason."
   ],
   "AddPasskey": {

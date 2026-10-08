@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
-import { sparkAuthRoutes, withExternalLogin, githubProvider, withAccount } from '@mintplayer/ng-spark-auth/routes';
+import { sparkAuthRoutes, withExternalLogin, githubProvider, withAccount } from '@mintplayer/ng-spark/auth/routes';
 import { ShellComponent } from './shell/shell.component';
 import { accountRedirectGuard, commitRedirectGuard, repositoryRedirectGuard } from './spark/vanity-redirects';
 import { HOME_URL } from './spark/home-route';

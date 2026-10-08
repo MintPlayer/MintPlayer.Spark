@@ -367,7 +367,7 @@ All are raised by `ContributionsAnalyzer`; the full table is in [diagnostics.md]
 | SPARK035 | Error | the element clashes with a generated member (`Key`, `Id`, `TargetId`, `ContributorId`, `UpdatedAt`, …), or carries `[ValueKey]` / `[ValueObject]` |
 
 SPARK030 sits in this range but is unrelated (an MSBuild check of the SPA's `package.json` for
-`@mintplayer/ng-spark-auth`). Until you synchronize, SPARK012 warns that the generated type names are
+`@mintplayer/ng-spark`). Until you synchronize, SPARK012 warns that the generated type names are
 not in the model yet; attribute-level rights checks fall back to the generated CLR class, so being one
 build behind is fine.
 

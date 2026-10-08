@@ -35,7 +35,7 @@ namespace MintPlayer.Spark.Authorization.CustomActions;
 /// </remarks>
 internal sealed partial class AddPasskeyAction : ICustomAction
 {
-    /// <summary>The client method <c>ng-spark-auth</c> registers.</summary>
+    /// <summary>The client method <c>ng-spark/auth</c> registers.</summary>
     internal const string ClientMethod = "webauthn.create";
 
     [Inject] private readonly IManager manager;

@@ -47,7 +47,6 @@ public sealed record SparkAppDescriptor(
     public IReadOnlyList<string> BundleSourceRoots { get; init; } =
     [
         Path.Combine("libs", "node_packages", "ng-spark"),
-        Path.Combine("libs", "node_packages", "ng-spark-auth"),
     ];
 
     /// <summary>The dotnet-coverage settings file in the E2E test project directory.</summary>

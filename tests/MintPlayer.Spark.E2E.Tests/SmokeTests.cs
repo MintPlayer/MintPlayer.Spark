@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.E2E.Tests;
 /// <item>MintPlayer.Spark (HTTP endpoints + antiforgery)</item>
 /// <item>MintPlayer.Spark.Authorization (identity + /spark/auth/me)</item>
 /// <item>@mintplayer/ng-spark (Angular SPA served from dist/)</item>
-/// <item>@mintplayer/ng-spark-auth (login/register routes)</item>
+/// <item>@mintplayer/ng-spark/auth (login/register routes)</item>
 /// </list>
 /// Each test spins up a fresh <see cref="IBrowserContext"/> (fresh cookies). The
 /// <see cref="FleetE2ECollectionFixture"/> owns Fleet + Raven for the whole session.
@@ -71,7 +71,7 @@ public class SmokeTests
         await using var pages = new PageFactory(_fixture);
         var page = await pages.NewPageAsync();
 
-        // Default ng-spark-auth path is /login (sparkAuthRoutes()).
+        // Default ng-spark/auth path is /login (sparkAuthRoutes()).
         await page.GotoAsync("/login");
 
         // Angular lazy-loads the component; wait for at least one password field to appear.

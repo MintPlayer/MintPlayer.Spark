@@ -24,7 +24,7 @@
  * The matching rules below are a port of the server's, not an approximation of them.
  * An earlier version tried every `<source>` + filename join and accepted ANY tracked
  * hit, which the server never did: it passed `pipes/src/translate-key.pipe.ts` (a tail
- * ng-spark and ng-spark-auth share) while the server dropped both files. A verifier
+ * ng-spark and the former ng-spark-auth package shared) while the server dropped both files. A verifier
  * more lenient than the thing it verifies is a false green. Change the two together:
  * `apps/CodeCoverage/CodeCoverage/Ingestion/PathNormalizer.cs` and `createResolver` here.
  *
@@ -119,7 +119,6 @@ export const EXPECTED_REPORTS = [
   { name: 'MintPlayer.Spark.Client.Tests', glob: 'tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'CodeCoverage.Tests', glob: 'apps/CodeCoverage/CodeCoverage.Tests/coverage/**/coverage.cobertura.xml' },
   { name: '@mintplayer/ng-spark', glob: 'libs/node_packages/ng-spark/coverage/cobertura-coverage.xml' },
-  { name: '@mintplayer/ng-spark-auth', glob: 'libs/node_packages/ng-spark-auth/coverage/cobertura-coverage.xml' },
   { name: '@spark-apps/code-coverage (SPA)', glob: 'coverage/@spark-apps/code-coverage/cobertura-coverage.xml' },
   { name: '@mintplayer/coverage-upload-action', glob: 'apps/CodeCoverage/action/coverage/cobertura-coverage.xml' },
 ];

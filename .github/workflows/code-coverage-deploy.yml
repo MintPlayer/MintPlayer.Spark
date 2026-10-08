@@ -43,7 +43,6 @@ on:
       - 'libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/**'
       # Angular libraries baked into the image via `nx run @spark-apps/code-coverage:build`.
       - 'libs/node_packages/ng-spark/**'
-      - 'libs/node_packages/ng-spark-auth/**'
       # Workspace-level files that affect the build.
       - 'package.json'
       - 'package-lock.json'

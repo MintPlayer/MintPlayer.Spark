@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { sparkAuthRoutes, withAccount, withLocalLogin, withRegistration } from '@mintplayer/ng-spark-auth/routes';
+import { sparkAuthRoutes, withAccount, withLocalLogin, withRegistration } from '@mintplayer/ng-spark/auth/routes';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
 import { sparkModerationRoutes } from '@mintplayer/ng-spark/moderation';
 import { ShellComponent } from './shell/shell.component';

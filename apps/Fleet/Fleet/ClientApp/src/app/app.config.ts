@@ -3,7 +3,7 @@ import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideAnimations } from '@angular/platform-browser/animations';
-import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark-auth';
+import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
 

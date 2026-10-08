@@ -22,7 +22,7 @@ What this package still gives you:
   endpoint family, and how much of it to mount (`SparkLocalCredentials`)
 - **External login** — GitHub and any other OAuth/OIDC provider
 - **JWT bearer** — for machine callers
-- **The Angular half** — `@mintplayer/ng-spark-auth`, installed and scaffolded by MSBuild
+- **The Angular half** — the `@mintplayer/ng-spark/auth/*` entry points of `@mintplayer/ng-spark`, installed and scaffolded by MSBuild
 
 Custom group membership is a core concern now: use `spark.UseGroupMembershipProvider<T>()` from
 `MintPlayer.Spark.Extensions`, with or without this package.
@@ -128,7 +128,7 @@ spark.AddAuthentication<SparkUser>(auth =>
 - A disallowed kind is refused **exactly like an unknown account** (same 401, no lookup, no failed
   attempt counted), so it reveals nothing about accounts.
 - `/spark/auth/capabilities` reports it as `signInIdentifiers` (`["email"]`, `["userName"]` or both;
-  empty under `LocalCredentials = Disabled`). ng-spark-auth's login page labels its field from it —
+  empty under `LocalCredentials = Disabled`). ng-spark/auth's login page labels its field from it —
   "Email" (`type=email`, `autocomplete=email`), "User name" or "Email or user name"
   (`autocomplete=username`) — and so does the OIDC `/connect/login` page.
 - A value allowing neither is refused at startup unless `LocalCredentials` is `Disabled`, where there
@@ -146,7 +146,7 @@ browser, so:
   external sign-up, the profile page, an application's own `UserManager` calls. Error code
   `UserNameContainsAt`. It also keeps the two sign-in lookups from colliding.
 - **`POST /register` requires a `userName`** (`SparkRegisterRequest`: `email`, `password`,
-  `userName`); a missing or blank one is a 400. ng-spark-auth's register page asks for it, and
+  `userName`); a missing or blank one is a 400. ng-spark/auth's register page asks for it, and
   `SparkClient.RegisterAsync(email, password, userName)` sends it.
 - **A confirmed email change never touches the user name.** (`SparkUserManager<TUser>`, whose only
   job was to move an email-shaped user name along, is removed.)
@@ -317,7 +317,7 @@ by granting `*/*`.
 
 When you reference `MintPlayer.Spark.Authorization` (via NuGet), the package's MSBuild targets:
 
-1. **Check that the SPA declares `@mintplayer/ng-spark-auth`** — warning `SPARK030` when
+1. **Check that the SPA declares `@mintplayer/ng-spark`** (it ships the `@mintplayer/ng-spark/auth/*` entry points) — warning `SPARK030` when
    `$(SpaRoot)package.json` does not. The build never runs `npm` (it used to, in the wrong directory
    for a root-level `node_modules`, writing an unpinned range); add the dependency yourself with the
    major matching your Angular major.
@@ -405,8 +405,8 @@ the server's `AddSparkTwitter()` / `AddSparkLinkedIn()` presets, next to `github
 ### Account pages (`withAccount()`, #460 D16)
 
 ```typescript
-import { sparkAuthRoutes, withLocalLogin, withAccount } from '@mintplayer/ng-spark-auth/routes';
-import { provideSparkAccountProfileFields } from '@mintplayer/ng-spark-auth/models';
+import { sparkAuthRoutes, withLocalLogin, withAccount } from '@mintplayer/ng-spark/auth/routes';
+import { provideSparkAccountProfileFields } from '@mintplayer/ng-spark/auth/models';
 
 // routes
 ...sparkAuthRoutes(withLocalLogin(), withAccount()),
@@ -475,10 +475,10 @@ export function setupSparkAuthProviders(config?: Partial<SparkAuthConfig>) {
 You can also skip the generated file and import directly from the npm package:
 
 ```typescript
-import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark-auth';
+import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import {
   sparkAuthRoutes, withLocalLogin, withRegistration, withExternalLogin, githubProvider,
-} from '@mintplayer/ng-spark-auth/routes';
+} from '@mintplayer/ng-spark/auth/routes';
 ```
 
 The root entry point carries the bootstrap API only; everything else lives on a sub-path (`/routes`,
@@ -503,7 +503,7 @@ Customize the build targets by setting these properties in your `.csproj`:
 | `GenerateSparkAuthSetupFile` | `true` | Set to `false` to skip generating the TypeScript setup file |
 | `SpaRoot` | `ClientApp\` | Path to the SPA source directory |
 | `SparkAuthSetupFile` | `$(SpaRoot)src\spark-auth.setup.ts` | Path for the generated TypeScript file |
-| `SparkAuthNpmPackage` | `@mintplayer/ng-spark-auth` | npm package to install |
+| `SparkAuthNpmPackage` | `@mintplayer/ng-spark` | npm package the SPA must declare |
 
 Example - disable automatic frontend setup:
 

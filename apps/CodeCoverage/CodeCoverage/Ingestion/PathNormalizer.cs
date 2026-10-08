@@ -97,7 +97,7 @@ public sealed class PathNormalizer
         // 3a. A relative filename is relative to the report's <source> — that is what
         //     Cobertura means by it. Joining the two is the only way to tell apart two
         //     packages that share a tail (`pipes/src/translate-key.pipe.ts` exists in
-        //     both ng-spark and ng-spark-auth), which the suffix match below must, and
+        //     both ng-spark and the former ng-spark-auth package), which the suffix match below must, and
         //     does, refuse as ambiguous. Tried before the bare path: a source-relative
         //     `src/x.ts` names `<source>/src/x.ts`, even when a root `src/x.ts` exists.
         if (!stripped && !stillAbsolute)

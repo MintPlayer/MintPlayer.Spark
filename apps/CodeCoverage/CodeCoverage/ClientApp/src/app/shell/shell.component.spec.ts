@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
 import { SparkShellComponent, SparkShellMainHeaderDirective, SparkShellTopbarEndDirective } from '@mintplayer/ng-spark/shell';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth/auth-bar';
+import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
 import { settle } from '../../testing/test-utils';
 import { ShellComponent } from './shell.component';
 

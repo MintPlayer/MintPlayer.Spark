@@ -4,7 +4,7 @@ import { provideRouter } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
+import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import { AccountsService } from '../services/accounts.service';
 import { settle } from '../../testing/test-utils';
 import { HomeExtrasComponent } from './home-extras.component';

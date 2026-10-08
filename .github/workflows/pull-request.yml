@@ -66,7 +66,7 @@ jobs:
 
     # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so
     # restore must run first on a fresh runner with no cache hit on `obj/`.
-    # Angular library builds (ng-spark, ng-spark-auth) and the rest of the
+    # Angular library builds (ng-spark, auth entries included) and the rest of the
     # solution build are covered by `nx affected --target=build` below.
     - name: dotnet restore
       run: dotnet restore
@@ -105,11 +105,10 @@ jobs:
     # vitest strips TypeScript without checking it, and the library build (ng-packagr) excludes the
     # spec files, so a type error in a spec was never reported anywhere: ten had built up in
     # ng-spark's specs (#460), one of them a fixture silently set to `undefined` because it named an
-    # enum member that doesn't exist. Type-check the specs of both npm packages explicitly.
+    # enum member that doesn't exist. Type-check the npm package's specs explicitly.
     - name: Type-check the npm packages' specs
       run: |
         npx tsc --noEmit -p libs/node_packages/ng-spark/tsconfig.spec.json
-        npx tsc --noEmit -p libs/node_packages/ng-spark-auth/tsconfig.spec.json
 
     # The two verifications below run `dotnet run --no-build` against all five apps, which needs all
     # five binaries on disk -- and `nx affected` above only schedules the ones it considers affected.
@@ -224,7 +223,7 @@ jobs:
         done
 
         # npm: each package's version is its own; only the ones that changed need bumping.
-        for pkg in ng-spark ng-spark-auth; do
+        for pkg in ng-spark; do
           if echo "$changed" | grep -q "^libs/node_packages/$pkg/"; then
             if ! git diff "$base"...HEAD -- "libs/node_packages/$pkg/package.json" | grep -q '^+  "version"'; then
               echo "::error::libs/node_packages/$pkg changed but its package.json version was not bumped. npm-publish no-ops on an existing version, so this would merge and publish nothing."

@@ -148,7 +148,7 @@ MintPlayer.Spark/
 │   │   └── MintPlayer.Spark.Testing/             # Test harness: embedded RavenDB driver, in-memory host factory
 │   ├── socket_extensions/
 │   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
-│   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, ng-spark-auth)
+│   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, auth entries under ng-spark/auth)
 ├── tests/                                        # Test projects (unit, source-generator, client, E2E)
 ├── apps/                                         # Applications: the demos, and CodeCoverage
 │   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
@@ -211,7 +211,7 @@ MintPlayer.Spark/
 | [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
 | [Testing without a browser — `SparkClient`](libs/client/MintPlayer.Spark.Client/README.md) | Drive a real Spark backend from C# over the same protocol the Angular frontend uses: CRUD, queries, actions, auth. What it covers, what it cannot do yet, and why it will never replace browser tests |
 | [`@mintplayer/ng-spark`](libs/node_packages/ng-spark/README.md) | The Angular front end: `provideSpark()`, `sparkRoutes()` and every secondary entry point — panels, soft delete, history, moderation, renderers, client operations, `withSparkTimezone` |
-| [`@mintplayer/ng-spark-auth`](libs/node_packages/ng-spark-auth/README.md) | The Angular half of Authorization: `provideSparkAuth()`, `sparkAuthRoutes(...)` with `withLocalLogin` / `withRegistration` / `withExternalLogin` / `withPasskeys` / `withAccount()`, the guards and entry points |
+| [`@mintplayer/ng-spark/auth`](libs/node_packages/ng-spark/auth/README.md) | The Angular half of Authorization: `provideSparkAuth()`, `sparkAuthRoutes(...)` with `withLocalLogin` / `withRegistration` / `withExternalLogin` / `withPasskeys` / `withAccount()`, the guards and entry points |
 
 ### Reference
 
@@ -317,7 +317,7 @@ Use **10.0.1+**, which builds the projects sequentially before launching them in
 
 > The `/spark/*` endpoints live on the **host** port above. Each host also spawns its own Angular dev server on a separate random port (printed as `➜ Local: http://localhost:<port>/`); hitting that dev-server port directly serves `index.html` for every path, so a request like `/spark/program-units` looks like a 404. Always use the host port for API/middleware requests.
 
-**Library HMR:** edit any file under `libs/node_packages/ng-spark/src/**` or `libs/node_packages/ng-spark-auth/src/**` while a demo is running — changes reflect in the browser without a restart, with component state preserved. Libraries are consumed as **source** during dev (tsconfig path aliases resolve directly to `.ts` files). The ng-packagr `build` target on each library produces the publishable dist for `npm publish`; dev never consumes dist.
+**Library HMR:** edit any file under `libs/node_packages/ng-spark/**` (auth entries included) while a demo is running — changes reflect in the browser without a restart, with component state preserved. Libraries are consumed as **source** during dev (tsconfig path aliases resolve directly to `.ts` files). The ng-packagr `build` target on each library produces the publishable dist for `npm publish`; dev never consumes dist.
 
 ### Model Synchronization
 
@@ -432,7 +432,7 @@ A pull request must pass these before merging.
 
 [`pull-request.yml`](.github/workflows/pull-request.yml), job `pull-request`:
 - **Build affected projects** — `nx affected --target=build`, .NET and Angular.
-- **Type-check the npm packages' specs** — `tsc --noEmit` on ng-spark's and ng-spark-auth's `tsconfig.spec.json` (vitest does not type-check, and ng-packagr skips specs).
+- **Type-check the npm packages' specs** — `tsc --noEmit` on ng-spark's `tsconfig.spec.json` (auth entries included) (vitest does not type-check, and ng-packagr skips specs).
 - **Verify Spark models are in sync** — `--spark-verify-model` for every app (DemoApp, HR, Fleet, QnA, CodeCoverage).
 - **Verify the anonymous surface has not widened** — `--spark-verify-security` against each app's committed `securityPosture.txt`.
 - **Verify a changed package was version-bumped** — every touched `libs/` package must carry a new version.

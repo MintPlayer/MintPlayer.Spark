@@ -14,6 +14,6 @@
 		<SparkAuthSetupFile Condition=" '$(SparkAuthSetupFile)' == '' ">$(SpaRoot)src\spark-auth.setup.ts</SparkAuthSetupFile>
 
 		<!-- The npm package the SPA must declare (checked by SparkAuthCheckNpmDependency; never installed by the build) -->
-		<SparkAuthNpmPackage Condition=" '$(SparkAuthNpmPackage)' == '' ">@mintplayer/ng-spark-auth</SparkAuthNpmPackage>
+		<SparkAuthNpmPackage Condition=" '$(SparkAuthNpmPackage)' == '' ">@mintplayer/ng-spark</SparkAuthNpmPackage>
 	</PropertyGroup>
 </Project>

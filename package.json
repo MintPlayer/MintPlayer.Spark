@@ -3,8 +3,7 @@
   "description": "Root package.json - npm workspaces monorepo. Single node_modules for all Angular projects.",
   "scripts": {
     "test:ng-spark": "npm --workspace @mintplayer/ng-spark run test",
-    "test:ng-spark-auth": "npm --workspace @mintplayer/ng-spark-auth run test",
-    "test:ng": "npm run test:ng-spark && npm run test:ng-spark-auth",
+    "test:ng": "npm run test:ng-spark",
     "test:affected": "node tools/test-local.mjs",
     "test:layer-transport": "node tools/layer-transport-check.mjs",
     "stamp:library-model-ids": "node tools/stamp-library-model-ids.mjs",
@@ -12,7 +11,6 @@
   },
   "workspaces": [
     "libs/node_packages/ng-spark",
-    "libs/node_packages/ng-spark-auth",
     "apps/DemoApp/DemoApp/ClientApp",
     "apps/Fleet/Fleet/ClientApp",
     "apps/HR/HR/ClientApp",

@@ -86,9 +86,6 @@
     <Project Path="libs/moderation/MintPlayer.Spark.Moderation/MintPlayer.Spark.Moderation.csproj" />
   </Folder>
   <Folder Name="/libs/node_packages/">
-    <Project Path="libs/node_packages/ng-spark-auth/ng-spark-auth.esproj">
-      <Platform Project="AnyCPU" />
-    </Project>
     <Project Path="libs/node_packages/ng-spark/ng-spark.esproj">
       <Platform Project="AnyCPU" />
     </Project>

@@ -276,7 +276,7 @@ public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancella
 }
 ```
 
-On the client, `@mintplayer/ng-spark-auth`'s `provideSparkAuth()` registers `webauthn.create`. An
+On the client, `@mintplayer/ng-spark/auth`'s `provideSparkAuth()` registers `webauthn.create`. An
 application registers its own the same way:
 
 ```typescript

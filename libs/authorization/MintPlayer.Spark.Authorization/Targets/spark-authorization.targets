@@ -2,7 +2,7 @@
 
 	<!--
 	  Target: SparkAuthCheckNpmDependency  (#460, T9)
-	  Warns when the SPA's package.json does not declare @mintplayer/ng-spark-auth.
+	  Warns when the SPA's package.json does not declare @mintplayer/ng-spark (whose auth/* entry points the generated setup imports).
 
 	  This replaces SparkAuthEnsureNpmPackage, which ran `npm i` during the .NET build: in the wrong
 	  directory for a workspace whose node_modules live at the repository root, writing an unpinned
