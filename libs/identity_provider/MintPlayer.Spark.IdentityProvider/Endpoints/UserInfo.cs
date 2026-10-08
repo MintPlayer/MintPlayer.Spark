@@ -117,6 +117,9 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
     }
 }
 
+/// <summary>The userinfo POST form: the optional <c>access_token</c> field (RFC 6750 §2.2).</summary>
+internal sealed record OidcUserInfoForm(string? AccessToken);
+
 /// <summary>
 /// The userinfo endpoint by POST (OIDC Core §5.3.1: the endpoint "MUST support the use of the HTTP GET and HTTP POST
 /// methods"), with the token in the Authorization header as for GET. Found by the OpenID conformance suite
@@ -126,7 +129,7 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
 /// A relying party's back channel, which carries no cookie, so no antiforgery token: the exemption is stated.
 /// </remarks>
 [MemberOf<OidcConnectCorsGroup>]
-internal sealed partial class OidcUserInfoByPost<TUser> : IPostEndpoint
+internal sealed partial class OidcUserInfoByPost<TUser> : IPostEndpoint<OidcUserInfoForm>
     where TUser : SparkUser, new()
 {
     public static string Path => "/userinfo";
@@ -141,6 +144,22 @@ internal sealed partial class OidcUserInfoByPost<TUser> : IPostEndpoint
     [Inject] private readonly OidcProofOfPossession proofOfPossession;
     [Inject] private readonly OidcJwe jwe;
 
-    public Task<IResult> HandleAsync(HttpContext context)
-        => new OidcUserInfo<TUser>(userManager, store, signingKeyService, oidcIssuer, proofOfPossession, jwe).HandleAsync(context);
+    private HttpContext context = null!;
+
+    /// <summary>RFC 6750 §2.2: the token may also travel as the <c>access_token</c> form field, without an Authorization header.</summary>
+    protected override async ValueTask<OidcUserInfoForm?> BindRequestAsync(HttpContext context)
+    {
+        this.context = context;
+        if (!string.IsNullOrEmpty(context.Request.Headers.Authorization) || !context.Request.HasFormContentType)
+            return new OidcUserInfoForm(null);
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return new OidcUserInfoForm(form["access_token"].FirstOrDefault());
+    }
+
+    public override Task<IResult> HandleAsync(OidcUserInfoForm request, CancellationToken ct)
+    {
+        if (request.AccessToken is { Length: > 0 } token)
+            context.Request.Headers.Authorization = "Bearer " + token;
+        return new OidcUserInfo<TUser>(userManager, store, signingKeyService, oidcIssuer, proofOfPossession, jwe).HandleAsync(context);
+    }
 }
