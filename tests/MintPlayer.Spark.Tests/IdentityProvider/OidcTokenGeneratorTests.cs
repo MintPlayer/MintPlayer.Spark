@@ -99,9 +99,83 @@ public class OidcTokenGeneratorTests : IDisposable
         claims["preferred_username"].Should().Be("ada");
         claims["email"].Should().Be("ada@example.test");
         claims["email_verified"].Should().Be(true);
-        ((List<string>)claims["roles"]).Should().Equal("admin");
+        // "role", as in the id_token (#490 M6); it was "roles" here.
+        ((List<string>)claims["role"]).Should().Equal("admin");
+        claims.Should().NotContainKey("roles");
         claims.Should().NotContainKey("family_name");
     }
+
+    [Fact]
+    public void Name_parts_come_from_the_users_stored_claims_when_present()
+    {
+        var user = User();
+        user.Claims.Add(new SparkUserClaim { ClaimType = "given_name", ClaimValue = "Ada" });
+        user.Claims.Add(new SparkUserClaim { ClaimType = System.Security.Claims.ClaimTypes.Surname, ClaimValue = "Lovelace" });
+        OidcScope[] profile = [Scope("profile", "given_name", "family_name")];
+
+        OidcTokenGenerator.ResolveUserClaims(user, profile).Select(c => (c.Type, c.Value))
+            .Should().BeEquivalentTo(new[] { ("given_name", "Ada"), ("family_name", "Lovelace") });
+
+        var info = OidcTokenGenerator.ResolveUserInfoClaims(user, profile);
+        info["given_name"].Should().Be("Ada");
+        info["family_name"].Should().Be("Lovelace");
+
+        OidcTokenGenerator.ResolveUserClaims(User(), profile).Should().BeEmpty("a user without them gets no empty claim");
+    }
+
+    [Fact]
+    public void An_id_token_carries_email_verified_as_a_json_boolean_and_role_as_role()
+    {
+        var token = NewGenerator().GenerateIdToken(
+            User(roles: ["admin", "ops"]), new OidcApplication { ClientId = "webapp" }, "https://idp.test",
+            [Scope("email", "email", "email_verified"), Scope("roles", "role")], nonce: null);
+
+        var payload = PayloadOf(token);
+        payload.GetProperty("email_verified").ValueKind.Should().Be(System.Text.Json.JsonValueKind.True);
+        payload.GetProperty("role").EnumerateArray().Select(e => e.GetString()).Should().Equal("admin", "ops");
+        payload.TryGetProperty("roles", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_id_token_carries_at_hash_and_auth_time_when_given()
+    {
+        var authTime = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero);
+        const string accessToken = "header.payload.signature";
+
+        var payload = PayloadOf(NewGenerator().GenerateIdToken(
+            User(), new OidcApplication { ClientId = "webapp" }, "https://idp.test", [], nonce: null,
+            accessToken: accessToken, authTime: authTime));
+
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(accessToken));
+        payload.GetProperty("at_hash").GetString().Should().Be(
+            Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(hash[..16]));
+        payload.GetProperty("auth_time").GetInt64().Should().Be(authTime.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public void An_id_token_without_an_access_token_or_sign_in_time_omits_both()
+    {
+        var payload = PayloadOf(NewGenerator().GenerateIdToken(
+            User(), new OidcApplication { ClientId = "webapp" }, "https://idp.test", [], nonce: null));
+
+        payload.TryGetProperty("at_hash", out _).Should().BeFalse();
+        payload.TryGetProperty("auth_time", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_id_token_lives_for_its_own_lifetime_which_defaults_to_five_minutes()
+    {
+        new OidcApplication().IdTokenLifetimeMinutes.Should().Be(5);
+
+        var payload = PayloadOf(NewGenerator().GenerateIdToken(
+            User(), new OidcApplication { ClientId = "webapp" }, "https://idp.test", [], nonce: null, lifetimeMinutes: 7));
+
+        (payload.GetProperty("exp").GetInt64() - payload.GetProperty("iat").GetInt64()).Should().Be(7 * 60);
+    }
+
+    private static System.Text.Json.JsonElement PayloadOf(string token)
+        => System.Text.Json.JsonDocument.Parse(
+            Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Decode(token.Split('.')[1])).RootElement;
 
     [Fact]
     public void Userinfo_claims_carry_only_the_subject_for_an_empty_user()

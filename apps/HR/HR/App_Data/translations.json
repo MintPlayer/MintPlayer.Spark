@@ -630,6 +630,18 @@
             "fr": "Secrets avec lesquels un client confidentiel s'authentifie ; plusieurs peuvent coexister afin qu'un secret puisse être renouvelé.",
             "nl": "Geheimen waarmee een vertrouwelijke client zich authenticeert; er kunnen er meerdere naast elkaar bestaan zodat een geheim geroteerd kan worden."
           }
+        },
+        "IdTokenLifetimeMinutes": {
+          "label": {
+            "en": "ID Token Lifetime Minutes",
+            "fr": "Durée de vie du jeton d'identité (minutes)",
+            "nl": "Levensduur identiteitstoken (minuten)"
+          },
+          "description": {
+            "en": "Validity of an issued ID token in minutes; it is only read once, at sign-in, so keep it short.",
+            "fr": "Validité d'un jeton d'identité émis, en minutes ; il n'est lu qu'une fois, à la connexion, gardez-la donc courte.",
+            "nl": "Geldigheid van een uitgegeven identiteitstoken in minuten; het wordt maar één keer gelezen, bij het aanmelden, dus houd die kort."
+          }
         }
       }
     },

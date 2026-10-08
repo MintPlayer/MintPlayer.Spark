@@ -129,6 +129,86 @@ public class ExternalLoginHandoffTests(SparkSharedDatabase database)
         body.GetProperty("error").GetString().Should().Be("invalid_nonce");
     }
 
+    // --- errorUrl (#490 M6) -------------------------------------------------
+
+    [Fact]
+    public async Task An_error_url_is_forwarded_to_the_callback_url()
+    {
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+        var errorUrl = "/sign-in?returnUrl=%2Fhome";
+
+        var response = await client.GetAsync(
+            $"/spark/auth/external-login?provider={TestScheme}&returnUrl=%2Fhome&errorUrl={Uri.EscapeDataString(errorUrl)}");
+
+        var query = CallbackQueryOf(response);
+        query["errorUrl"].ToString().Should().Be(errorUrl);
+        query["returnUrl"].ToString().Should().Be("/home");
+    }
+
+    [Theory]
+    [InlineData("https://evil.example/")]
+    [InlineData("//evil.example/")]
+    [InlineData("/\\evil.example/")]
+    public async Task A_hostile_error_url_is_sanitized_at_the_challenge(string errorUrl)
+    {
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/spark/auth/external-login?provider={TestScheme}&returnUrl=%2Fhome&errorUrl={Uri.EscapeDataString(errorUrl)}");
+
+        CallbackQueryOf(response)["errorUrl"].ToString().Should().Be("/");
+    }
+
+    [Fact]
+    public async Task Without_an_error_url_the_callback_url_carries_none()
+    {
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync($"/spark/auth/external-login?provider={TestScheme}&returnUrl=%2Fhome");
+
+        CallbackQueryOf(response).Should().NotContainKey("errorUrl");
+    }
+
+    [Fact]
+    public async Task A_redirect_mode_failure_lands_on_the_error_url_with_the_code()
+    {
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+
+        // No external cookie: the callback refuses with no_login_info.
+        var response = await client.GetAsync(
+            $"/spark/auth/external-login-callback?returnUrl=%2Fhome&errorUrl={Uri.EscapeDataString("/sign-in?returnUrl=%2Fhome")}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.OriginalString.Should().Be("/sign-in?returnUrl=%2Fhome&sparkExternalLogin=no_login_info");
+    }
+
+    [Fact]
+    public async Task A_redirect_mode_failure_without_an_error_url_still_lands_on_the_return_url()
+    {
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync("/spark/auth/external-login-callback?returnUrl=%2Fhome");
+
+        response.Headers.Location!.OriginalString.Should().Be("/home?sparkExternalLogin=no_login_info");
+    }
+
+    [Fact]
+    public async Task A_hostile_error_url_on_the_callback_is_sanitized()
+    {
+        using var server = await StartHostAsync();
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/spark/auth/external-login-callback?returnUrl=%2Fhome&errorUrl={Uri.EscapeDataString("https://evil.example/x")}");
+
+        response.Headers.Location!.OriginalString.Should().Be("/?sparkExternalLogin=no_login_info");
+    }
+
     // --- callback page ----------------------------------------------------
 
     [Fact]

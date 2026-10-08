@@ -47,12 +47,15 @@ internal static class SparkExternalLoginRemoteFailure
 
             query.TryGetValue("returnUrl", out var returnUrl);
             query.TryGetValue(SparkExternalLoginNonce.QueryParameter, out var nonce);
+            // #490 M6: a redirect-mode failure lands on the page that asked to show it.
+            query.TryGetValue(SparkAuthenticationExtensions.ErrorUrlParameter, out var errorUrl);
 
             outcome = SparkAuthenticationExtensions.ExternalLoginOutcome(
                 popup: query.ContainsKey("popup"),
                 nonce: SparkExternalLoginNonce.Accept(nonce),
                 safeReturnUrl: SparkAuthenticationExtensions.SanitizeReturnUrl(returnUrl),
-                error: code);
+                error: code,
+                safeErrorUrl: SparkAuthenticationExtensions.SanitizeErrorUrl(errorUrl));
         }
 
         await outcome.ExecuteAsync(context.HttpContext);

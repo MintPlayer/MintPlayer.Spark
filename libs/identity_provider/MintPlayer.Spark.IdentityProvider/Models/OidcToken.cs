@@ -22,4 +22,10 @@ public class OidcToken
     public DateTime ExpiresAt { get; set; }
     public DateTime? RedeemedAt { get; set; }
     public string? State { get; set; }
+    /// <summary>
+    /// When the user behind this code or refresh token last authenticated interactively, for the
+    /// id_token's <c>auth_time</c>. Carried from the authorization request to the code, and from the
+    /// code to its refresh token, because a refresh is not a re-authentication.
+    /// </summary>
+    public DateTimeOffset? AuthTime { get; set; }
 }

@@ -81,6 +81,8 @@ public class OidcApplication
     public bool RequirePkce { get; set; } = true;
     /// <summary>Validity of an issued access token in minutes.</summary>
     public int AccessTokenLifetimeMinutes { get; set; } = 60;
+    /// <summary>Validity of an issued ID token in minutes; it is only read once, at sign-in, so keep it short.</summary>
+    public int IdTokenLifetimeMinutes { get; set; } = 5;
     /// <summary>Validity of an issued refresh token in days.</summary>
     public int RefreshTokenLifetimeDays { get; set; } = 14;
 }

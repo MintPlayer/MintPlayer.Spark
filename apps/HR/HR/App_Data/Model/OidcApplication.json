@@ -142,6 +142,17 @@
         "rules": []
       },
       {
+        "id": "afe1a4e9-b442-4843-901b-dd140b8f7430",
+        "name": "IdTokenLifetimeMinutes",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 18,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "4c19b176-29f2-41f3-b13b-496dc453e3ca",
         "name": "MayIntrospectAnyAudience",
         "dataType": "boolean",

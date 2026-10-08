@@ -19,6 +19,7 @@ internal sealed partial class ExternalLoginChallenge<TUser> : IGetEndpoint
 
     [QueryParam] public string? Provider { get; set; }
     [QueryParam] public string? ReturnUrl { get; set; }
+    [QueryParam] public string? ErrorUrl { get; set; }
     [QueryParam] public string? Popup { get; set; }
     [QueryParam] public string? Nonce { get; set; }
 
@@ -51,8 +52,12 @@ internal sealed partial class ExternalLoginChallenge<TUser> : IGetEndpoint
         // reaches the provider (ASP.NET encrypts it into `state` itself as
         // AuthenticationProperties.RedirectUri, and the provider only ever sees the registered
         // CallbackPath).
+        // #490 M6: errorUrl travels the same way, sanitized by the same rule, so a redirect-mode
+        // failure lands on the page that can show it rather than on returnUrl.
         var callbackUrl = SparkExternalLoginNonce.AppendCallbackFlags(
-            $"/spark/auth/external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}",
+            SparkAuthenticationExtensions.AppendErrorUrl(
+                $"/spark/auth/external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}",
+                SparkAuthenticationExtensions.SanitizeErrorUrl(ErrorUrl)),
             popup,
             Nonce);
 

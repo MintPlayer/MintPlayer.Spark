@@ -42,6 +42,33 @@ internal static class ConnectPage
         _ => "Sign-in failed. Please try again.",
     };
 
+    /// <summary>
+    /// The message for a <c>?sparkExternalLogin=&lt;code&gt;</c> outcome (#490 M6), or null if there is none.
+    /// </summary>
+    /// <remarks>
+    /// Fixed English strings, like <see cref="ErrorMessage"/> and the rest of these pages; the texts match
+    /// the <c>en</c> values of the Authorization package's <c>auth.externalLoginError.*</c> translations,
+    /// which the Angular sign-in page shows for the same codes. An unknown code gets a generic message.
+    /// </remarks>
+    public static string? ExternalLoginMessage(string? code) => code switch
+    {
+        null or "" => null,
+        "no_login_info" => "The provider did not return a login.",
+        "email_not_verified" => "The provider has not verified that email address.",
+        "account_creation_failed" => "The account could not be created. Please try again.",
+        "email_already_registered" => "An account with that email address already exists. Sign in to it first, then connect this login from your account page.",
+        "sign_in_to_link" => "Sign in first to connect this login to your account.",
+        "link_confirmation_sent" => "We sent you an email. Follow its link to connect this login to your account.",
+        "confirm_email_sent" => "We sent you an email. Confirm your address, then sign in again.",
+        "remote_failure" => "The provider reported a problem with the sign-in. Please try again.",
+        "invalid_nonce" => "The sign-in request was not valid. Please try again.",
+        _ => "Sign-in with the external provider failed. Please try again.",
+    };
+
+    /// <summary>Whether an external-login code is a "check your mail" notice rather than a failure.</summary>
+    public static bool IsExternalLoginNotice(string? code)
+        => code is "link_confirmation_sent" or "confirm_email_sent";
+
     public static void AppendHidden(StringBuilder sb, string name, string? value)
     {
         sb.Append("<input type=\"hidden\" name=\"").Append(Encode(name))

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.WebUtilities;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.IdentityProvider.Configuration;
@@ -115,12 +116,29 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
         }
 
         // Check user authentication
-        var userId = await context.GetInteractiveUserIdAsync();
+        var (userId, authTime) = await context.GetInteractiveUserAsync();
         if (string.IsNullOrEmpty(userId))
         {
-            // User not authenticated — redirect to MVC login page
-            var currentUrl = context.Request.QueryString.Value;
-            return Results.Redirect($"/connect/login?returnUrl={Uri.EscapeDataString($"/connect/authorize{currentUrl}")}");
+            // User not authenticated — redirect to the login page.
+            //
+            // #490 M6: an external sign-in started from that page that was refused comes back here
+            // with ?sparkExternalLogin=<code> when the challenge had no errorUrl. It is lifted out of
+            // the pending authorize URL and handed to the login page, which shows it; left inside
+            // returnUrl it was dropped on this bounce and the user saw the form again with no reason.
+            // The query is rebuilt only then, so an ordinary bounce keeps the URL byte for byte.
+            var pending = context.Request.QueryString.Value;
+            var externalLogin = context.Request.Query[ExternalLoginQueryParameter].ToString();
+            if (!string.IsNullOrEmpty(externalLogin))
+            {
+                pending = QueryString.Create(context.Request.Query
+                    .Where(p => !string.Equals(p.Key, ExternalLoginQueryParameter, StringComparison.Ordinal))
+                    .SelectMany(p => p.Value.Select(v => KeyValuePair.Create(p.Key, v)))).Value;
+            }
+
+            var loginUrl = $"/connect/login?returnUrl={Uri.EscapeDataString($"/connect/authorize{pending}")}";
+            return Results.Redirect(string.IsNullOrEmpty(externalLogin)
+                ? loginUrl
+                : QueryHelpers.AddQueryString(loginUrl, ExternalLoginQueryParameter, externalLogin));
         }
 
         // Everything above validated the request against the application record. Persist that
@@ -128,6 +146,7 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
         // has to — or is able to — re-derive it from request input.
         var (request, requestId) = await CreateRequestAsync(
             session, app, userId, requestedScopes, redirectUri, state, codeChallenge, CodeChallengeMethod, Nonce, ct);
+        request.AuthTime = authTime;
 
         // Load the user's standing grant once: both the implicit branch and the skip-consent
         // check below need it, and the implicit branch used to run without consulting it at all.
@@ -208,6 +227,9 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
 
         return (request, requestId);
     }
+
+    /// <summary>The external-login outcome code the Authorization package appends on a refused sign-in.</summary>
+    internal const string ExternalLoginQueryParameter = "sparkExternalLogin";
 
     private static IResult RedirectWithError(string redirectUri, string? state, string error, string description)
         => Results.Redirect(RedirectUrl.With(redirectUri,

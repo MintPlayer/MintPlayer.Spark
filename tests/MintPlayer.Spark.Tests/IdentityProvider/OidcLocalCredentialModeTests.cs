@@ -73,14 +73,59 @@ public class OidcLocalCredentialModeTests(SparkSharedDatabase database)
     }
 
     [Fact]
-    public async Task Disabled_mode_removes_the_identity_provider_login_pages()
+    public async Task Disabled_mode_removes_the_password_surface_but_keeps_the_login_page()
     {
+        // #490 M6 (D7): the GET stays mapped so a federating provider can offer its external
+        // schemes; it used to 404. The POST and the two-factor step are the password surface.
         await using var factory = CreateFactory(SparkLocalCredentials.Disabled);
 
-        var routes = RoutesOf(factory);
+        var loginMethods = factory.GetService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText == "/connect/login")
+            .SelectMany(endpoint => endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods ?? [])
+            .ToArray();
 
-        routes.Should().NotContain("/connect/login");
-        routes.Should().NotContain("/connect/two-factor");
+        loginMethods.Should().Equal("GET");
+        RoutesOf(factory).Should().NotContain("/connect/two-factor");
+    }
+
+    [Fact]
+    public async Task Disabled_mode_login_page_shows_the_external_buttons_and_no_password_form()
+    {
+        await using var factory = CreateFactory(SparkLocalCredentials.Disabled);
+        var returnUrl = "/connect/authorize?client_id=app&scope=openid profile&state=a&b";
+
+        var response = await factory.CreateClient().GetAsync($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
+        var html = await response.Content.ReadAsStringAsync();
+
+        ((int)response.StatusCode).Should().Be(200);
+        html.Should().NotContain("type=\"password\"");
+        html.Should().NotContain("<form");
+        html.Should().Contain("Sign in with GitHub");
+
+        // The link, HTML-decoded, carries the pending authorization as returnUrl and this page as errorUrl.
+        var href = System.Net.WebUtility.HtmlDecode(
+            System.Text.RegularExpressions.Regex.Match(html, "href=\"([^\"]*external-login[^\"]*)\"").Groups[1].Value);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(href[href.IndexOf('?')..]);
+        href.Should().StartWith("/spark/auth/external-login?");
+        query["provider"].ToString().Should().Be("GitHub");
+        query["returnUrl"].ToString().Should().Be(returnUrl);
+        query["errorUrl"].ToString().Should().Be($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
+
+        // Raw markup: the URL's own separators are HTML-encoded inside the attribute.
+        html.Should().Contain("&amp;returnUrl=");
+        html.Should().NotContain("?provider=GitHub&returnUrl=");
+    }
+
+    [Fact]
+    public async Task Full_mode_login_page_shows_the_form_and_the_external_buttons()
+    {
+        await using var factory = CreateFactory(SparkLocalCredentials.Full);
+
+        var html = await (await factory.CreateClient().GetAsync("/connect/login?returnUrl=%2F")).Content.ReadAsStringAsync();
+
+        html.Should().Contain("type=\"password\"");
+        html.Should().Contain("Sign in with GitHub");
     }
 
     [Fact]

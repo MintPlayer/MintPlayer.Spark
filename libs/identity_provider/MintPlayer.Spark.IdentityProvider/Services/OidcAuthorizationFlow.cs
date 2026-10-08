@@ -155,6 +155,7 @@ internal static class OidcAuthorizationFlow
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(5), // 5 minute lifetime
             State = request.Nonce, // Store nonce for ID token generation
+            AuthTime = request.AuthTime,
         };
 
         // A request mints exactly one code. Re-submitting the consent form, or replaying the

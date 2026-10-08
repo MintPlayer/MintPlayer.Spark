@@ -45,7 +45,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddIdentityProvider(options =>
     {
         options.Issuer = builder.Configuration["SparkIdentityProvider:Issuer"]
-            ?? "https://localhost:5002";
+            // HR's own https launch profile; it said 5002, a port HR never listens on, so a relying
+            // party's Authority (5005) and the tokens' iss disagreed (#490 M6, QnA signs in here).
+            ?? "https://localhost:5005";
     });
 
     spark.AddMessaging();

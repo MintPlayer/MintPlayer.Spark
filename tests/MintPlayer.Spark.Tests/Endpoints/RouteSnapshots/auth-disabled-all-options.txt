@@ -6,6 +6,7 @@ GET /connect/authorize
 GET /connect/consent
 POST /connect/consent | antiforgery=required
 POST /connect/introspect
+GET /connect/login
 GET /connect/logout
 POST /connect/revoke | cors=policy:SparkOidcCors
 POST /connect/token | cors=policy:SparkOidcCors

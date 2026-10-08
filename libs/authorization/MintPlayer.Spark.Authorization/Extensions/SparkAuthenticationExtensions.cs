@@ -430,7 +430,29 @@ internal static class SparkAuthenticationExtensions
             popup: context.Request.Query.ContainsKey("popup"),
             nonce: SparkExternalLoginNonce.Accept(context.Request.Query[SparkExternalLoginNonce.QueryParameter]),
             safeReturnUrl,
-            error);
+            error,
+            safeErrorUrl: SanitizeErrorUrl(context.Request.Query[ErrorUrlParameter]));
+
+    /// <summary>
+    /// The query parameter naming where a <b>redirect-mode</b> failure lands (#490 M6): the page that
+    /// started the flow and reads <c>?sparkExternalLogin</c>, such as the sign-in page or the identity
+    /// provider's <c>/connect/login</c>. Success still goes to <c>returnUrl</c>.
+    /// </summary>
+    internal const string ErrorUrlParameter = "errorUrl";
+
+    /// <summary>
+    /// <see cref="SanitizeReturnUrl"/> for an optional <c>errorUrl</c>: <see langword="null"/> when it is
+    /// absent, so the caller can fall back to the return URL, and the site root for anything off-origin.
+    /// </summary>
+    internal static string? SanitizeErrorUrl(string? errorUrl)
+        => string.IsNullOrEmpty(errorUrl) ? null : SanitizeReturnUrl(errorUrl);
+
+    /// <summary>
+    /// Appends an already sanitized <c>errorUrl</c> to a callback URL the challenge builds, so it survives
+    /// the provider round trip the same way <c>returnUrl</c> does.
+    /// </summary>
+    internal static string AppendErrorUrl(string callbackUrl, string? safeErrorUrl)
+        => safeErrorUrl is null ? callbackUrl : QueryHelpers.AddQueryString(callbackUrl, ErrorUrlParameter, safeErrorUrl);
 
     /// <summary>
     /// <see cref="ExternalLoginOutcome(HttpContext, string, string?)"/> with the hand-off flags given
@@ -440,7 +462,14 @@ internal static class SparkAuthenticationExtensions
     /// </summary>
     /// <param name="nonce">An already validated nonce (<see cref="SparkExternalLoginNonce.Accept"/>), or <see langword="null"/>.</param>
     /// <param name="safeReturnUrl">An already sanitized return URL (<see cref="SanitizeReturnUrl"/>).</param>
-    internal static IResult ExternalLoginOutcome(bool popup, string? nonce, string safeReturnUrl, string? error)
+    /// <param name="safeErrorUrl">
+    /// An already sanitized error URL (<see cref="SanitizeErrorUrl"/>), or <see langword="null"/>. In
+    /// redirect mode a failure lands there instead of on <paramref name="safeReturnUrl"/>: the return URL
+    /// is where a <em>signed-in</em> user goes next (for the identity provider, the pending
+    /// <c>/connect/authorize</c>, which cannot show an error), while the error URL is the page that reads
+    /// <c>?sparkExternalLogin</c>. Popup mode ignores it.
+    /// </param>
+    internal static IResult ExternalLoginOutcome(bool popup, string? nonce, string safeReturnUrl, string? error, string? safeErrorUrl = null)
     {
         if (!popup)
         {
@@ -450,7 +479,7 @@ internal static class SparkAuthenticationExtensions
             // one of them means "check your mail", which the user will never do if nobody says so.
             return Results.Redirect(error is null
                 ? safeReturnUrl
-                : QueryHelpers.AddQueryString(safeReturnUrl, "sparkExternalLogin", error));
+                : QueryHelpers.AddQueryString(safeErrorUrl ?? safeReturnUrl, "sparkExternalLogin", error));
         }
 
         return new ExternalLoginPopupPage(ExternalLoginPopupHtml(nonce, safeReturnUrl, error));

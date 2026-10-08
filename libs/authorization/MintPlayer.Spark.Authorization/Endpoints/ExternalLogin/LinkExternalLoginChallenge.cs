@@ -32,6 +32,7 @@ internal sealed partial class LinkExternalLoginChallenge<TUser> : IGetEndpoint
 
     [QueryParam] public string? Provider { get; set; }
     [QueryParam] public string? ReturnUrl { get; set; }
+    [QueryParam] public string? ErrorUrl { get; set; }
     [QueryParam] public string? Popup { get; set; }
     [QueryParam] public string? Nonce { get; set; }
 
@@ -49,8 +50,11 @@ internal sealed partial class LinkExternalLoginChallenge<TUser> : IGetEndpoint
 
         var safeReturnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(
             string.IsNullOrEmpty(returnUrl) ? null : returnUrl);
+        // #490 M6: errorUrl as on the sign-in challenge.
         var callbackUrl = SparkExternalLoginNonce.AppendCallbackFlags(
-            $"/spark/auth/link-external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}",
+            SparkAuthenticationExtensions.AppendErrorUrl(
+                $"/spark/auth/link-external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}",
+                SparkAuthenticationExtensions.SanitizeErrorUrl(ErrorUrl)),
             popup,
             Nonce);
 

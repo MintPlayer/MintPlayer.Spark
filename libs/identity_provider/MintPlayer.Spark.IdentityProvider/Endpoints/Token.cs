@@ -240,7 +240,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Issuing one regardless meant a client that only asked for API access still received a
         // signed identity assertion it never sought.
         var idToken = GrantsOpenId(codeToken.Scopes)
-            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.AccessTokenLifetimeMinutes)
+            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.IdTokenLifetimeMinutes,
+                accessToken: accessToken, authTime: codeToken.AuthTime)
             : null;
 
         // A refresh token is a long-lived credential and must be asked for. This used to be
@@ -281,6 +282,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
                 Status = "valid",
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
+                AuthTime = codeToken.AuthTime,
             }, ct);
         }
 
@@ -479,7 +481,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Generate new tokens
         var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
         var newIdToken = GrantsOpenId(grantedScopeNames)
-            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.AccessTokenLifetimeMinutes)
+            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.IdTokenLifetimeMinutes,
+                accessToken: newAccessToken, authTime: refreshTokenDoc.AuthTime)
             : null;
         var newRefreshTokenValue = tokenGenerator.GenerateRefreshToken();
 
@@ -519,6 +522,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
+            // A refresh is not a re-authentication: auth_time stays the original sign-in.
+            AuthTime = refreshTokenDoc.AuthTime,
         };
 
         await session.StoreAsync(newAccessTokenDoc, ct);

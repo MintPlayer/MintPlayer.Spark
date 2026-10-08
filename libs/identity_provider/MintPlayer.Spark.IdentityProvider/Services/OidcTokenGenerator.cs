@@ -19,27 +19,58 @@ internal class OidcTokenGenerator
     /// <summary>
     /// Generates an ID token with claims driven by OidcScope.ClaimTypes from the database.
     /// </summary>
+    /// <param name="lifetimeMinutes">
+    /// The id_token's own lifetime (<see cref="OidcApplication.IdTokenLifetimeMinutes"/>). It used to
+    /// reuse the access token's: an id_token is consumed once, at sign-in, so it has no reason to stay
+    /// valid as long as a credential that is presented on every API call.
+    /// </param>
+    /// <param name="accessToken">
+    /// The access token issued in the same response, if any; its <c>at_hash</c> (OIDC Core §3.1.3.6)
+    /// binds the two, so a relying party can tell the access token was not swapped.
+    /// </param>
+    /// <param name="authTime">
+    /// When the user last actually authenticated (OIDC Core §2, <c>auth_time</c>) — the sign-in
+    /// instant, not the token's issue time. Omitted when unknown.
+    /// </param>
     public string GenerateIdToken(
         SparkUser user,
         OidcApplication app,
         string issuer,
         IReadOnlyList<OidcScope> grantedScopes,
         string? nonce,
-        int lifetimeMinutes = 60)
+        int lifetimeMinutes = 5,
+        string? accessToken = null,
+        DateTimeOffset? authTime = null)
     {
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id!),
         };
 
+        // Typed values (email_verified is a JSON boolean, auth_time a number) go through the
+        // descriptor's own dictionary, which serializes them as typed JSON. A Claim on the Subject is
+        // a string unless the handler happens to honour its value type.
+        var typedClaims = new Dictionary<string, object>();
+
         // Resolve claims from scope definitions
-        var resolvedClaims = ResolveUserClaims(user, grantedScopes);
-        claims.AddRange(resolvedClaims);
+        foreach (var claim in ResolveUserClaims(user, grantedScopes))
+        {
+            if (claim.ValueType == ClaimValueTypes.Boolean)
+                typedClaims[claim.Type] = bool.Parse(claim.Value);
+            else
+                claims.Add(claim);
+        }
 
         if (!string.IsNullOrEmpty(nonce))
         {
             claims.Add(new Claim(JwtRegisteredClaimNames.Nonce, nonce));
         }
+
+        if (!string.IsNullOrEmpty(accessToken))
+            typedClaims["at_hash"] = AccessTokenHash(accessToken);
+
+        if (authTime is { } at)
+            typedClaims["auth_time"] = at.ToUnixTimeSeconds();
 
         var key = _signingKeyService.GetSigningKey();
         var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
@@ -47,6 +78,7 @@ internal class OidcTokenGenerator
         var descriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
+            Claims = typedClaims,
             Issuer = issuer,
             Audience = app.ClientId,
             IssuedAt = DateTime.UtcNow,
@@ -56,6 +88,16 @@ internal class OidcTokenGenerator
 
         var handler = new JsonWebTokenHandler();
         return handler.CreateToken(descriptor);
+    }
+
+    /// <summary>
+    /// <c>at_hash</c> for an RS256-signed id_token: the base64url of the left-most half of the SHA-256
+    /// of the access token's ASCII octets (OIDC Core §3.1.3.6).
+    /// </summary>
+    internal static string AccessTokenHash(string accessToken)
+    {
+        var hash = SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(accessToken));
+        return Base64UrlEncoder.Encode(hash, 0, hash.Length / 2);
     }
 
     /// <summary>
@@ -178,8 +220,10 @@ internal class OidcTokenGenerator
                         claims.Add(new Claim(JwtRegisteredClaimNames.Email, user.Email));
                     break;
                 case "email_verified":
+                    // A JSON boolean, as in userinfo (OIDC Core §5.1). It was the string "true" here
+                    // and a boolean there; GenerateIdToken writes a Boolean-typed claim as a boolean.
                     if (!string.IsNullOrEmpty(user.Email))
-                        claims.Add(new Claim("email_verified", user.EmailConfirmed.ToString().ToLowerInvariant()));
+                        claims.Add(new Claim("email_verified", user.EmailConfirmed ? "true" : "false", ClaimValueTypes.Boolean));
                     break;
                 case "role":
                     foreach (var role in user.Roles)
@@ -189,15 +233,44 @@ internal class OidcTokenGenerator
                     if (!string.IsNullOrEmpty(user.UserName))
                         claims.Add(new Claim("preferred_username", user.UserName));
                     break;
+                case "given_name":
+                case "family_name":
+                    if (StoredClaim(user, claimType) is { } stored)
+                        claims.Add(new Claim(claimType.ToLowerInvariant(), stored));
+                    break;
                 default:
-                    // For claim types not mapped to SparkUser properties (family_name, given_name,
-                    // picture, locale, etc.), these would need to come from Identity user claims.
-                    // A future enhancement can load them via UserManager.GetClaimsAsync().
+                    // Other standard claims (picture, locale, ...) have no source on SparkUser.
                     break;
             }
         }
 
         return claims;
+    }
+
+    /// <summary>
+    /// A name part from the user's stored claims (<see cref="SparkUser.Claims"/>), under its OIDC name or
+    /// the matching <see cref="ClaimTypes"/> URI, or <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SparkUser"/> has no given or family name of its own, so these exist only where an
+    /// application stores them as user claims (for example from an external provider's ticket). A
+    /// user without them simply gets no such claim — never an empty one.
+    /// </remarks>
+    internal static string? StoredClaim(SparkUser user, string oidcClaimType)
+    {
+        var uri = oidcClaimType.ToLowerInvariant() switch
+        {
+            "given_name" => ClaimTypes.GivenName,
+            "family_name" => ClaimTypes.Surname,
+            _ => null,
+        };
+
+        var value = user.Claims.FirstOrDefault(c =>
+                string.Equals(c.ClaimType, oidcClaimType, StringComparison.OrdinalIgnoreCase)
+                || (uri is not null && string.Equals(c.ClaimType, uri, StringComparison.Ordinal)))
+            ?.ClaimValue;
+
+        return string.IsNullOrEmpty(value) ? null : value;
     }
 
     /// <summary>
@@ -235,12 +308,19 @@ internal class OidcTokenGenerator
                         claims["email_verified"] = user.EmailConfirmed;
                     break;
                 case "role":
+                    // "role", as in the id_token; this said "roles", so a relying party mapping one
+                    // name saw roles from only one of its two sources.
                     if (user.Roles.Count > 0)
-                        claims["roles"] = user.Roles;
+                        claims["role"] = user.Roles;
                     break;
                 case "preferred_username":
                     if (!string.IsNullOrEmpty(user.UserName))
                         claims["preferred_username"] = user.UserName;
+                    break;
+                case "given_name":
+                case "family_name":
+                    if (StoredClaim(user, claimType) is { } stored)
+                        claims[claimType.ToLowerInvariant()] = stored;
                     break;
                 default:
                     break;

@@ -114,6 +114,29 @@ public class SparkExternalLoginRemoteFailureTests(SparkSharedDatabase database)
     }
 
     [Fact]
+    public async Task A_provider_failure_in_redirect_mode_lands_on_the_error_url_when_one_was_given()
+    {
+        // #490 M6: the identity provider's /connect/login (or the SPA sign-in page) asks for errors
+        // to come back to itself; success would still go to returnUrl.
+        var errorUrl = "/connect/login?returnUrl=" + Uri.EscapeDataString("/connect/authorize?client_id=a");
+        var written = await HandleAsync(
+            $"/spark/auth/external-login-callback?returnUrl=%2Fdashboard&errorUrl={Uri.EscapeDataString(errorUrl)}&ngsw-bypass=true",
+            "Correlation failed.");
+
+        written.Location.Should().Be(errorUrl + "&sparkExternalLogin=remote_failure");
+    }
+
+    [Fact]
+    public async Task A_hostile_error_url_in_the_redirect_uri_is_sanitized()
+    {
+        var written = await HandleAsync(
+            $"/spark/auth/external-login-callback?returnUrl=%2Fdashboard&errorUrl={Uri.EscapeDataString("//evil.example/")}",
+            "Correlation failed.");
+
+        written.Location.Should().Be("/?sparkExternalLogin=remote_failure");
+    }
+
+    [Fact]
     public async Task A_hostile_return_url_in_the_redirect_uri_is_sanitized()
     {
         var written = await HandleAsync(

@@ -39,6 +39,9 @@ public class OidcAuthorizationRequest
     public string? Nonce { get; set; }
     public string? State { get; set; }
 
+    /// <summary>When the signed-in user last authenticated interactively (the id_token's <c>auth_time</c>), or null if unknown.</summary>
+    public DateTimeOffset? AuthTime { get; set; }
+
     /// <summary>The <see cref="OidcAuthorization"/> this request is granted under; empty until consent is recorded.</summary>
     public string AuthorizationId { get; set; } = string.Empty;
 
