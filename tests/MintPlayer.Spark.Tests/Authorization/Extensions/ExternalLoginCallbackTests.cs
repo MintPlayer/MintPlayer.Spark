@@ -117,7 +117,10 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         // M2: the payload is namespaced and carries an explicit outcome, so one listener can
         // distinguish this app's messages from anything else on the origin and tell success
         // from failure without inferring it from which message did *not* arrive.
-        popupBody.Should().Contain("{ type: 'spark:external-login', success: true }");
+        var payload = ExternalLoginPopupPayload.Parse(popupBody);
+        payload.Type.Should().Be("spark:external-login");
+        payload.Success.Should().BeTrue();
+        payload.Error.Should().BeNull();
         // Critically, the popup branch's HTML no longer carries returnUrl at all —
         // the postMessage payload is a static string.
         popupBody.Should().NotContain("'/home'", "popup HTML must be returnUrl-free (R2-C4)");
@@ -267,8 +270,9 @@ public class ExternalLoginCallbackTests : SparkTestDriver
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("success: false");
-        body.Should().Contain("email_not_verified");
+        var payload = ExternalLoginPopupPayload.Parse(body);
+        payload.Success.Should().BeFalse();
+        payload.Error.Should().Be("email_not_verified");
         await _userManager.DidNotReceive().CreateAsync(Arg.Any<SparkUser>());
     }
 
@@ -293,8 +297,9 @@ public class ExternalLoginCallbackTests : SparkTestDriver
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("success: false");
-        body.Should().Contain("account_creation_failed");
+        var payload = ExternalLoginPopupPayload.Parse(body);
+        payload.Success.Should().BeFalse();
+        payload.Error.Should().Be("account_creation_failed");
         // The refusal is reported, not smuggled: nothing about the Identity error reaches
         // the browser, and the flow still stops before AddLogin/SignIn.
         body.Should().NotContain("boom");

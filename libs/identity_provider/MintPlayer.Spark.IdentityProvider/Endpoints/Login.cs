@@ -48,6 +48,9 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
 
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly IOptions<SparkAuthenticationOptions> authenticationOptions;
+    // The concrete singleton, the same source OidcLocalCredentialsGroup.IsEnabled gates the POST on
+    // (LocalCredentialsOf), so the form is shown exactly when its submit route is mapped.
+    [Inject] private readonly SparkAuthenticationOptions sparkAuthenticationOptions;
     [Inject] private readonly IAuthenticationSchemeProvider schemes;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
@@ -60,7 +63,7 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
         // authenticate here. Shared with the Authorization package rather than duplicated.
         var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(ReturnUrl);
         var error = Error;
-        var showPasswordForm = SparkIdentityProviderExtensions.LocalCredentialsOf(httpContext.RequestServices) != SparkLocalCredentials.Disabled;
+        var showPasswordForm = sparkAuthenticationOptions.LocalCredentials != SparkLocalCredentials.Disabled;
         var externalSchemes = await ExternalAuthenticationSchemes.GetInteractiveAsync(schemes);
 
         var sb = new StringBuilder();

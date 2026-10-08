@@ -65,7 +65,7 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
 
         var response = await SignUpAsync(host, "nosignal@example.com", "Jöhn Doe", verified: false);
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain("success: true", "RequireConfirmedEmail is off, so the person is signed in");
+        ExternalLoginPopupPayload.Parse(await response.Content.ReadAsStringAsync()).Success.Should().BeTrue("RequireConfirmedEmail is off, so the person is signed in");
         var user = (await host.FindByEmailAsync("nosignal@example.com"))!;
         user.EmailConfirmed.Should().BeFalse();
         user.UserName.Should().Be("john-doe");
@@ -82,7 +82,7 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
 
         var response = await SignUpAsync(host, "gated@example.com", "Gated", verified: false);
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain("error: 'confirm_email_sent'");
+        ExternalLoginPopupPayload.ErrorFrom(await response.Content.ReadAsStringAsync()).Should().Be("confirm_email_sent");
         AccountTestHost.CookieHeader(response).Should().NotContain(".AspNetCore.Identity.Application=");
         (await host.FindByEmailAsync("gated@example.com")).Should().NotBeNull();
     }
@@ -94,7 +94,7 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
 
         var response = await SignUpAsync(host, "unverified@example.com", "Someone", verified: false);
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain("error: 'email_not_verified'");
+        ExternalLoginPopupPayload.ErrorFrom(await response.Content.ReadAsStringAsync()).Should().Be("email_not_verified");
         (await host.FindByEmailAsync("unverified@example.com")).Should().BeNull();
         host.Mail.Sent.Should().BeEmpty();
     }

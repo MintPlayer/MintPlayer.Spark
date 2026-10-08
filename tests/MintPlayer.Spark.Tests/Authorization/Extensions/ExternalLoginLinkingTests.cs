@@ -115,15 +115,7 @@ public class ExternalLoginLinkingTests : SparkTestDriver
         return host.GetTestServer();
     }
 
-    private static string ErrorFrom(string popupHtml)
-    {
-        const string marker = "error: '";
-        var start = popupHtml.IndexOf(marker, StringComparison.Ordinal);
-        if (start < 0)
-            return "<none>";
-        start += marker.Length;
-        return popupHtml[start..popupHtml.IndexOf('\'', start)];
-    }
+    private static string ErrorFrom(string popupHtml) => ExternalLoginPopupPayload.ErrorFrom(popupHtml);
 
     [Theory]
     [InlineData(SparkExternalLoginLinking.Disabled, "email_already_registered")]

@@ -29,6 +29,7 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
     [QueryParam("code_challenge")] public string? CodeChallenge { get; set; }
     [QueryParam("code_challenge_method")] public string? CodeChallengeMethod { get; set; }
     [QueryParam("nonce")] public string? Nonce { get; set; }
+    [QueryParam("sparkExternalLogin")] public string? ExternalLogin { get; set; }
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly SparkIdentityProviderOptions options;
@@ -125,14 +126,26 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
             // with ?sparkExternalLogin=<code> when the challenge had no errorUrl. It is lifted out of
             // the pending authorize URL and handed to the login page, which shows it; left inside
             // returnUrl it was dropped on this bounce and the user saw the form again with no reason.
-            // The query is rebuilt only then, so an ordinary bounce keeps the URL byte for byte.
+            // The query is rebuilt only then, from the bound authorization parameters (the only ones
+            // this endpoint reads when the browser comes back), so an ordinary bounce keeps the URL
+            // byte for byte.
             var pending = context.Request.QueryString.Value;
-            var externalLogin = context.Request.Query[ExternalLoginQueryParameter].ToString();
+            var externalLogin = ExternalLogin;
             if (!string.IsNullOrEmpty(externalLogin))
             {
-                pending = QueryString.Create(context.Request.Query
-                    .Where(p => !string.Equals(p.Key, ExternalLoginQueryParameter, StringComparison.Ordinal))
-                    .SelectMany(p => p.Value.Select(v => KeyValuePair.Create(p.Key, v)))).Value;
+                pending = QueryString.Create(new (string Name, string? Value)[]
+                    {
+                        ("client_id", ClientId),
+                        ("redirect_uri", RedirectUri),
+                        ("response_type", ResponseType),
+                        ("scope", Scope),
+                        ("state", State),
+                        ("code_challenge", CodeChallenge),
+                        ("code_challenge_method", CodeChallengeMethod),
+                        ("nonce", Nonce),
+                    }
+                    .Where(p => p.Value is not null)
+                    .Select(p => KeyValuePair.Create(p.Name, p.Value))).Value;
             }
 
             var loginUrl = $"/connect/login?returnUrl={Uri.EscapeDataString($"/connect/authorize{pending}")}";

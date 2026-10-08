@@ -175,6 +175,9 @@ public class SparkExternalLoginRemoteFailureTests(SparkSharedDatabase database)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDataProtection();
+        // What spark.AddAuthentication<TUser>() brings in through Identity, and every preset
+        // requires it first: the scheme post-configurators resolve TimeProvider from it.
+        services.AddAuthentication();
         register(TestSparkAuth.Builder(services));
         using var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IOptionsMonitor<TOptions>>().Get(scheme).Events;

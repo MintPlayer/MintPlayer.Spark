@@ -145,7 +145,7 @@
         "id": "afe1a4e9-b442-4843-901b-dd140b8f7430",
         "name": "IdTokenLifetimeMinutes",
         "dataType": "number",
-        "isRequired": true,
+        "isRequired": false,
         "isReadOnly": false,
         "order": 18,
         "isArray": false,

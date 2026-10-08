@@ -638,9 +638,9 @@
             "nl": "Levensduur identiteitstoken (minuten)"
           },
           "description": {
-            "en": "Validity of an issued ID token in minutes; it is only read once, at sign-in, so keep it short.",
-            "fr": "Validité d'un jeton d'identité émis, en minutes ; il n'est lu qu'une fois, à la connexion, gardez-la donc courte.",
-            "nl": "Geldigheid van een uitgegeven identiteitstoken in minuten; het wordt maar één keer gelezen, bij het aanmelden, dus houd die kort."
+            "en": "Validity of an issued ID token in minutes; it is only read once, at sign-in, so keep it short. Leave empty for the 5-minute default.",
+            "fr": "Validité d'un jeton d'identité émis, en minutes ; il n'est lu qu'une fois, à la connexion, gardez-la donc courte. Laissez vide pour la valeur par défaut de 5 minutes.",
+            "nl": "Geldigheid van een uitgegeven identiteitstoken in minuten; het wordt maar één keer gelezen, bij het aanmelden, dus houd die kort. Laat leeg voor de standaardwaarde van 5 minuten."
           }
         }
       }

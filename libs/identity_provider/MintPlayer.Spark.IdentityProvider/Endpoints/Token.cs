@@ -240,7 +240,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Issuing one regardless meant a client that only asked for API access still received a
         // signed identity assertion it never sought.
         var idToken = GrantsOpenId(codeToken.Scopes)
-            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.IdTokenLifetimeMinutes,
+            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.EffectiveIdTokenLifetimeMinutes(),
                 accessToken: accessToken, authTime: codeToken.AuthTime)
             : null;
 
@@ -481,7 +481,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Generate new tokens
         var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
         var newIdToken = GrantsOpenId(grantedScopeNames)
-            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.IdTokenLifetimeMinutes,
+            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.EffectiveIdTokenLifetimeMinutes(),
                 accessToken: newAccessToken, authTime: refreshTokenDoc.AuthTime)
             : null;
         var newRefreshTokenValue = tokenGenerator.GenerateRefreshToken();

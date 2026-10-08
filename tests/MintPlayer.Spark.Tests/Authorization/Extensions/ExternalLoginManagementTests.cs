@@ -274,7 +274,7 @@ public class ExternalLoginManagementTests : SparkTestDriver
         var response = await client.GetAsync(
             "/spark/auth/link-external-login-callback?popup=1&returnUrl=%2Faccount");
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain($"error: '{expected}'");
+        ExternalLoginPopupPayload.ErrorFrom(await response.Content.ReadAsStringAsync()).Should().Be(expected);
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class ExternalLoginManagementTests : SparkTestDriver
         var response = await client.GetAsync(
             "/spark/auth/link-external-login-callback?popup=1&returnUrl=%2Faccount");
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain("success: true");
+        ExternalLoginPopupPayload.Parse(await response.Content.ReadAsStringAsync()).Success.Should().BeTrue();
         await _userManager.Received(1).AddLoginAsync(_user, Arg.Is<UserLoginInfo>(l =>
             l.LoginProvider == "GitLab" && l.ProviderKey == "gl-9"));
         await _signInManager.Received(1).RefreshSignInAsync(_user);

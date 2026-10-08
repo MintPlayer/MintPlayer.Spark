@@ -81,10 +81,20 @@ public class OidcApplication
     public bool RequirePkce { get; set; } = true;
     /// <summary>Validity of an issued access token in minutes.</summary>
     public int AccessTokenLifetimeMinutes { get; set; } = 60;
-    /// <summary>Validity of an issued ID token in minutes; it is only read once, at sign-in, so keep it short.</summary>
-    public int IdTokenLifetimeMinutes { get; set; } = 5;
+    /// <summary>Validity of an issued ID token in minutes; it is only read once, at sign-in, so keep it short. Leave empty for the 5-minute default.</summary>
+    // Optional on purpose: the field arrived after clients were already being registered, so a
+    // create or update that does not carry it must still be accepted. Empty or 0 means the default
+    // (see EffectiveIdTokenLifetimeMinutes), applied when the token is issued.
+    public int? IdTokenLifetimeMinutes { get; set; } = DefaultIdTokenLifetimeMinutes;
     /// <summary>Validity of an issued refresh token in days.</summary>
     public int RefreshTokenLifetimeDays { get; set; } = 14;
+
+    /// <summary>The id_token lifetime used when <see cref="IdTokenLifetimeMinutes"/> is empty or not positive.</summary>
+    public const int DefaultIdTokenLifetimeMinutes = 5;
+
+    /// <summary>The id_token lifetime to issue with: <see cref="IdTokenLifetimeMinutes"/>, or the default when it is empty or not positive.</summary>
+    public int EffectiveIdTokenLifetimeMinutes()
+        => IdTokenLifetimeMinutes is int minutes and > 0 ? minutes : DefaultIdTokenLifetimeMinutes;
 }
 
 [ValueObject]
