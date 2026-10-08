@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { RouterLink } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
+import { currentLanguage } from '@mintplayer/ng-spark/models';
 import {
+  SPARK_ACCOUNT_OVERVIEW_LINKS,
   SPARK_AUTH_ROUTE_PATHS,
   SparkAuthCapabilities,
   SparkAuthRoutePaths,
@@ -34,7 +36,9 @@ const PAGES: { key: keyof SparkAuthRoutePaths; label: string; server?: ServerChe
 
 /**
  * The account area's landing page (#460, D16): who is signed in, and a link per account page that is
- * both mounted (`withAccount()`) and served (`/spark/auth/capabilities`).
+ * both mounted (`withAccount()`) and served (`/spark/auth/capabilities`), then the links other route
+ * features contribute through `SPARK_ACCOUNT_OVERVIEW_LINKS` (e.g. connected applications, from
+ * `@mintplayer/ng-spark/identity-provider`).
  */
 @Component({
   selector: 'spark-account-overview',
@@ -58,6 +62,9 @@ const PAGES: { key: keyof SparkAuthRoutePaths; label: string; server?: ServerChe
             @for (page of pages(); track page.key) {
               <li class="py-1"><a class="spark-account-link" [routerLink]="page.path">{{ page.label | t }}</a></li>
             }
+            @for (link of extraLinks(); track link.key) {
+              <li class="py-1"><a class="spark-account-link" [routerLink]="link.path">{{ link.label }}</a></li>
+            }
           </ul>
         </div>
       </bs-card>
@@ -79,6 +86,21 @@ export class SparkAccountOverviewComponent {
       .filter(page => !!this.paths[page.key])
       .filter(page => !page.server || (capabilities !== null && page.server(capabilities)))
       .map(page => ({ ...page, path: this.paths[page.key]! }));
+  });
+
+  private readonly accountLinks = inject(SPARK_ACCOUNT_OVERVIEW_LINKS, { optional: true }) ?? [];
+
+  /**
+   * Links contributed by route features of other entry points (connected applications), after the
+   * auth pages. Each carries its own translations; resolved in the app's current language.
+   */
+  protected readonly extraLinks = computed(() => {
+    const lang = currentLanguage();
+    return this.accountLinks.map(link => ({
+      key: link.key,
+      path: link.path,
+      label: link.label[lang] ?? link.label['en'] ?? Object.values(link.label)[0] ?? link.key,
+    }));
   });
 
   constructor() {

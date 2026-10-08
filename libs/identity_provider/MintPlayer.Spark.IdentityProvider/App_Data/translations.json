@@ -2464,6 +2464,390 @@
         "fr": "Déconnexion des applications connectées…",
         "nl": "Je wordt afgemeld bij de gekoppelde applicaties…"
       }
+    },
+    "spa": {
+      "loadFailed": {
+        "en": "This could not be loaded. Try again later.",
+        "fr": "Le chargement a échoué. Réessayez plus tard.",
+        "nl": "Dit kon niet geladen worden. Probeer het later opnieuw."
+      },
+      "openApplications": {
+        "en": "Open your applications",
+        "fr": "Ouvrir vos applications",
+        "nl": "Je applicaties openen"
+      },
+      "apps": {
+        "title": {
+          "en": "Connected applications",
+          "fr": "Applications connectées",
+          "nl": "Verbonden applicaties"
+        },
+        "intro": {
+          "en": "These applications can sign you in and read what you allowed. Withdraw access to stop that: the application asks for your consent again the next time you use it.",
+          "fr": "Ces applications peuvent vous connecter et lire ce que vous avez autorisé. Retirez l'accès pour y mettre fin : l'application vous redemandera votre consentement lors de la prochaine utilisation.",
+          "nl": "Deze applicaties kunnen je aanmelden en lezen wat je toestond. Trek de toegang in om dat te stoppen: de applicatie vraagt opnieuw je toestemming wanneer je ze nog eens gebruikt."
+        },
+        "none": {
+          "en": "You have not given any application access.",
+          "fr": "Vous n'avez donné accès à aucune application.",
+          "nl": "Je hebt nog geen enkele applicatie toegang gegeven."
+        },
+        "by": {
+          "en": "by {0}",
+          "fr": "par {0}",
+          "nl": "door {0}"
+        },
+        "website": {
+          "en": "Website",
+          "fr": "Site web",
+          "nl": "Website"
+        },
+        "firstGranted": {
+          "en": "Access granted on {0}",
+          "fr": "Accès accordé le {0}",
+          "nl": "Toegang verleend op {0}"
+        },
+        "lastUsed": {
+          "en": "Last used on {0}",
+          "fr": "Dernière utilisation le {0}",
+          "nl": "Laatst gebruikt op {0}"
+        },
+        "neverUsed": {
+          "en": "Not used yet",
+          "fr": "Pas encore utilisée",
+          "nl": "Nog niet gebruikt"
+        },
+        "rememberedUntil": {
+          "en": "Your consent is remembered until {0}.",
+          "fr": "Votre consentement est mémorisé jusqu'au {0}.",
+          "nl": "Je toestemming wordt onthouden tot {0}."
+        },
+        "remembered": {
+          "en": "Your consent is remembered.",
+          "fr": "Votre consentement est mémorisé.",
+          "nl": "Je toestemming wordt onthouden."
+        },
+        "scopes": {
+          "en": "Access",
+          "fr": "Accès",
+          "nl": "Toegang"
+        },
+        "scopesHint": {
+          "en": "Untick what this application should no longer have, then withdraw it.",
+          "fr": "Décochez ce que cette application ne doit plus avoir, puis retirez-le.",
+          "nl": "Vink uit wat deze applicatie niet meer mag hebben en trek het dan in."
+        },
+        "required": {
+          "en": "Required",
+          "fr": "Obligatoire",
+          "nl": "Vereist"
+        },
+        "requiredHint": {
+          "en": "The application cannot work without this. Withdraw all access to remove it.",
+          "fr": "L'application ne peut pas fonctionner sans cela. Retirez tout l'accès pour le supprimer.",
+          "nl": "De applicatie werkt niet zonder dit. Trek alle toegang in om het te verwijderen."
+        },
+        "withdrawUnticked": {
+          "en": "Withdraw the unticked access",
+          "fr": "Retirer les accès décochés",
+          "nl": "Niet-aangevinkte toegang intrekken"
+        },
+        "withdrawAll": {
+          "en": "Withdraw all access",
+          "fr": "Retirer tout l'accès",
+          "nl": "Alle toegang intrekken"
+        },
+        "confirmWithdrawAll": {
+          "en": "Withdraw all access for {0}? It will ask for your consent again the next time you use it.",
+          "fr": "Retirer tout l'accès de {0} ? Elle vous redemandera votre consentement lors de la prochaine utilisation.",
+          "nl": "Alle toegang van {0} intrekken? Ze vraagt opnieuw je toestemming wanneer je ze nog eens gebruikt."
+        },
+        "withdrawn": {
+          "en": "Access withdrawn.",
+          "fr": "Accès retiré.",
+          "nl": "Toegang ingetrokken."
+        },
+        "withdrawFailed": {
+          "en": "Access could not be withdrawn. Try again.",
+          "fr": "L'accès n'a pas pu être retiré. Réessayez.",
+          "nl": "De toegang kon niet ingetrokken worden. Probeer het opnieuw."
+        }
+      },
+      "dev": {
+        "title": {
+          "en": "Developers",
+          "fr": "Développeurs",
+          "nl": "Ontwikkelaars"
+        },
+        "intro": {
+          "en": "Developers register applications that sign their users in with this account.",
+          "fr": "Les développeurs enregistrent des applications qui connectent leurs utilisateurs avec ce compte.",
+          "nl": "Ontwikkelaars registreren applicaties die hun gebruikers met dit account aanmelden."
+        },
+        "status": {
+          "none": {
+            "en": "You are not a developer yet.",
+            "fr": "Vous n'êtes pas encore développeur.",
+            "nl": "Je bent nog geen ontwikkelaar."
+          },
+          "Requested": {
+            "en": "Your request is waiting for an administrator's decision.",
+            "fr": "Votre demande attend la décision d'un administrateur.",
+            "nl": "Je aanvraag wacht op de beslissing van een beheerder."
+          },
+          "Approved": {
+            "en": "You are a developer.",
+            "fr": "Vous êtes développeur.",
+            "nl": "Je bent ontwikkelaar."
+          },
+          "Rejected": {
+            "en": "Your request was rejected. You can ask again.",
+            "fr": "Votre demande a été refusée. Vous pouvez la renouveler.",
+            "nl": "Je aanvraag werd geweigerd. Je kan opnieuw aanvragen."
+          },
+          "Revoked": {
+            "en": "Your developer status was revoked. Contact an administrator.",
+            "fr": "Votre statut de développeur a été révoqué. Contactez un administrateur.",
+            "nl": "Je ontwikkelaarsstatus werd ingetrokken. Neem contact op met een beheerder."
+          }
+        },
+        "requestedAt": {
+          "en": "Requested on {0}",
+          "fr": "Demandé le {0}",
+          "nl": "Aangevraagd op {0}"
+        },
+        "decidedAt": {
+          "en": "Decided on {0}",
+          "fr": "Décidé le {0}",
+          "nl": "Beslist op {0}"
+        },
+        "note": {
+          "en": "Note from the administrator:",
+          "fr": "Note de l'administrateur :",
+          "nl": "Opmerking van de beheerder:"
+        },
+        "termsChanged": {
+          "en": "The developer terms changed. Read and accept the new version.",
+          "fr": "Les conditions pour développeurs ont changé. Lisez et acceptez la nouvelle version.",
+          "nl": "De ontwikkelaarsvoorwaarden zijn gewijzigd. Lees en aanvaard de nieuwe versie."
+        },
+        "readTerms": {
+          "en": "Read the developer terms",
+          "fr": "Lire les conditions pour développeurs",
+          "nl": "De ontwikkelaarsvoorwaarden lezen"
+        },
+        "acceptTerms": {
+          "en": "I have read and accept the developer terms (version {0}).",
+          "fr": "J'ai lu et j'accepte les conditions pour développeurs (version {0}).",
+          "nl": "Ik heb de ontwikkelaarsvoorwaarden (versie {0}) gelezen en aanvaard ze."
+        },
+        "request": {
+          "en": "Request developer access",
+          "fr": "Demander l'accès développeur",
+          "nl": "Ontwikkelaarstoegang aanvragen"
+        },
+        "acceptAgain": {
+          "en": "Accept the new terms",
+          "fr": "Accepter les nouvelles conditions",
+          "nl": "De nieuwe voorwaarden aanvaarden"
+        },
+        "requestSent": {
+          "en": "Your request was sent. An administrator decides.",
+          "fr": "Votre demande a été envoyée. Un administrateur décide.",
+          "nl": "Je aanvraag is verstuurd. Een beheerder beslist."
+        },
+        "requestFailed": {
+          "en": "The request failed. Try again.",
+          "fr": "La demande a échoué. Réessayez.",
+          "nl": "De aanvraag is mislukt. Probeer het opnieuw."
+        },
+        "applicationsTitle": {
+          "en": "Your applications",
+          "fr": "Vos applications",
+          "nl": "Je applicaties"
+        },
+        "applicationsHint": {
+          "en": "Register applications and manage their secrets, scopes and team.",
+          "fr": "Enregistrez des applications et gérez leurs secrets, scopes et équipe.",
+          "nl": "Registreer applicaties en beheer hun geheimen, scopes en team."
+        },
+        "registrationTitle": {
+          "en": "Dynamic client registration",
+          "fr": "Enregistrement dynamique de clients",
+          "nl": "Dynamische clientregistratie"
+        },
+        "registrationHint": {
+          "en": "A registration token lets a tool register one application through the protocol (RFC 7591). It is valid for a short time.",
+          "fr": "Un jeton d'enregistrement permet à un outil d'enregistrer une application via le protocole (RFC 7591). Il est valable peu de temps.",
+          "nl": "Met een registratietoken registreert een tool één applicatie via het protocol (RFC 7591). Het is kort geldig."
+        },
+        "issueToken": {
+          "en": "Issue a registration token",
+          "fr": "Émettre un jeton d'enregistrement",
+          "nl": "Een registratietoken uitgeven"
+        },
+        "tokenTitle": {
+          "en": "Your registration token",
+          "fr": "Votre jeton d'enregistrement",
+          "nl": "Je registratietoken"
+        },
+        "tokenMessage": {
+          "en": "Copy it now. It is shown only this once and expires in {0} minutes.",
+          "fr": "Copiez-le maintenant. Il n'est affiché qu'une seule fois et expire dans {0} minutes.",
+          "nl": "Kopieer het nu. Het wordt maar één keer getoond en verloopt over {0} minuten."
+        },
+        "tokenFailed": {
+          "en": "No registration token could be issued.",
+          "fr": "Aucun jeton d'enregistrement n'a pu être émis.",
+          "nl": "Er kon geen registratietoken uitgegeven worden."
+        }
+      },
+      "invite": {
+        "title": {
+          "en": "Team invitation",
+          "fr": "Invitation à une équipe",
+          "nl": "Teamuitnodiging"
+        },
+        "intro": {
+          "en": "You were invited to join the team of an application. Accept with the account the invitation was sent to.",
+          "fr": "Vous avez été invité à rejoindre l'équipe d'une application. Acceptez avec le compte auquel l'invitation a été envoyée.",
+          "nl": "Je werd uitgenodigd voor het team van een applicatie. Aanvaard met het account waarnaar de uitnodiging werd gestuurd."
+        },
+        "accept": {
+          "en": "Accept the invitation",
+          "fr": "Accepter l'invitation",
+          "nl": "De uitnodiging aanvaarden"
+        },
+        "accepted": {
+          "en": "You joined the team of {0}.",
+          "fr": "Vous avez rejoint l'équipe de {0}.",
+          "nl": "Je maakt nu deel uit van het team van {0}."
+        },
+        "invalid": {
+          "en": "This invitation is not valid.",
+          "fr": "Cette invitation n'est pas valide.",
+          "nl": "Deze uitnodiging is niet geldig."
+        }
+      },
+      "admin": {
+        "title": {
+          "en": "Identity provider",
+          "fr": "Fournisseur d'identité",
+          "nl": "Identiteitsprovider"
+        },
+        "notAllowed": {
+          "en": "Only identity-provider administrators can see this page.",
+          "fr": "Seuls les administrateurs du fournisseur d'identité peuvent voir cette page.",
+          "nl": "Alleen beheerders van de identiteitsprovider kunnen deze pagina zien."
+        },
+        "queues": {
+          "en": "Queues and records",
+          "fr": "Files d'attente et registres",
+          "nl": "Wachtrijen en registers"
+        },
+        "keys": {
+          "en": "Signing keys",
+          "fr": "Clés de signature",
+          "nl": "Ondertekeningssleutels"
+        },
+        "keysHint": {
+          "en": "Tokens are signed with the active key. A retired key stays published until the tokens it signed have expired.",
+          "fr": "Les jetons sont signés avec la clé active. Une clé retirée reste publiée jusqu'à l'expiration des jetons qu'elle a signés.",
+          "nl": "Tokens worden ondertekend met de actieve sleutel. Een sleutel uit dienst blijft gepubliceerd tot de tokens die hij ondertekende verlopen zijn."
+        },
+        "kid": {
+          "en": "Key id",
+          "fr": "Identifiant",
+          "nl": "Sleutel-id"
+        },
+        "algorithm": {
+          "en": "Algorithm",
+          "fr": "Algorithme",
+          "nl": "Algoritme"
+        },
+        "state": {
+          "en": "State",
+          "fr": "État",
+          "nl": "Status"
+        },
+        "created": {
+          "en": "Created",
+          "fr": "Créée",
+          "nl": "Aangemaakt"
+        },
+        "activated": {
+          "en": "Activated",
+          "fr": "Activée",
+          "nl": "Geactiveerd"
+        },
+        "retired": {
+          "en": "Retired",
+          "fr": "Retirée",
+          "nl": "Uit dienst"
+        },
+        "noKeys": {
+          "en": "There are no signing keys yet.",
+          "fr": "Il n'y a pas encore de clés de signature.",
+          "nl": "Er zijn nog geen ondertekeningssleutels."
+        },
+        "rotate": {
+          "en": "Rotate signing keys now",
+          "fr": "Renouveler les clés de signature maintenant",
+          "nl": "Ondertekeningssleutels nu vernieuwen"
+        },
+        "confirmRotate": {
+          "en": "Rotate the signing keys now? A new key signs from now on; the current one retires but keeps validating the tokens it signed. Do this after a suspected key compromise.",
+          "fr": "Renouveler les clés de signature maintenant ? Une nouvelle clé signe dès à présent ; la clé actuelle est retirée mais continue de valider les jetons qu'elle a signés. À faire en cas de compromission présumée.",
+          "nl": "De ondertekeningssleutels nu vernieuwen? Een nieuwe sleutel ondertekent vanaf nu; de huidige gaat uit dienst maar blijft de tokens valideren die hij ondertekende. Doe dit bij een vermoed sleutellek."
+        },
+        "rotated": {
+          "en": "The signing keys were rotated.",
+          "fr": "Les clés de signature ont été renouvelées.",
+          "nl": "De ondertekeningssleutels zijn vernieuwd."
+        },
+        "rotateFailed": {
+          "en": "The signing keys could not be rotated.",
+          "fr": "Les clés de signature n'ont pas pu être renouvelées.",
+          "nl": "De ondertekeningssleutels konden niet vernieuwd worden."
+        }
+      },
+      "query": {
+        "Applications": {
+          "en": "Applications",
+          "fr": "Applications",
+          "nl": "Applicaties"
+        },
+        "Resources": {
+          "en": "Resources",
+          "fr": "Ressources",
+          "nl": "Resources"
+        },
+        "DeveloperRequests": {
+          "en": "Developer requests",
+          "fr": "Demandes de développeur",
+          "nl": "Ontwikkelaarsaanvragen"
+        },
+        "ScopeApprovals": {
+          "en": "Scope approvals",
+          "fr": "Approbations de scopes",
+          "nl": "Scopegoedkeuringen"
+        },
+        "GoLiveReviews": {
+          "en": "Go-live reviews",
+          "fr": "Mises en ligne à approuver",
+          "nl": "Livegangen ter goedkeuring"
+        },
+        "AuditEvents": {
+          "en": "Audit trail",
+          "fr": "Journal d'audit",
+          "nl": "Auditlogboek"
+        },
+        "Grants": {
+          "en": "Grants",
+          "fr": "Autorisations",
+          "nl": "Toestemmingen"
+        }
+      }
     }
   }
 }

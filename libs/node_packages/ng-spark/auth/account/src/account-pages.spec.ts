@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark/auth/core';
 import {
+  SPARK_ACCOUNT_OVERVIEW_LINKS,
   SPARK_AUTH_CONFIG,
   SPARK_AUTH_ROUTE_PATHS,
   defaultSparkAuthConfig,
@@ -280,6 +281,47 @@ describe('SparkTwoFactorSetupComponent', () => {
     confirmSpy.mockRestore();
   });
 
+  it('offers the external-login bypass only when the server does and 2FA is on, and asks a code to switch it on', async () => {
+    const enabled = { sharedKey: null, recoveryCodesLeft: 10, isTwoFactorEnabled: true, isMachineRemembered: false };
+    const setExternalLoginTwoFactor = vi.fn().mockResolvedValue({ success: true, value: { bypass: true, twoFactorEnabled: true } });
+    configure({
+      twoFactor: vi.fn().mockResolvedValue({ success: true, value: enabled }),
+      authenticatorUri: vi.fn(),
+      capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [], externalLoginTwoFactorBypass: true }),
+      externalLoginTwoFactor: vi.fn().mockResolvedValue({ success: true, value: { bypass: false, twoFactorEnabled: true } }),
+      setExternalLoginTwoFactor,
+    });
+    const fixture = await render(TestBed.createComponent(SparkTwoFactorSetupComponent));
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.spark-2fa-external-bypass')).not.toBeNull();
+
+    await fixture.componentInstance.toggleBypass(true);
+    fixture.detectChanges();
+    expect(setExternalLoginTwoFactor).not.toHaveBeenCalled();
+    expect(el.querySelector('#bypassCode')).not.toBeNull();
+
+    fixture.componentInstance.bypassForm.setValue({ code: '123 456' });
+    await fixture.componentInstance.confirmBypass();
+    expect(setExternalLoginTwoFactor).toHaveBeenLastCalledWith(true, '123456');
+    expect(fixture.componentInstance.bypass()).toBe(true);
+
+    setExternalLoginTwoFactor.mockResolvedValue({ success: true, value: { bypass: false, twoFactorEnabled: true } });
+    await fixture.componentInstance.toggleBypass(false);
+    expect(setExternalLoginTwoFactor).toHaveBeenLastCalledWith(false, undefined);
+  });
+
+  it('hides the external-login bypass when the server does not offer it', async () => {
+    const enabled = { sharedKey: null, recoveryCodesLeft: 10, isTwoFactorEnabled: true, isMachineRemembered: false };
+    configure({
+      twoFactor: vi.fn().mockResolvedValue({ success: true, value: enabled }),
+      authenticatorUri: vi.fn(),
+      capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [] }),
+      externalLoginTwoFactor: vi.fn(),
+    });
+    const fixture = await render(TestBed.createComponent(SparkTwoFactorSetupComponent));
+    expect((fixture.nativeElement as HTMLElement).querySelector('.spark-2fa-external-bypass')).toBeNull();
+  });
+
   it('hides "Forget this browser" after forgetting, though the server still answers remembered', async () => {
     // MapIdentityApi reads isMachineRemembered from the cookie of the very request that deletes it.
     const remembered = { sharedKey: 'K', recoveryCodesLeft: 3, isTwoFactorEnabled: true, isMachineRemembered: true };
@@ -474,6 +516,17 @@ describe('SparkAccountOverviewComponent', () => {
     configure({ capabilities: vi.fn().mockRejectedValue(new Error('offline')) }, [allPages]);
     const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
     expect(links(fixture)).toEqual(['/account/profile', '/account/personal-data']);
+  });
+
+  it('lists the links other route features contribute, after its own pages, in the current language', async () => {
+    const extra = {
+      provide: SPARK_ACCOUNT_OVERVIEW_LINKS,
+      useValue: [{ key: 'connectedApplications', path: '/account/applications', label: { en: 'Connected applications', nl: 'Verbonden applicaties' } }],
+    };
+    configure({ capabilities: capabilities('Full') }, [extra]);
+    const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(links(fixture)).toEqual(['/account/profile', '/account/personal-data', '/account/applications']);
+    expect(text(fixture)).toContain('Connected applications');
   });
 
   // ⚠️ The passkeys *positive* case is not asserted: it also needs passkeysSupported(), which jsdom

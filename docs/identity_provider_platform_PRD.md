@@ -21,14 +21,14 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
 | I4 registration UX | ✅ | 272b21bc | New generic client operation **`showSecret`** (server side only). `GenerateSecret`/`RevokeSecret`, the secrets sub-query, the redirect URI rules, the URI limit. Lookups (`LookupReferences/OidcLookups.cs`) |
 | I5 consent | ✅ | 30c2dcf0 | Remember and expiry, `include_granted_scopes`, the consent page contents. `OidcGrantWithdrawal` (whole or per scope). SPA API `GET /spark/identity-provider/applications` and `POST .../applications/withdraw` |
 | I6 server pages | ✅ | 8c27d926 | `ConnectText` (ui_locales, then the `spark-lang` cookie, then Accept-Language). Branding. `/connect/error`. `POST /connect/applications/revoke-scope`. About 100 `identityProvider.connect.*` keys |
-| I7 SPA | ⏳ **not started** | | See "Open work" |
+| I7 SPA | ✅ | (I7 commit) | `showSecret` handler (`SparkSecretDialogService`, mounts itself on `document.body`); `spark-lang` cookie in `SparkLanguageService`; `@mintplayer/ng-spark/identity-provider` (+ `/core`, `/connected-applications`, `/developers`, `/management`) with `withIdentityProvider(withConnectedApplications(), withDeveloperRoutes(), withManagementRoutes())`; routes `account/applications`, `developers`, `developers/invitations/:token`, `identity-provider/admin`; `SPARK_ACCOUNT_OVERVIEW_LINKS`; the D11 bypass toggle on the two-factor page; SparkId wiring (client operations, toast container, sidebar links). Type-checked (ngc), not run in a browser |
 | I8 protocol I | ✅ | 8c27d926 | `OidcClientAuthenticator` (basic, post, private_key_jwt, tls/self-signed mTLS, none; O15). `OidcAuthorizeHandler` with `OidcAuthorizeParameters`, GET and POST (prompt, max_age, acr step-up, login_hint, ui_locales, claims, id_token_hint, resource, form_post, `iss`). at+jwt, azp, amr/acr/sid, pairwise (`OidcSubjects`), JWE (`OidcJwe`), signed/encrypted userinfo. Discovery |
 | I9 protocol II | ✅ | 8c27d926, 2b8d23e1 | PAR (`/connect/par`), JAR (`OidcRequestObjects`), DPoP and cnf-bound tokens (`OidcProofOfPossession`), the device grant (`/connect/device_authorization`, `/connect/device`), token exchange, gated DCR (`/connect/register[/{client_id}]` plus `POST /spark/identity-provider/developer/registration-token`) |
 | I10 keys, sessions | ✅ | 3758cfe4 | `OidcKeyRing` (RSA and EC, Data Protection, rotation by `OidcKeyRotationService`, legacy key import). `sid` in the cookie (OnSigningIn). `OidcSessionStore`: back-channel logout tokens, front-channel iframes, logout revokes the session's refresh tokens |
 | I11 operations | ✅ | 495e5a70, (I11+I12 commit) | The audit query (`OidcAuditEventActions`: admins all, app Admins their apps), the grants query with `RevokeGrant`, the menu fragment. `INC:Tokens` on the application per access token (`OidcExpiry.StoreExpiringAsync`). The disable cascade (`OidcDisableCascade`, from both interceptors' `OnAfterSaveAsync`). The named policy `SparkIdentityProviderMachine` on `OidcConnectCorsGroup` and the client-auth failure throttle (`Spark:IdentityProvider:RateLimits`). `GET /spark/identity-provider/admin/keys`, `POST .../admin/keys/rotate` |
 | I12 resource servers | ✅ | (I11+I12 commit) | `spark.AddSparkResourceServer(authority, audience, …)` in `MintPlayer.Spark.Authorization.ResourceServer`: at+jwt only, DPoP scheme and `cnf` (jkt, x5t#S256) enforced, or `UseIntrospection` (`SparkIntrospectionHandler`). `[RequireScope]` / `.RequireScope()`. `SparkDpopProof` is shared with the IdP's token endpoint. Introspection now answers `iss`, `cnf`, `group(s)`, `act`. Fleet: `GET /api/fleet/cars` needs `fleet.read`; SparkId seeds the `fleet` API resource and offers `fleet.read` to HR (`M_202610091000_FleetApi`). HR asks for `fleet.read`, saves SparkId's tokens, and `GET /api/hr/fleet-cars` calls Fleet with the user's access token |
 | I13 tests, conformance | ⏳ | | |
-| I14 docs, versions | ⏳ | | |
+| I14 docs, versions | ⏳ partly | (I7 commit) | Release notes (`release-notes-preview-103.md` §8 and "New"), `Spark.Abstractions` and `Authorization.Abstractions` → preview.103 (the rest already were; ng-spark 22.31.0). Open: the IdP README and the developer-portal guide |
 | #490 D11 external-login 2FA | ✅ | (D11 commit) | `/spark/auth/external-login/two-factor` (GET/POST), `Spark:Auth:ExternalLogin:TwoFactor:{Enabled,AllowUserBypass}`, `SparkUser.BypassTwoFactorForExternalLogin` with `GET/POST /spark/auth/manage/external-login-two-factor` and the capability `externalLoginTwoFactorBypass`. `ConnectPageTheme` and the HTML helpers (`SparkPageHtml`, `ISparkPageBranding`) moved to `MintPlayer.Spark.Authorization.Pages`. The account-page toggle (SPA) is part of I7 |
 
 **Decisions taken during implementation** (each also stated where it applies):
@@ -69,12 +69,17 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
   the `spark-lang` cookie when it is a culture name. Only the theme and the HTML helpers moved.
 - **D11 `requires_two_factor`** now means "the two-factor cookie is gone", as the PRD says; a sign-in
   that needs the code is redirected to the page.
+- **I7 texts are server translations** (`identityProvider.spa.*` in the library's `translations.json`,
+  read through `SparkAuthTranslationService` like the auth pages), not a client-side table. The account
+  overview link label is the one inline `{en, fr, nl}`: the link type carries its own translations.
+- **Accepting an invitation takes a click** on the page; opening the link does nothing by itself.
 - **Fleet's development audience is `fleet`** (the API resource's name). The E2E hosts and
   `JwtBearerCredentialTests` keep `fleet-api` with their own seeded resource.
 
 **Open work, in order:**
 1. ~~I11 rest~~ ✅
-2. **I7 SPA** (`libs/node_packages/ng-spark`):
+2. ~~I7 SPA~~ ✅ (the remaining sub-bullets below are done)
+   **Was:** (`libs/node_packages/ng-spark`):
    - the `showSecret` client-operation handler (a modal with a copy button);
    - `SparkLanguageService` also writes the `spark-lang` cookie;
    - the entry point `@mintplayer/ng-spark/identity-provider` with `withIdentityProvider`,

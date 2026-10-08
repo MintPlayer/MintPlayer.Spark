@@ -43,6 +43,15 @@ export interface SparkTwoFactorRequest {
 }
 
 /** `GET /spark/auth/manage/2fa/authenticator-uri`: the key, its otpauth URI and a server-rendered QR SVG. */
+/**
+ * `GET`/`POST /manage/external-login-two-factor`: whether a sign-in with an external account skips
+ * the second factor for this user, and whether two-factor is enabled at all.
+ */
+export interface SparkExternalLoginTwoFactor {
+  bypass: boolean;
+  twoFactorEnabled: boolean;
+}
+
 export interface SparkAuthenticatorUri {
   sharedKey: string;
   authenticatorUri: string;

@@ -1,6 +1,8 @@
 import {
+  SPARK_ACCOUNT_OVERVIEW_LINKS,
   SPARK_AUTH_ROUTE_PATHS,
   SPARK_EXTERNAL_PROVIDERS,
+  SparkAccountOverviewLink,
   SparkAuthRouteEntries,
   SparkAuthRouteEntry,
   SparkAuthRoutePaths,
@@ -57,14 +59,18 @@ function child(entry: SparkAuthRouteEntry | undefined, path: string, defaultLoad
 }
 
 /**
- * One opt-in group of authentication pages. Produced by `withLocalLogin()`, `withRegistration()` and
- * `withExternalLogin()`; not constructible by consumers, which is what keeps the set of mountable
- * pages a decision this library makes rather than a shape an application can invent.
+ * One opt-in group of authentication pages, passed to {@link sparkAuthRoutes}. Constructed only by
+ * ng-spark's entry points: `withLocalLogin()`, `withRegistration()`, `withExternalLogin()`,
+ * `withPasskeys()` and `withAccount()` here, and `withIdentityProvider()` from
+ * `@mintplayer/ng-spark/identity-provider`. That keeps the set of mountable pages a decision this
+ * library makes rather than a shape an application invents.
  */
 export interface SparkAuthRoutesFeature {
   readonly children: Child[];
   readonly paths: SparkAuthRoutePaths;
   readonly providers?: SparkExternalProviderPresentation[];
+  /** Extra links for the account overview (`SPARK_ACCOUNT_OVERVIEW_LINKS`). */
+  readonly accountLinks?: SparkAccountOverviewLink[];
 }
 
 /** Path override for the sign-in landing page. Named to stay clear of the core package's
@@ -97,11 +103,13 @@ export function sparkAuthRoutes(...features: SparkAuthRoutesFeature[]): any[] {
   const children: Child[] = [];
   const paths: SparkAuthRoutePaths = {};
   const externalProviders: SparkExternalProviderPresentation[] = [];
+  const accountLinks: SparkAccountOverviewLink[] = [];
 
   for (const feature of features) {
     children.push(...feature.children);
     Object.assign(paths, feature.paths);
     if (feature.providers) externalProviders.push(...feature.providers);
+    if (feature.accountLinks) accountLinks.push(...feature.accountLinks);
   }
 
   return [
@@ -110,6 +118,7 @@ export function sparkAuthRoutes(...features: SparkAuthRoutesFeature[]): any[] {
       providers: [
         { provide: SPARK_AUTH_ROUTE_PATHS, useValue: paths },
         { provide: SPARK_EXTERNAL_PROVIDERS, useValue: externalProviders },
+        { provide: SPARK_ACCOUNT_OVERVIEW_LINKS, useValue: accountLinks },
       ],
       children,
     },

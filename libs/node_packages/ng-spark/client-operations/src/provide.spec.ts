@@ -9,6 +9,7 @@ import { NotificationKind } from './operations';
 import { SPARK_CLIENT_OPERATION_HANDLERS } from './handlers.token';
 import { SparkAttributeRefreshService } from './attribute-refresh.service';
 import { SparkClientOperationDispatcher } from './dispatcher.service';
+import { SparkSecretDialogService } from './secret-dialog';
 import type { ClientOperation } from './operations';
 
 /**
@@ -39,7 +40,18 @@ describe('provideSparkClientOperations', () => {
     // If you add a wire type to operations.ts, add a handler in provide.ts and list it here.
     // Deliberately exact: an operation that reaches the dispatcher unregistered is invisible.
     expect(registeredTypes()).toEqual(
-      ['navigate', 'notify', 'refreshAttribute', 'refreshQuery'].sort());
+      ['navigate', 'notify', 'refreshAttribute', 'refreshQuery', 'showSecret'].sort());
+  });
+
+  it('showSecret hands title, message and value to the secret dialog', () => {
+    configure();
+    const dispatcher = TestBed.inject(SparkClientOperationDispatcher);
+    const dialog = TestBed.inject(SparkSecretDialogService);
+    const show = vi.spyOn(dialog, 'show').mockImplementation(() => { /* no DOM in this spec */ });
+
+    dispatcher.dispatch([{ type: 'showSecret', title: 'T', message: 'M', value: 'V' } as ClientOperation]);
+
+    expect(show).toHaveBeenCalledWith({ title: 'T', message: 'M', value: 'V' });
   });
 
   it('refreshAttribute reaches the attribute-refresh service with the value the server sent', () => {

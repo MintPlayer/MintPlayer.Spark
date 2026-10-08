@@ -36,7 +36,39 @@ export interface SparkAuthRouteEntries {
   externalLogins?: SparkAuthRouteEntry;
   /** Download personal data and delete the account (`withAccount()`). */
   personalData?: SparkAuthRouteEntry;
+  /**
+   * The applications the user granted access to, with per-scope withdrawal. Mounted by
+   * `withIdentityProvider(withConnectedApplications())` from `@mintplayer/ng-spark/identity-provider`.
+   */
+  connectedApplications?: SparkAuthRouteEntry;
+  /** The developer portal's landing page (`withIdentityProvider(withDeveloperRoutes())`). */
+  developers?: SparkAuthRouteEntry;
+  /** The identity provider's management page (`withIdentityProvider(withManagementRoutes())`). */
+  identityProviderManagement?: SparkAuthRouteEntry;
 }
+
+/**
+ * An extra link on the account overview (`SparkAccountOverviewComponent`), contributed by a route
+ * feature from another entry point, e.g. `withConnectedApplications()`. The overview lists it after
+ * its own pages. The label carries its own translations because the contributing entry point, not
+ * the auth translations, owns the text.
+ */
+export interface SparkAccountOverviewLink {
+  /** Identifies the link (`track`), e.g. the {@link SparkAuthRoutePaths} key it points at. */
+  key: string;
+  /** The absolute router path, e.g. `/account/applications`. */
+  path: string;
+  /** The link text per language code; resolved in the app's current language. */
+  label: Record<string, string>;
+}
+
+/**
+ * The extra account-overview links of the mounted route features, provided by `sparkAuthRoutes()`
+ * on its route. Optional: without it the overview shows only the auth pages.
+ */
+export const SPARK_ACCOUNT_OVERVIEW_LINKS = new InjectionToken<readonly SparkAccountOverviewLink[]>(
+  'SPARK_ACCOUNT_OVERVIEW_LINKS',
+);
 
 /**
  * The paths of the pages that were actually mounted.

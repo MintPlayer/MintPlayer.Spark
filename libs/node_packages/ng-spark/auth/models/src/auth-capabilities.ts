@@ -56,4 +56,10 @@ export interface SparkAuthCapabilities {
    * `Disabled`. External SIGN-IN can be on while this is off. Optional: absent reads as "no".
    */
   externalLogins?: boolean;
+
+  /**
+   * Whether a user with two-factor enabled may choose to skip the code when signing in with an
+   * external account (`manage/external-login-two-factor`). Optional: absent reads as "no".
+   */
+  externalLoginTwoFactorBypass?: boolean;
 }

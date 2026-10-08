@@ -5,5 +5,14 @@
     <spark-language-selector />
     <spark-auth-bar />
   </ng-container>
+  <!-- The identity provider's SPA pages (routed, so not program units, which open queries and
+       objects only). The server-driven menu below lists the library's queries. -->
+  <nav *sparkShellSidebarTop class="nav flex-column mb-2 app-idp-links">
+    @if (auth.isAuthenticated()) {
+      <a class="nav-link" routerLink="/account/applications" routerLinkActive="active">{{ 'apps.title' | idp }}</a>
+      <a class="nav-link" routerLink="/developers" routerLinkActive="active">{{ 'dev.title' | idp }}</a>
+      <a class="nav-link" routerLink="/identity-provider/admin" routerLinkActive="active">{{ 'admin.title' | idp }}</a>
+    }
+  </nav>
   <router-outlet />
 </spark-shell>

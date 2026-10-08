@@ -77,6 +77,16 @@ describe('SparkLanguageService', () => {
     expect(service.language()).toBe('en');
     expect(currentLanguage()).toBe('en');
     expect(localStorage.getItem('spark-lang')).toBe('en');
+    // The server-rendered /connect/* pages read the cookie, not localStorage.
+    expect(document.cookie).toContain('spark-lang=en');
+  });
+
+  it('writes the spark-lang cookie for the initial language too', async () => {
+    localStorage.setItem('spark-lang', 'fr');
+    create();
+    await load();
+
+    expect(document.cookie).toContain('spark-lang=fr');
   });
 
   describe('resolve', () => {

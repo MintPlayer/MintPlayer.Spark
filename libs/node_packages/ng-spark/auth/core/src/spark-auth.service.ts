@@ -32,6 +32,7 @@ import {
   SparkAccountProfileUpdate,
   SparkAccountResult,
   SparkAuthenticatorUri,
+  SparkExternalLoginTwoFactor,
   SparkTwoFactorRequest,
   SparkTwoFactorState,
 } from '@mintplayer/ng-spark/auth/models';
@@ -517,6 +518,22 @@ export class SparkAuthService {
   authenticatorUri(): Promise<SparkAccountResult<SparkAuthenticatorUri>> {
     return this.accountCall(() =>
       firstValueFrom(this.http.get<SparkAuthenticatorUri>(`${this.config.apiBasePath}/manage/2fa/authenticator-uri`)));
+  }
+
+  /** `GET /manage/external-login-two-factor` — whether an external sign-in skips the second factor. */
+  externalLoginTwoFactor(): Promise<SparkAccountResult<SparkExternalLoginTwoFactor>> {
+    return this.accountCall(() =>
+      firstValueFrom(this.http.get<SparkExternalLoginTwoFactor>(`${this.config.apiBasePath}/manage/external-login-two-factor`)));
+  }
+
+  /**
+   * `POST /manage/external-login-two-factor` — turning the bypass on needs a current authenticator
+   * `code` (400 when it is not valid); turning it off needs none.
+   */
+  setExternalLoginTwoFactor(bypass: boolean, code?: string): Promise<SparkAccountResult<SparkExternalLoginTwoFactor>> {
+    return this.accountCall(() =>
+      firstValueFrom(this.http.post<SparkExternalLoginTwoFactor>(`${this.config.apiBasePath}/manage/external-login-two-factor`,
+        bypass && code ? { bypass, code } : { bypass })));
   }
 
   /** `GET /manage/personal-data` — the account and every contributor's data, as JSON. */

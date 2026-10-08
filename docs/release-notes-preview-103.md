@@ -1,6 +1,7 @@
 # Spark 11.0.0-preview.103 / ng-spark 22.31.0 — installable apps and an external login that survives them
 
-**Packages:** `MintPlayer.Spark`, `MintPlayer.Spark.Authorization`, `MintPlayer.Spark.IdentityProvider`,
+**Packages:** `MintPlayer.Spark`, `MintPlayer.Spark.Abstractions`, `MintPlayer.Spark.Authorization`,
+`MintPlayer.Spark.Authorization.Abstractions`, `MintPlayer.Spark.IdentityProvider`,
 `MintPlayer.Spark.Moderation`, `MintPlayer.Spark.Webhooks.GitHub`, `MintPlayer.Spark.AllFeatures` and
 `MintPlayer.Spark.AllFeatures.SourceGenerators` → `11.0.0-preview.103`. npm: `@mintplayer/ng-spark` →
 `22.31.0`, which now contains the auth library; `@mintplayer/ng-spark-auth` is **discontinued** (no new
@@ -14,7 +15,15 @@ full-page redirect. External providers are `ISparkBuilder` presets that can be e
 configuration alone, X moves to OAuth 2.0, a Spark identity provider can be used as an upstream by the
 stock OpenID Connect handler, and its login page offers the host's own external providers.
 
-Decisions and evidence: [pwa_external_login_PRD.md](pwa_external_login_PRD.md). PWA set-up:
+The identity provider becomes a full plugin: a developer portal with approval, teams and invitations,
+Development and Live modes, API resources with granular consent that users can withdraw per scope,
+the protocol set a toolkit needs (PAR, JAR, DPoP, mTLS, `private_key_jwt`, device grant, token
+exchange, dynamic registration, back- and front-channel logout), key rotation, an audit trail, and
+resource-server helpers. The demo provider is the new `apps/SparkId`; HR, Fleet and QnA sign in
+against it. An external sign-in now also asks for the application's own second factor.
+
+Decisions and evidence: [pwa_external_login_PRD.md](pwa_external_login_PRD.md) and
+[identity_provider_platform_PRD.md](identity_provider_platform_PRD.md). PWA set-up:
 [guide-pwa.md](guide-pwa.md).
 
 ---
@@ -136,9 +145,73 @@ and `api.x.com/2`, instead of OAuth 1.0a. On the X developer app:
 does not declare …") fires until the SPA depends on it. If you set `SparkAuthNpmPackage` to
 `@mintplayer/ng-spark-auth` yourself, remove the override.
 
+### 8. Identity provider data model, pages and defaults
+
+There is no production migration (no known deployment hosts the identity provider); the library's
+migration `M_202610090900_OidcDataModel` converts development databases.
+
+- **Collections:** `OidcAuthorizations` → `OidcGrants` (`OidcGrant`), `OidcScopes` → `OidcResources`
+  (`OidcResource`: identity resources, and API resources with embedded scopes; natural ids
+  `OidcResources/<name>`). New: `OidcKeys`, `OidcAuditEvents`. `OidcAuthorizationRequest` is gone
+  (pending requests are `OidcToken`s of type `authorization_request`).
+- **Applications:** `AllowedScopes` → `Scopes` (`OidcApplicationScope`: name, required, approval
+  status). New members, mode, branding and protocol settings (client authentication method, JWKS,
+  mTLS, DPoP, PAR/JAR requirements, pairwise subjects, id_token/userinfo signing and encryption,
+  logout URIs). The client id is generated and immutable.
+- **The identity provider is a Spark library layer** (`identity-provider`): it ships its own model,
+  rights, menu and translations. The host binds the groups `identity-provider:administrators` and
+  `identity-provider:developers` under `bindings` in its `security.json`.
+- **Signing keys** live in the database and rotate (`Spark:IdentityProvider:Keys`).
+  `SigningKeyPath` is only a one-time import now.
+- **`/connect/*` errors** that cannot be returned to the client are HTML pages
+  (`/connect/error`), not text. The pages are localized (`ui_locales`, the `spark-lang` cookie,
+  `Accept-Language`).
+- **Access tokens are typed `at+jwt`** (RFC 9068). `spark.AddSparkResourceServer` accepts only those.
+- **`ConnectPageTheme`** moved to `MintPlayer.Spark.Authorization.Pages`.
+- **External sign-in asks for the application's own second factor** when the account has 2FA
+  (#490 D11). It used to refuse with `requires_two_factor`. Turn it off with
+  `Spark:Auth:ExternalLogin:TwoFactor:Enabled = false`.
+- **Rate limits:** the token, PAR, device-authorization, revocation and userinfo endpoints carry the
+  policy `SparkIdentityProviderMachine` (`Spark:IdentityProvider:RateLimits`, default 120 per minute
+  per IP) when the app runs `spark.AddRateLimiter()`. Repeated client-authentication failures from
+  one IP for one client are refused for five minutes.
+
 ---
 
 ## New
+
+### Identity provider platform (`docs/identity_provider_platform_PRD.md`)
+
+- **Developers:** `GET/POST /spark/identity-provider/developer` (terms, request), an approval queue
+  (`Spark:IdentityProvider:Developers:RequireApproval`), mails in en/fr/nl.
+- **Applications:** members with Admin/Developer/Tester roles, invitations with no existence oracle,
+  Development mode (members only) and Live (with an optional go-live review), cross-owner scopes
+  pending the owner's approval, secrets generated server-side and shown once (the new
+  `showSecret` client operation), revocable per secret.
+- **Consent:** remembered with an expiry, incremental (`include_granted_scopes`), withdrawable per
+  scope from the connected-applications page or `/connect/applications`.
+- **Protocol:** `client_secret_basic`, `private_key_jwt`, `tls_client_auth`,
+  `self_signed_tls_client_auth`; `prompt`, `max_age`, `acr_values` step-up, `login_hint`,
+  `form_post`, `iss` (RFC 9207); PAR (`/connect/par`), signed request objects; DPoP and
+  certificate-bound tokens; pairwise subjects; encrypted id_tokens and userinfo; the device grant;
+  token exchange; dynamic client registration for approved developers.
+- **Sessions:** `sid`, back-channel and front-channel logout; logout revokes the session's refresh
+  tokens.
+- **Operations:** an audit trail, a grants list with revoke, `INC:Tokens` usage per application,
+  disabling an application or resource revokes what was issued under it, and
+  `POST /spark/identity-provider/admin/keys/rotate`.
+- **Resource servers** (`MintPlayer.Spark.Authorization.ResourceServer`):
+  `spark.AddSparkResourceServer(authority, audience)` (DPoP and `cnf` enforced, or introspection),
+  `.RequireScope("fleet.read")` / `[RequireScope]`. Fleet's `/api/fleet/cars` is the demo.
+- **SPA:** `@mintplayer/ng-spark/identity-provider` with `withIdentityProvider(...)`:
+  connected applications, the developer pages, invitations and the management page.
+
+### Two-factor step after an external sign-in (#490 D11)
+
+`/spark/auth/external-login/two-factor` asks for the authenticator or a recovery code, offers
+"remember this browser", and ends like a direct callback (popup hand-off or redirect). With
+`Spark:Auth:ExternalLogin:TwoFactor:AllowUserBypass`, users can skip it from their account's
+two-factor settings, which needs a code to switch on.
 
 ### PWA (#464)
 

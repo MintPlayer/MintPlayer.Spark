@@ -7,7 +7,9 @@ import type {
     NotifyOperation,
     RefreshAttributeOperation,
     RefreshQueryOperation,
+    ShowSecretOperation,
 } from './operations';
+import { SparkSecretDialogService } from './secret-dialog';
 import { SPARK_CLIENT_OPERATION_HANDLERS } from './handlers.token';
 import { SparkAttributeRefreshService } from './attribute-refresh.service';
 import { SparkNotificationService } from './notification.service';
@@ -15,7 +17,10 @@ import { SparkQueryRefreshService } from './query-refresh.service';
 
 /**
  * Registers the built-in client-operation handlers: `notify`, `refreshQuery`,
- * `refreshAttribute` and `navigate`. Apps add this once in their bootstrap providers.
+ * `refreshAttribute`, `navigate` and `showSecret`. Apps add this once in their bootstrap providers.
+ *
+ * `showSecret` opens {@link SparkSecretDialogService}'s dialog, which mounts itself: without it the
+ * value the server shows once (a client secret, a token) would be lost, since the server keeps a hash.
  *
  * Unregistered operation types are dropped SILENTLY by the dispatcher, which is why
  * `refreshQuery` did nothing at all for as long as it went unhandled — the server emitted
@@ -110,6 +115,20 @@ export function provideSparkClientOperations(): EnvironmentProviders {
                         }
 
                         console.warn('[spark] navigate operation carried neither routeName nor objectTypeId+id; ignored.');
+                    },
+                };
+            },
+            multi: true,
+        },
+        {
+            provide: SPARK_CLIENT_OPERATION_HANDLERS,
+            useFactory: () => {
+                const secrets = inject(SparkSecretDialogService);
+                return {
+                    type: 'showSecret',
+                    handler: (operation: ClientOperation) => {
+                        const secret = operation as ShowSecretOperation;
+                        secrets.show({ title: secret.title, message: secret.message, value: secret.value });
                     },
                 };
             },
