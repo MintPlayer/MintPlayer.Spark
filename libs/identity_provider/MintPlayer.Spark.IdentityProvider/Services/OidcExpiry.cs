@@ -16,10 +16,20 @@ internal static class OidcExpiry
     public static void Stamp(IAsyncDocumentSession session, object entity, DateTime expiresAt)
         => session.Advanced.GetMetadataFor(entity)[Constants.Documents.Metadata.Expires] = expiresAt.ToUniversalTime();
 
-    /// <summary>Stores <paramref name="token"/> and stamps it to expire at its own <see cref="Models.OidcToken.ExpiresAt"/>.</summary>
+    /// <summary>The incremental time series on an application counting the access tokens it was issued (PRD D9).</summary>
+    public const string TokensTimeSeries = "INC:Tokens";
+
+    /// <summary>
+    /// Stores <paramref name="token"/> and stamps it to expire at its own <see cref="Models.OidcToken.ExpiresAt"/>.
+    /// An access token also counts one issuance on its application's <see cref="TokensTimeSeries"/>: every grant
+    /// stores its access token through here, so this is the one place that sees them all. Incremental, so
+    /// concurrent issuances add up instead of conflicting, and the usage graph needs no extra documents.
+    /// </summary>
     public static async Task StoreExpiringAsync(this IAsyncDocumentSession session, Models.OidcToken token, CancellationToken ct)
     {
         await session.StoreAsync(token, ct);
         Stamp(session, token, token.ExpiresAt);
+        if (token.Type == Models.OidcTokenTypes.AccessToken && !string.IsNullOrEmpty(token.ApplicationId))
+            session.IncrementalTimeSeriesFor(token.ApplicationId, TokensTimeSeries).Increment(token.CreatedAt, 1);
     }
 }

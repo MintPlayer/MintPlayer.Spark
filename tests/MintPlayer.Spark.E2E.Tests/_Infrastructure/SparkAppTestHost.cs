@@ -766,6 +766,9 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             ["DataProtection"] = new JsonObject { ["Storage"] = "RavenDb" },
             ["HttpsRedirection"] = false,
             ["RateLimiter"] = new JsonObject { ["PermitLimit"] = RateLimitPermits },
+            // The identity provider's machine endpoints have a budget of their own (PRD D9); inert in apps
+            // that do not host the identity provider.
+            ["IdentityProvider"] = new JsonObject { ["RateLimits"] = new JsonObject { ["PermitLimit"] = RateLimitPermits } },
         };
 
         if (App.UsesMailPickup)

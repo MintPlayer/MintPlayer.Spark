@@ -46,6 +46,9 @@ public class SparkIdentityProviderOptions
     /// <summary>The audit trail (<c>Spark:IdentityProvider:Audit</c>, PRD D9).</summary>
     public SparkIdentityProviderAuditOptions Audit { get; set; } = new();
 
+    /// <summary>The machine-endpoint policy and the client-authentication throttle (<c>Spark:IdentityProvider:RateLimits</c>, PRD D9).</summary>
+    public SparkIdentityProviderRateLimitOptions RateLimits { get; set; } = new();
+
     /// <summary>
     /// Opt in to cross-origin access on the OIDC protocol endpoints. <b>Off by default.</b>
     /// </summary>

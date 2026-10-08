@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 public class OidcApplicationActionsTests
 {
     // No session: the before-write uniqueness query is skipped, as for any interceptor called by hand.
-    private static OidcApplicationInterceptors Interceptors() => new(corsOrigins: new OidcCorsOrigins(), accessControl: Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IAccessControl>(), options: new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions());
+    private static OidcApplicationInterceptors Interceptors() => new(corsOrigins: new OidcCorsOrigins(), accessControl: Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IAccessControl>(), options: new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions(), audit: new OidcAudit(new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions()));
 
     /// <summary>A save context with no session: the rules are judged, the uniqueness query is skipped.</summary>
     internal static SaveContext Context(Type entityType, object entity,
@@ -290,7 +290,7 @@ public class OidcApplicationActionsTests
 /// <summary>Validation for the resource screen — the half that decides what a token carries.</summary>
 public class OidcResourceActionsTests
 {
-    private static OidcResourceInterceptors Interceptors() => new();
+    private static OidcResourceInterceptors Interceptors() => new(new OidcAudit(new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions()));
 
     private static async Task<Exception?> SaveAsync(OidcResource resource)
     {

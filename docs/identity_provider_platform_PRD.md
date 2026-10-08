@@ -25,8 +25,8 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
 | I8 protocol I | ✅ | 8c27d926 | `OidcClientAuthenticator` (basic, post, private_key_jwt, tls/self-signed mTLS, none; O15). `OidcAuthorizeHandler` with `OidcAuthorizeParameters`, GET and POST (prompt, max_age, acr step-up, login_hint, ui_locales, claims, id_token_hint, resource, form_post, `iss`). at+jwt, azp, amr/acr/sid, pairwise (`OidcSubjects`), JWE (`OidcJwe`), signed/encrypted userinfo. Discovery |
 | I9 protocol II | ✅ | 8c27d926, 2b8d23e1 | PAR (`/connect/par`), JAR (`OidcRequestObjects`), DPoP and cnf-bound tokens (`OidcProofOfPossession`), the device grant (`/connect/device_authorization`, `/connect/device`), token exchange, gated DCR (`/connect/register[/{client_id}]` plus `POST /spark/identity-provider/developer/registration-token`) |
 | I10 keys, sessions | ✅ | 3758cfe4 | `OidcKeyRing` (RSA and EC, Data Protection, rotation by `OidcKeyRotationService`, legacy key import). `sid` in the cookie (OnSigningIn). `OidcSessionStore`: back-channel logout tokens, front-channel iframes, logout revokes the session's refresh tokens |
-| I11 operations | ⏳ partly | (this commit) | Done: the audit query (`OidcAuditEventActions`: admins all, app Admins their apps), the grants query with `RevokeGrant`, the menu fragment. **Open:** time-series usage counters, the disable cascade, rate limits, the admin key-rotation trigger |
-| I12 resource servers | ⏳ | | |
+| I11 operations | ✅ | 495e5a70, (I11+I12 commit) | The audit query (`OidcAuditEventActions`: admins all, app Admins their apps), the grants query with `RevokeGrant`, the menu fragment. `INC:Tokens` on the application per access token (`OidcExpiry.StoreExpiringAsync`). The disable cascade (`OidcDisableCascade`, from both interceptors' `OnAfterSaveAsync`). The named policy `SparkIdentityProviderMachine` on `OidcConnectCorsGroup` and the client-auth failure throttle (`Spark:IdentityProvider:RateLimits`). `GET /spark/identity-provider/admin/keys`, `POST .../admin/keys/rotate` |
+| I12 resource servers | ✅ (HR half open) | (I11+I12 commit) | `spark.AddSparkResourceServer(authority, audience, …)` in `MintPlayer.Spark.Authorization.ResourceServer`: at+jwt only, DPoP scheme and `cnf` (jkt, x5t#S256) enforced, or `UseIntrospection` (`SparkIntrospectionHandler`). `[RequireScope]` / `.RequireScope()`. `SparkDpopProof` is shared with the IdP's token endpoint. Introspection now answers `iss`, `cnf`, `group(s)`, `act`. Fleet: `GET /api/fleet/cars` needs `fleet.read`; SparkId seeds the `fleet` API resource and offers `fleet.read` to HR (`M_202610091000_FleetApi`) |
 | I13 tests, conformance | ⏳ | | |
 | I14 docs, versions | ⏳ | | |
 | #490 D11 external-login 2FA | ⏳ | | Not started |
@@ -53,16 +53,22 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
 - **Signing keys** are in `OidcKeys`; `SigningKeyPath` is only a one-time import. The E2E hosts
   still write a key file, which the ring imports.
 - **Token exchange impersonation** still stamps `act` with the calling client.
+- **The client-auth throttle is keyed on (client id, IP address), not the client alone:** keyed on the
+  client, anyone who knows a client id could lock the real client out. Issued secrets are generated
+  (256 bits), so the throttle's job is mostly to cap PBKDF2 work. It answers the same `invalid_client`.
+- **The machine-endpoint policy** sits on top of Spark's global per-IP limiter and acts only when the
+  app runs the middleware (`spark.AddRateLimiter()`); the policy is always registered, so its name never
+  goes missing. The E2E hosts raise both budgets.
+- **Disabling an application** revokes its valid tokens and its grants; re-enabling does not restore
+  them. **Disabling a resource or an API scope** revokes the tokens carrying those scopes and keeps
+  the grants. Both are set-based patches with parameters, waited on for at most 30 s.
+- **The resource server's DPoP replay cache is in memory**, so a replay on another instance of the same
+  resource server within the 2-minute proof lifetime is not detected. The IdP's own cache is in RavenDB.
+- **Fleet's development audience is `fleet`** (the API resource's name). The E2E hosts and
+  `JwtBearerCredentialTests` keep `fleet-api` with their own seeded resource.
 
 **Open work, in order:**
-1. **I11 rest:**
-   - an incremental time series `INC:Tokens` on the application per issuance;
-   - the disable cascade in `OidcApplicationInterceptors.OnAfterSaveAsync` (parameterized patch
-     revoking tokens and grants when `Enabled` goes false) and for resources;
-   - rate limits: a named policy through `Configure<RateLimiterOptions>`, `RequireRateLimiting` on
-     the `/connect` protocol endpoints, and a client-auth failure throttle in
-     `OidcClientAuthenticator`;
-   - `POST /spark/identity-provider/admin/keys/rotate` (ManageAll) calling `OidcKeyRing.RotateAsync(force: true)`.
+1. ~~I11 rest~~ ✅
 2. **I7 SPA** (`libs/node_packages/ng-spark`):
    - the `showSecret` client-operation handler (a modal with a copy button);
    - `SparkLanguageService` also writes the `spark-lang` cookie;
@@ -73,12 +79,9 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
      rotation, links to the queues);
    - the account-overview card; fix the doc comment on `SparkAuthRoutesFeature`;
    - SparkId's `app.routes.ts` and menu.
-3. **I12:**
-   - `spark.AddSparkResourceServer(authority, audience)`, `[RequireScope]` / `.RequireScope()`;
-   - an introspection-based handler, and DPoP/cnf validation in `OnTokenValidated`; `ValidTypes`
-     at+jwt;
-   - the Fleet API demo with `fleet.read` from HR, and seed the `fleet` API resource in SparkId's
-     migration.
+3. **I12 rest:** the HR half of the demo, where HR calls Fleet's `/api/fleet/cars` with the signed-in
+   user's SparkId access token (`SaveTokens` on HR's `SparkId` scheme and a small HR endpoint or page).
+   The Fleet half is done.
 4. **#490 D11:** the external-login 2FA page (see that PRD). `ConnectPage`/`ConnectPageTheme` move to
    Authorization.
 5. **I13:**

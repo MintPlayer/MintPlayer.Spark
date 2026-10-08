@@ -106,20 +106,29 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
 
             // active reflects the database, not merely the signature. Reporting a revoked
             // token as active is precisely the failure RFC 7662 exists to prevent.
-            return Results.Json(new
+            var answer = new Dictionary<string, object?>
             {
-                active = resolved.IsActive,
-                sub = resolved.Subject,
-                client_id = resolved.ClientId ?? app.ClientId,
+                ["active"] = resolved.IsActive,
+                ["iss"] = issuer,
+                ["sub"] = resolved.Subject,
+                ["client_id"] = resolved.ClientId ?? app.ClientId,
                 // Without aud a resource server cannot answer "was this minted for me?" —
                 // AccessTokens deliberately does not validate audience, so this is the only
                 // channel through which the caller can check it.
-                aud = resolved.Audiences,
-                scope = resolved.Scope,
-                token_type = "access_token",
-                exp = expObj,
-                iat = iatObj,
-            });
+                ["aud"] = resolved.Audiences,
+                ["scope"] = resolved.Scope,
+                ["token_type"] = "access_token",
+                ["exp"] = expObj,
+                ["iat"] = iatObj,
+            };
+            // I12: the binding (RFC 7662 §2.2 allows any token claim) so the resource server can demand the
+            // proof, and the groups so security.json governs the caller as it would with the JWT itself.
+            foreach (var name in new[] { "cnf", "group", "groups", "act" })
+            {
+                if (resolved.Claims.TryGetValue(name, out var value))
+                    answer[name] = value;
+            }
+            return Results.Json(answer);
         }
 
         // Token not recognized — return inactive

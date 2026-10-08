@@ -1,10 +1,6 @@
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Http;
-using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Tokens;
+using MintPlayer.Spark.Authorization.ResourceServer;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 
@@ -34,9 +30,8 @@ internal sealed record OidcPossession(IReadOnlyDictionary<string, object>? Confi
 /// </summary>
 internal sealed class OidcProofOfPossession(IDocumentStore store, OidcIssuer issuer)
 {
-    public const string DpopHeader = "DPoP";
-    public static readonly string[] DpopAlgorithms = [SecurityAlgorithms.RsaSha256, SecurityAlgorithms.RsaSsaPssSha256, SecurityAlgorithms.EcdsaSha256];
-    private static readonly TimeSpan ProofLifetime = TimeSpan.FromMinutes(2);
+    public const string DpopHeader = SparkDpopProof.Header;
+    public static readonly string[] DpopAlgorithms = SparkDpopProof.Algorithms;
 
     /// <summary>The token endpoint's binding for <paramref name="app"/>, from the request's DPoP proof and TLS certificate.</summary>
     public async Task<OidcPossession> BindAsync(HttpContext http, OidcApplication app, X509Certificate2? certificate, CancellationToken ct)
@@ -66,69 +61,15 @@ internal sealed class OidcProofOfPossession(IDocumentStore store, OidcIssuer iss
         return new(confirmation.Count > 0 ? confirmation : null);
     }
 
-    public static string Thumbprint(X509Certificate2 certificate) => Base64UrlEncoder.Encode(certificate.GetCertHash(HashAlgorithmName.SHA256));
+    public static string Thumbprint(X509Certificate2 certificate) => SparkDpopProof.CertificateThumbprint(certificate);
 
     /// <summary>
-    /// Validates a DPoP proof (RFC 9449 §4.3) for this request and returns the proof key's thumbprint:
+    /// Validates a DPoP proof (RFC 9449 §4.3, <see cref="SparkDpopProof"/>) for this request, against the issuer's own URL, and returns the proof key's thumbprint:
     /// <c>typ: dpop+jwt</c>, an asymmetric algorithm, an embedded public <c>jwk</c> that verifies the
     /// signature, <c>htm</c>/<c>htu</c> matching this request, a recent <c>iat</c>, a <c>jti</c> used once,
     /// and, when presented with an access token, <c>ath</c> = its hash.
     /// </summary>
-    public async Task<(string? Jkt, string? Error)> ValidateProofAsync(HttpContext http, string proof, string? accessToken, CancellationToken ct)
-    {
-        JsonWebToken jwt;
-        try { jwt = new JsonWebToken(proof); }
-        catch (ArgumentException) { return (null, "The DPoP proof is not a JWT."); }
-
-        if (jwt.Typ != "dpop+jwt")
-            return (null, "The DPoP proof's typ is not dpop+jwt.");
-        if (!DpopAlgorithms.Contains(jwt.Alg))
-            return (null, "The DPoP proof's algorithm is not supported.");
-        if (!jwt.TryGetHeaderValue<JsonElement>("jwk", out var jwkElement) || jwkElement.ValueKind != JsonValueKind.Object)
-            return (null, "The DPoP proof carries no jwk.");
-
-        JsonWebKey jwk;
-        try { jwk = new JsonWebKey(jwkElement.GetRawText()); }
-        catch (ArgumentException) { return (null, "The DPoP proof's jwk is not valid."); }
-        if (jwk.HasPrivateKey)
-            return (null, "The DPoP proof's jwk contains a private key.");
-
-        var result = await new JsonWebTokenHandler().ValidateTokenAsync(proof, new TokenValidationParameters
-        {
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateLifetime = false,
-            IssuerSigningKey = jwk,
-            ValidTypes = ["dpop+jwt"],
-            RequireSignedTokens = true,
-        });
-        if (!result.IsValid)
-            return (null, "The DPoP proof's signature is not valid.");
-
-        var htm = jwt.GetPayloadValue<string?>("htm");
-        var htu = jwt.GetPayloadValue<string?>("htu");
-        if (!string.Equals(htm, http.Request.Method, StringComparison.Ordinal))
-            return (null, "The DPoP proof is for another method.");
-        var expectedUrl = issuer.Resolve(http.Request) + http.Request.Path;
-        if (!Uri.TryCreate(htu, UriKind.Absolute, out var htuUri)
-            || !string.Equals(htuUri.GetLeftPart(UriPartial.Path).TrimEnd('/'), expectedUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
-            return (null, "The DPoP proof is for another URL.");
-
-        var iat = jwt.IssuedAt;
-        if (iat == DateTime.MinValue || iat < DateTime.UtcNow - ProofLifetime || iat > DateTime.UtcNow.AddMinutes(1))
-            return (null, "The DPoP proof is not fresh.");
-
-        if (accessToken is not null)
-        {
-            var ath = Base64UrlEncoder.Encode(SHA256.HashData(Encoding.ASCII.GetBytes(accessToken)));
-            if (jwt.GetPayloadValue<string?>("ath") != ath)
-                return (null, "The DPoP proof is not for this access token.");
-        }
-
-        var jkt = Base64UrlEncoder.Encode(jwk.ComputeJwkThumbprint());
-        if (string.IsNullOrEmpty(jwt.Id) || !await OidcReplayCache.TryUseAsync(store, $"dpop:{jkt}:{jwt.Id}", iat + ProofLifetime, ct))
-            return (null, "The DPoP proof was already used.");
-
-        return (jkt, null);
-    }
+    public Task<(string? Jkt, string? Error)> ValidateProofAsync(HttpContext http, string proof, string? accessToken, CancellationToken ct)
+        => SparkDpopProof.ValidateAsync(proof, http.Request.Method, issuer.Resolve(http.Request) + http.Request.Path, accessToken,
+            (key, expiresAt) => OidcReplayCache.TryUseAsync(store, key, expiresAt, ct));
 }

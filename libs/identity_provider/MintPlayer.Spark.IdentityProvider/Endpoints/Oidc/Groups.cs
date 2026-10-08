@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -55,12 +56,20 @@ internal class OidcLocalCredentialsGroup : IEndpointGroup
 /// A separate group rather than a per-endpoint convention: one <c>Configure</c> covers every member.
 /// Note <c>/connect/introspect</c> is deliberately
 /// <em>not</em> a member: it never carried <c>WithOidcCors</c>.
+/// <para>
+/// Its members are also the machine endpoints (token, PAR, device authorization, revocation, userinfo), so the
+/// group carries the identity provider's named rate-limit policy (PRD D9) as well.
+/// </para>
 /// </remarks>
 internal class OidcConnectCorsGroup : IEndpointGroup
 {
     public static string Prefix => "/connect";
 
-    static void IEndpointGroup.Configure(RouteGroupBuilder group, IServiceProvider services) => OidcCors.Apply(group, services);
+    static void IEndpointGroup.Configure(RouteGroupBuilder group, IServiceProvider services)
+    {
+        OidcCors.Apply(group, services);
+        group.RequireRateLimiting(SparkIdentityProviderExtensions.RateLimitPolicy);
+    }
 }
 
 /// <summary>

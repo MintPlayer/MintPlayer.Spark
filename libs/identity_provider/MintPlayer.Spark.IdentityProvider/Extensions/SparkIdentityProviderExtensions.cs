@@ -93,6 +93,15 @@ public static class SparkIdentityProviderExtensions
         // Protocol (PRD D8): client authentication and the clients' own keys.
         builder.Services.AddHttpClient();
         builder.Services.AddMemoryCache();
+        builder.Services.Configure<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>(rl =>
+            rl.AddPolicy(RateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.RateLimits.PermitLimit,
+                    Window = options.RateLimits.Window,
+                    QueueLimit = 0,
+                })));
         builder.Services.AddSingleton<OidcClientKeys>();
         builder.Services.AddSingleton<OidcClientAuthenticator>();
         builder.Services.AddSingleton<OidcRequestObjects>();
@@ -232,4 +241,15 @@ public static class SparkIdentityProviderExtensions
     /// </remarks>
     internal const string CorsPolicy = "SparkOidcCors";
 
+    /// <summary>
+    /// The named rate-limit policy on the machine endpoints (<c>docs/identity_provider_platform_PRD.md</c> D9):
+    /// a fixed window per caller IP address from <see cref="SparkIdentityProviderOptions.RateLimits"/>.
+    /// </summary>
+    /// <remarks>
+    /// It is always registered, so an application that runs the rate-limiting middleware never meets an unknown
+    /// policy name; in one that does not, the endpoint metadata is inert. It applies on top of Spark's global
+    /// per-IP budget for <c>/connect</c> (<c>spark.AddRateLimiter()</c>), giving the endpoints a client polls or
+    /// scripts against (token, device polling) a budget of their own that the interactive pages do not share.
+    /// </remarks>
+    public const string RateLimitPolicy = "SparkIdentityProviderMachine";
 }

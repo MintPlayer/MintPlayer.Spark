@@ -9,6 +9,9 @@ using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Replication.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
+using MintPlayer.Spark.Authorization.ResourceServer;
+using Fleet.Entities;
+using Raven.Client.Documents;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -97,15 +100,23 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
             // The consumer half of client_credentials, and the reason a CI job can POST here at all.
             // Audience is required by the extension: without it this app would accept every token
             // the issuer ever minted, including ones a client obtained for a different resource.
-            spark.AddJwtBearerCredential(jwt =>
-            {
-                jwt.Authority = authority;
-                jwt.Audience = builder.Configuration["Spark:JwtBearer:Audience"] ?? "fleet-api";
+            // As a resource server (PRD I12) it also accepts only at+jwt access tokens and enforces
+            // DPoP and certificate binding; /api/fleet/cars below needs the fleet.read scope.
+            spark.AddSparkResourceServer(
+                authority,
+                builder.Configuration["Spark:JwtBearer:Audience"] ?? "fleet-api",
+                rs =>
+                {
+                    // Discovery is fetched over the issuer's own scheme. Left at the default this
+                    // demands HTTPS, which a local http issuer cannot satisfy.
+                    rs.RequireHttpsMetadata = authority.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
 
-                // Discovery is fetched over the issuer's own scheme. Left at the default this
-                // demands HTTPS, which a local http issuer cannot satisfy.
-                jwt.RequireHttpsMetadata = authority.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-            });
+                    // Ask SparkId about every token instead of trusting it until it expires. The
+                    // introspecting client's id must be the audience (SparkId's MayIntrospect).
+                    rs.UseIntrospection = builder.Configuration.GetValue("Spark:JwtBearer:UseIntrospection", false);
+                    rs.IntrospectionClientId = builder.Configuration["Spark:JwtBearer:IntrospectionClientId"];
+                    rs.IntrospectionClientSecret = builder.Configuration["Spark:JwtBearer:IntrospectionClientSecret"];
+                });
         }
     };
 });
@@ -151,6 +162,23 @@ app.UseSparkFull();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSparkFull();
+
+    // The resource-server demo (PRD I12): a plain API outside Spark's PersistentObject endpoints,
+    // answering only a SparkId access token for this audience that carries fleet.read. The scope is
+    // the whole authorization here: the raw session reads past security.json, so it returns only
+    // non-personal fields.
+    if (!string.IsNullOrWhiteSpace(builder.Configuration["Spark:JwtBearer:Authority"]))
+    {
+        endpoints.MapGet("/api/fleet/cars", async (IDocumentStore store, CancellationToken ct) =>
+        {
+            using var session = store.OpenAsyncSession();
+            var cars = await session.Query<Car>()
+                .Select(c => new { c.LicensePlate, c.Model, c.Year })
+                .Take(100)
+                .ToListAsync(ct);
+            return Results.Ok(cars);
+        }).RequireScope("fleet.read");
+    }
 });
 
 app.UseWhen(

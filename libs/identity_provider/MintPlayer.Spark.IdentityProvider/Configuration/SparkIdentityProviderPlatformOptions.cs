@@ -71,3 +71,26 @@ public class SparkIdentityProviderAuditOptions
     /// <summary>How long an audit event is kept before RavenDB deletes it.</summary>
     public int RetentionDays { get; set; } = 180;
 }
+
+/// <summary><c>Spark:IdentityProvider:RateLimits</c> (<c>docs/identity_provider_platform_PRD.md</c> D9).</summary>
+/// <remarks>
+/// The machine endpoints (token, PAR, device authorization, revocation, userinfo) carry the named policy
+/// <see cref="Extensions.SparkIdentityProviderExtensions.RateLimitPolicy"/>, which only acts in an application that
+/// runs the rate-limiting middleware (<c>spark.AddRateLimiter()</c>). The client-authentication throttle does
+/// not depend on it.
+/// </remarks>
+public class SparkIdentityProviderRateLimitOptions
+{
+    /// <summary>Requests per caller IP address and <see cref="Window"/> on the machine endpoints.</summary>
+    public int PermitLimit { get; set; } = 120;
+
+    public TimeSpan Window { get; set; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Failed client authentications per client id and IP address before that pair is refused for the rest of
+    /// <see cref="ClientAuthenticationFailureWindow"/>, without verifying anything (each check is a PBKDF2 hash).
+    /// </summary>
+    public int ClientAuthenticationFailures { get; set; } = 10;
+
+    public TimeSpan ClientAuthenticationFailureWindow { get; set; } = TimeSpan.FromMinutes(5);
+}

@@ -3,8 +3,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -61,9 +63,15 @@ public static class OidcClientAuthMethods
 /// <c>invalid_client</c>, and an unknown client still pays for one hash verification, so the response
 /// time does not tell which client ids exist.</item>
 /// <item>A secret's <c>LastUsedAt</c> is stamped at most once an hour (D5).</item>
+/// <item><b>Failure throttle (D9):</b> after <see cref="SparkIdentityProviderRateLimitOptions.ClientAuthenticationFailures"/>
+/// failures from one IP address for one existing client, that pair answers <c>invalid_client</c> without verifying
+/// anything until the window ends. Keyed on the pair, not on the client alone, so nobody who merely knows a client id
+/// can lock the real client out. The answer is the same <c>invalid_client</c> as every other failure, so the throttle
+/// is no oracle.</item>
 /// </list>
 /// </remarks>
-internal sealed class OidcClientAuthenticator(IDocumentStore store, OidcClientKeys clientKeys, OidcIssuer issuer)
+internal sealed class OidcClientAuthenticator(
+    IDocumentStore store, OidcClientKeys clientKeys, OidcIssuer issuer, IMemoryCache cache, SparkIdentityProviderOptions options)
 {
     public const string JwtBearerAssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 
@@ -118,6 +126,11 @@ internal sealed class OidcClientAuthenticator(IDocumentStore store, OidcClientKe
             return Fail("invalid_client", "Client authentication failed.");
         }
 
+        var throttleKey = $"spark-identity-provider:client-auth-failures:{app.ClientId}|{http.Connection.RemoteIpAddress}";
+        var failureLimit = options.RateLimits.ClientAuthenticationFailures;
+        if (failureLimit > 0 && cache.TryGetValue(throttleKey, out FailureCount? counted) && counted!.Value >= failureLimit)
+            return Fail("invalid_client", "Client authentication failed.");
+
         var certificate = await http.Connection.GetClientCertificateAsync(ct);
         var method = basicId is not null ? OidcClientAuthMethods.SecretBasic
             : !string.IsNullOrEmpty(postSecret) ? OidcClientAuthMethods.SecretPost
@@ -127,7 +140,7 @@ internal sealed class OidcClientAuthenticator(IDocumentStore store, OidcClientKe
                 : OidcClientAuthMethods.None;
 
         if (!string.IsNullOrEmpty(app.TokenEndpointAuthMethod) && !MethodAllowed(app.TokenEndpointAuthMethod, method))
-            return Fail("invalid_client", "Client authentication failed.");
+            return CountFailure(throttleKey);
 
         var ok = method switch
         {
@@ -144,7 +157,25 @@ internal sealed class OidcClientAuthenticator(IDocumentStore store, OidcClientKe
 
         return ok
             ? new OidcClientAuthentication(app, method, certificate)
-            : Fail("invalid_client", "Client authentication failed.");
+            : CountFailure(throttleKey);
+    }
+
+    /// <summary>A counter that lives for one window from its first failure; a success does not reset it.</summary>
+    private sealed class FailureCount { public int Value; }
+
+    private OidcClientAuthentication CountFailure(string throttleKey)
+    {
+        var limits = options.RateLimits;
+        if (limits.ClientAuthenticationFailures > 0)
+        {
+            var count = cache.GetOrCreate(throttleKey, entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = limits.ClientAuthenticationFailureWindow;
+                return new FailureCount();
+            })!;
+            Interlocked.Increment(ref count.Value);
+        }
+        return Fail("invalid_client", "Client authentication failed.");
     }
 
     /// <summary>A client registered for a secret method may use either secret method; the others are exact.</summary>

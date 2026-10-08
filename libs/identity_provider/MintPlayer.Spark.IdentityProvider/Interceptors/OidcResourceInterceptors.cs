@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -17,8 +18,10 @@ namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 /// query-before-save this replaced raced two concurrent saves (O17).
 /// </para>
 /// </summary>
-public sealed class OidcResourceInterceptors : IBeforeSave<OidcResource>
+public sealed partial class OidcResourceInterceptors : IBeforeSave<OidcResource>, IAfterSave<OidcResource>
 {
+    [Inject] private readonly OidcAudit audit;
+
     public async ValueTask OnBeforeSaveAsync(OidcResource entity, SaveContext context)
     {
         entity.Name = entity.Name?.Trim() ?? string.Empty;
@@ -58,6 +61,34 @@ public sealed class OidcResourceInterceptors : IBeforeSave<OidcResource>
                 nameof(entity.Name));
         }
     }
+
+    /// <summary>
+    /// G26 (PRD D9): disabling a resource, or one scope of an API resource, revokes every valid token carrying
+    /// the scopes that just went off. Grants stay (<see cref="OidcDisableCascade"/>).
+    /// </summary>
+    public async ValueTask OnAfterSaveAsync(OidcResource entity, SaveContext context)
+    {
+        if (context.Before is not OidcResource before || context.Session is not IAsyncDocumentSession session)
+            return;
+
+        var wasOn = EnabledScopes(before);
+        var turnedOff = wasOn.Except(EnabledScopes(entity), StringComparer.Ordinal).ToList();
+        if (turnedOff.Count == 0)
+            return;
+
+        var store = session.Advanced.DocumentStore;
+        await OidcDisableCascade.RevokeScopesAsync(store, turnedOff);
+        using var auditSession = store.OpenAsyncSession();
+        await audit.RecordAsync(auditSession, OidcAuditKinds.ResourceChanged,
+            context.User?.FindFirstValue(ClaimTypes.NameIdentifier),
+            details: new Dictionary<string, string> { ["resource"] = entity.Name, ["disabledScopes"] = string.Join(' ', turnedOff) });
+        await auditSession.SaveChangesAsync();
+    }
+
+    private static IEnumerable<string> EnabledScopes(OidcResource resource)
+        => !resource.Enabled ? []
+            : resource.Kind == OidcResourceKinds.Api ? resource.Scopes.Where(s => s.Enabled).Select(s => s.Name)
+            : [resource.Name];
 
     private static void ValidateName(string name, string field)
     {

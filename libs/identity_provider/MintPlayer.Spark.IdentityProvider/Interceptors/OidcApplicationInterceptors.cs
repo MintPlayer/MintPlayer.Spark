@@ -35,6 +35,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     [Inject] private readonly OidcCorsOrigins corsOrigins;
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IAccessControl accessControl;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly OidcAudit audit;
 
     public async ValueTask OnBeforeSaveAsync(OidcApplication entity, SaveContext context)
     {
@@ -385,10 +386,22 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// would watch the screen say it saved and the browser keep refusing for minutes. The admin screen
     /// is the only in-app writer, which is what makes invalidating after its commit enough.
     /// </summary>
-    public ValueTask OnAfterSaveAsync(OidcApplication entity, SaveContext context)
+    public async ValueTask OnAfterSaveAsync(OidcApplication entity, SaveContext context)
     {
         corsOrigins.Invalidate();
-        return ValueTask.CompletedTask;
+
+        // G26 (PRD D9): disabling takes the application's tokens and grants down with it. Only on the
+        // transition, so saving an application that is already disabled patches nothing.
+        if (context.Before is OidcApplication { Enabled: true } && !entity.Enabled
+            && context.Session is IAsyncDocumentSession session && entity.Id is { } applicationId)
+        {
+            var store = session.Advanced.DocumentStore;
+            await OidcDisableCascade.RevokeApplicationAsync(store, applicationId);
+            using var auditSession = store.OpenAsyncSession();
+            await audit.RecordAsync(auditSession, OidcAuditKinds.ApplicationDisabled,
+                context.User?.FindFirstValue(ClaimTypes.NameIdentifier), applicationId);
+            await auditSession.SaveChangesAsync();
+        }
     }
 
     /// <summary>
