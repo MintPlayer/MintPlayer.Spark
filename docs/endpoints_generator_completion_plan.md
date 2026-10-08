@@ -252,7 +252,16 @@ client (`libs/client/MintPlayer.Spark.Client/SparkClient.Endpoints.cs`) is the c
   - All 15 snapshots are unchanged: no converted endpoint had `accepts` metadata to lose.
   - The merged tree (M2–M7) builds with 0 errors.
 - **For M8:** forbid `Request.Query[`, `RouteValues`, `ReadFromJsonAsync` and `RequestServices` inside endpoint classes, rather than requiring `I…Endpoint<T>`. The legitimate remaining uses are `SparkDenial`'s registry lookup and `ExternalLoginOutcome`'s `popup` check.
-- **Next: M3b (PRD D3a):** the ~14 `SparkRequestType.ReadAsync` endpoints, SoftDelete and History, and mail's query reads.
+- **M3b (PRD D3a), as built 2026-10-08: ✅ done.**
+  - **Typed:** 18 endpoints are now `IPostEndpoint<TReq>`.
+    - Core (13): PO load, new, refresh, create, update, delete, delete-many and delete-row; queries get, execute and distinct; custom actions list and execute.
+    - SoftDelete restore and purge, and History revisions, revision and revert.
+  - **Mail:** the `?recipient` and `?t` reads are `[QueryParam]`. The bounce body is still read raw, as the stated exception.
+  - **Removed:** `SparkRequestType.ReadAsync`, `SparkRequestBody` and `ISparkAddOnEndpoints.ReadTypedRequestAsync` (a minor API break).
+  - **Pins first:** `b8bfa9dd` pinned five unbindable bodies plus one valid request per endpoint on the old code.
+  - **Only diff, as accepted:** no body or `text/plain` used to be an unhandled 500 and is now each endpoint's normal refusal. Every other status and body is identical, also through MVC's binder (`UnbindableCoreBodiesWithMvcTests`).
+  - **Evidence:** 685/685 targeted Spark.Tests and Client.Tests 108/108 passed; all 15 snapshots are unchanged.
+  - **Hand reads left:** the `DeleteAccount` and `ReceiveBounce` bodies, `SparkDenial`'s registry lookup and `ExternalLoginOutcome`'s `popup` check.
 
 ### M4 — identity_provider (D2, D3, D6)
 - Fold all 16 static handlers into typed endpoint classes with `[Inject]`.
