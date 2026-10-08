@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -24,24 +25,29 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
     [QueryParam("state")] public string? State { get; set; }
     [QueryParam("client_id")] public string? ClientId { get; set; }
     [QueryParam("id_token_hint")] public string? IdTokenHint { get; set; }
+    /// <summary>The RP's preferred languages for this page (RP-Initiated Logout 1.0 §2); only selects a supported culture.</summary>
+    [QueryParam("ui_locales")] public string? UiLocales { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly OidcSigningKeyService signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ConnectText text;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
 
     public override async Task<IResult> HandleAsync(CancellationToken ct)
     {
         var context = httpContextAccessor.HttpContext!;
         var postLogoutRedirectUri = PostLogoutRedirectUri;
+        text.UseUiLocales(UiLocales);
 
         // Sign out the user if authenticated
         if (context.User?.Identity?.IsAuthenticated == true)
             await signInManager.SignOutAsync();
 
         if (string.IsNullOrEmpty(postLogoutRedirectUri))
-            return ConnectResults.Text(200, "<html><body><h2>You have been signed out.</h2><p>You may close this window.</p></body></html>", "text/html");
+            return ConnectResults.Html(SignedOutPage(context));
 
         // Validate post_logout_redirect_uri against registered client URIs
         using var session = store.OpenAsyncSession();
@@ -63,7 +69,8 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
             if (hinted is null
                 || (!string.IsNullOrEmpty(clientId) && !string.Equals(clientId, hinted, StringComparison.Ordinal)))
             {
-                return ConnectResults.Text(400, "<html><body><h2>Invalid id_token_hint</h2><p>The provided id_token_hint was not issued by this provider to this client.</p></body></html>", "text/html");
+                return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest,
+                    "logoutInvalidIdTokenHint", headingKey: "logoutInvalidIdTokenHintTitle");
             }
 
             clientId = hinted;
@@ -76,9 +83,24 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
         if (app is not { Enabled: true }
             || !app.PostLogoutRedirectUris.Contains(postLogoutRedirectUri, StringComparer.Ordinal))
         {
-            return ConnectResults.Text(400, "<html><body><h2>Invalid post_logout_redirect_uri</h2><p>The provided redirect URI is not registered for this client.</p></body></html>", "text/html");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest,
+                "logoutInvalidRedirectUri", headingKey: "logoutInvalidRedirectUriTitle");
         }
 
         return Results.Redirect(RedirectUrl.With(postLogoutRedirectUri, ("state", State)));
+    }
+
+    /// <summary>The page shown when there is no client to return to.</summary>
+    private string SignedOutPage(HttpContext context)
+    {
+        var sb = new StringBuilder();
+        ConnectPageTheme.AppendDocumentStart(sb, context, text["logoutTitle"], text.Culture, options.Branding);
+        sb.Append("body{max-width:480px;margin:80px auto;padding:0 20px}");
+        sb.Append("</style></head><body>");
+        ConnectPageTheme.AppendBrand(sb, options.Branding);
+        sb.Append("<h2>").Append(ConnectPage.Encode(text["logoutHeading"])).Append("</h2>");
+        sb.Append("<p>").Append(ConnectPage.Encode(text["logoutClose"])).Append("</p>");
+        sb.Append("</body></html>");
+        return sb.ToString();
     }
 }

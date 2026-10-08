@@ -1,6 +1,8 @@
 using System.Text;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
+using MintPlayer.Spark.IdentityProvider.Services;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -18,7 +20,8 @@ internal static class ConnectPage
     public static string Encode(string value) => System.Net.WebUtility.HtmlEncode(value);
 
     /// <summary>
-    /// The message for an error code carried in the query string, or null if there is none.
+    /// The text key (<c>identityProvider.connect.*</c>, resolved through <c>ConnectText</c>) of the message
+    /// for an error code carried in the query string, or null if there is none.
     /// <para>
     /// The pages used to render the query value itself. It was HTML-encoded, so there was no
     /// XSS — but it let anyone put their own words inside the identity provider's own styled
@@ -28,41 +31,42 @@ internal static class ConnectPage
     /// choice is *which* of our messages to show.
     /// </para>
     /// </summary>
-    public static string? ErrorMessage(string? code) => code switch
+    public static string? ErrorKey(string? code) => code switch
     {
         null or "" => null,
-        "missing_fields" => "Email or user name, and password, are required.",
+        "missing_fields" => "signInErrorMissingFields",
         // The field takes an email or a user name (D4), so the message names both.
-        "invalid_credentials" => "Invalid email/user name or password.",
-        "locked_out" => "Account is locked out. Please try again later.",
-        "missing_code" => "Please enter your authentication code.",
-        "missing_recovery_code" => "Please enter a recovery code.",
-        "invalid_code" => "Invalid authentication code.",
-        "invalid_recovery_code" => "Invalid recovery code.",
-        _ => "Sign-in failed. Please try again.",
+        "invalid_credentials" => "signInErrorInvalidCredentials",
+        "locked_out" => "signInErrorLockedOut",
+        "missing_code" => "signInErrorMissingCode",
+        "missing_recovery_code" => "signInErrorMissingRecoveryCode",
+        "invalid_code" => "signInErrorInvalidCode",
+        "invalid_recovery_code" => "signInErrorInvalidRecoveryCode",
+        _ => "signInErrorFailed",
     };
 
     /// <summary>
-    /// The message for a <c>?sparkExternalLogin=&lt;code&gt;</c> outcome (#490 M6), or null if there is none.
+    /// The text key of the message for a <c>?sparkExternalLogin=&lt;code&gt;</c> outcome (#490 M6), or null if
+    /// there is none.
     /// </summary>
     /// <remarks>
-    /// Fixed English strings, like <see cref="ErrorMessage"/> and the rest of these pages; the texts match
-    /// the <c>en</c> values of the Authorization package's <c>auth.externalLoginError.*</c> translations,
-    /// which the Angular sign-in page shows for the same codes. An unknown code gets a generic message.
+    /// Fixed texts, for the reason <see cref="ErrorKey"/> gives; their <c>en</c> values match the
+    /// Authorization package's <c>auth.externalLoginError.*</c> translations, which the Angular sign-in page
+    /// shows for the same codes. An unknown code gets a generic message.
     /// </remarks>
-    public static string? ExternalLoginMessage(string? code) => code switch
+    public static string? ExternalLoginKey(string? code) => code switch
     {
         null or "" => null,
-        "no_login_info" => "The provider did not return a login.",
-        "email_not_verified" => "The provider has not verified that email address.",
-        "account_creation_failed" => "The account could not be created. Please try again.",
-        "email_already_registered" => "An account with that email address already exists. Sign in to it first, then connect this login from your account page.",
-        "sign_in_to_link" => "Sign in first to connect this login to your account.",
-        "link_confirmation_sent" => "We sent you an email. Follow its link to connect this login to your account.",
-        "confirm_email_sent" => "We sent you an email. Confirm your address, then sign in again.",
-        "remote_failure" => "The provider reported a problem with the sign-in. Please try again.",
-        "invalid_nonce" => "The sign-in request was not valid. Please try again.",
-        _ => "Sign-in with the external provider failed. Please try again.",
+        "no_login_info" => "externalLoginNoLoginInfo",
+        "email_not_verified" => "externalLoginEmailNotVerified",
+        "account_creation_failed" => "externalLoginAccountCreationFailed",
+        "email_already_registered" => "externalLoginEmailAlreadyRegistered",
+        "sign_in_to_link" => "externalLoginSignInToLink",
+        "link_confirmation_sent" => "externalLoginLinkConfirmationSent",
+        "confirm_email_sent" => "externalLoginConfirmEmailSent",
+        "remote_failure" => "externalLoginRemoteFailure",
+        "invalid_nonce" => "externalLoginInvalidNonce",
+        _ => "externalLoginFailed",
     };
 
     /// <summary>Whether an external-login code is a "check your mail" notice rather than a failure.</summary>
@@ -103,9 +107,30 @@ internal static class ConnectResults
     public static IResult Text(int statusCode, string body, string? contentType = null)
         => new TextResult(statusCode, contentType, body);
 
-    /// <summary>A rendered page: 200, <c>text/html; charset=utf-8</c>.</summary>
-    public static IResult Html(string body)
-        => new TextResult(StatusCodes.Status200OK, "text/html; charset=utf-8", body);
+    /// <summary>A rendered page: 200 unless named, <c>text/html; charset=utf-8</c>.</summary>
+    public static IResult Html(string body, int statusCode = StatusCodes.Status200OK)
+        => new TextResult(statusCode, "text/html; charset=utf-8", body);
+
+    /// <summary>
+    /// A refusal a person sees in the browser, rendered as the localized, branded error page with
+    /// <paramref name="statusCode"/> (D7). <paramref name="messageKey"/> and <paramref name="headingKey"/> are
+    /// <c>identityProvider.connect.*</c> text keys chosen by the caller, never request input.
+    /// </summary>
+    public static IResult ErrorPage(
+        HttpContext context, ConnectText text, Configuration.SparkIdentityProviderBranding? branding,
+        int statusCode, string messageKey, string? headingKey = null)
+        => Html(OidcErrorPage.Render(context, text, branding, headingKey ?? "errorTitle", messageKey, code: null, description: null), statusCode);
+
+    /// <summary>
+    /// Sends the browser to <c>/connect/error</c>, for a caller that cannot render the page itself. The page
+    /// shows only an allow-listed <paramref name="error"/> and encodes <paramref name="description"/>.
+    /// </summary>
+    public static IResult ErrorRedirect(string error, string? description = null)
+    {
+        var query = new Dictionary<string, string?> { ["error"] = error };
+        if (!string.IsNullOrEmpty(description)) query["error_description"] = description;
+        return Results.Redirect(QueryHelpers.AddQueryString("/connect/error", query));
+    }
 
     private sealed class TextResult(int statusCode, string? contentType, string body) : IResult
     {

@@ -1843,6 +1843,406 @@
         "en": "Manage applications with access to your account",
         "fr": "Gérer les applications ayant accès à votre compte",
         "nl": "Applicaties met toegang tot je account beheren"
+      },
+      "loginTitle": {
+        "en": "Login",
+        "fr": "Connexion",
+        "nl": "Aanmelden"
+      },
+      "loginHeading": {
+        "en": "Login",
+        "fr": "Connexion",
+        "nl": "Aanmelden"
+      },
+      "loginIdentifierEmail": {
+        "en": "Email",
+        "fr": "E-mail",
+        "nl": "E-mail"
+      },
+      "loginIdentifierUserName": {
+        "en": "User name",
+        "fr": "Nom d'utilisateur",
+        "nl": "Gebruikersnaam"
+      },
+      "loginIdentifierEither": {
+        "en": "Email or user name",
+        "fr": "E-mail ou nom d'utilisateur",
+        "nl": "E-mail of gebruikersnaam"
+      },
+      "loginPassword": {
+        "en": "Password",
+        "fr": "Mot de passe",
+        "nl": "Wachtwoord"
+      },
+      "loginRememberMe": {
+        "en": "Remember me",
+        "fr": "Se souvenir de moi",
+        "nl": "Onthoud mij"
+      },
+      "loginSubmit": {
+        "en": "Login",
+        "fr": "Se connecter",
+        "nl": "Aanmelden"
+      },
+      "loginOr": {
+        "en": "or",
+        "fr": "ou",
+        "nl": "of"
+      },
+      "loginWithProvider": {
+        "en": "Sign in with {0}",
+        "fr": "Se connecter avec {0}",
+        "nl": "Aanmelden met {0}"
+      },
+      "loginNoMethod": {
+        "en": "No sign-in method is configured for this identity provider.",
+        "fr": "Aucune méthode de connexion n'est configurée pour ce fournisseur d'identité.",
+        "nl": "Er is geen aanmeldmethode geconfigureerd voor deze identiteitsprovider."
+      },
+      "signInErrorMissingFields": {
+        "en": "Email or user name, and password, are required.",
+        "fr": "L'e-mail ou le nom d'utilisateur, ainsi que le mot de passe, sont obligatoires.",
+        "nl": "E-mail of gebruikersnaam, en wachtwoord, zijn verplicht."
+      },
+      "signInErrorInvalidCredentials": {
+        "en": "Invalid email/user name or password.",
+        "fr": "E-mail/nom d'utilisateur ou mot de passe incorrect.",
+        "nl": "Onjuist(e) e-mail/gebruikersnaam of wachtwoord."
+      },
+      "signInErrorLockedOut": {
+        "en": "Account is locked out. Please try again later.",
+        "fr": "Le compte est verrouillé. Veuillez réessayer plus tard.",
+        "nl": "Het account is geblokkeerd. Probeer het later opnieuw."
+      },
+      "signInErrorMissingCode": {
+        "en": "Please enter your authentication code.",
+        "fr": "Veuillez saisir votre code d'authentification.",
+        "nl": "Voer je authenticatiecode in."
+      },
+      "signInErrorMissingRecoveryCode": {
+        "en": "Please enter a recovery code.",
+        "fr": "Veuillez saisir un code de récupération.",
+        "nl": "Voer een herstelcode in."
+      },
+      "signInErrorInvalidCode": {
+        "en": "Invalid authentication code.",
+        "fr": "Code d'authentification invalide.",
+        "nl": "Ongeldige authenticatiecode."
+      },
+      "signInErrorInvalidRecoveryCode": {
+        "en": "Invalid recovery code.",
+        "fr": "Code de récupération invalide.",
+        "nl": "Ongeldige herstelcode."
+      },
+      "signInErrorFailed": {
+        "en": "Sign-in failed. Please try again.",
+        "fr": "La connexion a échoué. Veuillez réessayer.",
+        "nl": "Aanmelden mislukt. Probeer het opnieuw."
+      },
+      "externalLoginNoLoginInfo": {
+        "en": "The provider did not return a login.",
+        "fr": "Le fournisseur n'a renvoyé aucune connexion.",
+        "nl": "De provider heeft geen aanmelding teruggegeven."
+      },
+      "externalLoginEmailNotVerified": {
+        "en": "The provider has not verified that email address.",
+        "fr": "Le fournisseur n'a pas vérifié cette adresse e-mail.",
+        "nl": "De provider heeft dat e-mailadres niet geverifieerd."
+      },
+      "externalLoginAccountCreationFailed": {
+        "en": "The account could not be created. Please try again.",
+        "fr": "Le compte n'a pas pu être créé. Veuillez réessayer.",
+        "nl": "Het account kon niet worden aangemaakt. Probeer het opnieuw."
+      },
+      "externalLoginEmailAlreadyRegistered": {
+        "en": "An account with that email address already exists. Sign in to it first, then connect this login from your account page.",
+        "fr": "Un compte avec cette adresse e-mail existe déjà. Connectez-vous d'abord à ce compte, puis associez cette connexion depuis la page de votre compte.",
+        "nl": "Er bestaat al een account met dat e-mailadres. Meld je eerst daarmee aan en koppel deze aanmelding daarna via je accountpagina."
+      },
+      "externalLoginSignInToLink": {
+        "en": "Sign in first to connect this login to your account.",
+        "fr": "Connectez-vous d'abord pour associer cette connexion à votre compte.",
+        "nl": "Meld je eerst aan om deze aanmelding aan je account te koppelen."
+      },
+      "externalLoginLinkConfirmationSent": {
+        "en": "We sent you an email. Follow its link to connect this login to your account.",
+        "fr": "Nous vous avons envoyé un e-mail. Suivez son lien pour associer cette connexion à votre compte.",
+        "nl": "We hebben je een e-mail gestuurd. Volg de link erin om deze aanmelding aan je account te koppelen."
+      },
+      "externalLoginConfirmEmailSent": {
+        "en": "We sent you an email. Confirm your address, then sign in again.",
+        "fr": "Nous vous avons envoyé un e-mail. Confirmez votre adresse, puis reconnectez-vous.",
+        "nl": "We hebben je een e-mail gestuurd. Bevestig je adres en meld je daarna opnieuw aan."
+      },
+      "externalLoginRemoteFailure": {
+        "en": "The provider reported a problem with the sign-in. Please try again.",
+        "fr": "Le fournisseur a signalé un problème lors de la connexion. Veuillez réessayer.",
+        "nl": "De provider meldde een probleem met de aanmelding. Probeer het opnieuw."
+      },
+      "externalLoginInvalidNonce": {
+        "en": "The sign-in request was not valid. Please try again.",
+        "fr": "La demande de connexion n'était pas valide. Veuillez réessayer.",
+        "nl": "Het aanmeldverzoek was ongeldig. Probeer het opnieuw."
+      },
+      "externalLoginFailed": {
+        "en": "Sign-in with the external provider failed. Please try again.",
+        "fr": "La connexion avec le fournisseur externe a échoué. Veuillez réessayer.",
+        "nl": "Aanmelden via de externe provider is mislukt. Probeer het opnieuw."
+      },
+      "twoFactorTitle": {
+        "en": "Two-Factor Authentication",
+        "fr": "Authentification à deux facteurs",
+        "nl": "Tweestapsverificatie"
+      },
+      "twoFactorRecoveryInfo": {
+        "en": "Enter one of your recovery codes.",
+        "fr": "Saisissez l'un de vos codes de récupération.",
+        "nl": "Voer een van je herstelcodes in."
+      },
+      "twoFactorRecoveryLabel": {
+        "en": "Recovery Code",
+        "fr": "Code de récupération",
+        "nl": "Herstelcode"
+      },
+      "twoFactorVerify": {
+        "en": "Verify",
+        "fr": "Vérifier",
+        "nl": "Verifiëren"
+      },
+      "twoFactorUseAuthenticator": {
+        "en": "Use authenticator code instead",
+        "fr": "Utiliser plutôt un code d'authentification",
+        "nl": "Gebruik in plaats daarvan een authenticatiecode"
+      },
+      "twoFactorCodeInfo": {
+        "en": "Enter the 6-digit code from your authenticator app.",
+        "fr": "Saisissez le code à 6 chiffres de votre application d'authentification.",
+        "nl": "Voer de 6-cijferige code uit je authenticator-app in."
+      },
+      "twoFactorCodeLabel": {
+        "en": "Authentication Code",
+        "fr": "Code d'authentification",
+        "nl": "Authenticatiecode"
+      },
+      "twoFactorUseRecovery": {
+        "en": "Use a recovery code instead",
+        "fr": "Utiliser plutôt un code de récupération",
+        "nl": "Gebruik in plaats daarvan een herstelcode"
+      },
+      "logoutTitle": {
+        "en": "Signed out",
+        "fr": "Déconnecté",
+        "nl": "Afgemeld"
+      },
+      "logoutHeading": {
+        "en": "You have been signed out.",
+        "fr": "Vous avez été déconnecté.",
+        "nl": "Je bent afgemeld."
+      },
+      "logoutClose": {
+        "en": "You may close this window.",
+        "fr": "Vous pouvez fermer cette fenêtre.",
+        "nl": "Je kunt dit venster sluiten."
+      },
+      "logoutInvalidIdTokenHintTitle": {
+        "en": "Invalid id_token_hint",
+        "fr": "id_token_hint invalide",
+        "nl": "Ongeldige id_token_hint"
+      },
+      "logoutInvalidIdTokenHint": {
+        "en": "The provided id_token_hint was not issued by this provider to this client.",
+        "fr": "L'id_token_hint fourni n'a pas été émis par ce fournisseur pour ce client.",
+        "nl": "De opgegeven id_token_hint is niet door deze provider aan deze client uitgegeven."
+      },
+      "logoutInvalidRedirectUriTitle": {
+        "en": "Invalid post_logout_redirect_uri",
+        "fr": "post_logout_redirect_uri invalide",
+        "nl": "Ongeldige post_logout_redirect_uri"
+      },
+      "logoutInvalidRedirectUri": {
+        "en": "The provided redirect URI is not registered for this client.",
+        "fr": "L'URI de redirection fournie n'est pas enregistrée pour ce client.",
+        "nl": "De opgegeven redirect-URI is niet geregistreerd voor deze client."
+      },
+      "applicationsTitle": {
+        "en": "Connected applications",
+        "fr": "Applications connectées",
+        "nl": "Gekoppelde applicaties"
+      },
+      "applicationsRevoked": {
+        "en": "Access removed.",
+        "fr": "Accès retiré.",
+        "nl": "Toegang ingetrokken."
+      },
+      "applicationsScopeRevoked": {
+        "en": "Permission removed. The application will ask again if it needs it.",
+        "fr": "Autorisation retirée. L'application la demandera à nouveau si elle en a besoin.",
+        "nl": "Toestemming ingetrokken. De applicatie vraagt ze opnieuw als ze die nodig heeft."
+      },
+      "applicationsFailed": {
+        "en": "That did not go through — the application was being re-authorized at the same time. Please try again.",
+        "fr": "L'opération n'a pas abouti : l'application était réautorisée au même moment. Veuillez réessayer.",
+        "nl": "Dat is niet gelukt: de applicatie werd op hetzelfde moment opnieuw gemachtigd. Probeer het opnieuw."
+      },
+      "applicationsEmpty": {
+        "en": "No applications have access to your account.",
+        "fr": "Aucune application n'a accès à votre compte.",
+        "nl": "Geen enkele applicatie heeft toegang tot je account."
+      },
+      "applicationsRemove": {
+        "en": "Remove access",
+        "fr": "Retirer l'accès",
+        "nl": "Toegang intrekken"
+      },
+      "applicationsRemoveScope": {
+        "en": "Remove",
+        "fr": "Retirer",
+        "nl": "Intrekken"
+      },
+      "applicationsRemoveScopeLabel": {
+        "en": "Remove {0}",
+        "fr": "Retirer {0}",
+        "nl": "{0} intrekken"
+      },
+      "applicationsFootnote": {
+        "en": "Removing access stops an application from getting new access to your account. Access it already holds may keep working for up to an hour.",
+        "fr": "Retirer l'accès empêche une application d'obtenir un nouvel accès à votre compte. L'accès dont elle dispose déjà peut continuer à fonctionner jusqu'à une heure.",
+        "nl": "Toegang intrekken voorkomt dat een applicatie nieuwe toegang tot je account krijgt. Toegang die ze al heeft, kan nog tot een uur blijven werken."
+      },
+      "errorTitle": {
+        "en": "Something went wrong",
+        "fr": "Une erreur s'est produite",
+        "nl": "Er is iets misgegaan"
+      },
+      "errorDetails": {
+        "en": "Details: {0}",
+        "fr": "Détails : {0}",
+        "nl": "Details: {0}"
+      },
+      "errorCode": {
+        "en": "Error code: {0}",
+        "fr": "Code d'erreur : {0}",
+        "nl": "Foutcode: {0}"
+      },
+      "errorMissingParameters": {
+        "en": "Missing parameters.",
+        "fr": "Paramètres manquants.",
+        "nl": "Ontbrekende parameters."
+      },
+      "errorNotAuthenticated": {
+        "en": "Not authenticated.",
+        "fr": "Non authentifié.",
+        "nl": "Niet aangemeld."
+      },
+      "errorRequestExpired": {
+        "en": "This authorization request is no longer valid. Please start again.",
+        "fr": "Cette demande d'autorisation n'est plus valide. Veuillez recommencer.",
+        "nl": "Dit autorisatieverzoek is niet meer geldig. Begin opnieuw."
+      },
+      "errorUnknownClient": {
+        "en": "Unknown client.",
+        "fr": "Client inconnu.",
+        "nl": "Onbekende client."
+      },
+      "errorNoScopes": {
+        "en": "No permitted scopes were granted.",
+        "fr": "Aucun scope autorisé n'a été accordé.",
+        "nl": "Er zijn geen toegestane scopes toegekend."
+      },
+      "errorInvalidRequest": {
+        "en": "The request was not valid.",
+        "fr": "La requête n'était pas valide.",
+        "nl": "Het verzoek was ongeldig."
+      },
+      "errorInvalidClient": {
+        "en": "The application could not be identified.",
+        "fr": "L'application n'a pas pu être identifiée.",
+        "nl": "De applicatie kon niet worden geïdentificeerd."
+      },
+      "errorInvalidGrant": {
+        "en": "The authorization is not valid or has expired.",
+        "fr": "L'autorisation n'est pas valide ou a expiré.",
+        "nl": "De autorisatie is ongeldig of verlopen."
+      },
+      "errorUnauthorizedClient": {
+        "en": "This application is not allowed to make this request.",
+        "fr": "Cette application n'est pas autorisée à effectuer cette demande.",
+        "nl": "Deze applicatie mag dit verzoek niet doen."
+      },
+      "errorUnsupportedGrantType": {
+        "en": "This type of authorization is not supported.",
+        "fr": "Ce type d'autorisation n'est pas pris en charge.",
+        "nl": "Dit type autorisatie wordt niet ondersteund."
+      },
+      "errorUnsupportedResponseType": {
+        "en": "The application asked for a response type this provider does not support.",
+        "fr": "L'application a demandé un type de réponse que ce fournisseur ne prend pas en charge.",
+        "nl": "De applicatie vroeg om een antwoordtype dat deze provider niet ondersteunt."
+      },
+      "errorInvalidScope": {
+        "en": "The application asked for a scope that is unknown or not allowed.",
+        "fr": "L'application a demandé un scope inconnu ou non autorisé.",
+        "nl": "De applicatie vroeg om een scope die onbekend is of niet is toegestaan."
+      },
+      "errorAccessDenied": {
+        "en": "Access was denied.",
+        "fr": "L'accès a été refusé.",
+        "nl": "De toegang is geweigerd."
+      },
+      "errorServerError": {
+        "en": "An unexpected error occurred. Please try again later.",
+        "fr": "Une erreur inattendue s'est produite. Veuillez réessayer plus tard.",
+        "nl": "Er is een onverwachte fout opgetreden. Probeer het later opnieuw."
+      },
+      "errorTemporarilyUnavailable": {
+        "en": "The service is temporarily unavailable. Please try again later.",
+        "fr": "Le service est temporairement indisponible. Veuillez réessayer plus tard.",
+        "nl": "De dienst is tijdelijk niet beschikbaar. Probeer het later opnieuw."
+      },
+      "errorInteractionRequired": {
+        "en": "You need to continue on the sign-in page.",
+        "fr": "Vous devez continuer sur la page de connexion.",
+        "nl": "Je moet verdergaan op de aanmeldpagina."
+      },
+      "errorLoginRequired": {
+        "en": "You need to sign in to continue.",
+        "fr": "Vous devez vous connecter pour continuer.",
+        "nl": "Je moet je aanmelden om verder te gaan."
+      },
+      "errorAccountSelectionRequired": {
+        "en": "You need to choose an account to continue.",
+        "fr": "Vous devez choisir un compte pour continuer.",
+        "nl": "Je moet een account kiezen om verder te gaan."
+      },
+      "errorConsentRequired": {
+        "en": "Your consent is needed to continue.",
+        "fr": "Votre consentement est nécessaire pour continuer.",
+        "nl": "Je toestemming is nodig om verder te gaan."
+      },
+      "errorInvalidRequestUri": {
+        "en": "The request URI is not valid.",
+        "fr": "L'URI de requête n'est pas valide.",
+        "nl": "De request-URI is ongeldig."
+      },
+      "errorInvalidRequestObject": {
+        "en": "The request object is not valid.",
+        "fr": "L'objet de requête n'est pas valide.",
+        "nl": "Het request-object is ongeldig."
+      },
+      "errorRequestNotSupported": {
+        "en": "Request objects are not supported.",
+        "fr": "Les objets de requête ne sont pas pris en charge.",
+        "nl": "Request-objecten worden niet ondersteund."
+      },
+      "errorRequestUriNotSupported": {
+        "en": "Request URIs are not supported.",
+        "fr": "Les URI de requête ne sont pas prises en charge.",
+        "nl": "Request-URI's worden niet ondersteund."
+      },
+      "errorRegistrationNotSupported": {
+        "en": "Registration parameters are not supported.",
+        "fr": "Les paramètres d'enregistrement ne sont pas pris en charge.",
+        "nl": "Registratieparameters worden niet ondersteund."
       }
     }
   }

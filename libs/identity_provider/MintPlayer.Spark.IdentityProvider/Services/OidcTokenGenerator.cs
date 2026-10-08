@@ -40,11 +40,15 @@ internal class OidcTokenGenerator
         string? nonce,
         int lifetimeMinutes = 5,
         string? accessToken = null,
-        DateTimeOffset? authTime = null)
+        DateTimeOffset? authTime = null,
+        IReadOnlyDictionary<string, string>? properties = null)
     {
         var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, user.Id!),
+            // D8: the subject this client sees (public or pairwise).
+            new(JwtRegisteredClaimNames.Sub, OidcSubjects.For(app, user.Id!)),
+            // OIDC Core §2: the party the token was issued to.
+            new(JwtRegisteredClaimNames.Azp, app.ClientId),
         };
 
         // Typed values (email_verified is a JSON boolean, auth_time a number) go through the
@@ -72,8 +76,10 @@ internal class OidcTokenGenerator
         if (authTime is { } at)
             typedClaims["auth_time"] = at.ToUnixTimeSeconds();
 
-        var key = _signingKeyService.GetSigningKey();
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
+        // D8: how the user signed in (RFC 8176) and the assurance level it reached, and the session.
+        AddAuthenticationContext(typedClaims, properties);
+
+        var credentials = _signingKeyService.GetSigningCredentials(app.IdTokenSignedResponseAlg);
 
         var descriptor = new SecurityTokenDescriptor
         {
@@ -115,7 +121,9 @@ internal class OidcTokenGenerator
         OidcApplication app,
         string issuer,
         IReadOnlyList<OidcScopeDefinition> grantedScopes,
-        int lifetimeMinutes = 60)
+        int lifetimeMinutes = 60,
+        IReadOnlyDictionary<string, string>? properties = null,
+        IReadOnlyDictionary<string, object>? confirmation = null)
     {
         var scopeNames = grantedScopes.Select(s => s.Name).ToList();
         var jti = OidcTokenReference.GenerateValue();
@@ -129,7 +137,7 @@ internal class OidcTokenGenerator
 
         if (user != null)
         {
-            claims.Add(new Claim(JwtRegisteredClaimNames.Sub, user.Id!));
+            claims.Add(new Claim(JwtRegisteredClaimNames.Sub, OidcSubjects.For(app, user.Id!)));
         }
 
         // Application claims carry the *client's own* authority, so they belong only in a
@@ -161,12 +169,27 @@ internal class OidcTokenGenerator
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var key = _signingKeyService.GetSigningKey();
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
+        // RFC 8707: resource indicators narrow the audience to the APIs the client named.
+        if (properties?.GetValueOrDefault("resource") is { Length: > 0 } resources)
+        {
+            var named = resources.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            audiences = audiences.Where(a => named.Contains(a, StringComparer.Ordinal)).ToList();
+        }
+
+        var credentials = _signingKeyService.GetSigningCredentials(null);
+
+        var typedClaims = new Dictionary<string, object>();
+        AddAuthenticationContext(typedClaims, properties);
+        // RFC 8705 / RFC 9449: the key the token is bound to (cnf.x5t#S256 or cnf.jkt).
+        if (confirmation is { Count: > 0 })
+            typedClaims["cnf"] = confirmation;
 
         var descriptor = new SecurityTokenDescriptor
         {
+            // RFC 9068: a JWT access token says so, so it cannot be mistaken for an id_token.
+            TokenType = "at+jwt",
             Subject = new ClaimsIdentity(claims),
+            Claims = typedClaims,
             Issuer = issuer,
             IssuedAt = DateTime.UtcNow,
             Expires = DateTime.UtcNow.AddMinutes(lifetimeMinutes),
@@ -185,6 +208,18 @@ internal class OidcTokenGenerator
 
         var handler = new JsonWebTokenHandler();
         return (handler.CreateToken(descriptor), jti);
+    }
+
+    /// <summary><c>amr</c> (array), <c>acr</c> and <c>sid</c> from the authorization request's recorded sign-in.</summary>
+    private static void AddAuthenticationContext(Dictionary<string, object> claims, IReadOnlyDictionary<string, string>? properties)
+    {
+        if (properties is null) return;
+        if (properties.GetValueOrDefault("amr") is { Length: > 0 } amr)
+            claims["amr"] = amr.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (properties.GetValueOrDefault("acr") is { Length: > 0 } acr)
+            claims["acr"] = acr;
+        if (properties.GetValueOrDefault("sid") is { Length: > 0 } sid)
+            claims["sid"] = sid;
     }
 
     public string GenerateRefreshToken()

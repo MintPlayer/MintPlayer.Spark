@@ -32,6 +32,22 @@ internal sealed class ConnectText(
         culture = null;
     }
 
+    /// <summary>
+    /// For a page that only knows the <c>returnUrl</c> it will resume (sign-in, two-factor): when that is the
+    /// pending <c>/connect/authorize</c> request, its <c>ui_locales</c> is the client's language request.
+    /// The value only selects among supported cultures, so the untrusted URL cannot inject anything.
+    /// </summary>
+    public void UseUiLocalesOfReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrEmpty(returnUrl)) return;
+        var queryStart = returnUrl.IndexOf('?');
+        if (queryStart < 0 || !returnUrl.AsSpan(0, queryStart).Equals("/connect/authorize", StringComparison.OrdinalIgnoreCase))
+            return;
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(returnUrl[queryStart..]);
+        if (query.TryGetValue("ui_locales", out var value) && !string.IsNullOrEmpty(value.ToString()))
+            UseUiLocales(value.ToString());
+    }
+
     /// <summary>The page's language, for <c>&lt;html lang&gt;</c> and every text.</summary>
     public string Culture => culture ??= Resolve();
 

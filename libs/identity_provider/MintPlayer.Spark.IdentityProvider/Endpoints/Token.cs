@@ -64,6 +64,12 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly OidcTokenGenerator tokenGenerator;
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly OidcIssuer oidcIssuer;
+    [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
+    [Inject] private readonly OidcProofOfPossession proofOfPossession;
+    [Inject] private readonly OidcJwe jwe;
+
+    /// <summary>The posted form, kept from <see cref="BindRequestAsync"/>: client authentication reads more of it than the bound record carries.</summary>
+    private IFormCollection form = null!;
 
     /// <summary>
     /// The request being handled, kept from <see cref="BindRequestAsync"/>: the typed handler receives
@@ -79,7 +85,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         if (!context.Request.HasFormContentType)
             throw new EndpointBindingException(StatusCodes.Status400BadRequest, "Content-Type must be application/x-www-form-urlencoded.");
 
-        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        form = await context.Request.ReadFormAsync(context.RequestAborted);
         return new OidcTokenRequest(
             GrantType: form["grant_type"].FirstOrDefault(),
             ClientId: form["client_id"].FirstOrDefault(),
@@ -107,13 +113,11 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
     private async Task<IResult> HandleAuthorizationCodeGrant(OidcTokenRequest request, CancellationToken ct)
     {
-        var clientId = request.ClientId;
-        var clientSecret = request.ClientSecret;
         var code = request.Code;
         var redirectUri = request.RedirectUri;
         var codeVerifier = request.CodeVerifier;
 
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(code) || string.IsNullOrEmpty(redirectUri))
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(redirectUri))
         {
             return Results.Json(new { error = "invalid_request", error_description = "Missing required parameters." }, statusCode: 400);
         }
@@ -126,29 +130,16 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // both load a valid code, both check it, and both save.
         session.Advanced.UseOptimisticConcurrency = true;
 
-        // Validate client
-        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
-        if (app == null || !app.Enabled)
-        {
-            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
-        }
+        // Validate client (D8: basic, post, private_key_jwt, mTLS, or none for a public client)
+        var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
+        if (!client.Succeeded)
+            return client.ToResult(httpContext);
+        var app = client.Application!;
 
         // Check grant type is allowed
         if (!app.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase))
         {
             return Results.Json(new { error = "unauthorized_client", error_description = "This client is not authorized for authorization_code grant." }, statusCode: 400);
-        }
-
-        // Validate client secret for confidential clients
-        // Fail closed: only a client explicitly marked public, holding no secrets, skips
-        // authentication. Comparing == "confidential" meant a stray case or space silently
-        // disabled client authentication altogether.
-        if (!(string.Equals(app.ClientType, "public", StringComparison.OrdinalIgnoreCase) && app.Secrets.Count == 0))
-        {
-            if (string.IsNullOrEmpty(clientSecret) || !Token.VerifyClientSecret(clientSecret, app.Secrets))
-            {
-                return Results.Json(new { error = "invalid_client", error_description = "Invalid client credentials." }, statusCode: 401);
-            }
         }
 
         // Find the authorization code token
@@ -235,14 +226,27 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         // Generate tokens
-        var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+        // D8: DPoP or certificate binding, decided before anything is minted.
+        var possession = await proofOfPossession.BindAsync(httpContext, app, client.Certificate, ct);
+        if (!possession.Succeeded)
+            return Results.Json(new { error = possession.Error, error_description = possession.ErrorDescription }, statusCode: 400);
+
+        var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes,
+            codeToken.Properties, possession.Confirmation);
         // An id_token asserts an authentication event, which is what the openid scope requests.
         // Issuing one regardless meant a client that only asked for API access still received a
         // signed identity assertion it never sought.
         var idToken = GrantsOpenId(codeToken.Scopes)
             ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.Nonce, app.EffectiveIdTokenLifetimeMinutes(),
-                accessToken: accessToken, authTime: codeToken.AuthTime)
+                accessToken: accessToken, authTime: codeToken.AuthTime, properties: codeToken.Properties)
             : null;
+        if (idToken is not null)
+        {
+            // D8: sealed for a client that registered id_token encryption; never sent in the clear instead.
+            idToken = await jwe.EncryptAsync(idToken, app, app.IdTokenEncryptedResponseAlg, app.IdTokenEncryptedResponseEnc, ct);
+            if (idToken is null)
+                return Results.Json(new { error = "invalid_client", error_description = "The client asked for encrypted id_tokens and has no usable encryption key." }, statusCode: 400);
+        }
 
         // A refresh token is a long-lived credential and must be asked for. This used to be
         // minted unconditionally, so every browser client silently received a 14-day credential
@@ -283,6 +287,9 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
                 AuthTime = codeToken.AuthTime,
+                // The sign-in context travels with the refresh token, and so does a DPoP key: a
+                // public client's refresh token is bound to it (RFC 9449 §5).
+                Properties = WithBinding(codeToken.Properties, possession),
             }, ct);
         }
 
@@ -294,6 +301,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
+        await OidcGrantUsage.TouchAsync(store, codeToken.AuthorizationId, ct);
+
         httpContext.Response.Headers.CacheControl = "no-store";
         httpContext.Response.Headers.Pragma = "no-cache";
 
@@ -303,7 +312,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         var response = new Dictionary<string, object>
         {
             ["access_token"] = accessToken,
-            ["token_type"] = "Bearer",
+            ["token_type"] = possession.TokenType,
             ["expires_in"] = app.AccessTokenLifetimeMinutes * 60,
         };
 
@@ -330,6 +339,15 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// it, for as long as the refresh token lived.
     /// </para>
     /// </summary>
+    /// <summary>The token's recorded context, plus the DPoP key it is bound to.</summary>
+    private static Dictionary<string, string> WithBinding(IReadOnlyDictionary<string, string> properties, OidcPossession possession)
+    {
+        var copy = new Dictionary<string, string>(properties);
+        if (possession.Confirmation?.GetValueOrDefault("jkt") is string jkt)
+            copy["jkt"] = jkt;
+        return copy;
+    }
+
     private static List<string> GrantedNames(List<OidcScopeDefinition> granted)
         => [.. granted.Select(s => s.Name)];
 
@@ -358,11 +376,9 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
     private async Task<IResult> HandleRefreshTokenGrant(OidcTokenRequest request, CancellationToken ct)
     {
-        var clientId = request.ClientId;
-        var clientSecret = request.ClientSecret;
         var refreshToken = request.RefreshToken;
 
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(refreshToken))
+        if (string.IsNullOrEmpty(refreshToken))
         {
             return Results.Json(new { error = "invalid_request" }, statusCode: 400);
         }
@@ -372,11 +388,10 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Rotation spends the presented token, so it races exactly as code redemption does.
         session.Advanced.UseOptimisticConcurrency = true;
 
-        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
-        if (app == null || !app.Enabled)
-        {
-            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
-        }
+        var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
+        if (!client.Succeeded)
+            return client.ToResult(httpContext);
+        var app = client.Application!;
 
         // The other two grants have always checked this; this one did not, so a client never
         // registered for refresh could still rotate one indefinitely.
@@ -385,16 +400,6 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             return Results.Json(new { error = "unauthorized_client", error_description = "This client is not authorized for refresh_token grant." }, statusCode: 400);
         }
 
-        // Fail closed: only a client explicitly marked public, holding no secrets, skips
-        // authentication. Comparing == "confidential" meant a stray case or space silently
-        // disabled client authentication altogether.
-        if (!(string.Equals(app.ClientType, "public", StringComparison.OrdinalIgnoreCase) && app.Secrets.Count == 0))
-        {
-            if (string.IsNullOrEmpty(clientSecret) || !Token.VerifyClientSecret(clientSecret, app.Secrets))
-            {
-                return Results.Json(new { error = "invalid_client" }, statusCode: 401);
-            }
-        }
 
         // Find refresh token
         // Point-load for the same reason as the authorization-code path above.
@@ -479,11 +484,27 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         // Generate new tokens
-        var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+        // D8: the refresh is bound like the original issuance, and a DPoP-bound refresh token
+        // only rotates with a proof from the same key.
+        var possession = await proofOfPossession.BindAsync(httpContext, app, client.Certificate, ct);
+        if (!possession.Succeeded)
+            return Results.Json(new { error = possession.Error, error_description = possession.ErrorDescription }, statusCode: 400);
+        if (refreshTokenDoc.Properties.GetValueOrDefault("jkt") is { } boundKey
+            && !string.Equals(possession.Confirmation?.GetValueOrDefault("jkt") as string, boundKey, StringComparison.Ordinal))
+            return Results.Json(new { error = "invalid_dpop_proof", error_description = "This refresh token is bound to another key." }, statusCode: 400);
+
+        var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes,
+            refreshTokenDoc.Properties, possession.Confirmation);
         var newIdToken = GrantsOpenId(grantedScopeNames)
             ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, null, app.EffectiveIdTokenLifetimeMinutes(),
-                accessToken: newAccessToken, authTime: refreshTokenDoc.AuthTime)
+                accessToken: newAccessToken, authTime: refreshTokenDoc.AuthTime, properties: refreshTokenDoc.Properties)
             : null;
+        if (newIdToken is not null)
+        {
+            newIdToken = await jwe.EncryptAsync(newIdToken, app, app.IdTokenEncryptedResponseAlg, app.IdTokenEncryptedResponseEnc, ct);
+            if (newIdToken is null)
+                return Results.Json(new { error = "invalid_client", error_description = "The client asked for encrypted id_tokens and has no usable encryption key." }, statusCode: 400);
+        }
         var newRefreshTokenValue = tokenGenerator.GenerateRefreshToken();
 
         // Revoke old refresh token
@@ -524,6 +545,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
             // A refresh is not a re-authentication: auth_time stays the original sign-in.
             AuthTime = refreshTokenDoc.AuthTime,
+            Properties = WithBinding(refreshTokenDoc.Properties, possession),
         };
 
         await session.StoreExpiringAsync(newAccessTokenDoc, ct);
@@ -536,13 +558,15 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
+        await OidcGrantUsage.TouchAsync(store, refreshTokenDoc.AuthorizationId, ct);
+
         httpContext.Response.Headers.CacheControl = "no-store";
         httpContext.Response.Headers.Pragma = "no-cache";
 
         var response = new Dictionary<string, object>
         {
             ["access_token"] = newAccessToken,
-            ["token_type"] = "Bearer",
+            ["token_type"] = possession.TokenType,
             ["expires_in"] = app.AccessTokenLifetimeMinutes * 60,
             ["refresh_token"] = newRefreshTokenValue,
         };
@@ -562,33 +586,23 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
     private async Task<IResult> HandleClientCredentialsGrant(OidcTokenRequest request, CancellationToken ct)
     {
-        var clientId = request.ClientId;
-        var clientSecret = request.ClientSecret;
         var scope = request.Scope;
-
-        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
-        {
-            return Results.Json(new { error = "invalid_request", error_description = "client_id and client_secret are required." }, statusCode: 400);
-        }
 
         using var session = store.OpenAsyncSession();
 
-        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
-        if (app == null || !app.Enabled)
-        {
-            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
-        }
+        var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
+        if (!client.Succeeded)
+            return client.ToResult(httpContext);
+        var app = client.Application!;
+
+        // A machine client authenticates itself; a public client has nothing to authenticate with.
+        if (client.Method == OidcClientAuthMethods.None)
+            return Results.Json(new { error = "unauthorized_client", error_description = "A public client cannot use client_credentials." }, statusCode: 400);
 
         // Check grant type is allowed
         if (!app.AllowedGrantTypes.Contains("client_credentials", StringComparer.OrdinalIgnoreCase))
         {
             return Results.Json(new { error = "unauthorized_client", error_description = "This client is not authorized for client_credentials grant." }, statusCode: 400);
-        }
-
-        // Validate client secret
-        if (!Token.VerifyClientSecret(clientSecret, app.Secrets))
-        {
-            return Results.Json(new { error = "invalid_client", error_description = "Invalid client credentials." }, statusCode: 401);
         }
 
         // Parse and validate requested scopes
@@ -611,6 +625,9 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         }
 
         // Load scope definitions from DB
+        // D4: a machine client has no team to stand in for; a scope pending its owner's approval, or
+        // rejected, is not issued to it.
+        requestedScopes = OidcApplicationAccess.AvailableScopes(app, userId: "", requestedScopes);
         var grantedScopes = await Token.LoadScopesAsync(session, requestedScopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
 
@@ -633,7 +650,12 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         // Generate access token only (no user, no ID token, no refresh token)
-        var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(null, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
+        var possession = await proofOfPossession.BindAsync(httpContext, app, client.Certificate, ct);
+        if (!possession.Succeeded)
+            return Results.Json(new { error = possession.Error, error_description = possession.ErrorDescription }, statusCode: 400);
+
+        var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(null, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes,
+            confirmation: possession.Confirmation);
 
         // Store access token
         var accessTokenDoc = new OidcToken
@@ -659,7 +681,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         return Results.Json(new
         {
             access_token = accessToken,
-            token_type = "Bearer",
+            token_type = possession.TokenType,
             expires_in = app.AccessTokenLifetimeMinutes * 60,
             scope = string.Join(' ', grantedScopeNames),
         });

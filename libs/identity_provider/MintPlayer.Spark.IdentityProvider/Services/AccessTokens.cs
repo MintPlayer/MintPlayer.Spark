@@ -104,5 +104,18 @@ internal sealed record ResolvedAccessToken(
     /// </summary>
     public IReadOnlyList<string> Audiences => Jwt.Audiences?.ToList() ?? [];
 
+    /// <summary>The DPoP key thumbprint the token is bound to (<c>cnf.jkt</c>, RFC 9449), or null.</summary>
+    public string? ConfirmationJkt => Confirmation("jkt");
+
+    /// <summary>The certificate thumbprint the token is bound to (<c>cnf.x5t#S256</c>, RFC 8705), or null.</summary>
+    public string? ConfirmationX5t => Confirmation("x5t#S256");
+
+    private string? Confirmation(string member)
+        => Jwt.TryGetPayloadValue<System.Text.Json.JsonElement>("cnf", out var cnf)
+           && cnf.ValueKind == System.Text.Json.JsonValueKind.Object
+           && cnf.TryGetProperty(member, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
+            ? value.GetString()
+            : null;
+
     private string? Claim(string type) => Claims.TryGetValue(type, out var value) ? value?.ToString() : null;
 }

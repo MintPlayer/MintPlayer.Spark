@@ -76,6 +76,16 @@ public static class SparkIdentityProviderExtensions
         builder.Services.AddScoped<OidcPortalAccess>();
         builder.Services.AddScoped<ConnectText>();
         builder.Services.AddSingleton<OidcGrantWithdrawal>();
+
+        // Protocol (PRD D8): client authentication and the clients' own keys.
+        builder.Services.AddHttpClient();
+        builder.Services.AddMemoryCache();
+        builder.Services.AddSingleton<OidcClientKeys>();
+        builder.Services.AddSingleton<OidcClientAuthenticator>();
+        builder.Services.AddSingleton<OidcRequestObjects>();
+        builder.Services.AddSingleton<OidcProofOfPossession>();
+        builder.Services.AddSingleton<OidcJwe>();
+        builder.Services.AddScoped<OidcAuthorizeHandler>();
         builder.AddGroupMembershipProvider<OidcDeveloperMembership>();
 
         // Constructed rather than resolved, because the CORS policy's predicate below has no service

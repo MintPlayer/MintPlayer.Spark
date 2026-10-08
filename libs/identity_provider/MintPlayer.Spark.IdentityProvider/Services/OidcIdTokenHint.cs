@@ -48,4 +48,20 @@ internal static class OidcIdTokenHint
         var audiences = jwt.Audiences.ToArray();
         return audiences.Length == 1 && !string.IsNullOrEmpty(audiences[0]) ? audiences[0] : null;
     }
+
+    /// <summary>The <c>sub</c> of an id_token this provider issued, or null when it is not one (signature, issuer).</summary>
+    public static async Task<string?> ResolveSubjectAsync(OidcSigningKeyService keys, string idTokenHint, string issuer)
+    {
+        var validation = await new JsonWebTokenHandler().ValidateTokenAsync(idTokenHint, new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = issuer,
+            ValidateAudience = false,
+            // An expired id_token is still a valid hint at who the client expects (OIDC Core §3.1.2.1).
+            ValidateLifetime = false,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = keys.GetSigningKey(),
+        });
+        return validation.IsValid && validation.SecurityToken is JsonWebToken jwt ? jwt.Subject : null;
+    }
 }

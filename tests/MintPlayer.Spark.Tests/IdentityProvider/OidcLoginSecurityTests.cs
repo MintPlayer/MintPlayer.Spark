@@ -172,8 +172,9 @@ public class OidcLoginSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
     public void The_sign_in_errors_name_the_user_name_the_field_also_accepts()
     {
         // The identifier field takes an email or a user name (D4); the messages said "email" only.
-        ConnectPage.ErrorMessage("invalid_credentials").Should().Be("Invalid email/user name or password.");
-        ConnectPage.ErrorMessage("missing_fields").Should().Contain("user name");
+        // The texts are translations now (I6, identityProvider.connect.signInError*); their en values name both.
+        ConnectPage.ErrorKey("invalid_credentials").Should().Be("signInErrorInvalidCredentials");
+        ConnectPage.ErrorKey("missing_fields").Should().Be("signInErrorMissingFields");
     }
 
     /// <summary>L-O24 — the error box shows our words, not the caller's.</summary>

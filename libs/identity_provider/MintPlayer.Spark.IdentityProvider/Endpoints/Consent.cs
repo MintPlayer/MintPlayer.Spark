@@ -41,7 +41,7 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
         var requestId = RequestId;
 
         if (string.IsNullOrEmpty(requestId))
-            return ConnectResults.Text(400, "Missing parameters.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorMissingParameters");
 
         var userId = await context.GetInteractiveUserIdAsync();
         if (string.IsNullOrEmpty(userId))
@@ -54,11 +54,12 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
 
         var request = await OidcAuthorizationFlow.LoadPendingRequestAsync(session, requestId, userId, ct);
         if (request == null)
-            return ConnectResults.Text(400, "This authorization request is no longer valid. Please start again.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorRequestExpired");
+        text.UseUiLocales(request.Properties.GetValueOrDefault("ui_locales"));
 
         var app = await session.LoadAsync<OidcApplication>(request.ApplicationId, ct);
         if (app == null || !app.Enabled)
-            return ConnectResults.Text(400, "Unknown client.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorUnknownClient");
 
         // Load scope definitions
         var requestedScopes = request.Scopes;
@@ -71,7 +72,6 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
             : [];
         var account = await context.GetInteractiveUserNameAsync() ?? "";
         var redirectHost = Uri.TryCreate(request.RedirectUri, UriKind.Absolute, out var redirect) ? redirect.Host : "";
-        text.UseUiLocales(request.Properties.GetValueOrDefault("ui_locales"));
 
         var sb = new StringBuilder();
         ConnectPageTheme.AppendDocumentStart(sb, context, text["consentTitle", app.DisplayName], text.Culture, options.Branding);
@@ -196,6 +196,9 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcAudit audit;
+    [Inject] private readonly OidcIssuer oidcIssuer;
+    [Inject] private readonly ConnectText text;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
 
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8); the endpoint is created per request.</summary>
     private HttpContext context = null!;
@@ -219,17 +222,18 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
         var requestId = submission.RequestId;
 
         if (string.IsNullOrEmpty(requestId))
-            return ConnectResults.Text(400, "Missing parameters.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorMissingParameters");
 
         var userId = await context.GetInteractiveUserIdAsync();
         if (string.IsNullOrEmpty(userId))
-            return ConnectResults.Text(401, "Not authenticated.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status401Unauthorized, "errorNotAuthenticated");
 
         using var session = store.OpenAsyncSession();
 
         var request = await OidcAuthorizationFlow.LoadPendingRequestAsync(session, requestId, userId, ct);
         if (request == null)
-            return ConnectResults.Text(400, "This authorization request is no longer valid. Please start again.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorRequestExpired");
+        text.UseUiLocales(request.Properties.GetValueOrDefault("ui_locales"));
 
         // The redirect target comes from the stored request, which /connect/authorize already
         // matched against the application's registered URIs — so even the denial path cannot
@@ -239,15 +243,14 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
             request.Status = "denied";
             await session.SaveChangesAsync(ct);
 
-            return Results.Redirect(RedirectUrl.With(request.RedirectUri!,
-                ("error", "access_denied"),
-                ("error_description", "The user denied the request."),
-                ("state", request.State)));
+            // Delivered the way the client asked (response_mode), with iss (RFC 9207).
+            return OidcAuthorizationResponse.Error(request.RedirectUri!, request.Properties.GetValueOrDefault("response_mode"),
+                oidcIssuer.Resolve(context.Request), request.State, "access_denied", "The user denied the request.");
         }
 
         var app = await session.LoadAsync<OidcApplication>(request.ApplicationId, ct);
         if (app == null || !app.Enabled)
-            return ConnectResults.Text(400, "Unknown client.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorUnknownClient");
 
         // The checkboxes can only narrow what the request already carries. They are attacker-
         // controlled markup, so a crafted POST must not be able to grant a scope the client was
@@ -271,13 +274,13 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
         }
 
         if (grantedScopes.Count == 0)
-            return ConnectResults.Text(400, "No permitted scopes were granted.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorNoScopes");
 
         request.Scopes = grantedScopes;
         request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, userId, grantedScopes, submission.Remember, ct);
         await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, userId, app.Id, userId, context.Connection.RemoteIpAddress?.ToString(),
             new Dictionary<string, string> { ["scopes"] = string.Join(' ', grantedScopes), ["remembered"] = submission.Remember.ToString() }, ct);
 
-        return Results.Redirect(await OidcAuthorizationFlow.IssueCodeAsync(session, request, ct));
+        return await OidcAuthorizationFlow.IssueCodeResponseAsync(session, request, oidcIssuer.Resolve(context.Request), ct);
     }
 }

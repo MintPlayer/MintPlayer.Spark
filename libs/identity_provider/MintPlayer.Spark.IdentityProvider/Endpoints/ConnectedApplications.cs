@@ -19,14 +19,15 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 // Consent was recorded from the first commit and consulted nowhere, and there was no way to
 // withdraw it: RFC 7009's /connect/revoke is client-facing — it demands client credentials and
 // refuses a token not issued to the authenticating client — so a user could never call it. These
-// two endpoints are the missing half. Withdrawal here is what Token.GrantPermitsIssuanceAsync and
+// endpoints are the missing half. Withdrawal here is what Token.GrantPermitsIssuanceAsync and
 // AccessTokens.ResolveAsync read.
 //
-// Withdrawal is all-or-nothing per application. RFC 6749 §6 requires a rotated refresh token's
-// scope to be identical to the presented one's, which makes "narrow the grant and keep
-// refreshing" self-contradictory; and every major provider takes the same all-or-nothing line for
-// the user-facing action. The grant is marked revoked rather than deleted, so the audit trail
-// survives and the issuance checks have a state to read.
+// Withdrawal was all-or-nothing per application; superseded by D6/Q5 (I6): a single scope can be
+// withdrawn too. That does not contradict RFC 6749 §6 (a rotated refresh token's scope must equal the
+// presented one's), because narrowing is not "narrow and keep refreshing": OidcGrantWithdrawal sets
+// LastRevokedAt, so every token issued before it dies and the client re-authorizes with what is left.
+// Narrowing to nothing but openid is a withdrawal of the whole grant. The grant is marked revoked
+// rather than deleted, so the audit trail survives and the issuance checks have a state to read.
 
 /// <summary>Lists the applications the signed-in user has authorized (<c>GET /connect/applications</c>).</summary>
 [MemberOf<OidcConnectGroup>]
@@ -40,6 +41,8 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ConnectText text;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
 
     public override async Task<IResult> HandleAsync(CancellationToken ct)
     {
@@ -61,8 +64,9 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
         // would leave it un-withdrawable through the only surface that can withdraw it.
         var apps = await session.LoadAsync<OidcApplication>(
             grants.Select(g => g.ApplicationId).Distinct(), ct);
+        var scopeDefinitions = await OidcScopeCatalog.LoadAsync(session, grants.SelectMany(g => g.GrantedScopes), ct);
 
-        return ConnectResults.Html(RenderPage(context, grants, apps, Notice(Status)));
+        return ConnectResults.Html(RenderPage(context, grants, apps, scopeDefinitions, NoticeKey(Status)));
     }
 
     private static async Task<List<OidcGrant>> LoadGrantsAsync(
@@ -78,10 +82,12 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
         return [.. all.Where(a => a.Status == "valid").OrderBy(a => a.ApplicationId, StringComparer.Ordinal)];
     }
 
-    private static string? Notice(string? status) => status switch
+    /// <summary>The text key for a withdrawal outcome; any other value shows nothing.</summary>
+    private static string? NoticeKey(string? status) => status switch
     {
-        "revoked" => "Access removed.",
-        "failed" => "That did not go through — the application was being re-authorized at the same time. Please try again.",
+        "revoked" => "applicationsRevoked",
+        "scope_revoked" => "applicationsScopeRevoked",
+        "failed" => "applicationsFailed",
         _ => null,
     };
 
@@ -89,26 +95,31 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
         HttpContext context,
         List<OidcGrant> grants,
         Dictionary<string, OidcApplication> apps,
-        string? notice)
+        List<OidcScopeDefinition> scopeDefinitions,
+        string? noticeKey)
     {
         var sb = new StringBuilder();
-        ConnectPageTheme.AppendDocumentStart(sb, context, "Connected applications");
+        ConnectPageTheme.AppendDocumentStart(sb, context, text["applicationsTitle"], text.Culture, options.Branding);
         sb.Append("body{max-width:560px;margin:60px auto;padding:0 20px}");
         sb.Append(".app{padding:16px 0;border-bottom:1px solid var(--idp-border);display:flex;align-items:flex-start;gap:16px}");
         sb.Append(".app-body{flex:1}.app-name{font-weight:600}");
-        sb.Append(".scopes{color:var(--idp-muted);font-size:13px;margin-top:4px}");
+        sb.Append(".scopes{list-style:none;padding:0;margin:6px 0 0;color:var(--idp-muted);font-size:13px}");
+        sb.Append(".scopes li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 0}");
+        sb.Append(".scopes form{margin:0}");
         sb.Append(".btn{padding:8px 16px;border:none;border-radius:6px;font-size:14px;cursor:pointer;background:var(--idp-danger);color:#fff}");
+        sb.Append(".btn-scope{background:none;border:1px solid var(--idp-border);border-radius:4px;color:var(--idp-link);font-size:12px;padding:2px 8px;cursor:pointer}");
         sb.Append(".notice{background:var(--idp-notice-bg);color:var(--idp-notice-color);padding:10px 14px;border-radius:6px;margin-bottom:20px}");
         sb.Append(".empty{color:var(--idp-muted)}.footnote{color:var(--idp-muted);font-size:13px;margin-top:24px}");
         sb.Append("</style></head><body>");
-        sb.Append("<h2>Connected applications</h2>");
+        ConnectPageTheme.AppendBrand(sb, options.Branding);
+        sb.Append("<h2>").Append(Encode(text["applicationsTitle"])).Append("</h2>");
 
-        if (notice != null)
-            sb.Append("<div class=\"notice\">").Append(Encode(notice)).Append("</div>");
+        if (noticeKey != null)
+            sb.Append("<div class=\"notice\">").Append(Encode(text[noticeKey])).Append("</div>");
 
         if (grants.Count == 0)
         {
-            sb.Append("<p class=\"empty\">No applications have access to your account.</p>");
+            sb.Append("<p class=\"empty\">").Append(Encode(text["applicationsEmpty"])).Append("</p>");
         }
         else
         {
@@ -124,16 +135,37 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
 
                 if (grant.GrantedScopes.Count > 0)
                 {
-                    sb.Append("<div class=\"scopes\">")
-                      .Append(Encode(string.Join(", ", grant.GrantedScopes)))
-                      .Append("</div>");
+                    sb.Append("<ul class=\"scopes\">");
+                    foreach (var scope in grant.GrantedScopes)
+                    {
+                        var def = scopeDefinitions.FirstOrDefault(d => string.Equals(d.Name, scope, StringComparison.OrdinalIgnoreCase));
+                        var displayName = text.Of(def?.DisplayName, scope);
+                        sb.Append("<li><span>").Append(Encode(displayName)).Append("</span>");
+
+                        // openid is what the grant is; taking it away alone is "Remove access" below.
+                        // Every other scope gets its own small form: the whole-grant form's fields plus
+                        // the scope, with its own antiforgery token.
+                        if (!string.Equals(scope, "openid", StringComparison.OrdinalIgnoreCase))
+                        {
+                            sb.Append("<form method=\"post\" action=\"/connect/applications/revoke-scope\">");
+                            AppendAntiforgery(sb, antiforgery, context);
+                            AppendHidden(sb, "application_id", grant.ApplicationId);
+                            AppendHidden(sb, "scope", scope);
+                            sb.Append("<button type=\"submit\" class=\"btn-scope\" aria-label=\"")
+                              .Append(Encode(text["applicationsRemoveScopeLabel", displayName])).Append("\">")
+                              .Append(Encode(text["applicationsRemoveScope"])).Append("</button>");
+                            sb.Append("</form>");
+                        }
+                        sb.Append("</li>");
+                    }
+                    sb.Append("</ul>");
                 }
 
                 sb.Append("</div>");
                 sb.Append("<form method=\"post\" action=\"/connect/applications/revoke\">");
                 AppendAntiforgery(sb, antiforgery, context);
                 AppendHidden(sb, "application_id", grant.ApplicationId);
-                sb.Append("<button type=\"submit\" class=\"btn\">Remove access</button>");
+                sb.Append("<button type=\"submit\" class=\"btn\">").Append(Encode(text["applicationsRemove"])).Append("</button>");
                 sb.Append("</form></div>");
             }
 
@@ -141,8 +173,7 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
             // resource server may check without ever asking us again, so we cannot recall one
             // already in flight — only stop new ones being issued. A page that implied otherwise
             // would be worse than no page.
-            sb.Append("<p class=\"footnote\">Removing access stops an application from getting new ")
-              .Append("access to your account. Access it already holds may keep working for up to an hour.</p>");
+            sb.Append("<p class=\"footnote\">").Append(Encode(text["applicationsFootnote"])).Append("</p>");
         }
 
         sb.Append("</body></html>");
@@ -165,6 +196,8 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
     public static string Path => "/applications/revoke";
 
     [Inject] private readonly OidcGrantWithdrawal withdrawal;
+    [Inject] private readonly ConnectText text;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
 
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8); the endpoint is created per request.</summary>
     private HttpContext context = null!;
@@ -183,7 +216,7 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
     {
         var userId = await context.GetInteractiveUserIdAsync();
         if (string.IsNullOrEmpty(userId))
-            return ConnectResults.Text(401, "Not authenticated.");
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status401Unauthorized, "errorNotAuthenticated");
 
         var applicationId = request.ApplicationId;
 
@@ -200,6 +233,62 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
         // again. Saying so only when the write actually landed.
         return Results.Redirect(withdrawn
             ? "/connect/applications?status=revoked"
+            : "/connect/applications?status=failed");
+    }
+}
+
+/// <summary>The per-scope withdrawal form as posted: the application, and the one scope that goes.</summary>
+internal sealed record OidcRevokeScopeRequest(string? ApplicationId, string? Scope);
+
+/// <summary>
+/// Withdraws one scope of one application's authorization (<c>POST /connect/applications/revoke-scope</c>,
+/// PRD D6/Q5).
+/// </summary>
+/// <remarks>
+/// The same shape and guarantees as <see cref="OidcRevokeApplication"/>: an antiforgery-stamped form read
+/// by <see cref="BindRequestAsync"/>; the grant id derived from the session's user, so no field can reach
+/// someone else's grant; success reported only when the write landed. The scope is only ever removed from
+/// the caller's own grant, so a scope it does not hold is a no-op; withdrawing the last scope besides
+/// <c>openid</c> withdraws the whole grant (<see cref="OidcGrantWithdrawal"/>).
+/// </remarks>
+[MemberOf<OidcConnectGroup>]
+internal sealed partial class OidcRevokeApplicationScope : IPostEndpoint<OidcRevokeScopeRequest>
+{
+    public static string Path => "/applications/revoke-scope";
+
+    [Inject] private readonly OidcGrantWithdrawal withdrawal;
+    [Inject] private readonly ConnectText text;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+
+    /// <summary>Kept from <see cref="BindRequestAsync"/> (D8); the endpoint is created per request.</summary>
+    private HttpContext context = null!;
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+    protected override async ValueTask<OidcRevokeScopeRequest?> BindRequestAsync(HttpContext context)
+    {
+        this.context = context;
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return new OidcRevokeScopeRequest(form["application_id"].FirstOrDefault(), form["scope"].FirstOrDefault());
+    }
+
+    public override async Task<IResult> HandleAsync(OidcRevokeScopeRequest request, CancellationToken ct)
+    {
+        var userId = await context.GetInteractiveUserIdAsync();
+        if (string.IsNullOrEmpty(userId))
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status401Unauthorized, "errorNotAuthenticated");
+
+        var applicationId = request.ApplicationId;
+        var scope = request.Scope;
+
+        // As the whole-grant form: a form that names nothing withdraws nothing, and reports success.
+        var withdrawn = string.IsNullOrEmpty(applicationId) || string.IsNullOrEmpty(scope)
+            || await withdrawal.WithdrawAsync(userId, applicationId, [scope], context.Connection.RemoteIpAddress?.ToString(), ct);
+
+        // Only when the write landed, for the reason OidcRevokeApplication gives.
+        return Results.Redirect(withdrawn
+            ? "/connect/applications?status=scope_revoked"
             : "/connect/applications?status=failed");
     }
 }

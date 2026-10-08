@@ -53,6 +53,7 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcSigningKeyService signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
+    [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
 
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8) for the issuer; the endpoint is created per request.</summary>
     private HttpContext httpContext = null!;
@@ -71,22 +72,19 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
         var token = request.Token;
         // token_type_hint is accepted and ignored: both token types are searched regardless
         // (see below), so the hint can only ever be an optimisation we decline to take.
-        var clientId = request.ClientId;
-        var clientSecret = request.ClientSecret;
 
-        if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+        if (string.IsNullOrEmpty(token))
         {
-            return Results.Json(new { error = "invalid_request", error_description = "token, client_id, and client_secret are required." }, statusCode: 400);
+            return Results.Json(new { error = "invalid_request", error_description = "token is required." }, statusCode: 400);
         }
 
         using var session = store.OpenAsyncSession();
 
-        // Authenticate client
-        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
-        if (app == null || !app.Enabled || !Token.VerifyClientSecret(clientSecret, app.Secrets))
-        {
-            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
-        }
+        // Authenticate client (D8). A public client may revoke its own tokens (RFC 7009 §2.1).
+        var client = await clientAuthenticator.AuthenticateAsync(httpContext, httpContext.Request.Form, session, ct);
+        if (!client.Succeeded)
+            return client.ToResult(httpContext);
+        var app = client.Application!;
 
         // Point-load by the hash of the presented value. Revoking through an
         // eventually-consistent index could miss a token issued moments earlier and report

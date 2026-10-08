@@ -140,7 +140,33 @@ internal static class OidcAuthorizationFlow
     /// that delivers it back to the client. Everything the code carries comes from
     /// <paramref name="request"/>, never from the current HTTP request.
     /// </summary>
+    /// <summary>
+    /// <see cref="IssueCodeAsync"/>, delivered the way the client asked (<c>response_mode</c>: query or
+    /// form_post) and with <c>iss</c> (RFC 9207).
+    /// </summary>
+    internal static async Task<IResult> IssueCodeResponseAsync(
+        IAsyncDocumentSession session,
+        OidcToken request,
+        string issuer,
+        CancellationToken ct)
+    {
+        var (code, _) = await MintCodeAsync(session, request, ct);
+        return OidcAuthorizationResponse.Deliver(request.RedirectUri!, request.Properties.GetValueOrDefault("response_mode"), issuer,
+            ("code", code), ("state", request.State));
+    }
+
     internal static async Task<string> IssueCodeAsync(
+        IAsyncDocumentSession session,
+        OidcToken request,
+        CancellationToken ct)
+    {
+        var (code, _) = await MintCodeAsync(session, request, ct);
+        return RedirectUrl.With(request.RedirectUri!,
+            ("code", code),
+            ("state", request.State));
+    }
+
+    private static async Task<(string Code, OidcToken Token)> MintCodeAsync(
         IAsyncDocumentSession session,
         OidcToken request,
         CancellationToken ct)
@@ -164,6 +190,8 @@ internal static class OidcAuthorizationFlow
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(5), // 5 minute lifetime
             Nonce = request.Nonce,
+            // amr, acr, sid, claims, resource: what the code's tokens are built from (D8).
+            Properties = new Dictionary<string, string>(request.Properties),
             AuthTime = request.AuthTime,
         };
 
@@ -174,9 +202,7 @@ internal static class OidcAuthorizationFlow
         await session.StoreExpiringAsync(token, ct);
         await session.SaveChangesAsync(ct);
 
-        return RedirectUrl.With(request.RedirectUri!,
-            ("code", code),
-            ("state", request.State));
+        return (code, token);
     }
 
     /// <summary>

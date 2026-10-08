@@ -11,6 +11,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
+using MintPlayer.Spark.IdentityProvider.Services;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -45,6 +46,7 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
     [QueryParam("returnUrl")] public string? ReturnUrl { get; set; }
     [QueryParam("error")] public string? Error { get; set; }
     [QueryParam("sparkExternalLogin")] public string? ExternalLoginError { get; set; }
+    [QueryParam("login_hint")] public string? LoginHint { get; set; }
 
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly IOptions<SparkAuthenticationOptions> authenticationOptions;
@@ -53,6 +55,8 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
     [Inject] private readonly SparkAuthenticationOptions sparkAuthenticationOptions;
     [Inject] private readonly IAuthenticationSchemeProvider schemes;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ConnectText text;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
 
     public override async Task<IResult> HandleAsync(CancellationToken ct)
     {
@@ -65,9 +69,11 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
         var error = Error;
         var showPasswordForm = sparkAuthenticationOptions.LocalCredentials != SparkLocalCredentials.Disabled;
         var externalSchemes = await ExternalAuthenticationSchemes.GetInteractiveAsync(schemes);
+        // D7: the pending authorize request's ui_locales, when that is what this sign-in resumes.
+        text.UseUiLocalesOfReturnUrl(returnUrl);
 
         var sb = new StringBuilder();
-        ConnectPageTheme.AppendDocumentStart(sb, httpContext, "Login");
+        ConnectPageTheme.AppendDocumentStart(sb, httpContext, text["loginTitle"], text.Culture, options.Branding);
         sb.Append("body{max-width:400px;margin:80px auto;padding:0 20px}");
         sb.Append("h2{margin-bottom:24px}");
         sb.Append(".form-group{margin-bottom:16px}");
@@ -84,26 +90,27 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
         sb.Append(".separator{display:flex;align-items:center;gap:8px;margin:20px 0 4px;color:var(--idp-muted);font-size:13px}");
         sb.Append(".separator::before,.separator::after{content:\"\";flex:1;border-top:1px solid var(--idp-border)}");
         sb.Append("</style></head><body>");
-        sb.Append("<h2>Login</h2>");
+        ConnectPageTheme.AppendBrand(sb, options.Branding);
+        sb.Append("<h2>").Append(Encode(text["loginHeading"])).Append("</h2>");
 
-        if (!string.IsNullOrEmpty(error))
+        if (ConnectPage.ErrorKey(error) is { } errorKey)
         {
-            sb.Append("<div class=\"error\">").Append(Encode(ConnectPage.ErrorMessage(error)!)).Append("</div>");
+            sb.Append("<div class=\"error\">").Append(Encode(text[errorKey])).Append("</div>");
         }
 
         // A refused external sign-in, as a fixed message per code (never the query text itself, for
-        // the reason ConnectPage.ErrorMessage gives). Two codes are not failures but "check your mail".
-        if (ConnectPage.ExternalLoginMessage(ExternalLoginError) is { } externalMessage)
+        // the reason ConnectPage.ErrorKey gives). Two codes are not failures but "check your mail".
+        if (ConnectPage.ExternalLoginKey(ExternalLoginError) is { } externalKey)
         {
             var cssClass = ConnectPage.IsExternalLoginNotice(ExternalLoginError) ? "notice" : "error";
-            sb.Append("<div class=\"").Append(cssClass).Append("\" role=\"alert\">").Append(Encode(externalMessage)).Append("</div>");
+            sb.Append("<div class=\"").Append(cssClass).Append("\" role=\"alert\">").Append(Encode(text[externalKey])).Append("</div>");
         }
 
         if (!showPasswordForm && externalSchemes.Count == 0)
         {
             // Not a 404: the route exists, the host simply offers nothing to sign in with. Saying so is
             // what lets an operator find the misconfiguration.
-            sb.Append("<div class=\"error\" role=\"alert\">No sign-in method is configured for this identity provider.</div>");
+            sb.Append("<div class=\"error\" role=\"alert\">").Append(Encode(text["loginNoMethod"])).Append("</div>");
             sb.Append("</body></html>");
             return ConnectResults.Html(sb.ToString());
         }
@@ -114,7 +121,7 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
         if (externalSchemes.Count > 0)
         {
             if (showPasswordForm)
-                sb.Append("<div class=\"separator\">or</div>");
+                sb.Append("<div class=\"separator\">").Append(Encode(text["loginOr"])).Append("</div>");
 
             // Errors land back here, with the same pending authorization to resume.
             var errorUrl = QueryHelpers.AddQueryString("/connect/login", "returnUrl", returnUrl);
@@ -128,7 +135,7 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
                 });
 
                 sb.Append("<a class=\"btn btn-external\" href=\"").Append(Encode(href)).Append("\">")
-                  .Append("Sign in with ").Append(Encode(scheme.DisplayName ?? scheme.Name)).Append("</a>");
+                  .Append(Encode(text["loginWithProvider", scheme.DisplayName ?? scheme.Name])).Append("</a>");
             }
         }
 
@@ -144,29 +151,34 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
         sb.Append("<div class=\"form-group\">");
         // Labelled from SparkAuthenticationOptions.SignInIdentifiers, which the POST's resolver
         // (SparkSignInManager) enforces; the field name stays "identifier" whatever it accepts.
-        var (label, type) = IdentifierField(authenticationOptions.Value.SignInIdentifiers);
-        sb.Append("<label for=\"identifier\">").Append(label).Append("</label>");
+        var (labelKey, type) = IdentifierField(authenticationOptions.Value.SignInIdentifiers);
+        sb.Append("<label for=\"identifier\">").Append(Encode(text[labelKey])).Append("</label>");
         sb.Append("<input type=\"").Append(type).Append("\" id=\"identifier\" name=\"identifier\" autocomplete=\"")
-            .Append(type == "email" ? "email" : "username").Append("\" required autofocus />");
+            .Append(type == "email" ? "email" : "username").Append('"');
+        // OIDC Core §3.1.2.1: login_hint pre-fills the identifier; a hint, never trusted for anything.
+        if (!string.IsNullOrEmpty(LoginHint))
+            sb.Append(" value=\"").Append(Encode(LoginHint)).Append('"');
+        sb.Append(" required autofocus />");
         sb.Append("</div>");
         sb.Append("<div class=\"form-group\">");
-        sb.Append("<label for=\"password\">Password</label>");
+        sb.Append("<label for=\"password\">").Append(Encode(text["loginPassword"])).Append("</label>");
         sb.Append("<input type=\"password\" id=\"password\" name=\"password\" required />");
         sb.Append("</div>");
         sb.Append("<div class=\"form-group\">");
-        sb.Append("<label><input type=\"checkbox\" name=\"rememberMe\" value=\"true\" /> Remember me</label>");
+        sb.Append("<label><input type=\"checkbox\" name=\"rememberMe\" value=\"true\" /> ").Append(Encode(text["loginRememberMe"])).Append("</label>");
         sb.Append("</div>");
-        sb.Append("<button type=\"submit\" class=\"btn btn-primary\">Login</button>");
+        sb.Append("<button type=\"submit\" class=\"btn btn-primary\">").Append(Encode(text["loginSubmit"])).Append("</button>");
         sb.Append("</form>");
     }
 
-    private static (string Label, string Type) IdentifierField(SparkSignInIdentifiers allowed)
+    /// <summary>The identifier field's label (a text key) and input type.</summary>
+    private static (string LabelKey, string Type) IdentifierField(SparkSignInIdentifiers allowed)
     {
         return (allowed.HasFlag(SparkSignInIdentifiers.Email), allowed.HasFlag(SparkSignInIdentifiers.UserName)) switch
         {
-            (true, false) => ("Email", "email"),
-            (false, true) => ("User name", "text"),
-            _ => ("Email or user name", "text"),
+            (true, false) => ("loginIdentifierEmail", "email"),
+            (false, true) => ("loginIdentifierUserName", "text"),
+            _ => ("loginIdentifierEither", "text"),
         };
     }
 
