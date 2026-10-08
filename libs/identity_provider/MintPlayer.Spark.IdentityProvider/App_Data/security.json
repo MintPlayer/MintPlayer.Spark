@@ -1,0 +1,164 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The identity provider's rights, shipped as a library layer (docs/identity_provider_platform_PRD.md D2,",
+    "spike S1). Two slots the application binds in its own security.json:",
+    "  identity-provider:administrators - every application and resource, developer requests, reviews",
+    "  identity-provider:developers     - the developer portal: their own applications and APIs",
+    "Membership of the developers group comes from the provider itself (approved developer requests),",
+    "never from seeding. Which rows a developer reaches is OidcApplicationActions / OidcResourceActions",
+    "GetRowFilterAsync: members only, owners only. ManageAll/IdentityProvider lifts both filters.",
+    "Drop one grant with { \"key\": \"identity-provider:<key>\", \"$remove\": true }, or all of them with",
+    "\"libraries\": { \"identity-provider\": false }."
+  ],
+  "reservedTargets": [
+    "IdentityProvider"
+  ],
+  "rights": [
+    {
+      "key": "manage-all",
+      "resource": "ManageAll/IdentityProvider",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "applications-administrators",
+      "resource": "QueryReadEditNewDelete/OidcApplication",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "resources-administrators",
+      "resource": "QueryReadEditNewDelete/OidcResource",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "applications-developers",
+      "resource": "QueryReadEditNewDelete/OidcApplication",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "resources-developers",
+      "resource": "QueryReadEditNewDelete/OidcResource",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "developer-requests-query",
+      "resource": "Query/OidcDeveloperRequest",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "developer-requests-approve",
+      "resource": "ApproveDeveloper/OidcDeveloperRequest",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "developer-requests-reject",
+      "resource": "RejectDeveloper/OidcDeveloperRequest",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "application-team-administrators",
+      "resource": "InviteMember/OidcApplication",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "application-live-administrators",
+      "resource": "SwitchToLive/OidcApplication",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "application-development-administrators",
+      "resource": "SwitchToDevelopment/OidcApplication",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "members-query-administrators",
+      "resource": "Query/OidcApplicationMemberRow",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "members-resend-administrators",
+      "resource": "ResendInvitation/OidcApplicationMemberRow",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "members-remove-administrators",
+      "resource": "RemoveMember/OidcApplicationMemberRow",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "scope-approvals-query-administrators",
+      "resource": "Query/OidcScopeApproval",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "scope-approvals-approve-administrators",
+      "resource": "ApproveScope/OidcScopeApproval",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "scope-approvals-reject-administrators",
+      "resource": "RejectScope/OidcScopeApproval",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "application-team-developers",
+      "resource": "InviteMember/OidcApplication",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "application-live-developers",
+      "resource": "SwitchToLive/OidcApplication",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "application-development-developers",
+      "resource": "SwitchToDevelopment/OidcApplication",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "members-query-developers",
+      "resource": "Query/OidcApplicationMemberRow",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "members-resend-developers",
+      "resource": "ResendInvitation/OidcApplicationMemberRow",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "members-remove-developers",
+      "resource": "RemoveMember/OidcApplicationMemberRow",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "scope-approvals-query-developers",
+      "resource": "Query/OidcScopeApproval",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "scope-approvals-approve-developers",
+      "resource": "ApproveScope/OidcScopeApproval",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "scope-approvals-reject-developers",
+      "resource": "RejectScope/OidcScopeApproval",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "golive-query",
+      "resource": "Query/OidcGoLiveReview",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "golive-approve",
+      "resource": "ApproveGoLive/OidcGoLiveReview",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "golive-reject",
+      "resource": "RejectGoLive/OidcGoLiveReview",
+      "groupId": "identity-provider:administrators"
+    }
+  ]
+}

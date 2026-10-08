@@ -1,56 +1,47 @@
 using System.Text.Json;
-using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.IdentityProvider;
 using MintPlayer.Spark.IdentityProvider.Models;
-using MintPlayer.Spark.Services;
-using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
 /// <summary>
-/// Proves M12.7's premise: a consumer exposes the package's entities on its own context and gets
-/// admin screens, with no framework change and nothing hand-authored.
+/// The admin screens ship with the package. The identity provider is a Spark library layer (alias
+/// <c>identity-provider</c>) that embeds its own <c>App_Data/Model/*.json</c>, so a consuming app gets
+/// the OidcApplication and OidcResource persistent objects without declaring anything on its context.
 /// <para>
-/// This is the claim the milestone rests on, and it was worth testing rather than asserting —
-/// an earlier draft of the plan concluded the opposite from reading <c>ModelLoader</c> alone,
-/// and proposed a registry mechanism for a problem that does not exist.
-/// </para>
-/// <para>
-/// Per case, not per class (M8): the synchronizer writes model files into the host's content
-/// root, so on a shared host a case's <c>File.Exists</c> could pass on a sibling's file.
+/// This replaces the M12.7 test that a consumer's <c>IOidcApplicationContext</c> property made the
+/// synchronizer generate the models: that interface is gone, and the layer is now the registration.
 /// </para>
 /// </summary>
-public class OidcAdminRegistrationTests : OidcTestHost
+public class OidcAdminRegistrationTests
 {
-    /// <summary>Exactly what a consuming app writes — the interface is the whole registration.</summary>
-    private sealed class AdminContext : SparkContext, IOidcApplicationContext
+    private static SparkLibrary Library()
     {
-        public IRavenQueryable<OidcApplication> OidcApplications => Session.Query<OidcApplication>();
-        public IRavenQueryable<OidcScope> OidcScopes => Session.Query<OidcScope>();
+        var libraries = SparkLayerCatalog.Discover([typeof(OidcApplication).Assembly]);
+        return libraries.Should().ContainSingle().Which;
     }
 
-    private JsonElement Synchronize(string entityName)
+    private static JsonElement Model(string entityName)
     {
-        // Constructed directly rather than resolved: the synchronizer is a build-time tool and is
-        // no longer in the container outside Development. This is test infrastructure asserting what
-        // the synchronizer writes, not a consumer of a production service.
-        new ModelSynchronizer(Factory.GetService<IHostEnvironment>(), NSubstitute.Substitute.For<IIndexCatalog>())
-            .SynchronizeModels(typeof(AdminContext));
+        var layer = Library().Layers.SingleOrDefault(l => l.Kind == "model" && l.Path == $"Model/{entityName}.json");
+        layer.Should().NotBeNull($"the package should ship {entityName}.json as a model layer");
 
-        var contentRoot = Factory.GetService<IHostEnvironment>().ContentRootPath;
-        var path = Path.Combine(contentRoot, "App_Data", "Model", entityName + ".json");
+        return JsonDocument.Parse(layer!.Json).RootElement.GetProperty("persistentObject");
+    }
 
-        File.Exists(path).Should().BeTrue(
-            $"the synchronizer should have generated {entityName}.json from the context property");
+    private static List<string?> Attributes(JsonElement model)
+        => [.. model.GetProperty("attributes").EnumerateArray().Select(a => a.GetProperty("name").GetString())];
 
-        return JsonDocument.Parse(File.ReadAllText(path)).RootElement.GetProperty("persistentObject");
+    [Fact]
+    public void The_package_is_a_library_layer_under_its_alias()
+    {
+        Library().Alias.Should().Be("identity-provider");
     }
 
     [Fact]
-    public void A_library_entity_on_the_context_becomes_a_persistent_object()
+    public void A_library_entity_becomes_a_persistent_object()
     {
-        var model = Synchronize("OidcApplication");
+        var model = Model("OidcApplication");
 
         model.GetProperty("name").GetString().Should().Be("OidcApplication");
         model.GetProperty("clrType").GetString().Should().Contain("MintPlayer.Spark.IdentityProvider",
@@ -58,35 +49,29 @@ public class OidcAdminRegistrationTests : OidcTestHost
     }
 
     [Fact]
-    public void The_generated_model_carries_the_fields_an_operator_must_set()
+    public void The_shipped_model_carries_the_fields_an_operator_must_set()
     {
-        var model = Synchronize("OidcApplication");
-
-        var attributes = model.GetProperty("attributes").EnumerateArray()
-            .Select(a => a.GetProperty("name").GetString())
-            .ToList();
+        var attributes = Attributes(Model("OidcApplication"));
 
         // Every one of these is load-bearing: the audit found each failing silently when wrong.
         attributes.Should().Contain("ClientId");
         attributes.Should().Contain("RedirectUris");
-        attributes.Should().Contain("AllowedScopes");
+        attributes.Should().Contain("Scopes");
         attributes.Should().Contain("AllowedGrantTypes");
         attributes.Should().Contain("Enabled");
         attributes.Should().Contain("MayIntrospectAnyAudience");
+        attributes.Should().Contain("Mode");
     }
 
     [Fact]
-    public void Scopes_are_registered_alongside_applications()
+    public void Resources_are_shipped_alongside_applications()
     {
-        var model = Synchronize("OidcScope");
+        var attributes = Attributes(Model("OidcResource"));
 
-        var attributes = model.GetProperty("attributes").EnumerateArray()
-            .Select(a => a.GetProperty("name").GetString())
-            .ToList();
-
-        attributes.Should().Contain("Name");
+        attributes.Should().Contain("Name",
+            "an API resource's name is the audience its tokens carry (D11)");
+        attributes.Should().Contain("Kind");
         attributes.Should().Contain("Enabled");
-        attributes.Should().Contain("Audiences",
-            "audiences are what make a token addressable to a resource server (D11)");
+        attributes.Should().Contain("Scopes");
     }
 }

@@ -240,7 +240,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Issuing one regardless meant a client that only asked for API access still received a
         // signed identity assertion it never sought.
         var idToken = GrantsOpenId(codeToken.Scopes)
-            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.State, app.EffectiveIdTokenLifetimeMinutes(),
+            ? tokenGenerator.GenerateIdToken(user, app, issuer, grantedScopes, codeToken.Nonce, app.EffectiveIdTokenLifetimeMinutes(),
                 accessToken: accessToken, authTime: codeToken.AuthTime)
             : null;
 
@@ -260,24 +260,24 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             ApplicationId = app.Id!,
             AuthorizationId = codeToken.AuthorizationId,
             Subject = codeToken.Subject,
-            Type = "access_token",
+            Type = OidcTokenTypes.AccessToken,
             Scopes = grantedScopeNames,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(app.AccessTokenLifetimeMinutes),
         };
 
-        await session.StoreAsync(accessTokenDoc, ct);
+        await session.StoreExpiringAsync(accessTokenDoc, ct);
 
         if (refreshTokenValue != null)
         {
-            await session.StoreAsync(new OidcToken
+            await session.StoreExpiringAsync(new OidcToken
             {
                 ApplicationId = app.Id!,
                 AuthorizationId = codeToken.AuthorizationId,
                 Subject = codeToken.Subject,
                 Id = OidcTokenReference.DocumentId(refreshTokenValue),
-                Type = "refresh_token",
+                Type = OidcTokenTypes.RefreshToken,
                 Scopes = grantedScopeNames,
                 Status = "valid",
                 CreatedAt = DateTime.UtcNow,
@@ -320,7 +320,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
     /// <summary>
     /// The scopes a token is actually issued with: those the request carried that resolve to a
-    /// defined, enabled <c>OidcScope</c>.
+    /// defined, enabled scope (<see cref="OidcScopeCatalog"/>).
     /// <para>
     /// This is what must be recorded, because the JWT is minted from it. Storing the requested
     /// list instead made the token document over-report — and introspection reads the document, so
@@ -330,7 +330,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// it, for as long as the refresh token lived.
     /// </para>
     /// </summary>
-    private static List<string> GrantedNames(List<OidcScope> granted)
+    private static List<string> GrantedNames(List<OidcScopeDefinition> granted)
         => [.. granted.Select(s => s.Name)];
 
     /// <summary>
@@ -445,7 +445,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // currently allowed, so removing a scope from the application takes effect on the next
         // refresh rather than persisting for the token's life.
         var permittedScopes = presentedScopes
-            .Where(s => app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+            .Where(s => app.ScopeNames().Contains(s, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
         // Load user
@@ -497,7 +497,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             ApplicationId = app.Id!,
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
-            Type = "access_token",
+            Type = OidcTokenTypes.AccessToken,
             Scopes = grantedScopeNames,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
@@ -510,7 +510,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
             Id = OidcTokenReference.DocumentId(newRefreshTokenValue),
-            Type = "refresh_token",
+            Type = OidcTokenTypes.RefreshToken,
             // RFC 6749 §6: "If a new refresh token is issued, the refresh token scope MUST be
             // identical to that of the refresh token included by the client in the request."
             // Writing the narrowed set here was also a one-way ratchet — a scope disabled for an
@@ -526,8 +526,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             AuthTime = refreshTokenDoc.AuthTime,
         };
 
-        await session.StoreAsync(newAccessTokenDoc, ct);
-        await session.StoreAsync(newRefreshTokenDoc, ct);
+        await session.StoreExpiringAsync(newAccessTokenDoc, ct);
+        await session.StoreExpiringAsync(newRefreshTokenDoc, ct);
 
         // As on the code grant: rotation and issuance are one batch, so the loser of a
         // simultaneous rotation writes nothing and is answered as a replay.
@@ -595,7 +595,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         var requestedScopes = (scope ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
         foreach (var s in requestedScopes)
         {
-            if (!app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+            if (!app.ScopeNames().Contains(s, StringComparer.OrdinalIgnoreCase))
             {
                 return Results.Json(new { error = "invalid_scope", error_description = $"Scope '{s}' is not allowed for this client." }, statusCode: 400);
             }
@@ -643,14 +643,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             Id = OidcTokenReference.DocumentId(accessTokenJti),
             ApplicationId = app.Id!,
             Subject = $"client:{app.ClientId}",
-            Type = "access_token",
+            Type = OidcTokenTypes.AccessToken,
             Scopes = grantedScopeNames,
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(app.AccessTokenLifetimeMinutes),
         };
 
-        await session.StoreAsync(accessTokenDoc, ct);
+        await session.StoreExpiringAsync(accessTokenDoc, ct);
         await session.SaveChangesAsync(ct);
 
         httpContext.Response.Headers.CacheControl = "no-store";
@@ -744,13 +744,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 /// </remarks>
 internal static class Token
 {
-    internal static async Task<List<OidcScope>> LoadScopesAsync(IAsyncDocumentSession session, List<string> scopeNames, CancellationToken ct)
-    {
-        return await session
-            .Query<OidcScope>()
-            .Where(s => s.Name.In(scopeNames) && s.Enabled)
-            .ToListAsync(ct);
-    }
+    internal static Task<List<OidcScopeDefinition>> LoadScopesAsync(IAsyncDocumentSession session, List<string> scopeNames, CancellationToken ct)
+        => OidcScopeCatalog.LoadAsync(session, scopeNames, ct);
 
     internal static bool VerifyClientSecret(string secret, List<ClientSecret> secrets)
     {

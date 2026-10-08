@@ -17,7 +17,7 @@ internal class OidcTokenGenerator
     }
 
     /// <summary>
-    /// Generates an ID token with claims driven by OidcScope.ClaimTypes from the database.
+    /// Generates an ID token with claims driven by the granted scopes' ClaimTypes (OidcResource).
     /// </summary>
     /// <param name="lifetimeMinutes">
     /// The id_token's own lifetime (<see cref="OidcApplication.IdTokenLifetimeMinutes"/>). It used to
@@ -36,7 +36,7 @@ internal class OidcTokenGenerator
         SparkUser user,
         OidcApplication app,
         string issuer,
-        IReadOnlyList<OidcScope> grantedScopes,
+        IReadOnlyList<OidcScopeDefinition> grantedScopes,
         string? nonce,
         int lifetimeMinutes = 5,
         string? accessToken = null,
@@ -114,7 +114,7 @@ internal class OidcTokenGenerator
         SparkUser? user,
         OidcApplication app,
         string issuer,
-        IReadOnlyList<OidcScope> grantedScopes,
+        IReadOnlyList<OidcScopeDefinition> grantedScopes,
         int lifetimeMinutes = 60)
     {
         var scopeNames = grantedScopes.Select(s => s.Name).ToList();
@@ -156,7 +156,8 @@ internal class OidcTokenGenerator
 
         // Determine audience from scope definitions
         var audiences = grantedScopes
-            .SelectMany(s => s.Audiences)
+            .Select(s => s.Audience)
+            .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -196,7 +197,7 @@ internal class OidcTokenGenerator
     /// Resolves user claim values from the granted scopes' ClaimTypes.
     /// Maps well-known claim types to SparkUser properties.
     /// </summary>
-    internal static List<Claim> ResolveUserClaims(SparkUser user, IReadOnlyList<OidcScope> grantedScopes)
+    internal static List<Claim> ResolveUserClaims(SparkUser user, IReadOnlyList<OidcScopeDefinition> grantedScopes)
     {
         var claims = new List<Claim>();
         var requestedClaimTypes = grantedScopes
@@ -277,7 +278,7 @@ internal class OidcTokenGenerator
     /// Resolves user claim values for the UserInfo endpoint.
     /// Returns a dictionary for JSON serialization.
     /// </summary>
-    internal static Dictionary<string, object> ResolveUserInfoClaims(SparkUser user, IReadOnlyList<OidcScope> grantedScopes)
+    internal static Dictionary<string, object> ResolveUserInfoClaims(SparkUser user, IReadOnlyList<OidcScopeDefinition> grantedScopes)
     {
         var claims = new Dictionary<string, object>
         {

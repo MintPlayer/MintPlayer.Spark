@@ -1,0 +1,22 @@
+<mjml>
+  <mj-head>
+    <mj-title>Your developer request{{ if app_name }} on {{ app_name }}{{ end }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Your developer request was not approved</mj-text>
+        <mj-text>An administrator decided not to approve your request to become a developer. Your account is not affected.</mj-text>
+{{ if note }}
+        <mj-text>The reason given: {{ note }}</mj-text>
+{{ end }}
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

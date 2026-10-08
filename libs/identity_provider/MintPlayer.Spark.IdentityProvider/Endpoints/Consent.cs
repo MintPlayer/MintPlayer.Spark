@@ -16,7 +16,7 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 //
 // Both take a single input from the browser: the request_id minted by /connect/authorize.
 // Everything the flow acts on — client, redirect URI, scopes, PKCE challenge, nonce, state — is
-// read from the stored OidcAuthorizationRequest, never from the query string or the form. That is
+// read from the stored authorization request (an OidcToken), never from the query string or the form. That is
 // what makes this endpoint safe by construction rather than by remembering to repeat
 // /connect/authorize's checks.
 
@@ -60,10 +60,7 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
 
         // Load scope definitions
         var requestedScopes = request.Scopes;
-        var scopeDefinitions = await session
-            .Query<OidcScope>()
-            .Where(s => s.Name.In(requestedScopes))
-            .ToListAsync(ct);
+        var scopeDefinitions = await OidcScopeCatalog.LoadAsync(session, requestedScopes, ct);
 
         // Render minimal consent page
         var sb = new StringBuilder();
@@ -83,12 +80,16 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
         AppendAntiforgery(sb, antiforgery, context);
         sb.Append("<ul class=\"scope-list\">");
 
+        var culture = System.Globalization.CultureInfo.CurrentUICulture.Name;
         foreach (var s in requestedScopes)
         {
-            var def = scopeDefinitions.FirstOrDefault(d => d.Name == s);
-            var displayName = def?.DisplayName ?? s;
-            var description = def?.Description ?? "";
-            var isRequired = def?.Required ?? (s == "openid");
+            var def = scopeDefinitions.FirstOrDefault(d => string.Equals(d.Name, s, StringComparison.OrdinalIgnoreCase));
+            var displayName = def?.DisplayNameIn(culture) ?? s;
+            var description = def?.Description?.GetValue(culture) ?? "";
+            // Required by the scope itself (openid), or by this application (D6: per-app required/optional).
+            var isRequired = s == "openid"
+                || def?.Required == true
+                || app.Scopes.Any(a => a.Required && string.Equals(a.Name, s, StringComparison.OrdinalIgnoreCase));
             var isEmphasized = def?.Emphasize ?? false;
 
             sb.Append("<li");
@@ -189,7 +190,7 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
             request.Status = "denied";
             await session.SaveChangesAsync(ct);
 
-            return Results.Redirect(RedirectUrl.With(request.RedirectUri,
+            return Results.Redirect(RedirectUrl.With(request.RedirectUri!,
                 ("error", "access_denied"),
                 ("error_description", "The user denied the request."),
                 ("state", request.State)));
@@ -210,10 +211,9 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
         // A scope marked Required is not the user's to decline: the page renders it as a
         // disabled checkbox, but that is markup, and a forged POST simply omits it. Re-adding
         // it here is what makes Required mean something on the server rather than in the UI.
-        var requiredScopes = await session
-            .Query<OidcScope>()
-            .Where(s => s.Name.In(request.Scopes) && s.Required)
-            .ToListAsync(ct);
+        var requiredScopes = (await OidcScopeCatalog.LoadAsync(session, request.Scopes, ct))
+            .Where(s => s.Required || app.Scopes.Any(a => a.Required && string.Equals(a.Name, s.Name, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
 
         foreach (var required in requiredScopes)
         {

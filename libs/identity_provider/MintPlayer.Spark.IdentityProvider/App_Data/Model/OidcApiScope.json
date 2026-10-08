@@ -1,0 +1,92 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "745c8cfe-13bd-56c0-a4f7-7a46c1e1a2d9",
+    "name": "OidcApiScope",
+    "clrType": "MintPlayer.Spark.IdentityProvider.Models.OidcApiScope",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "0b23987e-5ec9-589c-af84-4ae7466d182f",
+        "name": "ClaimTypes",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f2e8899d-69f7-5161-88aa-4257eab58783",
+        "name": "Description",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cb32bf82-e256-517a-b24d-07d41ebd30b1",
+        "name": "DisplayName",
+        "dataType": "TranslatedString",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "636ee054-09f0-5a8d-ae48-13d3bb86e94b",
+        "name": "Emphasize",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c12c5437-7d4c-58df-807a-a37757e621c4",
+        "name": "Enabled",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "069ea4de-3b18-5a2b-88c8-224b9393323a",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8443b4e5-19fb-50f2-b1bb-664f13bbcf30",
+        "name": "ShowInDiscoveryDocument",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

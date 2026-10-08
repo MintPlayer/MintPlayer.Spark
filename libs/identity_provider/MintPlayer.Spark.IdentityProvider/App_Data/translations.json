@@ -1,0 +1,1699 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "queries": {
+    "Applications": {
+      "label": {
+        "en": "Applications",
+        "fr": "Applications",
+        "nl": "Applicaties"
+      }
+    },
+    "Resources": {
+      "label": {
+        "en": "Resources",
+        "fr": "Ressources",
+        "nl": "Resources"
+      }
+    },
+    "DeveloperRequests": {
+      "label": {
+        "en": "Developer requests",
+        "fr": "Demandes de développeur",
+        "nl": "Ontwikkelaarsaanvragen"
+      }
+    },
+    "Members": {
+      "label": {
+        "en": "Team",
+        "fr": "Équipe",
+        "nl": "Team"
+      }
+    },
+    "ScopeApprovals": {
+      "label": {
+        "en": "Scope approvals",
+        "fr": "Approbations de scopes",
+        "nl": "Scopegoedkeuringen"
+      }
+    },
+    "GoLiveReviews": {
+      "label": {
+        "en": "Go-live reviews",
+        "fr": "Mises en ligne à approuver",
+        "nl": "Livegangen ter goedkeuring"
+      }
+    }
+  },
+  "model": {
+    "ClientClaim": {
+      "label": {
+        "en": "Client claim",
+        "fr": "Revendication du client",
+        "nl": "Clientclaim"
+      },
+      "attributes": {
+        "Type": {
+          "label": {
+            "en": "Type",
+            "fr": "Type",
+            "nl": "Type"
+          },
+          "description": {
+            "en": "Claim type added to issued tokens, e.g. tenant.",
+            "fr": "Type de revendication ajouté aux jetons émis, p. ex. tenant.",
+            "nl": "Claimtype dat aan uitgegeven tokens wordt toegevoegd, bv. tenant."
+          }
+        },
+        "Value": {
+          "label": {
+            "en": "Value",
+            "fr": "Valeur",
+            "nl": "Waarde"
+          },
+          "description": {
+            "en": "Value issued for the claim type.",
+            "fr": "Valeur émise pour ce type de revendication.",
+            "nl": "Waarde die voor het claimtype uitgegeven wordt."
+          }
+        }
+      }
+    },
+    "ClientSecret": {
+      "label": {
+        "en": "Client secret",
+        "fr": "Secret du client",
+        "nl": "Clientgeheim"
+      },
+      "attributes": {
+        "CreatedAt": {
+          "label": {
+            "en": "Created at",
+            "fr": "Créé le",
+            "nl": "Aangemaakt op"
+          },
+          "description": {
+            "en": "Moment the secret was created, in UTC.",
+            "fr": "Moment de création du secret, en UTC.",
+            "nl": "Moment waarop het geheim is aangemaakt, in UTC."
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          },
+          "description": {
+            "en": "Optional note telling secrets apart, e.g. Production 2026.",
+            "fr": "Note facultative permettant de distinguer les secrets, p. ex. Production 2026.",
+            "nl": "Optionele notitie om geheimen uit elkaar te houden, bv. Productie 2026."
+          }
+        },
+        "ExpiresAt": {
+          "label": {
+            "en": "Expires at",
+            "fr": "Expire le",
+            "nl": "Verloopt op"
+          },
+          "description": {
+            "en": "Moment after which the secret is no longer accepted, in UTC; leave empty for a secret that never expires.",
+            "fr": "Moment après lequel le secret n'est plus accepté, en UTC ; laissez vide pour un secret qui n'expire jamais.",
+            "nl": "Moment waarna het geheim niet meer aanvaard wordt, in UTC; laat leeg voor een geheim dat nooit verloopt."
+          }
+        },
+        "Hash": {
+          "label": {
+            "en": "Hash",
+            "fr": "Empreinte",
+            "nl": "Hash"
+          },
+          "description": {
+            "en": "The client secret's hash. The plaintext is shown once, when the secret is generated, and never stored.",
+            "fr": "L'empreinte du secret du client. La valeur en clair est affichée une seule fois, lors de la génération du secret, et n'est jamais stockée.",
+            "nl": "De hash van het clientgeheim. De platte waarde wordt één keer getoond, bij het genereren van het geheim, en nooit opgeslagen."
+          }
+        },
+        "LastUsedAt": {
+          "label": {
+            "en": "Last used at",
+            "fr": "Dernière utilisation le",
+            "nl": "Laatst gebruikt op"
+          },
+          "description": {
+            "en": "The last time the secret authenticated the client, in UTC, recorded at most once an hour.",
+            "fr": "Dernière fois que le secret a authentifié le client, en UTC, enregistrée au plus une fois par heure.",
+            "nl": "Laatste keer dat het geheim de client authenticeerde, in UTC, hoogstens één keer per uur bijgehouden."
+          }
+        },
+        "SecretId": {
+          "label": {
+            "en": "Secret id",
+            "fr": "Id du secret",
+            "nl": "Geheim-id"
+          },
+          "description": {
+            "en": "Identifies the secret for revocation, and appears in the audit trail; never the secret itself.",
+            "fr": "Identifie le secret pour sa révocation et apparaît dans la piste d'audit ; jamais le secret lui-même.",
+            "nl": "Identificeert het geheim voor intrekking en verschijnt in het auditspoor; nooit het geheim zelf."
+          }
+        }
+      }
+    },
+    "OidcApiScope": {
+      "label": {
+        "en": "API scope",
+        "fr": "Scope d'API",
+        "nl": "API-scope"
+      },
+      "attributes": {
+        "ClaimTypes": {
+          "label": {
+            "en": "Claim types",
+            "fr": "Types de revendication",
+            "nl": "Claimtypes"
+          },
+          "description": {
+            "en": "User claim types added to the access token when this scope is granted.",
+            "fr": "Types de revendications utilisateur ajoutés au jeton d'accès lorsque ce scope est accordé.",
+            "nl": "Gebruikersclaimtypes die aan het toegangstoken worden toegevoegd wanneer deze scope verleend wordt."
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          },
+          "description": {
+            "en": "What it grants access to, shown to users on the consent screen.",
+            "fr": "Ce à quoi il donne accès, affiché aux utilisateurs sur l'écran de consentement.",
+            "nl": "Waartoe het toegang geeft, getoond aan gebruikers op het toestemmingsscherm."
+          }
+        },
+        "DisplayName": {
+          "label": {
+            "en": "Display name",
+            "fr": "Nom d'affichage",
+            "nl": "Weergavenaam"
+          },
+          "description": {
+            "en": "Human-readable name, shown to users on the consent screen.",
+            "fr": "Nom lisible, affiché aux utilisateurs sur l'écran de consentement.",
+            "nl": "Leesbare naam, getoond aan gebruikers op het toestemmingsscherm."
+          }
+        },
+        "Emphasize": {
+          "label": {
+            "en": "Emphasize",
+            "fr": "Mettre en évidence",
+            "nl": "Benadrukken"
+          },
+          "description": {
+            "en": "Whether the consent screen highlights this scope as sensitive.",
+            "fr": "Indique si l'écran de consentement met en évidence ce scope comme étant sensible.",
+            "nl": "Of het toestemmingsscherm deze scope als gevoelig benadrukt."
+          }
+        },
+        "Enabled": {
+          "label": {
+            "en": "Enabled",
+            "fr": "Activé",
+            "nl": "Ingeschakeld"
+          },
+          "description": {
+            "en": "Whether it can currently be requested.",
+            "fr": "Indique s'il peut actuellement être demandé.",
+            "nl": "Of het op dit moment aangevraagd kan worden."
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          },
+          "description": {
+            "en": "The scope name a client requests, starting with the resource's name and a dot.",
+            "fr": "Le nom de scope qu'un client demande, commençant par le nom de la ressource suivi d'un point.",
+            "nl": "De scopenaam die een client aanvraagt, beginnend met de naam van de resource en een punt."
+          }
+        },
+        "ShowInDiscoveryDocument": {
+          "label": {
+            "en": "Show in discovery document",
+            "fr": "Afficher dans le document de découverte",
+            "nl": "Tonen in het discovery-document"
+          },
+          "description": {
+            "en": "Whether it is listed publicly in the OpenID discovery document.",
+            "fr": "Indique s'il est répertorié publiquement dans le document de découverte OpenID.",
+            "nl": "Of het publiek vermeld staat in het OpenID-discovery-document."
+          }
+        }
+      }
+    },
+    "OidcApplication": {
+      "label": {
+        "en": "Application",
+        "fr": "Application",
+        "nl": "Applicatie"
+      },
+      "attributes": {
+        "AccessTokenLifetimeMinutes": {
+          "label": {
+            "en": "Access token lifetime (minutes)",
+            "fr": "Durée de vie du jeton d'accès (minutes)",
+            "nl": "Levensduur toegangstoken (minuten)"
+          },
+          "description": {
+            "en": "Validity of an issued access token in minutes.",
+            "fr": "Validité d'un jeton d'accès émis, en minutes.",
+            "nl": "Geldigheid van een uitgegeven toegangstoken, in minuten."
+          }
+        },
+        "AllowedCorsOrigins": {
+          "label": {
+            "en": "Allowed CORS origins",
+            "fr": "Origines CORS autorisées",
+            "nl": "Toegestane CORS-origins"
+          },
+          "description": {
+            "en": "Browser origins allowed to call the OIDC endpoints cross-site, e.g. https://app.example.com.",
+            "fr": "Origines de navigateur autorisées à appeler les points de terminaison OIDC en cross-site, p. ex. https://app.example.com.",
+            "nl": "Browserorigins die de OIDC-endpoints cross-site mogen aanroepen, bv. https://app.example.com."
+          }
+        },
+        "AllowedGrantTypes": {
+          "label": {
+            "en": "Allowed grant types",
+            "fr": "Types d'autorisation permis",
+            "nl": "Toegestane grant-types"
+          },
+          "description": {
+            "en": "The grants this client may use. **Must not carry a non-empty initializer.**\nRavenDB's serializer populates the collection the property initializer already created rather than replacing it, so a default of [\"authorization_code\"] was silently re-added to every application on load. A client stored as client_credentials-only came back as [\"authorization_code\", \"client_credentials\"] — which defeats the grant gating outright: the interactive flow accepted a machine client no matter what was configured, and the check that was supposed to stop it could never fail.\nEmpty now means empty, so a client that declares no grants can use none — fail closed.",
+            "fr": "Les autorisations que ce client peut utiliser. **Ne doit pas comporter d'initialiseur non vide.**\nLe sérialiseur de RavenDB remplit la collection déjà créée par l'initialiseur de propriété au lieu de la remplacer : une valeur par défaut de [\"authorization_code\"] était donc silencieusement réajoutée à chaque application au chargement. Un client enregistré en client_credentials seul revenait en [\"authorization_code\", \"client_credentials\"] — ce qui met purement et simplement en échec le filtrage des autorisations : le flux interactif acceptait un client machine quelle que soit la configuration, et le contrôle censé l'en empêcher ne pouvait jamais échouer.\nVide signifie désormais vide : un client qui ne déclare aucune autorisation n'en a aucune — échec fermé.",
+            "nl": "De grants die deze client mag gebruiken. **Mag geen niet-lege initializer dragen.**\nDe serializer van RavenDB vult de collectie die de property-initializer al aangemaakt heeft in plaats van ze te vervangen, dus werd een standaard van [\"authorization_code\"] stilletjes bij het laden weer aan elke applicatie toegevoegd. Een client die als enkel client_credentials opgeslagen was, kwam terug als [\"authorization_code\", \"client_credentials\"] — wat de grantafscherming volledig onderuithaalt: de interactieve flow aanvaardde een machineclient ongeacht de configuratie, en de controle die dat had moeten tegenhouden kon nooit falen.\nLeeg betekent nu leeg, dus een client die geen grants aangeeft kan er geen gebruiken — fail closed."
+          }
+        },
+        "AllowImpersonation": {
+          "label": {
+            "en": "Allow impersonation",
+            "fr": "Autoriser l'emprunt d'identité",
+            "nl": "Impersonatie toestaan"
+          },
+          "description": {
+            "en": "Whether a token exchange by this client may impersonate the subject rather than only act on its behalf (RFC 8693).",
+            "fr": "Indique si un échange de jetons par ce client peut emprunter l'identité du sujet plutôt que seulement agir en son nom (RFC 8693).",
+            "nl": "Of een tokenuitwisseling door deze client het subject mag impersoneren in plaats van enkel namens het subject te handelen (RFC 8693)."
+          }
+        },
+        "AllowRememberConsent": {
+          "label": {
+            "en": "Allow remembering consent",
+            "fr": "Autoriser la mémorisation du consentement",
+            "nl": "Toestemming onthouden toestaan"
+          },
+          "description": {
+            "en": "Whether the user may tick a box so the consent screen is skipped on later sign-ins.",
+            "fr": "Indique si l'utilisateur peut cocher une case afin que l'écran de consentement soit ignoré lors des connexions ultérieures.",
+            "nl": "Of de gebruiker een vakje mag aanvinken zodat het toestemmingsscherm bij latere aanmeldingen wordt overgeslagen."
+          }
+        },
+        "BackChannelLogoutSessionRequired": {
+          "label": {
+            "en": "Back-channel logout session required",
+            "fr": "Session requise pour la déconnexion back-channel",
+            "nl": "Sessie vereist bij back-channel-afmelding"
+          },
+          "description": {
+            "en": "Whether the back-channel logout token must carry the session id (sid).",
+            "fr": "Indique si le jeton de déconnexion back-channel doit contenir l'identifiant de session (sid).",
+            "nl": "Of het back-channel-afmeldtoken de sessie-id (sid) moet bevatten."
+          }
+        },
+        "BackChannelLogoutUri": {
+          "label": {
+            "en": "Back-channel logout URI",
+            "fr": "URI de déconnexion back-channel",
+            "nl": "Back-channel-afmeld-URI"
+          },
+          "description": {
+            "en": "Where the identity provider posts a logout token when the user's session ends (back-channel logout).",
+            "fr": "Adresse à laquelle le fournisseur d'identité envoie un jeton de déconnexion lorsque la session de l'utilisateur prend fin (déconnexion back-channel).",
+            "nl": "Adres waarnaar de identity provider een afmeldtoken post wanneer de sessie van de gebruiker eindigt (back-channel-afmelding)."
+          }
+        },
+        "Claims": {
+          "label": {
+            "en": "Claims",
+            "fr": "Revendications",
+            "nl": "Claims"
+          },
+          "description": {
+            "en": "Fixed claims added to every token issued to this application.",
+            "fr": "Revendications fixes ajoutées à chaque jeton émis pour cette application.",
+            "nl": "Vaste claims die aan elk token voor deze applicatie worden toegevoegd."
+          }
+        },
+        "ClientId": {
+          "label": {
+            "en": "Client id",
+            "fr": "Id du client",
+            "nl": "Client-id"
+          },
+          "description": {
+            "en": "Public client identifier the application sends in every OIDC request. Generated when the application is created, and read-only afterwards.",
+            "fr": "Identifiant client public que l'application envoie dans chaque requête OIDC. Généré à la création de l'application et en lecture seule ensuite.",
+            "nl": "Publieke client-id die de applicatie in elke OIDC-aanvraag meestuurt. Gegenereerd bij het aanmaken van de applicatie en daarna alleen-lezen."
+          }
+        },
+        "ClientType": {
+          "label": {
+            "en": "Client type",
+            "fr": "Type de client",
+            "nl": "Clienttype"
+          },
+          "description": {
+            "en": "Either confidential for a server that can keep a secret, or public for a browser or mobile app that cannot.",
+            "fr": "Soit confidential pour un serveur capable de garder un secret, soit public pour une application navigateur ou mobile qui ne le peut pas.",
+            "nl": "Ofwel confidential voor een server die een geheim kan bewaren, ofwel public voor een browser- of mobiele app die dat niet kan."
+          }
+        },
+        "ConsentLifetimeSeconds": {
+          "label": {
+            "en": "Consent lifetime (seconds)",
+            "fr": "Durée de vie du consentement (secondes)",
+            "nl": "Levensduur toestemming (seconden)"
+          },
+          "description": {
+            "en": "How long, in seconds, a remembered consent stays valid; leave empty to keep it until withdrawn.",
+            "fr": "Durée, en secondes, pendant laquelle un consentement mémorisé reste valide ; laissez vide pour le conserver jusqu'à son retrait.",
+            "nl": "Hoelang, in seconden, een onthouden toestemming geldig blijft; laat leeg om ze te behouden tot ze wordt ingetrokken."
+          }
+        },
+        "ConsentType": {
+          "label": {
+            "en": "Consent type",
+            "fr": "Type de consentement",
+            "nl": "Type toestemming"
+          },
+          "description": {
+            "en": "Either explicit to ask the user for consent on the consent screen, or implicit to grant it automatically.",
+            "fr": "Soit explicit pour demander le consentement de l'utilisateur sur l'écran de consentement, soit implicit pour l'accorder automatiquement.",
+            "nl": "Ofwel explicit om de gebruiker op het toestemmingsscherm om toestemming te vragen, ofwel implicit om ze automatisch te verlenen."
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created at",
+            "fr": "Créée le",
+            "nl": "Aangemaakt op"
+          },
+          "description": {
+            "en": "Moment the application was registered, in UTC.",
+            "fr": "Moment de l'enregistrement de l'application, en UTC.",
+            "nl": "Moment waarop de applicatie geregistreerd werd, in UTC."
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créée par",
+            "nl": "Aangemaakt door"
+          },
+          "description": {
+            "en": "The user who registered the application.",
+            "fr": "L'utilisateur qui a enregistré l'application.",
+            "nl": "De gebruiker die de applicatie geregistreerd heeft."
+          }
+        },
+        "DefaultMaxAge": {
+          "label": {
+            "en": "Default max age (seconds)",
+            "fr": "Âge maximal par défaut (secondes)",
+            "nl": "Standaard maximumleeftijd (seconden)"
+          },
+          "description": {
+            "en": "Default maximum authentication age in seconds, as if every request carried max_age.",
+            "fr": "Âge maximal par défaut de l'authentification, en secondes, comme si chaque requête portait max_age.",
+            "nl": "Standaard maximale leeftijd van de authenticatie in seconden, alsof elke aanvraag max_age meestuurde."
+          }
+        },
+        "DisplayName": {
+          "label": {
+            "en": "Display name",
+            "fr": "Nom d'affichage",
+            "nl": "Weergavenaam"
+          },
+          "description": {
+            "en": "Human-readable name of the application, shown to users on the consent screen.",
+            "fr": "Nom lisible de l'application, affiché aux utilisateurs sur l'écran de consentement.",
+            "nl": "Leesbare naam van de applicatie, getoond aan gebruikers op het toestemmingsscherm."
+          }
+        },
+        "Enabled": {
+          "label": {
+            "en": "Enabled",
+            "fr": "Activé",
+            "nl": "Ingeschakeld"
+          },
+          "description": {
+            "en": "Whether the application may currently sign users in; disable to block it without deleting it.",
+            "fr": "Indique si l'application peut actuellement connecter des utilisateurs ; désactivez pour la bloquer sans la supprimer.",
+            "nl": "Of de applicatie op dit moment gebruikers mag aanmelden; schakel uit om ze te blokkeren zonder ze te verwijderen."
+          }
+        },
+        "FrontChannelLogoutSessionRequired": {
+          "label": {
+            "en": "Front-channel logout session required",
+            "fr": "Session requise pour la déconnexion front-channel",
+            "nl": "Sessie vereist bij front-channel-afmelding"
+          },
+          "description": {
+            "en": "Whether the front-channel logout URI receives iss and sid.",
+            "fr": "Indique si l'URI de déconnexion front-channel reçoit iss et sid.",
+            "nl": "Of de front-channel-afmeld-URI iss en sid ontvangt."
+          }
+        },
+        "FrontChannelLogoutUri": {
+          "label": {
+            "en": "Front-channel logout URI",
+            "fr": "URI de déconnexion front-channel",
+            "nl": "Front-channel-afmeld-URI"
+          },
+          "description": {
+            "en": "The page the logout page loads in an iframe when the user signs out (front-channel logout).",
+            "fr": "La page que la page de déconnexion charge dans un iframe lorsque l'utilisateur se déconnecte (déconnexion front-channel).",
+            "nl": "De pagina die de afmeldpagina in een iframe laadt wanneer de gebruiker zich afmeldt (front-channel-afmelding)."
+          }
+        },
+        "GoLiveReview": {
+          "label": {
+            "en": "Go-live review",
+            "fr": "Revue de mise en production",
+            "nl": "Go-live-beoordeling"
+          },
+          "description": {
+            "en": "The pending or decided request to switch to Live, when an administrator has to review it.",
+            "fr": "La demande, en attente ou tranchée, de passage en Live, lorsqu'un administrateur doit l'examiner.",
+            "nl": "De openstaande of besliste aanvraag om naar Live over te schakelen, wanneer een beheerder ze moet beoordelen."
+          }
+        },
+        "HomepageUrl": {
+          "label": {
+            "en": "Homepage URL",
+            "fr": "URL de la page d'accueil",
+            "nl": "URL van de startpagina"
+          },
+          "description": {
+            "en": "The application's home page.",
+            "fr": "La page d'accueil de l'application.",
+            "nl": "De startpagina van de applicatie."
+          }
+        },
+        "IdTokenEncryptedResponseAlg": {
+          "label": {
+            "en": "ID token encryption algorithm",
+            "fr": "Algorithme de chiffrement du jeton d'identité",
+            "nl": "Versleutelingsalgoritme identiteitstoken"
+          },
+          "description": {
+            "en": "Key-management algorithm the id_token is encrypted with (e.g. RSA-OAEP); leave empty for no encryption.",
+            "fr": "Algorithme de gestion de clés avec lequel l'id_token est chiffré (p. ex. RSA-OAEP) ; laissez vide pour ne pas chiffrer.",
+            "nl": "Sleutelbeheeralgoritme waarmee het id_token versleuteld wordt (bv. RSA-OAEP); laat leeg voor geen versleuteling."
+          }
+        },
+        "IdTokenEncryptedResponseEnc": {
+          "label": {
+            "en": "ID token content encryption",
+            "fr": "Chiffrement du contenu du jeton d'identité",
+            "nl": "Inhoudsversleuteling identiteitstoken"
+          },
+          "description": {
+            "en": "Content-encryption algorithm for an encrypted id_token (e.g. A256CBC-HS512).",
+            "fr": "Algorithme de chiffrement du contenu pour un id_token chiffré (p. ex. A256CBC-HS512).",
+            "nl": "Inhoudsversleutelingsalgoritme voor een versleuteld id_token (bv. A256CBC-HS512)."
+          }
+        },
+        "IdTokenLifetimeMinutes": {
+          "label": {
+            "en": "ID token lifetime (minutes)",
+            "fr": "Durée de vie du jeton d'identité (minutes)",
+            "nl": "Levensduur identiteitstoken (minuten)"
+          },
+          "description": {
+            "en": "Validity of an issued ID token in minutes; it is only read once, at sign-in, so keep it short. Leave empty for the 5-minute default.",
+            "fr": "Validité d'un jeton d'identité émis, en minutes ; il n'est lu qu'une fois, à la connexion, gardez-la donc courte. Laissez vide pour la valeur par défaut de 5 minutes.",
+            "nl": "Geldigheid van een uitgegeven identiteitstoken in minuten; het wordt maar één keer gelezen, bij het aanmelden, dus houd die kort. Laat leeg voor de standaardwaarde van 5 minuten."
+          }
+        },
+        "IdTokenSignedResponseAlg": {
+          "label": {
+            "en": "ID token signing algorithm",
+            "fr": "Algorithme de signature du jeton d'identité",
+            "nl": "Ondertekeningsalgoritme identiteitstoken"
+          },
+          "description": {
+            "en": "Algorithm the id_token is signed with; leave empty for RS256.",
+            "fr": "Algorithme avec lequel l'id_token est signé ; laissez vide pour RS256.",
+            "nl": "Algoritme waarmee het id_token ondertekend wordt; laat leeg voor RS256."
+          }
+        },
+        "Jwks": {
+          "label": {
+            "en": "JWKS",
+            "fr": "JWKS",
+            "nl": "JWKS"
+          },
+          "description": {
+            "en": "The client's public keys as a JWKS document, for private_key_jwt, signed request objects and encrypted tokens.",
+            "fr": "Les clés publiques du client sous forme de document JWKS, pour private_key_jwt, les objets de requête signés et les jetons chiffrés.",
+            "nl": "De publieke sleutels van de client als JWKS-document, voor private_key_jwt, ondertekende request objects en versleutelde tokens."
+          }
+        },
+        "JwksUri": {
+          "label": {
+            "en": "JWKS URI",
+            "fr": "URI JWKS",
+            "nl": "JWKS-URI"
+          },
+          "description": {
+            "en": "Where the client publishes its JWKS, instead of Jwks.",
+            "fr": "Adresse où le client publie son JWKS, au lieu de Jwks.",
+            "nl": "Adres waar de client zijn JWKS publiceert, in plaats van Jwks."
+          }
+        },
+        "LogoUrl": {
+          "label": {
+            "en": "Logo URL",
+            "fr": "URL du logo",
+            "nl": "Logo-URL"
+          },
+          "description": {
+            "en": "Address of the logo shown on the consent screen and in the user's connected applications.",
+            "fr": "Adresse du logo affiché sur l'écran de consentement et dans les applications connectées de l'utilisateur.",
+            "nl": "Adres van het logo dat getoond wordt op het toestemmingsscherm en bij de gekoppelde applicaties van de gebruiker."
+          }
+        },
+        "MayIntrospectAnyAudience": {
+          "label": {
+            "en": "May introspect any audience",
+            "fr": "Peut introspecter toute audience",
+            "nl": "Mag elke audience introspecteren"
+          },
+          "description": {
+            "en": "Lets this client introspect tokens it neither issued nor is the audience of.\nOff by default: introspection discloses a token's subject and scopes, so the caller must have a reason to see them — it issued the token, or the token was minted for it. Turn this on only for a gateway that introspects on behalf of the resources behind it, and understand that it can then read every token in the system.",
+            "fr": "Permet à ce client d'introspecter des jetons qu'il n'a pas émis et dont il n'est pas l'audience.\nDésactivé par défaut : l'introspection divulgue le sujet et les scopes d'un jeton, l'appelant doit donc avoir une raison de les voir — il a émis le jeton, ou le jeton a été émis pour lui. N'activez ceci que pour une passerelle qui introspecte au nom des ressources situées derrière elle, en sachant qu'elle peut alors lire tous les jetons du système.",
+            "nl": "Laat deze client tokens introspecteren die hij noch heeft uitgegeven, noch waarvan hij de audience is.\nStandaard uit: introspectie onthult het subject en de scopes van een token, dus de aanroeper moet een reden hebben om ze te zien — hij heeft het token uitgegeven, of het token is voor hem gemunt. Zet dit alleen aan voor een gateway die introspecteert namens de resources erachter, en besef dat die dan elk token in het systeem kan lezen."
+          }
+        },
+        "Members": {
+          "label": {
+            "en": "Members",
+            "fr": "Membres",
+            "nl": "Leden"
+          },
+          "description": {
+            "en": "The people who manage or test this application, with their role. The creator starts as Admin.",
+            "fr": "Les personnes qui gèrent ou testent cette application, avec leur rôle. Le créateur commence comme Admin.",
+            "nl": "De personen die deze applicatie beheren of testen, met hun rol. De maker begint als Admin."
+          }
+        },
+        "Mode": {
+          "label": {
+            "en": "Mode",
+            "fr": "Mode",
+            "nl": "Modus"
+          },
+          "description": {
+            "en": "Development: only members can authorize the application. Live: anyone can.",
+            "fr": "Development : seuls les membres peuvent autoriser l'application. Live : tout le monde le peut.",
+            "nl": "Development: alleen leden kunnen de applicatie autoriseren. Live: iedereen kan dat."
+          }
+        },
+        "PostLogoutRedirectUris": {
+          "label": {
+            "en": "Post-logout redirect URIs",
+            "fr": "URI de redirection après déconnexion",
+            "nl": "Redirect-URI's na afmelden"
+          },
+          "description": {
+            "en": "Exact URIs the identity provider may redirect back to after the user signs out.",
+            "fr": "URI exactes vers lesquelles le fournisseur d'identité peut rediriger après la déconnexion de l'utilisateur.",
+            "nl": "Exacte URI's waarnaar de identity provider mag terugsturen nadat de gebruiker zich heeft afgemeld."
+          }
+        },
+        "PrivacyPolicyUrl": {
+          "label": {
+            "en": "Privacy policy URL",
+            "fr": "URL de la politique de confidentialité",
+            "nl": "URL van het privacybeleid"
+          },
+          "description": {
+            "en": "The application's privacy policy, linked from the consent screen.",
+            "fr": "La politique de confidentialité de l'application, liée depuis l'écran de consentement.",
+            "nl": "Het privacybeleid van de applicatie, gelinkt vanop het toestemmingsscherm."
+          }
+        },
+        "Publisher": {
+          "label": {
+            "en": "Publisher",
+            "fr": "Éditeur",
+            "nl": "Uitgever"
+          },
+          "description": {
+            "en": "Who publishes the application, shown as \"by <publisher>\" on the consent screen.",
+            "fr": "Qui publie l'application, affiché sous la forme « par <éditeur> » sur l'écran de consentement.",
+            "nl": "Wie de applicatie uitgeeft, getoond als \"door <uitgever>\" op het toestemmingsscherm."
+          }
+        },
+        "RedirectUris": {
+          "label": {
+            "en": "Redirect URIs",
+            "fr": "URI de redirection",
+            "nl": "Redirect-URI's"
+          },
+          "description": {
+            "en": "Exact URIs the identity provider may redirect back to after sign-in; any other URI is rejected.",
+            "fr": "URI exactes vers lesquelles le fournisseur d'identité peut rediriger après la connexion ; toute autre URI est rejetée.",
+            "nl": "Exacte URI's waarnaar de identity provider na het aanmelden mag terugsturen; elke andere URI wordt geweigerd."
+          }
+        },
+        "RefreshTokenLifetimeDays": {
+          "label": {
+            "en": "Refresh token lifetime (days)",
+            "fr": "Durée de vie du jeton d'actualisation (jours)",
+            "nl": "Levensduur vernieuwingstoken (dagen)"
+          },
+          "description": {
+            "en": "Validity of an issued refresh token in days.",
+            "fr": "Validité d'un jeton d'actualisation émis, en jours.",
+            "nl": "Geldigheid van een uitgegeven vernieuwingstoken, in dagen."
+          }
+        },
+        "RequireDpop": {
+          "label": {
+            "en": "Require DPoP",
+            "fr": "Exiger DPoP",
+            "nl": "DPoP vereisen"
+          },
+          "description": {
+            "en": "Whether access tokens must be DPoP-bound (RFC 9449).",
+            "fr": "Indique si les jetons d'accès doivent être liés par DPoP (RFC 9449).",
+            "nl": "Of toegangstokens DPoP-gebonden moeten zijn (RFC 9449)."
+          }
+        },
+        "RequirePkce": {
+          "label": {
+            "en": "Require PKCE",
+            "fr": "Exiger PKCE",
+            "nl": "PKCE vereisen"
+          },
+          "description": {
+            "en": "Whether the authorization code flow must use PKCE; keep enabled unless a legacy client cannot support it.",
+            "fr": "Indique si le flux de code d'autorisation doit utiliser PKCE ; laissez activé sauf si un client hérité ne peut pas le prendre en charge.",
+            "nl": "Of de authorization-code-flow PKCE moet gebruiken; laat ingeschakeld tenzij een verouderde client het niet aankan."
+          }
+        },
+        "RequirePushedAuthorizationRequests": {
+          "label": {
+            "en": "Require pushed authorization requests",
+            "fr": "Exiger les requêtes d'autorisation poussées",
+            "nl": "Pushed authorization requests vereisen"
+          },
+          "description": {
+            "en": "Whether the client must push its authorization requests first (PAR, RFC 9126).",
+            "fr": "Indique si le client doit d'abord pousser ses requêtes d'autorisation (PAR, RFC 9126).",
+            "nl": "Of de client zijn autorisatieaanvragen eerst moet pushen (PAR, RFC 9126)."
+          }
+        },
+        "RequireSignedRequestObject": {
+          "label": {
+            "en": "Require signed request object",
+            "fr": "Exiger un objet de requête signé",
+            "nl": "Ondertekend request object vereisen"
+          },
+          "description": {
+            "en": "Whether the client must send its authorization requests as signed request objects (JAR, RFC 9101).",
+            "fr": "Indique si le client doit envoyer ses requêtes d'autorisation sous forme d'objets de requête signés (JAR, RFC 9101).",
+            "nl": "Of de client zijn autorisatieaanvragen als ondertekende request objects moet versturen (JAR, RFC 9101)."
+          }
+        },
+        "Scopes": {
+          "label": {
+            "en": "Scopes",
+            "fr": "Scopes",
+            "nl": "Scopes"
+          },
+          "description": {
+            "en": "The scopes this application may request, each required or optional. A request for any other scope is refused.",
+            "fr": "Les scopes que cette application peut demander, chacun obligatoire ou facultatif. Une demande portant sur tout autre scope est refusée.",
+            "nl": "De scopes die deze applicatie mag aanvragen, elk verplicht of optioneel. Een aanvraag voor eender welke andere scope wordt geweigerd."
+          }
+        },
+        "Secrets": {
+          "label": {
+            "en": "Secrets",
+            "fr": "Secrets",
+            "nl": "Geheimen"
+          },
+          "description": {
+            "en": "Secrets a confidential client authenticates with; several can coexist so a secret can be rotated. Generated by the Generate secret action and shown once.",
+            "fr": "Secrets avec lesquels un client confidentiel s'authentifie ; plusieurs peuvent coexister afin qu'un secret puisse être renouvelé. Générés par l'action Générer un secret et affichés une seule fois.",
+            "nl": "Geheimen waarmee een vertrouwelijke client zich authenticeert; er kunnen er meerdere naast elkaar bestaan zodat een geheim geroteerd kan worden. Gegenereerd door de actie Geheim genereren en één keer getoond."
+          }
+        },
+        "SectorIdentifierUri": {
+          "label": {
+            "en": "Sector identifier URI",
+            "fr": "URI d'identifiant de secteur",
+            "nl": "Sector-identifier-URI"
+          },
+          "description": {
+            "en": "For pairwise subjects: the URI naming the sector whose clients share a subject.",
+            "fr": "Pour les sujets pairwise : l'URI désignant le secteur dont les clients partagent un sujet.",
+            "nl": "Voor pairwise-subjects: de URI die de sector benoemt waarvan de clients een subject delen."
+          }
+        },
+        "SubjectType": {
+          "label": {
+            "en": "Subject type",
+            "fr": "Type de sujet",
+            "nl": "Subjecttype"
+          },
+          "description": {
+            "en": "public: every client sees the same subject. pairwise: each sector sees its own.",
+            "fr": "public : chaque client voit le même sujet. pairwise : chaque secteur voit le sien.",
+            "nl": "public: elke client ziet hetzelfde subject. pairwise: elke sector ziet zijn eigen subject."
+          }
+        },
+        "SupportEmail": {
+          "label": {
+            "en": "Support email",
+            "fr": "E-mail de support",
+            "nl": "Support-e-mail"
+          },
+          "description": {
+            "en": "Where users can reach the application's developers.",
+            "fr": "Adresse à laquelle les utilisateurs peuvent joindre les développeurs de l'application.",
+            "nl": "Waar gebruikers de ontwikkelaars van de applicatie kunnen bereiken."
+          }
+        },
+        "TermsOfServiceUrl": {
+          "label": {
+            "en": "Terms of service URL",
+            "fr": "URL des conditions d'utilisation",
+            "nl": "URL van de gebruiksvoorwaarden"
+          },
+          "description": {
+            "en": "The application's terms of service, linked from the consent screen.",
+            "fr": "Les conditions d'utilisation de l'application, liées depuis l'écran de consentement.",
+            "nl": "De gebruiksvoorwaarden van de applicatie, gelinkt vanop het toestemmingsscherm."
+          }
+        },
+        "TlsClientAuthSubjectDn": {
+          "label": {
+            "en": "TLS client auth subject DN",
+            "fr": "DN du sujet pour l'authentification TLS du client",
+            "nl": "Subject-DN voor TLS-clientauthenticatie"
+          },
+          "description": {
+            "en": "For tls_client_auth: the expected subject distinguished name of the client certificate.",
+            "fr": "Pour tls_client_auth : le nom distinctif (DN) attendu du sujet du certificat client.",
+            "nl": "Voor tls_client_auth: de verwachte subject distinguished name van het clientcertificaat."
+          }
+        },
+        "TlsClientCertificateBoundAccessTokens": {
+          "label": {
+            "en": "Certificate-bound access tokens",
+            "fr": "Jetons d'accès liés au certificat",
+            "nl": "Certificaatgebonden toegangstokens"
+          },
+          "description": {
+            "en": "Whether access tokens are bound to the client's certificate (RFC 8705).",
+            "fr": "Indique si les jetons d'accès sont liés au certificat du client (RFC 8705).",
+            "nl": "Of toegangstokens aan het certificaat van de client gebonden zijn (RFC 8705)."
+          }
+        },
+        "TokenEndpointAuthMethod": {
+          "label": {
+            "en": "Token endpoint auth method",
+            "fr": "Méthode d'authentification au point de terminaison de jeton",
+            "nl": "Authenticatiemethode token-endpoint"
+          },
+          "description": {
+            "en": "How this client authenticates at the token endpoint: client_secret_basic, client_secret_post, private_key_jwt, tls_client_auth, self_signed_tls_client_auth or none (a public client). Leave empty to accept either secret method.",
+            "fr": "Manière dont ce client s'authentifie au point de terminaison de jeton : client_secret_basic, client_secret_post, private_key_jwt, tls_client_auth, self_signed_tls_client_auth ou none (un client public). Laissez vide pour accepter l'une ou l'autre méthode par secret.",
+            "nl": "Hoe deze client zich authenticeert bij het token-endpoint: client_secret_basic, client_secret_post, private_key_jwt, tls_client_auth, self_signed_tls_client_auth of none (een publieke client). Laat leeg om beide geheimmethoden te aanvaarden."
+          }
+        },
+        "UserinfoEncryptedResponseAlg": {
+          "label": {
+            "en": "Userinfo encryption algorithm",
+            "fr": "Algorithme de chiffrement userinfo",
+            "nl": "Versleutelingsalgoritme userinfo"
+          },
+          "description": {
+            "en": "Key-management algorithm the userinfo response is encrypted with; leave empty for no encryption.",
+            "fr": "Algorithme de gestion de clés avec lequel la réponse userinfo est chiffrée ; laissez vide pour ne pas chiffrer.",
+            "nl": "Sleutelbeheeralgoritme waarmee het userinfo-antwoord versleuteld wordt; laat leeg voor geen versleuteling."
+          }
+        },
+        "UserinfoEncryptedResponseEnc": {
+          "label": {
+            "en": "Userinfo content encryption",
+            "fr": "Chiffrement du contenu userinfo",
+            "nl": "Inhoudsversleuteling userinfo"
+          },
+          "description": {
+            "en": "Content-encryption algorithm for an encrypted userinfo response.",
+            "fr": "Algorithme de chiffrement du contenu pour une réponse userinfo chiffrée.",
+            "nl": "Inhoudsversleutelingsalgoritme voor een versleuteld userinfo-antwoord."
+          }
+        },
+        "UserinfoSignedResponseAlg": {
+          "label": {
+            "en": "Userinfo signing algorithm",
+            "fr": "Algorithme de signature userinfo",
+            "nl": "Ondertekeningsalgoritme userinfo"
+          },
+          "description": {
+            "en": "Algorithm the userinfo response is signed with; leave empty for plain JSON.",
+            "fr": "Algorithme avec lequel la réponse userinfo est signée ; laissez vide pour du JSON simple.",
+            "nl": "Algoritme waarmee het userinfo-antwoord ondertekend wordt; laat leeg voor gewone JSON."
+          }
+        }
+      }
+    },
+    "OidcApplicationMember": {
+      "label": {
+        "en": "Application member",
+        "fr": "Membre de l'application",
+        "nl": "Applicatielid"
+      },
+      "attributes": {
+        "AcceptedAt": {
+          "label": {
+            "en": "Accepted at",
+            "fr": "Acceptée le",
+            "nl": "Aanvaard op"
+          },
+          "description": {
+            "en": "When the invitation was accepted, in UTC.",
+            "fr": "Moment où l'invitation a été acceptée, en UTC.",
+            "nl": "Moment waarop de uitnodiging aanvaard werd, in UTC."
+          }
+        },
+        "Email": {
+          "label": {
+            "en": "Email",
+            "fr": "E-mail",
+            "nl": "E-mail"
+          },
+          "description": {
+            "en": "The address the invitation was sent to, as typed.",
+            "fr": "L'adresse à laquelle l'invitation a été envoyée, telle que saisie.",
+            "nl": "Het adres waarnaar de uitnodiging verstuurd werd, zoals ingetypt."
+          }
+        },
+        "InvitationExpiresAt": {
+          "label": {
+            "en": "Invitation expires at",
+            "fr": "L'invitation expire le",
+            "nl": "Uitnodiging verloopt op"
+          },
+          "description": {
+            "en": "When the invitation stops being accepted, in UTC.",
+            "fr": "Moment à partir duquel l'invitation n'est plus acceptée, en UTC.",
+            "nl": "Moment waarop de uitnodiging niet meer aanvaard wordt, in UTC."
+          }
+        },
+        "InvitationHash": {
+          "label": {
+            "en": "Invitation hash",
+            "fr": "Empreinte de l'invitation",
+            "nl": "Hash van de uitnodiging"
+          },
+          "description": {
+            "en": "SHA-256 of the single-use invitation token. Cleared when the invitation is accepted.",
+            "fr": "SHA-256 du jeton d'invitation à usage unique. Effacé lorsque l'invitation est acceptée.",
+            "nl": "SHA-256 van het eenmalige uitnodigingstoken. Gewist wanneer de uitnodiging aanvaard wordt."
+          }
+        },
+        "InvitedAt": {
+          "label": {
+            "en": "Invited at",
+            "fr": "Invité le",
+            "nl": "Uitgenodigd op"
+          },
+          "description": {
+            "en": "When the invitation was sent, in UTC.",
+            "fr": "Moment où l'invitation a été envoyée, en UTC.",
+            "nl": "Moment waarop de uitnodiging verstuurd werd, in UTC."
+          }
+        },
+        "InvitedBy": {
+          "label": {
+            "en": "Invited by",
+            "fr": "Invité par",
+            "nl": "Uitgenodigd door"
+          },
+          "description": {
+            "en": "Who sent the invitation.",
+            "fr": "Qui a envoyé l'invitation.",
+            "nl": "Wie de uitnodiging verstuurd heeft."
+          }
+        },
+        "MemberId": {
+          "label": {
+            "en": "Member id",
+            "fr": "Id du membre",
+            "nl": "Lid-id"
+          },
+          "description": {
+            "en": "Identifies the entry for resend, revoke and remove.",
+            "fr": "Identifie l'entrée pour le renvoi, la révocation et la suppression.",
+            "nl": "Identificeert de vermelding voor opnieuw versturen, intrekken en verwijderen."
+          }
+        },
+        "Role": {
+          "label": {
+            "en": "Role",
+            "fr": "Rôle",
+            "nl": "Rol"
+          },
+          "description": {
+            "en": "Admin, Developer or Tester.",
+            "fr": "Admin, Developer ou Tester.",
+            "nl": "Admin, Developer of Tester."
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          },
+          "description": {
+            "en": "Invited, Active, or Revoked. An invitation past its expiry shows as expired.",
+            "fr": "Invited, Active ou Revoked. Une invitation dont le délai est dépassé apparaît comme expirée.",
+            "nl": "Invited, Active of Revoked. Een uitnodiging waarvan de vervaltermijn verstreken is, wordt als verlopen getoond."
+          }
+        },
+        "UserId": {
+          "label": {
+            "en": "User id",
+            "fr": "Id de l'utilisateur",
+            "nl": "Gebruikers-id"
+          },
+          "description": {
+            "en": "The member's user id. Empty while an invitation is pending: an invitation never discloses whether the address has an account.",
+            "fr": "L'id utilisateur du membre. Vide tant qu'une invitation est en attente : une invitation ne révèle jamais si l'adresse possède un compte.",
+            "nl": "De gebruikers-id van het lid. Leeg zolang een uitnodiging openstaat: een uitnodiging verraadt nooit of het adres een account heeft."
+          }
+        }
+      }
+    },
+    "OidcApplicationScope": {
+      "label": {
+        "en": "Application scope",
+        "fr": "Scope de l'application",
+        "nl": "Applicatiescope"
+      },
+      "attributes": {
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          },
+          "description": {
+            "en": "The scope's name, e.g. email or fleet.read.",
+            "fr": "Le nom du scope, p. ex. email ou fleet.read.",
+            "nl": "De naam van de scope, bv. email of fleet.read."
+          }
+        },
+        "Required": {
+          "label": {
+            "en": "Required",
+            "fr": "Obligatoire",
+            "nl": "Verplicht"
+          },
+          "description": {
+            "en": "Whether the user must grant it. An optional scope can be unticked on the consent screen.",
+            "fr": "Indique si l'utilisateur doit l'accorder. Un scope facultatif peut être décoché sur l'écran de consentement.",
+            "nl": "Of de gebruiker ze moet verlenen. Een optionele scope kan op het toestemmingsscherm uitgevinkt worden."
+          }
+        },
+        "Review": {
+          "label": {
+            "en": "Review",
+            "fr": "Revue",
+            "nl": "Beoordeling"
+          },
+          "description": {
+            "en": "Who approved or rejected the scope, and when.",
+            "fr": "Qui a approuvé ou rejeté le scope, et quand.",
+            "nl": "Wie de scope goedgekeurd of afgewezen heeft, en wanneer."
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          },
+          "description": {
+            "en": "Approved, or Pending while the owner of a cross-owner API scope has not approved it, or Rejected.",
+            "fr": "Approved, ou Pending tant que le propriétaire d'une API appartenant à un autre propriétaire n'a pas approuvé ce scope, ou Rejected.",
+            "nl": "Approved, of Pending zolang de eigenaar van een API van een andere eigenaar deze scope niet goedgekeurd heeft, of Rejected."
+          }
+        }
+      }
+    },
+    "OidcResource": {
+      "label": {
+        "en": "Resource",
+        "fr": "Ressource",
+        "nl": "Resource"
+      },
+      "attributes": {
+        "AllowIntrospection": {
+          "label": {
+            "en": "Allow introspection",
+            "fr": "Autoriser l'introspection",
+            "nl": "Introspectie toestaan"
+          },
+          "description": {
+            "en": "Whether the API itself may introspect the tokens addressed to it.",
+            "fr": "Indique si l'API elle-même peut introspecter les jetons qui lui sont destinés.",
+            "nl": "Of de API zelf de tokens mag introspecteren die aan haar gericht zijn."
+          }
+        },
+        "AutoApprove": {
+          "label": {
+            "en": "Auto-approve",
+            "fr": "Approbation automatique",
+            "nl": "Automatisch goedkeuren"
+          },
+          "description": {
+            "en": "Whether any application may request its scopes without an owner's approval.",
+            "fr": "Indique si toute application peut demander ses scopes sans l'approbation d'un propriétaire.",
+            "nl": "Of elke applicatie de scopes ervan mag aanvragen zonder goedkeuring van een eigenaar."
+          }
+        },
+        "ClaimTypes": {
+          "label": {
+            "en": "Claim types",
+            "fr": "Types de revendication",
+            "nl": "Claimtypes"
+          },
+          "description": {
+            "en": "User claim types released when this scope is granted, e.g. email.",
+            "fr": "Types de revendications utilisateur communiqués lorsque ce scope est accordé, p. ex. email.",
+            "nl": "Gebruikersclaimtypes die vrijgegeven worden wanneer deze scope verleend wordt, bv. email."
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "fr": "Créée par",
+            "nl": "Aangemaakt door"
+          },
+          "description": {
+            "en": "The user who created the resource.",
+            "fr": "L'utilisateur qui a créé la ressource.",
+            "nl": "De gebruiker die de resource aangemaakt heeft."
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          },
+          "description": {
+            "en": "What it grants access to, shown to users on the consent screen.",
+            "fr": "Ce à quoi elle donne accès, affiché aux utilisateurs sur l'écran de consentement.",
+            "nl": "Waartoe ze toegang geeft, getoond aan gebruikers op het toestemmingsscherm."
+          }
+        },
+        "DisplayName": {
+          "label": {
+            "en": "Display name",
+            "fr": "Nom d'affichage",
+            "nl": "Weergavenaam"
+          },
+          "description": {
+            "en": "Human-readable name, shown to users on the consent screen.",
+            "fr": "Nom lisible, affiché aux utilisateurs sur l'écran de consentement.",
+            "nl": "Leesbare naam, getoond aan gebruikers op het toestemmingsscherm."
+          }
+        },
+        "Emphasize": {
+          "label": {
+            "en": "Emphasize",
+            "fr": "Mettre en évidence",
+            "nl": "Benadrukken"
+          },
+          "description": {
+            "en": "Whether the consent screen highlights this scope as sensitive.",
+            "fr": "Indique si l'écran de consentement met en évidence ce scope comme étant sensible.",
+            "nl": "Of het toestemmingsscherm deze scope als gevoelig benadrukt."
+          }
+        },
+        "Enabled": {
+          "label": {
+            "en": "Enabled",
+            "fr": "Activée",
+            "nl": "Ingeschakeld"
+          },
+          "description": {
+            "en": "Whether it can currently be requested; disable to withdraw it without deleting it.",
+            "fr": "Indique si elle peut actuellement être demandée ; désactivez pour la retirer sans la supprimer.",
+            "nl": "Of ze op dit moment aangevraagd kan worden; schakel uit om ze in te trekken zonder ze te verwijderen."
+          }
+        },
+        "Kind": {
+          "label": {
+            "en": "Kind",
+            "fr": "Type",
+            "nl": "Soort"
+          },
+          "description": {
+            "en": "Identity for a scope of user claims, or Api for a protected API.",
+            "fr": "Identity pour un scope de revendications utilisateur, ou Api pour une API protégée.",
+            "nl": "Identity voor een scope met gebruikersclaims, of Api voor een beschermde API."
+          }
+        },
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          },
+          "description": {
+            "en": "For an identity resource, the scope name (email). For an API, the audience (fleet). Read-only once created.",
+            "fr": "Pour une ressource d'identité, le nom du scope (email). Pour une API, l'audience (fleet). En lecture seule après la création.",
+            "nl": "Voor een identiteitsresource de scopenaam (email). Voor een API de audience (fleet). Alleen-lezen na het aanmaken."
+          }
+        },
+        "Owners": {
+          "label": {
+            "en": "Owners",
+            "fr": "Propriétaires",
+            "nl": "Eigenaars"
+          },
+          "description": {
+            "en": "The users who own the API. Their applications get its scopes without approval; other applications need theirs (D4).",
+            "fr": "Les utilisateurs propriétaires de l'API. Leurs applications obtiennent ses scopes sans approbation ; les autres applications ont besoin de la leur (D4).",
+            "nl": "De gebruikers die eigenaar zijn van de API. Hun applicaties krijgen de scopes ervan zonder goedkeuring; andere applicaties hebben hun goedkeuring nodig (D4)."
+          }
+        },
+        "Required": {
+          "label": {
+            "en": "Required",
+            "fr": "Obligatoire",
+            "nl": "Verplicht"
+          },
+          "description": {
+            "en": "Whether the user must grant this scope and cannot untick it on the consent screen.",
+            "fr": "Indique si l'utilisateur doit accorder ce scope et ne peut pas le décocher sur l'écran de consentement.",
+            "nl": "Of de gebruiker deze scope moet verlenen en ze op het toestemmingsscherm niet kan uitvinken."
+          }
+        },
+        "Scopes": {
+          "label": {
+            "en": "Scopes",
+            "fr": "Scopes",
+            "nl": "Scopes"
+          },
+          "description": {
+            "en": "The API's scopes. Each name starts with the resource's name and a dot.",
+            "fr": "Les scopes de l'API. Chaque nom commence par le nom de la ressource suivi d'un point.",
+            "nl": "De scopes van de API. Elke naam begint met de naam van de resource en een punt."
+          }
+        },
+        "ShowInDiscoveryDocument": {
+          "label": {
+            "en": "Show in discovery document",
+            "fr": "Afficher dans le document de découverte",
+            "nl": "Tonen in het discovery-document"
+          },
+          "description": {
+            "en": "Whether it is listed publicly in the OpenID discovery document.",
+            "fr": "Indique si elle est répertoriée publiquement dans le document de découverte OpenID.",
+            "nl": "Of ze publiek vermeld staat in het OpenID-discovery-document."
+          }
+        }
+      }
+    },
+    "OidcReviewDecision": {
+      "label": {
+        "en": "Review decision",
+        "fr": "Décision de revue",
+        "nl": "Beoordelingsbeslissing"
+      },
+      "attributes": {
+        "DecidedAt": {
+          "label": {
+            "en": "Decided at",
+            "fr": "Décidé le",
+            "nl": "Beslist op"
+          }
+        },
+        "DecidedBy": {
+          "label": {
+            "en": "Decided by",
+            "fr": "Décidé par",
+            "nl": "Beslist door"
+          },
+          "description": {
+            "en": "Who decided, and when, in UTC.",
+            "fr": "Qui a décidé, et quand, en UTC.",
+            "nl": "Wie beslist heeft, en wanneer, in UTC."
+          }
+        },
+        "Note": {
+          "label": {
+            "en": "Note",
+            "fr": "Note",
+            "nl": "Notitie"
+          },
+          "description": {
+            "en": "The reason given with the decision.",
+            "fr": "La raison donnée avec la décision.",
+            "nl": "De reden die bij de beslissing gegeven werd."
+          }
+        },
+        "RequestedAt": {
+          "label": {
+            "en": "Requested at",
+            "fr": "Demandé le",
+            "nl": "Aangevraagd op"
+          }
+        },
+        "RequestedBy": {
+          "label": {
+            "en": "Requested by",
+            "fr": "Demandé par",
+            "nl": "Aangevraagd door"
+          },
+          "description": {
+            "en": "Who asked, and when, in UTC.",
+            "fr": "Qui a fait la demande, et quand, en UTC.",
+            "nl": "Wie het aangevraagd heeft, en wanneer, in UTC."
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          },
+          "description": {
+            "en": "Pending, Approved or Rejected.",
+            "fr": "Pending, Approved ou Rejected.",
+            "nl": "Pending, Approved of Rejected."
+          }
+        }
+      }
+    },
+    "OidcDeveloperRequest": {
+      "label": {
+        "en": "Developer request",
+        "fr": "Demande de développeur",
+        "nl": "Ontwikkelaarsaanvraag"
+      },
+      "attributes": {
+        "UserName": {
+          "label": {
+            "en": "User name",
+            "fr": "Nom d'utilisateur",
+            "nl": "Gebruikersnaam"
+          }
+        },
+        "Email": {
+          "label": {
+            "en": "Email",
+            "fr": "E-mail",
+            "nl": "E-mail"
+          }
+        },
+        "RequestedAt": {
+          "label": {
+            "en": "Requested",
+            "fr": "Demandée le",
+            "nl": "Aangevraagd"
+          }
+        },
+        "TermsVersion": {
+          "label": {
+            "en": "Terms version",
+            "fr": "Version des conditions",
+            "nl": "Versie van de voorwaarden"
+          }
+        }
+      }
+    },
+    "OidcInvitation": {
+      "label": {
+        "en": "Invitation",
+        "fr": "Invitation",
+        "nl": "Uitnodiging"
+      },
+      "attributes": {
+        "Email": {
+          "label": {
+            "en": "Email address",
+            "fr": "Adresse e-mail",
+            "nl": "E-mailadres"
+          }
+        },
+        "Role": {
+          "label": {
+            "en": "Role",
+            "fr": "Rôle",
+            "nl": "Rol"
+          }
+        }
+      }
+    },
+    "OidcApplicationMemberRow": {
+      "label": {
+        "en": "Team member",
+        "fr": "Membre de l'équipe",
+        "nl": "Teamlid"
+      },
+      "attributes": {
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "Role": {
+          "label": {
+            "en": "Role",
+            "fr": "Rôle",
+            "nl": "Rol"
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          }
+        },
+        "InvitedAt": {
+          "label": {
+            "en": "Invited",
+            "fr": "Invité le",
+            "nl": "Uitgenodigd"
+          }
+        },
+        "AcceptedAt": {
+          "label": {
+            "en": "Joined",
+            "fr": "Rejoint le",
+            "nl": "Toegetreden"
+          }
+        }
+      }
+    },
+    "OidcScopeApproval": {
+      "label": {
+        "en": "Scope approval",
+        "fr": "Approbation de scope",
+        "nl": "Scopegoedkeuring"
+      },
+      "attributes": {
+        "Application": {
+          "label": {
+            "en": "Application",
+            "fr": "Application",
+            "nl": "Applicatie"
+          }
+        },
+        "Scope": {
+          "label": {
+            "en": "Scope",
+            "fr": "Scope",
+            "nl": "Scope"
+          }
+        },
+        "Resource": {
+          "label": {
+            "en": "API",
+            "fr": "API",
+            "nl": "API"
+          }
+        },
+        "RequestedAt": {
+          "label": {
+            "en": "Requested",
+            "fr": "Demandé le",
+            "nl": "Aangevraagd"
+          }
+        }
+      }
+    },
+    "OidcGoLiveReview": {
+      "label": {
+        "en": "Go-live review",
+        "fr": "Mise en ligne à approuver",
+        "nl": "Livegang ter goedkeuring"
+      },
+      "attributes": {
+        "Application": {
+          "label": {
+            "en": "Application",
+            "fr": "Application",
+            "nl": "Applicatie"
+          }
+        },
+        "ClientId": {
+          "label": {
+            "en": "Client id",
+            "fr": "Identifiant client",
+            "nl": "Client-id"
+          }
+        },
+        "RequestedAt": {
+          "label": {
+            "en": "Requested",
+            "fr": "Demandé le",
+            "nl": "Aangevraagd"
+          }
+        }
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "identityProvider": {
+        "en": "Identity provider",
+        "fr": "Fournisseur d'identité",
+        "nl": "Identiteitsprovider"
+      }
+    },
+    "oidcApplications": {
+      "en": "Applications",
+      "fr": "Applications",
+      "nl": "Applicaties"
+    },
+    "oidcResources": {
+      "en": "Resources",
+      "fr": "Ressources",
+      "nl": "Resources"
+    },
+    "oidcDeveloperRequests": {
+      "en": "Developer requests",
+      "fr": "Demandes de développeur",
+      "nl": "Ontwikkelaarsaanvragen"
+    },
+    "oidcScopeApprovals": {
+      "en": "Scope approvals",
+      "fr": "Approbations de scopes",
+      "nl": "Scopegoedkeuringen"
+    },
+    "oidcGoLiveReviews": {
+      "en": "Go-live reviews",
+      "fr": "Mises en ligne à approuver",
+      "nl": "Livegangen ter goedkeuring"
+    }
+  },
+  "actions": {
+    "ApproveDeveloper": {
+      "label": {
+        "en": "Approve",
+        "fr": "Approuver",
+        "nl": "Goedkeuren"
+      },
+      "confirmation": {
+        "en": "Approve the selected developer requests? They get access to the developer portal.",
+        "fr": "Approuver les demandes sélectionnées ? Ces utilisateurs accèdent alors au portail des développeurs.",
+        "nl": "De geselecteerde aanvragen goedkeuren? Deze gebruikers krijgen dan toegang tot het ontwikkelaarsportaal."
+      }
+    },
+    "RejectDeveloper": {
+      "label": {
+        "en": "Reject",
+        "fr": "Refuser",
+        "nl": "Weigeren"
+      },
+      "confirmation": {
+        "en": "Reject the selected developer requests?",
+        "fr": "Refuser les demandes sélectionnées ?",
+        "nl": "De geselecteerde aanvragen weigeren?"
+      }
+    },
+    "InviteMember": {
+      "label": {
+        "en": "Invite",
+        "fr": "Inviter",
+        "nl": "Uitnodigen"
+      }
+    },
+    "SwitchToLive": {
+      "label": {
+        "en": "Go live",
+        "fr": "Mettre en ligne",
+        "nl": "Live zetten"
+      },
+      "confirmation": {
+        "en": "Let anyone sign in to this application?",
+        "fr": "Permettre à tout le monde de se connecter à cette application ?",
+        "nl": "Iedereen laten aanmelden bij deze applicatie?"
+      }
+    },
+    "SwitchToDevelopment": {
+      "label": {
+        "en": "Back to development",
+        "fr": "Repasser en développement",
+        "nl": "Terug naar ontwikkeling"
+      },
+      "confirmation": {
+        "en": "Only the team will be able to sign in to this application. Continue?",
+        "fr": "Seule l'équipe pourra se connecter à cette application. Continuer ?",
+        "nl": "Alleen het team kan zich dan nog aanmelden bij deze applicatie. Doorgaan?"
+      }
+    },
+    "ResendInvitation": {
+      "label": {
+        "en": "Resend invitation",
+        "fr": "Renvoyer l'invitation",
+        "nl": "Uitnodiging opnieuw sturen"
+      }
+    },
+    "RemoveMember": {
+      "label": {
+        "en": "Remove",
+        "fr": "Retirer",
+        "nl": "Verwijderen"
+      },
+      "confirmation": {
+        "en": "Remove the selected members and invitations?",
+        "fr": "Retirer les membres et invitations sélectionnés ?",
+        "nl": "De geselecteerde leden en uitnodigingen verwijderen?"
+      }
+    },
+    "ApproveScope": {
+      "label": {
+        "en": "Approve",
+        "fr": "Approuver",
+        "nl": "Goedkeuren"
+      }
+    },
+    "RejectScope": {
+      "label": {
+        "en": "Reject",
+        "fr": "Refuser",
+        "nl": "Weigeren"
+      },
+      "confirmation": {
+        "en": "Reject the selected scope requests?",
+        "fr": "Refuser les demandes de scope sélectionnées ?",
+        "nl": "De geselecteerde scopeaanvragen weigeren?"
+      }
+    },
+    "ApproveGoLive": {
+      "label": {
+        "en": "Approve",
+        "fr": "Approuver",
+        "nl": "Goedkeuren"
+      }
+    },
+    "RejectGoLive": {
+      "label": {
+        "en": "Reject",
+        "fr": "Refuser",
+        "nl": "Weigeren"
+      },
+      "confirmation": {
+        "en": "Keep the selected applications in development?",
+        "fr": "Garder les applications sélectionnées en développement ?",
+        "nl": "De geselecteerde applicaties in ontwikkeling houden?"
+      }
+    }
+  },
+  "identityProvider": {
+    "developerApprovedNotice": {
+      "en": "The developer requests were approved.",
+      "fr": "Les demandes ont été approuvées.",
+      "nl": "De aanvragen zijn goedgekeurd."
+    },
+    "developerRejectedNotice": {
+      "en": "The developer requests were rejected.",
+      "fr": "Les demandes ont été refusées.",
+      "nl": "De aanvragen zijn geweigerd."
+    },
+    "developerRequestGone": {
+      "en": "These requests were already decided.",
+      "fr": "Ces demandes ont déjà été traitées.",
+      "nl": "Over deze aanvragen is al beslist."
+    },
+    "adminOnly": {
+      "en": "Only an Admin of this application can do that.",
+      "fr": "Seul un administrateur de cette application peut le faire.",
+      "nl": "Alleen een beheerder van deze applicatie kan dat."
+    },
+    "invite": {
+      "en": "Send invitation",
+      "fr": "Envoyer l'invitation",
+      "nl": "Uitnodiging versturen"
+    },
+    "inviteTitle": {
+      "en": "Invite to the team",
+      "fr": "Inviter dans l'équipe",
+      "nl": "Uitnodigen voor het team"
+    },
+    "inviteInvalid": {
+      "en": "Enter an email address and a role.",
+      "fr": "Saisissez une adresse e-mail et un rôle.",
+      "nl": "Vul een e-mailadres en een rol in."
+    },
+    "invitationSent": {
+      "en": "Invitation sent.",
+      "fr": "Invitation envoyée.",
+      "nl": "Uitnodiging verstuurd."
+    },
+    "lastAdmin": {
+      "en": "An application needs at least one Admin.",
+      "fr": "Une application doit avoir au moins un administrateur.",
+      "nl": "Een applicatie heeft minstens één beheerder nodig."
+    },
+    "goLiveRequested": {
+      "en": "Going live was requested. An administrator decides.",
+      "fr": "La mise en ligne a été demandée. Un administrateur décidera.",
+      "nl": "De livegang is aangevraagd. Een beheerder beslist."
+    },
+    "nowLive": {
+      "en": "The application is live.",
+      "fr": "L'application est en ligne.",
+      "nl": "De applicatie is live."
+    }
+  }
+}

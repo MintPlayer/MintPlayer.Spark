@@ -81,10 +81,7 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
         // Load scope definitions from DB to resolve claims
         var scopeNames = scopeString.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-        var grantedScopes = await session
-            .Query<OidcScope>()
-            .Where(s => s.Name.In(scopeNames) && s.Enabled)
-            .ToListAsync(ct);
+        var grantedScopes = await OidcScopeCatalog.LoadAsync(session, scopeNames, ct);
 
         // Resolve claims from scope definitions
         var claims = OidcTokenGenerator.ResolveUserInfoClaims(user, grantedScopes);

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
@@ -20,7 +21,7 @@ namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 /// the answer.
 /// </para>
 /// </summary>
-public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplication>, IAfterSave<OidcApplication>
+public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplication>, IAfterSave<OidcApplication>, IBeforeDelete<OidcApplication>, IAfterDelete<OidcApplication>
 {
     private static readonly string[] SupportedGrantTypes =
         ["authorization_code", "refresh_token", "client_credentials"];
@@ -31,24 +32,143 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// which the injection generator cannot place before the required ones.
     /// </summary>
     [Inject] private readonly OidcCorsOrigins corsOrigins;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IAccessControl accessControl;
 
     public async ValueTask OnBeforeSaveAsync(OidcApplication entity, SaveContext context)
     {
+        StampNewApplication(entity, context);
+
         if (string.IsNullOrWhiteSpace(entity.ClientId))
             throw new SparkValidationException("Client id is required.", nameof(entity.ClientId));
+
+        // D5: generated server-side and read-only. Every token, grant and redirect a client ever
+        // obtained is tied to its client id, so changing it orphans all of them.
+        if (context.Before is OidcApplication before
+            && !string.IsNullOrEmpty(before.ClientId)
+            && !string.Equals(before.ClientId, entity.ClientId, StringComparison.Ordinal))
+        {
+            throw new SparkValidationException("The client id cannot be changed.", nameof(entity.ClientId));
+        }
 
         ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
         ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
         ValidateCorsOrigins(entity.AllowedCorsOrigins, nameof(entity.AllowedCorsOrigins));
         ValidateGrantTypes(entity);
+        ValidateScopes(entity);
+        ValidateMode(entity);
         HashAnyNewSecrets(entity);
 
-        // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused with
-        // a 400 while staying stored. A pre-commit read still races two concurrent saves — both find
-        // nothing and both proceed; true uniqueness needs a compare-exchange reservation.
         // Not a session only when the interceptor is called by hand (unit tests of the rules above).
         if (context.Session is IAsyncDocumentSession session)
+        {
+            await ApplyScopeApprovalsAsync(session, entity, context);
+            // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused
+            // with a 400 while staying stored.
             await EnsureClientIdUniqueAsync(session, entity);
+            // The query above races two concurrent saves: both find nothing and both proceed. The
+            // compare-exchange reservation is the atomic half (O17).
+            await OidcClientIdReservation.ReserveAsync(session, entity);
+        }
+    }
+
+    /// <summary>
+    /// A new application gets a generated client id, a document id of its own (the reservation
+    /// names it), Development mode (D4), and its creator as its first Admin (D3).
+    /// </summary>
+    private static void StampNewApplication(OidcApplication entity, SaveContext context)
+    {
+        if (!context.IsNew)
+            return;
+
+        if (string.IsNullOrWhiteSpace(entity.ClientId))
+            entity.ClientId = OidcClientIdReservation.GenerateClientId();
+
+        entity.Id ??= "OidcApplications/" + Guid.NewGuid().ToString("N");
+        entity.CreatedAt ??= DateTime.UtcNow;
+
+        if (context.User?.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId)
+        {
+            entity.CreatedBy ??= userId;
+            if (entity.Members.Count == 0)
+            {
+                entity.Members.Add(new OidcApplicationMember
+                {
+                    MemberId = Guid.NewGuid().ToString("N"),
+                    UserId = userId,
+                    Role = OidcMemberRoles.Admin,
+                    Status = OidcMemberStatuses.Active,
+                    AcceptedAt = DateTime.UtcNow,
+                });
+            }
+        }
+    }
+
+    private static void ValidateScopes(OidcApplication entity)
+    {
+        foreach (var scope in entity.Scopes)
+        {
+            scope.Name = scope.Name?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(scope.Name) || scope.Name.Any(char.IsWhiteSpace))
+                throw new SparkValidationException(
+                    $"'{scope.Name}' is not a scope name. Scopes are space-delimited on the wire, so a name has no whitespace.",
+                    nameof(entity.Scopes));
+
+            if (scope.Status is not (OidcScopeStatuses.Approved or OidcScopeStatuses.Pending or OidcScopeStatuses.Rejected))
+                throw new SparkValidationException($"Scope '{scope.Name}' has an unknown status '{scope.Status}'.", nameof(entity.Scopes));
+        }
+
+        var duplicate = entity.Scopes.GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1);
+        if (duplicate != null)
+            throw new SparkValidationException($"Scope '{duplicate.Key}' is listed more than once.", nameof(entity.Scopes));
+    }
+
+    /// <summary>
+    /// D4: an API scope from a resource none of the application's members owns starts as
+    /// <c>Pending</c> until an owner (or an identity-provider administrator) approves it. Identity
+    /// scopes, the team's own APIs and <c>AutoApprove</c> resources are approved at once. A scope the
+    /// application already had keeps its status: editing the application never re-opens a decision.
+    /// An administrator adding a scope is the approval.
+    /// </summary>
+    private async Task ApplyScopeApprovalsAsync(IAsyncDocumentSession session, OidcApplication entity, SaveContext context)
+    {
+        var before = (context.Before as OidcApplication)?.Scopes ?? [];
+        var added = entity.Scopes
+            .Where(s => !before.Any(b => string.Equals(b.Name, s.Name, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (added.Count == 0)
+            return;
+
+        // Statuses are the server's to decide: a value posted for a new scope means nothing.
+        foreach (var scope in added)
+            scope.Status = OidcScopeStatuses.Approved;
+
+        if (context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
+            return;
+
+        var team = entity.Members.Where(m => m.Status == OidcMemberStatuses.Active && m.UserId is not null)
+            .Select(m => m.UserId!).ToHashSet(StringComparer.Ordinal);
+        foreach (var scope in added)
+        {
+            if (OidcScopeCatalog.ApiResourceNameOf(scope.Name) is not { } apiName)
+                continue; // identity scope
+            var api = await session.LoadAsync<OidcResource>(OidcScopeCatalog.ResourceId(apiName));
+            if (api is null || api.Kind != OidcResourceKinds.Api || api.AutoApprove || api.Owners.Any(team.Contains))
+                continue;
+            scope.Status = OidcScopeStatuses.Pending;
+            scope.Review = new OidcReviewDecision
+            {
+                Status = OidcScopeStatuses.Pending,
+                RequestedAt = DateTime.UtcNow,
+                RequestedBy = context.User?.FindFirstValue(ClaimTypes.NameIdentifier),
+            };
+        }
+    }
+
+    private static void ValidateMode(OidcApplication entity)
+    {
+        if (entity.Mode is not (OidcApplicationModes.Development or OidcApplicationModes.Live))
+            throw new SparkValidationException(
+                $"Mode must be '{OidcApplicationModes.Development}' or '{OidcApplicationModes.Live}'.", nameof(entity.Mode));
     }
 
     private static async Task EnsureClientIdUniqueAsync(IAsyncDocumentSession session, OidcApplication entity)
@@ -186,6 +306,10 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
 
             if (!ClientSecretHasher.IsHashed(secret.Hash))
                 secret.Hash = ClientSecretHasher.Hash(secret.Hash);
+
+            // Revocation and the audit trail name a secret by this id, never by its value (D5).
+            if (string.IsNullOrEmpty(secret.SecretId))
+                secret.SecretId = Guid.NewGuid().ToString("N")[..12];
         }
     }
 
@@ -198,5 +322,27 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     {
         corsOrigins.Invalidate();
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// D3: deleting is the application Admin's, not a Developer's, although both pass the
+    /// members-only row filter. An identity-provider administrator may delete any application.
+    /// </summary>
+    public async ValueTask OnBeforeDeleteAsync(OidcApplication entity, DeleteContext context)
+    {
+        if (context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
+            return;
+
+        var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (entity.ActiveMember(userId) is not { Role: OidcMemberRoles.Admin })
+            throw new SparkValidationException("Only an Admin of this application can delete it.", nameof(entity.Members));
+    }
+
+    /// <summary>Frees the client id of a deleted application, and its CORS origins.</summary>
+    public async ValueTask OnAfterDeleteAsync(OidcApplication entity, DeleteContext context)
+    {
+        corsOrigins.Invalidate();
+        if (context.Session is IAsyncDocumentSession session && !string.IsNullOrEmpty(entity.ClientId))
+            await OidcClientIdReservation.ReleaseAsync(session, entity);
     }
 }

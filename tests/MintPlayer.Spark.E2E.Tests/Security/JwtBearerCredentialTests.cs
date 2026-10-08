@@ -82,8 +82,7 @@ public class JwtBearerCredentialTests
     public async Task A_client_credentials_token_authenticates_and_carries_its_security_json_rights()
     {
         var clientId = $"fleet-ci-{Guid.NewGuid():N}"[..20];
-        var scope = $"api-{Guid.NewGuid():N}"[..12];
-        var secret = await _fixture.SparkId.SeedMachineClientAsync(clientId, scope, Audience, MachineGroup);
+        var (secret, scope) = await _fixture.SparkId.SeedMachineClientAsync(clientId, $"api{Guid.NewGuid():N}"[..12], Audience, MachineGroup);
 
         var token = await GetAccessTokenAsync(clientId, secret, scope);
 
@@ -109,9 +108,8 @@ public class JwtBearerCredentialTests
         // an Audience. This token is genuine — same issuer, same signing key, correct signature —
         // and was simply obtained for a different resource. Only the audience says otherwise.
         var clientId = $"other-{Guid.NewGuid():N}"[..20];
-        var scope = $"other-{Guid.NewGuid():N}"[..12];
-        var secret = await _fixture.SparkId.SeedMachineClientAsync(
-            clientId, scope, audience: "some-other-api", group: MachineGroup);
+        var (secret, scope) = await _fixture.SparkId.SeedMachineClientAsync(
+            clientId, $"other{Guid.NewGuid():N}"[..12], audience: "some-other-api", group: MachineGroup);
 
         var token = await GetAccessTokenAsync(clientId, secret, scope);
 

@@ -93,7 +93,7 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
 
         // Validate requested scopes against BOTH sources of truth.
         //
-        // The application's AllowedScopes says what this client may ask for; the OidcScope
+        // The application's Scopes say what this client may ask for; the OidcResource
         // documents say what the provider actually defines. Only the first was checked here,
         // while token issuance resolves against the second — so a scope listed on the client but
         // undefined (or disabled) was accepted, consented to, and carried on the code, and then
@@ -105,7 +105,7 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
 
         foreach (var s in requestedScopes)
         {
-            if (!app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
+            if (!app.ScopeNames().Contains(s, StringComparer.OrdinalIgnoreCase))
             {
                 return RedirectWithError(redirectUri, state, "invalid_scope", $"Scope '{s}' is not allowed for this client.");
             }
@@ -154,6 +154,19 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
                 : QueryHelpers.AddQueryString(loginUrl, ExternalLoginQueryParameter, externalLogin));
         }
 
+        // D4: an application in Development mode is for its own team only. Refused after sign-in,
+        // not before: whether the caller is on the team depends on who they are.
+        if (!OidcApplicationAccess.MayAuthorize(app, userId))
+            return RedirectWithError(redirectUri, state, "access_denied",
+                "This application is still in development. Only its team can sign in to it.");
+
+        // D4: scopes awaiting their owner's approval are dropped for everyone outside the team, and
+        // rejected ones for everyone. Dropped, not refused: the request still succeeds with what is
+        // available, and the token response's `scope` says what was granted (D6).
+        requestedScopes = OidcApplicationAccess.AvailableScopes(app, userId, requestedScopes);
+        if (requestedScopes.Count == 0)
+            return RedirectWithError(redirectUri, state, "invalid_scope", "None of the requested scopes is available.");
+
         // Everything above validated the request against the application record. Persist that
         // verdict now and hand the browser nothing but an opaque handle to it, so no later hop
         // has to — or is able to — re-derive it from request input.
@@ -163,8 +176,8 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
 
         // Load the user's standing grant once: both the implicit branch and the skip-consent
         // check below need it, and the implicit branch used to run without consulting it at all.
-        var existingAuth = await session.LoadAsync<OidcAuthorization>(
-            OidcAuthorizationReference.DocumentId(userId, app.Id!), ct);
+        var existingAuth = await session.LoadAsync<OidcGrant>(
+            OidcGrantReference.DocumentId(userId, app.Id!), ct);
 
         var withdrawn = existingAuth is not null && existingAuth.Status != "valid";
 
@@ -200,7 +213,7 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
     /// browser carries. The document is stored but not yet saved — the caller decides whether
     /// this request goes to a consent screen or straight to code issuance.
     /// </summary>
-    private static async Task<(OidcAuthorizationRequest Request, string RequestId)> CreateRequestAsync(
+    private static async Task<(OidcToken Request, string RequestId)> CreateRequestAsync(
         IAsyncDocumentSession session,
         OidcApplication app,
         string userId,
@@ -213,9 +226,10 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
         CancellationToken ct)
     {
         var requestId = OidcRequestReference.GenerateValue();
-        var request = new OidcAuthorizationRequest
+        var request = new OidcToken
         {
             Id = OidcRequestReference.DocumentId(requestId),
+            Type = OidcTokenTypes.AuthorizationRequest,
             ApplicationId = app.Id!,
             Subject = userId,
             RedirectUri = redirectUri,
@@ -229,14 +243,12 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
             ExpiresAt = DateTime.UtcNow.AddMinutes(10),
         };
 
-        await session.StoreAsync(request, ct);
-
         // Let RavenDB reap the document. Most requests are consumed within seconds and none is
         // of any use after ExpiresAt, so without this the collection would grow with one dead
         // document per sign-in, forever. Security does not rest on the deletion actually having
         // happened — LoadPendingRequestAsync refuses an expired request either way — which is
         // just as well, since the server sweeps on its own schedule.
-        session.Advanced.GetMetadataFor(request)[Constants.Documents.Metadata.Expires] = request.ExpiresAt;
+        await session.StoreExpiringAsync(request, ct);
 
         return (request, requestId);
     }

@@ -6,6 +6,10 @@
 		<Nullable>enable</Nullable>
 		<OutputType>library</OutputType>
 		<IsPackable>true</IsPackable>
+		<!-- Names this library's App_Data layers (composition D16): its model, rights, translations and
+		     menu fragment (docs/identity_provider_platform_PRD.md D2, spike S1). Permanent: it is part of
+		     every right key, slot and model id the library ships. -->
+		<SparkLibraryAlias>identity-provider</SparkLibraryAlias>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.IdentityProvider</PackageId>
@@ -24,9 +28,18 @@
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
 	</ItemGroup>
 
+	<!-- The developer portal's default MJML templates (SparkIdentityProvider/*, PRD D2-D4), read by
+	     MailManager. An app overrides one by placing a file with the same name in its Templates/Mail folder.
+	     WithCulture="false" keeps Name.{culture}.mjml out of satellite assemblies (as in Authorization). -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- Ships M_202610090900_OidcDataModel (PRD I1); the app's generated AddMigrations() registers it. -->
+		<ProjectReference Include="..\..\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). Analyzer ProjectReferences are not transitive. -->
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<!-- Keys the [ValueObject] types declared here. Analyzer ProjectReferences are not transitive. -->

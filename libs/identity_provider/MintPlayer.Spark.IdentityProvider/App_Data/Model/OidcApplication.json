@@ -1,0 +1,613 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "d0d0db0e-d372-52af-8bab-7c6b7e249347",
+    "name": "OidcApplication",
+    "clrType": "MintPlayer.Spark.IdentityProvider.Models.OidcApplication",
+    "breadcrumb": "{ClientId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "b5b0d410-94fe-51a1-8bd8-b582e903bcae",
+        "name": "AccessTokenLifetimeMinutes",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "32093cfa-b62b-51ed-bce3-18e33a621ecd",
+        "name": "AllowedCorsOrigins",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "36a5daf5-aa5c-5262-bb49-97ec4fe2344a",
+        "name": "AllowedGrantTypes",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "76f4380c-b449-5dc8-97f6-47f3e131dfb3",
+        "name": "AllowImpersonation",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 52,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a9a347ed-03c3-5307-acf0-5bf47f51cc25",
+        "name": "AllowRememberConsent",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "779ec77b-7565-585d-bcdf-300b1652e9d9",
+        "name": "BackChannelLogoutSessionRequired",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 49,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8acff153-c06c-54d9-8d69-8ec978ca7184",
+        "name": "BackChannelLogoutUri",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 48,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "99a52ba5-6e42-5ada-badd-fca7355071ff",
+        "name": "Claims",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.ClientClaim",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ee985d31-ba3e-5cc4-8bbf-25f0341fe0eb",
+        "name": "ClientId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8fb109a1-a96a-500b-a015-ed29e42a2b35",
+        "name": "ClientType",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "OidcClientType"
+      },
+      {
+        "id": "9efe9111-2f1e-5f5b-83e0-8a2f8ca20bcf",
+        "name": "ConsentLifetimeSeconds",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c62cce32-aab7-58bd-b7cc-00e87cec3d59",
+        "name": "ConsentType",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "OidcConsentType"
+      },
+      {
+        "id": "8b98fb83-0e6a-50f8-b40d-2a7d0515e34a",
+        "name": "CreatedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "416fc3f6-080f-5ac8-b42c-eba59faf1890",
+        "name": "CreatedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "be48198b-12f6-5ea5-bf99-e9ef1ae62dcc",
+        "name": "DefaultMaxAge",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 47,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b84e7cfd-546b-5189-aef6-9e27b8f6cde0",
+        "name": "DisplayName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7f5d07fd-6dea-58cd-9945-49f7a41e1b84",
+        "name": "Enabled",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0cdbf832-6fa3-522e-9c25-26aa29c503b9",
+        "name": "FrontChannelLogoutSessionRequired",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 51,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e143a03b-98d9-5e81-80d8-0db84be233ae",
+        "name": "FrontChannelLogoutUri",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 50,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "cd11d969-10b5-5694-8798-be7135fe9304",
+        "name": "GoLiveReview",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.OidcReviewDecision",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "25568327-3e50-572e-945b-8af0b202b64c",
+        "name": "HomepageUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1cdc0901-ceb7-57df-9897-bcea77daf083",
+        "name": "IdTokenEncryptedResponseAlg",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 42,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "712a4adb-df64-584e-b1b2-5a9da5e36e03",
+        "name": "IdTokenEncryptedResponseEnc",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 43,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "42b385dc-586c-510f-a3ea-c9cbed8ae6b4",
+        "name": "IdTokenLifetimeMinutes",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 18,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9b880310-0448-5d93-bbe8-ca5da7677c54",
+        "name": "IdTokenSignedResponseAlg",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 41,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8288f8b1-3eb6-5db1-8f15-5aff013ba402",
+        "name": "Jwks",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 32,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ed636878-931e-5606-a14c-7cbb0153795f",
+        "name": "JwksUri",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 33,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "89da95dd-80cb-5f97-8cb5-49a87c14b6d9",
+        "name": "LogoUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "02b7879f-9bdd-55a8-a97d-4ed6031746f3",
+        "name": "MayIntrospectAnyAudience",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d2ad5762-dd2e-5f42-b1a8-6724b89e3436",
+        "name": "Members",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.OidcApplicationMember",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "208f6219-f87d-55a6-a208-aef346ed7fcc",
+        "name": "Mode",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "lookupReferenceType": "OidcApplicationMode"
+      },
+      {
+        "id": "e0547ba0-6da7-5288-afec-8ca7ad8b2d7a",
+        "name": "PostLogoutRedirectUris",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4099ca29-9494-552d-84ef-207895cd2dbc",
+        "name": "PrivacyPolicyUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1411fbcc-173c-5cfe-9e36-4c88bfdb33ca",
+        "name": "Publisher",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5b83f54c-e257-5c13-b3f8-5dd3669b10e5",
+        "name": "RedirectUris",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4ef51bab-7272-5494-a39a-3fa255c7278e",
+        "name": "RefreshTokenLifetimeDays",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 18,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "25b31ad4-4a10-50ca-ba34-f1056ed3cebc",
+        "name": "RequireDpop",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 36,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "232e71d1-3d09-54b8-9b4c-e177a1b6e537",
+        "name": "RequirePkce",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "361faa80-e39e-5c57-9953-596478c18e40",
+        "name": "RequirePushedAuthorizationRequests",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 37,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "958f9318-ab61-508f-a79d-9f363130b932",
+        "name": "RequireSignedRequestObject",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 38,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ce4675ab-8e41-5351-a834-6317f6b429a9",
+        "name": "Scopes",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 22,
+        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.OidcApplicationScope",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "18f0b5c6-8df6-5e1d-878e-9af16eca0701",
+        "name": "Secrets",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.ClientSecret",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "479a26d7-8be5-521d-bf50-5a06e9987369",
+        "name": "SectorIdentifierUri",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 40,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e430a66a-b2ee-54c9-b717-220fe21c9685",
+        "name": "SubjectType",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 39,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ae7dabc8-3f1b-57c3-b0cd-9bdd39225b79",
+        "name": "SupportEmail",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "46b4fd90-ef61-595b-afb9-b42de09ec4de",
+        "name": "TermsOfServiceUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c5fcbad4-e9c0-5506-a1d2-eef98bb087e7",
+        "name": "TlsClientAuthSubjectDn",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 34,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "32cafd11-dc41-53a3-ae2e-260b45121be5",
+        "name": "TlsClientCertificateBoundAccessTokens",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 35,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e3447812-2ec6-5ce9-866b-99401cf7f406",
+        "name": "TokenEndpointAuthMethod",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 31,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "82510540-be87-5339-8569-03b75e794429",
+        "name": "UserinfoEncryptedResponseAlg",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 45,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2f40cc9a-407b-573a-a9aa-b5174768ec7a",
+        "name": "UserinfoEncryptedResponseEnc",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 46,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "344f7ae6-1187-58b9-92cc-4445471f21e8",
+        "name": "UserinfoSignedResponseAlg",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 44,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "oidc-application-members"
+    ]
+  },
+  "queries": [
+    {
+      "id": "66e38522-5b3c-5a38-abd4-979af612598e",
+      "name": "Applications",
+      "source": "Custom.Applications",
+      "alias": "oidc-applications",
+      "sortColumns": [
+        {
+          "property": "DisplayName",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "OidcApplication",
+      "isStreamingQuery": false
+    }
+  ]
+}

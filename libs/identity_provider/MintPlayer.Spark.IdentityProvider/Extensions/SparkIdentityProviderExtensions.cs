@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -40,6 +42,8 @@ public static class SparkIdentityProviderExtensions
         Action<SparkIdentityProviderOptions>? configure = null)
     {
         var options = new SparkIdentityProviderOptions();
+        // Spark:IdentityProvider first, the lambda second: code wins over configuration, as everywhere in Spark.
+        builder.Configuration?.GetSection("Spark:IdentityProvider").Bind(options);
         configure?.Invoke(options);
         builder.Services.AddSingleton(options);
 
@@ -57,8 +61,20 @@ public static class SparkIdentityProviderExtensions
 
         // Validation of the OIDC admin screens (#482: interceptors, not Actions-class overrides).
         builder.AddInterceptor<Interceptors.OidcApplicationInterceptors>();
-        builder.AddInterceptor<Interceptors.OidcScopeInterceptors>();
-        builder.Services.AddHostedService<OidcTokenCleanupService>();
+        builder.AddInterceptor<Interceptors.OidcResourceInterceptors>();
+
+        // The developer portal (PRD D2): developer status on the user document, membership of the
+        // bound developers group derived from it per request, and the audit trail (D9).
+        builder.Services.AddSingleton<OidcDevelopers>();
+        var moduleRegistry = builder.Registry;
+        builder.Services.AddSingleton(sp => new OidcUserDocuments(moduleRegistry, sp.GetRequiredService<IDocumentStore>()));
+        builder.Services.AddSingleton<OidcAudit>();
+        builder.Services.AddSingleton<OidcPortalMail>();
+        builder.Services.AddSingleton<OidcPortalLinks>();
+        builder.Services.AddSingleton<OidcInvitations>();
+        builder.Services.AddSingleton<OidcTeamMail>();
+        builder.Services.AddScoped<OidcPortalAccess>();
+        builder.AddGroupMembershipProvider<OidcDeveloperMembership>();
 
         // Constructed rather than resolved, because the CORS policy's predicate below has no service
         // provider of its own. Registered unconditionally: an unused snapshot costs nothing, and it
@@ -153,8 +169,7 @@ public static class SparkIdentityProviderExtensions
                 corsOrigins.LoadAsync().GetAwaiter().GetResult();
             }
 
-            new OidcTokens_ByExpiration().Execute(documentStore);
-            new OidcAuthorizations_BySubject().Execute(documentStore);
+            new OidcGrants_BySubject().Execute(documentStore);
 
             // Authorization requests carry @expires, so RavenDB reaps them itself rather than
             // needing a sweeper. Deletion is housekeeping only — an expired request is refused

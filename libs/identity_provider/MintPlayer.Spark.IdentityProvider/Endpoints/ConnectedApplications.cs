@@ -65,13 +65,13 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
         return ConnectResults.Html(RenderPage(context, grants, apps, Notice(Status)));
     }
 
-    private static async Task<List<OidcAuthorization>> LoadGrantsAsync(
+    private static async Task<List<OidcGrant>> LoadGrantsAsync(
         IAsyncDocumentSession session, string userId, CancellationToken ct)
     {
         // Display only — see the index's own remarks. Status is filtered in memory rather than
         // as a query predicate so a stale index cannot decide what the user is shown.
         var all = await session
-            .Query<OidcAuthorization, OidcAuthorizations_BySubject>()
+            .Query<OidcGrant, OidcGrants_BySubject>()
             .Where(a => a.Subject == userId, exact: true)
             .ToListAsync(ct);
 
@@ -87,7 +87,7 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
 
     private string RenderPage(
         HttpContext context,
-        List<OidcAuthorization> grants,
+        List<OidcGrant> grants,
         Dictionary<string, OidcApplication> apps,
         string? notice)
     {
@@ -193,7 +193,7 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
         // "not yours" and "no such grant" are the same missing document here, so the response
         // cannot distinguish them and cannot be used to probe which grants exist.
         var withdrawn = string.IsNullOrEmpty(applicationId)
-            || await TryWithdrawAsync(store, OidcAuthorizationReference.DocumentId(userId, applicationId), ct);
+            || await TryWithdrawAsync(store, OidcGrantReference.DocumentId(userId, applicationId), ct);
 
         // Reporting "Access removed" when the write lost a race would be the worst possible
         // outcome here: the user believes they have taken access back and has no reason to look
@@ -222,14 +222,14 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
             using var session = store.OpenAsyncSession();
             session.Advanced.UseOptimisticConcurrency = true;
 
-            var grant = await session.LoadAsync<OidcAuthorization>(grantId, ct);
+            var grant = await session.LoadAsync<OidcGrant>(grantId, ct);
             if (grant is null || grant.Status != "valid")
                 return true;
 
             var now = DateTime.UtcNow;
             grant.Status = "revoked";
             grant.RevokedAt = now;
-            // Never cleared on reinstate — see OidcAuthorization.LastRevokedAt.
+            // Never cleared on reinstate — see OidcGrant.LastRevokedAt.
             grant.LastRevokedAt = now;
 
             await RevokeTokensAsync(session, grantId, ct);

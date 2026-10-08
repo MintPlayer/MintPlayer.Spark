@@ -178,7 +178,7 @@ public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host
         await ObtainCodeAsync(app, UserEmail("rewiden"), ["openid"]);
 
         using var session = Store.OpenAsyncSession();
-        var grant = await session.LoadAsync<OidcAuthorization>(
+        var grant = await session.LoadAsync<OidcGrant>(
             OidcAuthorizationReferenceProbe.DocumentId(await SubjectOfAsync(UserEmail("rewiden")), app.Id!));
 
         grant.GrantedScopes.Should().Equal(["openid"],

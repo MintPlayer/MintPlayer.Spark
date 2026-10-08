@@ -261,14 +261,35 @@ production, which runs Community):
 | `OidcKeys` | Keys | signing and encryption keys with a state (Next/Active/Retired), encrypted with ASP.NET Data Protection |
 | `OidcAuditEvents` | none | the audit trail (D9), with `@expires` retention defaulting to 180 days |
 
-- **Uniqueness:** a compare-exchange reservation for each `ClientId` and each scope name across
-  every resource (O17).
+- **Uniqueness (O17):**
+  - **Client ids:** a compare-exchange reservation `oidc/client-ids/<client id>` naming the
+    application document (`OidcClientIdReservation`). A failed save leaves a reservation whose owner
+    does not exist, and the next save takes it over.
+  - **Scope names:** unique **by construction**, not by a reservation (decided in I1). Resources have
+    natural ids (`OidcResources/<name>`). A resource name contains no dot, and an API scope must
+    start with `<resource>.`. So `fleet.read` can only live in `OidcResources/fleet`, and an identity
+    scope can never be spelled like an API scope.
+  - **Lookups:** resolving a scope is two point-loads (`OidcScopeCatalog`), never an index query. A
+    scope disabled a moment ago is therefore never read back as enabled.
 - **API scope names** carry their resource's prefix (`fleet.read`).
 - **Developer status** is a `Developer { Status, TermsVersion, RequestedAt, DecidedAt, DecidedBy }`
-  field on the user document. It adds no collection.
-- **Migrations** move `OidcScopes` → `OidcResources`, `OidcAuthorizations` → `OidcGrants`,
-  `OidcAuthorizationRequests` → `OidcTokens`, and `AllowedScopes` → `Scopes[]`. They run on HR,
-  Fleet and CodeCoverage.
+  field on the user document. It adds no collection. The provider patches it in and reads it with a
+  projection, so `SparkUser` needs no property. RavenDB keeps the field across loads and saves of
+  the user (`PreserveDocumentPropertiesNotFoundOnModel`, measured true in client 7.2.6).
+- **Display names:** `OidcResource`/`OidcApiScope` `DisplayName`/`Description` are
+  `TranslatedString` (D7). An application's `DisplayName` stays a plain string (decided in I1): it
+  is a product name, like a brand, and is not translated.
+- **Tokens:** every `OidcTokens` document is stored with `@expires` (`StoreExpiringAsync`). The
+  hourly `OidcTokenCleanupService`, its index and `TokenCleanupInterval` are removed (O13).
+- **Migrations:** `M_202610090900_OidcDataModel`, shipped by the library.
+  - It moves `OidcScopes` → `OidcResources`. A scope with audiences becomes a scope of each
+    audience's API resource, prefixed when it lacked the prefix, and the applications' lists are
+    renamed with it.
+  - It moves `OidcAuthorizations` → `OidcGrants` (same hash, new prefix, tokens repointed) and
+    `AllowedScopes` → `Scopes[]` (Live mode, secrets get ids).
+  - It deletes `OidcAuthorizationRequests` and stamps `@expires` on every token.
+  - It runs wherever the library is referenced: today only SparkId, because HR and Fleet no longer
+    reference it (I0) and CodeCoverage never did.
 
 ### D2: Becoming a developer, and the shipped groups (revised Q2, roles answer)
 
@@ -288,9 +309,15 @@ production, which runs Community):
   mechanism, `SparkBuilderGroupMembershipExtensions`) puts a user in the bound developers group
   exactly while `Developer.Status == Approved`.
 - **Row filtering (resolved by spike S1, §2.4):** a library can't ship a row policy in JSON, but it
-  can register one in C#. The members-only filter is an IdP `RowFilterPolicy<OidcApplication>`
-  (`AddSparkRowPolicy`). Administrators bypass it through the right
-  `ManageAll/IdentityProvider`, granted to `identity-provider:administrators`.
+  can register one in C#.
+  - **As built in I1:** the filter lives in the library's own Actions classes
+    (`OidcApplicationActions.GetRowFilterAsync`, `OidcResourceActions.GetRowFilterAsync`). That is the
+    per-type form of the same rule, which the framework applies to lists, detail, edit, delete and,
+    as a WITH CHECK, create. A separate `RowFilterPolicy` would add nothing.
+  - **Who passes:** an active Admin or Developer member sees an application. An API is changed only
+    by its owners, and identity resources only by administrators.
+  - **Administrators** bypass both filters through the right `ManageAll/IdentityProvider`, granted to
+    `identity-provider:administrators`.
 - **The library layer:** the IdP becomes a library layer (`<SparkLibraryAlias>identity-provider`),
   shipping its own Model JSON, Actions, translations, rights and program-unit fragment. Apps bind
   its slots and own none of its files.

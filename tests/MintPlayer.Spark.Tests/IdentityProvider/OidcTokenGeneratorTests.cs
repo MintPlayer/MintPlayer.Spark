@@ -41,10 +41,14 @@ public class OidcTokenGeneratorTests : IDisposable
             Roles = [.. roles],
         };
 
-    private static OidcScope Scope(string name, params string[] claimTypes)
-        => new() { Name = name, ClaimTypes = [.. claimTypes] };
+    private static OidcScopeDefinition Scope(string name, params string[] claimTypes)
+        => new(name, name, OidcResourceKinds.Identity, null, null, [.. claimTypes], false, false, true);
 
-    private static readonly OidcScope[] EverythingScopes =
+    /// <summary>An API scope: its audience is the name of the API resource it belongs to.</summary>
+    private static OidcScopeDefinition ApiScope(string resourceName, string name)
+        => new(name, resourceName, OidcResourceKinds.Api, null, null, [], false, false, true);
+
+    private static readonly OidcScopeDefinition[] EverythingScopes =
     [
         Scope("profile", "name", "preferred_username", "family_name"),
         // Mixed case and a duplicate on purpose: the lookup is case-insensitive and de-duplicated.
@@ -111,7 +115,7 @@ public class OidcTokenGeneratorTests : IDisposable
         var user = User();
         user.Claims.Add(new SparkUserClaim { ClaimType = "given_name", ClaimValue = "Ada" });
         user.Claims.Add(new SparkUserClaim { ClaimType = System.Security.Claims.ClaimTypes.Surname, ClaimValue = "Lovelace" });
-        OidcScope[] profile = [Scope("profile", "given_name", "family_name")];
+        OidcScopeDefinition[] profile =[Scope("profile", "given_name", "family_name")];
 
         OidcTokenGenerator.ResolveUserClaims(user, profile).Select(c => (c.Type, c.Value))
             .Should().BeEquivalentTo(new[] { ("given_name", "Ada"), ("family_name", "Lovelace") });
@@ -204,10 +208,14 @@ public class OidcTokenGeneratorTests : IDisposable
             ClientId = "machine",
             Claims = [new ClientClaim { Type = "group", Value = "Integrations" }],
         };
+        // One audience per API resource now (its name), so several audiences take several APIs;
+        // "API-A" is api-a spelled differently, to prove the merge is case-insensitive.
         var scopes = new[]
         {
-            new OidcScope { Name = "api.read", Audiences = ["api-a", "api-b"] },
-            new OidcScope { Name = "api.write", Audiences = ["API-A", "api-c"] },
+            ApiScope("api-a", "api-a.read"),
+            ApiScope("api-b", "api-b.read"),
+            ApiScope("API-A", "API-A.write"),
+            ApiScope("api-c", "api-c.write"),
         };
 
         var (token, jti) = NewGenerator().GenerateAccessToken(user: null, app, "https://idp.test", scopes);
@@ -215,7 +223,7 @@ public class OidcTokenGeneratorTests : IDisposable
         var jwt = new JsonWebToken(token);
         jwt.Id.Should().Be(jti);
         jwt.GetClaim("group").Value.Should().Be("Integrations");
-        jwt.GetClaim("scope").Value.Should().Be("api.read api.write");
+        jwt.GetClaim("scope").Value.Should().Be("api-a.read api-b.read API-A.write api-c.write");
         // Merged case-insensitively, and none after the first may be dropped.
         jwt.Audiences.Order(StringComparer.Ordinal).Should().Equal("api-a", "api-b", "api-c");
         jwt.TryGetClaim(JwtRegisteredClaimNames.Sub, out _).Should().BeFalse("no user stands behind a machine token");

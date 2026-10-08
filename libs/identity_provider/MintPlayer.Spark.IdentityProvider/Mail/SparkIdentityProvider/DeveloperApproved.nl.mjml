@@ -1,0 +1,23 @@
+<mjml>
+  <mj-head>
+    <mj-title>Je bent nu ontwikkelaar{{ if app_name }} op {{ app_name }}{{ end }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Je ontwikkelaarsaanvraag is goedgekeurd</mj-text>
+        <mj-text>Je kunt nu applicaties registreren die gebruikers aanmelden{{ if app_name }} met {{ app_name }}{{ end }}, je team uitnodigen en hun geheimen beheren.</mj-text>
+{{ if portal_url }}
+        <mj-button href="{{ portal_url }}">Open het ontwikkelaarsportaal</mj-button>
+        <mj-text font-size="13px" color="#4b5563">Werkt de knop niet? Open dan deze link: <a href="{{ portal_url }}">{{ portal_url }}</a></mj-text>
+{{ end }}
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

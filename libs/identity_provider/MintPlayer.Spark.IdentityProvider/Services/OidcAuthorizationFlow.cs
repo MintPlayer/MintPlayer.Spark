@@ -54,7 +54,7 @@ internal static class OidcAuthorizationFlow
         List<string> scopes,
         CancellationToken ct)
     {
-        var authorizationId = OidcAuthorizationReference.DocumentId(userId, app.Id!);
+        var authorizationId = OidcGrantReference.DocumentId(userId, app.Id!);
 
         for (var attempt = 0; ; attempt++)
         {
@@ -82,11 +82,11 @@ internal static class OidcAuthorizationFlow
         using var session = store.OpenAsyncSession();
         session.Advanced.UseOptimisticConcurrency = true;
 
-        var auth = await session.LoadAsync<OidcAuthorization>(authorizationId, ct);
+        var auth = await session.LoadAsync<OidcGrant>(authorizationId, ct);
 
         if (auth == null)
         {
-            auth = new OidcAuthorization
+            auth = new OidcGrant
             {
                 Id = authorizationId,
                 ApplicationId = app.Id!,
@@ -133,7 +133,7 @@ internal static class OidcAuthorizationFlow
     /// </summary>
     internal static async Task<string> IssueCodeAsync(
         IAsyncDocumentSession session,
-        OidcAuthorizationRequest request,
+        OidcToken request,
         CancellationToken ct)
     {
         var code = OidcTokenReference.GenerateValue();
@@ -146,7 +146,7 @@ internal static class OidcAuthorizationFlow
             ApplicationId = request.ApplicationId,
             AuthorizationId = request.AuthorizationId,
             Subject = request.Subject,
-            Type = "authorization_code",
+            Type = OidcTokenTypes.AuthorizationCode,
             CodeChallenge = request.CodeChallenge,
             CodeChallengeMethod = request.CodeChallengeMethod,
             RedirectUri = request.RedirectUri,
@@ -154,7 +154,7 @@ internal static class OidcAuthorizationFlow
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(5), // 5 minute lifetime
-            State = request.Nonce, // Store nonce for ID token generation
+            Nonce = request.Nonce,
             AuthTime = request.AuthTime,
         };
 
@@ -162,10 +162,10 @@ internal static class OidcAuthorizationFlow
         // handle from browser history, finds a consumed request rather than a second code.
         request.Status = "consumed";
 
-        await session.StoreAsync(token, ct);
+        await session.StoreExpiringAsync(token, ct);
         await session.SaveChangesAsync(ct);
 
-        return RedirectUrl.With(request.RedirectUri,
+        return RedirectUrl.With(request.RedirectUri!,
             ("code", code),
             ("state", request.State));
     }
@@ -174,13 +174,13 @@ internal static class OidcAuthorizationFlow
     /// Loads the request behind a <c>request_id</c>, or null if it is unknown, expired,
     /// already used, or belongs to a different signed-in user.
     /// </summary>
-    internal static async Task<OidcAuthorizationRequest?> LoadPendingRequestAsync(
+    internal static async Task<OidcToken?> LoadPendingRequestAsync(
         IAsyncDocumentSession session, string requestId, string userId, CancellationToken ct)
     {
-        var request = await session.LoadAsync<OidcAuthorizationRequest>(
+        var request = await session.LoadAsync<OidcToken>(
             OidcRequestReference.DocumentId(requestId), ct);
 
-        if (request is not { Status: "pending" })
+        if (request is not { Type: OidcTokenTypes.AuthorizationRequest, Status: "pending" })
             return null;
 
         if (request.ExpiresAt < DateTime.UtcNow)

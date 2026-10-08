@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "OidcInvitation, the InviteMember prompt (docs/identity_provider_platform_PRD.md D3): a retry-action form, never stored.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'identity-provider:OidcInvitation[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "069707aa-93e9-5ebd-a5ed-df73eadfe9b4",
+    "name": "OidcInvitation",
+    "breadcrumb": "{Email}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "1829bc51-baad-50fe-9b1b-518758e1bf88",
+        "name": "Email",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "86a250f8-579e-5934-acf1-f3dbf0b88d3e",
+        "name": "Role",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "lookupReferenceType": "OidcMemberRole",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

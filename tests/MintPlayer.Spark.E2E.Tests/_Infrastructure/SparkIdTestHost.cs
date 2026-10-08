@@ -73,30 +73,33 @@ public sealed class SparkIdTestHost : SparkAppTestHost
     }
 
     /// <summary>
-    /// Registers a confidential <c>client_credentials</c> application and the scope that gives its
-    /// tokens an audience, then returns the client secret.
+    /// Registers a confidential <c>client_credentials</c> application and an API scope on the API
+    /// resource named <paramref name="audience"/> (created if missing), then returns the client secret
+    /// and the scope's full name (<c>{audience}.{scopeSuffix}</c>).
     /// <para>
     /// The <c>group</c> claim is the entire authorization integration: a machine token carrying
     /// <c>group = "{group}"</c> is governed by the resource server's <c>security.json</c> like a person,
     /// because group membership is resolved from claims and nothing else knows what a client is.
     /// </para>
     /// </summary>
-    public async Task<string> SeedMachineClientAsync(string clientId, string scopeName, string audience, string group)
+    public async Task<(string Secret, string Scope)> SeedMachineClientAsync(string clientId, string scopeSuffix, string audience, string group)
     {
         var secret = $"S{Guid.NewGuid():N}!a";
+        var scopeName = $"{audience}.{scopeSuffix}";
 
         using var appStore = OpenAppStore();
         using var session = appStore.OpenAsyncSession();
 
-        await session.StoreAsync(new OidcScope
+        // The audience is the API resource's name: a token carrying one of its scopes is addressed
+        // to it, not to everything the issuer serves.
+        var resourceId = OidcScopeCatalog.ResourceId(audience);
+        var api = await session.LoadAsync<OidcResource>(resourceId);
+        if (api is null)
         {
-            Name = scopeName,
-            DisplayName = scopeName,
-            Enabled = true,
-            // The audience comes from the scope, not the client, so this is what makes the issued
-            // token addressed to this resource server rather than to everything the issuer serves.
-            Audiences = [audience],
-        });
+            api = new OidcResource { Id = resourceId, Kind = OidcResourceKinds.Api, Name = audience };
+            await session.StoreAsync(api);
+        }
+        api.Scopes.Add(new OidcApiScope { Name = scopeName });
 
         await session.StoreAsync(new OidcApplication
         {
@@ -106,13 +109,14 @@ public sealed class SparkIdTestHost : SparkAppTestHost
             Enabled = true,
             Secrets = [new ClientSecret { Hash = ClientSecretHasher.Hash(secret), CreatedAt = DateTime.UtcNow }],
             AllowedGrantTypes = ["client_credentials"],
-            AllowedScopes = [scopeName],
+            Scopes = [new OidcApplicationScope { Name = scopeName }],
+            Mode = OidcApplicationModes.Live,
             Claims = [new ClientClaim { Type = "group", Value = group }],
         });
 
         await session.SaveChangesAsync();
         await appStore.WaitForIndexingAsync(TestDatabase);
 
-        return secret;
+        return (secret, scopeName);
     }
 }

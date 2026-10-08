@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
@@ -11,7 +12,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// docs/idp-e2e-test-matrix.md §T (N11).
 /// <para>
 /// Every grant minted its JWT from the scopes that resolve to a defined, enabled
-/// <c>OidcScope</c>, and then stored the <em>requested</em> list on the token document. The two
+/// <c>OidcResource</c>, and then stored the <em>requested</em> list on the token document. The two
 /// diverge exactly when a scope is undefined or has been disabled — and introspection reads the
 /// document, so a resource server asking what a token may do was told about scopes the token does
 /// not carry. Wrong in the permissive direction, and it made disabling a scope a half-measure: the
@@ -20,7 +21,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </para>
 /// <para>
 /// Per case, not per class (M8 item 11): the cases disable scopes, <c>openid</c> among them, and
-/// every client in a database shares those <c>OidcScope</c> documents.
+/// every client in a database shares those <c>OidcResource</c> documents.
 /// </para>
 /// </summary>
 public class OidcScopeIntegrityTests : OidcTestHost
@@ -50,18 +51,25 @@ public class OidcScopeIntegrityTests : OidcTestHost
             : [.. scope.GetString()!.Split(' ', StringSplitOptions.RemoveEmptyEntries)];
     }
 
-    private Task DisableScopeAsync(string name)
-        => SeedAsync(async session =>
-        {
-            var scope = await session.LoadAsync<OidcScope>("OidcScopes/" + name.ToLowerInvariant());
-            scope.Enabled = false;
-        });
+    private Task DisableScopeAsync(string name) => EnableScopeAsync(name, false);
 
+    /// <summary>
+    /// An identity scope is its own resource, so the resource is toggled; an API scope is one entry of
+    /// its API's <see cref="OidcResource.Scopes"/>, toggled alone so its sibling scopes stay granted.
+    /// </summary>
     private Task EnableScopeAsync(string name, bool enabled)
         => SeedAsync(async session =>
         {
-            var scope = await session.LoadAsync<OidcScope>("OidcScopes/" + name.ToLowerInvariant());
-            scope.Enabled = enabled;
+            if (OidcScopeCatalog.ApiResourceNameOf(name) is { } apiName)
+            {
+                var api = await session.LoadAsync<OidcResource>(OidcScopeCatalog.ResourceId(apiName));
+                api.Scopes.Single(s => s.Name == name).Enabled = enabled;
+            }
+            else
+            {
+                var resource = await session.LoadAsync<OidcResource>(OidcScopeCatalog.ResourceId(name));
+                resource.Enabled = enabled;
+            }
         });
 
     private const string Password2 = Password;

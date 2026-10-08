@@ -1,4 +1,5 @@
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Migrations;
@@ -50,9 +51,9 @@ public partial class M_202610081200_RelyingParties : ISparkMigration
         if (!environment.IsDevelopment())
             return;
 
-        await EnsureScopeAsync("openid", "Your identity", ["sub"], required: true, cancellationToken);
-        await EnsureScopeAsync("profile", "Your profile", ["name", "preferred_username", "given_name", "family_name"], required: false, cancellationToken);
-        await EnsureScopeAsync("email", "Your email address", ["email", "email_verified"], required: false, cancellationToken);
+        await EnsureScopeAsync("openid", TranslatedString.Create("Your identity", "Votre identité", "Je identiteit"), ["sub"], required: true, cancellationToken);
+        await EnsureScopeAsync("profile", TranslatedString.Create("Your profile", "Votre profil", "Je profiel"), ["name", "preferred_username", "given_name", "family_name"], required: false, cancellationToken);
+        await EnsureScopeAsync("email", TranslatedString.Create("Your email address", "Votre adresse e-mail", "Je e-mailadres"), ["email", "email_verified"], required: false, cancellationToken);
 
         foreach (var rp in RelyingParties)
             await EnsureRelyingPartyAsync(rp.ClientId, rp.DisplayName, rp.Origin, rp.Secret, cancellationToken);
@@ -86,22 +87,31 @@ public partial class M_202610081200_RelyingParties : ISparkMigration
             AllowedGrantTypes = ["authorization_code"],
             RedirectUris = [$"{origin}/signin-SparkId"],
             PostLogoutRedirectUris = [$"{origin}/signout-callback-SparkId"],
-            AllowedScopes = ["openid", "profile", "email"],
+            // D6: openid and profile are required, email is optional (the user may untick it).
+            Scopes =
+            [
+                new OidcApplicationScope { Name = "openid", Required = true },
+                new OidcApplicationScope { Name = "profile", Required = true },
+                new OidcApplicationScope { Name = "email", Required = false },
+            ],
+            // The seeds are the demo's trusted first-party apps: Live, no members, consent implicit.
+            Mode = OidcApplicationModes.Live,
             ConsentType = "implicit",
             RequirePkce = true,
         }, ct);
     }
 
-    private async Task EnsureScopeAsync(string name, string displayName, List<string> claimTypes, bool required, CancellationToken ct)
+    private async Task EnsureScopeAsync(string name, TranslatedString displayName, List<string> claimTypes, bool required, CancellationToken ct)
     {
-        var exists = await session.Query<OidcScope>()
-            .Where(s => s.Name == name, exact: true)
-            .AnyAsync(ct);
-        if (exists)
+        // Natural id (OidcScopeCatalog): a point-load decides, no index involved.
+        var id = OidcScopeCatalog.ResourceId(name);
+        if (await session.Advanced.ExistsAsync(id, ct))
             return;
 
-        await session.StoreAsync(new OidcScope
+        await session.StoreAsync(new OidcResource
         {
+            Id = id,
+            Kind = OidcResourceKinds.Identity,
             Name = name,
             DisplayName = displayName,
             ClaimTypes = claimTypes,

@@ -28,10 +28,7 @@ internal sealed partial class OidcDiscovery : IGetEndpoint
         // Load scopes dynamically from DB
         using var session = store.OpenAsyncSession();
 
-        var scopes = await session
-            .Query<OidcScope>()
-            .Where(s => s.ShowInDiscoveryDocument && s.Enabled)
-            .ToListAsync(ct);
+        var scopes = await OidcScopeCatalog.LoadDiscoverableAsync(session, ct);
 
         var scopeNames = scopes.Select(s => s.Name).ToArray();
 

@@ -2,7 +2,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 
 /// <summary>
 /// Maps the <c>request_id</c> carried through the consent hop to the id of the
-/// <see cref="Models.OidcAuthorizationRequest"/> holding the validated request. See
+/// <see cref="Models.OidcToken"/> (a pending <c>authorization_request</c>) holding the validated request. See
 /// <see cref="OpaqueHandle"/> for why the handle is hashed into the id rather than stored in
 /// a field.
 /// <para>
@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// </summary>
 public static class OidcRequestReference
 {
-    private const string CollectionPrefix = "OidcAuthorizationRequests/";
+    private const string CollectionPrefix = "OidcTokens/";
 
     /// <summary>The document id recording <paramref name="value"/>.</summary>
     public static string DocumentId(string value) => OpaqueHandle.DocumentId(CollectionPrefix, value);

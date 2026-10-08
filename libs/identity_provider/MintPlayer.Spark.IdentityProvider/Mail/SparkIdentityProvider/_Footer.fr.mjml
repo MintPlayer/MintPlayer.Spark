@@ -1,0 +1,8 @@
+<mj-section padding="0 0 24px 0">
+  <mj-column>
+    <mj-divider border-width="1px" border-color="#e5e7eb" />
+    <mj-text font-size="12px" color="#6b7280">
+      Ceci est un message automatique{{ if app_name }} de {{ app_name }}{{ end }} concernant le portail des développeurs. Inutile d'y répondre.
+    </mj-text>
+  </mj-column>
+</mj-section>
