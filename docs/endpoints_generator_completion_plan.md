@@ -133,6 +133,27 @@ Every later milestone diffs against it; the only allowed difference is dead code
 
 The build must be green with zero MPEP diagnostics, and the M0 snapshot must be unchanged.
 
+**M1 — ✅ as built (2026-10-08).**
+- `MintPlayer.AspNetCore.Endpoints` 11.3.0-rc.0 → 11.4.0-rc.0 in the 8 csproj that reference it
+  (Spark, Authorization, History, IdentityProvider, MailManager, Moderation, Replication, SoftDelete).
+  No other package moved; `MintPlayer.SourceGenerators` stays 12.1.1.
+- **52 hooks** gained `IServiceProvider services` (the plan's 51 was one short): Spark 16,
+  Moderation 15, Authorization 8, IdentityProvider 6 (2 group + 4 endpoint), History 3, MailManager 2,
+  SoftDelete 2, Replication 0. The static helper `ModerationEndpoint.Configure(RouteHandlerBuilder)` keeps
+  its signature; it is `internal` and so not a hook (README: a non-public `Configure` is not flagged).
+- **OidcCors (#36):** `OidcCors.Apply(group, services)` takes the provider from
+  `IEndpointGroup.Configure(group, services)`; the `((IEndpointRouteBuilder)group).ServiceProvider` cast and
+  its "upstream would remove this" remark are gone. Same root provider, same map-time moment, so no
+  behaviour change; the `auth-*-all-options` snapshots (`cors=policy:SparkOidcCors`) prove it.
+- Two test helpers (`ExecuteCustomActionTests`, `LogoutTests`) invoked `TEndpoint.Configure(builder)`
+  directly and now pass `app.Services`.
+- README "Upgrading to 11.4" checks: no endpoint declares `IsEnabled`/`GetPath` that would turn into an
+  implicit hook (the only `IsEnabled` is `QnATestSeams.IsEnabled(IConfiguration, IHostEnvironment)`, not
+  an endpoint); nothing constructs or deconstructs `EndpointDescriptor`; no class is both group and
+  endpoint (MPEP036).
+- **Evidence:** `dotnet build MintPlayer.Spark.slnx` 0 errors, 0 `MPEP0` lines in the log. The six
+  route-snapshot projects in compare mode: 10 + 1 + 1 + 1 + 1 + 1 passed, fixtures unchanged.
+
 ### M2 — Contributions and Spark core service-locator holdouts
 - `RevertContribution : IPostEndpoint<…>` with 7 `[Inject]` fields. It needs a package reference,
   `[assembly: EndpointsMethodName("MapSparkContributionsEndpoints")]`, and antiforgery set the same

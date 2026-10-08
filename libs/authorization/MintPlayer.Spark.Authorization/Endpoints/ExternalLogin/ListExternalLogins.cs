@@ -24,7 +24,7 @@ internal sealed partial class ListExternalLogins<TUser> : IGetEndpoint
 {
     public static string Path => "/external-logins";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.RequireAuthorization();
     }

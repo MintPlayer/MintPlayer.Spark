@@ -48,7 +48,7 @@ public class LogoutTests
         var app = builder.Build();
 
         var routeBuilder = app.MapPost("/test-logout", () => Results.Ok());
-        InvokeConfigure<Logout>(routeBuilder);
+        InvokeConfigure<Logout>(routeBuilder, app.Services);
 
         // Start the app so endpoint conventions materialize into the data source.
         await app.StartAsync();
@@ -68,7 +68,7 @@ public class LogoutTests
         }
     }
 
-    private static void InvokeConfigure<TEndpoint>(RouteHandlerBuilder builder)
+    private static void InvokeConfigure<TEndpoint>(RouteHandlerBuilder builder, IServiceProvider services)
         where TEndpoint : IEndpointBase
-        => TEndpoint.Configure(builder);
+        => TEndpoint.Configure(builder, services);
 }

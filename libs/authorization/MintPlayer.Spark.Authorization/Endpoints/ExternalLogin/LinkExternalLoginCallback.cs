@@ -17,7 +17,7 @@ internal sealed partial class LinkExternalLoginCallback<TUser> : IGetEndpoint
 {
     public static string Path => "/link-external-login-callback";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.RequireAuthorization();
     }

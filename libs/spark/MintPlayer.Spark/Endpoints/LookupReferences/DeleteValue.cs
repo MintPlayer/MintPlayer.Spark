@@ -11,7 +11,7 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
 {
     public static string Path => "/{name}/{key}";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }

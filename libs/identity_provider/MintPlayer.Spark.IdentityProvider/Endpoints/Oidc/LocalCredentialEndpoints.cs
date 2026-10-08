@@ -30,7 +30,7 @@ internal sealed class OidcLoginSubmit : IPostEndpoint
 {
     public static string Path => "/login";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -59,7 +59,7 @@ internal sealed class OidcTwoFactorSubmit : IPostEndpoint
 {
     public static string Path => "/two-factor";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)

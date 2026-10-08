@@ -30,7 +30,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.1" GeneratePathProperty="true" />
-		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.3.0-rc.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
 		<PackageReference Include="MailKit" Version="4.18.1" />
 		<PackageReference Include="Mjml.Net" Version="4.15.0" />

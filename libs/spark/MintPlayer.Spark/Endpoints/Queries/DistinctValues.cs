@@ -33,7 +33,7 @@ internal sealed partial class DistinctValues : IPostEndpoint
     // mutating-verb request under /spark that carries an ambient credential — which swept these in
     // against the decision recorded above. Saying it out loud restores that decision and makes it
     // survive the next default change.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
     }

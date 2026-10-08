@@ -15,7 +15,7 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
 {
     public static string Path => "/delete";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }

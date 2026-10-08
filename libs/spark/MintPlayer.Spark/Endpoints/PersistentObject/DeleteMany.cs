@@ -36,7 +36,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
 {
     public static string Path => "/delete-many";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }

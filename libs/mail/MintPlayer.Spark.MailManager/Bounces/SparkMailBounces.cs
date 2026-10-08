@@ -235,7 +235,7 @@ internal sealed partial class ReceiveBounce : IPostEndpoint
 
     // ⚠️ EXPLICITLY exempt: the caller is the mail relay's pipe, which has no browser, no cookie and
     // no antiforgery token. Authenticated by the shared bearer secret instead. Stated, not absent.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     // Self-contained: a second UseRateLimiter() would halve the app's own budget (Spark's limiter
@@ -352,7 +352,7 @@ internal sealed partial class Unsubscribe : IPostEndpoint
 
     // ⚠️ EXPLICITLY exempt: RFC 8058 posts come from mail providers, with no browser session. The
     // token (Data Protection, 90 days) is the authentication; it can only unsubscribe its own stream.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     [Inject] private readonly SparkMailUnsubscribeTokens tokens;

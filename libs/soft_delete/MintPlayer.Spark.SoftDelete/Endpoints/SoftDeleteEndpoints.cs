@@ -48,7 +48,7 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint
 {
     public static string Path => "/restore";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly ISparkSoftDelete softDelete;
@@ -104,7 +104,7 @@ internal sealed partial class PurgePersistentObject : IPostEndpoint
 {
     public static string Path => "/purge";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly ISparkSoftDelete softDelete;

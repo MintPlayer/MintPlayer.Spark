@@ -22,7 +22,7 @@ internal sealed partial class ConfirmExternalLink<TUser> : IGetEndpoint
 {
     public static string Path => "/confirm-external-link";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.AllowAnonymous();
     }

@@ -42,7 +42,7 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint
 {
     public static string Path => "/delete-row";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }

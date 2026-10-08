@@ -34,7 +34,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
     /// </summary>
     private const int RefreshRequestBudget = 20;
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }

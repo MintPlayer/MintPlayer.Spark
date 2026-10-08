@@ -26,7 +26,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
 {
     public static string Path => "/new";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }

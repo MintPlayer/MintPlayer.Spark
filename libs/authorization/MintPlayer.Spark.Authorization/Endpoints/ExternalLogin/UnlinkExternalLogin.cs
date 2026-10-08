@@ -19,7 +19,7 @@ internal sealed partial class UnlinkExternalLogin<TUser> : IPostEndpoint
 {
     public static string Path => "/external-logins/unlink";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder
             .RequireAuthorization()

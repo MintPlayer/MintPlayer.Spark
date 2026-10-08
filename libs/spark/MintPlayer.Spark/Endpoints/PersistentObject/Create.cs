@@ -15,7 +15,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
 {
     public static string Path => "/create";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }

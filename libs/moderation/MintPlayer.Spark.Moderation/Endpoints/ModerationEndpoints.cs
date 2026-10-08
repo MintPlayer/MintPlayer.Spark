@@ -116,7 +116,7 @@ internal static class ModerationEndpoint
 internal sealed partial class VoteEndpoint : IPostEndpoint
 {
     public static string Path => "/vote";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -131,7 +131,7 @@ internal sealed partial class VoteEndpoint : IPostEndpoint
 internal sealed partial class VotesEndpoint : IPostEndpoint
 {
     public static string Path => "/votes";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -146,7 +146,7 @@ internal sealed partial class VotesEndpoint : IPostEndpoint
 internal sealed partial class FlagEndpoint : IPostEndpoint
 {
     public static string Path => "/flag";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -161,7 +161,7 @@ internal sealed partial class FlagEndpoint : IPostEndpoint
 internal sealed partial class LockEndpoint : IPostEndpoint
 {
     public static string Path => "/lock";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -176,7 +176,7 @@ internal sealed partial class LockEndpoint : IPostEndpoint
 internal sealed partial class UnlockEndpoint : IPostEndpoint
 {
     public static string Path => "/unlock";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -194,7 +194,7 @@ internal sealed partial class UnlockEndpoint : IPostEndpoint
 internal sealed partial class StatusEndpoint : IPostEndpoint
 {
     public static string Path => "/status";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationTargets targets;
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly Raven.Client.Documents.IDocumentStore documentStore;
@@ -240,7 +240,7 @@ internal sealed partial class StatusEndpoint : IPostEndpoint
 internal sealed partial class ReputationEndpoint : IPostEndpoint
 {
     public static string Path => "/reputation";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -262,7 +262,7 @@ internal sealed partial class ReputationEndpoint : IPostEndpoint
 internal sealed partial class ReputationHistoryEndpoint : IPostEndpoint
 {
     public static string Path => "/reputation/history";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -277,7 +277,7 @@ internal sealed partial class ReputationHistoryEndpoint : IPostEndpoint
 internal sealed partial class CasesEndpoint : IPostEndpoint
 {
     public static string Path => "/cases";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -292,7 +292,7 @@ internal sealed partial class CasesEndpoint : IPostEndpoint
 internal sealed partial class CaseEndpoint : IPostEndpoint
 {
     public static string Path => "/case";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -307,7 +307,7 @@ internal sealed partial class CaseEndpoint : IPostEndpoint
 internal sealed partial class DecideEndpoint : IPostEndpoint
 {
     public static string Path => "/case/decide";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -325,7 +325,7 @@ internal sealed partial class DecideEndpoint : IPostEndpoint
 internal sealed partial class SuspendEndpoint : IPostEndpoint
 {
     public static string Path => "/suspend";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -343,7 +343,7 @@ internal sealed partial class SuspendEndpoint : IPostEndpoint
 internal sealed partial class UnsuspendEndpoint : IPostEndpoint
 {
     public static string Path => "/unsuspend";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -361,7 +361,7 @@ internal sealed partial class UnsuspendEndpoint : IPostEndpoint
 internal sealed partial class MergeEndpoint : IPostEndpoint
 {
     public static string Path => "/merge";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ISparkModeration moderation;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -379,7 +379,7 @@ internal sealed partial class MergeEndpoint : IPostEndpoint
 internal sealed partial class AuditEndpoint : IPostEndpoint
 {
     public static string Path => "/audit";
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder) => ModerationEndpoint.Configure(builder);
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services) => ModerationEndpoint.Configure(builder);
     [Inject] private readonly ModerationReview review;
     [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IClientAccessor clientAccessor;

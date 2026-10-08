@@ -62,7 +62,7 @@ internal sealed partial class ListRevisions : IPostEndpoint
     // ⚠️ EXPLICITLY exempt: a read, like /spark/po/load. A forged one changes nothing and its response
     // cannot be read cross-origin. Stated, not merely absent, so the next default change cannot sweep
     // it in.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     [Inject] private readonly ISparkHistory history;
@@ -101,7 +101,7 @@ internal sealed partial class GetRevision : IPostEndpoint
     public static string Path => "/revision";
 
     // ⚠️ EXPLICITLY exempt: a read (see ListRevisions).
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     [Inject] private readonly ISparkHistory history;
@@ -139,7 +139,7 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint
 {
     public static string Path => "/revert";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly ISparkHistory history;

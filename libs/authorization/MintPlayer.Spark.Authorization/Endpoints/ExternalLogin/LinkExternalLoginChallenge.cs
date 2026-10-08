@@ -16,7 +16,7 @@ internal sealed partial class LinkExternalLoginChallenge<TUser> : IGetEndpoint
 {
     public static string Path => "/external-logins/link";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.RequireAuthorization();
     }

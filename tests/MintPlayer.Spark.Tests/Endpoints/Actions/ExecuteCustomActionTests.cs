@@ -687,7 +687,7 @@ public class ExecuteCustomActionTests
         var app = builder.Build();
 
         var routeBuilder = app.MapPost("/test-action", () => Results.Ok());
-        InvokeConfigure<ExecuteCustomAction>(routeBuilder);
+        InvokeConfigure<ExecuteCustomAction>(routeBuilder, app.Services);
 
         await app.StartAsync();
         try
@@ -705,9 +705,9 @@ public class ExecuteCustomActionTests
         }
     }
 
-    private static void InvokeConfigure<TEndpoint>(RouteHandlerBuilder builder)
+    private static void InvokeConfigure<TEndpoint>(RouteHandlerBuilder builder, IServiceProvider services)
         where TEndpoint : IEndpointBase
-        => TEndpoint.Configure(builder);
+        => TEndpoint.Configure(builder, services);
 
     private readonly Raven.Client.Documents.Session.IAsyncDocumentSession _session =
         Substitute.For<Raven.Client.Documents.Session.IAsyncDocumentSession>();

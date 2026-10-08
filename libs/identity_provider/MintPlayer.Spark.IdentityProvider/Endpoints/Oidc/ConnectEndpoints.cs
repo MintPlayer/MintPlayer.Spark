@@ -37,7 +37,7 @@ internal sealed class OidcConsentSubmit : IPostEndpoint
 {
     public static string Path => "/consent";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -66,7 +66,7 @@ internal sealed class OidcRevokeApplication : IPostEndpoint
 {
     public static string Path => "/applications/revoke";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)

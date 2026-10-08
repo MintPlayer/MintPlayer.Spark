@@ -19,7 +19,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
 {
     public static string Path => "/execute";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
