@@ -9,7 +9,7 @@ using MintPlayer.Spark.Replication.Services;
 namespace MintPlayer.Spark.Replication.Endpoints;
 
 [MemberOf<SparkEtlGroup>]
-internal sealed partial class EtlDeploy : IPostEndpoint
+internal sealed partial class EtlDeploy : IPostEndpoint<EtlScriptRequest>
 {
     public static string Path => "/deploy";
 
@@ -28,32 +28,38 @@ internal sealed partial class EtlDeploy : IPostEndpoint
     [Inject] private readonly EtlTaskManager etlTaskManager;
     [Inject] private readonly IModuleCertificateValidator certificateValidator;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>
+    /// A body that cannot be bound answers what the hand-read body did (measured before the endpoint
+    /// became typed, endpoints generator completion M3): a JSON <c>null</c> has no scripts, anything
+    /// else is an invalid body.
+    /// </summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
     {
-        EtlScriptRequest? request;
-        try
-        {
-            request = await httpContext.Request.ReadFromJsonAsync<EtlScriptRequest>();
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Invalid ETL deployment request body");
-            return Results.BadRequest(new EtlDeploymentResult
-            {
-                Success = false,
-                Error = "Invalid request body"
-            });
-        }
+        if (failure is null)
+            return new(NoScripts());
 
-        if (request == null || request.Scripts == null || request.Scripts.Count == 0)
+        logger.LogWarning(failure, "Invalid ETL deployment request body");
+        return new(Results.BadRequest(new EtlDeploymentResult
         {
-            return Results.BadRequest(new EtlDeploymentResult
-            {
-                Success = false,
-                Error = "Request must contain at least one script"
-            });
-        }
+            Success = false,
+            Error = "Invalid request body"
+        }));
+    }
+
+    private static IResult NoScripts() => Results.BadRequest(new EtlDeploymentResult
+    {
+        Success = false,
+        Error = "Request must contain at least one script"
+    });
+
+    public override async Task<IResult> HandleAsync(EtlScriptRequest request, CancellationToken cancellationToken)
+    {
+        var httpContext = httpContextAccessor.HttpContext!;
+
+        if (request.Scripts == null || request.Scripts.Count == 0)
+            return NoScripts();
 
         // R2-C1: mTLS gate. Validate the client cert matches the pinned thumbprint
         // for request.RequestingModule before invoking the ETL deployment — this
