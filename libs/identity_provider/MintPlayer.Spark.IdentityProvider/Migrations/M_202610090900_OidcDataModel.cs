@@ -149,8 +149,13 @@ public partial class M_202610090900_OidcDataModel : ISparkMigration
         using var session = store.OpenAsyncSession();
         session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
 
+        // A projection, so the session does not track these documents as LegacyApplicationScopes:
+        // tracked, the LoadAsync<OidcApplication> of the same id below returned that instance and threw
+        // InvalidCastException (a database whose applications were seeded before this migration ran).
+        // The where clause is an auto-index read, so it waits for the index rather than miss a document.
         var legacy = await session.Advanced
-            .AsyncRawQuery<LegacyApplicationScopes>("from OidcApplications where exists(AllowedScopes)")
+            .AsyncRawQuery<LegacyApplicationScopes>("from OidcApplications where exists(AllowedScopes) select id() as Id, AllowedScopes")
+            .WaitForNonStaleResults(TimeSpan.FromMinutes(1))
             .ToListAsync(ct);
         if (legacy.Count == 0)
             return;
