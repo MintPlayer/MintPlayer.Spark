@@ -1,5 +1,6 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
+import { provideSparkServiceWorker } from '@mintplayer/ng-spark/pwa';
 import { provideHttpClient } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { withSparkTimezone } from '@mintplayer/ng-spark/services';
@@ -17,6 +18,7 @@ import { AuthorRendererComponent } from './renderers/author-renderer.component';
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    provideSparkServiceWorker(),
     provideRouter(routes),
     // withSparkTimezone() (#460 M9): the browser's zone travels as a header on every Spark call and is
     // kept in the spark-timezone cookie, so a server-side render could read it too.

@@ -110,6 +110,12 @@ jobs:
       run: |
         npx tsc --noEmit -p libs/node_packages/ng-spark/tsconfig.spec.json
 
+    # The repository's own Node tests (tools/*.test.mjs), among them the PWA guard (#464, D8): every
+    # app's ngsw-config.json keeps /spark/**, /signin-*, /connect/** and /.well-known/** out of the
+    # service worker, which would otherwise answer them with the cached index.html.
+    - name: Run the tools' Node tests
+      run: npm run test:tools
+
     # The two verifications below run `dotnet run --no-build` against all five apps, which needs all
     # five binaries on disk -- and `nx affected` above only schedules the ones it considers affected.
     # A pull request that leaves an app unaffected therefore died on dotnet's opaque "An error

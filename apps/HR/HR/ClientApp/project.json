@@ -50,7 +50,8 @@
               "maximumError": "8kB"
             }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "serviceWorker": "apps/HR/HR/ClientApp/ngsw-config.json"
         },
         "development": {
           "optimization": false,
