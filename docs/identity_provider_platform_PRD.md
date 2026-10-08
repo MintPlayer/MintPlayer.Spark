@@ -133,6 +133,96 @@ OpenIddict; storage is RavenDB.
 The legacy `C:\Repos\MintPlayer` has **no** OAuth server or developer portal on any of its 15 branches
 (`git grep`: 0 hits). It only consumed providers. This library is the only prior art.
 
+### 2.4 Spike results (2026-10-08, read-only, before I0)
+
+**S1: a library can ship its whole security layer, and row filtering is C#.**
+- **The layer:** `<SparkLibraryAlias>` in the csproj makes the source-generator targets pick up
+  `App_Data/{Model/*.json, actions.json, translations.json, security.json, programUnits.json}` and
+  compile them into `[assembly: SparkLayer]`
+  (`libs/source_generators/MintPlayer.Spark.SourceGenerators/build/MintPlayer.Spark.SourceGenerators.targets:34-54`).
+  The Authorization library ships Model JSON, Actions and rights this way
+  (`libs/authorization/MintPlayer.Spark.Authorization/App_Data/security.json:11-17`, `Actions/PasskeysActions.cs`).
+- **The IdP today** has no `App_Data` and no alias. HR owns `OidcApplication.json`/`OidcScope.json`
+  and grants them to Administrators by raw id (`apps/HR/HR/App_Data/security.json:70-81`).
+- **What a library security.json may contain:** only `rights` and `reservedTargets`. Its grants may
+  name its own Model types or reserved targets, and its groups only `@anonymous`, `@authenticated`
+  or its own `alias:slot`. Deny and `$remove` are refused (`SparkSecurityLayers.cs` `CheckLibrary`,
+  :359-449). A slot exists because a grant names it.
+- **Unbound slots:** an unbound slot refuses startup (:298, `SecurityConfigurationLoader.cs:108-113`).
+  `"libraries": {"identity-provider": false}` makes the layer inert.
+- **Resolving a slot in code:** `SparkSecurityFiles.ResolveGroup` resolves a slot to one id at
+  startup (`ModerationStartupCheck.cs:38-60`).
+- **Answer to D2's open question:** a library **cannot** ship a row policy in JSON; row security has
+  no JSON form. It **can** register one in C# with `AddSparkRowPolicy<T>()`, which SoftDelete
+  already does (`SparkSoftDeleteExtensions.cs:37`; `RowFilterPolicy<T>` at `IRowPolicy.cs:150`).
+  **Decision:**
+  - The members-only filter is an IdP `RowFilterPolicy<OidcApplication>`.
+  - The "administrators see everything" bypass is a right, `ManageAll/IdentityProvider`, on the
+    reserved target `IdentityProvider`. It is granted to the slot `identity-provider:administrators`
+    and checked with `IAccessControl.IsAllowedAsync`. There is no public "is in group" API
+    (`SparkAuthorizeAttribute.cs:163` is private).
+- **Membership:** `AddGroupMembershipProvider<T>()` merges providers. It is scoped and cached per
+  principal per request (`SparkGroupMembership.cs:60-109`). Moderation's
+  `ModerationPrivilegeProvider` returns slot-resolved ids, and the IdP's developer provider does the same.
+- **Indexes:** the IdP's three hand-written indexes stay in the library, as Moderation's do
+  (`SparkModerationExtensions.cs:79`, `AddIndexesFrom`). The owner rule "indexes only in the
+  application" (2026-10-04) is about `[GenerateIndex]` entity indexes being duplicated into libraries.
+  Plugin-internal indexes over the plugin's own collections are the existing precedent.
+
+**S2: crypto. Wilson 8.22 covers everything, so no new package is needed.**
+- **Today:**
+  - The only token package is `Microsoft.IdentityModel.JsonWebTokens` 8.22.0 (IdP csproj:37), used
+    through `JsonWebTokenHandler`.
+  - **Signing key:** one RSA key with a fixed `kid` "spark-oidc-key-1", stored as **plaintext JSON**
+    at `SigningKeyPath` (`OidcSigningKeyService.cs`).
+  - **Validation** pins that single key (`AccessTokens.cs:38-47`, `OidcIdTokenHint.cs:29-30`), and
+    the JWKS is one hand-written RSA entry (`Jwks.cs:16-36`).
+  - **Client authentication** is `client_secret_post` only, copied into three places
+    (`Token.cs:148/:393/:589`, verified at :755-773).
+- **What Wilson provides:**
+  - **Signing algorithms:** ES256/PS256 through `ECDsaSecurityKey` and `SecurityAlgorithms.RsaSsaPssSha256`.
+  - **Key export and thumbprints:** `JsonWebKeyConverter` for EC/RSA JWKs, and
+    `JsonWebKey.ComputeJwkThumbprint()` for RFC 7638 (DPoP `jkt`).
+  - **Token types:** `TokenType = "at+jwt"` for access tokens, and `ValidTypes` for `dpop+jwt`, JAR
+    and client assertions.
+  - **Encryption (JWE):** through `EncryptingCredentials` (RSA-OAEP, ECDH-ES). **Caveat:** Wilson
+    encrypts with `A*CBC-HS*` content encryption only. Discovery therefore advertises
+    `A128CBC-HS256`/`A256CBC-HS512` until I8 shows that `A256GCM` encrypts.
+- **Decisions:**
+  - `OidcKeys` replaces the file. The key material is protected with
+    `IDataProtectionProvider.CreateProtector("Spark.IdentityProvider.OidcKeys")`, since Data
+    Protection is always on (`SparkDataProtection.cs:26-31`).
+  - Losing the Data Protection key ring makes the keys undecryptable, so startup **fails loudly**
+    and does not silently regenerate them.
+  - Every validation switches to `IssuerSigningKeys`.
+  - A single `IClientAuthenticator` replaces the three copies.
+- **mTLS:** Fleet already accepts client certificates (`apps/Fleet/Fleet/Program.cs:24-42`), and
+  Replication has trusted certificate forwarding (`ModuleCertificateForwarding.cs:9-97`), which the
+  IdP reuses. `cnf.x5t#S256 = Base64Url(SHA-256(cert))`.
+- **Relying-party gap:** ASP.NET's JwtBearer handler checks neither DPoP nor `cnf`, so I12's
+  resource-server helper validates the proof in `OnTokenValidated`. Fleet's
+  `AddJwtBearerCredential` sets no `ValidTypes` (`SparkJwtBearerExtensions.cs:60-110`).
+
+**S3: scaffolding SparkId.**
+- **Registration:** QnA arrived in squash d661d80b, so the list of touchpoints comes from grepping:
+  - `MintPlayer.Spark.slnx:31-35`
+  - `package.json:18` (workspaces)
+  - `pull-request.yml:99/137/148/173`
+  - `tools/verify-ngsw-config.test.mjs:62-66`
+  - `tools/verify-coverage-paths{,.test}.mjs`
+  - `tools/test-local.mjs:33`
+  - `SparkAppTestHost.cs:26`
+  - `HiddenAttributesStayProtectedTests.cs:106`
+- **Ports:** 5011/5012 are unused.
+- **Seeds:** only the `qna` client is seeded (`apps/HR/HR/Migrations/M_202610081200_QnARelyingParty.cs`).
+  There are no `hr` or `fleet` client seeds.
+- **The scheme name:** QnA's relying-party scheme is named `HR`, which fixes `/signin-HR`
+  (`apps/QnA/QnA/appsettings.Development.json:20-31`, `QnATestHost.cs:80-93`,
+  `ExternalLoginHandoffBrowserTests.cs:170`). It is renamed `SparkId`.
+- **Fleet** self-issues only when `SparkIdentityProvider:Issuer` is set
+  (`apps/Fleet/Fleet/Program.cs:91-103`). `JwtBearerCredentialTests` relies on that through
+  `FleetTestHost.cs:80`.
+
 ## 3. Locked decisions that still apply
 
 These come from the audit, `coverage-handoff-plan.md`, PRD-MultiHostE2E and the #490 PRD.
@@ -197,8 +287,13 @@ production, which runs Community):
 - **Membership needs no seeding:** a merged group-membership provider (the #460 reputation
   mechanism, `SparkBuilderGroupMembershipExtensions`) puts a user in the bound developers group
   exactly while `Developer.Status == Approved`.
-- **To verify in I1:** whether a library layer can ship a row policy (#236). If it can't, the
-  members-only filter goes into the `OidcApplication` interceptor's query instead.
+- **Row filtering (resolved by spike S1, §2.4):** a library can't ship a row policy in JSON, but it
+  can register one in C#. The members-only filter is an IdP `RowFilterPolicy<OidcApplication>`
+  (`AddSparkRowPolicy`). Administrators bypass it through the right
+  `ManageAll/IdentityProvider`, granted to `identity-provider:administrators`.
+- **The library layer:** the IdP becomes a library layer (`<SparkLibraryAlias>identity-provider`),
+  shipping its own Model JSON, Actions, translations, rights and program-unit fragment. Apps bind
+  its slots and own none of its files.
 
 ### D3: Apps, roles and invitations (Facebook model, Q4 = yes, with testers)
 
@@ -370,8 +465,8 @@ Everything is advertised in discovery.
 ## 7. Milestones (one PR, tests written per milestone and run once at the end)
 
 - **I1 Data model** (D1). The six collections, the migrations, compare-exchange uniqueness, the
-  `Developer` field, the `Members[]`/`Mode`/`Scopes[]`/branding/JWKS fields. Check whether a
-  library can ship a row policy. Regenerate the model JSON and modelHashes for HR, Fleet and
+  `Developer` field, the `Members[]`/`Mode`/`Scopes[]`/branding/JWKS fields. The library layer
+  (S1): Model JSON moves from HR into the IdP. Regenerate the model JSON and modelHashes for SparkId, HR, Fleet and
   CodeCoverage.
 - **I2 Developers and groups** (D2). The library security layer with slots, HR's bindings, the
   merged membership provider, request/approve/reject actions and emails, terms versioning.
