@@ -22,8 +22,12 @@ public class GitHubWebhooksOptions
     /// <summary>
     /// WebSocket path for dev forwarding endpoint. Defaults to "/spark/github/dev-ws".
     /// Only active when DevelopmentAppId is set.
+    /// <para>
+    /// Read once, when the routes are mapped. It must have no route parameters (the default has none):
+    /// a path with any fails at startup.
+    /// </para>
     /// </summary>
-    public string DevWebSocketPath { get; set; } = "/spark/github/dev-ws";
+    public string DevWebSocketPath { get; set; } = Endpoints.DevWebSocketEndpoint.DefaultPath;
 
     /// <summary>
     /// GitHub usernames allowed to connect to the dev-forwarding WebSocket.

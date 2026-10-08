@@ -36,6 +36,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.1" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="Octokit" Version="14.0.0" />
 		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />

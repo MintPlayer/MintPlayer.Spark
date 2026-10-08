@@ -1,10 +1,8 @@
-using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Webhooks.GitHub.Configuration;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Octokit.Webhooks;
 using Octokit.Webhooks.AspNetCore;
-using System.Net.WebSockets;
 
 namespace MintPlayer.Spark.Webhooks.GitHub.Extensions;
 
@@ -48,82 +46,16 @@ public static class SparkBuilderExtensions
         {
             // Map the Octokit webhook endpoint with signature validation
             // DisableAntiforgery: GitHub POSTs webhooks without XSRF tokens
+            // It stays hand-mapped: Octokit owns the X-Hub-Signature-256 check and the event
+            // dispatch (docs/endpoints_generator_webhooks_exception.md).
             endpoints.MapGitHubWebhooks(options.WebhookPath, options.WebhookSecret)
                 .DisableAntiforgery();
 
-            // Map the dev WebSocket endpoint if DevelopmentAppId is configured
-            if (options.DevelopmentAppId.HasValue)
-            {
-                MapDevWebSocketEndpoint(endpoints, options);
-            }
+            // Generator endpoints: the dev WebSocket (DevWebSocketEndpoint), which maps itself only
+            // when DevelopmentAppId is set and at the configured DevWebSocketPath.
+            endpoints.MapSparkWebhooksGitHubEndpoints();
         });
 
         return builder;
-    }
-
-    private static void MapDevWebSocketEndpoint(IEndpointRouteBuilder endpoints, GitHubWebhooksOptions options)
-    {
-        // ⚠️ MapGet, not Map. A bare Map() constrains no HTTP method, so this endpoint used to match
-        // POST/PUT/PATCH/DELETE as well — a mutating verb under the /spark prefix carrying no
-        // antiforgery metadata. Nothing was exploitable through it (the handler 400s anything that
-        // is not a WebSocket upgrade) but it was the one hole in the /spark surface that no gate
-        // could ever close, and a WebSocket handshake is a GET by definition, so constraining it
-        // costs nothing and removes the endpoint from the mutating surface entirely.
-        endpoints.MapGet(options.DevWebSocketPath, async (HttpContext context) =>
-        {
-            if (!context.WebSockets.IsWebSocketRequest)
-            {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                return;
-            }
-
-            var ws = await context.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext
-            {
-                SubProtocol = "wss",
-                KeepAliveInterval = TimeSpan.FromMinutes(5),
-            });
-
-            try
-            {
-                // Receive handshake with GitHub token
-                var handshake = await ws.ReadObject<Handshake>();
-                if (handshake?.GithubToken == null)
-                {
-                    await ws.CloseAsync(WebSocketCloseStatus.InternalServerError, "Missing credentials", CancellationToken.None);
-                    return;
-                }
-
-                // Validate GitHub token and resolve username
-                // Through the factory rather than `new GitHubClient`, so the call can be pointed at
-                // a stand-in server; it was the one GitHub call in the package that could not.
-                var githubClient = context.RequestServices.GetRequiredService<IGitHubClientFactory>()
-                    .CreateUserClient(handshake.GithubToken);
-                var githubUser = await githubClient.User.Current();
-
-                // R2-H12: empty AllowedDevUsers fails closed — every webhook
-                // delivered to this app's DevelopmentAppId carries private-repo
-                // data, so accepting "any authenticated GitHub user" by default
-                // (the prior behavior) leaked all of it to throwaway accounts.
-                // Operators MUST configure AllowedDevUsers explicitly to enable
-                // the dev tunnel.
-                var opts = context.RequestServices.GetRequiredService<IOptions<GitHubWebhooksOptions>>().Value;
-                if (opts.AllowedDevUsers.Count == 0 || !opts.AllowedDevUsers.Contains(githubUser.Login))
-                {
-                    await ws.CloseAsync(WebSocketCloseStatus.InternalServerError, "Unauthorized", CancellationToken.None);
-                    return;
-                }
-
-                var socketService = context.RequestServices.GetRequiredService<IDevWebSocketService>();
-                await socketService.NewSocketClient(new SocketClient(ws, githubUser.Login));
-            }
-            catch (Octokit.AuthorizationException)
-            {
-                // GitHub refused the token. Closed with a reason, not answered with a 401: the
-                // 101 upgrade has already been sent, so setting StatusCode here threw, the
-                // exception escaped the endpoint, and the developer saw an aborted socket with
-                // no explanation.
-                await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Unauthorized", CancellationToken.None);
-            }
-        });
     }
 }
