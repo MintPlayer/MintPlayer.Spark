@@ -85,6 +85,7 @@ public static class SparkIdentityProviderExtensions
         builder.Services.AddSingleton<OidcRequestObjects>();
         builder.Services.AddSingleton<OidcProofOfPossession>();
         builder.Services.AddSingleton<OidcJwe>();
+        builder.Services.AddSingleton<OidcClientRegistration>();
         builder.Services.AddScoped<OidcAuthorizeHandler>();
         builder.AddGroupMembershipProvider<OidcDeveloperMembership>();
 

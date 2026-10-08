@@ -67,6 +67,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
     [Inject] private readonly OidcProofOfPossession proofOfPossession;
     [Inject] private readonly OidcJwe jwe;
+    [Inject] private readonly OidcSigningKeyService signingKeyService;
 
     /// <summary>The posted form, kept from <see cref="BindRequestAsync"/>: client authentication reads more of it than the bound record carries.</summary>
     private IFormCollection form = null!;
@@ -108,6 +109,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             "authorization_code" => HandleAuthorizationCodeGrant(request, ct),
             "refresh_token" => HandleRefreshTokenGrant(request, ct),
             "client_credentials" => HandleClientCredentialsGrant(request, ct),
+            OidcDeviceCodes.GrantType => HandleDeviceCodeGrant(ct),
+            TokenExchangeGrantType => HandleTokenExchangeGrant(ct),
             _ => Task.FromResult(Results.Json(new { error = "unsupported_grant_type" }, statusCode: 400)),
         };
 

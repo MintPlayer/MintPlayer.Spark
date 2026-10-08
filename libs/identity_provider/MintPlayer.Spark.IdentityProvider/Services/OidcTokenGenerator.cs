@@ -123,7 +123,8 @@ internal class OidcTokenGenerator
         IReadOnlyList<OidcScopeDefinition> grantedScopes,
         int lifetimeMinutes = 60,
         IReadOnlyDictionary<string, string>? properties = null,
-        IReadOnlyDictionary<string, object>? confirmation = null)
+        IReadOnlyDictionary<string, object>? confirmation = null,
+        IReadOnlyDictionary<string, object>? actor = null)
     {
         var scopeNames = grantedScopes.Select(s => s.Name).ToList();
         var jti = OidcTokenReference.GenerateValue();
@@ -183,6 +184,9 @@ internal class OidcTokenGenerator
         // RFC 8705 / RFC 9449: the key the token is bound to (cnf.x5t#S256 or cnf.jkt).
         if (confirmation is { Count: > 0 })
             typedClaims["cnf"] = confirmation;
+        // RFC 8693 §4.1: the party acting for the subject, on an exchanged token.
+        if (actor is { Count: > 0 })
+            typedClaims["act"] = actor;
 
         var descriptor = new SecurityTokenDescriptor
         {

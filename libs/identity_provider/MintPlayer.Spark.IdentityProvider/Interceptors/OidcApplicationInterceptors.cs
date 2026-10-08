@@ -24,7 +24,8 @@ namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplication>, IAfterSave<OidcApplication>, IBeforeDelete<OidcApplication>, IAfterDelete<OidcApplication>
 {
     private static readonly string[] SupportedGrantTypes =
-        ["authorization_code", "refresh_token", "client_credentials"];
+        ["authorization_code", "refresh_token", "client_credentials",
+         "urn:ietf:params:oauth:grant-type:device_code", "urn:ietf:params:oauth:grant-type:token-exchange"];
 
     /// <summary>
     /// Always registered, even when <c>EnableDynamicCors</c> is off — an unused snapshot costs
@@ -51,18 +52,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
             throw new SparkValidationException("The client id cannot be changed.", nameof(entity.ClientId));
         }
 
-        ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
-        ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
-        ValidateRedirectSchemes(entity, entity.RedirectUris, nameof(entity.RedirectUris));
-        ValidateRedirectSchemes(entity, entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
-        if (entity.RedirectUris.Count + entity.PostLogoutRedirectUris.Count > options.Apps.MaxRedirectUris)
-            throw new SparkValidationException(
-                $"An application can register at most {options.Apps.MaxRedirectUris} redirect URIs.", nameof(entity.RedirectUris));
-        ValidateCorsOrigins(entity.AllowedCorsOrigins, nameof(entity.AllowedCorsOrigins));
-        ValidateGrantTypes(entity);
-        ValidateScopes(entity);
-        ValidateMode(entity);
-        HashAnyNewSecrets(entity);
+        ValidateDefinition(entity, options);
 
         // Not a session only when the interceptor is called by hand (unit tests of the rules above).
         if (context.Session is IAsyncDocumentSession session)
@@ -75,6 +65,46 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
             // compare-exchange reservation is the atomic half (O17).
             await OidcClientIdReservation.ReserveAsync(session, entity);
         }
+    }
+
+    /// <summary>
+    /// Every rule on an application's own fields: redirect URIs and their schemes and number, CORS
+    /// origins, grant types, scopes, mode, and hashing a typed secret. Shared with dynamic client
+    /// registration (RFC 7591), which creates applications without the PersistentObject screens.
+    /// </summary>
+    internal static void ValidateDefinition(OidcApplication entity, Configuration.SparkIdentityProviderOptions options)
+    {
+        ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
+        ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
+        ValidateRedirectSchemes(entity, entity.RedirectUris, nameof(entity.RedirectUris));
+        ValidateRedirectSchemes(entity, entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
+        if (entity.RedirectUris.Count + entity.PostLogoutRedirectUris.Count > options.Apps.MaxRedirectUris)
+            throw new SparkValidationException(
+                $"An application can register at most {options.Apps.MaxRedirectUris} redirect URIs.", nameof(entity.RedirectUris));
+        ValidateCorsOrigins(entity.AllowedCorsOrigins, nameof(entity.AllowedCorsOrigins));
+        ValidateGrantTypes(entity);
+        ValidateScopes(entity);
+        ValidateMode(entity);
+        ValidateEncryption(entity);
+        HashAnyNewSecrets(entity);
+    }
+
+    /// <summary>Spike S2: Wilson encrypts with the CBC-HS content algorithms only; anything else is refused here rather than failing at issuance.</summary>
+    private static void ValidateEncryption(OidcApplication entity)
+    {
+        foreach (var (alg, enc, field) in new[]
+        {
+            (entity.IdTokenEncryptedResponseAlg, entity.IdTokenEncryptedResponseEnc, nameof(entity.IdTokenEncryptedResponseAlg)),
+            (entity.UserinfoEncryptedResponseAlg, entity.UserinfoEncryptedResponseEnc, nameof(entity.UserinfoEncryptedResponseAlg)),
+        })
+        {
+            if (!string.IsNullOrEmpty(alg) && !Services.OidcJwe.KeyAlgorithms.Contains(alg))
+                throw new SparkValidationException($"Key-management algorithm '{alg}' is not supported. Use one of: {string.Join(", ", Services.OidcJwe.KeyAlgorithms)}.", field);
+            if (!string.IsNullOrEmpty(enc) && !Services.OidcJwe.ContentAlgorithms.Contains(enc))
+                throw new SparkValidationException($"Content-encryption algorithm '{enc}' is not supported. Use one of: {string.Join(", ", Services.OidcJwe.ContentAlgorithms)}.", field);
+        }
+        if (!string.IsNullOrEmpty(entity.TokenEndpointAuthMethod) && !OidcClientAuthMethods.All.Contains(entity.TokenEndpointAuthMethod))
+            throw new SparkValidationException($"Token endpoint authentication method '{entity.TokenEndpointAuthMethod}' is not supported.", nameof(entity.TokenEndpointAuthMethod));
     }
 
     /// <summary>
@@ -151,6 +181,12 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
         if (context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
             return;
 
+        await MarkCrossOwnerScopesAsync(session, entity, added, context.User?.FindFirstValue(ClaimTypes.NameIdentifier));
+    }
+
+    /// <summary>D4: marks the <paramref name="added"/> API scopes whose API the team does not own as Pending.</summary>
+    internal static async Task MarkCrossOwnerScopesAsync(IAsyncDocumentSession session, OidcApplication entity, IEnumerable<OidcApplicationScope> added, string? requestedBy)
+    {
         var team = entity.Members.Where(m => m.Status == OidcMemberStatuses.Active && m.UserId is not null)
             .Select(m => m.UserId!).ToHashSet(StringComparer.Ordinal);
         foreach (var scope in added)
@@ -165,7 +201,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
             {
                 Status = OidcScopeStatuses.Pending,
                 RequestedAt = DateTime.UtcNow,
-                RequestedBy = context.User?.FindFirstValue(ClaimTypes.NameIdentifier),
+                RequestedBy = requestedBy,
             };
         }
     }
@@ -307,10 +343,11 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
         // refresh_token without authorization_code cannot produce a first refresh token, so the
         // combination is unreachable rather than merely unusual.
         if (entity.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase)
-            && !entity.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase))
+            && !entity.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase)
+            && !entity.AllowedGrantTypes.Contains("urn:ietf:params:oauth:grant-type:device_code", StringComparer.Ordinal))
         {
             throw new SparkValidationException(
-                "refresh_token requires authorization_code — there is no other way for this client to obtain a refresh token.",
+                "refresh_token requires authorization_code or device_code — there is no other way for this client to obtain a refresh token.",
                 nameof(entity.AllowedGrantTypes));
         }
 

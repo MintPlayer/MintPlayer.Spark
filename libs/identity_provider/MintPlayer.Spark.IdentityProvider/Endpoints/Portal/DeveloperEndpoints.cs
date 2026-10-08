@@ -36,6 +36,34 @@ public sealed record OidcDeveloperStatusResponse(
 /// <summary>The body of <c>POST /spark/identity-provider/developer</c>.</summary>
 public sealed record OidcDeveloperRequestBody(int TermsVersion);
 
+/// <summary>
+/// Issues an initial access token for dynamic client registration (RFC 7591, D8), shown once. Approved
+/// developers only: registration is the portal by protocol.
+/// </summary>
+[MemberOf<IdentityProviderPortalGroup>]
+internal sealed partial class IssueRegistrationToken : IPostEndpoint
+{
+    public static string Path => "/developer/registration-token";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+    [Inject] private readonly OidcDevelopers developers;
+    [Inject] private readonly IAsyncDocumentSession session;
+
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    {
+        var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId) || !developers.IsActive(await developers.GetAsync(userId, httpContext.RequestAborted)))
+            return TypedResults.Forbid();
+
+        var token = await OidcClientRegistration.IssueInitialAccessTokenAsync(session, userId, httpContext.RequestAborted);
+        await session.SaveChangesAsync(httpContext.RequestAborted);
+        httpContext.Response.Headers.CacheControl = "no-store";
+        return TypedResults.Ok(new { initialAccessToken = token, expiresIn = (int)OidcClientRegistration.InitialTokenLifetime.TotalSeconds });
+    }
+}
+
 /// <summary>The signed-in user's developer status, for the <c>/developers</c> page.</summary>
 [MemberOf<IdentityProviderPortalGroup>]
 internal sealed partial class GetDeveloperStatus : IGetEndpoint

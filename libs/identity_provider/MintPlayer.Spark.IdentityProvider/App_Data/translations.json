@@ -2243,6 +2243,41 @@
         "en": "Registration parameters are not supported.",
         "fr": "Les paramètres d'enregistrement ne sont pas pris en charge.",
         "nl": "Registratieparameters worden niet ondersteund."
+      },
+      "deviceTitle": {
+        "en": "Connect a device",
+        "fr": "Connecter un appareil",
+        "nl": "Een toestel koppelen"
+      },
+      "deviceEnterCode": {
+        "en": "Enter the code your device shows",
+        "fr": "Saisissez le code affiché par votre appareil",
+        "nl": "Vul de code in die je toestel toont"
+      },
+      "deviceContinue": {
+        "en": "Continue",
+        "fr": "Continuer",
+        "nl": "Verder"
+      },
+      "deviceUnknownCode": {
+        "en": "This code is unknown or has expired. Check the code on your device.",
+        "fr": "Ce code est inconnu ou a expiré. Vérifiez le code sur votre appareil.",
+        "nl": "Deze code is onbekend of verlopen. Controleer de code op je toestel."
+      },
+      "deviceAsks": {
+        "en": "{0} asks to sign in to your account on this device, with access to:",
+        "fr": "{0} demande à se connecter à votre compte sur cet appareil, avec accès à :",
+        "nl": "{0} vraagt om op dit toestel aan te melden met je account, met toegang tot:"
+      },
+      "deviceAllowed": {
+        "en": "Done. You can return to your device.",
+        "fr": "C'est fait. Vous pouvez retourner à votre appareil.",
+        "nl": "Klaar. Je kunt terugkeren naar je toestel."
+      },
+      "deviceDenied": {
+        "en": "The device was not given access.",
+        "fr": "L'appareil n'a pas obtenu l'accès.",
+        "nl": "Het toestel kreeg geen toegang."
       }
     }
   }
