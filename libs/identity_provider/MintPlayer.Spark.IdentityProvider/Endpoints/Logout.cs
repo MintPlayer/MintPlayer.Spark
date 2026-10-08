@@ -1,68 +1,65 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Identity;
-using MintPlayer.Spark.IdentityProvider.Indexes;
-using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
+using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
-internal static class Logout
+/// <summary>The end-session endpoint (<c>GET /connect/logout</c>, OIDC RP-Initiated Logout 1.0).</summary>
+/// <remarks>
+/// Generic over the application's user type, closed once when the routes are mapped
+/// (<see cref="OidcUserEndpoints"/>), so it signs out through a typed <see cref="SignInManager{TUser}"/>
+/// instead of resolving and reflecting on one per request.
+/// </remarks>
+[MemberOf<OidcConnectGroup>]
+internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
+    where TUser : SparkUser, new()
 {
-    public static async Task Handle(HttpContext context)
+    public static string Path => "/logout";
+
+    [QueryParam("post_logout_redirect_uri")] public string? PostLogoutRedirectUri { get; set; }
+    [QueryParam("state")] public string? State { get; set; }
+    [QueryParam("client_id")] public string? ClientId { get; set; }
+
+    [Inject] private readonly SignInManager<TUser> signInManager;
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+
+    public override async Task<IResult> HandleAsync(CancellationToken ct)
     {
-        var ct = context.RequestAborted;
-        var query = context.Request.Query;
-        var postLogoutRedirectUri = query["post_logout_redirect_uri"].FirstOrDefault();
-        var state = query["state"].FirstOrDefault();
+        var context = httpContextAccessor.HttpContext!;
+        var postLogoutRedirectUri = PostLogoutRedirectUri;
 
         // Sign out the user if authenticated
-        var registry = context.RequestServices.GetRequiredService<SparkModuleRegistry>();
-        var userType = registry.IdentityUserType;
+        if (context.User?.Identity?.IsAuthenticated == true)
+            await signInManager.SignOutAsync();
 
-        if (userType != null && context.User?.Identity?.IsAuthenticated == true)
+        if (string.IsNullOrEmpty(postLogoutRedirectUri))
+            return ConnectResults.Text(200, "<html><body><h2>You have been signed out.</h2><p>You may close this window.</p></body></html>", "text/html");
+
+        // Validate post_logout_redirect_uri against registered client URIs
+        using var session = store.OpenAsyncSession();
+
+        // The URI must be registered by *the client asking*, which means the request has to
+        // say who that is. Validating against every enabled application instead — as this
+        // did — makes one client's registered URI a legal logout destination for every
+        // other client, so anyone who can register an application gains a redirect through
+        // this provider's origin for all of them. client_id is how RP-initiated logout
+        // identifies the caller (OIDC RP-Initiated Logout 1.0 §2).
+        var clientId = ClientId;
+        var app = string.IsNullOrEmpty(clientId)
+            ? null
+            : await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
+
+        if (app is not { Enabled: true }
+            || !app.PostLogoutRedirectUris.Contains(postLogoutRedirectUri, StringComparer.Ordinal))
         {
-            var signInManagerType = typeof(SignInManager<>).MakeGenericType(userType);
-            var signInManager = context.RequestServices.GetRequiredService(signInManagerType);
-
-            var signOutMethod = signInManagerType.GetMethod("SignOutAsync")!;
-            await (Task)signOutMethod.Invoke(signInManager, [])!;
+            return ConnectResults.Text(400, "<html><body><h2>Invalid post_logout_redirect_uri</h2><p>The provided redirect URI is not registered for this client.</p></body></html>", "text/html");
         }
 
-        if (!string.IsNullOrEmpty(postLogoutRedirectUri))
-        {
-            // Validate post_logout_redirect_uri against registered client URIs
-            var store = context.RequestServices.GetRequiredService<IDocumentStore>();
-            using var session = store.OpenAsyncSession();
-
-            // The URI must be registered by *the client asking*, which means the request has to
-            // say who that is. Validating against every enabled application instead — as this
-            // did — makes one client's registered URI a legal logout destination for every
-            // other client, so anyone who can register an application gains a redirect through
-            // this provider's origin for all of them. client_id is how RP-initiated logout
-            // identifies the caller (OIDC RP-Initiated Logout 1.0 §2).
-            var clientId = query["client_id"].FirstOrDefault();
-            var app = string.IsNullOrEmpty(clientId)
-                ? null
-                : await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
-
-            if (app is not { Enabled: true }
-                || !app.PostLogoutRedirectUris.Contains(postLogoutRedirectUri, StringComparer.Ordinal))
-            {
-                context.Response.StatusCode = 400;
-                context.Response.ContentType = "text/html";
-                await context.Response.WriteAsync("<html><body><h2>Invalid post_logout_redirect_uri</h2><p>The provided redirect URI is not registered for this client.</p></body></html>");
-                return;
-            }
-
-            context.Response.Redirect(RedirectUrl.With(postLogoutRedirectUri, ("state", state)));
-        }
-        else
-        {
-            context.Response.ContentType = "text/html";
-            await context.Response.WriteAsync("<html><body><h2>You have been signed out.</h2><p>You may close this window.</p></body></html>");
-        }
+        return Results.Redirect(RedirectUrl.With(postLogoutRedirectUri, ("state", State)));
     }
 }

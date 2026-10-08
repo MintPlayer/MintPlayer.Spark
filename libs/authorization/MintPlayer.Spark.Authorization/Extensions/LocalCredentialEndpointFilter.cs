@@ -76,7 +76,7 @@ internal static class LocalCredentialEndpointFilter
             GuardAgainstRegistrationWithoutMail<TUser>(endpoints.ServiceProvider);
 
         // #460: every mode goes through the filter now, Full included — Spark replaces Microsoft's
-        // mail-sending endpoints in all of them (SparkAccountEndpoints), so there is no longer a mode
+        // mail-sending endpoints in all of them (Endpoints/Account), so there is no longer a mode
         // whose route table is MapIdentityApi's verbatim.
         if (mode == SparkLocalCredentials.Disabled)
             GuardAgainstUnreachableSignIn(endpoints.ServiceProvider);
@@ -98,12 +98,10 @@ internal static class LocalCredentialEndpointFilter
             .ToArray();
 
         endpoints.DataSources.Add(new FixedEndpointDataSource(kept));
-
-        SparkAccountEndpoints.Map<TUser>(endpoints, mode);
     }
 
     /// <summary>
-    /// Microsoft's endpoints that Spark maps its own version of (<see cref="SparkAccountEndpoints"/>) and
+    /// Microsoft's endpoints that Spark maps its own version of (<c>Endpoints/Account</c>) and
     /// that are therefore dropped in every mode. <c>/manage/info</c> is dropped for POST only.
     /// </summary>
     private static readonly string[] ReplacedBySpark =
@@ -298,7 +296,7 @@ internal static class LocalCredentialEndpointFilter
     /// Gives each Microsoft endpoint Spark keeps an <see cref="EndpointTypeMetadata"/> naming its
     /// <see cref="SparkIdentityEndpoints"/> stand-in, so "is 2FA served?" is asked by type, like every
     /// endpoint class. The routes Spark replaces are dropped by <see cref="IsAllowed"/> and need none;
-    /// Spark's replacements are tagged where they are mapped (<see cref="SparkAccountEndpoints"/>).
+    /// Spark's replacements are endpoint classes (<c>Endpoints/Account</c>) and carry their own.
     /// </summary>
     private static void StampEndpointTypes(IEndpointConventionBuilder convention) =>
         convention.Add(builder =>

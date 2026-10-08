@@ -10,13 +10,15 @@ internal sealed partial class GetLookupReference : IGetEndpoint
 {
     public static string Path => "/{name}";
 
+    [RouteParam] public string Name { get; set; } = "";
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IModelLoader modelLoader;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var name = (string)httpContext.Request.RouteValues["name"]!;
+        var name = Name;
 
         // Security sweep M4: this endpoint dumps every value of a lookup reference — for
         // transient lookups, every public property an app hung off its lookup class. It was

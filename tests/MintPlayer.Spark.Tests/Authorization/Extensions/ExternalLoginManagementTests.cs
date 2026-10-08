@@ -120,7 +120,7 @@ public class ExternalLoginManagementTests : SparkTestDriver
                     app.UseAuthorization();
                     app.UseAntiforgery();
                     app.UseEndpoints(endpoints =>
-                        endpoints.MapSparkIdentityApi<SparkUser>(localCredentials));
+                        endpoints.MapSparkIdentityApi<SparkUser>());
                 }))
             .StartAsync();
 

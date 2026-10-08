@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 
@@ -16,18 +17,30 @@ internal sealed partial class LinkExternalLoginChallenge<TUser> : IGetEndpoint
 {
     public static string Path => "/external-logins/link";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    /// <summary>
+    /// <see cref="SparkExternalLoginLinking.WhenSignedIn"/> only: holding the session is that mode's
+    /// proof. <see cref="SparkExternalLoginLinking.ConfirmByEmail"/> attaches through the mailed
+    /// confirmation instead.
+    /// </summary>
+    static bool IEndpointBase.IsEnabled(IServiceProvider services)
+        => SparkAuthFeatures.ExternalLoginLinking(services) == SparkExternalLoginLinking.WhenSignedIn;
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.RequireAuthorization();
     }
+
+    [QueryParam] public string? Provider { get; set; }
+    [QueryParam] public string? ReturnUrl { get; set; }
+    [QueryParam] public string? Popup { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
 
     public Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var provider = httpContext.Request.Query["provider"].ToString();
-        var returnUrl = httpContext.Request.Query["returnUrl"].ToString();
-        var popup = httpContext.Request.Query["popup"].ToString();
+        var provider = Provider ?? string.Empty;
+        var returnUrl = ReturnUrl;
+        var popup = Popup;
 
         var safeReturnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(
             string.IsNullOrEmpty(returnUrl) ? null : returnUrl);

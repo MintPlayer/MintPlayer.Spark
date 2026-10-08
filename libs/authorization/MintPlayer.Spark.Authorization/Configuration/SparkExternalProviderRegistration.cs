@@ -1,6 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
-
 namespace MintPlayer.Spark.Authorization.Configuration;
 
 /// <summary>
@@ -18,13 +15,13 @@ public sealed record SparkExternalProviderRegistration(string Scheme, SparkExter
 internal static class SparkExternalProviderPolicies
 {
     /// <summary>Options entry, else the preset's registration, else <see cref="SparkExternalProviderPolicy.Default"/>.</summary>
-    internal static SparkExternalProviderPolicy For(IServiceProvider services, string scheme)
+    internal static SparkExternalProviderPolicy For(
+        SparkAuthenticationOptions options, IEnumerable<SparkExternalProviderRegistration> registrations, string scheme)
     {
-        var options = services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value;
-        if (options is not null && options.ExternalProviders.TryGetValue(scheme, out var configured))
+        if (options.ExternalProviders.TryGetValue(scheme, out var configured))
             return configured;
 
-        var registered = services.GetServices<SparkExternalProviderRegistration>()
+        var registered = registrations
             .LastOrDefault(r => string.Equals(r.Scheme, scheme, StringComparison.OrdinalIgnoreCase));
 
         return registered?.Policy ?? SparkExternalProviderPolicy.Default;

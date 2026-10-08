@@ -22,10 +22,13 @@ internal sealed partial class ConfirmExternalLink<TUser> : IGetEndpoint
 {
     public static string Path => "/confirm-external-link";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.AllowAnonymous();
     }
+
+    [QueryParam] public string? Token { get; set; }
+    [QueryParam] public string? ReturnUrl { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly UserManager<TUser> userManager;
@@ -33,8 +36,8 @@ internal sealed partial class ConfirmExternalLink<TUser> : IGetEndpoint
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var token = httpContext.Request.Query["token"].ToString();
-        var returnUrl = httpContext.Request.Query["returnUrl"].ToString();
+        var token = Token;
+        var returnUrl = ReturnUrl;
 
         var safeReturnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(
             string.IsNullOrEmpty(returnUrl) ? null : returnUrl);

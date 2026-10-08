@@ -8,7 +8,9 @@ using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.WebUtilities;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Endpoints;
+using MintPlayer.Spark.Authorization.Endpoints.Account;
 using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
+using MintPlayer.Spark.Authorization.Endpoints.Passkeys;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Security.Claims;
 using MintPlayer.Spark.MailManager;
@@ -123,49 +125,66 @@ internal static class SparkAuthenticationExtensions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Three groups, only the first of which is configurable:
+    /// What is mapped follows <see cref="SparkAuthenticationOptions"/>, read from the root provider:
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// <b>Local credentials</b> — POST /register, POST /login, POST /refresh, GET /confirmEmail,
-    /// POST /resendConfirmationEmail, POST /forgotPassword, POST /resetPassword, POST /manage/2fa,
-    /// GET|POST /manage/info. Mapped by Microsoft's <c>MapIdentityApi</c>, gated by
-    /// <paramref name="localCredentials"/>.
+    /// <b>Microsoft's local credentials</b> — POST /login, POST /refresh, POST /manage/2fa,
+    /// GET /manage/info, through <c>MapIdentityApi</c> filtered by <see cref="SparkAuthenticationOptions.LocalCredentials"/>
+    /// (<see cref="LocalCredentialEndpointFilter"/>).
     /// </description></item>
     /// <item><description>
-    /// <b>Spark's own</b> — GET /me, POST /logout, POST /csrf-refresh (source-generated). Always mapped;
-    /// /csrf-refresh in particular is load-bearing, because without it the XSRF cookie is never rotated
-    /// after sign-in and every subsequent mutating call fails antiforgery.
+    /// <b>Spark's account endpoints</b> (<c>Endpoints/Account</c>) — register, confirmation, recovery and
+    /// the <c>/manage</c> pages. Every one is mapped here; the ones a mode excludes switch themselves off
+    /// through their own <c>IsEnabled</c> (D5), so there is no <c>if</c> around any mapping call.
     /// </description></item>
     /// <item><description>
-    /// <b>External login</b> — GET /external-login, GET /external-login-callback. Always mapped.
+    /// <b>Spark's own</b> — GET /capabilities, POST /logout, POST /csrf-refresh (source-generated). Always
+    /// mapped; /csrf-refresh in particular is load-bearing, because without it the XSRF cookie is never
+    /// rotated after sign-in and every subsequent mutating call fails antiforgery.
+    /// </description></item>
+    /// <item><description>
+    /// <b>External login and passkeys</b> — sign-in always; passkeys and account linking per their
+    /// options, again through the endpoints' <c>IsEnabled</c>.
     /// </description></item>
     /// </list>
+    /// <para>
+    /// Every endpoint below is an open generic, so this assembly's generated <c>MapSparkAuthEndpoints()</c>
+    /// skips it (MPEP025, Info) and it is mapped here, where <typeparamref name="TUser"/> is concrete. The
+    /// <c>/spark/auth</c> prefix comes from <c>[MemberOf&lt;SparkAuthGroup&gt;]</c>.
+    /// </para>
     /// </remarks>
-    internal static IEndpointRouteBuilder MapSparkIdentityApi<TUser>(
-        this IEndpointRouteBuilder endpoints,
-        SparkLocalCredentials localCredentials = SparkLocalCredentials.Full)
+    internal static IEndpointRouteBuilder MapSparkIdentityApi<TUser>(this IEndpointRouteBuilder endpoints)
         where TUser : SparkUser, new()
     {
-        var authGroup = endpoints.MapGroup("/spark/auth");
-
         // Microsoft's mapper is all-or-nothing and its defaults attach no IAntiforgeryMetadata, so
         // both the filtering and the CSRF stamping live in LocalCredentialEndpointFilter.
-        endpoints.MapLocalCredentialApi<TUser>(localCredentials);
+        endpoints.MapLocalCredentialApi<TUser>(LocalCredentialMode.Get(endpoints.ServiceProvider));
 
         // Map Spark auth endpoints (source-generated)
         endpoints.MapSparkAuthEndpoints();
 
-        // Hand-mapped, because the whole group is gated on SparkPasskeys and the generated mapper is
-        // unconditional. MapIdentityApi contributes nothing here — measured, it maps no passkey
-        // route at all.
-        PasskeyEndpoints.MapPasskeyApi<TUser>(endpoints, authGroup);
+        // Spark's account endpoints, replacing Microsoft's mail-sending half (#460 D6, D8, D16).
+        endpoints.MapEndpoint<Register<TUser>>();
+        endpoints.MapEndpoint<ResendConfirmationEmail<TUser>>();
+        endpoints.MapEndpoint<ForgotPassword<TUser>>();
+        endpoints.MapEndpoint<ResetPassword<TUser>>();
+        endpoints.MapEndpoint<ConfirmEmailLink<TUser>>();
+        endpoints.MapEndpoint<ConfirmEmail<TUser>>();
+        endpoints.MapEndpoint<UpdateInfo<TUser>>();
+        endpoints.MapEndpoint<SetPassword<TUser>>();
+        endpoints.MapEndpoint<Profile<TUser>>();
+        endpoints.MapEndpoint<UpdateProfile<TUser>>();
+        endpoints.MapEndpoint<AuthenticatorUri<TUser>>();
+        endpoints.MapEndpoint<PersonalData<TUser>>();
+        endpoints.MapEndpoint<DeleteAccount<TUser>>();
 
-        // External login: initiate OAuth challenge
-        // The external-login surface. These are open generics, so this assembly's generated
-        // MapSparkAuthEndpoints() skips them (MPEP025, Info) and they are mapped here, where
-        // TUser is concrete. On `endpoints`, not `authGroup`: the /spark/auth prefix comes from
-        // [MemberOf<SparkAuthGroup>] and mapping onto the group too would compose it twice.
+        // Passkey sign-in, gated on SparkPasskeys. MapIdentityApi contributes nothing here —
+        // measured, it maps no passkey route at all.
+        endpoints.MapEndpoint<PasskeyRequestOptions<TUser>>();
+        endpoints.MapEndpoint<PasskeySignIn<TUser>>();
+
+        // External login: initiate the OAuth challenge.
         endpoints.MapEndpoint<ExternalLoginChallenge<TUser>>();
 
         // /me reads the user through UserManager<TUser>, so it is generic and mapped here too.
@@ -179,65 +198,16 @@ internal static class SparkAuthenticationExtensions
         // token. The single-use token *is* the credential; that is what a confirmation link is.
         endpoints.MapEndpoint<ConfirmExternalLink<TUser>>();
 
-        MapExternalLoginManagement<TUser>(endpoints, authGroup, localCredentials);
+        // 4d: the account-page half of linking — list what is attached, attach another, detach one.
+        // Which of these exist depends on SparkExternalLoginLinking, and each endpoint says so in its
+        // own IsEnabled: Disabled maps none, ConfirmByEmail the list and the unlink (attaching is
+        // mailed there), WhenSignedIn all four.
+        endpoints.MapEndpoint<ListExternalLogins<TUser>>();
+        endpoints.MapEndpoint<UnlinkExternalLogin<TUser>>();
+        endpoints.MapEndpoint<LinkExternalLoginChallenge<TUser>>();
+        endpoints.MapEndpoint<LinkExternalLoginCallback<TUser>>();
 
         return endpoints;
-    }
-
-    /// <summary>
-    /// 4d: the account-page half of linking — list what is attached, attach another, detach one.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Which of these exist depends on the mode</b>, because the modes differ in who is allowed
-    /// to attach a credential and how.
-    /// </para>
-    /// <list type="bullet">
-    /// <item><description>
-    /// <see cref="SparkExternalLoginLinking.Disabled"/> maps <b>nothing</b>. Linking is off, so an
-    /// account page that offers it is surface with no purpose.
-    /// </description></item>
-    /// <item><description>
-    /// <see cref="SparkExternalLoginLinking.WhenSignedIn"/> maps all four. This is the mode's whole
-    /// point: proof comes from already holding the session.
-    /// </description></item>
-    /// <item><description>
-    /// <see cref="SparkExternalLoginLinking.ConfirmByEmail"/> maps the list and the <b>unlink</b>,
-    /// but not the attach. Its way in is the mailed confirmation; without unlink, links would
-    /// accumulate with no way to undo one, which is a worse position than not linking at all.
-    /// </description></item>
-    /// </list>
-    /// </remarks>
-    private static void MapExternalLoginManagement<TUser>(
-        IEndpointRouteBuilder endpoints,
-        RouteGroupBuilder authGroup,
-        SparkLocalCredentials localCredentials)
-        where TUser : SparkUser, new()
-    {
-        var linking = endpoints.ServiceProvider
-            .GetService<IOptions<SparkAuthenticationOptions>>()?.Value.ExternalLoginLinking
-            ?? SparkExternalLoginLinking.Disabled;
-
-        // A passkey is a credential too, so it counts toward "is this the last way in". Without
-        // this, an account holding a working passkey would be refused permission to unlink its only
-        // external login — the guard failing closed, but wrongly.
-        var passkeys = endpoints.ServiceProvider
-            .GetService<IOptions<SparkAuthenticationOptions>>()?.Value.Passkeys
-            ?? SparkPasskeys.Disabled;
-
-        if (linking == SparkExternalLoginLinking.Disabled)
-            return;
-
-        endpoints.MapEndpoint<ListExternalLogins<TUser>>();
-
-        endpoints.MapEndpoint<UnlinkExternalLogin<TUser>>();
-
-        if (linking != SparkExternalLoginLinking.WhenSignedIn)
-            return;
-
-        endpoints.MapEndpoint<LinkExternalLoginChallenge<TUser>>();
-
-        endpoints.MapEndpoint<LinkExternalLoginCallback<TUser>>();
     }
 
     /// <summary>

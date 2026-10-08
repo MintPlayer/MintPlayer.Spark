@@ -1,8 +1,10 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Configuration;
+using MintPlayer.Spark.Authorization.Endpoints.Account;
 using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
 using MintPlayer.Spark.Authorization.Endpoints.Passkeys;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -20,31 +22,34 @@ namespace MintPlayer.Spark.Authorization.Endpoints;
 /// </para>
 /// <para>
 /// Every flag is <em>derived from the mapped endpoints</em>, asked by endpoint type
-/// (<c>IsEndpointMapped</c>; <see cref="SparkIdentityEndpoints"/> for routes without a class), rather
-/// than read back from the options object. Reporting the configured value would let this endpoint claim a surface that was
-/// never mapped (or deny one that was); deriving it from the endpoints that exist means the answer
-/// is true by construction, and stays true if the mapping is ever reached by some other path.
+/// (<c>IsEndpointMapped</c>: the endpoint class, or <see cref="SparkIdentityEndpoints"/> for Microsoft's
+/// routes, which have none), rather than read back from the options object. Reporting the configured
+/// value would let this endpoint claim a surface that was never mapped (or deny one that was); deriving
+/// it from the endpoints that exist means the answer is true by construction, and stays true if the
+/// mapping is ever reached by some other path.
 /// </para>
 /// </remarks>
 [MemberOf<SparkAuthGroup>]
-internal sealed class GetAuthCapabilities : IGetEndpoint
+internal sealed partial class GetAuthCapabilities : IGetEndpoint
 {
     public static string Path => "/capabilities";
 
+    [Inject] private readonly EndpointDataSource endpoints;
+    [Inject] private readonly IOptions<SparkAuthenticationOptions> options;
+    [Inject] private readonly IAuthenticationSchemeProvider? schemes;
+
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var services = httpContext.RequestServices;
-        var endpoints = services.GetRequiredService<EndpointDataSource>();
-        // Login (Microsoft's) and register (Spark's) carry SparkIdentityEndpoints stand-in types, so
-        // every flag here is asked by endpoint type and no route string can silently flip one.
+        // Login is Microsoft's and carries a SparkIdentityEndpoints stand-in type; register is Spark's
+        // own class. Every flag here is asked by endpoint type, so no route string can silently flip one.
         var localCredentials =
             !endpoints.IsEndpointMapped<SparkIdentityEndpoints.Login>() ? SparkLocalCredentials.Disabled
-            : !endpoints.IsEndpointMapped<SparkIdentityEndpoints.Register>() ? SparkLocalCredentials.SignInOnly
+            : !endpoints.IsEndpointMapped(typeof(Register<>)) ? SparkLocalCredentials.SignInOnly
             : SparkLocalCredentials.Full;
 
         // The 2FA page needs both the settings endpoint and the authenticator payload.
         var twoFactor = endpoints.IsEndpointMapped<SparkIdentityEndpoints.TwoFactor>()
-            && endpoints.IsEndpointMapped<SparkIdentityEndpoints.AuthenticatorUri>();
+            && endpoints.IsEndpointMapped(typeof(AuthenticatorUri<>));
 
         // Derived, for the same reason as the mode above: the sign-in page renders a passkey button
         // from this flag, and a page offering a ceremony whose endpoint was never mapped is a dead
@@ -53,10 +58,10 @@ internal sealed class GetAuthCapabilities : IGetEndpoint
         // Asked by endpoint class, so a renamed route or prefix cannot silently flip it.
         var passkeys = endpoints.IsEndpointMapped(typeof(PasskeySignIn<>));
 
-        // The option, AND the route that carries the change: POST manage/info is mapped only outside
-        // LocalCredentials Disabled, so the option alone would offer a form that posts into a 404.
-        var emailChange = SparkAccountEndpoints.EmailChangeEnabled(services)
-            && localCredentials != SparkLocalCredentials.Disabled;
+        // The option, AND the route that carries the change: POST manage/info exists only when accounts
+        // have passwords, so the option alone could offer a form that posts into a 404.
+        var emailChange = SparkAccount.EmailChangeEnabled(options.Value)
+            && endpoints.IsEndpointMapped(typeof(UpdateInfo<>));
 
         // Derived like passkeys: the connected-logins page exists only when ExternalLoginLinking mapped
         // its endpoints, and an app with external sign-in but no linking must not link to it.
@@ -64,8 +69,7 @@ internal sealed class GetAuthCapabilities : IGetEndpoint
 
         // The one value read from the options rather than derived from a route: it shapes how /login
         // resolves an identifier, not which routes exist. Empty when there is no password sign-in.
-        var identifiers = services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value.SignInIdentifiers
-            ?? SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName;
+        var identifiers = options.Value.SignInIdentifiers;
         var signInIdentifiers = new List<string>();
         if (localCredentials != SparkLocalCredentials.Disabled)
         {
@@ -73,7 +77,7 @@ internal sealed class GetAuthCapabilities : IGetEndpoint
             if (identifiers.HasFlag(SparkSignInIdentifiers.UserName)) signInIdentifiers.Add("userName");
         }
 
-        var providers = await ExternalAuthenticationSchemes.GetInteractiveAsync(services);
+        var providers = await ExternalAuthenticationSchemes.GetInteractiveAsync(schemes);
 
         return Results.Ok(new
         {

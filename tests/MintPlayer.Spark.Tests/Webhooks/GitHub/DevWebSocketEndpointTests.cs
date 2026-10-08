@@ -34,6 +34,11 @@ public class DevWebSocketEndpointTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // WireMock's first request in a process scans every DLL in the output folder for a plugin
+        // (0.9 s warm, 10-25 s on freshly built binaries). Paid here, outside the tests' 10 s bounds,
+        // which are meant to bound the endpoint and not WireMock's start-up.
+        await WireMockWarmUp.EnsureAsync();
+
         _github = WireMockServer.Start();
 
         var builder = new SparkBuilder(new ServiceCollection());

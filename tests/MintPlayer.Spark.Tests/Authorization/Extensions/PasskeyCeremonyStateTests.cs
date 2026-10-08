@@ -56,7 +56,7 @@ public class PasskeyCeremonyStateTests : SparkTestDriver
                     app.UseAuthorization();
                     app.UseEndpoints(endpoints =>
                     {
-                        endpoints.MapSparkIdentityApi<SparkUser>(SparkLocalCredentials.Disabled);
+                        endpoints.MapSparkIdentityApi<SparkUser>();
 
                         // Stand-ins for the endpoints M4/M5 will add. They exist only to drive the
                         // SignInManager helpers inside a real request.

@@ -28,10 +28,12 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
 {
     public static string Path => "/external-login-callback";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.AllowAnonymous();
     }
+
+    [QueryParam] public string? ReturnUrl { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly UserManager<TUser> userManager;
@@ -39,10 +41,11 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
     [Inject] private readonly IOptions<SparkAuthenticationOptions> options;
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly SparkAccountMail<TUser> accountMail;
+    [Inject] private readonly IEnumerable<SparkExternalProviderRegistration> providerRegistrations;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var returnUrlRaw = httpContext.Request.Query["returnUrl"].ToString();
+        var returnUrlRaw = ReturnUrl;
 
         // R2-C4: returnUrl is interpolated into the response below, so anything other than a
         // relative in-app path is a vector for XSS (and at minimum open-redirect after successful
@@ -101,7 +104,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
             // described keeps the rule above: email_verified=true or no account. A provider that
             // declares it has no reliable signal gets an unconfirmed account and a confirmation mail
             // instead — the mail is then the proof the SSO could not give.
-            var policy = SparkExternalProviderPolicies.For(httpContext.RequestServices, info.LoginProvider);
+            var policy = SparkExternalProviderPolicies.For(options.Value, providerRegistrations, info.LoginProvider);
             var email = info.Principal.FindFirstValue(ClaimTypes.Email);
             var verification = policy.EmailVerification(info.Principal);
 

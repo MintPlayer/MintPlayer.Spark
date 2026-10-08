@@ -1,0 +1,24 @@
+{
+  "name": "QnA.Tests",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "targets": {
+    "test": {
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/apps/QnA/QnA/App_Data/**/*",
+        "{workspaceRoot}/apps/QnA/QnA/appsettings*.json"
+      ],
+      "options": {
+        "cwd": "apps/QnA/QnA.Tests",
+        "command": "dotnet test --no-build --no-restore --settings ../../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage",
+        "args": []
+      },
+      "configurations": {
+        "local": {
+          "command": "dotnet test --no-build --no-restore"
+        }
+      }
+    }
+  }
+}

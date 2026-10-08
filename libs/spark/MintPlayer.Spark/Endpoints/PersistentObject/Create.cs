@@ -11,11 +11,11 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
 [MemberOf<PersistentObjectGroup>]
-internal sealed partial class CreatePersistentObject : IPostEndpoint
+internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentObjectRequest>
 {
     public static string Path => "/create";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
@@ -28,19 +28,25 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly ISaveResponsePresenter saveResponse;
     [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(ClientResult.EnvelopeRefusal(clientAccessor, context));
+
+    public override async Task<IResult> HandleAsync(PersistentObjectRequest request, CancellationToken cancellationToken)
     {
+        var httpContext = httpContextAccessor.HttpContext!;
         // The body has to be read before anything can be authorized, because the body is where the
         // type is. That inverts the old order, where the type-level "New" right was checked first so
         // that a caller with no right to create this type could not learn which types exist by POSTing
         // rubbish and comparing a 500 against a refusal (N23).
         //
-        // The property survives because ReadAsync answers a malformed body exactly as it answers an
-        // unknown type — null, refused below. A parse failure tells the caller only that their JSON
-        // was bad, which they already knew.
-        var (request, entityType) = await SparkRequestType.ReadAsync<PersistentObjectRequest>(httpContext, modelLoader);
-        if (request is null || entityType is null)
+        // The property survives because OnBindFailedAsync answers a body that cannot be bound exactly
+        // as this answers an unknown type — the same refusal. A parse failure tells the caller only that
+        // their JSON was bad, which they already knew.
+        var entityType = SparkRequestType.Resolve(modelLoader, request);
+        if (entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
@@ -118,7 +124,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
         {
             // A creation whose natural id is already held by a row the caller may edit: "exists"
             // (#467, D16), never an overwrite. Generic body, as in Update (R2-M1).
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return ClientResult.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkSaveValidationException ex)
         {

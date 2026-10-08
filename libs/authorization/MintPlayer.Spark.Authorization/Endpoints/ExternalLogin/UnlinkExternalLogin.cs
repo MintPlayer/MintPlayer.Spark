@@ -19,12 +19,23 @@ internal sealed partial class UnlinkExternalLogin<TUser> : IPostEndpoint
 {
     public static string Path => "/external-logins/unlink";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    /// <summary>
+    /// Every linking mode but <see cref="SparkExternalLoginLinking.Disabled"/>. Under
+    /// <see cref="SparkExternalLoginLinking.ConfirmByEmail"/> too, although attaching is mailed there:
+    /// without unlink, links would accumulate with no way to undo one.
+    /// </summary>
+    static bool IEndpointBase.IsEnabled(IServiceProvider services)
+        => SparkAuthFeatures.ExternalLoginLinking(services) != SparkExternalLoginLinking.Disabled;
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder
             .RequireAuthorization()
             .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
+
+    [QueryParam] public string? Provider { get; set; }
+    [QueryParam] public string? ProviderKey { get; set; }
 
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly SignInManager<TUser> signInManager;
@@ -32,8 +43,8 @@ internal sealed partial class UnlinkExternalLogin<TUser> : IPostEndpoint
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var provider = httpContext.Request.Query["provider"].ToString();
-        var providerKey = httpContext.Request.Query["providerKey"].ToString();
+        var provider = Provider ?? string.Empty;
+        var providerKey = ProviderKey ?? string.Empty;
 
         var user = await userManager.GetUserAsync(httpContext.User);
         if (user is null)

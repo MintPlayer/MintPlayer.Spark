@@ -13,7 +13,7 @@ internal class OidcWellKnownGroup : IEndpointGroup
 {
     public static string Prefix => "/.well-known";
 
-    static void IEndpointGroup.Configure(RouteGroupBuilder group) => OidcCors.Apply(group);
+    static void IEndpointGroup.Configure(RouteGroupBuilder group, IServiceProvider services) => OidcCors.Apply(group, services);
 }
 
 /// <summary>
@@ -52,15 +52,15 @@ internal class OidcLocalCredentialsGroup : IEndpointGroup
 /// The protocol endpoints that carry the dynamic-CORS convention.
 /// </summary>
 /// <remarks>
-/// A separate group rather than a per-endpoint convention, because <c>IEndpointBase.Configure</c> is
-/// static and receives no service provider. Note <c>/connect/introspect</c> is deliberately
+/// A separate group rather than a per-endpoint convention: one <c>Configure</c> covers every member.
+/// Note <c>/connect/introspect</c> is deliberately
 /// <em>not</em> a member: it never carried <c>WithOidcCors</c>.
 /// </remarks>
 internal class OidcConnectCorsGroup : IEndpointGroup
 {
     public static string Prefix => "/connect";
 
-    static void IEndpointGroup.Configure(RouteGroupBuilder group) => OidcCors.Apply(group);
+    static void IEndpointGroup.Configure(RouteGroupBuilder group, IServiceProvider services) => OidcCors.Apply(group, services);
 }
 
 /// <summary>
@@ -68,18 +68,13 @@ internal class OidcConnectCorsGroup : IEndpointGroup
 /// </summary>
 /// <remarks>
 /// ⚠️ <c>IsEnabled</c> cannot express this: it would <em>unmap</em> <c>/connect/token</c> when CORS
-/// is off, which is the opposite of the requirement. <c>Configure</c> can, but it receives only the
-/// builder — the provider is reached through <see cref="IEndpointRouteBuilder"/>, whose members
-/// <see cref="RouteGroupBuilder"/> implements <b>explicitly</b>, so the cast is required rather than
-/// stylistic. This leans on public ASP.NET Core API, not on anything the Endpoints library
-/// sanctions; an upstream <c>Configure(RouteGroupBuilder, IServiceProvider)</c> would remove the
-/// need for it.
+/// is off, which is the opposite of the requirement. <c>Configure</c> can: it receives the
+/// application's root provider, evaluated once when the routes are mapped.
 /// </remarks>
 internal static class OidcCors
 {
-    public static void Apply(RouteGroupBuilder group)
+    public static void Apply(RouteGroupBuilder group, IServiceProvider services)
     {
-        var services = ((IEndpointRouteBuilder)group).ServiceProvider;
         if (services.GetRequiredService<SparkIdentityProviderOptions>().EnableDynamicCors)
             group.RequireCors(SparkIdentityProviderExtensions.CorsPolicy);
     }

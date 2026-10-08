@@ -92,7 +92,8 @@ and then hand-edited (labels, read-only framework fields, renderers, `revisions`
 
 ## Test seams
 
-`Testing/QnATestSeams.cs` maps `POST /qna-test/moderation/{credit,detect,recompute}` when
-`QnA:TestSeams:Enabled` is true (Development and the E2E host; refused at startup in Production).
+`Testing/QnATestSeamEndpoints.cs` holds `POST /qna-test/moderation/{credit,detect,recompute}` as
+generator endpoints. Their group's `IsEnabled` maps them only when `QnA:TestSeams:Enabled` is true
+(Development and the E2E host; refused at startup in Production, see `Testing/QnATestSeams.cs`).
 They call `ISparkModerationJobs` — the Cron jobs' own code — and answer 404 to anyone but a moderator.
 A test triggers crediting through them instead of waiting five minutes for the schedule.

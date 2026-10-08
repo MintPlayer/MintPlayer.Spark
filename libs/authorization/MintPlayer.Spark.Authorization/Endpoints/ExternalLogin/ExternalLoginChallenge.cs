@@ -17,14 +17,18 @@ internal sealed partial class ExternalLoginChallenge<TUser> : IGetEndpoint
 {
     public static string Path => "/external-login";
 
+    [QueryParam] public string? Provider { get; set; }
+    [QueryParam] public string? ReturnUrl { get; set; }
+    [QueryParam] public string? Popup { get; set; }
+
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly IAuthenticationSchemeProvider schemes;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var provider = httpContext.Request.Query["provider"].ToString();
-        var returnUrl = httpContext.Request.Query["returnUrl"].ToString();
-        var popup = httpContext.Request.Query["popup"].ToString();
+        var provider = Provider ?? string.Empty;
+        var returnUrl = ReturnUrl;
+        var popup = Popup;
 
         if (string.IsNullOrEmpty(provider))
             return Results.BadRequest(new { error = ExternalLoginErrors.UnknownProvider });

@@ -24,7 +24,7 @@ public class SyncApplyEndpointTests
     private readonly ISyncActionHandler _handler = Substitute.For<ISyncActionHandler>();
 
     private SyncApply NewEndpoint(bool withHandler = true) =>
-        new(NullLoggerFactory.Instance, _certValidator, withHandler ? _handler : null);
+        new(NullLogger<SyncApply>.Instance, _certValidator, new HttpContextAccessor(), withHandler ? _handler : null);
 
     private void Cert(ModuleCertificateValidation result) =>
         _certValidator.ValidateAsync(Arg.Any<HttpContext>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -170,12 +170,65 @@ public class SyncApplyEndpointTests
         actions = new[] { new { actionType = "Delete", collection = "Cars", documentId = "cars/1" } },
     };
 
+    /// <summary>
+    /// A body the endpoint cannot bind answers what it answered while it read the body by hand
+    /// (measured before it became a typed endpoint, endpoints generator completion M3).
+    /// </summary>
+    [Fact]
+    public async Task Unbindable_bodies_answer_as_before()
+    {
+        (await ProbeAsync(ctx => NewEndpoint().HandleAsync(ctx))).Should().Be("""
+            none: 400 {"error":"Invalid request body"}
+            empty: 400 {"error":"Invalid request body"}
+            null: 400 {"error":"Request must contain at least one sync action"}
+            malformed: 400 {"error":"Invalid request body"}
+            text/plain: 400 {"error":"Invalid request body"}
+            """.ReplaceLineEndings("\n"));
+        await _handler.DidNotReceiveWithAnyArgs().HandleDeleteAsync(default!, default!);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="handle"/> on each of the unbindable bodies and lists the answers, one
+    /// <c>label: status body</c> line each.
+    /// </summary>
+    internal static async Task<string> ProbeAsync(Func<HttpContext, Task<IResult>> handle)
+    {
+        var lines = new List<string>();
+        foreach (var (label, content) in MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.UnbindableBodies())
+        {
+            var services = new ServiceCollection().AddLogging().BuildServiceProvider();
+            var ctx = new DefaultHttpContext { RequestServices = services };
+        // The typed endpoint reaches its context through IHttpContextAccessor (AsyncLocal, so per test flow).
+        new HttpContextAccessor().HttpContext = ctx;
+            var bytes = content is null ? [] : await content.ReadAsByteArrayAsync();
+            ctx.Request.Method = "POST";
+            ctx.Request.Body = new MemoryStream(bytes);
+            ctx.Request.ContentType = content?.Headers.ContentType?.ToString();
+            ctx.Request.ContentLength = bytes.Length;
+            var responseBody = new MemoryStream();
+            ctx.Response.Body = responseBody;
+
+            try
+            {
+                await (await handle(ctx)).ExecuteAsync(ctx);
+                lines.Add($"{label}: {ctx.Response.StatusCode} {Encoding.UTF8.GetString(responseBody.ToArray())}");
+            }
+            catch (Exception ex)
+            {
+                lines.Add($"{label}: throws {ex.GetType().Name}");
+            }
+        }
+        return string.Join("\n", lines);
+    }
+
     private static DefaultHttpContext NewContext(object body) => NewContext(JsonSerializer.Serialize(body, Web));
 
     private static DefaultHttpContext NewContext(string json)
     {
         var services = new ServiceCollection().AddLogging().BuildServiceProvider();
         var ctx = new DefaultHttpContext { RequestServices = services };
+        // The typed endpoint reaches its context through IHttpContextAccessor (AsyncLocal, so per test flow).
+        new HttpContextAccessor().HttpContext = ctx;
         var bytes = Encoding.UTF8.GetBytes(json);
         ctx.Request.Body = new MemoryStream(bytes);
         ctx.Request.ContentType = "application/json";

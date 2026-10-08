@@ -15,6 +15,8 @@
     <!-- #264 M6: validates the apps' App_Data files against the generated schemas (draft 2020-12). -->
     <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
     <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.5" />
+    <!-- Plan M8: EndpointConventionsTests parses libs/ and apps/ to guard the endpoint conventions. Same version as the generators. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="NSubstitute" Version="6.2.0" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />

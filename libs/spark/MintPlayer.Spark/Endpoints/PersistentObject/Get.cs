@@ -10,7 +10,7 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
 [MemberOf<PersistentObjectGroup>]
-internal sealed partial class GetPersistentObject : IPostEndpoint
+internal sealed partial class GetPersistentObject : IPostEndpoint<PersistentObjectReferenceRequest>
 {
     public static string Path => "/load";
 
@@ -20,7 +20,7 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
     // mutating-verb request under /spark that carries an ambient credential — which swept these in
     // against the decision recorded above. Saying it out loud restores that decision and makes it
     // survive the next default change.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
     }
@@ -39,14 +39,20 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
     [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(SparkDenial.RefuseJson(context));
+
+    public override async Task<IResult> HandleAsync(PersistentObjectReferenceRequest request, CancellationToken cancellationToken)
     {
+        var httpContext = httpContextAccessor.HttpContext!;
         // The catch-all `{**id}` that used to carry the id is gone, and with it the empty-id case it
         // created (the bare "/{objectTypeId}" path matched too, and the ! on a null RouteValue was a
         // 500 rather than a refusal). An absent id in the body is now just an absent field.
-        var (request, entityType) = await SparkRequestType.ReadAsync<PersistentObjectReferenceRequest>(httpContext, modelLoader);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
+        var entityType = SparkRequestType.Resolve(modelLoader, request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id))
         {
             return SparkDenial.RefuseJson(httpContext);
         }

@@ -130,7 +130,7 @@ internal sealed class AccountTestHost : IAsyncDisposable
                     app.UseAntiforgery();
                     app.UseEndpoints(e =>
                     {
-                        e.MapSparkIdentityApi<SparkUser>(mode);
+                        e.MapSparkIdentityApi<SparkUser>();
                         endpoints?.Invoke(e);
                     });
                 }))

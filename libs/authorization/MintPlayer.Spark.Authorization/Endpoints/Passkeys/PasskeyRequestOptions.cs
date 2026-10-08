@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace MintPlayer.Spark.Authorization.Endpoints.Passkeys;
@@ -28,6 +29,8 @@ internal sealed partial class PasskeyRequestOptions<TUser> : IPostEndpoint
     where TUser : SparkUser, new()
 {
     public static string Path => "/passkeys/request-options";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => SparkAuthFeatures.Passkeys(services);
 
     [Inject] private readonly SignInManager<TUser> signInManager;
 

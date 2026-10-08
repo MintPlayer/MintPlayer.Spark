@@ -235,7 +235,7 @@ internal sealed partial class ReceiveBounce : IPostEndpoint
 
     // ⚠️ EXPLICITLY exempt: the caller is the mail relay's pipe, which has no browser, no cookie and
     // no antiforgery token. Authenticated by the shared bearer secret instead. Stated, not absent.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     // Self-contained: a second UseRateLimiter() would halve the app's own budget (Spark's limiter
@@ -246,6 +246,9 @@ internal sealed partial class ReceiveBounce : IPostEndpoint
         Window = TimeSpan.FromMinutes(1),
         QueueLimit = 0,
     });
+
+    /// <summary>The envelope recipient (the VERP address the report was delivered to), when the relay passes it.</summary>
+    [QueryParam] public string? Recipient { get; set; }
 
     [Inject] private readonly IOptions<SparkMailOptions> options;
     [Inject] private readonly ISparkMailBounceParser parser;
@@ -272,6 +275,8 @@ internal sealed partial class ReceiveBounce : IPostEndpoint
         if (httpContext.Request.ContentLength > endpoint.MaxBodyBytes)
             return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
 
+        // Read raw, not bound: the stated exception of PRD D3a. The secret is checked before a byte is
+        // parsed, and the size is capped.
         using var buffer = new MemoryStream();
         var chunk = new byte[16 * 1024];
         int read;
@@ -286,7 +291,7 @@ internal sealed partial class ReceiveBounce : IPostEndpoint
         IReadOnlyList<SparkMailBounce> bounces;
         try
         {
-            bounces = await parser.ParseAsync(buffer, httpContext.Request.Query["recipient"].FirstOrDefault(), httpContext.RequestAborted);
+            bounces = await parser.ParseAsync(buffer, Recipient, httpContext.RequestAborted);
         }
         catch (Exception ex) when (ex is FormatException or ParseException)
         {
@@ -352,15 +357,18 @@ internal sealed partial class Unsubscribe : IPostEndpoint
 
     // ⚠️ EXPLICITLY exempt: RFC 8058 posts come from mail providers, with no browser session. The
     // token (Data Protection, 90 days) is the authentication; it can only unsubscribe its own stream.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+
+    /// <summary>The one-click token (<c>?t=</c>); absent or unreadable answers 400.</summary>
+    [QueryParam("t")] public string? Token { get; set; }
 
     [Inject] private readonly SparkMailUnsubscribeTokens tokens;
     [Inject] private readonly ISparkMailSuppressions suppressions;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        if (tokens.Read(httpContext.Request.Query["t"].FirstOrDefault()) is not { } target)
+        if (tokens.Read(Token) is not { } target)
             return Results.BadRequest();
         await suppressions.SuppressAsync(target.Email, SparkMailSuppressionReason.Unsubscribe, target.Stream, httpContext.RequestAborted);
         return Results.Text("You are unsubscribed.", "text/plain");

@@ -1,23 +1,31 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
-internal static class Discovery
+/// <summary>The OpenID Connect discovery document (<c>GET /.well-known/openid-configuration</c>).</summary>
+/// <remarks>Raw: it takes no input, and the issuer it advertises is resolved from the request.</remarks>
+[MemberOf<OidcWellKnownGroup>]
+internal sealed partial class OidcDiscovery : IGetEndpoint
 {
-    public static async Task Handle(HttpContext context)
+    public static string Path => "/openid-configuration";
+
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly OidcIssuer oidcIssuer;
+
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var ct = context.RequestAborted;
+        var ct = httpContext.RequestAborted;
 
         // Must be the same value the tokens carry, or a relying party that discovers us here
         // will reject everything we mint.
-        var issuer = OidcIssuer.Resolve(context);
+        var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         // Load scopes dynamically from DB
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
         var scopes = await session
@@ -48,7 +56,6 @@ internal static class Discovery
             revocation_endpoint_auth_methods_supported = new[] { "client_secret_post" },
         };
 
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsJsonAsync(document);
+        return Results.Json(document);
     }
 }

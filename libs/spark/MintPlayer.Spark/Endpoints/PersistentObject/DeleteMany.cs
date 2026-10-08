@@ -32,11 +32,11 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// </para>
 /// </remarks>
 [MemberOf<PersistentObjectGroup>]
-internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
+internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint<DeleteManyRequest>
 {
     public static string Path => "/delete-many";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
@@ -50,11 +50,17 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly ILogger<DeleteManyPersistentObjects> logger;
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(ClientResult.EnvelopeRefusal(clientAccessor, context));
+
+    public override async Task<IResult> HandleAsync(DeleteManyRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await SparkRequestType.ReadAsync<DeleteManyRequest>(httpContext, modelLoader);
-        if (request is null || entityType is null)
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = SparkRequestType.Resolve(modelLoader, request);
+        if (entityType is null)
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
 
         var items = request.Items ?? [];
@@ -166,7 +172,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
             // A row changed since the list loaded (#467, D14): named in the message (D18). Or a write in
             // the batch met a concurrent edit; the batch is atomic, so nothing was written
             // (contributions F7). Never the exception's own message, as in Update (R2-M1).
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return ClientResult.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {

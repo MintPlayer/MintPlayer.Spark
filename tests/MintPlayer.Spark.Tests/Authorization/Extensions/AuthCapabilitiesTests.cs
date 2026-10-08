@@ -12,6 +12,7 @@ using Microsoft.Extensions.Hosting;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization;
 using MintPlayer.Spark.Authorization.Configuration;
+using Account = MintPlayer.Spark.Authorization.Endpoints.Account;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Testing;
@@ -41,6 +42,7 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
                     services.AddSparkAuthentication<SparkUser>();
                     services.Configure<SparkAuthenticationOptions>(o =>
                     {
+                        o.LocalCredentials = mode;
                         o.EmailChange = emailChange;
                         o.ExternalLoginLinking = linking;
                         if (identifiers is { } value)
@@ -63,7 +65,7 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
                     app.UseRouting();
                     app.UseAuthentication();
                     app.UseAuthorization();
-                    app.UseEndpoints(endpoints => endpoints.MapSparkIdentityApi<SparkUser>(mode));
+                    app.UseEndpoints(endpoints => endpoints.MapSparkIdentityApi<SparkUser>());
                 }))
             .StartAsync();
     }
@@ -185,22 +187,31 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
     }
 
     /// <summary>
-    /// Every account route without an endpoint class answers <c>IsEndpointMapped</c> through its
-    /// <see cref="SparkIdentityEndpoints"/> stand-in, per mode. Full maps them all, so a stand-in no
-    /// route is tagged with fails here.
+    /// Every account route answers <c>IsEndpointMapped</c> by type, per mode: Microsoft's through its
+    /// <see cref="SparkIdentityEndpoints"/> stand-in, Spark's through its endpoint class. Full maps them
+    /// all, so a stand-in no route is tagged with fails here.
     /// </summary>
     [Theory]
-    [InlineData(SparkLocalCredentials.Full, "Login,Refresh,TwoFactor,AuthenticatorUri,Info,UpdateInfo,SetPassword,Register,ResendConfirmationEmail,ForgotPassword,ResetPassword,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
-    [InlineData(SparkLocalCredentials.SignInOnly, "Login,Refresh,TwoFactor,AuthenticatorUri,Info,UpdateInfo,SetPassword,ForgotPassword,ResetPassword,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
-    [InlineData(SparkLocalCredentials.Disabled, "TwoFactor,AuthenticatorUri,Info,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
+    [InlineData(SparkLocalCredentials.Full, "Login,Refresh,TwoFactor,AuthenticatorUri,Info,UpdateInfo,SetPassword,Register,ResendConfirmationEmail,ForgotPassword,ResetPassword,ConfirmEmailLink,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
+    [InlineData(SparkLocalCredentials.SignInOnly, "Login,Refresh,TwoFactor,AuthenticatorUri,Info,UpdateInfo,SetPassword,ForgotPassword,ResetPassword,ConfirmEmailLink,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
+    [InlineData(SparkLocalCredentials.Disabled, "TwoFactor,AuthenticatorUri,Info,ConfirmEmailLink,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
     public async Task Identity_endpoints_are_asked_by_type(SparkLocalCredentials mode, string expected)
     {
         using var host = await StartAsync(mode);
         var endpoints = host.Services.GetRequiredService<EndpointDataSource>();
 
-        var mapped = typeof(SparkIdentityEndpoints).GetNestedTypes()
+        Type[] spark =
+        [
+            typeof(Account.Register<>), typeof(Account.ResendConfirmationEmail<>), typeof(Account.ForgotPassword<>),
+            typeof(Account.ResetPassword<>), typeof(Account.ConfirmEmailLink<>), typeof(Account.ConfirmEmail<>),
+            typeof(Account.UpdateInfo<>), typeof(Account.SetPassword<>), typeof(Account.Profile<>),
+            typeof(Account.UpdateProfile<>), typeof(Account.AuthenticatorUri<>), typeof(Account.PersonalData<>),
+            typeof(Account.DeleteAccount<>),
+        ];
+
+        var mapped = typeof(SparkIdentityEndpoints).GetNestedTypes().Concat(spark)
             .Where(endpoints.IsEndpointMapped)
-            .Select(type => type.Name);
+            .Select(type => type.Name.Split('`')[0]);
 
         mapped.Should().BeEquivalentTo(expected.Split(','));
     }

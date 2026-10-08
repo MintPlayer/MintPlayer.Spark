@@ -75,6 +75,43 @@ public class AccountFlowTests : SparkTestDriver
         (await host.FindByEmailAsync("a@example.com"))!.UserName.Should().Be("alice");
     }
 
+    /// <summary>
+    /// A request the account endpoints cannot bind answers what the minimal-API <c>[FromBody]</c> and
+    /// <c>[FromQuery]</c> binding answered before they became typed endpoint classes: the status alone,
+    /// with no body. Measured on the minimal-API handlers first (endpoints generator completion S3);
+    /// the typed binder on its own would answer 415 for a body-less request and a problem body for the rest.
+    /// </summary>
+    [Fact]
+    public async Task Unbindable_requests_answer_a_bare_status_as_before()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        using var client = host.Client();
+
+        async Task<(int Status, string Body)> Send(HttpMethod method, string url, HttpContent? content)
+        {
+            var response = await client.SendAsync(new HttpRequestMessage(method, url) { Content = content });
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        static StringContent Json(string body) => new(body, Encoding.UTF8, "application/json");
+
+        foreach (var url in new[] { "/spark/auth/register", "/spark/auth/forgotPassword", "/spark/auth/confirm-email" })
+        {
+            (await Send(HttpMethod.Post, url, null)).Should().Be((400, ""), $"{url} without a body");
+            (await Send(HttpMethod.Post, url, Json(""))).Should().Be((400, ""), $"{url} with an empty JSON body");
+            (await Send(HttpMethod.Post, url, Json("null"))).Should().Be((400, ""), $"{url} with a JSON null");
+            (await Send(HttpMethod.Post, url, Json("{"))).Should().Be((400, ""), $"{url} with malformed JSON");
+            (await Send(HttpMethod.Post, url, new StringContent("{}", Encoding.UTF8, "text/plain"))).Should().Be((415, ""), $"{url} as text/plain");
+        }
+
+        // forgotPassword's body is Microsoft's ForgotPasswordRequest, whose Email is `required`.
+        (await Send(HttpMethod.Post, "/spark/auth/forgotPassword", Json("{}"))).Should().Be((400, ""));
+
+        (await Send(HttpMethod.Get, "/spark/auth/confirmEmail", null)).Should().Be((400, ""), "a link without userId and code");
+        (await Send(HttpMethod.Get, "/spark/auth/confirmEmail?userId=x", null)).Should().Be((400, ""), "a link without code");
+        (await Send(HttpMethod.Get, "/spark/auth/confirmEmail?userId=x&code=y", null)).Status.Should().Be(401, "a complete link with a bad code");
+    }
+
     [Fact]
     public async Task RequireConfirmedEmail_refuses_sign_in_until_the_mailed_link_is_posted_back()
     {
@@ -368,7 +405,7 @@ public class AccountFlowTests : SparkTestDriver
     [InlineData("en-US-x-custom-private-use-extension-longer-than-any-real-locale-name-could-be-at-all-padding", false, null)]
     public void A_preferred_culture_must_be_a_predefined_culture_name(string? posted, bool valid, string? stored)
     {
-        MintPlayer.Spark.Authorization.Extensions.SparkAccountEndpoints.TryNormalizeCulture(posted, out var culture).Should().Be(valid);
+        MintPlayer.Spark.Authorization.Endpoints.Account.SparkAccount.TryNormalizeCulture(posted, out var culture).Should().Be(valid);
         culture.Should().Be(stored);
     }
 

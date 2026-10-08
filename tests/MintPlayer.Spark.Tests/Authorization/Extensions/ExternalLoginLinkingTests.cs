@@ -93,7 +93,12 @@ public class ExternalLoginLinkingTests : SparkTestDriver
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.AddAuthorization();
                     services.AddRouting();
-                    services.Configure<SparkAuthenticationOptions>(o => o.ExternalLoginLinking = linking);
+                    services.Configure<SparkAuthenticationOptions>(o =>
+                    {
+                        o.ExternalLoginLinking = linking;
+                        // The mode MapSparkIdentityApi's former parameter defaulted to.
+                        o.LocalCredentials = SparkLocalCredentials.Full;
+                    });
                     services.AddSingleton<ISparkLinkConfirmationSender<SparkUser>>(_sender);
                     services.AddScoped(_ => _signInManager);
                     services.AddScoped(_ => _userManager);

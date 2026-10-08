@@ -104,6 +104,23 @@ than replaying a stale cache. After the fix the class passed 3 of 3 runs straigh
 Not covered: browsers driven by Playwright resolve proxies themselves (Chromium reads the system
 settings); this initializer does not reach them, and nothing has been measured there.
 
+### WireMock's first-request plugin scan: the same test, a second cause (2026-10-08)
+
+With the proxy off, the same `DevWebSocketEndpointTests.A_developer_outside_the_allow_list_is_closed`
+still took **8.9 s** against its 10 s bound in a test process with freshly built binaries (plan
+`endpoints_generator_completion_plan.md`, spike S4 finding c); warm, the same call took 0.7–1.0 s. It
+was located, not written off (plan M7):
+
+- **Cause:** WireMock.Net 2.15's first-request plugin scan, not Octokit, DNS or the proxy.
+  `TypeLoader.TryFindTypeInDlls` calls `Assembly.Load` and `GetTypes()` on every DLL in the test
+  project's bin (168 of them) to look for `WireMock.Net.MimePart`.
+- **Cost:** 0.9 s warm, **10.8–24.6 s** on freshly written binaries.
+- **Fix:** `tests/MintPlayer.Spark.Tests/Webhooks/GitHub/_Infrastructure/WireMockWarmUp.cs` pays the
+  scan once per process before `DevWebSocketEndpointTests` start their clock. The bounds are
+  unchanged; on cold binaries the class passes and its slowest test takes 766 ms.
+
+A new test that bounds the **first** WireMock request in a process needs the same warm-up.
+
 ## 4. The two drivers
 
 |  | `SparkTestDriver` | `SparkSharedDatabase` + `SparkSharedTestDriver` |

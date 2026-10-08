@@ -24,7 +24,7 @@ public class EtlDeployEndpointTests
     private readonly IPermissionService _permissionService = Substitute.For<IPermissionService>();
 
     private EtlDeploy NewEndpoint() =>
-        new(NullLogger<EtlTaskManager>.Instance, null!, _certValidator, _permissionService);
+        new(NullLogger<EtlTaskManager>.Instance, null!, _certValidator, _permissionService, new HttpContextAccessor());
 
     /// <summary>Grants the caller the right to replicate every collection it asks for.</summary>
     private void AllowReplication() =>
@@ -40,6 +40,22 @@ public class EtlDeployEndpointTests
     {
         var ctx = NewContext("{ not json");
         (await StatusAsync(await NewEndpoint().HandleAsync(ctx), ctx)).Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// A body the endpoint cannot bind answers what it answered while it read the body by hand
+    /// (measured before it became a typed endpoint, endpoints generator completion M3).
+    /// </summary>
+    [Fact]
+    public async Task Unbindable_bodies_answer_as_before()
+    {
+        (await SyncApplyEndpointTests.ProbeAsync(ctx => NewEndpoint().HandleAsync(ctx))).Should().Be("""
+            none: 400 {"success":false,"tasksCreated":0,"tasksUpdated":0,"tasksRemoved":0,"error":"Invalid request body"}
+            empty: 400 {"success":false,"tasksCreated":0,"tasksUpdated":0,"tasksRemoved":0,"error":"Invalid request body"}
+            null: 400 {"success":false,"tasksCreated":0,"tasksUpdated":0,"tasksRemoved":0,"error":"Request must contain at least one script"}
+            malformed: 400 {"success":false,"tasksCreated":0,"tasksUpdated":0,"tasksRemoved":0,"error":"Invalid request body"}
+            text/plain: 400 {"success":false,"tasksCreated":0,"tasksUpdated":0,"tasksRemoved":0,"error":"Invalid request body"}
+            """.ReplaceLineEndings("\n"));
     }
 
     [Fact]
@@ -138,6 +154,8 @@ public class EtlDeployEndpointTests
     {
         var services = new ServiceCollection().AddLogging().BuildServiceProvider();
         var ctx = new DefaultHttpContext { RequestServices = services };
+        // The typed endpoint reaches its context through IHttpContextAccessor (AsyncLocal, so per test flow).
+        new HttpContextAccessor().HttpContext = ctx;
         var bytes = Encoding.UTF8.GetBytes(json);
         ctx.Request.Body = new MemoryStream(bytes);
         ctx.Request.ContentType = "application/json";

@@ -37,7 +37,7 @@ internal sealed class CsrfRefresh : IPostEndpoint, IEndpointBase
 {
     public static string Path => "/csrf-refresh";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
     }

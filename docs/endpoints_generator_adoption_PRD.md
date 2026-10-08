@@ -327,6 +327,16 @@ met (`global.json` and both CI workflows pin 11.0.100-rc.1); on an older SDK the
 
 ## D3 — `MintPlayer.Spark.IdentityProvider`: four groups, and CORS via group `Configure`
 
+> ⚠️ **Superseded 2026-10-08** by [`endpoints_generator_completion_PRD.md`](endpoints_generator_completion_PRD.md)
+> D2/D3 (plan M4). The static handlers this decision accepted, wrapped as
+> `{ await X.Handle(httpContext); return Results.Empty; }`, are gone: every handler is folded into its
+> endpoint class with `[Inject]` fields and typed binding; the five user-touching endpoints are generic
+> over the user type and closed once at startup (`OidcUserEndpoints.MapFor<TUser>()`); and the
+> `IEndpointRouteBuilder` cast below is replaced by `IEndpointGroup.Configure(RouteGroupBuilder,
+> IServiceProvider)` (upstream #36, Endpoints 11.4.0-rc.0). The four groups stand. A static class
+> holding endpoint logic now fails `EndpointConventionsTests` (plan M8). The text below is kept as the
+> record of what #455 did.
+
 All 16 handlers are `internal static class X` with `public static Task Handle…(HttpContext)` and
 **no type parameters** — five resolve the user type reflectively at runtime from
 `Registry.IdentityUserType`. So this assembly needs **no closing machinery at all**; it is strictly
@@ -377,6 +387,13 @@ exists via `builder.Add(e => … e.ApplicationServices …)`, which is what `Req
 
 ## D4 — `MintPlayer.Spark.Webhooks.GitHub`: the documented exception
 
+> ⚠️ **Partly superseded 2026-10-08** by [`endpoints_generator_completion_PRD.md`](endpoints_generator_completion_PRD.md)
+> D4 and [`endpoints_generator_webhooks_exception.md`](endpoints_generator_webhooks_exception.md). The
+> dev WebSocket (route 2) is now the generator endpoint `DevWebSocketEndpoint`, keeping its configurable
+> path through `GetPath(IServiceProvider)` (upstream #37); the assembly now references the Endpoints
+> package. Only the webhook POST (route 1) stays on `MapGitHubWebhooks`, and the reason is Octokit
+> owning the request-level `X-Hub-Signature-256` refusal, not the static `Path` argued below.
+
 **Both routes stay hand-mapped**, and the assembly does **not** take a `PackageReference` to the
 Endpoints package — there would be nothing to generate. This is the exception to "adopt everywhere",
 and it is recorded rather than quietly skipped.
@@ -411,6 +428,16 @@ option.
 
 → **Upstream ask:** a provider-aware or instance `Path`, or a group-level path override, so a library
 can honour a configured route prefix.
+
+## D4b — `MapIdentityApi<TUser>()` republish: a documented exception (recorded 2026-10-08)
+
+This PRD did not list it; [`endpoints_generator_completion_PRD.md`](endpoints_generator_completion_PRD.md)
+§5 records it. `LocalCredentialEndpointFilter` maps Microsoft's `MapIdentityApi<TUser>()` onto a
+throwaway builder, filters the routes by the local-credentials mode, and republishes the survivors
+through a `FixedEndpointDataSource`. It stays hand-mapped because `MapIdentityApi` is Microsoft's
+monolithic mapper: it declares all its routes in one call with no per-route hook, so there is no class
+to generate and no way to map a subset. `EndpointConventionsTests` (plan M8) allow-lists it with this
+reason, next to `MapGitHubWebhooks` and `MapControllers`.
 
 ---
 

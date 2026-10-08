@@ -93,13 +93,17 @@ public class SparkBuilderExtensionsTests
     }
 
     [Fact]
-    public void AddGithubWebhooks_does_not_register_DevWebSocketService_without_DevelopmentAppId()
+    public void AddGithubWebhooks_registers_DevWebSocketService_without_DevelopmentAppId()
     {
+        // Unconditional: an app may set DevelopmentAppId through Configure<>() after this call, and
+        // the endpoint's IsEnabled reads IOptions (DevWebSocketEndpointMappingTests).
         var builder = NewBuilder();
 
         builder.AddGithubWebhooks(_ => { });
 
-        builder.Services.Should().NotContain(d => d.ServiceType == typeof(IDevWebSocketService));
+        var descriptor = builder.Services.Should().ContainSingle(d => d.ServiceType == typeof(IDevWebSocketService)).Which;
+        descriptor.Lifetime.Should().Be(ServiceLifetime.Singleton);
+        descriptor.ImplementationType.Should().Be<DevWebSocketService>();
     }
 
     [Fact]

@@ -10,7 +10,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Moderation</PackageId>
-		<Version>11.0.0-preview.101</Version>
+		<Version>11.0.0-preview.102</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Community moderation for MintPlayer.Spark: votes and a reputation ledger on IModeratable entities, privileges earned as security.json groups (bounded to reversible rights), ten vote-fraud defences (age and activity gates, diversity, eligibility, caps, delayed crediting, a nightly detector with compensating reversals, hashed network observations), flags and a review queue, locks, suspensions and an audit log. Configured through moderation.json layered under IConfiguration.</Description>
@@ -32,7 +32,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.1" GeneratePathProperty="true" />
-		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.3.0-rc.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
 	</ItemGroup>
 

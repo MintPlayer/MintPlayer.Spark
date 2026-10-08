@@ -10,6 +10,11 @@ internal sealed partial class GetEntityType : IGetEndpoint
 {
     public static string Path => "/{id}";
 
+    [RouteParam] public string Id { get; set; } = "";
+
+    /// <summary><c>?for=new|edit|read</c>: which form the type is shaped for (#264).</summary>
+    [QueryParam("for")] public string? Purpose { get; set; }
+
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IQueryLoader queryLoader;
@@ -18,7 +23,7 @@ internal sealed partial class GetEntityType : IGetEndpoint
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
+        var id = Id;
         var entityType = modelLoader.ResolveEntityType(id);
 
         if (entityType is null)
@@ -41,7 +46,7 @@ internal sealed partial class GetEntityType : IGetEndpoint
         // too, and no Edit deny applied. It only ever narrows what is seen: Read-denied stays absent.
         return Results.Json(await attributeRights.ForFormAsync(
             SubQueryPruner.EmbedDetailTypes(pruned, modelLoader),
-            FormVerb(httpContext.Request.Query["for"].ToString()),
+            FormVerb(Purpose ?? string.Empty),
             httpContext.RequestAborted));
     }
 

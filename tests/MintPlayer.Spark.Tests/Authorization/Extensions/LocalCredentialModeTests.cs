@@ -77,6 +77,7 @@ public class LocalCredentialModeTests(SparkSharedDatabase database)
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.Configure<SparkAuthenticationOptions>(o => o.LocalCredentials = mode);
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
 
                     if (withExternalProvider)
@@ -95,7 +96,7 @@ public class LocalCredentialModeTests(SparkSharedDatabase database)
                     app.UseAuthorization();
                     app.UseEndpoints(endpoints =>
                     {
-                        endpoints.MapSparkIdentityApi<SparkUser>(mode);
+                        endpoints.MapSparkIdentityApi<SparkUser>();
 
                         // Stands in for the provider's OAuth handler. A real handler (AddGitHub,
                         // AddGoogle, …) sets SignInScheme = IdentityConstants.ExternalScheme and

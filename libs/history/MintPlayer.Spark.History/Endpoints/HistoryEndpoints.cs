@@ -55,37 +55,42 @@ internal sealed class HistoryRequest : ISparkTypedRequest
 /// newest first. Requires <c>History/T</c> and a row the caller can load now.
 /// </summary>
 [MemberOf<HistoryPersistentObjectGroup>]
-internal sealed partial class ListRevisions : IPostEndpoint
+internal sealed partial class ListRevisions : IPostEndpoint<HistoryRequest>
 {
     public static string Path => "/revisions";
 
     // ⚠️ EXPLICITLY exempt: a read, like /spark/po/load. A forged one changes nothing and its response
     // cannot be read cross-origin. Stated, not merely absent, so the next default change cannot sweep
     // it in.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     [Inject] private readonly ISparkHistory history;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound is the standard refusal, as an unusable request is below; never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(addOn.Refusal(context));
+
+    public override async Task<IResult> HandleAsync(HistoryRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await SparkAddOnEndpoints.ReadTypedRequestAsync<HistoryRequest>(httpContext, modelLoader);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = addOn.ResolveType(request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id))
+            return addOn.Refusal(httpContext);
 
         // Before the current-row gate asks row security (row filters are memoized per request).
-        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted, entityType);
+        addOn.UseDeletedFilter(request.Deleted, entityType);
 
         try
         {
             var revisions =await history.ListAsync(entityType.Id, request.Id, request.Skip ?? 0, request.Take ?? 50, httpContext.RequestAborted);
-            return SparkAddOnEndpoints.Envelope(clientAccessor, revisions, StatusCodes.Status200OK);
+            return addOn.Envelope(revisions, StatusCodes.Status200OK);
         }
         catch (SparkAccessDeniedException)
         {
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
         }
     }
 }
@@ -96,34 +101,39 @@ internal sealed partial class ListRevisions : IPostEndpoint
 /// is refused like a missing one.
 /// </summary>
 [MemberOf<HistoryPersistentObjectGroup>]
-internal sealed partial class GetRevision : IPostEndpoint
+internal sealed partial class GetRevision : IPostEndpoint<HistoryRequest>
 {
     public static string Path => "/revision";
 
     // ⚠️ EXPLICITLY exempt: a read (see ListRevisions).
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     [Inject] private readonly ISparkHistory history;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound is the standard refusal, as an unusable request is below; never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(addOn.Refusal(context));
+
+    public override async Task<IResult> HandleAsync(HistoryRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await SparkAddOnEndpoints.ReadTypedRequestAsync<HistoryRequest>(httpContext, modelLoader);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = addOn.ResolveType(request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
+            return addOn.Refusal(httpContext);
 
-        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted, entityType);
+        addOn.UseDeletedFilter(request.Deleted, entityType);
 
         try
         {
             var revision =await history.GetAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
-            return SparkAddOnEndpoints.Envelope(clientAccessor, revision, StatusCodes.Status200OK);
+            return addOn.Envelope(revision, StatusCodes.Status200OK);
         }
         catch (SparkAccessDeniedException)
         {
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
         }
     }
 }
@@ -135,50 +145,55 @@ internal sealed partial class GetRevision : IPostEndpoint
 /// 409, an interceptor's refusal 400.
 /// </summary>
 [MemberOf<HistoryPersistentObjectGroup>]
-internal sealed partial class RevertPersistentObject : IPostEndpoint
+internal sealed partial class RevertPersistentObject : IPostEndpoint<HistoryRequest>
 {
     public static string Path => "/revert";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly ISparkHistory history;
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound is the standard refusal, as an unusable request is below; never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(addOn.Refusal(context));
+
+    public override async Task<IResult> HandleAsync(HistoryRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await SparkAddOnEndpoints.ReadTypedRequestAsync<HistoryRequest>(httpContext, modelLoader);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = addOn.ResolveType(request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
+            return addOn.Refusal(httpContext);
 
         try
         {
             var reverted = await history.RevertAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
-            return SparkAddOnEndpoints.Envelope(clientAccessor, reverted, StatusCodes.Status200OK);
+            return addOn.Envelope(reverted, StatusCodes.Status200OK);
         }
         catch (SparkCancelException)
         {
             // An interceptor cancelled the revert (#482): nothing was written; answered with the row as stored.
-            return SparkAddOnEndpoints.Envelope(clientAccessor,
+            return addOn.Envelope(
                 await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id), StatusCodes.Status200OK);
         }
-        catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
+        catch (Exception ex) when (addOn.IsConcurrencyConflict(ex))
         {
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return addOn.ConcurrencyConflict(ex);
         }
         catch (SparkValidationException ex)
         {
-            return SparkAddOnEndpoints.ValidationFailed(clientAccessor, ex);
+            return addOn.ValidationFailed(ex);
         }
         catch (SparkActionDisabledException ex)
         {
-            return SparkAddOnEndpoints.ActionDisabled(clientAccessor, ex);
+            return addOn.ActionDisabled(ex);
         }
         catch (SparkAccessDeniedException)
         {
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
         }
     }
 }

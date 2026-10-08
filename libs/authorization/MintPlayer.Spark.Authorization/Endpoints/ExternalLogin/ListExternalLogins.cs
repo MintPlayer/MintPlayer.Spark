@@ -24,7 +24,11 @@ internal sealed partial class ListExternalLogins<TUser> : IGetEndpoint
 {
     public static string Path => "/external-logins";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    /// <summary>Every linking mode but <see cref="SparkExternalLoginLinking.Disabled"/> (see <see cref="UnlinkExternalLogin{TUser}"/>).</summary>
+    static bool IEndpointBase.IsEnabled(IServiceProvider services)
+        => SparkAuthFeatures.ExternalLoginLinking(services) != SparkExternalLoginLinking.Disabled;
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.RequireAuthorization();
     }

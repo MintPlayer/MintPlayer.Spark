@@ -22,11 +22,11 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// </para>
 /// </summary>
 [MemberOf<PersistentObjectGroup>]
-internal sealed partial class NewPersistentObject : IPostEndpoint
+internal sealed partial class NewPersistentObject : IPostEndpoint<NewPersistentObjectRequest>
 {
     public static string Path => "/new";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
@@ -41,11 +41,17 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly ILogger<NewPersistentObject> logger;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(ClientResult.EnvelopeRefusal(clientAccessor, context));
+
+    public override async Task<IResult> HandleAsync(NewPersistentObjectRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await SparkRequestType.ReadAsync<NewPersistentObjectRequest>(httpContext, modelLoader);
-        if (request is null || entityType is null)
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = SparkRequestType.Resolve(modelLoader, request);
+        if (entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }

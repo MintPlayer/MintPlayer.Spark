@@ -7,7 +7,7 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.Queries;
 
 [MemberOf<QueriesGroup>]
-internal sealed partial class GetQuery : IPostEndpoint
+internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
 {
     public static string Path => "/get";
 
@@ -17,7 +17,7 @@ internal sealed partial class GetQuery : IPostEndpoint
     // mutating-verb request under /spark that carries an ambient credential — which swept these in
     // against the decision recorded above. Saying it out loud restores that decision and makes it
     // survive the next default change.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
     }
@@ -28,11 +28,16 @@ internal sealed partial class GetQuery : IPostEndpoint
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IAttributeRightsEnforcement attributeRights;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(Results.Json(new { error = "Query not found" }, statusCode: 404));
+
+    public override async Task<IResult> HandleAsync(GetQueryRequest request, CancellationToken cancellationToken)
     {
-        var request = await SparkRequestBody.ReadAsync<GetQueryRequest>(httpContext);
-        var id = request?.QueryId;
+        var httpContext = httpContextAccessor.HttpContext!;
+        var id = request.QueryId;
 
         // A malformed body and an unknown query get the same answer, for the same reason the
         // unauthorized case does below: the status must not tell a caller which query ids are real.

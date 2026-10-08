@@ -1,102 +1,48 @@
 using MintPlayer.Spark.Authorization.Extensions;
 using System.Text;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
-/// <summary>
-/// MVC two-factor authentication page for the OIDC Identity Provider login flow.
-/// GET renders the code entry form, POST verifies and redirects to returnUrl.
-/// </summary>
-internal static class TwoFactor
+// The two-factor step of the provider's own sign-in: GET renders the code entry form, POST
+// verifies and redirects to returnUrl. Membership of OidcLocalCredentialsGroup is what gates both
+// on SparkLocalCredentials - see that group's IsEnabled.
+
+/// <summary>Renders the two-factor step (<c>GET /connect/two-factor</c>).</summary>
+[MemberOf<OidcLocalCredentialsGroup>]
+internal sealed partial class OidcTwoFactorPage : IGetEndpoint<string>
 {
-    public static async Task HandleGet(HttpContext context)
+    public static string Path => "/two-factor";
+
+    [QueryParam("returnUrl")] public string? ReturnUrl { get; set; }
+    [QueryParam("error")] public string? Error { get; set; }
+    /// <summary><c>true</c> shows the recovery-code form; anything else the authenticator form.</summary>
+    [QueryParam("recovery")] public string? Recovery { get; set; }
+    /// <summary>The login page's remember-me choice, carried across the hop.</summary>
+    [QueryParam("rememberMe")] public string? RememberMe { get; set; }
+
+    [Inject] private readonly IAntiforgery antiforgery;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+
+    public override Task<IResult> HandleAsync(CancellationToken ct)
     {
         // Sanitized at the point of read: an unvalidated returnUrl sends a freshly-authenticated
         // user off-origin, which is high-value phishing precisely because they really did just
         // authenticate here. Shared with the Authorization package rather than duplicated.
-        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(context.Request.Query["returnUrl"].FirstOrDefault());
-        var error = context.Request.Query["error"].FirstOrDefault();
-        var useRecoveryCode = context.Request.Query["recovery"].FirstOrDefault() == "true";
-        var rememberMe = context.Request.Query["rememberMe"].FirstOrDefault() == "true";
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(ReturnUrl);
+        var useRecoveryCode = Recovery == "true";
+        var rememberMe = RememberMe == "true";
 
-        context.Response.ContentType = "text/html; charset=utf-8";
-        await context.Response.WriteAsync(BuildFormHtml(context, returnUrl, error, useRecoveryCode, rememberMe));
+        return Task.FromResult(ConnectResults.Html(
+            BuildFormHtml(httpContextAccessor.HttpContext!, returnUrl, Error, useRecoveryCode, rememberMe)));
     }
 
-    public static async Task HandlePost(HttpContext context)
-    {
-        var form = await context.Request.ReadFormAsync(context.RequestAborted);
-        var code = form["code"].FirstOrDefault()?.Replace(" ", "").Replace("-", "");
-        var recoveryCode = form["recoveryCode"].FirstOrDefault()?.Replace(" ", "");
-        var useRecoveryCode = form["useRecoveryCode"].FirstOrDefault() == "true";
-        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
-
-        // Carried across the hop as a hidden field, the same way returnUrl is. The choice is made
-        // on the login page and spent here, so without threading it the second factor silently
-        // overrode it — a user who declined a persistent cookie got one anyway.
-        var rememberMe = string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal);
-
-        if (useRecoveryCode && string.IsNullOrEmpty(recoveryCode))
-        {
-            RedirectWithError(context, returnUrl, "missing_recovery_code", recovery: true);
-            return;
-        }
-
-        if (!useRecoveryCode && string.IsNullOrEmpty(code))
-        {
-            RedirectWithError(context, returnUrl, "missing_code");
-            return;
-        }
-
-        // Resolve SignInManager dynamically
-        var registry = context.RequestServices.GetRequiredService<SparkModuleRegistry>();
-        var userType = registry.IdentityUserType;
-        if (userType == null)
-        {
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync("Identity not configured.");
-            return;
-        }
-
-        var signInManagerType = typeof(SignInManager<>).MakeGenericType(userType);
-        var signInManager = context.RequestServices.GetRequiredService(signInManagerType);
-
-        if (useRecoveryCode)
-        {
-            // TwoFactorRecoveryCodeSignInAsync(recoveryCode)
-            var method = signInManagerType.GetMethod("TwoFactorRecoveryCodeSignInAsync")!;
-            var result = (SignInResult)await (dynamic)method.Invoke(signInManager, [recoveryCode])!;
-
-            if (result.Succeeded)
-            {
-                context.Response.Redirect(returnUrl);
-                return;
-            }
-
-            RedirectWithError(context, returnUrl, "invalid_recovery_code", recovery: true);
-        }
-        else
-        {
-            // TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient)
-            var method = signInManagerType.GetMethod("TwoFactorAuthenticatorSignInAsync")!;
-            var result = (SignInResult)await (dynamic)method.Invoke(signInManager, [code, rememberMe, false])!;
-
-            if (result.Succeeded)
-            {
-                context.Response.Redirect(returnUrl);
-                return;
-            }
-
-            RedirectWithError(context, returnUrl, "invalid_code");
-        }
-    }
-
-    private static string BuildFormHtml(HttpContext context, string returnUrl, string? error, bool useRecoveryCode, bool rememberMe)
+    private string BuildFormHtml(HttpContext context, string returnUrl, string? error, bool useRecoveryCode, bool rememberMe)
     {
         var sb = new StringBuilder();
         ConnectPageTheme.AppendDocumentStart(sb, context, "Two-Factor Authentication");
@@ -117,12 +63,12 @@ internal static class TwoFactor
 
         if (!string.IsNullOrEmpty(error))
         {
-            sb.Append("<div class=\"error\">").Append(Encode(ConnectPage.ErrorMessage(error)!)).Append("</div>");
+            sb.Append("<div class=\"error\">").Append(ConnectPage.Encode(ConnectPage.ErrorMessage(error)!)).Append("</div>");
         }
 
         sb.Append("<form method=\"post\">");
-        ConnectPage.AppendAntiforgery(sb, context);
-        sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(Encode(returnUrl)).Append("\" />");
+        ConnectPage.AppendAntiforgery(sb, antiforgery, context);
+        sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(ConnectPage.Encode(returnUrl)).Append("\" />");
         if (rememberMe)
             sb.Append("<input type=\"hidden\" name=\"rememberMe\" value=\"true\" />");
 
@@ -153,14 +99,84 @@ internal static class TwoFactor
         sb.Append("</body></html>");
         return sb.ToString();
     }
+}
 
-    private static void RedirectWithError(HttpContext context, string returnUrl, string error, bool recovery = false)
+/// <summary>The two-factor form as posted.</summary>
+internal sealed record OidcTwoFactorSubmission(
+    string? Code,
+    string? RecoveryCode,
+    bool UseRecoveryCode,
+    string? ReturnUrl,
+    bool RememberMe);
+
+/// <summary>Accepts the two-factor step (<c>POST /connect/two-factor</c>).</summary>
+/// <remarks>
+/// <para>
+/// Generic over the application's user type, closed once when the routes are mapped
+/// (<see cref="OidcUserEndpoints"/>), so it signs in through a typed <see cref="SignInManager{TUser}"/>
+/// instead of resolving and reflecting on one per request. The request-time "Identity not
+/// configured" 500 is gone: startup now refuses that configuration.
+/// </para>
+/// <para>
+/// ⚠️ The antiforgery stamp is explicit: the form is read by <see cref="BindRequestAsync"/>, not by
+/// a <c>[FromForm]</c> parameter, so nothing infers the metadata for it.
+/// </para>
+/// </remarks>
+[MemberOf<OidcLocalCredentialsGroup>]
+internal sealed partial class OidcTwoFactorSubmit<TUser> : IPostEndpoint<OidcTwoFactorSubmission>
+    where TUser : SparkUser, new()
+{
+    public static string Path => "/two-factor";
+
+    [Inject] private readonly SignInManager<TUser> signInManager;
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+    protected override async ValueTask<OidcTwoFactorSubmission?> BindRequestAsync(HttpContext context)
+    {
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return new OidcTwoFactorSubmission(
+            Code: form["code"].FirstOrDefault()?.Replace(" ", "").Replace("-", ""),
+            RecoveryCode: form["recoveryCode"].FirstOrDefault()?.Replace(" ", ""),
+            UseRecoveryCode: form["useRecoveryCode"].FirstOrDefault() == "true",
+            ReturnUrl: form["returnUrl"].FirstOrDefault(),
+            // Carried across the hop as a hidden field, the same way returnUrl is. The choice is made
+            // on the login page and spent here, so without threading it the second factor silently
+            // overrode it — a user who declined a persistent cookie got one anyway.
+            RememberMe: string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal));
+    }
+
+    public override async Task<IResult> HandleAsync(OidcTwoFactorSubmission submission, CancellationToken ct)
+    {
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(submission.ReturnUrl);
+
+        if (submission.UseRecoveryCode && string.IsNullOrEmpty(submission.RecoveryCode))
+            return RedirectWithError(returnUrl, "missing_recovery_code", recovery: true);
+
+        if (!submission.UseRecoveryCode && string.IsNullOrEmpty(submission.Code))
+            return RedirectWithError(returnUrl, "missing_code");
+
+        if (submission.UseRecoveryCode)
+        {
+            var result = await signInManager.TwoFactorRecoveryCodeSignInAsync(submission.RecoveryCode!);
+            return result.Succeeded
+                ? Results.Redirect(returnUrl)
+                : RedirectWithError(returnUrl, "invalid_recovery_code", recovery: true);
+        }
+        else
+        {
+            var result = await signInManager.TwoFactorAuthenticatorSignInAsync(submission.Code!, submission.RememberMe, rememberClient: false);
+            return result.Succeeded
+                ? Results.Redirect(returnUrl)
+                : RedirectWithError(returnUrl, "invalid_code");
+        }
+    }
+
+    private static IResult RedirectWithError(string returnUrl, string error, bool recovery = false)
     {
         var url = $"/connect/two-factor?returnUrl={Uri.EscapeDataString(returnUrl)}&error={Uri.EscapeDataString(error)}";
         if (recovery) url += "&recovery=true";
-        context.Response.Redirect(url);
+        return Results.Redirect(url);
     }
-
-    private static string Encode(string value) =>
-        System.Net.WebUtility.HtmlEncode(value);
 }

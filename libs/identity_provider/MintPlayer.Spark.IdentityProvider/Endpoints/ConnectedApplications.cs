@@ -1,6 +1,8 @@
 using System.Text;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -12,38 +14,44 @@ using static MintPlayer.Spark.IdentityProvider.Endpoints.ConnectPage;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
-/// <summary>
-/// Where a user sees what they have granted, and takes it back.
-/// <para>
-/// Consent was recorded from the first commit and consulted nowhere, and there was no way to
-/// withdraw it: RFC 7009's <c>/connect/revoke</c> is client-facing — it demands client
-/// credentials and refuses a token not issued to the authenticating client — so a user could
-/// never call it. This page is the missing half. Withdrawal here is what
-/// <c>Token.GrantPermitsIssuanceAsync</c> and <c>AccessTokens.ResolveAsync</c> read.
-/// </para>
-/// <para>
-/// Withdrawal is <b>all-or-nothing per application</b>. RFC 6749 §6 requires a rotated refresh
-/// token's scope to be identical to the presented one's, which makes "narrow the grant and keep
-/// refreshing" self-contradictory; and every major provider takes the same all-or-nothing line
-/// for the user-facing action. The grant is marked revoked rather than deleted, so the audit
-/// trail survives and the issuance checks have a state to read.
-/// </para>
-/// </summary>
-internal static class ConnectedApplications
+// Where a user sees what they have granted, and takes it back.
+//
+// Consent was recorded from the first commit and consulted nowhere, and there was no way to
+// withdraw it: RFC 7009's /connect/revoke is client-facing — it demands client credentials and
+// refuses a token not issued to the authenticating client — so a user could never call it. These
+// two endpoints are the missing half. Withdrawal here is what Token.GrantPermitsIssuanceAsync and
+// AccessTokens.ResolveAsync read.
+//
+// Withdrawal is all-or-nothing per application. RFC 6749 §6 requires a rotated refresh token's
+// scope to be identical to the presented one's, which makes "narrow the grant and keep
+// refreshing" self-contradictory; and every major provider takes the same all-or-nothing line for
+// the user-facing action. The grant is marked revoked rather than deleted, so the audit trail
+// survives and the issuance checks have a state to read.
+
+/// <summary>Lists the applications the signed-in user has authorized (<c>GET /connect/applications</c>).</summary>
+[MemberOf<OidcConnectGroup>]
+internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
 {
-    public static async Task HandleGet(HttpContext context)
+    public static string Path => "/applications";
+
+    /// <summary>The outcome of a withdrawal, carried back by its redirect.</summary>
+    [QueryParam("status")] public string? Status { get; set; }
+
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly IAntiforgery antiforgery;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+
+    public override async Task<IResult> HandleAsync(CancellationToken ct)
     {
-        var ct = context.RequestAborted;
+        var context = httpContextAccessor.HttpContext!;
 
         var userId = await context.GetInteractiveUserIdAsync();
         if (string.IsNullOrEmpty(userId))
         {
             var returnUrl = context.Request.Path + context.Request.QueryString;
-            context.Response.Redirect($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
-            return;
+            return Results.Redirect($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
         }
 
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
         var grants = await LoadGrantsAsync(session, userId, ct);
@@ -54,25 +62,130 @@ internal static class ConnectedApplications
         var apps = await session.LoadAsync<OidcApplication>(
             grants.Select(g => g.ApplicationId).Distinct(), ct);
 
-        await WritePageAsync(context, grants, apps, Notice(context.Request.Query["status"].FirstOrDefault()));
+        return ConnectResults.Html(RenderPage(context, grants, apps, Notice(Status)));
     }
 
-    public static async Task HandleRevoke(HttpContext context)
+    private static async Task<List<OidcAuthorization>> LoadGrantsAsync(
+        IAsyncDocumentSession session, string userId, CancellationToken ct)
     {
-        var ct = context.RequestAborted;
+        // Display only — see the index's own remarks. Status is filtered in memory rather than
+        // as a query predicate so a stale index cannot decide what the user is shown.
+        var all = await session
+            .Query<OidcAuthorization, OidcAuthorizations_BySubject>()
+            .Where(a => a.Subject == userId, exact: true)
+            .ToListAsync(ct);
 
-        var userId = await context.GetInteractiveUserIdAsync();
-        if (string.IsNullOrEmpty(userId))
+        return [.. all.Where(a => a.Status == "valid").OrderBy(a => a.ApplicationId, StringComparer.Ordinal)];
+    }
+
+    private static string? Notice(string? status) => status switch
+    {
+        "revoked" => "Access removed.",
+        "failed" => "That did not go through — the application was being re-authorized at the same time. Please try again.",
+        _ => null,
+    };
+
+    private string RenderPage(
+        HttpContext context,
+        List<OidcAuthorization> grants,
+        Dictionary<string, OidcApplication> apps,
+        string? notice)
+    {
+        var sb = new StringBuilder();
+        ConnectPageTheme.AppendDocumentStart(sb, context, "Connected applications");
+        sb.Append("body{max-width:560px;margin:60px auto;padding:0 20px}");
+        sb.Append(".app{padding:16px 0;border-bottom:1px solid var(--idp-border);display:flex;align-items:flex-start;gap:16px}");
+        sb.Append(".app-body{flex:1}.app-name{font-weight:600}");
+        sb.Append(".scopes{color:var(--idp-muted);font-size:13px;margin-top:4px}");
+        sb.Append(".btn{padding:8px 16px;border:none;border-radius:6px;font-size:14px;cursor:pointer;background:var(--idp-danger);color:#fff}");
+        sb.Append(".notice{background:var(--idp-notice-bg);color:var(--idp-notice-color);padding:10px 14px;border-radius:6px;margin-bottom:20px}");
+        sb.Append(".empty{color:var(--idp-muted)}.footnote{color:var(--idp-muted);font-size:13px;margin-top:24px}");
+        sb.Append("</style></head><body>");
+        sb.Append("<h2>Connected applications</h2>");
+
+        if (notice != null)
+            sb.Append("<div class=\"notice\">").Append(Encode(notice)).Append("</div>");
+
+        if (grants.Count == 0)
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsync("Not authenticated.");
-            return;
+            sb.Append("<p class=\"empty\">No applications have access to your account.</p>");
+        }
+        else
+        {
+            foreach (var grant in grants)
+            {
+                // Fall back to the raw id when the application is gone, rather than hiding the row.
+                var name = apps.TryGetValue(grant.ApplicationId, out var app) && app is not null
+                    ? app.DisplayName
+                    : grant.ApplicationId;
+
+                sb.Append("<div class=\"app\"><div class=\"app-body\">");
+                sb.Append("<div class=\"app-name\">").Append(Encode(name)).Append("</div>");
+
+                if (grant.GrantedScopes.Count > 0)
+                {
+                    sb.Append("<div class=\"scopes\">")
+                      .Append(Encode(string.Join(", ", grant.GrantedScopes)))
+                      .Append("</div>");
+                }
+
+                sb.Append("</div>");
+                sb.Append("<form method=\"post\" action=\"/connect/applications/revoke\">");
+                AppendAntiforgery(sb, antiforgery, context);
+                AppendHidden(sb, "application_id", grant.ApplicationId);
+                sb.Append("<button type=\"submit\" class=\"btn\">Remove access</button>");
+                sb.Append("</form></div>");
+            }
+
+            // Said plainly rather than implied away. An access token is a signed JWT that a
+            // resource server may check without ever asking us again, so we cannot recall one
+            // already in flight — only stop new ones being issued. A page that implied otherwise
+            // would be worse than no page.
+            sb.Append("<p class=\"footnote\">Removing access stops an application from getting new ")
+              .Append("access to your account. Access it already holds may keep working for up to an hour.</p>");
         }
 
-        var form = await context.Request.ReadFormAsync(ct);
-        var applicationId = form["application_id"].FirstOrDefault();
+        sb.Append("</body></html>");
+        return sb.ToString();
+    }
+}
 
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
+/// <summary>The withdrawal form as posted: the application whose grant goes.</summary>
+internal sealed record OidcRevokeApplicationRequest(string? ApplicationId);
+
+/// <summary>Revokes one application's authorization (<c>POST /connect/applications/revoke</c>).</summary>
+/// <remarks>
+/// The body is the page's own HTML form, read by <see cref="BindRequestAsync"/>. Binding now runs
+/// before the sign-in check, where the handler used to check first; for a form post the outcome is
+/// the same (the form reads, then an anonymous caller gets 401).
+/// </remarks>
+[MemberOf<OidcConnectGroup>]
+internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeApplicationRequest>
+{
+    public static string Path => "/applications/revoke";
+
+    [Inject] private readonly IDocumentStore store;
+
+    /// <summary>Kept from <see cref="BindRequestAsync"/> (D8); the endpoint is created per request.</summary>
+    private HttpContext context = null!;
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+    protected override async ValueTask<OidcRevokeApplicationRequest?> BindRequestAsync(HttpContext context)
+    {
+        this.context = context;
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return new OidcRevokeApplicationRequest(form["application_id"].FirstOrDefault());
+    }
+
+    public override async Task<IResult> HandleAsync(OidcRevokeApplicationRequest request, CancellationToken ct)
+    {
+        var userId = await context.GetInteractiveUserIdAsync();
+        if (string.IsNullOrEmpty(userId))
+            return ConnectResults.Text(401, "Not authenticated.");
+
+        var applicationId = request.ApplicationId;
 
         // The form names an *application*; the grant id is derived from the session's user. So
         // there is no parameter a forged post could set to reach someone else's grant — the
@@ -85,7 +198,7 @@ internal static class ConnectedApplications
         // Reporting "Access removed" when the write lost a race would be the worst possible
         // outcome here: the user believes they have taken access back and has no reason to look
         // again. Saying so only when the write actually landed.
-        context.Response.Redirect(withdrawn
+        return Results.Redirect(withdrawn
             ? "/connect/applications?status=revoked"
             : "/connect/applications?status=failed");
     }
@@ -162,92 +275,5 @@ internal static class ConnectedApplications
             token.Status = "revoked";
             token.RedeemedAt = DateTime.UtcNow;
         }
-    }
-
-    private static async Task<List<OidcAuthorization>> LoadGrantsAsync(
-        IAsyncDocumentSession session, string userId, CancellationToken ct)
-    {
-        // Display only — see the index's own remarks. Status is filtered in memory rather than
-        // as a query predicate so a stale index cannot decide what the user is shown.
-        var all = await session
-            .Query<OidcAuthorization, OidcAuthorizations_BySubject>()
-            .Where(a => a.Subject == userId, exact: true)
-            .ToListAsync(ct);
-
-        return [.. all.Where(a => a.Status == "valid").OrderBy(a => a.ApplicationId, StringComparer.Ordinal)];
-    }
-
-    private static string? Notice(string? status) => status switch
-    {
-        "revoked" => "Access removed.",
-        "failed" => "That did not go through — the application was being re-authorized at the same time. Please try again.",
-        _ => null,
-    };
-
-    private static async Task WritePageAsync(
-        HttpContext context,
-        List<OidcAuthorization> grants,
-        Dictionary<string, OidcApplication> apps,
-        string? notice)
-    {
-        context.Response.ContentType = "text/html; charset=utf-8";
-
-        var sb = new StringBuilder();
-        ConnectPageTheme.AppendDocumentStart(sb, context, "Connected applications");
-        sb.Append("body{max-width:560px;margin:60px auto;padding:0 20px}");
-        sb.Append(".app{padding:16px 0;border-bottom:1px solid var(--idp-border);display:flex;align-items:flex-start;gap:16px}");
-        sb.Append(".app-body{flex:1}.app-name{font-weight:600}");
-        sb.Append(".scopes{color:var(--idp-muted);font-size:13px;margin-top:4px}");
-        sb.Append(".btn{padding:8px 16px;border:none;border-radius:6px;font-size:14px;cursor:pointer;background:var(--idp-danger);color:#fff}");
-        sb.Append(".notice{background:var(--idp-notice-bg);color:var(--idp-notice-color);padding:10px 14px;border-radius:6px;margin-bottom:20px}");
-        sb.Append(".empty{color:var(--idp-muted)}.footnote{color:var(--idp-muted);font-size:13px;margin-top:24px}");
-        sb.Append("</style></head><body>");
-        sb.Append("<h2>Connected applications</h2>");
-
-        if (notice != null)
-            sb.Append("<div class=\"notice\">").Append(Encode(notice)).Append("</div>");
-
-        if (grants.Count == 0)
-        {
-            sb.Append("<p class=\"empty\">No applications have access to your account.</p>");
-        }
-        else
-        {
-            foreach (var grant in grants)
-            {
-                // Fall back to the raw id when the application is gone, rather than hiding the row.
-                var name = apps.TryGetValue(grant.ApplicationId, out var app) && app is not null
-                    ? app.DisplayName
-                    : grant.ApplicationId;
-
-                sb.Append("<div class=\"app\"><div class=\"app-body\">");
-                sb.Append("<div class=\"app-name\">").Append(Encode(name)).Append("</div>");
-
-                if (grant.GrantedScopes.Count > 0)
-                {
-                    sb.Append("<div class=\"scopes\">")
-                      .Append(Encode(string.Join(", ", grant.GrantedScopes)))
-                      .Append("</div>");
-                }
-
-                sb.Append("</div>");
-                sb.Append("<form method=\"post\" action=\"/connect/applications/revoke\">");
-                AppendAntiforgery(sb, context);
-                AppendHidden(sb, "application_id", grant.ApplicationId);
-                sb.Append("<button type=\"submit\" class=\"btn\">Remove access</button>");
-                sb.Append("</form></div>");
-            }
-
-            // Said plainly rather than implied away. An access token is a signed JWT that a
-            // resource server may check without ever asking us again, so we cannot recall one
-            // already in flight — only stop new ones being issued. A page that implied otherwise
-            // would be worse than no page.
-            sb.Append("<p class=\"footnote\">Removing access stops an application from getting new ")
-              .Append("access to your account. Access it already holds may keep working for up to an hour.</p>");
-        }
-
-        sb.Append("</body></html>");
-
-        await context.Response.WriteAsync(sb.ToString());
     }
 }

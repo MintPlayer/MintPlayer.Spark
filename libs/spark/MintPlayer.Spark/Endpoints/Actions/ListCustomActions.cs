@@ -7,7 +7,7 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.Actions;
 
 [MemberOf<ActionsGroup>]
-internal sealed partial class ListCustomActions : IPostEndpoint
+internal sealed partial class ListCustomActions : IPostEndpoint<ListCustomActionsRequest>
 {
     public static string Path => "/list";
 
@@ -17,7 +17,7 @@ internal sealed partial class ListCustomActions : IPostEndpoint
     // mutating-verb request under /spark that carries an ambient credential — which swept these in
     // against the decision recorded above. Saying it out loud restores that decision and makes it
     // survive the next default change.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
     }
@@ -26,10 +26,16 @@ internal sealed partial class ListCustomActions : IPostEndpoint
     [Inject] private readonly IActionsCatalogueLoader catalogueLoader;
     [Inject] private readonly ICustomActionResolver actionResolver;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the empty list an unknown type gets below: never a parse error, and never a refusal (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(Results.Json(Array.Empty<object>()));
+
+    public override async Task<IResult> HandleAsync(ListCustomActionsRequest request, CancellationToken cancellationToken)
     {
-        var (_, entityType) = await SparkRequestType.ReadAsync<ListCustomActionsRequest>(httpContext, modelLoader);
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = SparkRequestType.Resolve(modelLoader, request);
         if (entityType is null)
         {
             // The empty list, which is exactly what a known-but-denied type gets from the

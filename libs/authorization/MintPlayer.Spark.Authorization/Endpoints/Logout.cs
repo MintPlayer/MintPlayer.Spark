@@ -10,7 +10,7 @@ internal sealed class Logout : IPostEndpoint
 {
     public static string Path => "/logout";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }

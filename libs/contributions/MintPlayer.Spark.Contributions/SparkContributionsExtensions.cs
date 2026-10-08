@@ -56,7 +56,7 @@ public static class SparkContributionsExtensions
                 typeof(ContributionActions<>).MakeGenericType(descriptor.ContributionType));
 
         // RevertContribution (PRD Q4) is a library verb, so it has its own route, like History's revert.
-        builder.Registry.AddEndpoints(ContributionEndpoints.Map);
+        builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkContributionsEndpoints());
         return builder;
     }
 }

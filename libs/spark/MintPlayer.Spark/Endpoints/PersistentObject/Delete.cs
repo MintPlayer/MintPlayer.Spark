@@ -11,11 +11,11 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
 [MemberOf<PersistentObjectGroup>]
-internal sealed partial class DeletePersistentObject : IPostEndpoint
+internal sealed partial class DeletePersistentObject : IPostEndpoint<PersistentObjectReferenceRequest>
 {
     public static string Path => "/delete";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
@@ -24,13 +24,19 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(ClientResult.EnvelopeRefusal(clientAccessor, context));
+
+    public override async Task<IResult> HandleAsync(PersistentObjectReferenceRequest request, CancellationToken cancellationToken)
     {
+        var httpContext = httpContextAccessor.HttpContext!;
         // A delete always carries a body now, so the conditional read this used to do — "DELETE may
         // carry JSON on retry resubmission", sniffed off Content-Type — is gone with the verb.
-        var (request, entityType) = await SparkRequestType.ReadAsync<PersistentObjectReferenceRequest>(httpContext, modelLoader);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
+        var entityType = SparkRequestType.Resolve(modelLoader, request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id))
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
@@ -68,7 +74,7 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
             // The row changed since the caller saw it (#467, D14), caught by the etag check or by the
             // write itself (contributions F7). Generic body, as in Update (R2-M1): the exception carries
             // change vectors.
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return ClientResult.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {

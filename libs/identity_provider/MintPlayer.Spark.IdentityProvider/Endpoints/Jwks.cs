@@ -1,14 +1,20 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Services;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
-internal static class Jwks
+/// <summary>The signing keys, as a JWK set (<c>GET /.well-known/jwks</c>).</summary>
+[MemberOf<OidcWellKnownGroup>]
+internal sealed partial class OidcJwks : IGetEndpoint
 {
-    public static async Task Handle(HttpContext context)
+    public static string Path => "/jwks";
+
+    [Inject] private readonly OidcSigningKeyService signingKeyService;
+
+    public Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var signingKeyService = context.RequestServices.GetRequiredService<OidcSigningKeyService>();
         var jwk = signingKeyService.GetPublicJwk();
 
         var jwks = new
@@ -27,7 +33,6 @@ internal static class Jwks
             }
         };
 
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsJsonAsync(jwks);
+        return Task.FromResult(Results.Json(jwks));
     }
 }

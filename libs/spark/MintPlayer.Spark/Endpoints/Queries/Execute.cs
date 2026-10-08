@@ -11,7 +11,7 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.Queries;
 
 [MemberOf<QueriesGroup>]
-internal sealed partial class ExecuteQuery : IPostEndpoint
+internal sealed partial class ExecuteQuery : IPostEndpoint<ExecuteQueryRequest>
 {
     public static string Path => "/execute";
 
@@ -21,7 +21,7 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
     // mutating-verb request under /spark that carries an ambient credential — which swept these in
     // against the decision recorded above. Saying it out loud restores that decision and makes it
     // survive the next default change.
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
     }
@@ -38,13 +38,18 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
     [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(Results.Json(new { error = "Query not found" }, statusCode: 404));
+
+    public override async Task<IResult> HandleAsync(ExecuteQueryRequest request, CancellationToken cancellationToken)
     {
-        var request = await SparkRequestBody.ReadAsync<ExecuteQueryRequest>(httpContext);
-        var id = request?.QueryId;
+        var httpContext = httpContextAccessor.HttpContext!;
+        var id = request.QueryId;
 
-        if (request is null || string.IsNullOrEmpty(id))
+        if (string.IsNullOrEmpty(id))
         {
             // The same 404 the gate below gives, for the same reason.
             return Results.Json(new { error = "Query not found" }, statusCode: 404);

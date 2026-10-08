@@ -9,7 +9,7 @@ using MintPlayer.Spark.Replication.Services;
 namespace MintPlayer.Spark.Replication.Endpoints;
 
 [MemberOf<SparkSyncGroup>]
-internal sealed partial class SyncApply : IPostEndpoint
+internal sealed partial class SyncApply : IPostEndpoint<SyncActionRequest>
 {
     public static string Path => "/apply";
 
@@ -29,29 +29,33 @@ internal sealed partial class SyncApply : IPostEndpoint
     // nothing has no authority to forge and should be told so by the auth check rather than by the
     // antiforgery gate.
 
-    [Inject] private readonly ILoggerFactory loggerFactory;
+    [Inject] private readonly ILogger<SyncApply> logger;
     [Inject] private readonly IModuleCertificateValidator certificateValidator;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     // Nullable fields produce optional ctor params in the generated [Inject] ctor;
     // they must come AFTER any non-nullable (required) fields, otherwise C# rejects
     // the constructor as "optional parameters must appear after all required ones".
     [Inject] private readonly ISyncActionHandler? syncActionHandler;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>
+    /// A body that cannot be bound answers what the hand-read body did (measured before the endpoint
+    /// became typed, endpoints generator completion M3): a JSON <c>null</c> has no actions, anything
+    /// else is an invalid body.
+    /// </summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
     {
-        var logger = loggerFactory.CreateLogger("SparkSync");
+        if (failure is null)
+            return new(Results.BadRequest(new { error = "Request must contain at least one sync action" }));
 
-        SyncActionRequest? request;
-        try
-        {
-            request = await httpContext.Request.ReadFromJsonAsync<SyncActionRequest>();
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Invalid sync action request body");
-            return Results.BadRequest(new { error = "Invalid request body" });
-        }
+        logger.LogWarning(failure, "Invalid sync action request body");
+        return new(Results.BadRequest(new { error = "Invalid request body" }));
+    }
 
-        if (request == null || request.Actions == null || request.Actions.Count == 0)
+    public override async Task<IResult> HandleAsync(SyncActionRequest request, CancellationToken cancellationToken)
+    {
+        var httpContext = httpContextAccessor.HttpContext!;
+
+        if (request.Actions == null || request.Actions.Count == 0)
         {
             return Results.BadRequest(new { error = "Request must contain at least one sync action" });
         }

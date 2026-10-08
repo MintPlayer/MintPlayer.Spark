@@ -39,11 +39,12 @@ credential-free read: the anonymous view of `/spark/types`, `/spark/queries` or 
 already fetchable by any HTTP client, so withholding the header only stopped browsers doing what
 nothing else was stopped from doing.
 
-To take it off one endpoint:
+To take it off one endpoint, add the metadata in the endpoint class's `Configure` (Spark's endpoints
+are `MintPlayer.AspNetCore.Endpoints` generator classes):
 
 ```csharp
-endpoints.MapGet("/spark/internal-thing", Handler)
-         .WithMetadata(new DisableCorsAttribute());   // Microsoft.AspNetCore.Cors
+static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+    => builder.WithMetadata(new DisableCorsAttribute());   // Microsoft.AspNetCore.Cors
 ```
 
 > ⚠️ **There is no `.DisableCors()` builder extension.** `RequireCors(...)` exists, which makes the
@@ -53,11 +54,16 @@ endpoints.MapGet("/spark/internal-thing", Handler)
 
 ### A library's endpoints
 
-A library that mounts endpoints outside `/spark` gets nothing by default and asks per endpoint:
+A library that mounts endpoints outside `/spark` gets nothing by default and asks per endpoint, or
+per group, in the generator's `Configure` hook:
 
 ```csharp
-connectGroup.MapPost("/token", Token.Handle).RequireCors(SparkExtensions.SparkCorsPolicy);
+static void IEndpointGroup.Configure(RouteGroupBuilder group, IServiceProvider services)
+    => group.RequireCors(SparkExtensions.SparkCorsPolicy);
 ```
+
+The identity provider does the same with its own `SparkOidcCors` policy (`OidcCors.Apply`, called from
+the `Configure` of two of its groups, and only when `EnableDynamicCors` is on).
 
 `SparkCorsPolicy` is public so you can reuse it rather than registering a near-identical one. Register
 your own named policy instead when you need different rules.

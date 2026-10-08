@@ -91,16 +91,17 @@ or deleted during that save (a contribution, an audit row), is evicted from the 
 later `SaveChangesAsync` in the same request cannot commit half of it (`RefusedWriteEvictionTests`).
 
 **Your own endpoints** (an add-on package, a custom controller) answer the same way through
-`SparkAddOnEndpoints`, since the exception type itself is internal:
+the scoped `ISparkAddOnEndpoints` service (`[Inject] private readonly ISparkAddOnEndpoints addOn;`),
+since the exception type itself is internal:
 
 ```csharp
 try
 {
     await databaseAccess.SavePersistentObjectAsync(obj);
 }
-catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
+catch (Exception ex) when (addOn.IsConcurrencyConflict(ex))
 {
-    return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);   // the same 409 envelope
+    return addOn.ConcurrencyConflict(ex);   // the same 409 envelope
 }
 ```
 

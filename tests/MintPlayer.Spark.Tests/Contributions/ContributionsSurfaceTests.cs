@@ -381,6 +381,36 @@ public class ContributionsSurfaceTests : SparkTestDriver
         current.ContributionCount.Should().Be(2);
     }
 
+    /// <summary>
+    /// A revert body that cannot be bound is Spark's standard refusal, as it was while the route read
+    /// its body by hand (measured on <c>ContributionEndpoints</c> before it became a typed endpoint,
+    /// endpoints generator completion M2): never a parse error that tells junk apart from a missing row.
+    /// </summary>
+    [Fact]
+    public async Task Unbindable_revert_bodies_are_the_standard_refusal()
+    {
+        var host = await StartAsync();
+        host.Identity.Id = Moderator;
+
+        var lines = new List<string>();
+        foreach (var (label, content) in MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.UnbindableBodies())
+            lines.Add(await MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.Line(label,
+                () => host.Client.SendAsync(HttpMethod.Post, "/spark/po/revert-contribution", content, requiresAntiforgery: true)));
+
+        // Before, the route read its body through SparkAddOnEndpoints.ReadTypedRequestAsync, whose answers
+        // were measured on /spark/moderation/vote (ModerationToolsTests.Unbindable_bodies_answer_as_before):
+        // the same refusal, except that "none" and "text/plain" escaped as an unhandled
+        // InvalidOperationException (a 500).
+        string.Join("\n", lines).Should().Be("""
+            none: 404 {"result":{"error":"Not found"},"operations":[]}
+            empty: 404 {"result":{"error":"Not found"},"operations":[]}
+            null: 404 {"result":{"error":"Not found"},"operations":[]}
+            malformed: 404 {"result":{"error":"Not found"},"operations":[]}
+            text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
+            """.ReplaceLineEndings("\n"));
+        host.Audit.Entries.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task Reverting_needs_the_RevertContribution_right()
     {

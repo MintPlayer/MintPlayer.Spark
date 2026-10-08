@@ -3,6 +3,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Authorization.Configuration;
+using MintPlayer.Spark.Authorization.Extensions;
+using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -65,6 +68,11 @@ public class OidcAdminRouteTests(OidcAdminRouteTests.AdminRouteHost host)
                 models,
                 configureSpark: spark =>
                 {
+                    // The provider closes its user-generic endpoints (/connect/token, the login
+                    // submit) over the registered user type, and refuses to start without one.
+                    spark.AddAuthentication<SparkUser>(
+                        configure: auth => { auth.LocalCredentials = SparkLocalCredentials.Full; auth.AllowUnconfirmedRegistration = true; });
+
                     // The provider is here so the success cases can end where they should: not at
                     // "a document exists" but at "the protocol endpoint accepts what the screen wrote".
                     spark.AddIdentityProvider(options =>

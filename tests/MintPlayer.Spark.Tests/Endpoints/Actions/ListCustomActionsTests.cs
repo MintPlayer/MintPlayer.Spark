@@ -202,7 +202,7 @@ public class ListCustomActionsTests
         action.TryGetProperty("isDefault", out var flag) && flag.ValueKind == JsonValueKind.True;
 
     private ListCustomActions NewEndpoint() =>
-        new(_modelLoader, _catalogueLoader, _actionResolver, _permissions);
+        new(_modelLoader, _catalogueLoader, _actionResolver, _permissions, new HttpContextAccessor());
 
     /// <summary>
     /// A request naming <paramref name="objectTypeId"/> in its body, as the literal route table takes
@@ -228,6 +228,8 @@ public class ListCustomActionsTests
         context.Request.ContentType = "application/json";
         context.Request.ContentLength = bytes.Length;
 
+        // The typed endpoint reaches its context through IHttpContextAccessor (AsyncLocal, so per test flow).
+        new HttpContextAccessor().HttpContext = context;
         context.Response.Body = new MemoryStream();
         return context;
     }

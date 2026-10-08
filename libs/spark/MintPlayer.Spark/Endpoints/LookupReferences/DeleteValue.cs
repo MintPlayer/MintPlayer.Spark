@@ -11,24 +11,25 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
 {
     public static string Path => "/{name}/{key}";
 
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
+    [RouteParam] public string Name { get; set; } = "";
+    [RouteParam] public string Key { get; set; } = "";
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly ILogger<DeleteLookupReferenceValue> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var name = (string)httpContext.Request.RouteValues["name"]!;
-        var key = (string)httpContext.Request.RouteValues["key"]!;
-
         try
         {
             await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences"); // R2-H4
 
-            await lookupReferenceService.DeleteValueAsync(name, key);
+            await lookupReferenceService.DeleteValueAsync(Name, Key);
             return Results.NoContent();
         }
         catch (SparkAccessDeniedException)
@@ -38,9 +39,7 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
         catch (InvalidOperationException ex)
         {
             // R2-M1: don't leak Raven-internal strings — log server-side.
-            httpContext.RequestServices.GetService<ILoggerFactory>()
-                ?.CreateLogger("SparkLookupReferences")
-                ?.LogWarning(ex, "DeleteLookupReferenceValue failed");
+            logger.LogWarning(ex, "DeleteLookupReferenceValue failed");
             return Results.Json(new { error = "Operation failed" }, statusCode: 400);
         }
     }

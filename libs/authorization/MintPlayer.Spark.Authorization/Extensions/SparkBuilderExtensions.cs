@@ -88,7 +88,7 @@ public static class SparkBuilderAuthorizationExtensions
 
         // Register middleware and endpoint callbacks
         builder.Registry.AddEndpoints(endpoints =>
-            endpoints.MapSparkIdentityApi<TUser>(options.LocalCredentials));
+            endpoints.MapSparkIdentityApi<TUser>());
 
         return builder;
     }
