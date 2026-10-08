@@ -505,6 +505,53 @@ describe('SparkAuthService.loginWithProvider', () => {
 @Component({ standalone: true, template: '' })
 class BlankPage {}
 
+/** The login page and its provider buttons ask at the same moment: one request, not two. */
+describe('SparkAuthService.capabilities', () => {
+  function configure() {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SPARK_AUTH_CONFIG, useValue: defaultSparkAuthConfig },
+      ],
+    });
+    const service = TestBed.inject(SparkAuthService);
+    const http = TestBed.inject(HttpTestingController);
+    http.match('/spark/auth/me').forEach((r) => r.flush(null, { status: 401, statusText: 'Unauthorized' }));
+    return { service, http };
+  }
+
+  it('joins concurrent callers into one request, and asks again once it settled', async () => {
+    const { service, http } = configure();
+    const answer = { localCredentials: 'Full', externalProviders: [] };
+
+    const first = service.capabilities();
+    const second = service.capabilities();
+    http.expectOne('/spark/auth/capabilities').flush(answer);
+
+    await expect(first).resolves.toEqual(answer);
+    await expect(second).resolves.toEqual(answer);
+
+    // Not a cache: a later caller reads the server's current answer.
+    const third = service.capabilities();
+    http.expectOne('/spark/auth/capabilities').flush(answer);
+    await expect(third).resolves.toEqual(answer);
+    http.verify();
+  });
+
+  it('lets a caller after a failure try again', async () => {
+    const { service, http } = configure();
+
+    const failed = service.capabilities();
+    http.expectOne('/spark/auth/capabilities').flush(null, { status: 500, statusText: 'Server Error' });
+    await expect(failed).rejects.toBeTruthy();
+
+    const retried = service.capabilities();
+    http.expectOne('/spark/auth/capabilities').flush({ localCredentials: 'Full', externalProviders: [] });
+    await expect(retried).resolves.toBeTruthy();
+  });
+});
+
 /** Redirect mode's outcome is a query parameter on the next page load (D3). */
 describe('SparkAuthService.takeExternalLoginResult', () => {
   async function at(url: string) {
@@ -542,6 +589,21 @@ describe('SparkAuthService.takeExternalLoginResult', () => {
     expect(service.takeExternalLoginResult()).toBeNull();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('answers a failure once, even to a second caller before the strip lands', async () => {
+    // Two components on one page (e.g. a login page and the provider buttons it hosts) must not
+    // both show the same failure.
+    const { service, router } = await at('/login?sparkExternalLogin=remote_failure');
+
+    expect(service.takeExternalLoginResult()).toBe('remote_failure');
+    expect(service.takeExternalLoginResult()).toBeNull();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(router.url).toBe('/login');
+    // A later failure on the same page is news again.
+    await router.navigateByUrl('/login?sparkExternalLogin=email_not_verified');
+    expect(service.takeExternalLoginResult()).toBe('email_not_verified');
   });
 
   it('does not echo an unknown code', async () => {

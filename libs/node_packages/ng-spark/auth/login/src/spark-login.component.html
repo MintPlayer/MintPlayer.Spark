@@ -8,6 +8,13 @@
         <bs-alert [type]="colors.danger" class="mb-3">{{ errorMessage() }}</bs-alert>
       }
 
+      <!-- The same provider buttons as the sign-in landing page. They render nothing when the server
+           reports no provider, and so does the divider, which only separates them from the form. -->
+      <spark-external-login-buttons #externalLogin />
+      @if (externalLogin.hasProviders()) {
+        <div class="text-center text-muted my-2 spark-login-or">{{ 'auth.or' | t }}</div>
+      }
+
       <bs-form>
         <form [formGroup]="form" (ngSubmit)="onSubmit()">
           <div class="mb-3">

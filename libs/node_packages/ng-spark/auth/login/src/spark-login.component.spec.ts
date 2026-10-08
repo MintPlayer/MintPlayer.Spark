@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -30,8 +31,21 @@ const routes: Routes = [
   { path: 'protected', component: StubComponent },
 ];
 
+/**
+ * What the hosted `<spark-external-login-buttons>` reads from the service: no providers, no popup,
+ * nothing in the URL. Tests about the providers override `capabilities` and friends.
+ */
+function externalLoginDefaults() {
+  return {
+    capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [] }),
+    loginWithProvider: vi.fn().mockResolvedValue({ success: false, error: 'popup_closed' }),
+    externalLoginPending: signal(false),
+    takeExternalLoginResult: vi.fn(() => null),
+  };
+}
+
 async function setup(authOverrides: Partial<SparkAuthService> = {}) {
-  const auth: any = { login: vi.fn().mockResolvedValue(undefined), ...authOverrides };
+  const auth: any = { ...externalLoginDefaults(), login: vi.fn().mockResolvedValue(undefined), ...authOverrides };
 
   TestBed.configureTestingModule({
     providers: [
@@ -70,7 +84,7 @@ describe('SparkLoginComponent', () => {
     // Override defaultRedirectUrl to a non-root path so the navigation outcome is
     // unambiguous to assert against. (defaultSparkAuthConfig.defaultRedirectUrl is '/'.)
     TestBed.resetTestingModule();
-    const auth: any = { login: vi.fn().mockResolvedValue(undefined) };
+    const auth: any = { ...externalLoginDefaults(), login: vi.fn().mockResolvedValue(undefined) };
     TestBed.configureTestingModule({
       providers: [
         provideRouter([
@@ -328,5 +342,79 @@ describe('SparkLoginComponent identifier field', () => {
     expect(field.label).toBe(label);
     expect(field.input.type).toBe(type);
     expect(field.input.getAttribute('autocomplete')).toBe(autocomplete);
+  });
+});
+
+/** The login page offers the same external providers as the sign-in landing page (#490). */
+describe('SparkLoginComponent external providers', () => {
+  const github = { scheme: 'GitHub', displayName: 'GitHub' };
+  const google = { scheme: 'Google', displayName: 'Google' };
+
+  async function open(auth: Record<string, unknown>, url = '/login') {
+    const { harness, auth: service } = await setup(auth as any);
+    const component = await harness.navigateByUrl(url, SparkLoginComponent);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    return { harness, component, auth: service };
+  }
+
+  const providerButtons = (harness: RouterTestingHarness) =>
+    Array.from(harness.routeNativeElement!.querySelectorAll<HTMLButtonElement>('.spark-provider-button'));
+
+  it('shows a button per reported provider, above the password form, with an "or" divider', async () => {
+    const { harness } = await open({
+      capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [github, google] }),
+    });
+
+    expect(providerButtons(harness).map((b) => b.textContent!.trim())).toEqual(['GitHub', 'Google']);
+    const root = harness.routeNativeElement!;
+    const divider = root.querySelector('.spark-login-or');
+    expect(divider?.textContent).toContain('auth.or');
+    // Buttons, then the divider, then the form.
+    const form = root.querySelector('form')!;
+    expect(providerButtons(harness)[1].compareDocumentPosition(divider!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divider!.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows no provider button and no divider when the server reports none', async () => {
+    const { harness } = await open({});
+
+    expect(providerButtons(harness)).toHaveLength(0);
+    expect(harness.routeNativeElement!.querySelector('.spark-login-or')).toBeNull();
+    expect(harness.routeNativeElement!.querySelector('button[type="submit"]')).not.toBeNull();
+  });
+
+  it('signs in with the clicked provider and the sanitized returnUrl', async () => {
+    const { harness, auth } = await open({
+      capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [github, google] }),
+    }, '/login?returnUrl=%2Fprotected');
+
+    providerButtons(harness)[1].click();
+
+    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google', { returnUrl: '/protected' });
+  });
+
+  it('shows the error of a failed provider sign-in, and keeps the password form', async () => {
+    const { harness, auth } = await open({
+      capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [github] }),
+    });
+    auth.loginWithProvider.mockResolvedValue({ success: false, error: 'email_not_verified' });
+
+    providerButtons(harness)[0].click();
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement!.querySelector('.spark-external-error')?.textContent)
+      .toContain('auth.externalLoginError.email_not_verified');
+    expect(harness.routeNativeElement!.querySelector('button[type="submit"]')).not.toBeNull();
+  });
+
+  it('reads the redirect result (?sparkExternalLogin) once', async () => {
+    // Only the buttons read it; the page itself does not, so a failure cannot show twice.
+    const { auth } = await open({
+      capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [github] }),
+    });
+
+    expect(auth.takeExternalLoginResult).toHaveBeenCalledTimes(1);
   });
 });

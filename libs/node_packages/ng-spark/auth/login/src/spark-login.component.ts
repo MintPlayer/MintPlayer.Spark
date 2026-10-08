@@ -10,13 +10,14 @@ import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, sanitizeReturnUrl, passkeysSupported, SparkSignInIdentifier } from '@mintplayer/ng-spark/auth/models';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark/auth/core';
+import { SparkExternalLoginButtonsComponent } from '@mintplayer/ng-spark/auth/external-login';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
 
 @Component({
   selector: 'spark-login',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsCheckboxComponent, BsSpinnerComponent, TranslateKeyPipe],
+  imports: [ReactiveFormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsCheckboxComponent, BsSpinnerComponent, SparkExternalLoginButtonsComponent, TranslateKeyPipe],
   templateUrl: './spark-login.component.html',
 })
 export class SparkLoginComponent {
@@ -63,6 +64,7 @@ export class SparkLoginComponent {
 
   private async loadCapabilities(): Promise<void> {
     try {
+      // <spark-external-login-buttons> asks at the same moment; the service makes that one request.
       const capabilities = await this.authService.capabilities();
       this.passkeysAvailable.set(capabilities.passkeys === true && passkeysSupported());
       if (capabilities.signInIdentifiers?.length) this.signInIdentifiers.set(capabilities.signInIdentifiers);

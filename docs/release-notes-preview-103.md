@@ -203,3 +203,13 @@ the configured one.
 The shipped sign-in and account pages show the translated outcome of an external sign-in or link
 (popup or redirect), and disable their provider buttons with a spinner while `externalLoginPending`
 is set. A closed popup shows no error.
+
+### The login page lists external providers
+
+The password login page now shows the server's external providers above the form, separated by
+"or", like the sign-in landing page. Both use the new `<spark-external-login-buttons>` component
+(`@mintplayer/ng-spark/auth/external-login`), which an app can also host on a page of its own. With no
+provider reported, the login page is unchanged. Concurrent `SparkAuthService.capabilities()` calls
+share one request, and `takeExternalLoginResult()` answers each failure once.
+`SparkProviderButtonContext` and `SparkExternalProviderView` moved to the new entry point and are
+still re-exported from `@mintplayer/ng-spark/auth/sign-in`.

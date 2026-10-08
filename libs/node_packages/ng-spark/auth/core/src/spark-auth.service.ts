@@ -137,11 +137,18 @@ export class SparkAuthService {
    *
    * Read from the server rather than assumed from the client's own route configuration: the two are
    * configured independently, and a mismatch is otherwise invisible until a user hits it.
+   *
+   * Callers that ask while a request is already in flight share it: the login page and the
+   * `<spark-external-login-buttons>` it hosts both ask on construction, and that is one request, not
+   * two. Nothing is cached once it settles, so a later call still reads the server's current answer.
    */
-  async capabilities(): Promise<SparkAuthCapabilities> {
-    return await firstValueFrom(
-      this.http.get<SparkAuthCapabilities>(`${this.config.apiBasePath}/capabilities`));
+  capabilities(): Promise<SparkAuthCapabilities> {
+    return this.capabilitiesInFlight ??= firstValueFrom(
+      this.http.get<SparkAuthCapabilities>(`${this.config.apiBasePath}/capabilities`))
+      .finally(() => this.capabilitiesInFlight = null);
   }
+
+  private capabilitiesInFlight: Promise<SparkAuthCapabilities> | null = null;
 
   async csrfRefresh(): Promise<void> {
     await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/csrf-refresh`, {}));
@@ -238,7 +245,9 @@ export class SparkAuthService {
    *
    * Only failures carry the parameter, and they land on the `errorUrl` the attempt was started with
    * (by default the page that started it); a successful redirect lands on the `returnUrl` signed in.
-   * The shipped sign-in and account pages call this on load. An app that starts a redirect-mode
+   * The shipped `<spark-external-login-buttons>` (on the sign-in and login pages) and the account
+   * pages call this on load. Each failure is answered once: a second call before the strip lands
+   * answers `null`. An app that starts a redirect-mode
    * attempt from some other page calls it there (or in its shell) to show the failure.
    */
   takeExternalLoginResult(): SparkExternalLoginError | null {
@@ -248,17 +257,28 @@ export class SparkAuthService {
     const raw = tree.queryParams[SPARK_EXTERNAL_LOGIN_QUERY_PARAM];
     if (raw === undefined) return null;
 
+    // Taken once. Until the stripping navigation below lands, the URL still carries the parameter,
+    // so a second component reading it in the same render would show the same failure twice.
+    if (this.externalLoginResultTakenFrom === router.url) return null;
+    const takenFrom = router.url;
+    this.externalLoginResultTakenFrom = takenFrom;
+
     const { [SPARK_EXTERNAL_LOGIN_QUERY_PARAM]: _, ...rest } = tree.queryParams;
     tree.queryParams = rest;
     // Deferred: this is called from a component constructor, inside the navigation that is
     // activating it; starting another navigation synchronously there would cancel that one.
-    queueMicrotask(() => void router.navigateByUrl(tree, { replaceUrl: true }));
+    queueMicrotask(() => void router.navigateByUrl(tree, { replaceUrl: true }).finally(() => {
+      if (this.externalLoginResultTakenFrom === takenFrom) this.externalLoginResultTakenFrom = null;
+    }));
 
     const code = Array.isArray(raw) ? raw[0] : raw;
     return SPARK_EXTERNAL_LOGIN_ERRORS.includes(code as SparkExternalLoginError)
       ? code as SparkExternalLoginError
       : 'no_login_info';
   }
+
+  /** The URL whose `sparkExternalLogin` {@link takeExternalLoginResult} already took, until the strip lands. */
+  private externalLoginResultTakenFrom: string | null = null;
 
   /**
    * The in-app URL of this page (path and query, as the router sees it) with any earlier

@@ -8,43 +8,16 @@
         <div class="text-center"><bs-spinner /></div>
       } @else if (failed()) {
         <bs-alert [type]="colors.danger" class="mb-0">{{ 'auth.signInUnavailable' | t }}</bs-alert>
-      } @else {
-        <!-- D9: the external sign-in's outcome, from the popup or from a redirect's ?sparkExternalLogin. -->
-        @if (externalError()) {
-          <bs-alert [type]="externalErrorIsNotice() ? colors.info : colors.danger" class="mb-2 d-block spark-external-error">
-            {{ externalError() | t }}
-            @if (blockedProvider()) {
-              <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary spark-continue-in-tab" (click)="continueInThisTab()">
-                  {{ 'auth.continueInThisTab' | t }}
-                </button>
-              </div>
-            }
-          </bs-alert>
-        }
+      }
 
-        @for (provider of providers(); track provider.scheme) {
-          @if (providerTemplate(); as tpl) {
-            <ng-container *ngTemplateOutlet="tpl; context: contextFor(provider)" />
-          } @else {
-            <button type="button" class="btn btn-outline-primary w-100 mb-2 spark-provider-button"
-                    [disabled]="externalPending()" (click)="signInWith(provider)">
-              @if (provider.iconClass) {
-                <i [class]="provider.iconClass" class="me-2"></i>
-              }
-              {{ provider.displayName }}
-            </button>
-          }
-        } @empty {
-          @if (!passkeysAvailable()) {
-            <bs-alert [type]="colors.warning" class="mb-0">{{ 'auth.noSignInMethods' | t }}</bs-alert>
-          }
-        }
+      <!-- Rendered from the start, not after this page's own load: it asks for the capabilities at
+           the same moment this page does, which the service turns into one request. It shows nothing
+           until they arrive, nor when they fail (the alert above says so). -->
+      <spark-external-login-buttons [providerTemplate]="providerTemplate()" [returnUrl]="returnUrl()" />
 
-        <!-- While a popup is open: externalLoginPending, not the promise (D2). No Cancel button: a
-             closed popup re-enables the buttons by itself, and a late result still signs the user in. -->
-        @if (externalPending()) {
-          <div class="text-center mb-2 spark-external-pending"><bs-spinner /></div>
+      @if (!loading() && !failed()) {
+        @if (!hasProviders() && !passkeysAvailable()) {
+          <bs-alert [type]="colors.warning" class="mb-0">{{ 'auth.noSignInMethods' | t }}</bs-alert>
         }
 
         <!-- Guarded on the server's capability *and* browser support, both resolved into

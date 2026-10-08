@@ -141,8 +141,8 @@ the attempt started from: the router URL, query included (e.g. `/sign-in?returnU
 any earlier `sparkExternalLogin` removed so failures do not pile up. The server sanitizes it like
 `returnUrl` (a local path only). Popup mode sends no `errorUrl`; its outcome comes back to the opener.
 `SparkAuthService.takeExternalLoginResult()` reads the code and strips it from the address bar with
-`replaceUrl`. A code it does not know is answered as `no_login_info`. The shipped sign-in and account
-pages call it on load, so their own redirect attempts (**Continue in this tab**, the installed-app
+`replaceUrl`. A code it does not know is answered as `no_login_info`. The shipped provider buttons (on
+the sign-in and login pages) and the account pages call it on load, so their own redirect attempts (**Continue in this tab**, the installed-app
 redirect, linking) show their failures there. If you start a redirect attempt from another page, call
 it on that page, or in the app shell.
 
@@ -162,6 +162,36 @@ In a browser tab where the app is installed, `window.open` into the app's scope 
 no hand-off is possible, so the user gets `popup_blocked`. **Continue in this tab** (redirect mode)
 is the way through there. Inside the installed app, `'auto'` already uses redirect.
 
+## Provider buttons: `<spark-external-login-buttons>`
+
+The sign-in landing page and the password login page both show the same provider buttons, from
+`@mintplayer/ng-spark/auth/external-login`. On the login page they sit above the password form,
+separated by "or"; with no provider reported, neither the buttons nor the divider render, so an app
+without external login sees the login page unchanged.
+
+The component:
+- lists the providers the server reports (`GET /spark/auth/capabilities`), decorated and ordered by
+  the `withExternalLogin(...)` declarations. A declared provider the server does not report is dropped;
+- signs in with `loginWithProvider`, then navigates to the `returnUrl` input, or else to a local
+  `?returnUrl=`, or else to `defaultRedirectUrl`;
+- disables its buttons and shows a spinner from `externalLoginPending`;
+- shows the failure, including **Continue in this tab** for `popup_blocked`, and reads `?sparkExternalLogin`
+  on load;
+- renders nothing while loading, when the capabilities fail to load, or when there are no providers.
+  `hasProviders()` tells a host which, for example to draw a divider.
+
+Host it on a page of your own the same way:
+
+```html
+<spark-external-login-buttons [returnUrl]="'/orders'" [providerTemplate]="myButton" />
+```
+
+`providerTemplate` replaces each default button and receives a `SparkProviderButtonContext`
+(`$implicit` provider, `signIn()`, `pending`). `<spark-sign-in>` passes its own `providerTemplate` and
+`returnUrl` inputs through. The service joins concurrent `capabilities()` calls, so a page that also
+reads them (as the login and sign-in pages do) makes one request. `takeExternalLoginResult()` answers
+each failure once, so two components on one page cannot both show it.
+
 ## Entry points
 
 | Entry point | What it provides |
@@ -173,6 +203,7 @@ is the way through there. Inside the installed app, `'auto'` already uses redire
 | `/core` | `SparkAuthService` (current user signal, `checkAuth()`, sign-in/out, `loginWithProvider`/`linkProvider`, `externalLoginPending`, `takeExternalLoginResult()`), `SparkAuthTranslationService` |
 | `/models` | `SPARK_AUTH_CONFIG`, `SPARK_AUTH_ROUTE_PATHS`, `SPARK_EXTERNAL_PROVIDERS`, `SPARK_ACCOUNT_PROFILE_FIELDS`, `provideSparkAccountProfileFields(...)` and the wire types |
 | `/login`, `/two-factor`, `/forgot-password`, `/reset-password`, `/register`, `/sign-in` | The individual pages the route features mount |
+| `/external-login` | `<spark-external-login-buttons>` (`SparkExternalLoginButtonsComponent`), `SparkProviderButtonContext`, `SparkExternalProviderView` |
 | `/account`, `/confirm-email` | The account pages above |
 | `/auth-bar` | `<spark-auth-bar>` — sign-in / user menu for a top bar |
 | `/pipes` | `TranslateKeyPipe` |
