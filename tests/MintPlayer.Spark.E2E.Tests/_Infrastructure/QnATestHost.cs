@@ -74,7 +74,26 @@ public sealed class QnATestHost : SparkAppTestHost
 
         // Outside Development an account mail is refused without it (#460 M5): a link built from the
         // request's Host header is password-reset poisoning.
-        spark["Auth"] = new JsonObject { ["PublicBaseUrl"] = context.HttpsUrl };
+        spark["Auth"] = new JsonObject
+        {
+            ["PublicBaseUrl"] = context.HttpsUrl,
+            // #490 M7: the "HR" OpenID Connect scheme the sign-in page declares (app.routes.ts), so its
+            // button exists here as in Development. Nothing contacts the authority: the hand-off tests
+            // stub window.open and open the callback themselves (ExternalLoginHandoffBrowserTests).
+            ["Providers"] = new JsonObject
+            {
+                ["OpenIdConnect"] = new JsonObject
+                {
+                    ["HR"] = new JsonObject
+                    {
+                        ["DisplayName"] = "Spark HR",
+                        ["Authority"] = "https://localhost:1",
+                        ["ClientId"] = "e2e-dummy",
+                        ["ClientSecret"] = "e2e-dummy",
+                    },
+                },
+            },
+        };
 
         const string never = "0 0 31 2 *"; // 31 February: the jobs run only when a test asks.
         spark["Moderation"] = new JsonObject

@@ -492,7 +492,7 @@ DemoApp RP registration in HR (for M6/M7):
 - ✅ M4 — 72f3d32f
 - ✅ M5 — d093a07f, e85ffb87, b0785864
 - ✅ M6 — 2a43a6e9, dc0b32a9
-- ✅ M7 — 190748a0, e2646389 (sweep green, 4m07s)
+- ✅ M7 — 190748a0, e2646389 (sweep green, 4m07s); the planned no-opener E2E in the commit "E2E: external-login hand-off without an opener (#490)": `QnA/ExternalLoginHandoffBrowserTests` (2/2 green, all 37 QnA E2E tests green). It runs on QnA, not Fleet: QnA's sign-in page already declares the `HR` provider, and `QnATestHost` now configures that scheme with a dummy authority that is never contacted. The callback page is opened with `window.open(url, '_blank', 'noopener')`, because Chromium ignores `window.close()` in a tab the browser opened (`history.length == 2`, measured), so the ack's close could not be asserted there. The SW-exclusion check against a production build was not added; the Node guard covers the `ngsw-config` exclusions.
 - ✅ M8 — the "Release notes and versions for preview.103" commit
 - ⏹ Manual acceptance (step 9) — not done; the owner ended the device experiments
 
