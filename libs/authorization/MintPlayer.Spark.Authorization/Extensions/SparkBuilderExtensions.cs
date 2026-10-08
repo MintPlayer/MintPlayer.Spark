@@ -21,11 +21,15 @@ public static class SparkBuilderAuthorizationExtensions
     /// email/password endpoint family to mount. Defaults to <see cref="SparkLocalCredentials.Full"/>,
     /// so an application that omits it keeps the endpoint set Spark has always mapped.
     /// </param>
+    /// <remarks>
+    /// External providers are added afterwards, on the same builder: <c>spark.AddGitHub(…)</c>,
+    /// <c>spark.AddGoogle(…)</c>, <c>spark.AddOpenIdConnect(…)</c>, <c>spark.AddExternalProviders(configuration)</c>,
+    /// or <c>spark.AddExternalScheme(scheme, policy)</c> for a handler registered by hand.
+    /// </remarks>
     public static ISparkBuilder AddAuthentication<TUser>(
         this ISparkBuilder builder,
         Action<SparkAuthenticationOptions>? configure = null,
-        Action<IdentityOptions>? configureIdentity = null,
-        Action<IdentityBuilder>? configureProviders = null)
+        Action<IdentityOptions>? configureIdentity = null)
         where TUser : SparkUser, new()
     {
         var options = new SparkAuthenticationOptions();
@@ -49,13 +53,12 @@ public static class SparkBuilderAuthorizationExtensions
         // object above, so the two accessors cannot disagree.
         builder.Services.AddSingleton<IOptions<SparkAuthenticationOptions>>(Options.Create(options));
 
-        var identityBuilder = builder.Services.AddSparkAuthentication<TUser>(configureIdentity);
+        builder.Services.AddSparkAuthentication<TUser>(configureIdentity);
 
         // #460 D6. Registered after configureIdentity, and only ever switched on, so an application
         // that set IdentityOptions.SignIn.RequireConfirmedEmail itself keeps it.
         if (options.RequireConfirmedEmail)
             builder.Services.Configure<IdentityOptions>(identity => identity.SignIn.RequireConfirmedEmail = true);
-        configureProviders?.Invoke(identityBuilder);
 
         // Pinned explicitly, including where the value equals today's framework default.
         //

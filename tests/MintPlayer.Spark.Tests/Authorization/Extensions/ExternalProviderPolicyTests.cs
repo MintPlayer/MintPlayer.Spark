@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.MicrosoftAccount;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Authentication.OAuth.Claims;
-using Microsoft.AspNetCore.Authentication.Twitter;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
@@ -164,13 +163,14 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
         services.AddLogging();
         services.AddSingleton(TimeProvider.System);
         services.AddDataProtection();
-        var identity = services.AddIdentityCore<SparkUser>();
+        services.AddIdentityCore<SparkUser>();
+        var identity = TestSparkAuth.Builder(services);
         identity.AddGitHub(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
-        identity.AddSparkGoogle(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
-        identity.AddSparkMicrosoftAccount(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
-        identity.AddSparkFacebook(o => { o.AppId = "id"; o.AppSecret = "secret"; });
-        identity.AddSparkTwitter(o => { o.ConsumerKey = "id"; o.ConsumerSecret = "secret"; });
-        identity.AddSparkLinkedIn(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
+        identity.AddGoogle(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
+        identity.AddMicrosoftAccount(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
+        identity.AddFacebook(o => { o.AppId = "id"; o.AppSecret = "secret"; });
+        identity.AddTwitter(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
+        identity.AddLinkedIn(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
         return services.BuildServiceProvider();
     }
 
@@ -184,13 +184,13 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
         var google = provider.GetRequiredService<IOptionsMonitor<GoogleOptions>>().Get(GoogleDefaults.AuthenticationScheme);
         var microsoft = provider.GetRequiredService<IOptionsMonitor<MicrosoftAccountOptions>>().Get(MicrosoftAccountDefaults.AuthenticationScheme);
         var facebook = provider.GetRequiredService<IOptionsMonitor<FacebookOptions>>().Get(FacebookDefaults.AuthenticationScheme);
-        var twitter = provider.GetRequiredService<IOptionsMonitor<TwitterOptions>>().Get(TwitterDefaults.AuthenticationScheme);
+        var twitter = provider.GetRequiredService<IOptionsMonitor<OAuthOptions>>().Get("Twitter");
         var linkedIn = provider.GetRequiredService<IOptionsMonitor<OAuthOptions>>().Get("LinkedIn");
 
         output.WriteLine($"GOOGLE userinfo={google.UserInformationEndpoint} scopes={string.Join(" ", google.Scope)} claims=[{Describe(google.ClaimActions)}]");
         output.WriteLine($"MICROSOFT authorize={microsoft.AuthorizationEndpoint} userinfo={microsoft.UserInformationEndpoint} scopes={string.Join(" ", microsoft.Scope)} claims=[{Describe(microsoft.ClaimActions)}]");
         output.WriteLine($"FACEBOOK userinfo={facebook.UserInformationEndpoint} fields={string.Join(",", facebook.Fields)} scopes={string.Join(" ", facebook.Scope)} claims=[{Describe(facebook.ClaimActions)}]");
-        output.WriteLine($"TWITTER retrieveUserDetails={twitter.RetrieveUserDetails} claims=[{Describe(twitter.ClaimActions)}]");
+        output.WriteLine($"TWITTER authorize={twitter.AuthorizationEndpoint} userinfo={twitter.UserInformationEndpoint} pkce={twitter.UsePkce} scopes={string.Join(" ", twitter.Scope)} claims=[{Describe(twitter.ClaimActions)}]");
         output.WriteLine($"LINKEDIN userinfo={linkedIn.UserInformationEndpoint} scopes={string.Join(" ", linkedIn.Scope)} claims=[{Describe(linkedIn.ClaimActions)}]");
 
         var registrations = provider.GetServices<SparkExternalProviderRegistration>().ToArray();

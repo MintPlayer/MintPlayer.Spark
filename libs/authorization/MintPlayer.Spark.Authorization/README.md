@@ -199,18 +199,111 @@ absent until the provider issues new ones. `SparkUser.CreatedAtUtc` and `Registr
 (`password`, `external:{scheme}`, `other`) are stamped on create; the backfill fills `CreatedAtUtc`
 from the oldest revision where revisions exist (RavenDB keeps no creation date in metadata).
 
-#### External providers (#460 D7)
+#### External providers (#460 D7, #490 D5/D6/D7)
 
-Presets: `AddGitHub`, `AddSparkGoogle`, `AddSparkMicrosoftAccount`, `AddSparkFacebook`,
-`AddSparkTwitter`, `AddSparkLinkedIn` (on the `IdentityBuilder` in `configureProviders`). Each declares
-its **verified-email signal**: verified → a confirmed account; a reliable signal saying "not verified"
-→ no account (`email_not_verified`); **no reliable signal** (Facebook, X, Microsoft work/school
-accounts) → an **unconfirmed** account and a confirmation mail (`confirm_email_sent` when
-`RequireConfirmedEmail` is on). Microsoft is trusted only for personal accounts (id-token `tid` = the
-consumers tenant). A scheme with no preset keeps the old rule: `email_verified=true` or no account.
-Override per scheme with `SparkAuthenticationOptions.ExternalProviders[scheme]`. New user names are a
-**slug of the display name** (`john-doe`, `john-doe-2`, never the email's local part), editable on
-the profile page; GitHub keeps the login verbatim (applications compare it with repository owners).
+Every provider is added on the Spark builder, **after** `spark.AddAuthentication<TUser>()` (a preset
+called before it throws). There is no `configureProviders` parameter any more.
+
+```csharp
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.AddAuthentication<SparkUser>();
+
+    // Everything configured under Spark:Auth:Providers (below), with optional code tuning:
+    spark.AddExternalProviders(builder.Configuration, providers => providers
+        .GitHub(o => o.Scope.Add("read:org")));
+
+    // Or one preset at a time, in code:
+    spark.AddGitHub(o => { o.ClientId = "…"; o.ClientSecret = "…"; });
+    spark.AddGoogle(o => { … });
+    spark.AddMicrosoftAccount(o => { … });
+    spark.AddFacebook(o => { … });
+    spark.AddTwitter(o => { … });   // X, OAuth 2.0 + PKCE
+    spark.AddLinkedIn(o => { … });
+    spark.AddOpenIdConnect("MintPlayer", "MintPlayer ID", o =>
+    {
+        o.Authority = "https://id.example";   // e.g. another app's MintPlayer.Spark.IdentityProvider
+        o.ClientId = "…";
+        o.ClientSecret = "…";
+    });
+});
+```
+
+Each preset takes an optional `Action<TOptions>`, which runs after Spark's defaults (and after the
+configuration binding), and an overload `(scheme, displayName, configure)` for a second instance or
+another label. Calling a preset twice for the same scheme **merges**: the handler is registered once
+and each call's `configure` runs in call order — so `AddExternalProviders(configuration)` followed by
+`spark.AddGitHub(o => …)` binds the configuration first and applies the code after it. Two different
+presets on one scheme throw.
+
+**Configuration** (`Spark:Auth:Providers`):
+
+```json
+{
+  "Spark": {
+    "Auth": {
+      "Providers": {
+        "GitHub":           { "ClientId": "…", "ClientSecret": "…" },
+        "Google":           { "ClientId": "…", "ClientSecret": "…" },
+        "MicrosoftAccount": { "ClientId": "…", "ClientSecret": "…" },
+        "Facebook":         { "ClientId": "…", "ClientSecret": "…" },
+        "Twitter":          { "ClientId": "…", "ClientSecret": "…", "DisplayName": "X" },
+        "LinkedIn":         { "ClientId": "…", "ClientSecret": "…" },
+        "OpenIdConnect": {
+          "MintPlayer": {
+            "DisplayName": "MintPlayer ID",
+            "Authority": "https://id.example",
+            "ClientId": "…",
+            "ClientSecret": "…"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+- The social keys are fixed scheme names; `DisplayName` is optional and labels the button
+  (`/spark/auth/capabilities` serves it). Each `OpenIdConnect:<scheme>` becomes a scheme of that name.
+- A provider with no section, or an empty `ClientId`, is **not registered** — the capabilities
+  endpoint, and so the sign-in buttons, follow. Keep secrets in user-secrets or environment variables
+  (`Spark__Auth__Providers__GitHub__ClientSecret`).
+- **An unknown key throws at startup**, listing the valid keys (`GitHub`, `Google`, `MicrosoftAccount`,
+  `Facebook`, `Twitter`, `LinkedIn`, `OpenIdConnect`): a misspelt provider would otherwise silently
+  never appear.
+- The `providers => providers.GitHub(…)` / `.OpenIdConnect("MintPlayer", …)` hooks run only for a
+  provider the configuration enabled.
+
+**Raw handlers must be declared.** A remote scheme (any `RemoteAuthenticationHandler`: OAuth, OIDC,
+…) registered through `services.AddAuthentication()` without a Spark declaration **throws at
+startup** — nothing would say whether its email can be trusted. Declare it with
+`spark.AddExternalScheme("MyProvider", SparkExternalProviderPolicy.Default)` (an entry in
+`SparkAuthenticationOptions.ExternalProviders` counts too). A raw handler does not get Spark's
+`OnRemoteFailure` report; the presets do.
+
+**Verified-email signal.** Each preset declares one: verified → a confirmed account; a reliable signal
+saying "not verified" → no account (`email_not_verified`); **no reliable signal** (Facebook, X,
+Microsoft work/school accounts) → an **unconfirmed** account and a confirmation mail
+(`confirm_email_sent` when `RequireConfirmedEmail` is on). Microsoft is trusted only for personal
+accounts (id-token `tid` = the consumers tenant). OpenID Connect reads `email_verified` (boolean, or the
+string `"true"`). Override per scheme with `SparkAuthenticationOptions.ExternalProviders[scheme]`. New
+user names are a **slug of the display name** (`john-doe`, `john-doe-2`, never the email's local part),
+editable on the profile page; GitHub keeps the login verbatim (applications compare it with repository
+owners).
+
+**Per provider:**
+
+| Preset | Scheme / callback | Notes |
+|---|---|---|
+| `AddGitHub` | `GitHub` · `/signin-github` | `user:email` scope; verified email from `/user/emails` |
+| `AddGoogle` | `Google` · `/signin-google` | |
+| `AddMicrosoftAccount` | `Microsoft` · `/signin-microsoft` | adds `openid` for the `tid` |
+| `AddFacebook` | `Facebook` · `/signin-facebook` | |
+| `AddTwitter` | `Twitter` (label "X") · `/signin-twitter` | OAuth 2.0 + PKCE, scopes `users.read tweet.read users.email`, HTTP Basic client auth on the token request. **The email needs the "Request email from users" setting on the X developer app**; without it `confirmed_email` is absent and the account has no email. |
+| `AddLinkedIn` | `LinkedIn` · `/signin-linkedin` | OIDC userinfo |
+| `AddOpenIdConnect` | `<scheme>` · `/signin-<scheme>`, `/signout-callback-<scheme>` | code + PKCE, `response_mode=query`, `openid profile email`, userinfo claims, tokens not saved, `client_id` sent on sign-out |
+
+Register the callback URL (`https://<host>/signin-…`) with the provider.
 
 #### Account deletion and personal data (#460 D8)
 
@@ -399,7 +492,7 @@ success, a server-side refusal, a blocked window, and a user who simply closes i
 listener that is only removed on success leaks on the other three.
 
 `twitterProvider()` (scheme `Twitter`, labelled "X") and `linkedInProvider()` (scheme `LinkedIn`) match
-the server's `AddSparkTwitter()` / `AddSparkLinkedIn()` presets, next to `githubProvider()`,
+the server's `spark.AddTwitter()` / `spark.AddLinkedIn()` presets, next to `githubProvider()`,
 `googleProvider()`, `facebookProvider()` and `microsoftProvider()`.
 
 ### Account pages (`withAccount()`, #460 D16)

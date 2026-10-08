@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Messaging;
@@ -16,7 +17,7 @@ public class SparkFullOptions
     /// </summary>
     /// <remarks>
     /// This gates only <em>local</em> credentials. External login providers configured through
-    /// <see cref="IdentityProviders"/> are mounted in every mode.
+    /// <see cref="ExternalProviders"/> are mounted in every mode.
     /// </remarks>
     public Action<SparkAuthenticationOptions>? Authentication { get; set; }
 
@@ -27,9 +28,11 @@ public class SparkFullOptions
     public Action<IdentityOptions>? Identity { get; set; }
 
     /// <summary>
-    /// Configures external login providers (Google, Microsoft, OIDC, etc.).
+    /// Adds external login providers, run right after <c>AddAuthentication</c> on the same Spark
+    /// builder: <c>spark =&gt; spark.AddExternalProviders(configuration)</c>, <c>spark.AddGitHub(…)</c>,
+    /// <c>spark.AddOpenIdConnect(…)</c>, …
     /// </summary>
-    public Action<IdentityBuilder>? IdentityProviders { get; set; }
+    public Action<ISparkBuilder>? ExternalProviders { get; set; }
 
     /// <summary>
     /// Configures the durable message bus.

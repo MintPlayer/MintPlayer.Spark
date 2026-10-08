@@ -8,8 +8,8 @@ namespace MintPlayer.Spark.Authorization.Configuration;
 /// <example>
 /// <code>
 /// // An application that only allows GitHub sign-in — the default posture:
-/// spark.AddAuthentication&lt;SparkUser&gt;(
-///     configureProviders: identity =&gt; identity.AddGitHub(...));
+/// spark.AddAuthentication&lt;SparkUser&gt;();
+/// spark.AddGitHub(...);
 ///
 /// // An application that also wants email/password sign-in:
 /// spark.AddAuthentication&lt;SparkUser&gt;(
@@ -159,9 +159,9 @@ public class SparkAuthenticationOptions
 
     /// <summary>
     /// Per-provider sign-up policy — verified-email trust and user-name source (#460, D7), keyed by
-    /// authentication scheme (case-insensitive). The Spark provider presets (<c>AddGitHub</c>,
-    /// <c>AddSparkGoogle</c>, …) fill their own entry; a scheme without one gets
-    /// <see cref="SparkExternalProviderPolicy.Default"/>.
+    /// authentication scheme (case-insensitive). The Spark provider presets (<c>spark.AddGitHub</c>,
+    /// <c>spark.AddGoogle</c>, …) and <c>spark.AddExternalScheme</c> declare their own policy; an entry
+    /// here overrides it, and also counts as the declaration a remote scheme needs at startup.
     /// </summary>
     public IDictionary<string, SparkExternalProviderPolicy> ExternalProviders { get; } =
         new Dictionary<string, SparkExternalProviderPolicy>(StringComparer.OrdinalIgnoreCase);

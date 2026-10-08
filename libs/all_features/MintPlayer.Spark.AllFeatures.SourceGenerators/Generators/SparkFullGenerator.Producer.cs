@@ -106,7 +106,11 @@ public class SparkFullProducer : Producer
                     writer.WriteLine($"global::{RootNamespace}.SparkInterceptorsBuilderExtensions.AddInterceptors(spark);");
 
                 if (userType != null)
-                    writer.WriteLine($"global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthentication<{userType}>(spark, options.Authentication, options.Identity, options.IdentityProviders);");
+                {
+                    writer.WriteLine($"global::MintPlayer.Spark.Authorization.Extensions.SparkBuilderAuthorizationExtensions.AddAuthentication<{userType}>(spark, options.Authentication, options.Identity);");
+                    // #490 Q4b: providers are ISparkBuilder extensions that need AddAuthentication first.
+                    writer.WriteLine("options.ExternalProviders?.Invoke(spark);");
+                }
 
                 if (flags.HasMessaging)
                     writer.WriteLine("global::MintPlayer.Spark.Messaging.SparkBuilderMessagingExtensions.AddMessaging(spark, options.Messaging);");

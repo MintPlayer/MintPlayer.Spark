@@ -38,11 +38,12 @@ internal static class SparkAuthenticationExtensions
     ///     options.Lockout.MaxFailedAccessAttempts = 5;
     /// });
     ///
-    /// // With external login providers:
-    /// builder.Services
-    ///     .AddSparkAuthentication&lt;AppUser&gt;()
-    ///     .AddGoogle(o =&gt; builder.Configuration.GetSection("Authentication:Google").Bind(o))
-    ///     .AddMicrosoftAccount(o =&gt; builder.Configuration.GetSection("Authentication:Microsoft").Bind(o));
+    /// // External login providers are added on the Spark builder, after spark.AddAuthentication&lt;AppUser&gt;(),
+    /// // never as raw handlers on the returned IdentityBuilder (those skip Spark's email policy and are
+    /// // refused at startup unless declared with spark.AddExternalScheme):
+    /// spark.AddAuthentication&lt;AppUser&gt;();
+    /// spark.AddExternalProviders(builder.Configuration); // Spark:Auth:Providers
+    /// spark.AddGoogle(o =&gt; o.Scope.Add("https://www.googleapis.com/auth/calendar.readonly"));
     /// </code>
     /// </example>
     /// </summary>
@@ -160,6 +161,10 @@ internal static class SparkAuthenticationExtensions
     internal static IEndpointRouteBuilder MapSparkIdentityApi<TUser>(this IEndpointRouteBuilder endpoints)
         where TUser : SparkUser, new()
     {
+        // #464/#490 Q4b: a remote (external-login) scheme registered behind Spark's back is refused
+        // before anything is mapped — the sign-in page would offer it with no email policy.
+        SparkExternalSchemeGuard.GuardAgainstUndeclaredRemoteSchemes(endpoints.ServiceProvider);
+
         // Microsoft's mapper is all-or-nothing and its defaults attach no IAntiforgeryMetadata, so
         // both the filtering and the CSRF stamping live in LocalCredentialEndpointFilter.
         endpoints.MapLocalCredentialApi<TUser>(LocalCredentialMode.Get(endpoints.ServiceProvider));

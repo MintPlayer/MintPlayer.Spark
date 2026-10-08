@@ -95,12 +95,12 @@ public class RouteTableSnapshotTests(SparkSharedDatabase database)
                     auth.ExternalLoginLinking = SparkExternalLoginLinking.WhenSignedIn;
                     auth.EmailChange = SparkEmailChange.Enabled;
                 }
-            },
-            // Disabled mode refuses to start without an external provider (nobody could sign in);
-            // registered in every mode so the modes differ only in what the mode itself changes.
-            configureProviders: identity => identity.Services
-                .AddAuthentication()
-                .AddCookie("GitHub", "GitHub", _ => { }));
+            });
+        // Disabled mode refuses to start without an external provider (nobody could sign in);
+        // registered in every mode so the modes differ only in what the mode itself changes.
+        spark.Services
+            .AddAuthentication()
+            .AddCookie("GitHub", "GitHub", _ => { });
 
         if (allOptions)
         {

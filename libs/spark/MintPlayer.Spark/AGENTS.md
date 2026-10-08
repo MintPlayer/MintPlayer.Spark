@@ -379,8 +379,11 @@ route table):
 - App fields on the profile page: `ISparkProfileContributor<TUser>`; GDPR: `ISparkPersonalDataContributor<TUser>`
   and `ISparkAccountDeletionHandler<TUser>` (idempotent — a failed deletion is retried with every
   handler again). Register them as scoped services.
-- External providers: use the presets (`AddGitHub`, `AddSparkGoogle`, …) — they declare whether the
+- External providers: use the presets on the Spark builder, after `AddAuthentication<TUser>()`
+  (`spark.AddGitHub`, `spark.AddGoogle`, `spark.AddOpenIdConnect`, …, or
+  `spark.AddExternalProviders(configuration)` for `Spark:Auth:Providers`) — they declare whether the
   provider's email can be trusted; a provider without a signal gets an unconfirmed account and a mail.
+  A raw remote handler must be declared with `spark.AddExternalScheme(scheme, policy)` or startup throws.
 
 **The startup posture report** prints what an anonymous caller can reach on every boot, including
 when that is nothing. `--spark-verify-security` compares it against a committed

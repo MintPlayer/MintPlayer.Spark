@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authentication.Facebook;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.MicrosoftAccount;
 using Microsoft.AspNetCore.Authentication.OAuth;
-using Microsoft.AspNetCore.Authentication.Twitter;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -146,13 +146,13 @@ public class SparkExternalLoginRemoteFailureTests(SparkSharedDatabase database)
 
     // --- the presets --------------------------------------------------------
 
-    private static RemoteAuthenticationEvents EventsOf<TOptions>(Action<IdentityBuilder> register, string scheme)
+    private static RemoteAuthenticationEvents EventsOf<TOptions>(Action<MintPlayer.Spark.Abstractions.Builder.ISparkBuilder> register, string scheme)
         where TOptions : RemoteAuthenticationOptions
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDataProtection();
-        register(new IdentityBuilder(typeof(SparkUser), services));
+        register(TestSparkAuth.Builder(services));
         using var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IOptionsMonitor<TOptions>>().Get(scheme).Events;
     }
@@ -165,16 +165,18 @@ public class SparkExternalLoginRemoteFailureTests(SparkSharedDatabase database)
     {
         IsSparkDefault(EventsOf<OAuthOptions>(b => b.AddGitHub(o => { o.ClientId = "id"; o.ClientSecret = "secret"; }), "GitHub").OnRemoteFailure)
             .Should().BeTrue("GitHub");
-        IsSparkDefault(EventsOf<GoogleOptions>(b => b.AddSparkGoogle(o => { o.ClientId = "id"; o.ClientSecret = "secret"; }), GoogleDefaults.AuthenticationScheme).OnRemoteFailure)
+        IsSparkDefault(EventsOf<GoogleOptions>(b => b.AddGoogle(o => { o.ClientId = "id"; o.ClientSecret = "secret"; }), GoogleDefaults.AuthenticationScheme).OnRemoteFailure)
             .Should().BeTrue("Google");
-        IsSparkDefault(EventsOf<MicrosoftAccountOptions>(b => b.AddSparkMicrosoftAccount(o => { o.ClientId = "id"; o.ClientSecret = "secret"; }), MicrosoftAccountDefaults.AuthenticationScheme).OnRemoteFailure)
+        IsSparkDefault(EventsOf<MicrosoftAccountOptions>(b => b.AddMicrosoftAccount(o => { o.ClientId = "id"; o.ClientSecret = "secret"; }), MicrosoftAccountDefaults.AuthenticationScheme).OnRemoteFailure)
             .Should().BeTrue("Microsoft");
-        IsSparkDefault(EventsOf<FacebookOptions>(b => b.AddSparkFacebook(o => { o.AppId = "id"; o.AppSecret = "secret"; }), FacebookDefaults.AuthenticationScheme).OnRemoteFailure)
+        IsSparkDefault(EventsOf<FacebookOptions>(b => b.AddFacebook(o => { o.AppId = "id"; o.AppSecret = "secret"; }), FacebookDefaults.AuthenticationScheme).OnRemoteFailure)
             .Should().BeTrue("Facebook");
-        IsSparkDefault(EventsOf<TwitterOptions>(b => b.AddSparkTwitter(o => { o.ConsumerKey = "id"; o.ConsumerSecret = "secret"; }), TwitterDefaults.AuthenticationScheme).OnRemoteFailure)
+        IsSparkDefault(EventsOf<OAuthOptions>(b => b.AddTwitter(o => { o.ClientId = "id"; o.ClientSecret = "secret"; }), "Twitter").OnRemoteFailure)
             .Should().BeTrue("Twitter");
-        IsSparkDefault(EventsOf<OAuthOptions>(b => b.AddSparkLinkedIn(o => { o.ClientId = "id"; o.ClientSecret = "secret"; }), "LinkedIn").OnRemoteFailure)
+        IsSparkDefault(EventsOf<OAuthOptions>(b => b.AddLinkedIn(o => { o.ClientId = "id"; o.ClientSecret = "secret"; }), "LinkedIn").OnRemoteFailure)
             .Should().BeTrue("LinkedIn");
+        IsSparkDefault(EventsOf<OpenIdConnectOptions>(b => b.AddOpenIdConnect("Idp", "Our IdP", o => { o.Authority = "https://idp.test"; o.ClientId = "id"; }), "Idp").OnRemoteFailure)
+            .Should().BeTrue("OpenID Connect");
     }
 
     [Fact]
@@ -202,7 +204,7 @@ public class SparkExternalLoginRemoteFailureTests(SparkSharedDatabase database)
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
-                    new IdentityBuilder(typeof(SparkUser), services).AddGitHub(o =>
+                    TestSparkAuth.Builder(services).AddGitHub(o =>
                     {
                         o.ClientId = "test-client-id";
                         o.ClientSecret = "test-client-secret";
