@@ -331,6 +331,49 @@ Move `AddSparkTwitter` from 1.0a to OAuth 2.0 + PKCE.
 - Spark never sends `COOP: same-origin` on SPA or auth pages. Document this in `guide-pwa.md`, with a test asserting that the callback response carries no COOP.
 - No CSP change. If one is ever added, the callback page needs a nonce'd script; note it in the code comment.
 
+### D11 — Two-factor step inside the external-login flow (owner request, 2026-10-08)
+
+**Today:** a user with 2FA enabled who signs in externally is refused. `ExternalLoginCallback.cs:77-82`
+maps `result.RequiresTwoFactor` to `requires_two_factor`, and that constant's doc says "a second
+factor, which this flow does not collect" (`SparkAuthenticationExtensions.cs:332-333`).
+
+**Change:** on `RequiresTwoFactor`, `ExternalLoginSignInAsync` has already set Identity's two-factor
+cookie. The callback then redirects to a **server-rendered**
+`/spark/auth/external-login/two-factor` page, because anything visible in the popup is
+server-rendered (IdP PRD Q7).
+- **Carried through:** `popup`, `nonce`, `returnUrl` and `ngsw-bypass=true`.
+- **The page:** an authenticator code, a switch to a recovery code, and Identity's standard
+  "remember this browser" (`TwoFactorRememberMe`).
+- **Success:** `TwoFactorAuthenticatorSignInAsync` / `TwoFactorRecoveryCodeSignInAsync`, then the
+  **same outcome** as a direct callback:
+  - in popup mode, the hand-off page (D1: nonce, BroadcastChannel, localStorage, opener)
+  - in redirect mode, a redirect to `returnUrl`
+- **Failure:** wrong codes stay on the page, and lockout counts as usual. A lockout or an
+  abandoned 2FA cookie ends in the existing error outcomes (`locked_out`; `requires_two_factor` only
+  when the 2FA cookie is gone).
+- **Two independent second factors, each switchable (owner, 2026-10-08):**
+  1. **At the IdP:** SparkId's `/connect/login` asks the IdP account for its own code
+     (`/connect/two-factor`). Switch: `Spark:IdentityProvider:TwoFactor:Enabled`.
+  2. **At the application (this page):** after any upstream login returns (SparkId, Google, GitHub,
+     …), the app asks for its own local account's code. Switch:
+     `Spark:Auth:ExternalLogin:TwoFactor:Enabled`.
+
+  - **Both default to on**, so a user with 2FA on both sides is asked twice; that is the expected
+    outcome.
+  - **Per-user bypass, as in legacy MintPlayer** (`Bypass2faForExternalLogin`, set only after a
+    valid TOTP code): `Spark:Auth:ExternalLogin:TwoFactor:AllowUserBypass`, default `false`. When
+    allowed, the account's two-factor page offers it, and setting it requires a code.
+  - **Implementation:** the bypass passes `bypassTwoFactor` to `ExternalLoginSignInAsync`.
+  - **Improvement on the legacy page:** it had no recovery-code field and no error message on a
+    wrong code; this page has both.
+- **One renderer:** the markup is shared with the IdP's `/connect/two-factor`. The renderer
+  (`ConnectPage` / `ConnectPageTheme`) moves down into `MintPlayer.Spark.Authorization`, so both
+  packages use it without the Authorization package depending on the IdP. The IdP's federated
+  login (D7.2) gets the step for free.
+- **Path:** under `/spark/**`, so the existing `ngsw-config` exclusion already covers it.
+- **Tests:** unit tests for the redirect and both sign-in methods, and an E2E test for popup and
+  redirect mode with a 2FA-enabled user (QnA, as in the M7 E2E).
+
 ## 5. Spikes (before or alongside implementation)
 
 | Id | Question | How | Blocks |
@@ -500,6 +543,7 @@ DemoApp RP registration in HR (for M6/M7):
 - ✅ M7 — 190748a0, e2646389 (sweep green, 4m07s); the planned no-opener E2E in the commit "E2E: external-login hand-off without an opener (#490)": `QnA/ExternalLoginHandoffBrowserTests` (2/2 green, all 37 QnA E2E tests green). It runs on QnA, not Fleet: QnA's sign-in page already declares the `HR` provider, and `QnATestHost` now configures that scheme with a dummy authority that is never contacted. The callback page is opened with `window.open(url, '_blank', 'noopener')`, because Chromium ignores `window.close()` in a tab the browser opened (`history.length == 2`, measured), so the ack's close could not be asserted there. The SW-exclusion check against a production build was not added; the Node guard covers the `ngsw-config` exclusions.
 - ✅ M8 — the "Release notes and versions for preview.103" commit
 - ✅ Login page lists external providers (owner request) — the commit "Login page lists external providers via a shared spark-external-login-buttons component (#490)": the provider block of `SparkSignInComponent` moved into `<spark-external-login-buttons>` (`@mintplayer/ng-spark/auth/external-login`), hosted by the sign-in and login pages; concurrent `capabilities()` calls share one request; `takeExternalLoginResult()` answers once. Affected vitest specs 178/178 green, lib/spec `tsc` and `nx build @mintplayer/ng-spark` clean
+- ⏳ D11 — the two-factor step in the external-login flow (owner request, 2026-10-08): not started
 - ⏹ Manual acceptance (step 9) — not done; the owner ended the device experiments
 
 The milestones below still refer to files by their current `ng-spark-auth/...` paths. After M0 they

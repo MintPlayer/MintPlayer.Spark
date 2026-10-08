@@ -361,6 +361,11 @@ Everything is advertised in discovery.
 | Q5 | **Expanded scope:** "This isn't a specific application, but a toolkit. So missing features is not a good thing." Everything in D8, plus per-scope withdrawal. The only exclusions are those in §5. |
 | Q6 | **A**: `OidcAuditEvents` as a sixth collection. Revisions are capped on the Community licence. |
 | Q7 | **A**: "everything that will appear in the external-login popup window = server rendered page; everything else = SPA" (D7). |
+| R1 | **B: a new host app, `apps/SparkId`** (https 5011, http 5012). HR, Fleet and QnA all become its relying parties. Fleet stops self-issuing and only validates (`Spark:JwtBearer:Authority` → SparkId). HR drops `AddIdentityProvider` and `IOidcApplicationContext`, and its OIDC model files, migrations and rights move to SparkId. **DemoApp stays** (first removed, then reversed by the owner after the impact inventory). It is the only app running Spark without the Authorization package (`SPARK030`, plain `AddSpark`), the guides' running example, and the only place showing StartPage, query-card slots and XML-doc descriptions. Its role is written down as "the minimal Spark app: core only, no Authorization, no identity provider". SparkId **has a ClientApp** (Q7: the developer portal, connected apps and admin are SPA), which deviates from PRD-MultiHostE2E §3a's "no ClientApp". |
+| R2 | **A**: the conformance suite runs locally only, via `npm run conformance` (Docker, against SparkId). Results are recorded in this PRD; there is no CI workflow. |
+| R3 | **A**: idempotent migrations, tested against exported documents. **Measured:** CodeCoverage (production) neither hosts nor references the IdP (GitHub OAuth, passkeys, GitHub Actions OIDC, `covt_` tokens), and every OIDC seed is either development-only in HR or written by a test. **So no production data is migrated.** |
+| R4 | Push once everything is roughly implemented, then fix the build and test failures from CI. |
+| 2FA | A second factor at **both** the IdP and the application, each switchable. Specified in the #490 PRD, D11. |
 
 ## 7. Milestones (one PR, tests written per milestone and run once at the end)
 
@@ -402,6 +407,22 @@ Everything is advertised in discovery.
   - the **OpenID Foundation conformance suite** in Docker: Basic, Config, Dynamic and Form Post
     OP; RP-Initiated, Back-Channel and Front-Channel Logout; FAPI 2.0 Security Profile
   - then one local sweep
+- **I0 Apps (R1), before I1.**
+  - **Create `apps/SparkId`:**
+    - modelled on HR's Program.cs minus the business code, with a ClientApp, ngsw-config and
+      manifest
+    - nx `project.json` files, a slnx entry and the npm workspace
+    - a `SparkIdTestHost` (E2E)
+    - registration in `E2E_APPS`, `verify-coverage-paths`, and `pull-request.yml` (build list and
+      the model/security verify loops)
+  - **Move the OIDC seeds into SparkId migrations,** for the `qna`, `hr` and `fleet` clients and the
+    machine client. QnA, HR and Fleet get `Spark:Auth:Providers:OpenIdConnect:SparkId`.
+  - **Fleet:** retire self-issuing, and move `JwtBearerCredentialTests` to a two-host fixture
+    (SparkId issues, Fleet validates; multi-host plan R3). Update the route snapshot tests.
+  - **App lists:** `verify-ngsw-config.test.mjs` ("finds the five Spark apps") and
+    `HiddenAttributesStayProtectedTests.cs:106` (≥ 5) now count six apps, SparkId included.
+  - **DemoApp's role** goes into README.md and CLAUDE.md: "the minimal Spark app: core only, no
+    Authorization, no identity provider". New features don't land there.
 - **I14 Docs and versions.** The IdP README and a developer-portal guide, release notes,
   closing items in the audit doc and the matrix, the ng-spark minor bump and the NuGet preview
   bump (majors unchanged).
