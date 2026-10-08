@@ -15,18 +15,22 @@
   </Folder>
   <Folder Name="/apps/DemoApp/">
     <Project Path="apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj" />
+    <Project Path="apps/DemoApp/DemoApp.Tests/DemoApp.Tests.csproj" />
     <Project Path="apps/DemoApp/DemoApp/DemoApp.csproj" />
   </Folder>
   <Folder Name="/apps/Fleet/">
     <Project Path="apps/Fleet/Fleet.Library/Fleet.Library.csproj" />
+    <Project Path="apps/Fleet/Fleet.Tests/Fleet.Tests.csproj" />
     <Project Path="apps/Fleet/Fleet/Fleet.csproj" />
   </Folder>
   <Folder Name="/apps/HR/">
     <Project Path="apps/HR/HR.Library/HR.Library.csproj" />
+    <Project Path="apps/HR/HR.Tests/HR.Tests.csproj" />
     <Project Path="apps/HR/HR/HR.csproj" />
   </Folder>
   <Folder Name="/apps/QnA/">
     <Project Path="apps/QnA/QnA.Library/QnA.Library.csproj" />
+    <Project Path="apps/QnA/QnA.Tests/QnA.Tests.csproj" />
     <Project Path="apps/QnA/QnA/QnA.csproj" />
   </Folder>
   <Folder Name="/libs/" />

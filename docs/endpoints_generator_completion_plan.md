@@ -88,6 +88,39 @@ metadata types:
 Every later milestone diffs against it; the only allowed difference is dead code that was removed.
 #455 skipped this fixture (see its plan's M0), so this time it is mandatory.
 
+**M0 — as built (2026-10-08, fixtures generated from code equal to master `c05e7a52`).**
+- **Format** (`libs/testing/MintPlayer.Spark.Testing/RouteTableSnapshot.cs`): one line per
+  `RouteEndpoint`, `METHODS /pattern | fact | fact`, sorted by pattern then methods. Facts: every
+  distinct `IAuthorizeData` and `AuthorizationPolicy`, `allow-anonymous`, and the *effective* (last
+  wins) antiforgery, rate limiting, CORS, request size limit, response/output cache, plus accepted
+  content types. No display names, handler types, endpoint-type metadata or order. Patterns are
+  normalised (leading `/`, no doubled or trailing `/`), the spellings routing treats as equal.
+- **Library hosts** (`tests/MintPlayer.Spark.Tests/Endpoints/RouteTableSnapshotTests.cs`,
+  `SparkEndpointFactory`, Development env, fixtures in `Endpoints/RouteSnapshots/`): `core`;
+  `auth-{full,signinonly,disabled}` (defaults); `auth-{…}-all-options` (passkeys, external-login linking
+  `WhenSignedIn`, email change, identity provider with dynamic CORS); `modules` (soft-delete, history,
+  contributions, moderation, replication, mail); `webhooks` and `webhooks-dev-app` (`DevelopmentAppId`
+  adds `/spark/github/dev-ws`).
+- **Applications**, each its real `Program` in-process through `WebApplicationFactory`, environment
+  `RouteSnapshot` (so no `UseAngularCliServer`), the app directory as content root, embedded RavenDB,
+  every hosted service except `GenericWebHostService` removed (`tests/Shared/SparkAppRouteHost.cs`):
+  `apps/{Fleet,QnA,HR,DemoApp}/{App}.Tests/RouteSnapshots/{App}.txt` with the E2E hosts' settings
+  (Fleet with issuer + JWT bearer, HR with issuer, QnA with test seams on), and
+  `apps/CodeCoverage/CodeCoverage.Tests/RouteSnapshots/CodeCoverage.txt` through the existing
+  `CoverageWebHostFixture`. MVC controller routes are included.
+- **Why four new test projects** rather than one: `SparkLayerCatalog` composes library layers once per
+  process from the whole dependency closure. With all four apps referenced by one test project, Fleet and
+  HR failed startup demanding QnA's `moderation:reviewers` binding and DemoApp's model hash did not
+  match. One application per process is the only faithful shape. No substitution was needed.
+- **Falsifiable:** dropping `RequireAntiforgeryTokenAttribute(true)` from `Logout` failed 7 of the 10
+  library hosts with `- POST /spark/auth/logout | antiforgery=required` / `+ POST /spark/auth/logout`.
+  Adding `.RequireAuthorization()` to CodeCoverage's `/health` failed its snapshot with
+  `+ GET /health | authorize(policy=;roles=;schemes=)`. Both changes were reverted.
+- **Run / update:** `dotnet test <project> --filter FullyQualifiedName~RouteTableSnapshotTests` (the app
+  projects contain only this test). To accept an intended change, set `SPARK_UPDATE_ROUTE_SNAPSHOT=1`,
+  run the same, and review the fixture diff like code. All six projects take about 65 s wall in total, of
+  which booting the four apps is most.
+
 ### M1 — Adopt the upstream rc
 - Bump every Endpoints reference to 11.4.0-rc.0. There is no Directory.Packages.props, so this is per
   csproj.

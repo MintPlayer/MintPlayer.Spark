@@ -56,6 +56,8 @@
 		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexHelper.cs" Link="RavenIndexHelper.cs" />
 		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexingExtensions.cs" Link="RavenIndexingExtensions.cs" />
 		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexDeploymentException.cs" Link="RavenIndexDeploymentException.cs" />
+		<!-- The route-table snapshot (endpoints_generator_completion_plan.md M0), shared with the library's hosts. -->
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RouteTableSnapshot.cs" Link="RouteTableSnapshot.cs" />
 		<ProjectReference Include="..\CodeCoverage\CodeCoverage.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

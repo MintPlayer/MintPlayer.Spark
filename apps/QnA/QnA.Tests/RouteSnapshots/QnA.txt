@@ -1,0 +1,78 @@
+POST /qna-test/moderation/credit | antiforgery=required
+POST /qna-test/moderation/detect | antiforgery=required
+POST /qna-test/moderation/recompute | accepts(application/json) | antiforgery=required
+GET /spark
+POST /spark/actions/execute | antiforgery=required
+POST /spark/actions/list | antiforgery=not-required
+GET /spark/aliases
+GET /spark/auth/capabilities
+POST /spark/auth/confirm-email | accepts(application/json) | antiforgery=required
+GET /spark/auth/confirm-external-link | allow-anonymous
+GET /spark/auth/confirmEmail
+POST /spark/auth/csrf-refresh | antiforgery=not-required
+GET /spark/auth/external-login
+GET /spark/auth/external-login-callback | allow-anonymous
+POST /spark/auth/forgotPassword | accepts(application/json) | antiforgery=required
+POST /spark/auth/login | accepts(application/json) | antiforgery=required
+POST /spark/auth/logout | antiforgery=required
+POST /spark/auth/manage/2fa | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/auth/manage/2fa/authenticator-uri | authorize(policy=;roles=;schemes=)
+DELETE /spark/auth/manage/account | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/auth/manage/info | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/info | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/password | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/auth/manage/personal-data | authorize(policy=;roles=;schemes=)
+GET /spark/auth/manage/profile | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/profile | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/auth/me
+POST /spark/auth/refresh | accepts(application/json)
+POST /spark/auth/register | accepts(application/json) | antiforgery=required
+POST /spark/auth/resendConfirmationEmail | accepts(application/json) | antiforgery=required
+POST /spark/auth/resetPassword | accepts(application/json) | antiforgery=required
+GET /spark/culture
+GET /spark/lookupref
+GET /spark/lookupref/{name}
+POST /spark/lookupref/{name} | antiforgery=required
+DELETE /spark/lookupref/{name}/{key} | antiforgery=required
+PUT /spark/lookupref/{name}/{key} | antiforgery=required
+POST /spark/mail/bounces | antiforgery=not-required
+POST /spark/mail/unsubscribe | antiforgery=not-required
+POST /spark/moderation/audit | antiforgery=required
+POST /spark/moderation/case | antiforgery=required
+POST /spark/moderation/case/decide | antiforgery=required
+POST /spark/moderation/cases | antiforgery=required
+POST /spark/moderation/flag | antiforgery=required
+POST /spark/moderation/lock | antiforgery=required
+POST /spark/moderation/merge | antiforgery=required
+POST /spark/moderation/reputation | antiforgery=required
+POST /spark/moderation/reputation/history | antiforgery=required
+POST /spark/moderation/status | antiforgery=required
+POST /spark/moderation/suspend | antiforgery=required
+POST /spark/moderation/unlock | antiforgery=required
+POST /spark/moderation/unsuspend | antiforgery=required
+POST /spark/moderation/vote | antiforgery=required
+POST /spark/moderation/votes | antiforgery=required
+GET /spark/permissions/{entityTypeId}
+POST /spark/po/create | antiforgery=required
+POST /spark/po/delete | antiforgery=required
+POST /spark/po/delete-many | antiforgery=required
+POST /spark/po/delete-row | antiforgery=required
+POST /spark/po/load | antiforgery=not-required
+POST /spark/po/new | antiforgery=required
+POST /spark/po/purge | antiforgery=required
+POST /spark/po/refresh | antiforgery=required
+POST /spark/po/restore | antiforgery=required
+POST /spark/po/revert | antiforgery=required
+POST /spark/po/revert-contribution | antiforgery=required
+POST /spark/po/revision | antiforgery=not-required
+POST /spark/po/revisions | antiforgery=not-required
+POST /spark/po/update | antiforgery=required
+GET /spark/program-units
+GET /spark/queries
+POST /spark/queries/distinct-values | antiforgery=not-required
+POST /spark/queries/execute | antiforgery=not-required
+POST /spark/queries/get | antiforgery=not-required
+CONNECT,GET /spark/queries/{id}/stream
+GET /spark/translations
+GET /spark/types
+GET /spark/types/{id}
