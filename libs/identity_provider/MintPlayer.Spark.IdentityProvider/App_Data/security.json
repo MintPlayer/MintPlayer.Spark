@@ -189,6 +189,26 @@
       "key": "secrets-revoke-developers",
       "resource": "RevokeSecret/OidcApplicationSecretRow",
       "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "audit-administrators",
+      "resource": "QueryRead/OidcAuditEvent",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "audit-developers",
+      "resource": "QueryRead/OidcAuditEvent",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "grants-administrators",
+      "resource": "QueryRead/OidcGrant",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "grants-revoke",
+      "resource": "RevokeGrant/OidcGrant",
+      "groupId": "identity-provider:administrators"
     }
   ]
 }

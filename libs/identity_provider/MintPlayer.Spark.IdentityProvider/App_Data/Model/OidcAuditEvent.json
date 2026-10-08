@@ -1,0 +1,108 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "34ee96f8-869e-578f-a03b-ab77fbb4d7b5",
+    "name": "OidcAuditEvent",
+    "clrType": "MintPlayer.Spark.IdentityProvider.Models.OidcAuditEvent",
+    "breadcrumb": "{At}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "768e8e02-0ec4-5e5d-8a23-08db941b76e1",
+        "name": "ActorId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "27893bce-1b30-5eda-8fd0-a2d5de80afae",
+        "name": "ApplicationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "39fbdb62-4c3b-5944-8058-de26c666f2bf",
+        "name": "At",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4f5edfa2-93de-5b77-8e1e-a9a700bdb050",
+        "name": "Details",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": true,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "401b0701-a154-5c07-b454-6de3934964ad",
+        "name": "IpAddress",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "976ba884-d0fc-585d-8d68-806c7f7b5da2",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fbeee7a9-a6ff-538d-82de-fb9f8652e64c",
+        "name": "SubjectId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "6e83e0dd-0cda-549b-8ba8-c5c5fce812e9",
+      "name": "AuditEvents",
+      "source": "Custom.AuditEvents",
+      "alias": "oidc-audit-events",
+      "sortColumns": [
+        {
+          "property": "At",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "OidcAuditEvent",
+      "isStreamingQuery": false
+    }
+  ]
+}

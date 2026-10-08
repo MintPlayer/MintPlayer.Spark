@@ -1,7 +1,102 @@
 # PRD / Plan: Spark IdentityProvider as a full identity-provider plugin
 
-Status: **grilled, all decisions locked (§6), implementation not started** (2026-10-08). Branch:
-`feat/464-490-pwa-external-login` (PR #499).
+Status: **grilled, all decisions locked (§6). Implementation in progress: I0–I6 and I8–I10 done,
+I11 partly; I7, I12–I14 and #490 D11 open (§0)** (2026-10-08). Branch:
+`feat/464-490-pwa-external-login` (PR #499). Nothing pushed yet (R4).
+
+## 0. Implementation status (resume here)
+
+Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
+`tests/MintPlayer.Spark.E2E.Tests` with 0 errors. **No test suite has been run** for any of this
+(batched to the end). Expect failures in the sweep: tests asserting the old English page strings,
+`/connect/*` response shapes (now HTML error pages), and the route snapshots.
+
+| Milestone | Status | Commit | What was built |
+|---|---|---|---|
+| Spikes S1–S3 | ✅ | 0984ba69 | §2.4 |
+| I0 apps | ✅ | 262a7496 | `apps/SparkId` (5011/5012) with a ClientApp. HR, Fleet and QnA are relying parties through the `SparkId` scheme. Fleet only validates (`Spark:JwtBearer:Authority`). `SparkIdTestHost`, and `JwtBearerCredentialTests` on the two-host `SparkIdFleetE2ECollection`. CI and tools know the sixth app. |
+| I1 data model | ✅ | db166290 | D1 as amended below. The library layer (alias `identity-provider`), and the migration `M_202610090900_OidcDataModel` |
+| I2 developers | ✅ | db166290 | Developer status field. `OidcDeveloperMembership` provides the slot group. `GET/POST /spark/identity-provider/developer`. The request queue with `ApproveDeveloper`/`RejectDeveloper`. Mails `Mail/SparkIdentityProvider/*.mjml` (en/fr/nl). `OidcAudit` |
+| I3 teams, modes | ✅ | db166290 | The authorize gate (`OidcApplicationAccess`). Invitations (`OidcInvitations`, `POST /spark/identity-provider/invitations/accept`). The team sub-query and `InviteMember`/`ResendInvitation`/`RemoveMember`. `SwitchToLive`/`SwitchToDevelopment`. The scope-approval and go-live queues |
+| I4 registration UX | ✅ | 272b21bc | New generic client operation **`showSecret`** (server side only). `GenerateSecret`/`RevokeSecret`, the secrets sub-query, the redirect URI rules, the URI limit. Lookups (`LookupReferences/OidcLookups.cs`) |
+| I5 consent | ✅ | 30c2dcf0 | Remember and expiry, `include_granted_scopes`, the consent page contents. `OidcGrantWithdrawal` (whole or per scope). SPA API `GET /spark/identity-provider/applications` and `POST .../applications/withdraw` |
+| I6 server pages | ✅ | 8c27d926 | `ConnectText` (ui_locales, then the `spark-lang` cookie, then Accept-Language). Branding. `/connect/error`. `POST /connect/applications/revoke-scope`. About 100 `identityProvider.connect.*` keys |
+| I7 SPA | ⏳ **not started** | | See "Open work" |
+| I8 protocol I | ✅ | 8c27d926 | `OidcClientAuthenticator` (basic, post, private_key_jwt, tls/self-signed mTLS, none; O15). `OidcAuthorizeHandler` with `OidcAuthorizeParameters`, GET and POST (prompt, max_age, acr step-up, login_hint, ui_locales, claims, id_token_hint, resource, form_post, `iss`). at+jwt, azp, amr/acr/sid, pairwise (`OidcSubjects`), JWE (`OidcJwe`), signed/encrypted userinfo. Discovery |
+| I9 protocol II | ✅ | 8c27d926, 2b8d23e1 | PAR (`/connect/par`), JAR (`OidcRequestObjects`), DPoP and cnf-bound tokens (`OidcProofOfPossession`), the device grant (`/connect/device_authorization`, `/connect/device`), token exchange, gated DCR (`/connect/register[/{client_id}]` plus `POST /spark/identity-provider/developer/registration-token`) |
+| I10 keys, sessions | ✅ | 3758cfe4 | `OidcKeyRing` (RSA and EC, Data Protection, rotation by `OidcKeyRotationService`, legacy key import). `sid` in the cookie (OnSigningIn). `OidcSessionStore`: back-channel logout tokens, front-channel iframes, logout revokes the session's refresh tokens |
+| I11 operations | ⏳ partly | (this commit) | Done: the audit query (`OidcAuditEventActions`: admins all, app Admins their apps), the grants query with `RevokeGrant`, the menu fragment. **Open:** time-series usage counters, the disable cascade, rate limits, the admin key-rotation trigger |
+| I12 resource servers | ⏳ | | |
+| I13 tests, conformance | ⏳ | | |
+| I14 docs, versions | ⏳ | | |
+| #490 D11 external-login 2FA | ⏳ | | Not started |
+
+**Decisions taken during implementation** (each also stated where it applies):
+- **Scope-name uniqueness is structural** (natural ids plus prefixes), not a compare-exchange
+  reservation. Only client ids use one (D1).
+- **An application's `DisplayName` stays a plain string:** it is a product name. Resource and scope
+  names are `TranslatedString` (D1).
+- **Row filtering uses `GetRowFilterAsync`** on the library's Actions, not `RowFilterPolicy` (D2).
+- **Lookups:** member role, mode, resource kind, client type and consent type are
+  `TransientLookupReference`s shipped by the library.
+- **PAR request_uris are reusable until they expire (90 s), not single-use.** The bounce through
+  sign-in redeems the same `request_uri` again, and RFC 9126 says only SHOULD.
+- **JAR by reference (non-PAR `request_uri`) is refused** (`request_uri_parameter_supported: false`).
+- **`acr_values` steps up once:** a fresh sign-in, which passes 2FA where the account has it. Values
+  are `urn:mintplayer:spark:acr:1fa|mfa`. An unmet *essential* acr from `claims` answers
+  `unmet_authentication_requirements`.
+- **The claims parameter never widens consent:** claims still come only from granted scopes, and
+  essential `acr` is honoured.
+- **A forced re-authentication** (prompt=login, max_age, step-up) marks its return with
+  `spark_reauth=1`, so it is forced only once. Only the client asking could abuse that marker.
+- **JWE content encryption** is `A128CBC-HS256`/`A256CBC-HS512` only, validated at registration (S2).
+- **Signing keys** are in `OidcKeys`; `SigningKeyPath` is only a one-time import. The E2E hosts
+  still write a key file, which the ring imports.
+- **Token exchange impersonation** still stamps `act` with the calling client.
+
+**Open work, in order:**
+1. **I11 rest:**
+   - an incremental time series `INC:Tokens` on the application per issuance;
+   - the disable cascade in `OidcApplicationInterceptors.OnAfterSaveAsync` (parameterized patch
+     revoking tokens and grants when `Enabled` goes false) and for resources;
+   - rate limits: a named policy through `Configure<RateLimiterOptions>`, `RequireRateLimiting` on
+     the `/connect` protocol endpoints, and a client-auth failure throttle in
+     `OidcClientAuthenticator`;
+   - `POST /spark/identity-provider/admin/keys/rotate` (ManageAll) calling `OidcKeyRing.RotateAsync(force: true)`.
+2. **I7 SPA** (`libs/node_packages/ng-spark`):
+   - the `showSecret` client-operation handler (a modal with a copy button);
+   - `SparkLanguageService` also writes the `spark-lang` cookie;
+   - the entry point `@mintplayer/ng-spark/identity-provider` with `withIdentityProvider`,
+     `withConnectedApplications`, `withDeveloperRoutes` and `withManagementRoutes`;
+   - the pages: connected applications (the APIs above); `/developers` (status, terms, request,
+     registration token); `/developers/invitations/:token?app=` (accept); the management page (key
+     rotation, links to the queues);
+   - the account-overview card; fix the doc comment on `SparkAuthRoutesFeature`;
+   - SparkId's `app.routes.ts` and menu.
+3. **I12:**
+   - `spark.AddSparkResourceServer(authority, audience)`, `[RequireScope]` / `.RequireScope()`;
+   - an introspection-based handler, and DPoP/cnf validation in `OnTokenValidated`; `ValidTypes`
+     at+jwt;
+   - the Fleet API demo with `fleet.read` from HR, and seed the `fleet` API resource in SparkId's
+     migration.
+4. **#490 D11:** the external-login 2FA page (see that PRD). `ConnectPage`/`ConnectPageTheme` move to
+   Authorization.
+5. **I13:**
+   - new unit tests per milestone: authenticator, authorize handler, PAR/JAR, DPoP, device,
+     exchange, DCR, key ring, sessions, invitations, approvals;
+   - fix the existing tests; regenerate the route snapshots (`SPARK_UPDATE_ROUTE_SNAPSHOT=1`: HR,
+     Fleet, SparkId);
+   - the E2E journey (§7 I13);
+   - the conformance suite in Docker;
+   - then **one local sweep** (`RAVENDB_LICENSE=... npm run test:affected`).
+6. **I14:**
+   - the IdP README (endpoints, options, keys, the layer);
+   - a developer-portal guide;
+   - release notes;
+   - the minor ng-spark bump, the NuGet preview bump;
+   - close items in the audit doc and the matrix.
+
+   Then the single push (R4).
 
 Origin: an owner request made while testing #464/#490 SSO (HR as the IdP, QnA as the RP):
 

@@ -49,6 +49,20 @@
         "fr": "Secrets client",
         "nl": "Clientgeheimen"
       }
+    },
+    "AuditEvents": {
+      "label": {
+        "en": "Audit trail",
+        "fr": "Journal d'audit",
+        "nl": "Auditlogboek"
+      }
+    },
+    "Grants": {
+      "label": {
+        "en": "Grants",
+        "fr": "Autorisations",
+        "nl": "Toestemmingen"
+      }
     }
   },
   "model": {
@@ -1533,6 +1547,150 @@
           }
         }
       }
+    },
+    "OidcAuditEvent": {
+      "label": {
+        "en": "Audit event",
+        "fr": "Événement d'audit",
+        "nl": "Auditgebeurtenis"
+      },
+      "attributes": {
+        "At": {
+          "label": {
+            "en": "When",
+            "fr": "Quand",
+            "nl": "Wanneer"
+          }
+        },
+        "Kind": {
+          "label": {
+            "en": "What",
+            "fr": "Quoi",
+            "nl": "Wat"
+          }
+        },
+        "ActorId": {
+          "label": {
+            "en": "By",
+            "fr": "Par",
+            "nl": "Door"
+          }
+        },
+        "ApplicationId": {
+          "label": {
+            "en": "Application",
+            "fr": "Application",
+            "nl": "Applicatie"
+          }
+        },
+        "SubjectId": {
+          "label": {
+            "en": "Concerning",
+            "fr": "Concerne",
+            "nl": "Betreft"
+          }
+        },
+        "IpAddress": {
+          "label": {
+            "en": "IP address",
+            "fr": "Adresse IP",
+            "nl": "IP-adres"
+          }
+        },
+        "Details": {
+          "label": {
+            "en": "Details",
+            "fr": "Détails",
+            "nl": "Details"
+          }
+        }
+      }
+    },
+    "OidcGrant": {
+      "label": {
+        "en": "Grant",
+        "fr": "Autorisation",
+        "nl": "Toestemming"
+      },
+      "attributes": {
+        "ApplicationId": {
+          "label": {
+            "en": "Application",
+            "fr": "Application",
+            "nl": "Applicatie"
+          }
+        },
+        "Subject": {
+          "label": {
+            "en": "User",
+            "fr": "Utilisateur",
+            "nl": "Gebruiker"
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          }
+        },
+        "GrantedScopes": {
+          "label": {
+            "en": "Granted scopes",
+            "fr": "Scopes accordés",
+            "nl": "Toegestane scopes"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "First granted",
+            "fr": "Accordée le",
+            "nl": "Eerst toegestaan"
+          }
+        },
+        "ConsentedAt": {
+          "label": {
+            "en": "Last consent",
+            "fr": "Dernier consentement",
+            "nl": "Laatste toestemming"
+          }
+        },
+        "ExpiresAt": {
+          "label": {
+            "en": "Remembered until",
+            "fr": "Mémorisée jusqu'au",
+            "nl": "Onthouden tot"
+          }
+        },
+        "Remembered": {
+          "label": {
+            "en": "Remembered",
+            "fr": "Mémorisée",
+            "nl": "Onthouden"
+          }
+        },
+        "LastUsedAt": {
+          "label": {
+            "en": "Last used",
+            "fr": "Dernière utilisation",
+            "nl": "Laatst gebruikt"
+          }
+        },
+        "RevokedAt": {
+          "label": {
+            "en": "Revoked",
+            "fr": "Révoquée le",
+            "nl": "Ingetrokken"
+          }
+        },
+        "LastRevokedAt": {
+          "label": {
+            "en": "Last withdrawal",
+            "fr": "Dernier retrait",
+            "nl": "Laatste intrekking"
+          }
+        }
+      }
     }
   },
   "programUnits": {
@@ -1567,6 +1725,16 @@
       "en": "Go-live reviews",
       "fr": "Mises en ligne à approuver",
       "nl": "Livegangen ter goedkeuring"
+    },
+    "oidcAuditEvents": {
+      "en": "Audit trail",
+      "fr": "Journal d'audit",
+      "nl": "Auditlogboek"
+    },
+    "oidcGrants": {
+      "en": "Grants",
+      "fr": "Autorisations",
+      "nl": "Toestemmingen"
     }
   },
   "actions": {
@@ -1699,6 +1867,18 @@
         "en": "Revoke the selected secrets? Clients still using them stop working at once.",
         "fr": "Révoquer les secrets sélectionnés ? Les clients qui les utilisent encore cessent aussitôt de fonctionner.",
         "nl": "De geselecteerde geheimen intrekken? Clients die ze nog gebruiken, werken dan meteen niet meer."
+      }
+    },
+    "RevokeGrant": {
+      "label": {
+        "en": "Revoke",
+        "fr": "Révoquer",
+        "nl": "Intrekken"
+      },
+      "confirmation": {
+        "en": "Revoke the selected grants? Their tokens stop working at once.",
+        "fr": "Révoquer les autorisations sélectionnées ? Leurs jetons cessent aussitôt de fonctionner.",
+        "nl": "De geselecteerde toestemmingen intrekken? Hun tokens werken dan meteen niet meer."
       }
     }
   },

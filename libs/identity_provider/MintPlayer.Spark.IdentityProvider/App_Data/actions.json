@@ -78,5 +78,11 @@
     "showedOn": "query",
     "selectionRule": ">0",
     "variant": "danger"
+  },
+  "RevokeGrant": {
+    "icon": "x-octagon",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger"
   }
 }
