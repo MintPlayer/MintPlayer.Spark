@@ -331,6 +331,46 @@ public class SoftDeleteTests : SparkTestDriver
         (await LoadAsync<SdNote>(kept.Id!)).Should().NotBeNull();
     }
 
+    /// <summary>
+    /// Restore and purge answer the five bodies no endpoint can bind, and one well-formed request each,
+    /// as they did while they read their bodies through <c>ReadTypedRequestAsync</c> (endpoints generator
+    /// completion M3b, PRD D3a).
+    /// </summary>
+    [Fact]
+    public async Task Unbindable_restore_and_purge_bodies_answer_as_before()
+    {
+        var host = await StartAsync();
+        var restorable = await SeedNoteAsync("restorable", deleted: true);
+        var purgeable = await SeedNoteAsync("purgeable", deleted: true);
+
+        var lines = new List<string>();
+        foreach (var url in new[] { "/spark/po/restore", "/spark/po/purge" })
+        {
+            lines.Add($"# {url}");
+            foreach (var (label, content) in MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.UnbindableBodies())
+                lines.Add($"{label}: {await host.SendRawAsync(url, content)}");
+        }
+        lines.Add($"restore: {(int)(await host.SendAsync("/spark/po/restore", Wire.Typed(NoteTypeId, id: restorable.Id))).Status}");
+        lines.Add($"purge: {(int)(await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: purgeable.Id, etag: await EtagAsync(purgeable.Id!)))).Status}");
+
+        string.Join("\n", lines).Should().Be("""
+            # /spark/po/restore
+            none: throws InvalidOperationException
+            empty: 404 {"result":{"error":"Not found"},"operations":[]}
+            null: 404 {"result":{"error":"Not found"},"operations":[]}
+            malformed: 404 {"result":{"error":"Not found"},"operations":[]}
+            text/plain: throws InvalidOperationException
+            # /spark/po/purge
+            none: throws InvalidOperationException
+            empty: 404 {"result":{"error":"Not found"},"operations":[]}
+            null: 404 {"result":{"error":"Not found"},"operations":[]}
+            malformed: 404 {"result":{"error":"Not found"},"operations":[]}
+            text/plain: throws InvalidOperationException
+            restore: 200
+            purge: 204
+            """.ReplaceLineEndings("\n"));
+    }
+
     // ---- references and natural ids --------------------------------------------------------------
 
     [Fact]
@@ -854,6 +894,24 @@ public class SoftDeleteTests : SparkTestDriver
             var response = await Client.SendAsync(request);
             var text = await response.Content.ReadAsStringAsync();
             return (response.StatusCode, string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone());
+        }
+
+        /// <summary>"{status} {body}" for a raw body (or none), as the unbindable-body pins record it.</summary>
+        public async Task<string> SendRawAsync(string url, HttpContent? content)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            request.Headers.Add("Cookie", Cookie);
+            request.Headers.Add("X-XSRF-TOKEN", Xsrf);
+            try
+            {
+                var response = await Client.SendAsync(request);
+                return $"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}";
+            }
+            catch (Exception ex)
+            {
+                // The test server rethrows what the application left unhandled: a 500 in production.
+                return $"throws {ex.GetType().Name}";
+            }
         }
 
         public async Task<JsonElement> GetAsync(string url)

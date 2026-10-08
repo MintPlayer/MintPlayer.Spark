@@ -222,6 +222,55 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         (await LoadAsync<HiNote>(note.Id!))!.Title.Should().Be("mine");
     }
 
+    /// <summary>
+    /// Revisions, revision and revert answer the five bodies no endpoint can bind, and one well-formed
+    /// request each, as they did while they read their bodies through <c>ReadTypedRequestAsync</c>
+    /// (endpoints generator completion M3b, PRD D3a).
+    /// </summary>
+    [Fact]
+    public async Task Unbindable_history_bodies_answer_as_before()
+    {
+        var host = await StartAsync();
+        var note = await SeedNoteAsync("v1");
+        var firstCv = await CurrentChangeVectorAsync(note.Id!);
+        await UpdateRawAsync(note.Id!, n => n.Title = "v2");
+
+        var lines = new List<string>();
+        foreach (var url in new[] { "/spark/po/revisions", "/spark/po/revision", "/spark/po/revert" })
+        {
+            lines.Add($"# {url}");
+            foreach (var (label, content) in MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.UnbindableBodies())
+                lines.Add($"{label}: {await host.SendRawAsync(url, content)}");
+        }
+        lines.Add($"revisions: {(int)(await host.SendAsync("/spark/po/revisions", Wire.Typed(NoteTypeId, id: note.Id))).Status}");
+        lines.Add($"revision: {(int)(await host.SendAsync("/spark/po/revision", Wire.Typed(NoteTypeId, new { changeVector = firstCv }, note.Id))).Status}");
+        lines.Add($"revert: {(int)(await host.SendAsync("/spark/po/revert", Wire.Typed(NoteTypeId, new { changeVector = firstCv }, note.Id))).Status}");
+
+        string.Join("\n", lines).Should().Be("""
+            # /spark/po/revisions
+            none: throws InvalidOperationException
+            empty: 404 {"result":{"error":"Not found"},"operations":[]}
+            null: 404 {"result":{"error":"Not found"},"operations":[]}
+            malformed: 404 {"result":{"error":"Not found"},"operations":[]}
+            text/plain: throws InvalidOperationException
+            # /spark/po/revision
+            none: throws InvalidOperationException
+            empty: 404 {"result":{"error":"Not found"},"operations":[]}
+            null: 404 {"result":{"error":"Not found"},"operations":[]}
+            malformed: 404 {"result":{"error":"Not found"},"operations":[]}
+            text/plain: throws InvalidOperationException
+            # /spark/po/revert
+            none: throws InvalidOperationException
+            empty: 404 {"result":{"error":"Not found"},"operations":[]}
+            null: 404 {"result":{"error":"Not found"},"operations":[]}
+            malformed: 404 {"result":{"error":"Not found"},"operations":[]}
+            text/plain: throws InvalidOperationException
+            revisions: 200
+            revision: 200
+            revert: 200
+            """.ReplaceLineEndings("\n"));
+    }
+
     // ---- revert --------------------------------------------------------------------------------------
 
     [Fact]
@@ -585,6 +634,24 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
             var response = await Client.SendAsync(request);
             var text = await response.Content.ReadAsStringAsync();
             return (response.StatusCode, string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone());
+        }
+
+        /// <summary>"{status} {body}" for a raw body (or none), as the unbindable-body pins record it.</summary>
+        public async Task<string> SendRawAsync(string url, HttpContent? content)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            request.Headers.Add("Cookie", Cookie);
+            request.Headers.Add("X-XSRF-TOKEN", Xsrf);
+            try
+            {
+                var response = await Client.SendAsync(request);
+                return $"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}";
+            }
+            catch (Exception ex)
+            {
+                // The test server rethrows what the application left unhandled: a 500 in production.
+                return $"throws {ex.GetType().Name}";
+            }
         }
     }
 }
