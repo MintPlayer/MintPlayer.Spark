@@ -43,6 +43,16 @@ uses it. That change does nothing for the webhook POST, because Octokit owns the
 whatever the path is. The path is also really configurable, not a leftover:
 `tests/MintPlayer.Spark.Tests/Webhooks/GitHub/SparkBuilderExtensionsTests.cs` sets it to `/custom/hook`.
 
+**The POST reads the local options copy, and that is part of this exception** (plan M7, 2026-10-08).
+`MapGitHubWebhooks(options.WebhookPath, options.WebhookSecret)` takes the path and the secret from the
+`GitHubWebhooksOptions` instance passed to `AddGithubWebhooks`, captured when the mapping callback is
+registered, not from `IOptions<GitHubWebhooksOptions>`. A value an app sets only through
+`Configure<GitHubWebhooksOptions>()` therefore reaches the processor and the dev WebSocket but not
+this route. The dev WebSocket had the same divergence and lost it by becoming an endpoint class
+(`GetPath` and `IsEnabled` read `IOptions`); the POST keeps it because it stays on Octokit's mapper,
+which takes plain values at map time. Set `WebhookPath` and `WebhookSecret` in the `AddGithubWebhooks`
+callback.
+
 ## The dev WebSocket is a generator endpoint
 
 `libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/Endpoints/DevWebSocketEndpoint.cs` is an `IGetEndpoint`

@@ -95,6 +95,12 @@ test bound on an idle machine (`DevWebSocketEndpointTests`, 2026-10-07; 33 ms wi
 `Directory.Build.targets`; a new test project gets it by being named `*.Tests`. Evidence in
 `docs/test-suite-performance-PRD.md` §3, "No proxy in test processes".
 
+**WireMock's first request scans the whole bin.** WireMock.Net 2.15 loads every DLL in the test
+project's output (168) on its first request, 0.9 s warm and 10.8–24.6 s on freshly built binaries, which
+failed the same 10 s bound (2026-10-08). `WireMockWarmUp` (Spark.Tests, `Webhooks/GitHub/_Infrastructure`)
+pays it before the clock starts; a new test that bounds a first WireMock request needs it too. Evidence
+in `docs/test-suite-performance-PRD.md` §3, "WireMock's first-request plugin scan".
+
 Measured 2026-10-01 on this machine (`--skip-nx-cache`, Developer licence, everything affected):
 **21m49s wall for everything including E2E and builds, all green.** Compare the earlier serial
 sweep, which took 26.2 min **without** E2E. Per project:

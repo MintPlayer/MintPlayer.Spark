@@ -231,8 +231,9 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
 - Row rules in an Actions class see the **base verb** for the package operations: `"Edit"` for a
   restore or revert, `"Delete"` for a purge (row policies see the real name). Write rules for the
   built-in verbs; do not special-case `"Restore"`/`"Revert"`/`"Purge"` there.
-- An add-on package mapping its own `/spark/*` endpoint answers through
-  `MintPlayer.Spark.Endpoints.SparkAddOnEndpoints` (envelope, the one refusal, 400, 403, 409) — never
+- An add-on package mapping its own `/spark/*` endpoint makes it a generator endpoint class
+  (`IPostEndpoint<TRequest>`, dependencies through `[Inject]`, never `RequestServices`) and answers
+  through the injected `ISparkAddOnEndpoints` (envelope, the one refusal, 400, 403, 409) — never
   an invented error shape (#453 oracle). Content core did not load itself (an old revision) is shown
   through `IPersistentObjectPresenter` (breadcrumbs + redaction), never by mapping it raw.
 

@@ -90,7 +90,7 @@ in §5, each with its evidence. MVC controllers in applications are out of scope
 
 | Route | Why | Evidence |
 |---|---|---|
-| GitHub webhook POST (`SparkBuilderExtensions.cs:51`) | Octokit's `MapGitHubWebhooks` owns HMAC validation and event dispatch; configurable path; `Path` is static with no `IServiceProvider` (upstream #37 open) | `endpoints_generator_webhooks_exception.md`; **D4** may revisit |
+| GitHub webhook POST (`SparkBuilderExtensions.cs:51`) | Octokit's `MapGitHubWebhooks` owns the request-level HMAC (`X-Hub-Signature-256`) refusal. *Superseded (2026-10-08):* "and event dispatch" and the static-`Path` reason; dispatch is public API Spark already calls, and #37 shipped `GetPath` | `endpoints_generator_webhooks_exception.md`; **D4** |
 | `MapIdentityApi<TUser>()` re-publish (`LocalCredentialEndpointFilter.cs:87-100`) | Microsoft's monolithic mapper; filtered and republished via `FixedEndpointDataSource` | **new exception — undocumented in #455's PRD; record it** |
 | `MapControllers` (`SparkControllersExtensions.cs:73`) | MVC by design; applications may keep controllers | D1 (owner): the generator exists because libraries cannot declare controllers |
 
@@ -140,8 +140,12 @@ All are owner decisions taken in a grill session; the evidence each one rests on
   *Superseded:* an earlier draft of this decision dropped `WebhookPath`/`DevWebSocketPath`. Both
   stay configurable, so there is no public API break.
 - **D4 — The GitHub webhook POST stays on Octokit** as a documented exception. The blocker is
-  **Octokit owning `X-Hub-Signature-256` validation and dispatch**, not the path. `#37` does not
-  change it, and the exception doc must say so. The dev WebSocket converts, keeping its configurable
+  **Octokit owning the request-level `X-Hub-Signature-256` refusal**, not the path. `#37` does not
+  change it, and the exception doc must say so. *Superseded (2026-10-08, spike S4 finding a):* an
+  earlier wording also named "dispatch". Dispatch is not a blocker:
+  `WebhookEventProcessor.ProcessWebhookAsync` is public, the dev-tunnel clients already call it, and
+  Spark re-verifies the signature itself inside it (`SparkWebhookEventProcessor.cs:45-56`), where it
+  can only drop the event. The decision stands. The dev WebSocket converts, keeping its configurable
   path through `GetPath` (which returns `options.DevWebSocketPath`, whose default references the
   endpoint's `Path` constant, so the default lives in one place). It is gated by `IsEnabled` on
   `DevelopmentAppId`.

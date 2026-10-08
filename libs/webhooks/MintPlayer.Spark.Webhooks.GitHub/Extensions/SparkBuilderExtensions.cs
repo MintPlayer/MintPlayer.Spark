@@ -48,8 +48,8 @@ public static class SparkBuilderExtensions
         {
             // Map the Octokit webhook endpoint with signature validation
             // DisableAntiforgery: GitHub POSTs webhooks without XSRF tokens
-            // It stays hand-mapped: Octokit owns the X-Hub-Signature-256 check and the event
-            // dispatch (docs/endpoints_generator_webhooks_exception.md).
+            // It stays hand-mapped: Octokit owns the request-level X-Hub-Signature-256 refusal
+            // (docs/endpoints_generator_webhooks_exception.md).
             endpoints.MapGitHubWebhooks(options.WebhookPath, options.WebhookSecret)
                 .DisableAntiforgery();
 
