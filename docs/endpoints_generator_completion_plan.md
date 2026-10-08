@@ -247,6 +247,26 @@ client (`libs/client/MintPlayer.Spark.Client/SparkClient.Endpoints.cs`) is the c
 - Change the anti-framing middleware (`SparkIdentityProviderExtensions.cs:113`) to match
   `StartsWithSegments(OidcConnectGroup.Prefix)` instead of the literal `"/connect"` (D6).
 
+**As built (2026-10-08): ✅ done.**
+- **Endpoints:** every handler lives in its endpoint class.
+  - Generic over the user type and closed in `OidcUserEndpoints.MapFor<TUser>()`: token, userinfo, logout, login submit and two-factor submit.
+  - Typed form bodies: token, login, two-factor, revoke, introspect, consent and the application revoke. Typed GETs with `[QueryParam]`: authorize, consent, applications, login and two-factor pages, and logout.
+  - Raw: discovery, jwks and userinfo.
+- **Other changes:**
+  - `OidcIssuer` is now an injected singleton.
+  - The shared grant and code rules live in the session-only `OidcAuthorizationFlow`.
+  - Anti-framing keys on `OidcConnectGroup.Prefix`; its test covers `/connect/authorize`, an unmapped `/connect/…`, and `/connectx` (which is not framed).
+  - The no-`AddAuthentication` fallback is deleted.
+- **Evidence:**
+  - `OidcResponseShapeTests` (14 tests) pinned status, content type, `Location` and body on the old handlers and passes unchanged on the new classes.
+  - 365/365 tests passed across `IdentityProvider.*`, `RouteTableSnapshotTests` and `SignInIdentifierTests`.
+  - E2E `JwtBearerCredentialTests` passed 3/3, and the Fleet and HR snapshots passed.
+  - No fixture changed: the `/connect` POSTs never carried `accepts` metadata.
+- **One accepted ordering change:** `/connect/applications/revoke` now binds the form before it checks sign-in. This is unobservable for form posts.
+- **For M8:**
+  - Allow-list the pure static helpers: `ConnectPage`/`ConnectResults`, `ConnectPageTheme`, `RedirectUrl`, `InteractiveUserExtensions`, `Token` (the scope and secret helpers), `OidcAuthorizationFlow`, `OidcCors` and `OidcUserEndpoints`.
+  - A new user-generic endpoint that is not added to `MapFor` compiles but is never mapped, because MPEP025 is only Info. The snapshots are the safety net.
+
 ### M5 — Authorization account routes (A, J)
 - The 15 `SparkAccountEndpoints` routes become typed generic classes with `[Inject]`, mapped with
   `MapEndpoint<X<TUser>>()` inside `MapSparkIdentityApi<TUser>`.
@@ -267,10 +287,30 @@ client (`libs/client/MintPlayer.Spark.Client/SparkClient.Endpoints.cs`) is the c
   antiforgery `true`. Keep the throw in Production. Delete the static `QnATestSeams.Map`.
 - Controllers are untouched (D1).
 
+**As built (2026-10-08): ✅ done.**
+- **CodeCoverage:** `/health` and `/health/ready` are generator endpoints (`Health/`, `[Inject] IGitHubAppReadinessService`, `MapCodeCoverageEndpoints()`).
+  - The snapshot is unchanged.
+  - The 503 for a failed readiness probe was untested before; it is now pinned by `ReadinessEndpointTests` (5).
+- **QnA:**
+  - The seams are `QnATestSeamsGroup`. Its `IsEnabled` reads configuration and environment from the root provider, the Production throw happens at startup, and antiforgery is set on the group.
+  - The group holds `CreditSeam`, `DetectSeam` and a typed `RecomputeSeam`. `QnATestSeams.Map` and the `if` are gone.
+  - The only fixture diff is D7's on `/recompute`. `TestSeamsGroupTests` (4) pins the gate.
+- **Other apps:** no other app has minimal-API routes (grep for `.Map*(`).
+- **Tests:** CodeCoverage.Tests 7/7 and QnA.Tests 5/5 passed. The QnA E2E tests were not run; the M9 sweep covers them.
+
 ### M7 — Webhooks (D4)
 The dev WebSocket becomes an endpoint class (per S4), and the webhook POST stays on Octokit. Rewrite
 `endpoints_generator_webhooks_exception.md`: the blocker is Octokit owning the signature check, not
 the path.
+
+**As built (2026-10-08): ✅ done.**
+- **Dev WebSocket:** it is S4's `DevWebSocketEndpoint`. `IDevWebSocketService` is now registered unconditionally (red→green: a `DevelopmentAppId` set through `Configure` used to map an endpoint that could not be activated). Registering it starts nothing.
+- **S4 finding (c), located:** the cause is WireMock.Net 2.15's first-request plugin scan, not Octokit, DNS or the proxy.
+  - `TypeLoader.TryFindTypeInDlls` calls `Assembly.Load` and `GetTypes()` on every DLL in the test project's bin (168 of them) to find `WireMock.Net.MimePart`.
+  - It costs 0.9 s warm and 10.8–24.6 s on freshly written binaries.
+  - `WireMockWarmUp` pays it once per process before `DevWebSocketEndpointTests` start their clock. The bounds are unchanged; on cold binaries the class passes and its slowest test takes 766 ms.
+- **Tests:** 89/89 across `Webhooks.GitHub.*` and `RouteTableSnapshotTests`.
+- **For M9:** the webhook POST still reads `WebhookPath` and `WebhookSecret` from the local options copy; it is inside the D4 exception, so say so in the exception doc. Add the WireMock finding to `docs/test-suite-performance-PRD.md` next to WPAD.
 
 ### M8 — Guard against regression
 Add a test, or a BannedApiAnalyzers rule keyed on the project **name** rather than `IsTestProject`
