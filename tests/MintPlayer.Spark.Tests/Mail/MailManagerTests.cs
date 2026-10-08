@@ -679,7 +679,8 @@ public class MailManagerTests : SparkTestDriver
         var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
         httpContext.Request.Method = "POST";
         httpContext.Request.Headers.Authorization = $"Bearer {ReportSecret}";
-        httpContext.Request.QueryString = new Microsoft.AspNetCore.Http.QueryString("?recipient=fbl%40bounce.app.example");
+        // ?recipient= is bound by the route table (MailEndpointQueryTests); called directly, the endpoint gets it set.
+        endpoint.Recipient = "fbl@bounce.app.example";
         httpContext.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(report));
 
         var result = await endpoint.HandleAsync(httpContext);
