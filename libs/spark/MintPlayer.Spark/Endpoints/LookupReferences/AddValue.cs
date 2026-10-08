@@ -8,7 +8,7 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
 [MemberOf<LookupReferencesGroup>]
-internal sealed partial class AddLookupReferenceValue : IPostEndpoint
+internal sealed partial class AddLookupReferenceValue : IPostEndpoint<LookupReferenceValueDto>
 {
     public static string Path => "/{name}";
 
@@ -17,13 +17,19 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
+    [RouteParam] public string Name { get; set; } = "";
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly ILogger<AddLookupReferenceValue> logger;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => LookupReferenceBodies.BindFailedAsync(context, permissionService, failure);
+
+    public override async Task<IResult> HandleAsync(LookupReferenceValueDto value, CancellationToken cancellationToken)
     {
-        var name = (string)httpContext.Request.RouteValues["name"]!;
+        var httpContext = httpContextAccessor.HttpContext!;
 
         try
         {
@@ -32,14 +38,7 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint
             // or service. Apps grant this in security.json to admin tiers only.
             await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences");
 
-            var value = await httpContext.Request.ReadFromJsonAsync<LookupReferenceValueDto>();
-
-            if (value == null)
-            {
-                return Results.Json(new { error = "Invalid request body" }, statusCode: 400);
-            }
-
-            var result = await lookupReferenceService.AddValueAsync(name, value);
+            var result = await lookupReferenceService.AddValueAsync(Name, value);
             return Results.Json(result, statusCode: 201);
         }
         catch (SparkAccessDeniedException)
@@ -53,5 +52,30 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint
             logger.LogWarning(ex, "AddLookupReferenceValue failed");
             return Results.Json(new { error = "Operation failed" }, statusCode: 400);
         }
+    }
+}
+
+/// <summary>What the lookup-reference mutations answer a body they cannot bind.</summary>
+internal static class LookupReferenceBodies
+{
+    /// <summary>
+    /// The answers of the hand-read body (measured before the endpoints became typed, endpoints
+    /// generator completion M3): a caller without <c>Edit/LookupReferences</c> is refused first, as the
+    /// permission check used to run before the body was read; a JSON <c>null</c> is "Invalid request
+    /// body"; anything else is "Operation failed". The one change: an empty or malformed JSON body used
+    /// to escape as an unhandled <c>JsonException</c> (a 500), and is now that same 400.
+    /// </summary>
+    public static async ValueTask<IResult> BindFailedAsync(HttpContext context, IPermissionService permissionService, EndpointBindingException? failure)
+    {
+        try
+        {
+            await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences");
+        }
+        catch (SparkAccessDeniedException)
+        {
+            return SparkDenial.RefuseJson(context);
+        }
+
+        return Results.Json(new { error = failure is null ? "Invalid request body" : "Operation failed" }, statusCode: 400);
     }
 }

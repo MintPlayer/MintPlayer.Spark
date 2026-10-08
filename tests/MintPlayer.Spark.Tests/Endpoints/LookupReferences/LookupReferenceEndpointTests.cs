@@ -226,6 +226,91 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         await stub.DidNotReceive().AddValueAsync(Arg.Any<string>(), Arg.Any<LookupReferenceValueDto>());
     }
 
+    /// <summary>
+    /// A body the add and update endpoints cannot bind answers what it answered while they read it by
+    /// hand (measured before they became typed endpoints, endpoints generator completion M3). A caller
+    /// without <c>Edit/LookupReferences</c> is refused before the body matters, as before.
+    /// </summary>
+    [Fact]
+    public async Task AddValue_and_UpdateValue_answer_unbindable_bodies_as_before()
+    {
+        var stub = Substitute.For<ILookupReferenceService>();
+        await using var factory = CreateFactory(stub);
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
+        await using var deniedFactory = CreateFactory(stub, SparkTestSecurity.Empty);
+        using var denied = new SparkClient(deniedFactory.CreateClient(), ownsClient: true);
+
+        static async Task<string> Probe(SparkClient client, HttpMethod method, string url)
+        {
+            var lines = new List<string>();
+            foreach (var (label, content) in UnbindableBodies())
+                lines.Add(await Line(label, () => client.SendAsync(method, url, content, requiresAntiforgery: true)));
+            return string.Join("\n", lines);
+        }
+
+        var all = string.Join("\n",
+            "# add", await Probe(client, HttpMethod.Post, "/spark/lookupref/CarBrand"),
+            "# update", await Probe(client, HttpMethod.Put, "/spark/lookupref/CarBrand/BMW"),
+            "# add, denied", await Probe(denied, HttpMethod.Post, "/spark/lookupref/CarBrand"),
+            "# update, denied", await Probe(denied, HttpMethod.Put, "/spark/lookupref/CarBrand/BMW"));
+
+        // Measured on the hand-read endpoints first. Identical, except "empty" and "malformed", which
+        // escaped as an unhandled JsonException (a 500) and now answer the same 400 as "none".
+        all.Should().Be("""
+            # add
+            none: 400 {"error":"Operation failed"}
+            empty: 400 {"error":"Operation failed"}
+            null: 400 {"error":"Invalid request body"}
+            malformed: 400 {"error":"Operation failed"}
+            text/plain: 400 {"error":"Operation failed"}
+            # update
+            none: 400 {"error":"Operation failed"}
+            empty: 400 {"error":"Operation failed"}
+            null: 400 {"error":"Invalid request body"}
+            malformed: 400 {"error":"Operation failed"}
+            text/plain: 400 {"error":"Operation failed"}
+            # add, denied
+            none: 404 {"error":"Not found"}
+            empty: 404 {"error":"Not found"}
+            null: 404 {"error":"Not found"}
+            malformed: 404 {"error":"Not found"}
+            text/plain: 404 {"error":"Not found"}
+            # update, denied
+            none: 404 {"error":"Not found"}
+            empty: 404 {"error":"Not found"}
+            null: 404 {"error":"Not found"}
+            malformed: 404 {"error":"Not found"}
+            text/plain: 404 {"error":"Not found"}
+            """.ReplaceLineEndings("\n"));
+
+        await stub.DidNotReceive().AddValueAsync(Arg.Any<string>(), Arg.Any<LookupReferenceValueDto>());
+        await stub.DidNotReceive().UpdateValueAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<LookupReferenceValueDto>());
+    }
+
+    /// <summary>Sends, and records an exception escaping the server as <c>throws T</c>.</summary>
+    internal static async Task<string> Line(string label, Func<Task<HttpResponseMessage>> send)
+    {
+        try
+        {
+            var response = await send();
+            return $"{label}: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}";
+        }
+        catch (Exception ex)
+        {
+            return $"{label}: throws {ex.GetType().Name}";
+        }
+    }
+
+    /// <summary>The bodies no endpoint can bind: none, empty, a JSON <c>null</c>, malformed JSON, the wrong content type.</summary>
+    internal static IEnumerable<(string Label, HttpContent? Content)> UnbindableBodies()
+    {
+        yield return ("none", null);
+        yield return ("empty", new StringContent("", System.Text.Encoding.UTF8, "application/json"));
+        yield return ("null", new StringContent("null", System.Text.Encoding.UTF8, "application/json"));
+        yield return ("malformed", new StringContent("{", System.Text.Encoding.UTF8, "application/json"));
+        yield return ("text/plain", new StringContent("{}", System.Text.Encoding.UTF8, "text/plain"));
+    }
+
     // --- update (PUT) ---------------------------------------------------
 
     [Fact]

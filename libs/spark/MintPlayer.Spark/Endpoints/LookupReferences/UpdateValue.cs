@@ -8,7 +8,7 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
 [MemberOf<LookupReferencesGroup>]
-internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint
+internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint<LookupReferenceValueDto>
 {
     public static string Path => "/{name}/{key}";
 
@@ -17,27 +17,26 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
+    [RouteParam] public string Name { get; set; } = "";
+    [RouteParam] public string Key { get; set; } = "";
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly ILogger<UpdateLookupReferenceValue> logger;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => LookupReferenceBodies.BindFailedAsync(context, permissionService, failure);
+
+    public override async Task<IResult> HandleAsync(LookupReferenceValueDto value, CancellationToken cancellationToken)
     {
-        var name = (string)httpContext.Request.RouteValues["name"]!;
-        var key = (string)httpContext.Request.RouteValues["key"]!;
+        var httpContext = httpContextAccessor.HttpContext!;
 
         try
         {
             await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences"); // R2-H4
 
-            var value = await httpContext.Request.ReadFromJsonAsync<LookupReferenceValueDto>();
-
-            if (value == null)
-            {
-                return Results.Json(new { error = "Invalid request body" }, statusCode: 400);
-            }
-
-            var result = await lookupReferenceService.UpdateValueAsync(name, key, value);
+            var result = await lookupReferenceService.UpdateValueAsync(Name, Key, value);
             return Results.Json(result);
         }
         catch (SparkAccessDeniedException)

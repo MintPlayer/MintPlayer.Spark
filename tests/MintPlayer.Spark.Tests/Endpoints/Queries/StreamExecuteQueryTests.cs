@@ -64,7 +64,11 @@ public class StreamExecuteQueryTests : IAsyncLifetime
                             try
                             {
                                 var endpoint = new StreamExecuteQuery(_queryLoader, _executor, _permissions,
-                                    Microsoft.Extensions.Logging.Abstractions.NullLogger<StreamExecuteQuery>.Instance);
+                                    Microsoft.Extensions.Logging.Abstractions.NullLogger<StreamExecuteQuery>.Instance)
+                                {
+                                    // What the generated mapping's [RouteParam] binder assigns.
+                                    Id = (string)httpContext.Request.RouteValues["id"]!,
+                                };
                                 var result = await endpoint.HandleAsync(httpContext);
                                 await result.ExecuteAsync(httpContext);
                                 _handlerDone.TrySetResult();

@@ -10,12 +10,14 @@ internal sealed partial class GetPermissions : IGetEndpoint
 {
     public static string Path => "/permissions/{entityTypeId}";
 
+    [RouteParam] public string EntityTypeId { get; set; } = "";
+
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IModelLoader modelLoader;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var entityTypeId = (string)httpContext.Request.RouteValues["entityTypeId"]!;
+        var entityTypeId = EntityTypeId;
 
         // ClrType is a fallback rather than part of ResolveEntityType, deliberately. That helper has
         // a dozen call sites — every persistent-object and custom-action endpoint — and widening it

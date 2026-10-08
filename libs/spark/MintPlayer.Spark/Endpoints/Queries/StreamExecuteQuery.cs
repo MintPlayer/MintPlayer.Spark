@@ -36,6 +36,8 @@ internal sealed partial class StreamExecuteQuery : IEndpoint
     // both protocols identically.
     public static IEnumerable<string> Methods => ["GET", "CONNECT"];
 
+    [RouteParam] public string Id { get; set; } = "";
+
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IStreamingQueryExecutor streamingQueryExecutor;
     [Inject] private readonly IPermissionService permissionService;
@@ -53,7 +55,7 @@ internal sealed partial class StreamExecuteQuery : IEndpoint
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
+        var id = Id;
 
         if (!httpContext.WebSockets.IsWebSocketRequest)
         {

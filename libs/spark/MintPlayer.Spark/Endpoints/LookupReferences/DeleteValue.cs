@@ -16,20 +16,20 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
+    [RouteParam] public string Name { get; set; } = "";
+    [RouteParam] public string Key { get; set; } = "";
+
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly ILogger<DeleteLookupReferenceValue> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var name = (string)httpContext.Request.RouteValues["name"]!;
-        var key = (string)httpContext.Request.RouteValues["key"]!;
-
         try
         {
             await permissionService.EnsureAuthorizedAsync("Edit", "LookupReferences"); // R2-H4
 
-            await lookupReferenceService.DeleteValueAsync(name, key);
+            await lookupReferenceService.DeleteValueAsync(Name, Key);
             return Results.NoContent();
         }
         catch (SparkAccessDeniedException)
