@@ -55,7 +55,7 @@ internal sealed class HistoryRequest : ISparkTypedRequest
 /// newest first. Requires <c>History/T</c> and a row the caller can load now.
 /// </summary>
 [MemberOf<HistoryPersistentObjectGroup>]
-internal sealed partial class ListRevisions : IPostEndpoint
+internal sealed partial class ListRevisions : IPostEndpoint<HistoryRequest>
 {
     public static string Path => "/revisions";
 
@@ -67,11 +67,17 @@ internal sealed partial class ListRevisions : IPostEndpoint
 
     [Inject] private readonly ISparkHistory history;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound is the standard refusal, as an unusable request is below; never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(addOn.Refusal(context));
+
+    public override async Task<IResult> HandleAsync(HistoryRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await addOn.ReadTypedRequestAsync<HistoryRequest>(httpContext);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = addOn.ResolveType(request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id))
             return addOn.Refusal(httpContext);
 
         // Before the current-row gate asks row security (row filters are memoized per request).
@@ -95,7 +101,7 @@ internal sealed partial class ListRevisions : IPostEndpoint
 /// is refused like a missing one.
 /// </summary>
 [MemberOf<HistoryPersistentObjectGroup>]
-internal sealed partial class GetRevision : IPostEndpoint
+internal sealed partial class GetRevision : IPostEndpoint<HistoryRequest>
 {
     public static string Path => "/revision";
 
@@ -105,11 +111,17 @@ internal sealed partial class GetRevision : IPostEndpoint
 
     [Inject] private readonly ISparkHistory history;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound is the standard refusal, as an unusable request is below; never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(addOn.Refusal(context));
+
+    public override async Task<IResult> HandleAsync(HistoryRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await addOn.ReadTypedRequestAsync<HistoryRequest>(httpContext);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = addOn.ResolveType(request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
             return addOn.Refusal(httpContext);
 
         addOn.UseDeletedFilter(request.Deleted, entityType);
@@ -133,7 +145,7 @@ internal sealed partial class GetRevision : IPostEndpoint
 /// 409, an interceptor's refusal 400.
 /// </summary>
 [MemberOf<HistoryPersistentObjectGroup>]
-internal sealed partial class RevertPersistentObject : IPostEndpoint
+internal sealed partial class RevertPersistentObject : IPostEndpoint<HistoryRequest>
 {
     public static string Path => "/revert";
 
@@ -143,11 +155,17 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint
     [Inject] private readonly ISparkHistory history;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound is the standard refusal, as an unusable request is below; never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(addOn.Refusal(context));
+
+    public override async Task<IResult> HandleAsync(HistoryRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await addOn.ReadTypedRequestAsync<HistoryRequest>(httpContext);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = addOn.ResolveType(request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
             return addOn.Refusal(httpContext);
 
         try

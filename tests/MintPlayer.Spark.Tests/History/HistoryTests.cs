@@ -225,7 +225,8 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
     /// <summary>
     /// Revisions, revision and revert answer the five bodies no endpoint can bind, and one well-formed
     /// request each, as they did while they read their bodies through <c>ReadTypedRequestAsync</c>
-    /// (endpoints generator completion M3b, PRD D3a).
+    /// (endpoints generator completion M3b, PRD D3a), except the owner-accepted change: "none" and
+    /// "text/plain" escaped as an unhandled InvalidOperationException (a 500) and now get the standard refusal.
     /// </summary>
     [Fact]
     public async Task Unbindable_history_bodies_answer_as_before()
@@ -248,23 +249,23 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
 
         string.Join("\n", lines).Should().Be("""
             # /spark/po/revisions
-            none: throws InvalidOperationException
+            none: 404 {"result":{"error":"Not found"},"operations":[]}
             empty: 404 {"result":{"error":"Not found"},"operations":[]}
             null: 404 {"result":{"error":"Not found"},"operations":[]}
             malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-            text/plain: throws InvalidOperationException
+            text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
             # /spark/po/revision
-            none: throws InvalidOperationException
+            none: 404 {"result":{"error":"Not found"},"operations":[]}
             empty: 404 {"result":{"error":"Not found"},"operations":[]}
             null: 404 {"result":{"error":"Not found"},"operations":[]}
             malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-            text/plain: throws InvalidOperationException
+            text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
             # /spark/po/revert
-            none: throws InvalidOperationException
+            none: 404 {"result":{"error":"Not found"},"operations":[]}
             empty: 404 {"result":{"error":"Not found"},"operations":[]}
             null: 404 {"result":{"error":"Not found"},"operations":[]}
             malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-            text/plain: throws InvalidOperationException
+            text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
             revisions: 200
             revision: 200
             revert: 200
