@@ -34,14 +34,17 @@ internal sealed partial class UnlinkExternalLogin<TUser> : IPostEndpoint
             .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
+    [QueryParam] public string? Provider { get; set; }
+    [QueryParam] public string? ProviderKey { get; set; }
+
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly IOptions<SparkAuthenticationOptions> options;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var provider = httpContext.Request.Query["provider"].ToString();
-        var providerKey = httpContext.Request.Query["providerKey"].ToString();
+        var provider = Provider ?? string.Empty;
+        var providerKey = ProviderKey ?? string.Empty;
 
         var user = await userManager.GetUserAsync(httpContext.User);
         if (user is null)

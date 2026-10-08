@@ -30,13 +30,17 @@ internal sealed partial class LinkExternalLoginChallenge<TUser> : IGetEndpoint
         builder.RequireAuthorization();
     }
 
+    [QueryParam] public string? Provider { get; set; }
+    [QueryParam] public string? ReturnUrl { get; set; }
+    [QueryParam] public string? Popup { get; set; }
+
     [Inject] private readonly SignInManager<TUser> signInManager;
 
     public Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var provider = httpContext.Request.Query["provider"].ToString();
-        var returnUrl = httpContext.Request.Query["returnUrl"].ToString();
-        var popup = httpContext.Request.Query["popup"].ToString();
+        var provider = Provider ?? string.Empty;
+        var returnUrl = ReturnUrl;
+        var popup = Popup;
 
         var safeReturnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(
             string.IsNullOrEmpty(returnUrl) ? null : returnUrl);

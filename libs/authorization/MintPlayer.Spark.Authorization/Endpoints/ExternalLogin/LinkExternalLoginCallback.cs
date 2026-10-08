@@ -27,13 +27,15 @@ internal sealed partial class LinkExternalLoginCallback<TUser> : IGetEndpoint
         builder.RequireAuthorization();
     }
 
+    [QueryParam] public string? ReturnUrl { get; set; }
+
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly IAntiforgery antiforgery;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var returnUrl = httpContext.Request.Query["returnUrl"].ToString();
+        var returnUrl = ReturnUrl;
         var safeReturnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(
             string.IsNullOrEmpty(returnUrl) ? null : returnUrl);
 

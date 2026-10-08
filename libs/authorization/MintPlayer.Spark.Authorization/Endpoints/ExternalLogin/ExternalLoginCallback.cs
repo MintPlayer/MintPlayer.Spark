@@ -33,6 +33,8 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
         builder.AllowAnonymous();
     }
 
+    [QueryParam] public string? ReturnUrl { get; set; }
+
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly SparkExternalLoginLinker<TUser> linker;
@@ -43,7 +45,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var returnUrlRaw = httpContext.Request.Query["returnUrl"].ToString();
+        var returnUrlRaw = ReturnUrl;
 
         // R2-C4: returnUrl is interpolated into the response below, so anything other than a
         // relative in-app path is a vector for XSS (and at minimum open-redirect after successful

@@ -216,6 +216,30 @@ public class PasskeyEndpointTests : SparkTestDriver
         body.Should().NotContain("at MintPlayer.", "a stack frame in the body is an information leak");
     }
 
+    /// <summary>
+    /// A sign-in body that cannot be bound at all answers the uniform failure, exactly as while the
+    /// endpoint read its body by hand (measured before it became a typed endpoint, endpoints generator
+    /// completion M3): never a 400 or 415 that would tell "junk" apart from "unknown credential".
+    /// </summary>
+    [Fact]
+    public async Task Unbindable_sign_in_bodies_answer_the_uniform_failure_as_before()
+    {
+        using var host = await StartAsync(SparkPasskeys.Enabled);
+        using var client = host.GetTestServer().CreateClient();
+
+        var lines = new List<string>();
+        foreach (var (label, content) in MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.UnbindableBodies())
+            lines.Add(await MintPlayer.Spark.Tests.Endpoints.LookupReferences.LookupReferenceEndpointTests.Line(label, () => client.PostAsync("/spark/auth/passkeys/sign-in", content)));
+
+        string.Join("\n", lines).Should().Be("""
+            none: 401 {"error":"passkey_failed"}
+            empty: 401 {"error":"passkey_failed"}
+            null: 401 {"error":"passkey_failed"}
+            malformed: 401 {"error":"passkey_failed"}
+            text/plain: 401 {"error":"passkey_failed"}
+            """.ReplaceLineEndings("\n"));
+    }
+
     /// <summary>AC18 / R4 — the failure modes must be indistinguishable.</summary>
     [Fact]
     public async Task Sign_in_failures_look_identical()

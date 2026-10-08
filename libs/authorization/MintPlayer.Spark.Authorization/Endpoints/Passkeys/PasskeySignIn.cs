@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Authorization.Endpoints.Passkeys;
 /// </para>
 /// </remarks>
 [MemberOf<SparkAuthGroup>]
-internal sealed partial class PasskeySignIn<TUser> : IPostEndpoint
+internal sealed partial class PasskeySignIn<TUser> : IPostEndpoint<PasskeySignInRequest>
     where TUser : SparkUser, new()
 {
     public static string Path => "/passkeys/sign-in";
@@ -31,24 +31,18 @@ internal sealed partial class PasskeySignIn<TUser> : IPostEndpoint
 
     [Inject] private readonly SignInManager<TUser> signInManager;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        // ⚠️ The body read is inside the guard, not before it. Minimal-API binding used to turn a
-        // missing or malformed body into a framework 400; reading it by hand throws instead, and an
-        // uncaught JsonException here answers 500 with a stack trace — which is precisely the
-        // failure IsCeremonyInputFailure was written to prevent, on precisely the route its remarks
-        // name: a bare POST to the anonymous sign-in endpoint.
-        PasskeySignInRequest? request;
-        try
-        {
-            request = await httpContext.Request.ReadFromJsonAsync<PasskeySignInRequest>();
-        }
-        catch (Exception ex) when (PasskeyEndpoints.IsCeremonyInputFailure(ex))
-        {
-            return PasskeyEndpoints.SignInFailed();
-        }
+    /// <summary>
+    /// ⚠️ A body that cannot be bound — none, malformed, a JSON <c>null</c>, the wrong content type — is
+    /// the uniform failure too, never the binder's 400 or 415: that would tell "junk" apart from
+    /// "unknown credential". Measured identical before the endpoint became typed
+    /// (<c>PasskeyEndpointTests.Unbindable_sign_in_bodies_answer_the_uniform_failure_as_before</c>).
+    /// </summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(PasskeyEndpoints.SignInFailed());
 
-        if (request is null || string.IsNullOrWhiteSpace(request.CredentialJson))
+    public override async Task<IResult> HandleAsync(PasskeySignInRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.CredentialJson))
             return PasskeyEndpoints.SignInFailed();
 
         SignInResult result;
