@@ -33,6 +33,7 @@ internal sealed partial class LinkExternalLoginChallenge<TUser> : IGetEndpoint
     [QueryParam] public string? Provider { get; set; }
     [QueryParam] public string? ReturnUrl { get; set; }
     [QueryParam] public string? Popup { get; set; }
+    [QueryParam] public string? Nonce { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
 
@@ -42,11 +43,16 @@ internal sealed partial class LinkExternalLoginChallenge<TUser> : IGetEndpoint
         var returnUrl = ReturnUrl;
         var popup = Popup;
 
+        // #490 D1: same nonce rule as the sign-in challenge.
+        if (SparkExternalLoginNonce.Reject(Nonce) is { } invalidNonce)
+            return Task.FromResult(invalidNonce);
+
         var safeReturnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(
             string.IsNullOrEmpty(returnUrl) ? null : returnUrl);
-        var callbackUrl = $"/spark/auth/link-external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
-        if (!string.IsNullOrEmpty(popup))
-            callbackUrl += "&popup=1";
+        var callbackUrl = SparkExternalLoginNonce.AppendCallbackFlags(
+            $"/spark/auth/link-external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}",
+            popup,
+            Nonce);
 
         // ⚠️ Keyed on the signed-in user so that the identity coming back is attached to the session
         // that asked, not to whoever the callback happens to find signed in. Identity uses it to

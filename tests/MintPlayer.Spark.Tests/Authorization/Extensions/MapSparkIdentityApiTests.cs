@@ -152,9 +152,11 @@ public class MapSparkIdentityApiTests(SparkSharedDatabase database)
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("'spark:external-login'");
-        body.Should().Contain("success: false");
-        body.Should().Contain("no_login_info");
+        // #490 D1: a System.Text.Json payload, not a hand-built JS literal. Without a nonce the
+        // pre-#490 opener-message script still runs, with the nonce reported as null.
+        body.Should().Contain("""{"type":"spark:external-login","success":false,"error":"no_login_info","nonce":null}""");
+        body.Should().Contain("window.opener.postMessage(msg, window.location.origin)");
+        body.Should().NotContain("BroadcastChannel");
     }
 
     [Fact]

@@ -20,6 +20,7 @@ internal sealed partial class ExternalLoginChallenge<TUser> : IGetEndpoint
     [QueryParam] public string? Provider { get; set; }
     [QueryParam] public string? ReturnUrl { get; set; }
     [QueryParam] public string? Popup { get; set; }
+    [QueryParam] public string? Nonce { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
     [Inject] private readonly IAuthenticationSchemeProvider schemes;
@@ -36,17 +37,24 @@ internal sealed partial class ExternalLoginChallenge<TUser> : IGetEndpoint
         // R2-M3: validate returnUrl at the entry point. Even if R2-C4's callback fix were bypassed,
         // accepting an absolute attacker URL here round-trips through OAuth state and reflects back
         // to the callback unchanged. Substitute the default for anything non-local.
+        // #490 D1: a nonce that is present must have the strict shape; it ends up in the callback
+        // page's script. Absent keeps the pre-#490 flow.
+        if (SparkExternalLoginNonce.Reject(Nonce) is { } invalidNonce)
+            return invalidNonce;
+
         var safeReturnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(
             string.IsNullOrEmpty(returnUrl) ? null : returnUrl);
-        var callbackUrl = $"/spark/auth/external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
 
         // The callback is a fresh top-level navigation, so the only thing that survives this hop is
-        // the URL — carrying the popup flag forward here is what makes the callback's postMessage
-        // branch reachable at all. Plain query string, not OAuth `state`: this URL never reaches the
-        // provider (ASP.NET encrypts it into `state` itself as AuthenticationProperties.RedirectUri,
-        // and the provider only ever sees the registered CallbackPath).
-        if (!string.IsNullOrEmpty(popup))
-            callbackUrl += "&popup=1";
+        // the URL — carrying the popup flag (and the nonce) forward here is what makes the callback's
+        // hand-off branch reachable at all. Plain query string, not OAuth `state`: this URL never
+        // reaches the provider (ASP.NET encrypts it into `state` itself as
+        // AuthenticationProperties.RedirectUri, and the provider only ever sees the registered
+        // CallbackPath).
+        var callbackUrl = SparkExternalLoginNonce.AppendCallbackFlags(
+            $"/spark/auth/external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}",
+            popup,
+            Nonce);
 
         // 4h: an unregistered scheme reaches Results.Challenge and throws, so an unknown ?provider=
         // answered with a 500 and a stack trace in the log. It is a bad request — most often a

@@ -44,6 +44,9 @@ public static class GitHubAuthenticationExtensions
             options.UserInformationEndpoint = "https://api.github.com/user";
             options.CallbackPath = "/signin-github";
             options.SignInScheme = IdentityConstants.ExternalScheme;
+            // #490 D4: report a provider-side cancel or failure back to the popup or page; the
+            // configure callback below may still replace it.
+            options.Events.OnRemoteFailure = SparkExternalLoginRemoteFailure.Handle;
 
             // Required, not optional (#296). Auto-provisioning refuses to create an account without
             // an issuer-attested email, and the only source of that attestation is /user/emails,

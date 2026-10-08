@@ -44,6 +44,9 @@ public static class SparkExternalProviderExtensions
         new AuthenticationBuilder(builder.Services).AddGoogle(scheme, options =>
         {
             options.SignInScheme = IdentityConstants.ExternalScheme;
+            // #490 D4: report a provider-side cancel or failure back to the popup or page; the
+            // configure callback below may still replace it.
+            options.Events.OnRemoteFailure = SparkExternalLoginRemoteFailure.Handle;
             // The handler maps no verification claim of its own; the v3 userinfo body carries a
             // boolean "email_verified".
             options.ClaimActions.MapJsonKey(SparkExternalProviderPolicy.EmailVerifiedClaim, "email_verified");
@@ -69,6 +72,9 @@ public static class SparkExternalProviderExtensions
         new AuthenticationBuilder(builder.Services).AddMicrosoftAccount(scheme, options =>
         {
             options.SignInScheme = IdentityConstants.ExternalScheme;
+            // #490 D4: report a provider-side cancel or failure back to the popup or page; the
+            // configure callback below may still replace it.
+            options.Events.OnRemoteFailure = SparkExternalLoginRemoteFailure.Handle;
             options.Scope.Add("openid");
             options.Events.OnCreatingTicket = context =>
             {
@@ -90,6 +96,9 @@ public static class SparkExternalProviderExtensions
         new AuthenticationBuilder(builder.Services).AddFacebook(scheme, options =>
         {
             options.SignInScheme = IdentityConstants.ExternalScheme;
+            // #490 D4: report a provider-side cancel or failure back to the popup or page; the
+            // configure callback below may still replace it.
+            options.Events.OnRemoteFailure = SparkExternalLoginRemoteFailure.Handle;
             configure(options);
         });
         return builder;
@@ -106,6 +115,9 @@ public static class SparkExternalProviderExtensions
         new AuthenticationBuilder(builder.Services).AddTwitter(scheme, options =>
         {
             options.SignInScheme = IdentityConstants.ExternalScheme;
+            // #490 D4: report a provider-side cancel or failure back to the popup or page; the
+            // configure callback below may still replace it.
+            options.Events.OnRemoteFailure = SparkExternalLoginRemoteFailure.Handle;
             options.RetrieveUserDetails = true;
             configure(options);
         });
@@ -132,6 +144,9 @@ public static class SparkExternalProviderExtensions
             options.UserInformationEndpoint = "https://api.linkedin.com/v2/userinfo";
             options.CallbackPath = "/signin-linkedin";
             options.SignInScheme = IdentityConstants.ExternalScheme;
+            // #490 D4: report a provider-side cancel or failure back to the popup or page; the
+            // configure callback below may still replace it.
+            options.Events.OnRemoteFailure = SparkExternalLoginRemoteFailure.Handle;
             options.Scope.Add("openid");
             options.Scope.Add("profile");
             options.Scope.Add("email");
