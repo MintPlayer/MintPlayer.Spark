@@ -141,7 +141,10 @@ The major version of every published package in this repository is **not** a sem
 signal we are free to bump. It states which platform the package targets, and it moves
 only when that platform moves.
 
-### npm packages (`@mintplayer/ng-spark`, `@mintplayer/ng-spark-auth`, …)
+### npm packages (`@mintplayer/ng-spark`, …)
+
+`@mintplayer/ng-spark-auth` no longer exists: it lives in `@mintplayer/ng-spark` as the
+`@mintplayer/ng-spark/auth/*` entry points (#464/#490).
 
 The major version **must equal the major Angular version the package is compatible with**.
 
