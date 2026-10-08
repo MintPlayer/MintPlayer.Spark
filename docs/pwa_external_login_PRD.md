@@ -402,6 +402,19 @@ DemoApp RP registration in HR (for M6/M7):
 - scopes [openid, profile, email]
 - ConsentType implicit + AutoApproveImplicitConsent
 
+### M6 result (2026-10-08; built, tests written, sweep in M7)
+
+- All eight S6 gaps fixed in the IdP. Logout accepts `id_token_hint` (own key + issuer, expiry ignored, a token with `scope` refused, a hint contradicting `client_id` refused). `/connect/login` GET lives in `OidcConnectGroup`, and only POST and two-factor stay gated. The federation buttons carry `returnUrl` and `errorUrl`. `Authorize` also lifts a stray `sparkExternalLogin` out of the pending URL onto the login redirect.
+- `given_name`/`family_name` come from `SparkUser.Claims` (OIDC name or `ClaimTypes.GivenName`/`Surname`), and are emitted only when stored. `SparkUser` has no name fields.
+- `auth_time` is the cookie ticket's `.spark.authenticated_at`, falling back to `IssuedUtc`. It is carried request → code → refresh token.
+- `IdTokenLifetimeMinutes` (default 5) is on `OidcApplication`, beside `AccessTokenLifetimeMinutes`. It is not a provider-wide option, because the access-token lifetime is per client too.
+- `errorUrl` on both challenges and in `SparkExternalLoginRemoteFailure`. Redirect-mode failure → `errorUrl` + `sparkExternalLogin`; success → `returnUrl`.
+- **RP = QnA, not DemoApp.** DemoApp has no authentication, and Fleet also hosts an IdP.
+  - QnA config is `Spark:Auth:Providers:OpenIdConnect:HR` in `appsettings.Development.json`, plus `spark.AddExternalProviders`. E2E runs as environment `E2E`, so it is unaffected.
+  - HR seeds `openid`/`profile`/`email` and the `qna` client through migration `M_202610081200_QnARelyingParty`, in Development only. The secret is a published dev-only constant.
+  - Redirect URIs are `/signin-HR` and `/signout-callback-HR`, with the scheme's casing, because the IdP compares ordinally.
+  - HR's issuer fallback was `https://localhost:5002`, a port HR never listens on. It is now `:5005`.
+
 ### M0 result (80e22e1c)
 
 - Nested entry points work: `@mintplayer/ng-spark/auth/<name>`, plus a root `@mintplayer/ng-spark/auth` re-exporting `provideSparkAuth`/`withSparkAuth`/`sparkAuthClientMethods` (the apps import the bare name).

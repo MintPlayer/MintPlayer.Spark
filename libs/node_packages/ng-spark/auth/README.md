@@ -136,10 +136,20 @@ user is still typing their password. A late result still signs the user in.
 > this signal, with no Cancel button.
 
 **Redirect mode.** On success the provider round trip lands on `returnUrl`, signed in. On failure it
-lands on `returnUrl?sparkExternalLogin=<code>`. `SparkAuthService.takeExternalLoginResult()` reads that
-code and strips it from the address bar with `replaceUrl`. A code it does not know is answered as
-`no_login_info`. The shipped sign-in and account pages call it on load. If your `returnUrl` is another
-page, call it there, or in the app shell, to show the failure.
+lands on `errorUrl?sparkExternalLogin=<code>`. `errorUrl` is a call option; by default it is the page
+the attempt started from: the router URL, query included (e.g. `/sign-in?returnUrl=%2Forders`), with
+any earlier `sparkExternalLogin` removed so failures do not pile up. The server sanitizes it like
+`returnUrl` (a local path only). Popup mode sends no `errorUrl`; its outcome comes back to the opener.
+`SparkAuthService.takeExternalLoginResult()` reads the code and strips it from the address bar with
+`replaceUrl`. A code it does not know is answered as `no_login_info`. The shipped sign-in and account
+pages call it on load, so their own redirect attempts (**Continue in this tab**, the installed-app
+redirect, linking) show their failures there. If you start a redirect attempt from another page, call
+it on that page, or in the app shell.
+
+**OpenID Connect providers.** The server's OIDC preset (a `Spark:Auth:Providers` entry with
+`Type: "Oidc"`) uses a scheme name the application chooses, so its button is declared with that
+scheme and a label: `withExternalLogin(oidcProvider('HR', 'Spark HR'))`. The scheme must equal the
+server's exactly; the icon defaults to `bi bi-person-badge` and is the optional third argument.
 
 **Errors.** The pages show a failure as `auth.externalLoginError.<code>`, translated. The codes are
 in `SparkExternalLoginError` and include `remote_failure` (the provider reported an error) and
@@ -157,7 +167,7 @@ is the way through there. Inside the installed app, `'auto'` already uses redire
 | Entry point | What it provides |
 |---|---|
 | `@mintplayer/ng-spark/auth` | `provideSparkAuth(config?)`, `withSparkAuth()` |
-| `/routes` | `sparkAuthRoutes(...)`, `withLocalLogin`, `withRegistration`, `withExternalLogin`, `withPasskeys`, `withAccount`; provider presets `githubProvider`, `googleProvider`, `microsoftProvider`, `facebookProvider`, `twitterProvider`, `linkedInProvider`, `externalProvider(scheme)` |
+| `/routes` | `sparkAuthRoutes(...)`, `withLocalLogin`, `withRegistration`, `withExternalLogin`, `withPasskeys`, `withAccount`; provider presets `githubProvider`, `googleProvider`, `microsoftProvider`, `facebookProvider`, `twitterProvider`, `linkedInProvider`, `oidcProvider(scheme, displayName, iconClass?)`, `externalProvider(scheme)` |
 | `/guards` | `sparkAuthGuard` — lets a signed-in user through, otherwise redirects to sign-in with `returnUrl`; waits for the session check on a hard reload. `sparkAuthenticatedGuard` is the same guard |
 | `/interceptors` | `sparkAuthInterceptor` (included by `withSparkAuth()`) |
 | `/core` | `SparkAuthService` (current user signal, `checkAuth()`, sign-in/out, `loginWithProvider`/`linkProvider`, `externalLoginPending`, `takeExternalLoginResult()`), `SparkAuthTranslationService` |

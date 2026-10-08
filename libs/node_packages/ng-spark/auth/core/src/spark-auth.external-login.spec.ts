@@ -141,6 +141,8 @@ describe('SparkAuthService.loginWithProvider', () => {
       expect(url.searchParams.get('ngsw-bypass')).toBe('true');
       // The server's pattern, and 32 characters per the contract.
       expect(url.searchParams.get('nonce')).toMatch(/^[A-Za-z0-9_-]{32}$/);
+      // The outcome comes back to the opener; there is no page for a failure to land on.
+      expect(url.searchParams.has('errorUrl')).toBe(false);
     });
 
     it('uses a fresh nonce per attempt', () => {
@@ -547,5 +549,79 @@ describe('SparkAuthService.takeExternalLoginResult', () => {
     const { service } = await at('/sign-in?sparkExternalLogin=Your%20account%20is%20suspended');
 
     expect(service.takeExternalLoginResult()).toBe('no_login_info');
+  });
+});
+
+/**
+ * D9/M6: in redirect mode a failure must land back on the page that started the attempt (which reads
+ * `?sparkExternalLogin`), not on `returnUrl`. The challenge URL carries that page as `errorUrl`.
+ */
+describe('SparkAuthService redirect-mode challenge URL', () => {
+  async function at(url: string) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([{ path: '**', component: BlankPage }]),
+        { provide: SPARK_AUTH_CONFIG, useValue: defaultSparkAuthConfig },
+      ],
+    });
+    const service = TestBed.inject(SparkAuthService);
+    TestBed.inject(HttpTestingController).expectOne('/spark/auth/me').flush(null, { status: 401, statusText: 'Unauthorized' });
+    await TestBed.inject(Router).navigateByUrl(url);
+    // jsdom cannot observe window.location.assign; the service routes the navigation through here.
+    const leave = vi.spyOn(service as unknown as { leaveForProvider(url: string): void }, 'leaveForProvider')
+      .mockImplementation(() => undefined);
+    const left = () => new URL(leave.mock.calls[0][0], window.location.origin);
+    return { service, leave, left };
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('sends the current page, query included, as errorUrl', async () => {
+    const { service, left } = await at('/login?returnUrl=%2Fx');
+
+    service.loginWithProvider('GitHub', { returnUrl: '/x', mode: 'redirect' });
+
+    const url = left();
+    expect(url.pathname).toBe('/spark/auth/external-login');
+    expect(url.searchParams.get('provider')).toBe('GitHub');
+    expect(url.searchParams.get('returnUrl')).toBe('/x');
+    expect(url.searchParams.get('errorUrl')).toBe('/login?returnUrl=%2Fx');
+    expect(url.searchParams.has('popup')).toBe(false);
+  });
+
+  it('encodes errorUrl as one parameter, so its own query does not leak into the challenge', async () => {
+    const { service, leave } = await at('/login?returnUrl=%2Fx&tab=a');
+
+    service.loginWithProvider('GitHub', { returnUrl: '/x', mode: 'redirect' });
+
+    expect(leave.mock.calls[0][0]).toContain(`&errorUrl=${encodeURIComponent('/login?returnUrl=%2Fx&tab=a')}`);
+  });
+
+  it('drops an earlier sparkExternalLogin, so failures do not accumulate', async () => {
+    const { service, left } = await at('/login?returnUrl=%2Fx&sparkExternalLogin=remote_failure');
+
+    service.loginWithProvider('Google', { mode: 'redirect' });
+
+    expect(left().searchParams.get('errorUrl')).toBe('/login?returnUrl=%2Fx');
+  });
+
+  it('applies to linking as well', async () => {
+    const { service, left } = await at('/account/logins?sparkExternalLogin=no_login_info');
+
+    service.linkProvider('GitHub', { returnUrl: '/account/logins', mode: 'redirect' });
+
+    const url = left();
+    expect(url.pathname).toBe('/spark/auth/external-logins/link');
+    expect(url.searchParams.get('errorUrl')).toBe('/account/logins');
+  });
+
+  it("honours the caller's own errorUrl", async () => {
+    const { service, left } = await at('/login');
+
+    service.loginWithProvider('GitHub', { mode: 'redirect', errorUrl: '/oops?a=1' });
+
+    expect(left().searchParams.get('errorUrl')).toBe('/oops?a=1');
   });
 });

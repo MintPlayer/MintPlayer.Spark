@@ -236,9 +236,10 @@ export class SparkAuthService {
    * {@link SparkExternalLoginError} is answered as `no_login_info` rather than echoed, so a crafted
    * link cannot put text of its choosing on the page.
    *
-   * Only failures carry the parameter: a successful redirect lands on the `returnUrl` signed in.
-   * The shipped sign-in and account pages call this on load. An app whose `returnUrl` is some other
-   * page calls it there (or in its shell) to show the failure.
+   * Only failures carry the parameter, and they land on the `errorUrl` the attempt was started with
+   * (by default the page that started it); a successful redirect lands on the `returnUrl` signed in.
+   * The shipped sign-in and account pages call this on load. An app that starts a redirect-mode
+   * attempt from some other page calls it there (or in its shell) to show the failure.
    */
   takeExternalLoginResult(): SparkExternalLoginError | null {
     const router = this.injector.get(Router, null);
@@ -259,6 +260,33 @@ export class SparkAuthService {
       : 'no_login_info';
   }
 
+  /**
+   * The in-app URL of this page (path and query, as the router sees it) with any earlier
+   * `sparkExternalLogin` removed, so a second failure does not stack onto the first one's code.
+   * Falls back to `location` when no router is provided.
+   */
+  private currentUrlForExternalLoginError(): string {
+    const router = this.injector.get(Router, null);
+    if (router) {
+      const tree = router.parseUrl(router.url);
+      const { [SPARK_EXTERNAL_LOGIN_QUERY_PARAM]: _, ...rest } = tree.queryParams;
+      tree.queryParams = rest;
+      return router.serializeUrl(tree);
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.delete(SPARK_EXTERNAL_LOGIN_QUERY_PARAM);
+    const query = params.toString();
+    return window.location.pathname + (query ? `?${query}` : '');
+  }
+
+  /**
+   * The full-page navigation of a redirect-mode attempt. Its own method only so a unit test can
+   * observe the URL: jsdom locks `window.location.assign` against redefinition.
+   */
+  private leaveForProvider(url: string): void {
+    window.location.assign(url);
+  }
+
   private externalFlow(
     path: string,
     provider: string,
@@ -273,7 +301,9 @@ export class SparkAuthService {
     this.activeExternalAttempt?.('popup_closed');
 
     if (mode === 'redirect') {
-      window.location.assign(url);
+      // D9: a failure comes back to the page that started the attempt, which reads ?sparkExternalLogin.
+      const errorUrl = options.errorUrl ?? this.currentUrlForExternalLoginError();
+      this.leaveForProvider(`${url}&errorUrl=${encodeURIComponent(errorUrl)}`);
       return new Promise<SparkExternalLoginResult>(() => { /* the page is going away */ });
     }
 

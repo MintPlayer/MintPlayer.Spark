@@ -352,3 +352,17 @@ export function linkedInProvider(
 ): SparkExternalProviderPresentation {
   return externalProvider('LinkedIn', { iconClass: 'bi bi-linkedin', ...presentation });
 }
+
+/**
+ * Any OpenID Connect provider — the client half of the server's OIDC preset
+ * (`Spark:Auth:Providers` with `Type: "Oidc"`). Unlike the named presets the scheme is the
+ * application's own choice, so it and the button text are required; `scheme` must equal the server's
+ * scheme name exactly.
+ */
+export function oidcProvider(
+  scheme: string,
+  displayName: string,
+  iconClass = 'bi bi-person-badge',
+): SparkExternalProviderPresentation {
+  return externalProvider(scheme, { displayName, iconClass });
+}

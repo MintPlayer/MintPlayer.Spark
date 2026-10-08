@@ -28,6 +28,7 @@ import {
   githubProvider,
   googleProvider,
   microsoftProvider,
+  oidcProvider,
   sparkAuthRoutes,
   withExternalLogin,
   withLocalLogin,
@@ -216,6 +217,17 @@ describe('provider presets', () => {
 
   it('builds a bare provider from just a scheme', () => {
     expect(externalProvider('Okta')).toEqual({ scheme: 'Okta' });
+  });
+
+  it('builds an OIDC provider with the scheme and label as given and a default icon', () => {
+    // The scheme is the server's own scheme name, verbatim: no casing or prefix applied.
+    expect(oidcProvider('HR', 'Spark HR'))
+      .toEqual({ scheme: 'HR', displayName: 'Spark HR', iconClass: 'bi bi-person-badge' });
+  });
+
+  it('lets an OIDC provider choose its icon', () => {
+    expect(oidcProvider('Corp', 'Corporate account', 'bi bi-building'))
+      .toEqual({ scheme: 'Corp', displayName: 'Corporate account', iconClass: 'bi bi-building' });
   });
 });
 

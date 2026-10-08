@@ -384,6 +384,22 @@ route table):
   `spark.AddExternalProviders(configuration)` for `Spark:Auth:Providers`) — they declare whether the
   provider's email can be trusted; a provider without a signal gets an unconfirmed account and a mail.
   A raw remote handler must be declared with `spark.AddExternalScheme(scheme, policy)` or startup throws.
+- External-login redirect mode: `/spark/auth/external-login` and `/spark/auth/external-logins/link`
+  take an optional `errorUrl` (sanitized like `returnUrl`). A refusal redirects there with
+  `?sparkExternalLogin=<code>`; success still goes to `returnUrl`; popup mode ignores it. The shipped
+  sign-in and account pages pass their own URL, so a page that reads the code must be the `errorUrl`.
+- Identity provider (`spark.AddIdentityProvider()`): `/connect/login` is always mapped; it shows the
+  password form unless `LocalCredentials` is `Disabled`, plus a button per external scheme (the
+  `/spark/auth/capabilities` list), so the IdP can federate. `/connect/logout` accepts `id_token_hint`
+  in place of `client_id`. Another Spark app signs in against it with `spark.AddOpenIdConnect` /
+  `Spark:Auth:Providers:OpenIdConnect:<scheme>`; register the client's redirect URI as
+  `https://<host>/signin-<scheme>` with the scheme's exact casing. Details:
+  `libs/identity_provider/MintPlayer.Spark.IdentityProvider/README.md`.
+- PWA headers: `AddSpark` registers two `IStartupFilter`s that run ahead of the static-file
+  middleware — `SparkForwardedHeaders` (forwarded headers from trusted proxies) and
+  `SparkServiceWorkerCacheHeaders` (`Cache-Control: no-cache` on `ngsw-worker.js`, `ngsw.json`,
+  `safety-worker.js`, `worker-basic.min.js` and `manifest.webmanifest`, so a deploy is seen on the next
+  update check). Do not add either by hand; see `docs/guide-pwa.md`.
 
 **The startup posture report** prints what an anonymous caller can reach on every boot, including
 when that is nothing. `--spark-verify-security` compares it against a committed

@@ -482,6 +482,20 @@ It defaults to a popup and resolves once the flow ends, whichever way it ends. P
 `{ mode: 'redirect' }` for a full-page navigation instead; that promise never settles,
 because the outcome arrives as the next page load rather than as a value.
 
+**Where a redirect-mode outcome lands (`errorUrl`, #490 M6).** `GET /spark/auth/external-login` and
+`GET /spark/auth/external-logins/link` take an optional `errorUrl` next to `returnUrl`. Both are
+sanitized the same way (a local path, anything else becomes `/`) and carried through the provider
+round trip on the callback URL. In redirect mode:
+
+- success redirects to `returnUrl`;
+- a refusal, including a failure at the provider (`remote_failure`, `no_login_info` on cancel), redirects
+  to `errorUrl` with `sparkExternalLogin=<code>` appended — or to `returnUrl` when no `errorUrl` was given.
+
+Popup mode ignores it. The shipped sign-in and account pages pass their own URL (with its `returnUrl`
+query, minus a stale `sparkExternalLogin`), so the code lands on the page that reads and shows it; a
+custom page passes `{ errorUrl }` to `loginWithProvider` / `linkProvider`. The identity provider's
+`/connect/login` does the same with its federation buttons.
+
 On failure `result.error` is one of `no_login_info` (the user cancelled at the provider),
 `email_not_verified` (the provider did not attest the address, so no account was created),
 `account_creation_failed`, `popup_blocked` or `popup_closed`. The codes are deliberately
@@ -493,7 +507,10 @@ listener that is only removed on success leaks on the other three.
 
 `twitterProvider()` (scheme `Twitter`, labelled "X") and `linkedInProvider()` (scheme `LinkedIn`) match
 the server's `spark.AddTwitter()` / `spark.AddLinkedIn()` presets, next to `githubProvider()`,
-`googleProvider()`, `facebookProvider()` and `microsoftProvider()`.
+`googleProvider()`, `facebookProvider()` and `microsoftProvider()`. For an OpenID Connect scheme
+(`spark.AddOpenIdConnect(scheme, …)` or `Spark:Auth:Providers:OpenIdConnect:<scheme>`) use
+`oidcProvider(scheme, displayName, iconClass?)`, e.g. `oidcProvider('HR', 'Spark HR')`; the scheme must
+match the server's exactly.
 
 ### Account pages (`withAccount()`, #460 D16)
 

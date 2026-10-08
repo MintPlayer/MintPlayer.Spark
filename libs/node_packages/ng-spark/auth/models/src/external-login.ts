@@ -14,10 +14,16 @@ export type SparkExternalLoginModeSetting = 'auto' | SparkExternalLoginMode;
 
 export interface SparkExternalLoginOptions {
   /**
-   * Where to land after the provider round trip. Server-side sanitized to an in-app path. In
-   * `'redirect'` mode a failure lands here too, with `?sparkExternalLogin=<code>` added.
+   * Where to land after a successful provider round trip. Server-side sanitized to an in-app path.
    */
   returnUrl?: string;
+  /**
+   * `'redirect'` mode only: where a failure lands, with `?sparkExternalLogin=<code>` added.
+   * Server-side sanitized like `returnUrl`. Defaults to the page the attempt started from (the
+   * router URL with any earlier `sparkExternalLogin` removed), which is the page that reads and
+   * shows the code. Ignored in popup mode, where the outcome comes back to the opener instead.
+   */
+  errorUrl?: string;
   /** Overrides the configured `externalLoginMode` (default `'auto'`) for this one call. */
   mode?: SparkExternalLoginMode;
 }
