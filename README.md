@@ -186,6 +186,8 @@ MintPlayer.Spark/
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
+| [Identity provider](libs/identity_provider/MintPlayer.Spark.IdentityProvider/README.md) | Making a Spark app an OpenID Connect provider: the library layer and its two groups, endpoints, options, keys, consent, sessions, and resource servers (`AddSparkResourceServer`, `RequireScope`) |
+| [Registering applications (developers)](docs/guide-identity-provider-developers.md) | For developers using a Spark identity provider: becoming a developer, teams and invitations, Development and Live, secrets shown once, scopes and API resources, client authentication, dynamic registration |
 | [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions (no wildcards), the four precedence tiers, and what `Query` without `Read` does to a grid |
 | [Row Security](docs/guide-row-security.md) | Row filters and checks per type, row policies for many types, persistent-object interceptors, `WITH CHECK`, attribute redaction — and the documented override gaps |
 | [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |

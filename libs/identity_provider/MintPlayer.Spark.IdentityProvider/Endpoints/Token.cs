@@ -68,6 +68,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly OidcProofOfPossession proofOfPossession;
     [Inject] private readonly OidcJwe jwe;
     [Inject] private readonly OidcKeyRing signingKeyService;
+    [Inject] private readonly OidcAudit audit;
 
     /// <summary>The posted form, kept from <see cref="BindRequestAsync"/>: client authentication reads more of it than the bound record carries.</summary>
     private IFormCollection form = null!;
@@ -415,6 +416,10 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             // treated as theft: revoke the entire chain rather than just refusing.
             // Best-effort, as on the code grant.
             await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
+            // D9: a reuse is the one token event that signals theft, so it lands in the audit trail.
+            await audit.RecordAsync(session, OidcAuditKinds.RefreshTokenReuse, actorId: null,
+                refreshTokenDoc.ApplicationId, refreshTokenDoc.Subject,
+                httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
             await TrySaveAsync(session, ct);
 
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
