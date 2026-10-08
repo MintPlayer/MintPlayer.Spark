@@ -53,44 +53,43 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint
 
     [Inject] private readonly ISparkSoftDelete softDelete;
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var (request, entityType) = await SparkAddOnEndpoints.ReadTypedRequestAsync<SoftDeleteRequest>(httpContext, modelLoader);
+        var (request, entityType) = await addOn.ReadTypedRequestAsync<SoftDeleteRequest>(httpContext);
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
 
         try
         {
             await softDelete.RestoreAsync(entityType.Id, request.Id, httpContext.RequestAborted);
             // Read back through the row-gated path, like every other endpoint that returns an object.
             var restored = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
-            return SparkAddOnEndpoints.Envelope(clientAccessor, restored, StatusCodes.Status200OK);
+            return addOn.Envelope(restored, StatusCodes.Status200OK);
         }
         catch (SparkCancelException)
         {
             // An interceptor cancelled the restore (#482): nothing was written; answered with the row as stored.
-            return SparkAddOnEndpoints.Envelope(clientAccessor,
+            return addOn.Envelope(
                 await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id), StatusCodes.Status200OK);
         }
-        catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
+        catch (Exception ex) when (addOn.IsConcurrencyConflict(ex))
         {
             // A restore is a save, written with the version it loaded: a concurrent edit is a 409.
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return addOn.ConcurrencyConflict(ex);
         }
         catch (SparkValidationException ex)
         {
-            return SparkAddOnEndpoints.ValidationFailed(clientAccessor, ex);
+            return addOn.ValidationFailed(ex);
         }
         catch (SparkActionDisabledException ex)
         {
-            return SparkAddOnEndpoints.ActionDisabled(clientAccessor, ex);
+            return addOn.ActionDisabled(ex);
         }
         catch (SparkAccessDeniedException)
         {
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
         }
     }
 }
@@ -108,46 +107,45 @@ internal sealed partial class PurgePersistentObject : IPostEndpoint
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
     [Inject] private readonly ISparkSoftDelete softDelete;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var (request, entityType) = await SparkAddOnEndpoints.ReadTypedRequestAsync<SoftDeleteRequest>(httpContext, modelLoader);
+        var (request, entityType) = await addOn.ReadTypedRequestAsync<SoftDeleteRequest>(httpContext);
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
 
         // A purge says which version it removes (#467, D14), as every delete does.
         if (string.IsNullOrEmpty(request.Etag))
-            return SparkAddOnEndpoints.Envelope(clientAccessor,
+            return addOn.Envelope(
                 new { error = "A purge must carry the etag of the version it removes." }, StatusCodes.Status400BadRequest);
 
         try
         {
             await softDelete.PurgeAsync(entityType.Id, request.Id, request.Etag, httpContext.RequestAborted);
-            return SparkAddOnEndpoints.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
+            return addOn.Envelope(null, StatusCodes.Status204NoContent);
         }
         catch (SparkCancelException)
         {
             // An interceptor cancelled the purge (#482): nothing was purged, and nothing went wrong.
-            return SparkAddOnEndpoints.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
+            return addOn.Envelope(null, StatusCodes.Status204NoContent);
         }
-        catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
+        catch (Exception ex) when (addOn.IsConcurrencyConflict(ex))
         {
             // Changed since the caller saw it — restored and edited, say: nothing was purged.
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return addOn.ConcurrencyConflict(ex);
         }
         catch (SparkValidationException ex)
         {
-            return SparkAddOnEndpoints.ValidationFailed(clientAccessor, ex);
+            return addOn.ValidationFailed(ex);
         }
         catch (SparkActionDisabledException ex)
         {
-            return SparkAddOnEndpoints.ActionDisabled(clientAccessor, ex);
+            return addOn.ActionDisabled(ex);
         }
         catch (SparkAccessDeniedException)
         {
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
         }
     }
 }

@@ -166,7 +166,7 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
             // A row changed since the list loaded (#467, D14): named in the message (D18). Or a write in
             // the batch met a concurrent edit; the batch is atomic, so nothing was written
             // (contributions F7). Never the exception's own message, as in Update (R2-M1).
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return ClientResult.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {

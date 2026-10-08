@@ -68,7 +68,7 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
             // The row changed since the caller saw it (#467, D14), caught by the etag check or by the
             // write itself (contributions F7). Generic body, as in Update (R2-M1): the exception carries
             // change vectors.
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return ClientResult.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {

@@ -66,26 +66,25 @@ internal sealed partial class ListRevisions : IPostEndpoint
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     [Inject] private readonly ISparkHistory history;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var (request, entityType) = await SparkAddOnEndpoints.ReadTypedRequestAsync<HistoryRequest>(httpContext, modelLoader);
+        var (request, entityType) = await addOn.ReadTypedRequestAsync<HistoryRequest>(httpContext);
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
 
         // Before the current-row gate asks row security (row filters are memoized per request).
-        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted, entityType);
+        addOn.UseDeletedFilter(request.Deleted, entityType);
 
         try
         {
             var revisions =await history.ListAsync(entityType.Id, request.Id, request.Skip ?? 0, request.Take ?? 50, httpContext.RequestAborted);
-            return SparkAddOnEndpoints.Envelope(clientAccessor, revisions, StatusCodes.Status200OK);
+            return addOn.Envelope(revisions, StatusCodes.Status200OK);
         }
         catch (SparkAccessDeniedException)
         {
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
         }
     }
 }
@@ -105,25 +104,24 @@ internal sealed partial class GetRevision : IPostEndpoint
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
 
     [Inject] private readonly ISparkHistory history;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var (request, entityType) = await SparkAddOnEndpoints.ReadTypedRequestAsync<HistoryRequest>(httpContext, modelLoader);
+        var (request, entityType) = await addOn.ReadTypedRequestAsync<HistoryRequest>(httpContext);
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
 
-        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted, entityType);
+        addOn.UseDeletedFilter(request.Deleted, entityType);
 
         try
         {
             var revision =await history.GetAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
-            return SparkAddOnEndpoints.Envelope(clientAccessor, revision, StatusCodes.Status200OK);
+            return addOn.Envelope(revision, StatusCodes.Status200OK);
         }
         catch (SparkAccessDeniedException)
         {
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
         }
     }
 }
@@ -144,41 +142,40 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint
 
     [Inject] private readonly ISparkHistory history;
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISparkAddOnEndpoints addOn;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var (request, entityType) = await SparkAddOnEndpoints.ReadTypedRequestAsync<HistoryRequest>(httpContext, modelLoader);
+        var (request, entityType) = await addOn.ReadTypedRequestAsync<HistoryRequest>(httpContext);
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
 
         try
         {
             var reverted = await history.RevertAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
-            return SparkAddOnEndpoints.Envelope(clientAccessor, reverted, StatusCodes.Status200OK);
+            return addOn.Envelope(reverted, StatusCodes.Status200OK);
         }
         catch (SparkCancelException)
         {
             // An interceptor cancelled the revert (#482): nothing was written; answered with the row as stored.
-            return SparkAddOnEndpoints.Envelope(clientAccessor,
+            return addOn.Envelope(
                 await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id), StatusCodes.Status200OK);
         }
-        catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
+        catch (Exception ex) when (addOn.IsConcurrencyConflict(ex))
         {
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return addOn.ConcurrencyConflict(ex);
         }
         catch (SparkValidationException ex)
         {
-            return SparkAddOnEndpoints.ValidationFailed(clientAccessor, ex);
+            return addOn.ValidationFailed(ex);
         }
         catch (SparkActionDisabledException ex)
         {
-            return SparkAddOnEndpoints.ActionDisabled(clientAccessor, ex);
+            return addOn.ActionDisabled(ex);
         }
         catch (SparkAccessDeniedException)
         {
-            return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
+            return addOn.Refusal(httpContext);
         }
     }
 }

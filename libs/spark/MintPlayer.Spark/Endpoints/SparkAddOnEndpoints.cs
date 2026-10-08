@@ -1,3 +1,4 @@
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Requests;
@@ -9,7 +10,7 @@ namespace MintPlayer.Spark.Endpoints;
 /// <summary>
 /// The response and request conventions of Spark's own endpoints, for add-on packages that map
 /// endpoints of their own under <c>/spark/*</c> (SoftDelete's <c>/spark/po/restore</c>, History's
-/// <c>/spark/po/revisions</c>, #460 T1).
+/// <c>/spark/po/revisions</c>, #460 T1). Scoped: inject it into the endpoint with <c>[Inject]</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -19,51 +20,59 @@ namespace MintPlayer.Spark.Endpoints;
 /// 401 for an anonymous caller, 404 otherwise (#453) — and an add-on that invented its own would
 /// reopen the existence oracle core closed. So the rules live here, once.
 /// </para>
+/// <para>
+/// An instance service rather than a static class, so the request's client accessor, model and
+/// row-policy state come from the endpoint's own scope instead of a <c>RequestServices</c> lookup.
+/// </para>
 /// </remarks>
-public static class SparkAddOnEndpoints
+public interface ISparkAddOnEndpoints
 {
     /// <summary>
     /// Reads a typed request body and resolves the entity type it names. Both are null when the body
     /// is malformed or names no type the model declares — answer that with <see cref="Refusal"/>,
     /// never with a distinguishable error.
     /// </summary>
-    public static Task<(TRequest? Request, EntityTypeDefinition? EntityType)> ReadTypedRequestAsync<TRequest>(
-        HttpContext httpContext,
-        IModelLoader modelLoader)
-        where TRequest : class, ISparkTypedRequest
-        => SparkRequestType.ReadAsync<TRequest>(httpContext, modelLoader);
+    /// <remarks>
+    /// For an endpoint that reads its body by hand. A typed endpoint (<c>IPostEndpoint&lt;TRequest&gt;</c>)
+    /// gets the body bound and resolves the type with <see cref="ResolveType"/>, answering a bind
+    /// failure with <see cref="Refusal"/> from <c>OnBindFailedAsync</c>.
+    /// </remarks>
+    Task<(TRequest? Request, EntityTypeDefinition? EntityType)> ReadTypedRequestAsync<TRequest>(HttpContext httpContext)
+        where TRequest : class, ISparkTypedRequest;
+
+    /// <summary>
+    /// The entity type <paramref name="request"/> names, or null when it names none or one the model
+    /// does not declare — answer that with <see cref="Refusal"/>. The type always comes from the
+    /// request's top-level <c>objectTypeId</c>, never from the document it carries.
+    /// </summary>
+    EntityTypeDefinition? ResolveType(ISparkTypedRequest? request);
 
     /// <summary>The standard <c>{ result, operations }</c> envelope with <paramref name="statusCode"/>.</summary>
-    public static IResult Envelope(IClientAccessor client, object? result, int statusCode)
-        => ClientResult.Envelope(client, result, statusCode);
+    IResult Envelope(object? result, int statusCode);
 
     /// <summary>The standard refusal: 401 for an anonymous caller, 404 otherwise, in the envelope.</summary>
-    public static IResult Refusal(IClientAccessor client, HttpContext httpContext)
-        => ClientResult.EnvelopeRefusal(client, httpContext);
+    IResult Refusal(HttpContext httpContext);
 
     /// <summary>A 400 carrying the validation error, in the envelope (<c>{ errors: [...] }</c>).</summary>
-    public static IResult ValidationFailed(IClientAccessor client, SparkValidationException exception)
-        => ClientResult.Envelope(client, new { errors = new[] { exception.ToError() } }, StatusCodes.Status400BadRequest);
+    IResult ValidationFailed(SparkValidationException exception);
 
     /// <summary>
     /// A 403 naming the withheld action (#460, D13). Only for a row the caller could see — the
     /// disabled-action gate runs after the row gate, which is what makes naming it safe.
     /// </summary>
-    public static IResult ActionDisabled(IClientAccessor client, SparkActionDisabledException exception)
-        => ClientResult.ActionDisabled(client, exception);
+    IResult ActionDisabled(SparkActionDisabledException exception);
 
     /// <summary>
     /// A 429 for a business quota, in the envelope, with <c>Retry-After</c> when known (#460, M12).
     /// </summary>
-    public static IResult Throttled(IClientAccessor client, HttpContext httpContext, SparkThrottledException exception)
-        => ClientResult.Throttled(client, httpContext, exception);
+    IResult Throttled(HttpContext httpContext, SparkThrottledException exception);
 
     /// <summary>
     /// Whether <paramref name="exception"/> is the optimistic-concurrency refusal of a save (the
     /// posted etag is not the stored change vector). Answer it with <see cref="ConcurrencyConflict"/>.
     /// The exception type itself stays internal.
     /// </summary>
-    public static bool IsConcurrencyConflict(Exception exception) => exception is SparkConcurrencyException;
+    bool IsConcurrencyConflict(Exception exception);
 
     /// <summary>The 409 <c>POST /spark/po/update</c> answers a concurrency conflict with, in the envelope.</summary>
     /// <remarks>
@@ -71,16 +80,7 @@ public static class SparkAddOnEndpoints
     /// <c>deleted</c> since it was loaded (#467, D15), and carries the message naming the rows of a bulk
     /// refusal (D18). Never the exception's own message, which carries change vectors.
     /// </remarks>
-    public static IResult ConcurrencyConflict(IClientAccessor client, Exception? exception = null)
-    {
-        var conflict = exception as SparkConcurrencyException;
-        return ClientResult.Envelope(client, new
-        {
-            error = "Concurrency conflict",
-            reason = conflict?.Reason ?? SparkConcurrencyException.Changed,
-            message = conflict?.UserMessage,
-        }, StatusCodes.Status409Conflict);
-    }
+    IResult ConcurrencyConflict(Exception? exception = null);
 
     /// <summary>
     /// Carries a request's <c>deleted: exclude|include|only</c> field to row policies
@@ -91,21 +91,59 @@ public static class SparkAddOnEndpoints
     /// </summary>
     /// <remarks>
     /// Without an entity type the mode applies to every type the request touches. Pass the type the
-    /// request is about (<see cref="UseDeletedFilter(HttpContext, SparkDeletedFilter?, EntityTypeDefinition?)"/>)
+    /// request is about (<see cref="UseDeletedFilter(SparkDeletedFilter?, EntityTypeDefinition?)"/>)
     /// so a deleted row's live references (a deleted answer's question) still resolve.
     /// </remarks>
-    public static void UseDeletedFilter(HttpContext httpContext, SparkDeletedFilter? deleted)
-        => httpContext.RequestServices.GetRequiredService<IRowPolicyRequestState>().Deleted = deleted ?? SparkDeletedFilter.Exclude;
+    void UseDeletedFilter(SparkDeletedFilter? deleted);
 
     /// <summary>
-    /// As <see cref="UseDeletedFilter(HttpContext, SparkDeletedFilter?)"/>, scoped to
-    /// <paramref name="entityType"/>: every other type in the request (a reference's label, a
-    /// breadcrumb) sees live rows only, as on <c>/spark/po/load</c>.
+    /// As <see cref="UseDeletedFilter(SparkDeletedFilter?)"/>, scoped to <paramref name="entityType"/>:
+    /// every other type in the request (a reference's label, a breadcrumb) sees live rows only, as on
+    /// <c>/spark/po/load</c>.
     /// </summary>
-    public static void UseDeletedFilter(HttpContext httpContext, SparkDeletedFilter? deleted, EntityTypeDefinition? entityType)
+    void UseDeletedFilter(SparkDeletedFilter? deleted, EntityTypeDefinition? entityType);
+}
+
+[Register(typeof(ISparkAddOnEndpoints), ServiceLifetime.Scoped)]
+internal sealed partial class SparkAddOnEndpoints : ISparkAddOnEndpoints
+{
+    [Inject] private readonly IClientAccessor client;
+    [Inject] private readonly IModelLoader modelLoader;
+    [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
+
+    public Task<(TRequest? Request, EntityTypeDefinition? EntityType)> ReadTypedRequestAsync<TRequest>(HttpContext httpContext)
+        where TRequest : class, ISparkTypedRequest
+        => SparkRequestType.ReadAsync<TRequest>(httpContext, modelLoader);
+
+    public EntityTypeDefinition? ResolveType(ISparkTypedRequest? request)
+        => SparkRequestType.Resolve(modelLoader, request);
+
+    public IResult Envelope(object? result, int statusCode)
+        => ClientResult.Envelope(client, result, statusCode);
+
+    public IResult Refusal(HttpContext httpContext)
+        => ClientResult.EnvelopeRefusal(client, httpContext);
+
+    public IResult ValidationFailed(SparkValidationException exception)
+        => ClientResult.Envelope(client, new { errors = new[] { exception.ToError() } }, StatusCodes.Status400BadRequest);
+
+    public IResult ActionDisabled(SparkActionDisabledException exception)
+        => ClientResult.ActionDisabled(client, exception);
+
+    public IResult Throttled(HttpContext httpContext, SparkThrottledException exception)
+        => ClientResult.Throttled(client, httpContext, exception);
+
+    public bool IsConcurrencyConflict(Exception exception) => exception is SparkConcurrencyException;
+
+    public IResult ConcurrencyConflict(Exception? exception = null)
+        => ClientResult.ConcurrencyConflict(client, exception);
+
+    public void UseDeletedFilter(SparkDeletedFilter? deleted)
+        => rowPolicyRequestState.Deleted = deleted ?? SparkDeletedFilter.Exclude;
+
+    public void UseDeletedFilter(SparkDeletedFilter? deleted, EntityTypeDefinition? entityType)
     {
-        var state = httpContext.RequestServices.GetRequiredService<IRowPolicyRequestState>();
-        state.Deleted = deleted ?? SparkDeletedFilter.Exclude;
-        state.DeletedScopeClrType = entityType?.ClrType;
+        rowPolicyRequestState.Deleted = deleted ?? SparkDeletedFilter.Exclude;
+        rowPolicyRequestState.DeletedScopeClrType = entityType?.ClrType;
     }
 }

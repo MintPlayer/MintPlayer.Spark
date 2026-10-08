@@ -19,6 +19,7 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint
 
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly ILogger<AddLookupReferenceValue> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -49,9 +50,7 @@ internal sealed partial class AddLookupReferenceValue : IPostEndpoint
         {
             // R2-M1: don't echo ex.Message — leaks RavenDB-internal strings,
             // index/collection names, etc. Log server-side with correlation ID.
-            httpContext.RequestServices.GetService<ILoggerFactory>()
-                ?.CreateLogger("SparkLookupReferences")
-                ?.LogWarning(ex, "AddLookupReferenceValue failed");
+            logger.LogWarning(ex, "AddLookupReferenceValue failed");
             return Results.Json(new { error = "Operation failed" }, statusCode: 400);
         }
     }

@@ -60,7 +60,7 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             // One answer for all three, so it tells nothing a 404 would not (M-3).
             if (existingObj is null)
             {
-                return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, SparkConcurrencyException.DeletedSinceLoaded(obj.Etag));
+                return ClientResult.ConcurrencyConflict(clientAccessor, SparkConcurrencyException.DeletedSinceLoaded(obj.Etag));
             }
 
             RetryScope.Accept(retryAccessor, request);
@@ -105,7 +105,7 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             // recovery flow, but it leaks document-version state that an
             // attacker can use as a side channel. Return a generic 409 that says only
             // whether the row changed or went; clients re-fetch on 409.
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
+            return ClientResult.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkSaveValidationException ex)
         {

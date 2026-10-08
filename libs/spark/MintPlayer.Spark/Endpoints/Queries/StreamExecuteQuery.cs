@@ -39,6 +39,7 @@ internal sealed partial class StreamExecuteQuery : IEndpoint
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IStreamingQueryExecutor streamingQueryExecutor;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly ILogger<StreamExecuteQuery> logger;
 
     private static readonly JsonSerializerOptions jsonOptions = CreateJsonOptions();
 
@@ -124,9 +125,7 @@ internal sealed partial class StreamExecuteQuery : IEndpoint
             // R2-M1: don't echo ex.Message over the wire (or as the WS close
             // reason — Raven names / change vectors leak from there too). Log
             // server-side; report generic to the client.
-            httpContext.RequestServices.GetService<ILoggerFactory>()
-                ?.CreateLogger("SparkStreamingQuery")
-                ?.LogError(ex, "StreamExecuteQuery failed");
+            logger.LogError(ex, "StreamExecuteQuery failed");
             await SendErrorAndCloseAsync(webSocket, "Stream failed");
         }
 

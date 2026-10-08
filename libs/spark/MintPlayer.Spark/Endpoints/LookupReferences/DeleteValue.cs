@@ -18,6 +18,7 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
 
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly ILogger<DeleteLookupReferenceValue> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -38,9 +39,7 @@ internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
         catch (InvalidOperationException ex)
         {
             // R2-M1: don't leak Raven-internal strings — log server-side.
-            httpContext.RequestServices.GetService<ILoggerFactory>()
-                ?.CreateLogger("SparkLookupReferences")
-                ?.LogWarning(ex, "DeleteLookupReferenceValue failed");
+            logger.LogWarning(ex, "DeleteLookupReferenceValue failed");
             return Results.Json(new { error = "Operation failed" }, statusCode: 400);
         }
     }

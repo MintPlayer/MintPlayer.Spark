@@ -60,6 +60,22 @@ internal static class ClientResult
         return Envelope(client, new { error = ex.Message, retryAfterSeconds = seconds }, StatusCodes.Status429TooManyRequests);
     }
 
+    /// <summary>
+    /// The 409 a concurrency conflict is answered with, in the envelope (#467, D15/D18): whether the
+    /// row <c>changed</c> or was <c>deleted</c> since it was loaded, and the message naming the rows of
+    /// a bulk refusal. Never the exception's own message, which carries change vectors.
+    /// </summary>
+    public static IResult ConcurrencyConflict(IClientAccessor client, Exception? exception = null)
+    {
+        var conflict = exception as SparkConcurrencyException;
+        return Envelope(client, new
+        {
+            error = "Concurrency conflict",
+            reason = conflict?.Reason ?? SparkConcurrencyException.Changed,
+            message = conflict?.UserMessage,
+        }, StatusCodes.Status409Conflict);
+    }
+
     public static IResult Retry(IClientAccessor client, SparkRetryActionException ex)
     {
         if (!client.Operations.Any(o => o is RetryOperation))

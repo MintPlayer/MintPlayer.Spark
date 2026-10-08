@@ -19,6 +19,7 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint
 
     [Inject] private readonly ILookupReferenceService lookupReferenceService;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly ILogger<UpdateLookupReferenceValue> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -46,9 +47,7 @@ internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint
         catch (InvalidOperationException ex)
         {
             // R2-M1: don't leak Raven-internal strings — log server-side.
-            httpContext.RequestServices.GetService<ILoggerFactory>()
-                ?.CreateLogger("SparkLookupReferences")
-                ?.LogWarning(ex, "UpdateLookupReferenceValue failed");
+            logger.LogWarning(ex, "UpdateLookupReferenceValue failed");
             return Results.Json(new { error = "Operation failed" }, statusCode: 400);
         }
     }

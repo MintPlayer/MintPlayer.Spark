@@ -283,10 +283,10 @@ public class RowPolicyCompositionTests : SparkTestDriver
     {
         // The History endpoints load a deleted row's revision; its live references must still resolve.
         IRowPolicyRequestState state = new RowPolicyRequestState();
-        var services = new ServiceCollection().AddSingleton(state).BuildServiceProvider();
-        var context = new DefaultHttpContext { RequestServices = services };
+        MintPlayer.Spark.Endpoints.ISparkAddOnEndpoints addOn = new MintPlayer.Spark.Endpoints.SparkAddOnEndpoints(
+            Substitute.For<MintPlayer.Spark.Abstractions.ClientOperations.IClientAccessor>(), Substitute.For<IModelLoader>(), state);
 
-        MintPlayer.Spark.Endpoints.SparkAddOnEndpoints.UseDeletedFilter(context, SparkDeletedFilter.Only,
+        addOn.UseDeletedFilter(SparkDeletedFilter.Only,
             new EntityTypeDefinition { Id = Guid.NewGuid(), Name = "RpCar", ClrType = typeof(RpCar).FullName });
 
         state.DeletedFor(typeof(RpCar)).Should().Be(SparkDeletedFilter.Only);
