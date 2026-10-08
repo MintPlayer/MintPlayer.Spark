@@ -183,6 +183,20 @@ All are owner decisions taken in a grill session; the evidence each one rests on
   `AccountFlowTests.Unbindable_requests_answer_a_bare_status_as_before`). Route fixtures are
   updated for every typed body endpoint (M3, M4, M5). No endpoint adds `.Accepts<T>(…)` to restore
   the routing-level 415.
+- **D3a — D3 also covers the `SparkRequestType.ReadAsync` readers** (owner, 2026-10-08, after M3).
+  - D3's measured list missed about 14 core endpoints that read their body through the shared
+    `SparkRequestType.ReadAsync`/`SparkRequestBody` helper, because its regex does not match that
+    helper. They are:
+    - persistent objects: load, create, update, delete, delete-many, delete-row, new, refresh and
+      the subquery's new parent;
+    - queries: get, execute and distinct;
+    - custom actions: list and execute;
+    - SoftDelete restore and purge, and History revisions, revision and revert.
+  - **They are typed too.** As a result, a missing or non-JSON content type gets a refusal where it
+    used to escape as a 500.
+  - **Mail:** `ReceiveBounce` and `Unsubscribe` move their `?recipient` and `?t` reads to
+    `[QueryParam]`. The bounce **body** stays a raw read, as a stated exception: the secret is
+    checked before any parse, and there is a size cap.
 - **D8 — How a typed handler reaches `HttpContext`** (implementation choice, 2026-10-08). The typed
   base class exposes no `HttpContext`.
   - An endpoint that already overrides `BindRequestAsync` keeps the context it receives there, as

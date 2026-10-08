@@ -234,6 +234,26 @@ Convert the ~27 endpoint files that parse input by hand (list in PRD §6 D3) to 
 then authorization (external login, passkeys). The response shapes must not change; the protocol
 client (`libs/client/MintPlayer.Spark.Client/SparkClient.Endpoints.cs`) is the consumer contract.
 
+**As built (2026-10-08), M2 ✅ and M3 ✅ for D3's measured list:**
+- **M2:**
+  - `RevertContribution : IPostEndpoint<RevertContributionRequest>` has 9 `[Inject]` fields and is mapped through `ContributionsPersistentObjectGroup`.
+  - `ISparkAddOnEndpoints` is a scoped service, which is a minor API break; `docs/guide-concurrency.md` is updated.
+  - The loggers are `ILogger<T>`, so the log categories for lookup references, the streaming query and sync are now class names.
+- **M3:**
+  - Moderation (15), replication, lookup-reference add/update, revert and passkey sign-in are typed. Each overrides `OnBindFailedAsync`.
+  - Five unbindable bodies were measured before and after on each endpoint and pinned in a `…Unbindable…as_before` test.
+  - **Deliberate changes:** three request classes that used to escape as unhandled 500s now get the endpoint's normal 400 or refusal:
+    - empty or malformed JSON on lookup-reference add and update;
+    - a missing content type or `text/plain` on moderation;
+    - a missing content type or `text/plain` on revert.
+  - Raw endpoints with `[RouteParam]`/`[QueryParam]` are used where binding cannot fail: lookup-reference get and delete, types, permissions, the query stream, and external login.
+- **Evidence:**
+  - 642/642 targeted tests and Client.Tests 108/108 passed.
+  - All 15 snapshots are unchanged: no converted endpoint had `accepts` metadata to lose.
+  - The merged tree (M2–M7) builds with 0 errors.
+- **For M8:** forbid `Request.Query[`, `RouteValues`, `ReadFromJsonAsync` and `RequestServices` inside endpoint classes, rather than requiring `I…Endpoint<T>`. The legitimate remaining uses are `SparkDenial`'s registry lookup and `ExternalLoginOutcome`'s `popup` check.
+- **Next: M3b (PRD D3a):** the ~14 `SparkRequestType.ReadAsync` endpoints, SoftDelete and History, and mail's query reads.
+
 ### M4 — identity_provider (D2, D3, D6)
 - Fold all 16 static handlers into typed endpoint classes with `[Inject]`.
 - The five user-touching endpoints (`Login`, `Logout`, `Token`, `TwoFactor`, `UserInfo`) become
