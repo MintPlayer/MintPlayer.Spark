@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Endpoints.Queries;
 /// </para>
 /// </remarks>
 [MemberOf<QueriesGroup>]
-internal sealed partial class DistinctValues : IPostEndpoint
+internal sealed partial class DistinctValues : IPostEndpoint<DistinctValuesRequest>
 {
     public static string Path => "/distinct-values";
 
@@ -45,13 +45,18 @@ internal sealed partial class DistinctValues : IPostEndpoint
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
     [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(Results.Json(new { error = "Query not found" }, statusCode: 404));
+
+    public override async Task<IResult> HandleAsync(DistinctValuesRequest request, CancellationToken cancellationToken)
     {
-        var request = await SparkRequestBody.ReadAsync<DistinctValuesRequest>(httpContext);
-        var id = request?.QueryId;
+        var httpContext = httpContextAccessor.HttpContext!;
+        var id = request.QueryId;
 
-        if (request is null || string.IsNullOrEmpty(id) || string.IsNullOrEmpty(request.Column))
+        if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(request.Column))
         {
             // The same 404 a denied query gets, for the same reason.
             return Results.Json(new { error = "Query not found" }, statusCode: 404);

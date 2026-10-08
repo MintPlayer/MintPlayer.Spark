@@ -15,7 +15,7 @@ using MintPlayer.Spark.Services;
 namespace MintPlayer.Spark.Endpoints.Actions;
 
 [MemberOf<ActionsGroup>]
-internal sealed partial class ExecuteCustomAction : IPostEndpoint
+internal sealed partial class ExecuteCustomAction : IPostEndpoint<CustomActionRequest>
 {
     public static string Path => "/execute";
 
@@ -50,18 +50,24 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly ISparkSelectionResolver selectionResolver;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     // Optional so the dispatch tests that construct this endpoint by hand keep compiling; DI always
     // supplies it.
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(ClientResult.EnvelopeRefusal(clientAccessor, context));
+
+    public override async Task<IResult> HandleAsync(CustomActionRequest request, CancellationToken cancellationToken)
     {
+        var httpContext = httpContextAccessor.HttpContext!;
         // Both the type and the action name arrive in the body now, so the body is read first. The
         // ordering the old code relied on — authorize, then read — is preserved in effect because a
         // malformed body is refused here in exactly the shape an unknown type is refused below.
-        var (request, entityType) = await SparkRequestType.ReadAsync<CustomActionRequest>(httpContext, modelLoader);
-        var actionName = request?.ActionName;
+        var entityType = SparkRequestType.Resolve(modelLoader, request);
+        var actionName = request.ActionName;
 
-        if (request is null || entityType is null || string.IsNullOrEmpty(actionName))
+        if (entityType is null || string.IsNullOrEmpty(actionName))
         {
             // Same shape as a denial. This ran BEFORE the grant check below, so a specific
             // 404 here against a 401 there told an anonymous caller which entity types are

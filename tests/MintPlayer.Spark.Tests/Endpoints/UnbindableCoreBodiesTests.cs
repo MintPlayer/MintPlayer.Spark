@@ -18,6 +18,11 @@ namespace MintPlayer.Spark.Tests.Endpoints;
 /// "throws" is an exception the application left unhandled, which the test server rethrows and a real
 /// server answers with a 500.
 /// </summary>
+/// <remarks>
+/// The one deliberate change (owner-accepted, PRD D3a): "none" and "text/plain" escaped as an unhandled
+/// <c>InvalidOperationException</c> (a 500) while the endpoints read by hand; typed, they get the same
+/// answer as every other unbindable body, from <c>OnBindFailedAsync</c>.
+/// </remarks>
 public class UnbindableCoreBodiesTests : SparkTestDriver
 {
     private static readonly Guid PersonTypeId = Guid.Parse("3b3b0000-0000-4000-8000-000000000001");
@@ -126,83 +131,83 @@ public class UnbindableCoreBodiesTests : SparkTestDriver
 
     private const string ExpectedUnbindable = """
         # /spark/po/load
-        none: throws InvalidOperationException
+        none: 404 {"error":"Not found"}
         empty: 404 {"error":"Not found"}
         null: 404 {"error":"Not found"}
         malformed: 404 {"error":"Not found"}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"error":"Not found"}
         # /spark/po/new
-        none: throws InvalidOperationException
+        none: 404 {"result":{"error":"Not found"},"operations":[]}
         empty: 404 {"result":{"error":"Not found"},"operations":[]}
         null: 404 {"result":{"error":"Not found"},"operations":[]}
         malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
         # /spark/po/refresh
-        none: throws InvalidOperationException
+        none: 404 {"result":{"error":"Not found"},"operations":[]}
         empty: 404 {"result":{"error":"Not found"},"operations":[]}
         null: 404 {"result":{"error":"Not found"},"operations":[]}
         malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
         # /spark/po/create
-        none: throws InvalidOperationException
+        none: 404 {"result":{"error":"Not found"},"operations":[]}
         empty: 404 {"result":{"error":"Not found"},"operations":[]}
         null: 404 {"result":{"error":"Not found"},"operations":[]}
         malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
         # /spark/po/update
-        none: throws InvalidOperationException
+        none: 404 {"result":{"error":"Not found"},"operations":[]}
         empty: 404 {"result":{"error":"Not found"},"operations":[]}
         null: 404 {"result":{"error":"Not found"},"operations":[]}
         malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
         # /spark/po/delete
-        none: throws InvalidOperationException
+        none: 404 {"result":{"error":"Not found"},"operations":[]}
         empty: 404 {"result":{"error":"Not found"},"operations":[]}
         null: 404 {"result":{"error":"Not found"},"operations":[]}
         malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
         # /spark/po/delete-many
-        none: throws InvalidOperationException
+        none: 404 {"result":{"error":"Not found"},"operations":[]}
         empty: 404 {"result":{"error":"Not found"},"operations":[]}
         null: 404 {"result":{"error":"Not found"},"operations":[]}
         malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
         # /spark/po/delete-row
-        none: throws InvalidOperationException
+        none: 404 {"result":{"error":"Not found"},"operations":[]}
         empty: 404 {"result":{"error":"Not found"},"operations":[]}
         null: 404 {"result":{"error":"Not found"},"operations":[]}
         malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
         # /spark/queries/get
-        none: throws InvalidOperationException
+        none: 404 {"error":"Query not found"}
         empty: 404 {"error":"Query not found"}
         null: 404 {"error":"Query not found"}
         malformed: 404 {"error":"Query not found"}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"error":"Query not found"}
         # /spark/queries/execute
-        none: throws InvalidOperationException
+        none: 404 {"error":"Query not found"}
         empty: 404 {"error":"Query not found"}
         null: 404 {"error":"Query not found"}
         malformed: 404 {"error":"Query not found"}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"error":"Query not found"}
         # /spark/queries/distinct-values
-        none: throws InvalidOperationException
+        none: 404 {"error":"Query not found"}
         empty: 404 {"error":"Query not found"}
         null: 404 {"error":"Query not found"}
         malformed: 404 {"error":"Query not found"}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"error":"Query not found"}
         # /spark/actions/list
-        none: throws InvalidOperationException
+        none: 200 []
         empty: 200 []
         null: 200 []
         malformed: 200 []
-        text/plain: throws InvalidOperationException
+        text/plain: 200 []
         # /spark/actions/execute
-        none: throws InvalidOperationException
+        none: 404 {"result":{"error":"Not found"},"operations":[]}
         empty: 404 {"result":{"error":"Not found"},"operations":[]}
         null: 404 {"result":{"error":"Not found"},"operations":[]}
         malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-        text/plain: throws InvalidOperationException
+        text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
         """;
 
     private const string ExpectedWellFormed = """

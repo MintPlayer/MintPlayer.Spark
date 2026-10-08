@@ -738,7 +738,8 @@ public class ExecuteCustomActionTests
     private ExecuteCustomAction NewEndpoint() =>
         new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _catalogueLoader, _queryLoader,
             new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session, NullLogger<SparkSelectionResolver>.Instance, _attributeRights),
-            new NothingDisabled());
+            new NothingDisabled(),
+            new HttpContextAccessor());
 
     /// <summary>
     /// These tests exercise dispatch, not the D13 gate (#460), which has its own tests against the
@@ -773,6 +774,8 @@ public class ExecuteCustomActionTests
     {
         var services = new ServiceCollection().AddLogging().BuildServiceProvider();
         var context = new DefaultHttpContext { RequestServices = services };
+        // The typed endpoint reaches its context through IHttpContextAccessor (AsyncLocal, so per test flow).
+        new HttpContextAccessor().HttpContext = context;
 
         if (authenticated)
         {
