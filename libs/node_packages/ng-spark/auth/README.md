@@ -146,8 +146,8 @@ pages call it on load, so their own redirect attempts (**Continue in this tab**,
 redirect, linking) show their failures there. If you start a redirect attempt from another page, call
 it on that page, or in the app shell.
 
-**OpenID Connect providers.** The server's OIDC preset (a `Spark:Auth:Providers` entry with
-`Type: "Oidc"`) uses a scheme name the application chooses, so its button is declared with that
+**OpenID Connect providers.** The server's OIDC preset (`spark.AddOpenIdConnect(...)`, or a
+`Spark:Auth:Providers:OpenIdConnect:<scheme>` section) uses a scheme name the application chooses, so its button is declared with that
 scheme and a label: `withExternalLogin(oidcProvider('HR', 'Spark HR'))`. The scheme must equal the
 server's exactly; the icon defaults to `bi bi-person-badge` and is the optional third argument.
 

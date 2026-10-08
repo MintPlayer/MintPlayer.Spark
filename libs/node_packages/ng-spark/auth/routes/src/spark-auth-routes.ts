@@ -339,14 +339,14 @@ export function microsoftProvider(
   return externalProvider('Microsoft', { iconClass: 'bi bi-microsoft', ...presentation });
 }
 
-/** X (formerly Twitter) — the server's `AddSparkTwitter()` preset, scheme `Twitter`. */
+/** X (formerly Twitter) — the server's `spark.AddTwitter()` preset (OAuth 2.0), scheme `Twitter`. */
 export function twitterProvider(
   presentation?: Omit<SparkExternalProviderPresentation, 'scheme'>,
 ): SparkExternalProviderPresentation {
   return externalProvider('Twitter', { displayName: 'X', iconClass: 'bi bi-twitter-x', ...presentation });
 }
 
-/** LinkedIn — the server's `AddSparkLinkedIn()` preset (OpenID Connect userinfo), scheme `LinkedIn`. */
+/** LinkedIn — the server's `spark.AddLinkedIn()` preset (OpenID Connect userinfo), scheme `LinkedIn`. */
 export function linkedInProvider(
   presentation?: Omit<SparkExternalProviderPresentation, 'scheme'>,
 ): SparkExternalProviderPresentation {
@@ -355,7 +355,7 @@ export function linkedInProvider(
 
 /**
  * Any OpenID Connect provider — the client half of the server's OIDC preset
- * (`Spark:Auth:Providers` with `Type: "Oidc"`). Unlike the named presets the scheme is the
+ * (`spark.AddOpenIdConnect(...)`, or a `Spark:Auth:Providers:OpenIdConnect:<scheme>` section). Unlike the named presets the scheme is the
  * application's own choice, so it and the button text are required; `scheme` must equal the server's
  * scheme name exactly.
  */
