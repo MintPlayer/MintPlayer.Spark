@@ -109,6 +109,11 @@ public static class SparkExtensions
         // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.
         services.AddSparkForwardedHeaders();
 
+        // PWA (#464, D8): ngsw-worker.js, ngsw.json, the safety worker and the web app manifest are
+        // served with Cache-Control: no-cache, ahead of the static-file middleware. See
+        // SparkServiceWorkerCacheHeaders.
+        services.AddSparkServiceWorkerCacheHeaders();
+
         // Data Protection (#460, D5) — always on, key ring persisted per Spark:DataProtection; an
         // unpersisted ring outside Development is refused by UseSpark(). See SparkDataProtectionOptions.
         services.AddSparkDataProtection();

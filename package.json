@@ -6,6 +6,7 @@
     "test:ng": "npm run test:ng-spark",
     "test:affected": "node tools/test-local.mjs",
     "test:layer-transport": "node tools/layer-transport-check.mjs",
+    "test:tools": "node --test \"tools/*.test.mjs\"",
     "stamp:library-model-ids": "node tools/stamp-library-model-ids.mjs",
     "test": "nx run-many --target=test"
   },
@@ -27,6 +28,7 @@
     "@angular/forms": "22.2.0",
     "@angular/platform-browser": "22.2.0",
     "@angular/router": "22.2.0",
+    "@angular/service-worker": "22.2.0",
     "@mintplayer/dailymotion-player": "^20.0.0",
     "@mintplayer/file-player": "^20.0.0",
     "@mintplayer/ng-animations": "22.1.0",
