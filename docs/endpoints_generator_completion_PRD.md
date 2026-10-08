@@ -2,8 +2,9 @@
 
 Companion plan: [`endpoints_generator_completion_plan.md`](endpoints_generator_completion_plan.md).
 Predecessor: [`endpoints_generator_adoption_PRD.md`](endpoints_generator_adoption_PRD.md) (PR #455).
-Status: **decisions locked, 2026-10-07** — investigation done (four parallel read-only investigations of the
-current `master`, `c05e7a52`); D1–D6 grilled with the owner (§6). Next: spikes S1–S4.
+Status: **implemented, 2026-10-08**, in PR #492 (squash-merged). D1–D6 were grilled with the owner on
+2026-10-07; D3a, D7 and D8 were added during implementation (§6). The investigation ran four parallel
+read-only passes over `master` at `c05e7a52`. The evidence for each milestone is in the plan.
 
 ---
 

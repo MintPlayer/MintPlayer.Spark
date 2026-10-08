@@ -5,10 +5,12 @@ decisions are in its §6 (locked 2026-10-07). **One unit of work:** an upstream
 `MintPlayer.AspNetCore.Tools` release (published first) plus **one** Spark pull request. Test suites
 run once, at the end (M9). Intermediate milestones are verified by build and by reading the code.
 
-**Status (2026-10-08):** upstream 11.4.0-rc.0 is published (#41). M0 and M1 are done. Spikes S2–S4
-pass, and their code is adopted: S2 starts M4, S3 completes M5, and S4 is M7's dev WebSocket. The
-merged tree builds with 0 errors. The `accepts(application/json)` fixture change is accepted (PRD
-D7), and D8 settles how typed handlers reach `HttpContext`. Next: M2, M3, the rest of M4, M6, M7's leftovers, M8, M9.
+**Status (2026-10-08): ✅ complete.** Every milestone is done: U, M0–M9 and M3b. Upstream
+11.4.0-rc.0 is published (#41). Spikes S2–S4 passed and their code was adopted. Owner decisions made
+during implementation: D3a, D7 and D8. The work shipped as PR #492:
+- the local sweep was green (see M9);
+- CI was green;
+- the PR was squash-merged.
 
 ---
 
@@ -361,3 +363,21 @@ republish, and `MapControllers`.
 Then one full local sweep, writing the log raw:
 `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected > <scratchpad>/sweep.log 2>&1; echo "EXIT: $?"`.
 The M0 snapshot diff must be empty. Then push for CI.
+
+**As built (2026-10-08): ✅ M8 and M9 done.**
+- **M8:** `EndpointConventionsTests` is a Roslyn syntax scan of `libs/` and `apps/`. Its rules:
+  - R1: no service lookups or hand reads in endpoint classes;
+  - R2: no static classes holding endpoint logic;
+  - R3: no hand-mapped routes.
+
+  Every allow-list entry carries its reason, and a hygiene test fails on a stale entry. Each rule was shown red with a deliberate violation, then green.
+- **M9 docs:**
+  - #455's PRD has D3 superseded and records `MapIdentityApi` as exception D4b.
+  - D4's reason is corrected: Octokit owns the request-level signature refusal.
+  - The WireMock finding is in `docs/test-suite-performance-PRD.md` and CLAUDE.md.
+  - `docs/guide-cors.md` is updated.
+  - The release notes are in `docs/release-notes-preview-102.md`.
+  - No major version moved. The 12 changed packages are at `11.0.0-preview.102`.
+- **Sweep:**
+  - `npm run test:affected` (Developer licence) passed in 10m 33s. All 17 affected test projects ran with none taken from the cache, E2E included, and the route snapshots were unchanged.
+  - CI on PR #492 was green.
