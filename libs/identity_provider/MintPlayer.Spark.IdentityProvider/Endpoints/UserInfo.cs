@@ -116,3 +116,31 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
         return Results.Text(jwt, "application/jwt");
     }
 }
+
+/// <summary>
+/// The userinfo endpoint by POST (OIDC Core §5.3.1: the endpoint "MUST support the use of the HTTP GET and HTTP POST
+/// methods"), with the token in the Authorization header as for GET. Found by the OpenID conformance suite
+/// (oidcc-userinfo-post-header), which the GET-only endpoint answered 405.
+/// </summary>
+/// <remarks>
+/// A relying party's back channel, which carries no cookie, so no antiforgery token: the exemption is stated.
+/// </remarks>
+[MemberOf<OidcConnectCorsGroup>]
+internal sealed partial class OidcUserInfoByPost<TUser> : IPostEndpoint
+    where TUser : SparkUser, new()
+{
+    public static string Path => "/userinfo";
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(new Microsoft.AspNetCore.Antiforgery.RequireAntiforgeryTokenAttribute(false));
+
+    [Inject] private readonly UserManager<TUser> userManager;
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly OidcKeyRing signingKeyService;
+    [Inject] private readonly OidcIssuer oidcIssuer;
+    [Inject] private readonly OidcProofOfPossession proofOfPossession;
+    [Inject] private readonly OidcJwe jwe;
+
+    public Task<IResult> HandleAsync(HttpContext context)
+        => new OidcUserInfo<TUser>(userManager, store, signingKeyService, oidcIssuer, proofOfPossession, jwe).HandleAsync(context);
+}

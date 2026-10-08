@@ -587,13 +587,9 @@ internal static class SparkAuthenticationExtensions
                 });
                 if (restore()) return;
 
-                try {
-                    var stored = {};
-                    for (var k in msg) stored[k] = msg[k];
-                    stored.at = Date.now();
-                    window.localStorage.setItem(storageKey, JSON.stringify(stored));
-                } catch (e) { }
-
+                // The ack listener first: the sign-in page reacts to the storage write below at once and
+                // acknowledges only its first delivery, so an ack sent before this channel existed was lost
+                // and the page never closed itself.
                 var bc = null;
                 try {
                     bc = new BroadcastChannel(channelName);
@@ -604,8 +600,18 @@ internal static class SparkAuthenticationExtensions
                             window.close();
                         }
                     };
-                    bc.postMessage(msg);
+                } catch (e) { bc = null; }
+
+                try {
+                    var stored = {};
+                    for (var k in msg) stored[k] = msg[k];
+                    stored.at = Date.now();
+                    window.localStorage.setItem(storageKey, JSON.stringify(stored));
                 } catch (e) { }
+
+                if (bc) {
+                    try { bc.postMessage(msg); } catch (e) { }
+                }
 
                 if (window.opener) {
                     try { window.opener.postMessage(msg, window.location.origin); } catch (e) { }

@@ -22,6 +22,7 @@ PUT /connect/register/{clientId}
 POST /connect/revoke | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
 POST /connect/token | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
 GET /connect/userinfo | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/userinfo | antiforgery=not-required | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required

@@ -25,6 +25,7 @@ POST /connect/token | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentit
 GET /connect/two-factor
 POST /connect/two-factor | antiforgery=required
 GET /connect/userinfo | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/userinfo | antiforgery=not-required | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required

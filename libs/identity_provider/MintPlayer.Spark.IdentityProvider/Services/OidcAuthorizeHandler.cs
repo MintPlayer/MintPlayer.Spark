@@ -35,8 +35,12 @@ internal sealed class OidcAuthorizeHandler(
     /// <summary>Marks a return from a sign-in this endpoint forced (prompt=login, max_age, acr step-up), so it is not forced again.</summary>
     private const string ReauthenticatedMarker = "spark_reauth";
 
-    /// <summary>How far an auth_time may lag behind max_age: the time between the sign-in and the redirect back.</summary>
-    private static readonly TimeSpan MaxAgeSkew = TimeSpan.FromSeconds(60);
+    /// <summary>
+    /// No allowance on max_age: the session's auth_time is kept to the tick, and max_age=1 means a sign-in more than one
+    /// second old is re-authenticated (OpenID conformance oidcc-max-age-1). It used to be 60 s, meant for the sign-in
+    /// bounce, which the spark_reauth marker covers instead: a re-authentication is forced only once.
+    /// </summary>
+    private static readonly TimeSpan MaxAgeSkew = TimeSpan.Zero;
 
     public async Task<IResult> HandleAsync(HttpContext context, OidcAuthorizeParameters parameters, CancellationToken ct)
     {
@@ -50,8 +54,10 @@ internal sealed class OidcAuthorizeHandler(
         var p = resolved.Parameters!;
 
         // --- 2. Validate what can be validated before trusting the redirect URI --------------------
-        if (string.IsNullOrEmpty(p.ClientId) || string.IsNullOrEmpty(p.RedirectUri) ||
-            string.IsNullOrEmpty(p.ResponseType) || string.IsNullOrEmpty(p.Scope))
+        // Only what is needed to trust the redirect URI. A missing response_type or scope is reported to the
+        // client once the redirect URI is known to be its own (RFC 6749 §4.1.2.1; OpenID conformance
+        // oidcc-response-type-missing), below.
+        if (string.IsNullOrEmpty(p.ClientId) || string.IsNullOrEmpty(p.RedirectUri))
             return Json("invalid_request", "Missing required parameters.");
 
         var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, p.ClientId, ct);
@@ -73,6 +79,10 @@ internal sealed class OidcAuthorizeHandler(
 
         if (p.ResponseMode is not null && mode is null)
             return Error("invalid_request", $"response_mode '{p.ResponseMode}' is not supported.");
+        if (string.IsNullOrEmpty(p.ResponseType))
+            return Error("invalid_request", "response_type is required.");
+        if (string.IsNullOrEmpty(p.Scope))
+            return Error("invalid_request", "scope is required.");
         if (p.ResponseType != "code")
             return Error("unsupported_response_type", "Only 'code' response type is supported.");
 

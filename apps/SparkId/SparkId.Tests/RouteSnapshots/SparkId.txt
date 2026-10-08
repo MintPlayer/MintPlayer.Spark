@@ -25,6 +25,7 @@ POST /connect/token | rate-limit=policy:SparkIdentityProviderMachine
 GET /connect/two-factor
 POST /connect/two-factor | antiforgery=required
 GET /connect/userinfo | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/userinfo | antiforgery=not-required | rate-limit=policy:SparkIdentityProviderMachine
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required

@@ -68,6 +68,7 @@ internal static class OidcUserEndpoints
     {
         endpoints.MapEndpoint<OidcTokenEndpoint<TUser>>();
         endpoints.MapEndpoint<OidcUserInfo<TUser>>();
+        endpoints.MapEndpoint<OidcUserInfoByPost<TUser>>();
         endpoints.MapEndpoint<OidcLogout<TUser>>();
         endpoints.MapEndpoint<OidcLoginSubmit<TUser>>();
         endpoints.MapEndpoint<OidcTwoFactorSubmit<TUser>>();
