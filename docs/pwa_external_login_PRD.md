@@ -305,7 +305,7 @@ Move `AddSparkTwitter` from 1.0a to OAuth 2.0 + PKCE.
   ["/**", "!/**/*.*", "!/**/*__*", "!/**/*__*/**",
    "!/spark/**", "!/signin-*", "!/signout-*", "!/connect/**", "!/.well-known/**"]
   ```
-  CodeCoverage adds `!/api/**`, `!/badge/**` and `!/health/**`. Add no `dataGroups` for `/spark/**`.
+  CodeCoverage adds `!/api`, `!/api/**`, `!/badge`, `!/badge/**`, `!/health` and `!/health/**` (S4: `/**` alone misses the bare path). Add no `dataGroups` for `/spark/**`.
 - `bs-theme-preboot.js` goes in the prefetch asset group.
 - **Belt and braces:** the challenge URL and the callback `RedirectUri` carry `ngsw-bypass=true`. The provider's `/signin-*` redirect cannot carry it, hence the exclusion above.
 - **Host:** serve `ngsw-worker.js` and `ngsw.json` with `Cache-Control: no-cache`. One Spark helper (in `UseSpaStaticFilesImproved` or a Spark extension) applies it in every app.
@@ -337,6 +337,79 @@ Move `AddSparkTwitter` from 1.0a to OAuth 2.0 + PKCE.
 | S8 | Firefox Android with the web app installed: when `window.open(in-scope)` returns `null`, does anything open in the installed app? Does a full-page redirect in the browser tab (tab → provider → in-scope `/signin-*`) stay in the tab and sign it in? | Prototype: add an experiment R (same-tab redirect via the COOP stand-in to an in-scope callback) | Firefox-Android support in D3 |
 | S7 (info only) | Samsung Internet and Edge-installed PWAs on Android: they share nothing with a Chrome tab | Optional | none: documented limitation |
 
+## 5a. Spike results
+
+### D8 spike S4 result (2026-10-08, Fleet `@spark-demo/fleet-demo`, Angular 22.2.0, Nx 23.2.1)
+
+**Don't use the `@angular/pwa` schematic.** It fails on the `@nx/angular:application` executor (`getMainFilePath` reads `options.main` → `Path "undefined" does not exist`). Forced through a temporary executor swap, Nx's angular.json shim rewrote **every** app's project.json. M5 hand-writes per app:
+- `configurations.production.serviceWorker: "<projectRoot>/ngsw-config.json"` in project.json
+- `ngsw-config.json`
+- `public/manifest.webmanifest` (real name/short_name, `id`, `start_url`/`scope` `"/"`, theme colours) and icons
+- `<link rel="manifest">` + `<noscript>` in index.html
+- `provideSparkServiceWorker()`
+
+**Production build verified:**
+- emits ngsw-worker.js, ngsw.json, safety-worker.js and manifest.webmanifest
+- the navigationUrls list sends `/spark/auth/external-login`, `/signin-github?code=x`, `/connect/authorize`, `/.well-known/*` and `/signout-oidc` to the network, and serves `/po/car/123` from the SW
+- `?ngsw-bypass` works
+
+**Correction:** `!/health/**` does not exclude the exact `/health`. CodeCoverage adds `!/health`, `!/api`, `!/badge` as well as the `/**` forms.
+
+**appData: don't stamp a commit sha.**
+- In ngsw-config.json it busts the Nx cache on every commit.
+- Patched into ngsw.json after the build, it makes every client see an update.
+
+Use the ng-spark package version (it moves only on release) or nothing. Revises Q1b's "CI writes appData.build".
+
+**no-cache for ngsw-worker.js/ngsw.json/safety-worker.js:**
+- **The trap:** `UseSpaStaticFilesImproved` is the external `MintPlayer.AspNetCore.SpaServices` 10.7.1 package, and runs before `UseSpark`. A step inside `UseSpark` would therefore run too late.
+- **Where it goes:** one Spark `IStartupFilter` (pattern: `libs/spark/MintPlayer.Spark/Services/SparkForwardedHeaders.cs`) setting `Cache-Control: no-cache` in `OnStarting` for those three paths.
+- The `.webmanifest` MIME type is already correct by default.
+
+**Nx:** ngsw-config.json is under projectRoot, so it is already a build input; `/bs-theme-preboot.js` is listed in the prefetch group. Unexplained: `worker-basic.min.js` in the output. Find out who ships it and exclude it from prefetch.
+
+**Not covered:** registration under the real ASP.NET host, and Playwright checks on auth navigations. These move to M7.
+
+### D7 spike S6 result (code read 2026-10-08; live run happens in M7)
+
+Compatible already:
+- `sub` = user id (stable)
+- PKCE S256 required per client
+- nonce echoed in the id_token
+- client_secret_post (the stock handler's default)
+- RS256 + kid
+- single `aud`
+- exact-match redirect URIs
+- `SanitizeReturnUrl` accepts `/connect/authorize?...`
+
+M6 must fix in the IdP (paths under `libs/identity_provider/MintPlayer.Spark.IdentityProvider/`):
+1. **Logout with the stock handler:** `/connect/logout` needs `client_id` to honour `post_logout_redirect_uri` (`Endpoints/Logout.cs:315-324`); the stock handler sends `id_token_hint`. Derive the client from `id_token_hint`'s `aud` (validate the signature). The preset also sets `ProtocolMessage.ClientId` on sign-out, as belt and braces.
+2. **`/connect/login`** (`Endpoints/Login.cs:101-164`, StringBuilder HTML):
+   - move the GET into `OidcConnectGroup`, so it stays mapped when LocalCredentials=Disabled (`Endpoints/Oidc/Groups.cs:43-48`)
+   - render the password form only when not Disabled; POST and 2FA stay gated
+   - add buttons from `ExternalAuthenticationSchemes.GetInteractiveAsync` linking to `/spark/auth/external-login?provider=X&returnUrl=<pending authorize url>` (redirect mode); HTML-encode everything
+3. **External-login refusal codes are lost:** the callback appends `sparkExternalLogin=<code>` to `/connect/authorize?...`, and Authorize drops it on the bounce to `/connect/login`. Forward it, and show it on the login page.
+4. **Scopes:** none are seeded and claims come only from `OidcScope.ClaimTypes` (`Services/OidcTokenGenerator.cs:160-197`). Document, and seed in HR, `profile`=[name, preferred_username, given_name, family_name] and `email`=[email, email_verified]. Map given_name/family_name, which are dropped today (`:192-196`).
+5. **Discovery** (`Endpoints/Discovery.cs:38-57`): add `response_modes_supported: ["query"]` and `claims_supported`. The preset sets `ResponseMode = "query"`, since the IdP never does form_post (`Services/OidcAuthorizationFlow.cs:419-421`).
+6. **Consistency:** `email_verified` is a string in the id_token (`:182`) but a bool in userinfo (`:235`); make it a bool in both. Roles are `role` in the id_token but `roles` in userinfo (`:239`); pick `role` in both.
+7. **Not emitted:** `at_hash`, `auth_time`, `azp`. Add `at_hash` (the stock validator tolerates its absence for code flow; confirm live) and `auth_time`.
+8. **id_token lifetime** reuses `AccessTokenLifetimeMinutes` (`Endpoints/Token.cs:243`). Give it its own `IdTokenLifetimeMinutes` (default 5).
+
+DemoApp RP registration in HR (for M6/M7):
+- confidential, grants [authorization_code]
+- RedirectUris [`https://localhost:<port>/signin-<scheme>`]
+- PostLogoutRedirectUris [`https://localhost:<port>/signout-callback-oidc`]
+- scopes [openid, profile, email]
+- ConsentType implicit + AutoApproveImplicitConsent
+
+### M0 result (80e22e1c)
+
+- Nested entry points work: `@mintplayer/ng-spark/auth/<name>`, plus a root `@mintplayer/ng-spark/auth` re-exporting `provideSparkAuth`/`withSparkAuth`/`sparkAuthClientMethods` (the apps import the bare name).
+- Fleet, HR and QnA now depend on `@mintplayer/ng-spark`; DemoApp never used auth. The SPARK030 default package is `@mintplayer/ng-spark`.
+- **Release-note item (M8):** the generated, gitignored `spark-auth.setup.ts` is never overwritten, so every existing consumer copy still imports `@mintplayer/ng-spark-auth` and breaks the build. Either the generator rewrites a stale import, or the release notes tell people to delete the file.
+- **Owner:** `CLAUDE.md` still names `@mintplayer/ng-spark-auth` in the versioning section.
+- Kept on purpose: log prefixes `[ng-spark-auth]` (no behaviour change in M0) and test fixtures modelling the old two-package layout.
+
 ## 6. Owner decisions (grilled 2026-10-08)
 
 - **Q1 — decided: all five apps** (CodeCoverage, DemoApp, Fleet, HR, QnA). CodeCoverage is the only deployed app with a real provider (GitHub), so S5 runs there; Fleet carries S4 and E2E.
@@ -353,7 +426,7 @@ Move `AddSparkTwitter` from 1.0a to OAuth 2.0 + PKCE.
   - **No hidden-tab reload:** ng-spark has no unsaved-changes guard (no `canDeactivate`/dirty tracking) to consult, so it is not safe.
   - `@angular/service-worker` becomes an **optional** peer of `ng-spark`, imported only by `/pwa`.
   - **Replaces legacy MintPlayer's `app.component.ts:88-100`,** which used the removed `available`/`activated` API and reloaded immediately (losing open edits).
-  - **Legacy's `"version": 701` (`ngsw-config.json:4`) is not carried over.** Update detection uses the content hashes in the generated `ngsw.json`, so it is unnecessary. A human-readable build goes in `appData.build`, which CI writes, and the footer can show it via `VersionReadyEvent.latestVersion.appData`.
+  - **Legacy's `"version": 701` (`ngsw-config.json:4`) is not carried over.** Update detection uses the content hashes in the generated `ngsw.json`, so it is unnecessary. A human-readable build goes in `appData.build`, set to the ng-spark package version, never a commit sha (S4), and the footer can show it via `VersionReadyEvent.latestVersion.appData`.
 - **Q6 — decided: `ng-spark-auth` merges into `ng-spark` in this PR, keeping its granularity.**
   - All 15 entry points (account, auth-bar, confirm-email, core, forgot-password, guards, interceptors, login, models, pipes, register, reset-password, routes, sign-in, two-factor) move to nested secondary entry points `@mintplayer/ng-spark/auth/<name>`.
   - `libs/node_packages/ng-spark-auth` is deleted, and CI stops publishing it.
@@ -419,7 +492,7 @@ live under `ng-spark/auth/...`.
 5. **M5 PWA:**
    - root dependency
    - `@mintplayer/ng-spark/pwa` with `provideSparkServiceWorker()` and its update policy (Q1b), with vitest coverage for: next navigation becomes a full load after `VERSION_READY`, `unrecoverable` reloads, the check schedule
-   - CI writes `appData.build`
+   - `appData.build` = ng-spark package version (no commit sha: S4)
    - per-app generator + manifest + icons + `ngsw-config.json`
    - host no-cache helper
    - guard test
