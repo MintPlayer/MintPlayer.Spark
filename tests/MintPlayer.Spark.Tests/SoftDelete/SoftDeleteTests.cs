@@ -334,7 +334,8 @@ public class SoftDeleteTests : SparkTestDriver
     /// <summary>
     /// Restore and purge answer the five bodies no endpoint can bind, and one well-formed request each,
     /// as they did while they read their bodies through <c>ReadTypedRequestAsync</c> (endpoints generator
-    /// completion M3b, PRD D3a).
+    /// completion M3b, PRD D3a), except the owner-accepted change: "none" and "text/plain" escaped as an
+    /// unhandled InvalidOperationException (a 500) and now get the standard refusal.
     /// </summary>
     [Fact]
     public async Task Unbindable_restore_and_purge_bodies_answer_as_before()
@@ -355,17 +356,17 @@ public class SoftDeleteTests : SparkTestDriver
 
         string.Join("\n", lines).Should().Be("""
             # /spark/po/restore
-            none: throws InvalidOperationException
+            none: 404 {"result":{"error":"Not found"},"operations":[]}
             empty: 404 {"result":{"error":"Not found"},"operations":[]}
             null: 404 {"result":{"error":"Not found"},"operations":[]}
             malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-            text/plain: throws InvalidOperationException
+            text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
             # /spark/po/purge
-            none: throws InvalidOperationException
+            none: 404 {"result":{"error":"Not found"},"operations":[]}
             empty: 404 {"result":{"error":"Not found"},"operations":[]}
             null: 404 {"result":{"error":"Not found"},"operations":[]}
             malformed: 404 {"result":{"error":"Not found"},"operations":[]}
-            text/plain: throws InvalidOperationException
+            text/plain: 404 {"result":{"error":"Not found"},"operations":[]}
             restore: 200
             purge: 204
             """.ReplaceLineEndings("\n"));

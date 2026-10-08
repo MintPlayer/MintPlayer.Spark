@@ -44,7 +44,7 @@ internal sealed class SoftDeleteRequest : ISparkTypedRequest
 /// refusal (401 anonymous / 404), a disabled restore is 403 naming the action.
 /// </summary>
 [MemberOf<SoftDeletePersistentObjectGroup>]
-internal sealed partial class RestorePersistentObject : IPostEndpoint
+internal sealed partial class RestorePersistentObject : IPostEndpoint<SoftDeleteRequest>
 {
     public static string Path => "/restore";
 
@@ -54,11 +54,17 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint
     [Inject] private readonly ISparkSoftDelete softDelete;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound is the standard refusal, as an unusable request is below; never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(addOn.Refusal(context));
+
+    public override async Task<IResult> HandleAsync(SoftDeleteRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await addOn.ReadTypedRequestAsync<SoftDeleteRequest>(httpContext);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = addOn.ResolveType(request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id))
             return addOn.Refusal(httpContext);
 
         try
@@ -99,7 +105,7 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint
 /// already be deleted. Removes the document and every revision of it; cannot be undone.
 /// </summary>
 [MemberOf<SoftDeletePersistentObjectGroup>]
-internal sealed partial class PurgePersistentObject : IPostEndpoint
+internal sealed partial class PurgePersistentObject : IPostEndpoint<SoftDeleteRequest>
 {
     public static string Path => "/purge";
 
@@ -108,11 +114,17 @@ internal sealed partial class PurgePersistentObject : IPostEndpoint
 
     [Inject] private readonly ISparkSoftDelete softDelete;
     [Inject] private readonly ISparkAddOnEndpoints addOn;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>A body that cannot be bound is the standard refusal, as an unusable request is below; never a parse error (PRD D3a).</summary>
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(addOn.Refusal(context));
+
+    public override async Task<IResult> HandleAsync(SoftDeleteRequest request, CancellationToken cancellationToken)
     {
-        var (request, entityType) = await addOn.ReadTypedRequestAsync<SoftDeleteRequest>(httpContext);
-        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
+        var httpContext = httpContextAccessor.HttpContext!;
+        var entityType = addOn.ResolveType(request);
+        if (entityType is null || string.IsNullOrEmpty(request.Id))
             return addOn.Refusal(httpContext);
 
         // A purge says which version it removes (#467, D14), as every delete does.
