@@ -52,6 +52,19 @@ public class SparkIdentityProviderBranding
     public string? ExtraCss { get; set; }
 }
 
+/// <summary><c>Spark:IdentityProvider:Keys</c>: the signing-key rotation schedule (D8, I10).</summary>
+public class SparkIdentityProviderKeyOptions
+{
+    /// <summary>How long a key signs before the next one takes over.</summary>
+    public int RotationDays { get; set; } = 90;
+
+    /// <summary>How long the next key is published before it signs, so relying parties have it cached.</summary>
+    public int PrePublishDays { get; set; } = 2;
+
+    /// <summary>How long a retired key stays published, covering the longest-lived token it signed.</summary>
+    public int RetainRetiredDays { get; set; } = 14;
+}
+
 /// <summary><c>Spark:IdentityProvider:Audit</c> (<c>docs/identity_provider_platform_PRD.md</c> D9).</summary>
 public class SparkIdentityProviderAuditOptions
 {

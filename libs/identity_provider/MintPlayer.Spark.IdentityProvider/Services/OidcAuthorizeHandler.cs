@@ -27,7 +27,7 @@ internal sealed class OidcAuthorizeHandler(
     SparkIdentityProviderOptions options,
     OidcIssuer oidcIssuer,
     OidcRequestObjects requestObjects,
-    OidcSigningKeyService signingKeys)
+    OidcKeyRing signingKeys)
 {
     /// <summary>The external-login outcome code the Authorization package appends on a refused sign-in (#490 M6).</summary>
     internal const string ExternalLoginQueryParameter = "sparkExternalLogin";

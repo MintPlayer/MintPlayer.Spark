@@ -185,7 +185,7 @@ public class OidcTokenForgeryTests(OidcSharedHost host) : OidcTestHost(host), IC
     {
         var clientId = await SetUpClientAsync();
 
-        var signingKey = Factory.GetService<MintPlayer.Spark.IdentityProvider.Services.OidcSigningKeyService>();
+        var signingKey = Factory.GetService<MintPlayer.Spark.IdentityProvider.Services.OidcKeyRing>();
         var token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(
@@ -197,7 +197,7 @@ public class OidcTokenForgeryTests(OidcSharedHost host) : OidcTestHost(host), IC
             Issuer = Issuer,
             Audience = clientId,
             Expires = DateTime.UtcNow.AddHours(1),
-            SigningCredentials = new SigningCredentials(signingKey.GetSigningKey(), SecurityAlgorithms.RsaSha256),
+            SigningCredentials = signingKey.GetSigningCredentials(SecurityAlgorithms.RsaSha256),
         });
 
         await AssertRejectedAsync(clientId, token,

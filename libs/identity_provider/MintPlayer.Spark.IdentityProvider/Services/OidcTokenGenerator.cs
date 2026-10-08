@@ -9,9 +9,9 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 
 internal class OidcTokenGenerator
 {
-    private readonly OidcSigningKeyService _signingKeyService;
+    private readonly OidcKeyRing _signingKeyService;
 
-    public OidcTokenGenerator(OidcSigningKeyService signingKeyService)
+    public OidcTokenGenerator(OidcKeyRing signingKeyService)
     {
         _signingKeyService = signingKeyService;
     }

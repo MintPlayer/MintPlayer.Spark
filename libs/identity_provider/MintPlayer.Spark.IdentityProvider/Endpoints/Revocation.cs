@@ -51,7 +51,7 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
     public static string Path => "/revoke";
 
     [Inject] private readonly IDocumentStore store;
-    [Inject] private readonly OidcSigningKeyService signingKeyService;
+    [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
 

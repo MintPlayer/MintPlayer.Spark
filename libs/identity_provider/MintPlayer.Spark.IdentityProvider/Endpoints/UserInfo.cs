@@ -31,7 +31,7 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
 
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly IDocumentStore store;
-    [Inject] private readonly OidcSigningKeyService signingKeyService;
+    [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcProofOfPossession proofOfPossession;
     [Inject] private readonly OidcJwe jwe;

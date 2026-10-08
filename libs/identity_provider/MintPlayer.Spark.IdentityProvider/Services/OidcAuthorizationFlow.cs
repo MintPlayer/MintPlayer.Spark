@@ -193,6 +193,7 @@ internal static class OidcAuthorizationFlow
             // amr, acr, sid, claims, resource: what the code's tokens are built from (D8).
             Properties = new Dictionary<string, string>(request.Properties),
             AuthTime = request.AuthTime,
+            SessionId = request.SessionId,
         };
 
         // A request mints exactly one code. Re-submitting the consent form, or replaying the
@@ -200,6 +201,8 @@ internal static class OidcAuthorizationFlow
         request.Status = "consumed";
 
         await session.StoreExpiringAsync(token, ct);
+        // I10: the client joins the provider session, so logging out reaches it.
+        await OidcSessionStore.JoinAsync(session, request.SessionId, request.Subject, request.ApplicationId, ct);
         await session.SaveChangesAsync(ct);
 
         return (code, token);

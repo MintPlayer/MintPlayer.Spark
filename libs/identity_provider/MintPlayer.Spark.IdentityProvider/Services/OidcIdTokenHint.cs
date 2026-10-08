@@ -24,7 +24,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 internal static class OidcIdTokenHint
 {
     /// <summary>The client id the hint was issued to, or <see langword="null"/> if it is not a valid id_token of ours.</summary>
-    public static async Task<string?> ResolveClientIdAsync(OidcSigningKeyService keys, string idTokenHint, string issuer)
+    public static async Task<string?> ResolveClientIdAsync(OidcKeyRing keys, string idTokenHint, string issuer)
     {
         var handler = new JsonWebTokenHandler();
         var validation = await handler.ValidateTokenAsync(idTokenHint, new TokenValidationParameters
@@ -35,7 +35,7 @@ internal static class OidcIdTokenHint
             ValidateAudience = false,
             ValidateLifetime = false,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = keys.GetSigningKey(),
+            IssuerSigningKeys = keys.ValidationKeys,
         });
 
         if (!validation.IsValid || validation.SecurityToken is not JsonWebToken jwt)
@@ -50,7 +50,7 @@ internal static class OidcIdTokenHint
     }
 
     /// <summary>The <c>sub</c> of an id_token this provider issued, or null when it is not one (signature, issuer).</summary>
-    public static async Task<string?> ResolveSubjectAsync(OidcSigningKeyService keys, string idTokenHint, string issuer)
+    public static async Task<string?> ResolveSubjectAsync(OidcKeyRing keys, string idTokenHint, string issuer)
     {
         var validation = await new JsonWebTokenHandler().ValidateTokenAsync(idTokenHint, new TokenValidationParameters
         {
@@ -60,7 +60,7 @@ internal static class OidcIdTokenHint
             // An expired id_token is still a valid hint at who the client expects (OIDC Core §3.1.2.1).
             ValidateLifetime = false,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = keys.GetSigningKey(),
+            IssuerSigningKeys = keys.ValidationKeys,
         });
         return validation.IsValid && validation.SecurityToken is JsonWebToken jwt ? jwt.Subject : null;
     }

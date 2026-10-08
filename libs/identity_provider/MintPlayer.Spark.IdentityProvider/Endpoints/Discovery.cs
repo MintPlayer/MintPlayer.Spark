@@ -16,7 +16,7 @@ internal sealed partial class OidcDiscovery : IGetEndpoint
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcIssuer oidcIssuer;
-    [Inject] private readonly OidcSigningKeyService signingKeys;
+    [Inject] private readonly OidcKeyRing signingKeys;
     [Inject] private readonly MintPlayer.Spark.Services.ICultureLoader cultures;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -89,6 +89,10 @@ internal sealed partial class OidcDiscovery : IGetEndpoint
             ["tls_client_certificate_bound_access_tokens"] = true,
             ["dpop_signing_alg_values_supported"] = OidcProofOfPossession.DpopAlgorithms,
             ["authorization_response_iss_parameter_supported"] = true,
+            ["backchannel_logout_supported"] = true,
+            ["backchannel_logout_session_supported"] = true,
+            ["frontchannel_logout_supported"] = true,
+            ["frontchannel_logout_session_supported"] = true,
         };
 
         return Results.Json(document);

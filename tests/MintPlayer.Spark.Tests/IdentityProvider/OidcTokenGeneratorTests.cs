@@ -27,9 +27,9 @@ public class OidcTokenGeneratorTests : IDisposable
     }
 
     private OidcTokenGenerator NewGenerator()
-        => new(new OidcSigningKeyService(
+        => new(OidcKeyRing.InMemory(new OidcSigningKeyService(
             new HostingEnvironment { EnvironmentName = Environments.Development, ContentRootPath = Path.GetTempPath() },
-            _keyPath));
+            _keyPath).GetSigningKey()));
 
     private static SparkUser User(string? email = "ada@example.test", bool confirmed = true, params string[] roles)
         => new()

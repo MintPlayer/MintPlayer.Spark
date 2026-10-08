@@ -67,7 +67,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
     [Inject] private readonly OidcProofOfPossession proofOfPossession;
     [Inject] private readonly OidcJwe jwe;
-    [Inject] private readonly OidcSigningKeyService signingKeyService;
+    [Inject] private readonly OidcKeyRing signingKeyService;
 
     /// <summary>The posted form, kept from <see cref="BindRequestAsync"/>: client authentication reads more of it than the bound record carries.</summary>
     private IFormCollection form = null!;
@@ -267,6 +267,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             ApplicationId = app.Id!,
             AuthorizationId = codeToken.AuthorizationId,
             Subject = codeToken.Subject,
+            SessionId = codeToken.SessionId,
             Type = OidcTokenTypes.AccessToken,
             Scopes = grantedScopeNames,
             Status = "valid",
@@ -283,6 +284,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
                 ApplicationId = app.Id!,
                 AuthorizationId = codeToken.AuthorizationId,
                 Subject = codeToken.Subject,
+                SessionId = codeToken.SessionId,
                 Id = OidcTokenReference.DocumentId(refreshTokenValue),
                 Type = OidcTokenTypes.RefreshToken,
                 Scopes = grantedScopeNames,
@@ -521,6 +523,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             ApplicationId = app.Id!,
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
+            SessionId = refreshTokenDoc.SessionId,
             Type = OidcTokenTypes.AccessToken,
             Scopes = grantedScopeNames,
             Status = "valid",
@@ -533,6 +536,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             ApplicationId = app.Id!,
             AuthorizationId = refreshTokenDoc.AuthorizationId,
             Subject = refreshTokenDoc.Subject,
+            SessionId = refreshTokenDoc.SessionId,
             Id = OidcTokenReference.DocumentId(newRefreshTokenValue),
             Type = OidcTokenTypes.RefreshToken,
             // RFC 6749 §6: "If a new refresh token is issued, the refresh token scope MUST be

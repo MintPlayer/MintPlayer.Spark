@@ -29,7 +29,8 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
     [QueryParam("ui_locales")] public string? UiLocales { get; set; }
 
     [Inject] private readonly SignInManager<TUser> signInManager;
-    [Inject] private readonly OidcSigningKeyService signingKeyService;
+    [Inject] private readonly OidcKeyRing signingKeyService;
+    [Inject] private readonly OidcSessionStore sessions;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
@@ -42,12 +43,17 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
         var postLogoutRedirectUri = PostLogoutRedirectUri;
         text.UseUiLocales(UiLocales);
 
+        // I10: end the provider session first, while its cookie still says which one it is: refresh
+        // tokens revoked, back-channel logout tokens sent, front-channel URIs collected.
+        var signedIn = await OidcInteractiveSession.ReadAsync(context);
+        var ended = await sessions.EndAsync(signedIn?.SessionId, oidcIssuer.Resolve(context.Request), ct);
+
         // Sign out the user if authenticated
-        if (context.User?.Identity?.IsAuthenticated == true)
+        if (signedIn is not null || context.User?.Identity?.IsAuthenticated == true)
             await signInManager.SignOutAsync();
 
         if (string.IsNullOrEmpty(postLogoutRedirectUri))
-            return ConnectResults.Html(SignedOutPage(context));
+            return ConnectResults.Html(SignedOutPage(context, ended.FrontChannelUris, continueTo: null));
 
         // Validate post_logout_redirect_uri against registered client URIs
         using var session = store.OpenAsyncSession();
@@ -87,19 +93,32 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
                 "logoutInvalidRedirectUri", headingKey: "logoutInvalidRedirectUriTitle");
         }
 
-        return Results.Redirect(RedirectUrl.With(postLogoutRedirectUri, ("state", State)));
+        var destination = RedirectUrl.With(postLogoutRedirectUri, ("state", State));
+        // Front-channel logout: the clients' logout pages load in hidden iframes first, then the
+        // browser continues. Without any, straight on.
+        return ended.FrontChannelUris.Count == 0
+            ? Results.Redirect(destination)
+            : ConnectResults.Html(SignedOutPage(context, ended.FrontChannelUris, destination));
     }
 
-    /// <summary>The page shown when there is no client to return to.</summary>
-    private string SignedOutPage(HttpContext context)
+    /// <summary>The signed-out page, which also carries the front-channel logout iframes (best effort, Front-Channel Logout 1.0 §4).</summary>
+    private string SignedOutPage(HttpContext context, IReadOnlyList<string> frontChannelUris, string? continueTo)
     {
         var sb = new StringBuilder();
         ConnectPageTheme.AppendDocumentStart(sb, context, text["logoutTitle"], text.Culture, options.Branding);
-        sb.Append("body{max-width:480px;margin:80px auto;padding:0 20px}");
-        sb.Append("</style></head><body>");
+        sb.Append("body{max-width:480px;margin:80px auto;padding:0 20px}iframe{display:none}");
+        sb.Append("</style>");
+        // Moves on after the iframes had their chance.
+        if (continueTo is not null)
+            sb.Append("<meta http-equiv=\"refresh\" content=\"2;url=").Append(ConnectPage.Encode(continueTo)).Append("\">");
+        sb.Append("</head><body>");
         ConnectPageTheme.AppendBrand(sb, options.Branding);
         sb.Append("<h2>").Append(ConnectPage.Encode(text["logoutHeading"])).Append("</h2>");
-        sb.Append("<p>").Append(ConnectPage.Encode(text["logoutClose"])).Append("</p>");
+        sb.Append("<p>").Append(ConnectPage.Encode(text[continueTo is null ? "logoutClose" : "logoutContinuing"])).Append("</p>");
+        foreach (var uri in frontChannelUris)
+            sb.Append("<iframe src=\"").Append(ConnectPage.Encode(uri)).Append("\"></iframe>");
+        if (continueTo is not null)
+            sb.Append("<p><a href=\"").Append(ConnectPage.Encode(continueTo)).Append("\">").Append(ConnectPage.Encode(text["deviceContinue"])).Append("</a></p>");
         sb.Append("</body></html>");
         return sb.ToString();
     }

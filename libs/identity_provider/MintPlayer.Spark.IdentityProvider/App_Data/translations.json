@@ -2278,6 +2278,11 @@
         "en": "The device was not given access.",
         "fr": "L'appareil n'a pas obtenu l'accès.",
         "nl": "Het toestel kreeg geen toegang."
+      },
+      "logoutContinuing": {
+        "en": "Signing you out of the connected applications…",
+        "fr": "Déconnexion des applications connectées…",
+        "nl": "Je wordt afgemeld bij de gekoppelde applicaties…"
       }
     }
   }

@@ -40,6 +40,9 @@ public class SparkIdentityProviderOptions
     /// <summary>How the <c>/connect/*</c> pages present the provider (<c>Spark:IdentityProvider:Branding</c>, PRD D7).</summary>
     public SparkIdentityProviderBranding Branding { get; set; } = new();
 
+    /// <summary>The signing-key rotation schedule (<c>Spark:IdentityProvider:Keys</c>, PRD D8).</summary>
+    public SparkIdentityProviderKeyOptions Keys { get; set; } = new();
+
     /// <summary>The audit trail (<c>Spark:IdentityProvider:Audit</c>, PRD D9).</summary>
     public SparkIdentityProviderAuditOptions Audit { get; set; } = new();
 

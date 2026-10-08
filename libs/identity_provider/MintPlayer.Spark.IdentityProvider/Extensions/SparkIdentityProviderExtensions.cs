@@ -48,11 +48,24 @@ public static class SparkIdentityProviderExtensions
         builder.Services.AddSingleton(options);
 
         // Register services
-        builder.Services.AddSingleton(sp =>
-        {
-            var env = sp.GetRequiredService<IHostEnvironment>();
-            return new OidcSigningKeyService(env, options.SigningKeyPath);
-        });
+        // I10: the signing keys live in OidcKeys, protected with Data Protection; a key file named by
+        // SigningKeyPath is imported once. Rotated on schedule by OidcKeyRotationService.
+        builder.Services.AddSingleton<OidcKeyRing>();
+        builder.Services.AddHostedService<OidcKeyRotationService>();
+
+        // I10: every sign-in at the provider gets a session id (sid) in its cookie, so logout can
+        // reach the clients that received tokens in that session.
+        builder.Services.AddSingleton<OidcSessionStore>();
+        builder.Services.PostConfigure<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions>(
+            Microsoft.AspNetCore.Identity.IdentityConstants.ApplicationScheme, cookie =>
+            {
+                var previous = cookie.Events.OnSigningIn;
+                cookie.Events.OnSigningIn = async context =>
+                {
+                    OidcSessionStore.StampSessionId(context.Principal!);
+                    await previous(context);
+                };
+            });
         builder.Services.AddSingleton<OidcTokenGenerator>();
         builder.Services.AddSingleton<OidcIssuer>();
         // The typed /connect pages reach their HttpContext through the accessor (D8). AddSpark
@@ -170,6 +183,10 @@ public static class SparkIdentityProviderExtensions
 
             var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
             new OidcApplications_ByClientId().Execute(documentStore);
+
+            // The key ring before the first request: a ring that cannot be decrypted stops startup here,
+            // with the reason, rather than failing the first token request.
+            app.ApplicationServices.GetRequiredService<OidcKeyRing>().InitializeAsync().GetAwaiter().GetResult();
 
             // Load the CORS origin snapshot before the first request, not lazily: a browser does
             // not retry a preflight it lost, and this fails closed until the load lands.

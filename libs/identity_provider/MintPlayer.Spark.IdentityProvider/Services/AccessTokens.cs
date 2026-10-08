@@ -30,7 +30,7 @@ internal static class AccessTokens
     /// <summary>Resolves the token, or null if it is not a well-formed token we signed.</summary>
     public static async Task<ResolvedAccessToken?> ResolveAsync(
         IAsyncDocumentSession session,
-        OidcSigningKeyService keys,
+        OidcKeyRing keys,
         string token,
         string issuer,
         CancellationToken ct)
@@ -44,7 +44,7 @@ internal static class AccessTokens
             // Expiry is judged below so callers can distinguish "expired" from "not ours"
             // rather than both surfacing as a validation failure.
             ValidateLifetime = false,
-            IssuerSigningKey = keys.GetSigningKey(),
+            IssuerSigningKeys = keys.ValidationKeys,
         });
 
         if (!validation.IsValid || validation.SecurityToken is not JsonWebToken jwt)
