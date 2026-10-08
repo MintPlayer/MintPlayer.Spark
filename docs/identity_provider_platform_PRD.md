@@ -1,6 +1,6 @@
 # PRD / Plan: Spark IdentityProvider as a full identity-provider plugin
 
-Status: **investigation done, owner decisions open** (2026-10-08). Branch:
+Status: **grilled, all decisions locked (§6), implementation not started** (2026-10-08). Branch:
 `feat/464-490-pwa-external-login` (PR #499).
 
 Origin: an owner request made while testing #464/#490 SSO (HR as the IdP, QnA as the RP):
@@ -15,7 +15,7 @@ Related documents:
   absorbed into §4 below.
 - [idp-e2e-test-matrix.md](idp-e2e-test-matrix.md)
 
-Per the one-PR rule this lands in **the same PR** unless the owner decides otherwise (Q0).
+Lands in **PR #499** (Q0).
 
 ## 1. Goals
 
@@ -136,231 +136,294 @@ The legacy `C:\Repos\MintPlayer` has **no** OAuth server or developer portal on 
 ## 3. Locked decisions that still apply
 
 These come from the audit, `coverage-handoff-plan.md`, PRD-MultiHostE2E and the #490 PRD.
-- **Hand-built:** no OpenIddict. Code + PKCE S256 only; no implicit, hybrid or `plain`.
-- **The `/connect/*` protocol pages stay server-rendered.** The IdP host needs no ClientApp.
+- **Hand-built:** no OpenIddict. Code + PKCE S256; no implicit, hybrid or `plain` (§5).
+- **Protocol pages are server-rendered** (sharpened by grill Q7): everything that can appear in
+  the external-login popup or redirect is server-rendered, and everything else is SPA.
 - **Natural ids:** a document that drives an authorization decision is addressed by natural id,
   never by an index (audit :184).
-- **D13:** applications and scopes are Spark PersistentObjects governed by `security.json`, not a
-  bespoke API.
+- **D13:** applications and resources are Spark PersistentObjects governed by `security.json`, not a
+  bespoke API (reconfirmed by grill Q1).
 - **D1:** `client_credentials` is *the* machine credential, and there are no personal access tokens.
 - **D15a:** the protocol endpoints follow RFC rules, not `security.json`.
-- **Withdrawal** revokes the whole grant per app. The access-token lifetime window is accepted and
-  stated in the UI.
 - **Logout GET without antiforgery is deliberate** (audit :151).
-- **Never splice strings into RQL.**
-- **Prefer ASP.NET Identity** over third-party packages.
+- **Never splice strings into RQL.** Prefer ASP.NET Identity.
+- ~~Withdrawal revokes the whole grant per app~~: **reversed by grill Q5**. A single scope can be
+  withdrawn (D6).
 
-## 4. Proposed design (subject to §6)
+**Licence facts that bind the design** (memory `reference_raven_licence_tiers`, measured on
+production, which runs Community):
+- **Revisions are capped** ("revisions 1000 > licensed 2" was refused). Revisions are never the
+  audit trail (Q6).
+- **Expired documents are swept every 36 hours at best.** `@expires` only cleans up; validity always
+  checks `ExpiresAt` itself.
+- CI and the local machine run the Developer licence, so they cannot see either limit.
 
-### D1: Ownership, and developers as a group
-- `OidcApplication` gains `Owners: string[]` (SparkUser ids) and `CreatedBy`. A row-level-security
-  filter shows a non-admin only the apps they own; Administrators see everything. This reuses the
-  existing row-security mechanism (#236), not a parallel one.
-- A **Developers** well-known group is granted `QueryReadEditNewDelete/OidcApplication`, with the
-  row filter applied. Becoming a developer is configured by
-  `Spark:IdentityProvider:Developers:Registration = Disabled | Open | Approval`. `Open` joins the
-  group when the user accepts the developer terms; `Approval` puts the user in a queue that an
-  admin approves.
-- A `DeveloperProfile` document holds terms version and acceptance time and, for `Approval`, the
-  request status. Its id is `DeveloperProfiles/<userId>`.
+## 4. Design (grilled 2026-10-08, see §6)
 
-### D2: App registration done properly
-- **ClientId:** generated server-side (random base64url, 24 characters) on New, and read-only
-  afterwards. Uniqueness comes from the generator; a hand-typed id is no longer accepted.
+### D1: Data model: RavenDB-native IdentityServer, six collections (Q3 = A, Q6 = A)
+
+| Collection | Duende counterpart | Holds |
+|---|---|---|
+| `OidcApplications` | Clients | the client settings, embedded secrets, redirect/logout URIs, CORS origins, `Scopes[]` (each required or optional, with a status), `Members[]` (D3), `Mode` (D4), branding, client JWKS, per-app protocol settings (D8). Usage counters are a RavenDB **time series** on the document. |
+| `OidcResources` | IdentityResources + ApiResources + ApiScopes | `Kind = Identity \| Api`. An identity resource is itself one scope with its claim types. An API resource's `Name` **is** the audience (natural id `OidcResources/<name>`), with `Owners`, `AllowIntrospection`, `AutoApprove` and its API scopes **embedded** as an array. A scope belongs to exactly one resource. |
+| `OidcGrants` | PersistedGrants (consent) | per user × app (natural id), with the granted scopes, `ExpiresAt` and remember settings. Replaces `OidcAuthorizations`. |
+| `OidcTokens` | PersistedGrants (codes, tokens), ServerSideSessions | `Kind`: code, access, refresh, pending authorize request, PAR request, device code, session (D8), DPoP `jti`. All carry `@expires`. Replaces `OidcAuthorizationRequests`; the hourly cleanup job and its `Take(1000)` go (O13). |
+| `OidcKeys` | Keys | signing and encryption keys with a state (Next/Active/Retired), encrypted with ASP.NET Data Protection |
+| `OidcAuditEvents` | none | the audit trail (D9), with `@expires` retention defaulting to 180 days |
+
+- **Uniqueness:** a compare-exchange reservation for each `ClientId` and each scope name across
+  every resource (O17).
+- **API scope names** carry their resource's prefix (`fleet.read`).
+- **Developer status** is a `Developer { Status, TermsVersion, RequestedAt, DecidedAt, DecidedBy }`
+  field on the user document. It adds no collection.
+- **Migrations** move `OidcScopes` → `OidcResources`, `OidcAuthorizations` → `OidcGrants`,
+  `OidcAuthorizationRequests` → `OidcTokens`, and `AllowedScopes` → `Scopes[]`. They run on HR,
+  Fleet and CodeCoverage.
+
+### D2: Becoming a developer, and the shipped groups (revised Q2, roles answer)
+
+- A signed-in user requests developer status on `/developers` by accepting the developer terms.
+- **Approval:** `Spark:IdentityProvider:Developers:RequireApproval` (default `true`). An
+  Administrator approves or rejects the request with an action, and the requester gets an email.
+  When the setting is `false`, the user becomes a developer at once.
+- **Terms:** `Developers:TermsVersion`. Raising it makes developers accept the terms again before
+  their next portal action.
+- **Shipped as group slots, the Moderation precedent** (`docs/spark_composition_PRD.md` D4,
+  `libs/moderation/.../App_Data/security.json`):
+  - The IdentityProvider's own `App_Data/security.json` grants rights to the slots
+    `identity-provider:administrators` and `identity-provider:developers`.
+  - The app binds each slot in its `bindings` (HR: Administrators, and a new Developers group). An
+    unbound slot refuses startup. `"libraries": { "identity-provider": false }` opts out.
+- **Membership needs no seeding:** a merged group-membership provider (the #460 reputation
+  mechanism, `SparkBuilderGroupMembershipExtensions`) puts a user in the bound developers group
+  exactly while `Developer.Status == Approved`.
+- **To verify in I1:** whether a library layer can ship a row policy (#236). If it can't, the
+  members-only filter goes into the `OidcApplication` interceptor's query instead.
+
+### D3: Apps, roles and invitations (Facebook model, Q4 = yes, with testers)
+
+- **Per-app roles** live in `Members[]` on the app document, not in Spark groups:
+
+  | Role | Can |
+  |---|---|
+  | **Admin** | everything: members, secrets, delete, switch mode, request go-live. The creator starts as Admin. |
+  | **Developer** | edit settings, URIs and scopes. No secrets, no members. |
+  | **Tester** | no portal access. Can authorize the app while it is in Development mode. |
+
+- **Who can be invited:** Admins and Developers only from existing developers; Testers from any
+  account.
+- **Invitations:**
+  - The app Admin enters an email address, and the answer is **always "Invitation sent"**.
+  - The email goes out only if the address belongs to an eligible account. It carries a
+    single-use link, valid for 7 days, stored as a hash with `ExpiresAt` on the member entry.
+  - Accepting requires being signed in as that account.
+  - **No existence oracle** (the #453 rule: missing ≡ no-access). An invite that could not be
+    delivered shows **Pending** until it shows **Expired**, exactly like an ignored one. Pending
+    entries show the typed address, never a resolved name.
+- **The portal list** shows every app the developer is a member of, with their role, the app's
+  mode and status, and pending scope approvals. Admins also see members with their status, and
+  can resend, revoke or remove.
+
+### D4: Development and Live modes (Q4)
+
+- **Development** is the default for a new app: only its members can authorize it, and nothing
+  needs approval.
+- **Live:** anyone can authorize it.
+  - **Basic scopes are free:** identity scopes, and API scopes on resources that the app's own
+    members own.
+  - **Cross-owner API scopes start as `Pending`** until a resource owner (or an
+    identity-provider administrator) approves them. Until then they are dropped for non-members.
+    `AutoApprove` on a resource skips this.
+- **Go-live review:** `Spark:IdentityProvider:Apps:RequireReviewToGoLive` (default `false`). When
+  set, an administrator must also approve the switch to Live.
+- There is no "unverified app" warning on consent: developers are vetted, and Development mode
+  limits exposure.
+
+### D5: App registration done properly (G3–G6)
+
+- **ClientId:** generated server-side and read-only.
 - **Secrets:**
-  - A custom action, **Generate secret**, calls `ClientSecretHasher.GenerateSecret`, stores the hash
-    with a description and an expiry (default 1 year), and shows the plaintext **once**, through a
-    client operation (a modal with a copy button).
-  - The hash is never sent to the client: the attribute is removed from every view.
-  - **Revoke secret** works per row. Several active secrets may overlap during a rotation.
-  - The token endpoint stamps `LastUsedAt`, at most once an hour per secret.
-- **Typed fields:** `ClientType`, `ConsentType`, `ApplicationType` (web/spa/native) and
-  `AllowedGrantTypes` become lookups. Scopes become references to `OidcScope` (D4).
-- **Branding:** `LogoUrl` (https), `HomepageUrl`, `PrivacyPolicyUrl`, `TermsOfServiceUrl` and
-  `SupportEmail`, all shown on consent.
-- **Redirect URIs:** exact match, https only except for loopback, which already holds. A per-app
-  limit is configurable.
+  - A **Generate secret** action shows the plaintext **once**, in a client-operation modal with a
+    copy button. That is a new generic Spark client operation.
+  - The hash never leaves the server. **Revoke** works per secret, and secrets can overlap during
+    a rotation.
+  - `LastUsedAt` is stamped at most once an hour.
+- **Typed fields:** lookups and references replace free strings.
+- **Branding:** `LogoUrl`, `HomepageUrl`, `PrivacyPolicyUrl`, `TermsOfServiceUrl` and `SupportEmail`.
+- **Redirect URIs:** exact match, https except loopback, with a per-app limit.
 
-### D3: API resources
-- A new `OidcApiResource` collection has:
-  - `Name`, which **is** the audience and the natural id (`OidcApiResources/<name>`)
-  - `DisplayName`, `Description`, `Owners` and `Enabled`
-  - `AllowIntrospection`, which replaces `MayIntrospectAnyAudience` for this resource's tokens
-- `OidcScope` gains `Kind = Identity | Api`, and an `Api` scope gains `Resource` (a reference). The
-  inline `Audiences` field goes; no backward compatibility is needed while the package is in
-  preview, and a migration moves the data.
-- **Who defines what:**
-  - Developers who own a resource define its API scopes. A scope name must be prefixed by the
-    resource name (`fleet.read`), which keeps scope names globally unique without coordination.
-  - Identity scopes (`openid`, `profile`, `email`, `offline_access`, …) stay admin-only.
-- A scope marked `Sensitive` (today `Emphasize`) needs admin approval before an app may request it.
-  `OidcApplicationScope.Status = Pending | Approved`, and an unapproved scope is dropped from the
-  request.
-- **RFC 8707:** `resource=` on authorize and token narrows `aud` to the named resources, which must
-  be covered by the granted scopes. Without it, the behaviour stays as today: the union of the
-  granted scopes' resources.
+### D6: Consent, and the user's connected apps (G11–G16, Q5, Q7)
 
-### D4: Per-app scope declaration
-- `AllowedScopes: string[]` becomes `Scopes: OidcApplicationScope[]` (an AsDetail):
-  `{ Scope (reference), Required: bool, Status }`.
-  - A **required** scope is always requested and can't be unticked.
-  - An **optional** scope is requested only when the authorize request asks for it, and the user may
-    decline it.
-  - The global `OidcScope.Required` remains only for `openid`.
+**Consent:**
+- **Remember and expiry:** `AllowRememberConsent` and `ConsentLifetimeSeconds` are wired up.
+- **Incremental:** the user is asked only for scopes not yet granted. `include_granted_scopes` is
+  honoured.
+- **Token response:** includes `scope` whenever it differs from the request.
+- **The page shows** the logo, "by <publisher>", the redirect host, the signed-in account with "Not
+  you?", and the privacy and terms links.
+- **Demo:** the `qna` seed becomes explicit, with `email` optional.
 
-### D5: Consent done properly
-- **Remember and expiry:**
-  - `AllowRememberConsent` (a checkbox on the page, checked by default) and
-    `ConsentLifetimeSeconds` (stored as `ExpiresAt` on `OidcAuthorization`) are wired up.
-  - Unchecked means the grant applies only to this request, so the next authorize prompts again.
-- **Incremental:** a request for a superset prompts **only for the scopes not yet granted** and shows
-  the rest as "already allowed". `include_granted_scopes=true` merges the previous grant into the
-  new token.
-- **The token response returns `scope`** whenever the granted set differs from the requested one
-  (RFC 6749 §5.1). The README tells RP developers to handle partial grants.
-- **The page shows:** the logo, the app name with "by <owner/publisher>", the redirect host, the
-  signed-in account with a "Not you?" link (sign out, then back to authorize), and the
-  privacy/terms links. An unverified app gets a warning line (if Q4 is answered "yes").
-- **The demo shows consent:** the `qna` seed becomes `explicit`, with `email` optional.
+**Connected apps** (`account/applications`, SPA, D7):
+- logos and display names in the user's language
+- the granted scopes, with **per-scope withdrawal** (Q5 reversal) as well as removing the whole app
+- first-granted and last-used dates
+- The server-rendered `/connect/applications` stays as the fallback for hosts without a SPA.
 
-### D6: The end user's connected apps
-- A new Angular page, `account/applications`, in `@mintplayer/ng-spark/auth/account`, listed in
-  the overview's PAGES when the host has the IdP. It shows:
-  - each app's logo and name
-  - the granted scopes (display names in the user's language)
-  - granted-on and last-used dates
-  - a **Remove access** button, which keeps today's all-or-nothing semantics (locked decision §3)
-- It is served by JSON endpoints under `/spark/auth/connected-applications`. The server-rendered
-  `/connect/applications` stays for hosts without the SPA.
+### D7: Pages: popup-visible = server-rendered, everything else = SPA (Q1, Q7, routing)
 
-### D7: Localisation and branding of `/connect/*`
-- The server-rendered pages read the request culture (`ui_locales` first, then the
-  `Accept-Language` / culture cookie) and use the same translations source as the SPA.
-  `<html lang>` is set.
-- **New keys:** `idp.login.*`, `idp.consent.*`, `idp.apps.*`, `idp.logout.*`, `idp.error.*`.
-- `OidcScope.DisplayName` and `Description` become `TranslatedString`.
-- **Host branding:** `SparkIdentityProviderOptions.Branding { ProductName, LogoUrl, ExtraCss }`.
-- A branded **`/connect/error`** page replaces the plain-text 400s.
+**Server-rendered** (all of `/connect/*`):
+- `login`, `two-factor`, `consent`, `device` (enter the user code), `logout` (plus front-channel
+  iframes), `error`, and the `applications` fallback
+- **Localised:** `ui_locales`, then the culture cookie, then `Accept-Language`, using the same
+  translations as the SPA. `<html lang>` is set.
+- **Branded:** `SparkIdentityProviderOptions.Branding { ProductName, LogoUrl, ExtraCss }`.
+- **Scope text:** `OidcResource` and scope `DisplayName`/`Description` become `TranslatedString`.
 
-### D8: Protocol completions
-- **`client_secret_basic`** on token, introspect and revoke, advertised in discovery (G17).
-- **`prompt`:**
-  - `none` → `login_required` / `consent_required` / `interaction_required`
-  - `login` → re-authenticate
-  - `consent` → force the consent page
-  - `select_account` → treated as `login`
-- **Other request parameters:** `max_age` (compare with `auth_time`), and `login_hint`
-  (pre-fills the identifier).
-- **Key rotation (N4):**
-  - **Storage:** a `OidcSigningKeys` collection holds the keys, encrypted with ASP.NET Data
-    Protection. The dev file remains as a bootstrap.
-  - **States:** each key is `Next`, `Active` or `Retired`.
-  - **JWKS:** publishes `Next`, `Active` and `Retired` until the longest token lifetime has passed.
-  - **Rotation:** automatic every N days (default 90), plus an admin "Rotate now" action.
-- **Token claims:** `typ: at+jwt` on access tokens, `azp` on the id token (O22), and the nonce moved
-  to its own field (O20).
-- **Uniform client authentication failures (O15):** one error text, and constant-time verification
-  against a dummy hash for unknown clients.
-- **Resource servers:**
-  - `spark.AddSparkResourceServer(authority, audience)`, a thin wrapper over
-    `AddJwtBearerCredential`.
-  - a `[RequireScope("fleet.read")]` policy, with an `IEndpointConventionBuilder.RequireScope(...)`
-    form.
-- **Logout:**
-  - Logout revokes the user's refresh tokens for this session's clients.
-  - `form_post` response mode.
+**SPA** (a new entry point, `@mintplayer/ng-spark/identity-provider`), plugged into the existing
+route-feature pattern (`sparkAuthRoutes(...features)`, `auth/routes/src/spark-auth-routes.ts:96`):
+
+```ts
+sparkAuthRoutes(
+  withLocalLogin(), withRegistration(), withAccount(),
+  withIdentityProvider(
+    withConnectedApplications(),   // account/applications
+    withDeveloperRoutes(),         // developers (request/terms), developers/invitations/:token, developers/apps → owner-filtered query
+    withManagementRoutes(),        // identity-provider/admin: developer requests, go-live and scope approvals, audit
+  ),
+)
+```
+
+- **One feature:** `withIdentityProvider` merges its sub-features into one `SparkAuthRoutesFeature`.
+  Each page keeps its own `import()`, so a page nobody opts into is never bundled.
+- **The account overview:** `withConnectedApplications` adds `connectedApplications` to
+  `SPARK_AUTH_ROUTE_PATHS`, and the overview shows the card only when that path is set.
+- **Editing:** apps and resources use the generic `po/:type` screens from `sparkRoutes()` (Q1 = A).
+- **Doc fix:** `SparkAuthRoutesFeature`'s doc comment ("not constructible by consumers") gets
+  corrected to "constructed only by ng-spark's entry points".
+
+### D8: Protocol: as complete as a toolkit should be (Q5 = expanded scope)
+
+| Area | Features |
+|---|---|
+| Client authentication | `client_secret_post`, **`client_secret_basic`**, **`private_key_jwt`** (client JWKS or `jwks_uri`), **mTLS** `tls_client_auth` / `self_signed_tls_client_auth` (certificate from the connection or a trusted forwarded header) |
+| Authorize | `prompt` (none/login/consent/select_account), `max_age`, `login_hint`, `ui_locales`, `acr_values` (step-up), the **`claims`** parameter, **`resource`** (RFC 8707), **PAR** (RFC 9126, a per-app "require PAR" setting), **JAR** (RFC 9101), `response_mode` query/**form_post**, `iss` in the response (RFC 9207) |
+| Grants | authorization_code, refresh_token, client_credentials, **device_code** (RFC 8628), **token exchange** (RFC 8693, delegation/impersonation with `act`, allowed per app) |
+| Tokens | **`at+jwt`** (RFC 9068), `azp`, a separate nonce field (O20), **`amr`** from the actual sign-in (`pwd`, `otp`, `mfa`, `hwk` for passkeys, `fed` for an external login) and `acr`, **pairwise subjects** (per sector), **DPoP** (RFC 9449, `cnf.jkt`, `jti` replay entries in `OidcTokens`), **certificate-bound tokens** (RFC 8705), **signed and/or encrypted id_token and userinfo** per app |
+| Keys | `OidcKeys` with Next/Active/Retired, a multi-key JWKS, automatic rotation (default 90 days) and manual rotation, RS256 plus ES256/PS256 |
+| Logout | RP-initiated logout, **back-channel logout** (sessions in `OidcTokens`, a `sid` claim, logout tokens posted to each RP), **front-channel logout** (best-effort, documented). Logout revokes the session's refresh tokens. |
+| Registration | **Dynamic client registration** (RFC 7591/7592), gated: an approved developer gets an initial access token, and a registered app is owned by that developer and starts in Development mode |
+| Introspection / revocation | as today, plus Basic/JWT/mTLS client authentication and DPoP-aware introspection |
+| Hardening | uniform client-authentication failures with constant-time dummy verification (O15); rate limits as in D9 |
+| Resource servers | `spark.AddSparkResourceServer(authority, audience)`, `[RequireScope]` / `.RequireScope(...)`, an introspection-based handler for reference-style validation, DPoP and mTLS proof validation |
+
+Everything is advertised in discovery.
 
 ### D9: Operations
-- **Menu:** HR's `programUnits.json` gets an **Identity provider** group with Applications, API
-  resources, Scopes, Developers (approval queue) and Grants. The library ships a program-unit
-  fragment that apps opt into.
-- **Grants:** a read-only `OidcAuthorization` query for admins (by user or app), with a "Revoke"
-  action.
-- **Disabling** an app or resource revokes outstanding grants and tokens in a background sweep. The
-  token endpoint already rejects a disabled client.
-- **Audit log:** an `OidcAuditEvents` collection with an `@expires` retention (default 180 days)
-  records:
-  - app created, changed or disabled
+
+- **Audit** (`OidcAuditEvents`, Q6): each event records time, actor, app, subject, kind, details and
+  IP. It is written in the same session as the change. The recorded events:
+  - app created, changed, mode switched, disabled
   - secret generated or revoked
-  - consent granted or withdrawn
-  - refresh reuse detected
+  - member invited, accepted, removed
+  - developer requested, approved, rejected
+  - consent granted, narrowed, withdrawn
+  - refresh-token reuse detected
   - key rotated
+  - dynamic registration
 
-  Token issuance is **not** logged per token; it counts as usage stats only (Q6).
-- **Clean-up:** `@expires` on `OidcToken` (O13), and compare-exchange reservations for `ClientId`
-  and scope `Name` (O17).
+  Per-token issuance goes to time-series counters instead. Admins see a query of all events; app
+  Admins see their own app's.
+- **Menu:** the library ships a program-unit fragment (Identity provider: Applications, Resources,
+  Developer requests, Grants, Audit), and HR opts in.
+- **Disabling** an app or resource revokes its grants and tokens in a background sweep. Admins get
+  a grants query with a revoke action.
+- **Rate limits** on authorize, token, device, PAR, introspection and registration, and on client
+  authentication failures (#265 infrastructure).
 
-## 5. Not done (genuinely)
-
-These depend on Q5. The proposal is to leave them out:
+## 5. Not done (genuinely, for security reasons only, Q5)
 
 | Feature | Why |
 |---|---|
-| Device authorization grant (RFC 8628) | No target client today (TVs, CLIs). |
-| Token exchange (RFC 8693) | No target client today. |
-| PAR (RFC 9126), JAR, DPoP, mTLS | Not needed by the target clients. |
-| Front- and back-channel logout | Front-channel is broken by third-party cookie blocking. Back-channel needs a server-side session store that the library doesn't have. |
-| Dynamic client registration (RFC 7591/7592) | D1/D2 give self-service through the portal. Open DCR on a self-hosted IdP is an abuse vector. |
-| Pairwise subjects, `acr`/`amr`, the `claims` request parameter | Not needed by the target clients. |
-| Per-scope withdrawal on the connected-apps page | Locked decision §3. |
+| Implicit flow, the password grant (ROPC) | Removed by OAuth 2.1 and the Security BCP (RFC 9700). Shipping them would make the toolkit less safe. |
+| Hybrid flow | Used only by obsolete FAPI 1 profiles. |
+| `check_session_iframe` session management | Broken by third-party cookie blocking in every major browser. Back-channel logout replaces it. |
 
-## 6. Owner decisions needed (to be grilled)
+## 6. Owner decisions (grilled 2026-10-08)
 
-| # | Question | Recommendation |
-|---|---|---|
-| Q0 | Does this land in PR #499 or in its own PR? | **#499** (one-PR rule). Trap: #499 is reviewable today and this is about as large again. |
-| Q1 | Where do the developer pages live: (A) the generic Spark PO screens with row security and custom actions, plus one small `/developers` landing/terms page; (B) dedicated Angular pages in a new `@mintplayer/ng-spark/identity-provider` entry point; (C) server-rendered `/connect/developer/*`? | **A**: it follows D13 with the least new UI, and "show the secret once" is a client operation. Trap: the generic screens feel like an admin tool rather than a developer portal. |
-| Q2 | How does a user become a developer (D1): Open, Approval or Disabled, and which default? | **Configurable, default `Disabled`.** HR runs `Open` for the demo. Trap: a forgotten `Open` on a production host lets anyone register clients. |
-| Q3 | API resources (D3): (A) a first-class `OidcApiResource`, with developers owning their APIs' scopes; (B) keep `Audiences` on admin-defined scopes? | **A**: P2 explicitly asks for resources. Trap: a migration of existing scope data, and one more screen. |
-| Q4 | Sensitive scopes: does an app need admin approval before requesting them, and does the consent page show an "unverified app" warning? | **Approval: yes; warning: no.** One admin is the verifier on a self-hosted IdP. |
-| Q5 | Do the §5 items stay out? | **Yes.** Trap: a third-party SDK that requires PAR or the device flow can't integrate. |
-| Q6 | Audit log scope (D9): the events listed, without per-token issuance? | **Yes**, with 180-day retention. |
-| Q7 | Does the connected-apps page move into the SPA (D6), or is a link to `/connect/applications` enough? | **The SPA page**, so it fits the account area and is localised. |
+| # | Decision |
+|---|---|
+| Q0 | **A**: lands in PR #499 (one-PR rule). |
+| Q1 | **A**: developer and admin editing through the generic Spark PersistentObject screens with a members-only filter. Secrets are shown once through a client operation. A few routed SPA pages fill the rest (D7). |
+| Q2 | Revised during Q4: developer requests with **configurable admin approval** (`RequireApproval`, default `true`). |
+| Q3 | **A**: the RavenDB-native IdentityServer model. "Something like IdentityServer, but since we're using RavenDB we can nicely fit the data into a few (eg 3 to 5) collections." Five collections plus the audit collection from Q6 (D1). |
+| Q4 | The Facebook-style model: developer request, app roles Admin/Developer/**Tester**, email invitations without an existence oracle, Development/Live modes, resource-owner approval for cross-owner scopes, optional go-live review (D2–D4). |
+| Roles | Shipped as library group slots bound by the app (the Moderation precedent). Membership comes from a merged provider and is never seeded (D2). |
+| Q5 | **Expanded scope:** "This isn't a specific application, but a toolkit. So missing features is not a good thing." Everything in D8, plus per-scope withdrawal. The only exclusions are those in §5. |
+| Q6 | **A**: `OidcAuditEvents` as a sixth collection. Revisions are capped on the Community licence. |
+| Q7 | **A**: "everything that will appear in the external-login popup window = server rendered page; everything else = SPA" (D7). |
 
-## 7. Milestones (tests batched at the end)
+## 7. Milestones (one PR, tests written per milestone and run once at the end)
 
-- **I1** Model: ownership, generated ClientId, typed lookups, branding fields, `OidcApiResource`,
-  `Kind`/`Resource` on scopes, the `OidcApplicationScope` AsDetail. Migrations for existing data
-  (scope `Audiences` → resources, `AllowedScopes` → `Scopes`). Compare-exchange uniqueness.
-  Regenerate HR's model and modelHashes.
-- **I2** Developers: the `Developers` group, row-security filter, `DeveloperProfile`, registration
-  modes, the `/developers` page (terms and request), the admin approval action, security.json
-  rights.
-- **I3** Secrets: Generate (show once) and Revoke actions, the hash hidden everywhere, `LastUsedAt`,
-  `client_secret_basic`, uniform client-auth failures.
-- **I4** Consent: per-app required/optional scopes, remember and expiry, incremental prompt,
-  `include_granted_scopes`, the `scope` in the token response, the page contents (logo, publisher,
-  redirect host, account, links), sensitive-scope approval, the `qna` seed made explicit.
-- **I5** Protocol: `prompt`, `max_age`, `login_hint`, `resource=` (RFC 8707), `at+jwt`, `azp`, the
-  nonce field, `form_post`, logout revoking refresh tokens.
-- **I6** Keys: `OidcSigningKeys` with Next/Active/Retired, Data Protection encryption, automatic and
-  manual rotation, a multi-key JWKS.
-- **I7** End-user UI: the `account/applications` page and its endpoints; localisation and branding of
-  `/connect/*` (D7) and `/connect/error`; translations in en/fr/nl.
-- **I8** Operations: the program-unit fragment and HR's menu, the grants query and revoke, the
-  disable cascade, `OidcAuditEvents`, `@expires` on tokens.
-- **I9** Resource server: `AddSparkResourceServer`, `RequireScope`. A demo resource is registered by
-  QnA or Fleet, validates an HR-issued token, and is denied without the scope.
-- **I10** Tests: unit tests per milestone, written but not run; the open
-  [idp-e2e-test-matrix](idp-e2e-test-matrix.md) rows this touches (A-C5 consent, A-S*, R-J3–J6
-  rotation, T-O1–O4 uniform errors); and an E2E test of developer → create app → secret once →
-  QnA-style RP → granular consent → token carries only the granted scopes → withdraw. Then one
-  sweep.
-- **I11** Docs and versions: the IdP README, release notes (preview.103 if it is still unreleased,
-  otherwise the next one), closing open items in the audit doc, the matrix, and the ng-spark minor
-  bump.
+- **I1 Data model** (D1). The six collections, the migrations, compare-exchange uniqueness, the
+  `Developer` field, the `Members[]`/`Mode`/`Scopes[]`/branding/JWKS fields. Check whether a
+  library can ship a row policy. Regenerate the model JSON and modelHashes for HR, Fleet and
+  CodeCoverage.
+- **I2 Developers and groups** (D2). The library security layer with slots, HR's bindings, the
+  merged membership provider, request/approve/reject actions and emails, terms versioning.
+- **I3 Apps, roles, invitations, modes** (D3, D4). The members-only filter, role checks, the
+  invitation flow and emails, the Development-mode gate at authorize, scope approvals, go-live
+  review.
+- **I4 Registration UX** (D5). Generated ClientId, the Generate/Revoke secret actions with the
+  generic "show once" client operation, typed fields, branding.
+- **I5 Consent and connected apps** (D6). Remember and expiry, incremental consent,
+  `include_granted_scopes`, `scope` in the token response, the consent page contents, per-scope
+  withdrawal, the `qna` seed.
+- **I6 Server pages** (D7). Localisation and branding for `/connect/*`, `/connect/error`,
+  `/connect/device`, the front-channel logout page, translations in en/fr/nl.
+- **I7 SPA pages** (D7). The `@mintplayer/ng-spark/identity-provider` entry point,
+  `withIdentityProvider`/`withConnectedApplications`/`withDeveloperRoutes`/`withManagementRoutes`,
+  the account-overview card, HR routes and menu.
+- **I8 Protocol I.** Client authentication (basic, `private_key_jwt`, mTLS), `prompt`/`max_age`/
+  `login_hint`/`acr_values`/`claims`/`resource`, `form_post`, `iss`, `at+jwt`, `azp`, `amr`/`acr`,
+  pairwise subjects, signed/encrypted id_token and userinfo, uniform failures.
+- **I9 Protocol II.** PAR, JAR, the device grant, token exchange, DPoP, certificate-bound tokens,
+  dynamic client registration.
+- **I10 Keys and sessions.** `OidcKeys` rotation and a multi-key JWKS. Sessions with `sid`,
+  back-channel and front-channel logout, logout revoking refresh tokens.
+- **I11 Operations** (D9). The audit collection and its queries, time-series usage, the disable
+  cascade, the grants query, rate limits, the program-unit fragment.
+- **I12 Resource servers.** `AddSparkResourceServer`, `RequireScope`, the introspection handler,
+  DPoP/mTLS validation, and a demo: a Fleet API protected by `fleet.read` from HR.
+- **I13 Tests and conformance.**
+  - unit tests per milestone, and the open [idp-e2e-test-matrix](idp-e2e-test-matrix.md) rows
+  - an E2E journey: developer request → approval → create app → secret shown once → invite a
+    tester → Development-mode sign-in → go Live → granular consent → token carries only the granted
+    scopes → per-scope withdrawal
+  - the **OpenID Foundation conformance suite** in Docker: Basic, Config, Dynamic and Form Post
+    OP; RP-Initiated, Back-Channel and Front-Channel Logout; FAPI 2.0 Security Profile
+  - then one local sweep
+- **I14 Docs and versions.** The IdP README and a developer-portal guide, release notes,
+  closing items in the audit doc and the matrix, the ng-spark minor bump and the NuGet preview
+  bump (majors unchanged).
 
 ## 8. Acceptance
 
-1. A non-admin HR user becomes a developer and creates an app. They see the secret exactly once
-   and see only their own apps.
-2. That app requests `openid profile email fleet.read` with `email` optional. The user unticks
-   `email`: the token has no email claim, the token response's `scope` omits it, and userinfo
-   omits it.
-3. A second authorize that adds a new scope prompts only for that scope.
-4. The account → Applications page lists the app in the user's language. Remove access ends it:
-   refresh fails, and an access token stops working once it expires.
-5. A rotation keeps tokens issued under the old key valid until they expire.
-6. `client_secret_basic` works. `prompt=none` without a session returns `login_required`.
-7. A Fleet endpoint with `RequireScope("fleet.read")` accepts the token and rejects one without that
-   scope.
+1. A user requests developer status, an administrator approves it, and the user gets the email and
+   the portal.
+2. The developer creates an app, sees the secret exactly once, and invites a developer (Developer
+   role) and a non-developer (Tester). Inviting an unknown address looks identical to a successful
+   invite.
+3. In Development mode, the tester can sign in and an outsider is refused.
+4. After going Live, a cross-owner `fleet.read` stays pending until Fleet's resource owner approves
+   it.
+5. The user unticks `email`: the token, the token response's `scope` and userinfo all lack it. A
+   later request adding a scope asks only for that scope.
+6. On `account/applications` the user withdraws a single scope, and the next refresh token lacks it.
+7. A key rotation keeps old tokens valid until they expire. Back-channel logout ends the QnA
+   session.
+8. The device grant, PAR, DPoP, `private_key_jwt` and dynamic registration each work once, end to
+   end.
+9. The conformance profiles in I13 pass. Any profile that can't run (mTLS without a TLS proxy) is
+   reported as **not verified**, never as passed.
+10. A Fleet endpoint with `RequireScope("fleet.read")` accepts a token that has the scope and
+    rejects one that doesn't.

@@ -10,7 +10,7 @@ One PR closes #464 and #490 and everything below. Nothing here is a follow-up.
 **Extension (owner request, 2026-10-08):** the work to make the IdentityProvider a full
 identity-provider plugin is planned in
 [identity_provider_platform_PRD.md](identity_provider_platform_PRD.md). It covers developer
-sign-up, app management, API resources and granular consent. Whether it lands in this PR is its Q0.
+sign-up, app management, API resources and granular consent. It lands in this PR (its Q0, grilled 2026-10-08).
 
 ## 1. Goals
 
