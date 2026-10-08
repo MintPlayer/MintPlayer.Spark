@@ -7,8 +7,8 @@ run once, at the end (M9). Intermediate milestones are verified by build and by 
 
 **Status (2026-10-08):** upstream 11.4.0-rc.0 is published (#41). M0 and M1 are done. Spikes S2–S4
 pass, and their code is adopted: S2 starts M4, S3 completes M5, and S4 is M7's dev WebSocket. The
-merged tree builds with 0 errors. Open owner decision: the `accepts(application/json)` fixture
-change (S3 verdict). Next: M2, M3, the rest of M4, M6, M7's leftovers, M8, M9.
+merged tree builds with 0 errors. The `accepts(application/json)` fixture change is accepted (PRD
+D7), and D8 settles how typed handlers reach `HttpContext`. Next: M2, M3, the rest of M4, M6, M7's leftovers, M8, M9.
 
 ---
 
@@ -83,7 +83,7 @@ account routes with one `SparkAuthManageGroup` (which carries `RequireAuthorizat
   - `GetAuthCapabilities` and `ExternalLoginCallback` use `[Inject]`.
   - The dead `authGroup` is deleted.
   - The `SparkIdentityEndpoints` stand-ins for routes Spark owns are deleted, because an endpoint carries only one `EndpointTypeMetadata`. This is a minor API break.
-- **Fixture change, for the owner to confirm:** the 8 typed POSTs lose `accepts(application/json)`. That is 40 fixture lines in Spark.Tests and 26 in the app projects; routes, authorization and antiforgery are otherwise identical.
+- **Fixture change (accepted by the owner 2026-10-08, PRD D7):** the 8 typed POSTs lose `accepts(application/json)`. That is 40 fixture lines in Spark.Tests and 26 in the app projects; routes, authorization and antiforgery are otherwise identical.
   - Cause: the Endpoints rc deliberately declares the body with no content types (`EndpointDocumentation.DeclareRequestBody`).
   - Effect: the 415 for a wrong content type now comes from the endpoint, after authorization and antiforgery have run, so an anonymous `text/plain` POST to `/manage/info` gets 401 where it got 415.
   - Every typed body endpoint in M3 and M4 will show the same diff.

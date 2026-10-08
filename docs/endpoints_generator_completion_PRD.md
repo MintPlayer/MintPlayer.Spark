@@ -174,6 +174,20 @@ All are owner decisions taken in a grill session; the evidence each one rests on
   - three groups share the `/connect` prefix (`Groups.cs:24,45,61`), so groups are not a pipeline
     unit;
   - the static `Prefix` already solves the drift.
+- **D7 — Typed body endpoints drop `accepts(application/json)`** (owner, 2026-10-08, after spike
+  S3). Endpoints 11.4 declares the request body with no content types
+  (`EndpointDocumentation.DeclareRequestBody`), so routing never answers 415 itself. Instead the
+  endpoint refuses a wrong content type, after authorization and antiforgery have run. For example,
+  an anonymous `text/plain` POST to `/manage/info` now gets 401 where it used to get 415. Status
+  codes and bodies are otherwise unchanged (pinned by
+  `AccountFlowTests.Unbindable_requests_answer_a_bare_status_as_before`). Route fixtures are
+  updated for every typed body endpoint (M3, M4, M5). No endpoint adds `.Accepts<T>(…)` to restore
+  the routing-level 415.
+- **D8 — How a typed handler reaches `HttpContext`** (implementation choice, 2026-10-08). The typed
+  base class exposes no `HttpContext`.
+  - An endpoint that already overrides `BindRequestAsync` keeps the context it receives there, as
+    the token endpoint does.
+  - Every other endpoint uses `[Inject] IHttpContextAccessor`, as the account endpoints do.
 
 ### 6a. The upstream release (lands first, same unit of work)
 
