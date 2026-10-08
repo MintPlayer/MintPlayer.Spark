@@ -20,14 +20,15 @@ namespace MintPlayer.Spark.IdentityProvider.Extensions;
 
 public static class SparkIdentityProviderExtensions
 {
-    /// <summary>
-    /// The application's local-credential mode, or <see cref="SparkLocalCredentials.Full"/> when the
-    /// identity provider is used without <c>AddAuthentication</c> — in which case nothing has
-    /// expressed an opinion and the provider keeps its own login page.
-    /// </summary>
+    /// <summary>The application's local-credential mode.</summary>
+    /// <remarks>
+    /// Required, not optional: the provider refuses to start without <c>AddAuthentication&lt;TUser&gt;()</c>
+    /// (<see cref="OidcUserEndpoints.RequireUserType"/>, checked before anything is mapped), which is
+    /// also what registers these options. The old fallback to <see cref="SparkLocalCredentials.Full"/>
+    /// for "used without <c>AddAuthentication</c>" described a configuration that can no longer start.
+    /// </remarks>
     internal static SparkLocalCredentials LocalCredentialsOf(IServiceProvider services) =>
-        (services.GetService(typeof(SparkAuthenticationOptions)) as SparkAuthenticationOptions)
-            ?.LocalCredentials ?? SparkLocalCredentials.Full;
+        services.GetRequiredService<SparkAuthenticationOptions>().LocalCredentials;
 
     /// <summary>
     /// Configures this Spark application as an OIDC Identity Provider.
@@ -49,6 +50,10 @@ public static class SparkIdentityProviderExtensions
             return new OidcSigningKeyService(env, options.SigningKeyPath);
         });
         builder.Services.AddSingleton<OidcTokenGenerator>();
+        builder.Services.AddSingleton<OidcIssuer>();
+        // The typed /connect pages reach their HttpContext through the accessor (D8). AddSpark
+        // registers it too; registering it here keeps the provider from depending on that.
+        builder.Services.AddHttpContextAccessor();
 
         // Validation of the OIDC admin screens (#482: interceptors, not Actions-class overrides).
         builder.AddInterceptor<Interceptors.OidcApplicationInterceptors>();
@@ -95,8 +100,11 @@ public static class SparkIdentityProviderExtensions
         var registry = builder.Registry;
         builder.Registry.AddEndpoints(endpoints =>
         {
+            // Checked first: the generated mapping reads SparkAuthenticationOptions (the local-
+            // credentials group's IsEnabled), which only AddAuthentication<TUser>() registers.
+            var userType = OidcUserEndpoints.RequireUserType(registry.IdentityUserType);
             endpoints.MapSparkIdentityProviderEndpoints();
-            OidcUserEndpoints.Map(endpoints, registry.IdentityUserType);
+            OidcUserEndpoints.Map(endpoints, userType);
         });
 
         // Register middleware to deploy indexes
@@ -116,9 +124,13 @@ public static class SparkIdentityProviderExtensions
             // into a security decision — granting a client access, or removing it — and a framed
             // page makes that click something an attacker can arrange. Nothing set this before;
             // the consent screen has been framable since it was written.
+            //
+            // Middleware, not an endpoint filter (D6): a filter would miss the 404s, 405s and
+            // short-circuited responses under the prefix. The prefix is the group's own, so the two
+            // cannot drift apart; the three /connect groups share it (Groups.cs).
             app.Use(async (context, next) =>
             {
-                if (context.Request.Path.StartsWithSegments("/connect"))
+                if (context.Request.Path.StartsWithSegments(OidcConnectGroup.Prefix))
                 {
                     context.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'none'";
                     context.Response.Headers["X-Frame-Options"] = "DENY";

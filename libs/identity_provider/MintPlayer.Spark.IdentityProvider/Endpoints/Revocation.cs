@@ -1,55 +1,91 @@
-using MintPlayer.Spark.IdentityProvider.Services;
-using System.Security.Cryptography;
-using System.Text;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.IdentityProvider.Indexes;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
 /// <summary>
-/// Token Revocation Endpoint (RFC 7009).
-/// Allows clients to revoke refresh tokens and access tokens.
+/// A client presenting a token: the body of revocation (RFC 7009 §2.1) and introspection
+/// (RFC 7662 §2.1), both <c>application/x-www-form-urlencoded</c> and authenticated with
+/// <c>client_secret_post</c>. Every member is optional here; which are required is each endpoint's
+/// own check, answered in its protocol's shape.
 /// </summary>
-internal static class Revocation
+internal sealed record OidcClientTokenRequest(string? Token, string? TokenTypeHint, string? ClientId, string? ClientSecret)
 {
-    public static async Task Handle(HttpContext context)
+    /// <summary>
+    /// Reads the form, kept for both endpoints so they cannot drift apart. A body that is not a form
+    /// is refused through <c>OnBindFailedAsync</c> (<see cref="BindFailed"/>).
+    /// </summary>
+    public static async ValueTask<OidcClientTokenRequest?> BindAsync(HttpContext context)
     {
-        var ct = context.RequestAborted;
-
         if (!context.Request.HasFormContentType)
-        {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_request" });
-            return;
-        }
+            throw new EndpointBindingException(StatusCodes.Status400BadRequest, "Content-Type must be application/x-www-form-urlencoded.");
 
-        var form = await context.Request.ReadFormAsync(ct);
-        var token = form["token"].FirstOrDefault();
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return new OidcClientTokenRequest(
+            Token: form["token"].FirstOrDefault(),
+            TokenTypeHint: form["token_type_hint"].FirstOrDefault(),
+            ClientId: form["client_id"].FirstOrDefault(),
+            ClientSecret: form["client_secret"].FirstOrDefault());
+    }
+
+    /// <summary>
+    /// The refusal for a body that could not be read: the bare RFC 6749 §5.2 <c>invalid_request</c>,
+    /// with no description, exactly as both handlers answered before they were typed.
+    /// </summary>
+    public static ValueTask<IResult> BindFailed()
+        => new(Results.Json(new { error = "invalid_request" }, statusCode: StatusCodes.Status400BadRequest));
+}
+
+/// <summary>Token revocation (RFC 7009), <c>POST /connect/revoke</c>.</summary>
+/// <remarks>
+/// ⚠️ Deliberately NOT antiforgery-protected: a machine endpoint authenticated by client
+/// credentials, never by an ambient cookie (see <see cref="OidcConnectCorsGroup"/>).
+/// </remarks>
+[MemberOf<OidcConnectCorsGroup>]
+internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
+{
+    public static string Path => "/revoke";
+
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly OidcSigningKeyService signingKeyService;
+    [Inject] private readonly OidcIssuer oidcIssuer;
+
+    /// <summary>Kept from <see cref="BindRequestAsync"/> (D8) for the issuer; the endpoint is created per request.</summary>
+    private HttpContext httpContext = null!;
+
+    protected override ValueTask<OidcClientTokenRequest?> BindRequestAsync(HttpContext context)
+    {
+        httpContext = context;
+        return OidcClientTokenRequest.BindAsync(context);
+    }
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => OidcClientTokenRequest.BindFailed();
+
+    public override async Task<IResult> HandleAsync(OidcClientTokenRequest request, CancellationToken ct)
+    {
+        var token = request.Token;
         // token_type_hint is accepted and ignored: both token types are searched regardless
         // (see below), so the hint can only ever be an optimisation we decline to take.
-        var clientId = form["client_id"].FirstOrDefault();
-        var clientSecret = form["client_secret"].FirstOrDefault();
+        var clientId = request.ClientId;
+        var clientSecret = request.ClientSecret;
 
         if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_request", error_description = "token, client_id, and client_secret are required." });
-            return;
+            return Results.Json(new { error = "invalid_request", error_description = "token, client_id, and client_secret are required." }, statusCode: 400);
         }
 
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
         // Authenticate client
-        var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
+        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled || !Token.VerifyClientSecret(clientSecret, app.Secrets))
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
-            return;
+            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
         }
 
         // Point-load by the hash of the presented value. Revoking through an
@@ -69,8 +105,7 @@ internal static class Revocation
         // be told the credential was dead while it stayed live for its full lifetime.
         if (tokenDoc == null)
         {
-            var signingKeyService = context.RequestServices.GetRequiredService<OidcSigningKeyService>();
-            var issuer = OidcIssuer.Resolve(context);
+            var issuer = oidcIssuer.Resolve(httpContext.Request);
             var resolved = await AccessTokens.ResolveAsync(session, signingKeyService, token, issuer, ct);
             tokenDoc = resolved?.Record;
         }
@@ -102,6 +137,6 @@ internal static class Revocation
         }
 
         // Per RFC 7009: always return 200 OK, even if token was not found
-        context.Response.StatusCode = 200;
+        return Results.Ok();
     }
 }

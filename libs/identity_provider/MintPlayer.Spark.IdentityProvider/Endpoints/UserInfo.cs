@@ -1,20 +1,40 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Tokens;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
-internal static class UserInfo
+/// <summary>The userinfo endpoint (<c>GET /connect/userinfo</c>, OIDC Core §5.3).</summary>
+/// <remarks>
+/// <para>
+/// Generic over the application's user type, closed once when the routes are mapped
+/// (<see cref="OidcUserEndpoints"/>), so the user is loaded through a typed
+/// <see cref="UserManager{TUser}"/>. The request-time "Identity not configured" 500 it used to answer
+/// when no user type was registered is gone: startup now refuses that configuration.
+/// </para>
+/// <para>
+/// Raw: its only input is the bearer token in the <c>Authorization</c> header, which no
+/// <c>[RouteParam]</c>/<c>[QueryParam]</c> binds.
+/// </para>
+/// </remarks>
+[MemberOf<OidcConnectCorsGroup>]
+internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
+    where TUser : SparkUser, new()
 {
-    public static async Task Handle(HttpContext context)
+    public static string Path => "/userinfo";
+
+    [Inject] private readonly UserManager<TUser> userManager;
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly OidcSigningKeyService signingKeyService;
+    [Inject] private readonly OidcIssuer oidcIssuer;
+
+    public async Task<IResult> HandleAsync(HttpContext context)
     {
         var ct = context.RequestAborted;
 
@@ -22,19 +42,15 @@ internal static class UserInfo
         var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
         if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
-            context.Response.StatusCode = 401;
             context.Response.Headers["WWW-Authenticate"] = "Bearer";
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_token" });
-            return;
+            return Results.Json(new { error = "invalid_token" }, statusCode: 401);
         }
 
         var accessToken = authHeader["Bearer ".Length..];
 
         // Validate the access token JWT
-        var signingKeyService = context.RequestServices.GetRequiredService<OidcSigningKeyService>();
-        var issuer = OidcIssuer.Resolve(context);
+        var issuer = oidcIssuer.Resolve(context.Request);
 
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
         // Signature and expiry alone cannot tell that a token was revoked, so this endpoint
@@ -43,10 +59,8 @@ internal static class UserInfo
 
         if (resolved is not { IsActive: true })
         {
-            context.Response.StatusCode = 401;
             context.Response.Headers["WWW-Authenticate"] = "Bearer error=\"invalid_token\"";
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_token" });
-            return;
+            return Results.Json(new { error = "invalid_token" }, statusCode: 401);
         }
 
         var subject = resolved.Subject;
@@ -54,36 +68,14 @@ internal static class UserInfo
 
         if (string.IsNullOrEmpty(subject))
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_token", error_description = "Missing subject claim." });
-            return;
+            return Results.Json(new { error = "invalid_token", error_description = "Missing subject claim." }, statusCode: 401);
         }
 
         // Load user
-        var registry = context.RequestServices.GetRequiredService<SparkModuleRegistry>();
-
-        // ⚠️ No `?? typeof(SparkUser)` fallback, deliberately. Defaulting resolves
-        // UserManager<SparkUser> from a container holding UserManager<AppUser>, which throws at the
-        // first request for any application with a derived user type. Same refusal shape as Login,
-        // Logout and TwoFactor.
-        var userType = registry.IdentityUserType;
-        if (userType == null)
-        {
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync("Identity not configured.");
-            return;
-        }
-        var userManagerType = typeof(UserManager<>).MakeGenericType(userType);
-        var userManager = context.RequestServices.GetRequiredService(userManagerType);
-
-        var findByIdMethod = userManagerType.GetMethod("FindByIdAsync")!;
-        var user = await (dynamic)findByIdMethod.Invoke(userManager, [subject])! as SparkUser;
-
+        var user = await userManager.FindByIdAsync(subject);
         if (user == null)
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_token", error_description = "User not found." });
-            return;
+            return Results.Json(new { error = "invalid_token", error_description = "User not found." }, statusCode: 401);
         }
 
         // Load scope definitions from DB to resolve claims
@@ -97,7 +89,6 @@ internal static class UserInfo
         // Resolve claims from scope definitions
         var claims = OidcTokenGenerator.ResolveUserInfoClaims(user, grantedScopes);
 
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsJsonAsync(claims);
+        return Results.Json(claims);
     }
 }

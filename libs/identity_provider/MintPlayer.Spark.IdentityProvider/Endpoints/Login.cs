@@ -1,9 +1,7 @@
 using MintPlayer.Spark.Authorization.Extensions;
 using System.Text;
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -19,19 +17,27 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
 /// <summary>Renders the provider's password form.</summary>
 [MemberOf<OidcLocalCredentialsGroup>]
-internal sealed class OidcLoginPage : IGetEndpoint
+internal sealed partial class OidcLoginPage : IGetEndpoint<string>
 {
     public static string Path => "/login";
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    [QueryParam("returnUrl")] public string? ReturnUrl { get; set; }
+    [QueryParam("error")] public string? Error { get; set; }
+
+    [Inject] private readonly IAntiforgery antiforgery;
+    [Inject] private readonly IOptions<SparkAuthenticationOptions> authenticationOptions;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+
+    public override Task<IResult> HandleAsync(CancellationToken ct)
     {
+        var httpContext = httpContextAccessor.HttpContext!;
+
         // Sanitized at the point of read: an unvalidated returnUrl sends a freshly-authenticated
         // user off-origin, which is high-value phishing precisely because they really did just
         // authenticate here. Shared with the Authorization package rather than duplicated.
-        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(httpContext.Request.Query["returnUrl"].FirstOrDefault());
-        var error = httpContext.Request.Query["error"].FirstOrDefault();
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(ReturnUrl);
+        var error = Error;
 
-        httpContext.Response.ContentType = "text/html; charset=utf-8";
         var sb = new StringBuilder();
         ConnectPageTheme.AppendDocumentStart(sb, httpContext, "Login");
         sb.Append("body{max-width:400px;margin:80px auto;padding:0 20px}");
@@ -53,12 +59,12 @@ internal sealed class OidcLoginPage : IGetEndpoint
         }
 
         sb.Append("<form method=\"post\">");
-        ConnectPage.AppendAntiforgery(sb, httpContext);
+        ConnectPage.AppendAntiforgery(sb, antiforgery, httpContext);
         sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(Encode(returnUrl)).Append("\" />");
         sb.Append("<div class=\"form-group\">");
         // Labelled from SparkAuthenticationOptions.SignInIdentifiers, which the POST's resolver
         // (SparkSignInManager) enforces; the field name stays "identifier" whatever it accepts.
-        var (label, type) = IdentifierField(httpContext);
+        var (label, type) = IdentifierField(authenticationOptions.Value.SignInIdentifiers);
         sb.Append("<label for=\"identifier\">").Append(label).Append("</label>");
         sb.Append("<input type=\"").Append(type).Append("\" id=\"identifier\" name=\"identifier\" autocomplete=\"")
             .Append(type == "email" ? "email" : "username").Append("\" required autofocus />");
@@ -73,14 +79,11 @@ internal sealed class OidcLoginPage : IGetEndpoint
         sb.Append("<button type=\"submit\" class=\"btn btn-primary\">Login</button>");
         sb.Append("</form></body></html>");
 
-        await httpContext.Response.WriteAsync(sb.ToString());
-        return Results.Empty;
+        return Task.FromResult(ConnectResults.Html(sb.ToString()));
     }
 
-    private static (string Label, string Type) IdentifierField(HttpContext context)
+    private static (string Label, string Type) IdentifierField(SparkSignInIdentifiers allowed)
     {
-        var allowed = context.RequestServices.GetService<IOptions<SparkAuthenticationOptions>>()?.Value.SignInIdentifiers
-            ?? SparkSignInIdentifiers.Email | SparkSignInIdentifiers.UserName;
         return (allowed.HasFlag(SparkSignInIdentifiers.Email), allowed.HasFlag(SparkSignInIdentifiers.UserName)) switch
         {
             (true, false) => ("Email", "email"),
@@ -93,6 +96,9 @@ internal sealed class OidcLoginPage : IGetEndpoint
         System.Net.WebUtility.HtmlEncode(value);
 }
 
+/// <summary>The provider's password form as posted.</summary>
+internal sealed record OidcLoginSubmission(string? Identifier, string? Password, string? ReturnUrl, bool RememberMe);
+
 /// <summary>Accepts the provider's password form.</summary>
 /// <remarks>
 /// <para>
@@ -101,13 +107,13 @@ internal sealed class OidcLoginPage : IGetEndpoint
 /// instead of resolving and reflecting on one per request.
 /// </para>
 /// <para>
-/// ⚠️ The antiforgery stamp is explicit. This page reads the form body with <c>ReadFormAsync</c>
-/// rather than <c>[FromForm]</c>, so minimal APIs never inferred the metadata for it and the page
+/// ⚠️ The antiforgery stamp is explicit: the form is read by <see cref="BindRequestAsync"/>, not by
+/// a <c>[FromForm]</c> parameter, so nothing infers the metadata for it — which is how the page once
 /// went unprotected.
 /// </para>
 /// </remarks>
 [MemberOf<OidcLocalCredentialsGroup>]
-internal sealed partial class OidcLoginSubmit<TUser> : IPostEndpoint
+internal sealed partial class OidcLoginSubmit<TUser> : IPostEndpoint<OidcLoginSubmission>
     where TUser : SparkUser, new()
 {
     public static string Path => "/login";
@@ -117,14 +123,27 @@ internal sealed partial class OidcLoginSubmit<TUser> : IPostEndpoint
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    /// <summary>
+    /// Reads the page's own HTML form. A body that is not a form fails exactly as it did when the
+    /// handler read the form itself.
+    /// </summary>
+    protected override async ValueTask<OidcLoginSubmission?> BindRequestAsync(HttpContext context)
     {
-        var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
-        // "email" is the field name older copies of this page post; "identifier" is the current one.
-        var identifier = form["identifier"].FirstOrDefault() ?? form["email"].FirstOrDefault();
-        var password = form["password"].FirstOrDefault();
-        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
-        var rememberMe = string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal);
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return new OidcLoginSubmission(
+            // "email" is the field name older copies of this page post; "identifier" is the current one.
+            Identifier: form["identifier"].FirstOrDefault() ?? form["email"].FirstOrDefault(),
+            Password: form["password"].FirstOrDefault(),
+            ReturnUrl: form["returnUrl"].FirstOrDefault(),
+            RememberMe: string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal));
+    }
+
+    public override async Task<IResult> HandleAsync(OidcLoginSubmission submission, CancellationToken ct)
+    {
+        var identifier = submission.Identifier;
+        var password = submission.Password;
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(submission.ReturnUrl);
+        var rememberMe = submission.RememberMe;
 
         if (string.IsNullOrEmpty(identifier) || string.IsNullOrEmpty(password))
             return RedirectWithError(returnUrl, "missing_fields");

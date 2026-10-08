@@ -1,7 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -52,11 +51,43 @@ internal static class ConnectPage
     /// <summary>
     /// Writes the antiforgery field for a form whose POST route is marked with
     /// <c>RequireAntiforgeryTokenAttribute</c>. Must be called inside the <c>&lt;form&gt;</c>.
+    /// The page passes the <see cref="IAntiforgery"/> it injected.
     /// </summary>
-    public static void AppendAntiforgery(StringBuilder sb, HttpContext context)
+    public static void AppendAntiforgery(StringBuilder sb, IAntiforgery antiforgery, HttpContext context)
     {
-        var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
         var tokens = antiforgery.GetAndStoreTokens(context);
         AppendHidden(sb, tokens.FormFieldName, tokens.RequestToken);
+    }
+}
+
+/// <summary>
+/// The text responses of the <c>/connect</c> pages, written exactly as the handlers wrote them before
+/// they became endpoint classes (M4).
+/// </summary>
+/// <remarks>
+/// Not <c>Results.Text</c>/<c>Results.Content</c>: those default the content type to
+/// <c>text/plain; charset=utf-8</c> and set <c>Content-Length</c>, and the bare refusals here never
+/// carried a content type. Writing through <c>WriteAsync</c> keeps every header and byte as it was
+/// (pinned by <c>OidcResponseShapeTests</c>).
+/// </remarks>
+internal static class ConnectResults
+{
+    /// <summary>A status and a text body, with no content type unless one is named.</summary>
+    public static IResult Text(int statusCode, string body, string? contentType = null)
+        => new TextResult(statusCode, contentType, body);
+
+    /// <summary>A rendered page: 200, <c>text/html; charset=utf-8</c>.</summary>
+    public static IResult Html(string body)
+        => new TextResult(StatusCodes.Status200OK, "text/html; charset=utf-8", body);
+
+    private sealed class TextResult(int statusCode, string? contentType, string body) : IResult
+    {
+        public Task ExecuteAsync(HttpContext httpContext)
+        {
+            httpContext.Response.StatusCode = statusCode;
+            if (contentType is not null)
+                httpContext.Response.ContentType = contentType;
+            return httpContext.Response.WriteAsync(body, httpContext.RequestAborted);
+        }
     }
 }

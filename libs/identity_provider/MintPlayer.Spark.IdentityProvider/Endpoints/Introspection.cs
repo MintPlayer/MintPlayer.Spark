@@ -1,54 +1,64 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.IdentityProvider.Indexes;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
-using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Tokens;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
 /// <summary>
-/// Token Introspection Endpoint (RFC 7662).
-/// Allows resource servers to validate tokens and retrieve their claims.
+/// Token introspection (RFC 7662), <c>POST /connect/introspect</c>: lets resource servers validate
+/// tokens and retrieve their claims.
 /// </summary>
-internal static class Introspection
+/// <remarks>
+/// ⚠️ Deliberately NOT a member of <see cref="OidcConnectCorsGroup"/> — introspection never carried
+/// the dynamic-CORS convention, unlike its neighbours in that group.
+/// <para>
+/// Also deliberately not antiforgery-protected: this is a machine endpoint authenticated by client
+/// credentials, never by an ambient cookie, so there is no ambient authority for a cross-site
+/// request to borrow.
+/// </para>
+/// </remarks>
+[MemberOf<OidcConnectGroup>]
+internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequest>
 {
-    public static async Task Handle(HttpContext context)
+    public static string Path => "/introspect";
+
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly OidcSigningKeyService signingKeyService;
+    [Inject] private readonly OidcIssuer oidcIssuer;
+
+    /// <summary>Kept from <see cref="BindRequestAsync"/> (D8) for the issuer; the endpoint is created per request.</summary>
+    private HttpContext httpContext = null!;
+
+    protected override ValueTask<OidcClientTokenRequest?> BindRequestAsync(HttpContext context)
     {
-        var ct = context.RequestAborted;
+        httpContext = context;
+        return OidcClientTokenRequest.BindAsync(context);
+    }
 
-        if (!context.Request.HasFormContentType)
-        {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_request" });
-            return;
-        }
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => OidcClientTokenRequest.BindFailed();
 
-        var form = await context.Request.ReadFormAsync(ct);
-        var token = form["token"].FirstOrDefault();
-        var tokenTypeHint = form["token_type_hint"].FirstOrDefault();
-        var clientId = form["client_id"].FirstOrDefault();
-        var clientSecret = form["client_secret"].FirstOrDefault();
+    public override async Task<IResult> HandleAsync(OidcClientTokenRequest request, CancellationToken ct)
+    {
+        var token = request.Token;
+        var clientId = request.ClientId;
+        var clientSecret = request.ClientSecret;
 
         if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_request", error_description = "token, client_id, and client_secret are required." });
-            return;
+            return Results.Json(new { error = "invalid_request", error_description = "token, client_id, and client_secret are required." }, statusCode: 400);
         }
 
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
         // Authenticate client
-        var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
+        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled || !Token.VerifyClientSecret(clientSecret, app.Secrets))
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
-            return;
+            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
         }
 
         // token_type_hint is advisory only. RFC 7662 §2.1 requires the search to extend to the
@@ -66,13 +76,10 @@ internal static class Introspection
         {
             // A refresh token carries no audience, so ownership is the only basis for reading it.
             if (!OwnedBy(refreshDoc.ApplicationId, app) && !app.MayIntrospectAnyAudience)
-            {
-                await WriteInactiveAsync(context);
-                return;
-            }
+                return Inactive();
 
             var active = refreshDoc.Status == "valid" && refreshDoc.ExpiresAt > DateTime.UtcNow;
-            await context.Response.WriteAsJsonAsync(new
+            return Results.Json(new
             {
                 active,
                 sub = refreshDoc.Subject,
@@ -82,28 +89,23 @@ internal static class Introspection
                 exp = new DateTimeOffset(refreshDoc.ExpiresAt).ToUnixTimeSeconds(),
                 iat = new DateTimeOffset(refreshDoc.CreatedAt).ToUnixTimeSeconds(),
             });
-            return;
         }
 
         // Try as JWT access token
-        var signingKeyService = context.RequestServices.GetRequiredService<OidcSigningKeyService>();
-        var issuer = OidcIssuer.Resolve(context);
+        var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         var resolved = await AccessTokens.ResolveAsync(session, signingKeyService, token, issuer, ct);
         if (resolved != null)
         {
             if (resolved.Record == null || !MayIntrospect(resolved, app))
-            {
-                await WriteInactiveAsync(context);
-                return;
-            }
+                return Inactive();
 
             resolved.Claims.TryGetValue("exp", out var expObj);
             resolved.Claims.TryGetValue("iat", out var iatObj);
 
             // active reflects the database, not merely the signature. Reporting a revoked
             // token as active is precisely the failure RFC 7662 exists to prevent.
-            await context.Response.WriteAsJsonAsync(new
+            return Results.Json(new
             {
                 active = resolved.IsActive,
                 sub = resolved.Subject,
@@ -117,11 +119,10 @@ internal static class Introspection
                 exp = expObj,
                 iat = iatObj,
             });
-            return;
         }
 
         // Token not recognized — return inactive
-        await WriteInactiveAsync(context);
+        return Inactive();
     }
 
     /// <summary>
@@ -130,7 +131,7 @@ internal static class Introspection
     /// Introspection had no such check: any enabled client holding valid credentials could
     /// present a token it had come across and read back the subject and scopes of whoever it
     /// actually belonged to. Since each resource server is its own application, that let one
-    /// resource server enumerate another's users. <c>Revocation</c> has always gated on this;
+    /// resource server enumerate another's users. Revocation has always gated on this;
     /// introspection simply never did.
     /// </para>
     /// </summary>
@@ -163,6 +164,5 @@ internal static class Introspection
     /// RFC 7662 does not require saying <em>why</em> a token is inactive, and saying so would
     /// separate "not yours" from "never issued" — an oracle. One shape for every negative.
     /// </summary>
-    private static Task WriteInactiveAsync(HttpContext context)
-        => context.Response.WriteAsJsonAsync(new { active = false });
+    private static IResult Inactive() => Results.Json(new { active = false });
 }

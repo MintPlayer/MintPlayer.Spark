@@ -63,6 +63,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcTokenGenerator tokenGenerator;
     [Inject] private readonly UserManager<TUser> userManager;
+    [Inject] private readonly OidcIssuer oidcIssuer;
 
     /// <summary>
     /// The request being handled, kept from <see cref="BindRequestAsync"/>: the typed handler receives
@@ -126,7 +127,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         session.Advanced.UseOptimisticConcurrency = true;
 
         // Validate client
-        var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
+        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled)
         {
             return Results.Json(new { error = "invalid_client" }, statusCode: 401);
@@ -231,7 +232,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         var grantedScopes = await Token.LoadScopesAsync(session, codeToken.Scopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
 
-        var issuer = OidcIssuer.Resolve(httpContext);
+        var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         // Generate tokens
         var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
@@ -369,7 +370,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Rotation spends the presented token, so it races exactly as code redemption does.
         session.Advanced.UseOptimisticConcurrency = true;
 
-        var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
+        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled)
         {
             return Results.Json(new { error = "invalid_client" }, statusCode: 401);
@@ -473,7 +474,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             }, statusCode: 400);
         }
 
-        var issuer = OidcIssuer.Resolve(httpContext);
+        var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         // Generate new tokens
         var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
@@ -567,7 +568,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
         using var session = store.OpenAsyncSession();
 
-        var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
+        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled)
         {
             return Results.Json(new { error = "invalid_client" }, statusCode: 401);
@@ -624,7 +625,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             }, statusCode: 400);
         }
 
-        var issuer = OidcIssuer.Resolve(httpContext);
+        var issuer = oidcIssuer.Resolve(httpContext.Request);
 
         // Generate access token only (no user, no ID token, no refresh token)
         var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(null, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);

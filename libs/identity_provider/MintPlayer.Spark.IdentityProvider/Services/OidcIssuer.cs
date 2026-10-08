@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 
@@ -13,19 +12,20 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// the value under the caller's control. A forged <c>Host</c> minted tokens claiming a
 /// different issuer, signed with the real key.
 /// </para>
+/// <para>
+/// A singleton the endpoints inject, rather than a static helper that looked its options up in
+/// <c>HttpContext.RequestServices</c> on every call (M4).
+/// </para>
 /// </summary>
-internal static class OidcIssuer
+internal sealed class OidcIssuer(SparkIdentityProviderOptions options, IHostEnvironment environment)
 {
-    public static string Resolve(HttpContext context)
+    public string Resolve(HttpRequest request)
     {
-        var options = context.RequestServices.GetRequiredService<SparkIdentityProviderOptions>();
-
         if (!string.IsNullOrWhiteSpace(options.Issuer))
             return options.Issuer.TrimEnd('/');
 
         // Fail closed rather than fall back to the header: an unset issuer in production is
         // the vulnerable configuration, and silently working is how it would stay unset.
-        var environment = context.RequestServices.GetRequiredService<IHostEnvironment>();
         if (!environment.IsDevelopment())
         {
             throw new InvalidOperationException(
@@ -34,6 +34,6 @@ internal static class OidcIssuer
                 "this provider's key.");
         }
 
-        return $"{context.Request.Scheme}://{context.Request.Host}";
+        return $"{request.Scheme}://{request.Host}";
     }
 }
