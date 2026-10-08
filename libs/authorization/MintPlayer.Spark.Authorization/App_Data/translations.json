@@ -290,6 +290,11 @@
       "fr": "Continuer",
       "nl": "Doorgaan"
     },
+    "continueInThisTab": {
+      "en": "Continue in this tab",
+      "fr": "Continuer dans cet onglet",
+      "nl": "Doorgaan in dit tabblad"
+    },
     "confirmEmailTitle": {
       "en": "Confirm email address",
       "fr": "Confirmer l'adresse e-mail",
@@ -592,6 +597,41 @@
         "en": "The provider did not return a login.",
         "fr": "Le fournisseur n'a pas renvoyé de connexion.",
         "nl": "De provider gaf geen aanmelding terug."
+      },
+      "email_not_verified": {
+        "en": "The provider has not verified that email address.",
+        "fr": "Le fournisseur n'a pas vérifié cette adresse e-mail.",
+        "nl": "De provider heeft dat e-mailadres niet geverifieerd."
+      },
+      "account_creation_failed": {
+        "en": "The account could not be created. Please try again.",
+        "fr": "Le compte n'a pas pu être créé. Veuillez réessayer.",
+        "nl": "Het account kon niet worden aangemaakt. Probeer het opnieuw."
+      },
+      "email_already_registered": {
+        "en": "An account with that email address already exists. Sign in to it first, then connect this login from your account page.",
+        "fr": "Un compte avec cette adresse e-mail existe déjà. Connectez-vous d'abord à ce compte, puis liez cette connexion depuis la page de votre compte.",
+        "nl": "Er bestaat al een account met dat e-mailadres. Meld u daar eerst bij aan en koppel deze aanmelding daarna via uw accountpagina."
+      },
+      "sign_in_to_link": {
+        "en": "Sign in first to connect this login to your account.",
+        "fr": "Connectez-vous d'abord pour lier cette connexion à votre compte.",
+        "nl": "Meld u eerst aan om deze aanmelding aan uw account te koppelen."
+      },
+      "link_confirmation_sent": {
+        "en": "We sent you an email. Follow its link to connect this login to your account.",
+        "fr": "Nous vous avons envoyé un e-mail. Suivez son lien pour lier cette connexion à votre compte.",
+        "nl": "We hebben u een e-mail gestuurd. Volg de link erin om deze aanmelding aan uw account te koppelen."
+      },
+      "remote_failure": {
+        "en": "The provider reported a problem with the sign-in. Please try again.",
+        "fr": "Le fournisseur a signalé un problème lors de la connexion. Veuillez réessayer.",
+        "nl": "De provider meldde een probleem met de aanmelding. Probeer het opnieuw."
+      },
+      "invalid_nonce": {
+        "en": "The sign-in request was not valid. Please try again.",
+        "fr": "La demande de connexion n'était pas valide. Veuillez réessayer.",
+        "nl": "Het aanmeldverzoek was niet geldig. Probeer het opnieuw."
       }
     },
     "unlinkError": {

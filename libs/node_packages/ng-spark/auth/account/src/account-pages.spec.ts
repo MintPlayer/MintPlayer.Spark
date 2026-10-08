@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -32,7 +33,7 @@ function configure(auth: Record<string, unknown>, extra: unknown[] = [], query: 
       provideRouter([]),
       provideHttpClient(),
       provideHttpClientTesting(),
-      { provide: SparkAuthService, useValue: { isAuthenticated: () => false, user: () => null, ...auth } },
+      { provide: SparkAuthService, useValue: { isAuthenticated: () => false, user: () => null, externalLoginPending: () => false, takeExternalLoginResult: () => null, ...auth } },
       { provide: SparkAuthTranslationService, useValue: { t: (k: string) => k } },
       { provide: SPARK_AUTH_CONFIG, useValue: defaultSparkAuthConfig },
       { provide: SPARK_AUTH_ROUTE_PATHS, useValue: { login: '/login', profile: '/account/profile', personalData: '/account/personal-data' } },
@@ -314,6 +315,51 @@ describe('SparkExternalLoginsComponent', () => {
     configure({ externalLogins: vi.fn().mockRejectedValue({ status: 404 }) });
     const fixture = await render(TestBed.createComponent(SparkExternalLoginsComponent));
     expect(text(fixture)).toContain('auth.externalLoginsUnavailable');
+  });
+
+  const someLogins = () => vi.fn().mockResolvedValue({
+    linked: [{ provider: 'GitHub', providerKey: '1', displayName: 'GitHub', canUnlink: true }],
+    available: [{ provider: 'Google', displayName: 'Google' }],
+  });
+
+  it('shows the ?sparkExternalLogin a redirect-mode link came back with', async () => {
+    const takeExternalLoginResult = vi.fn(() => 'login_already_associated');
+    configure({ externalLogins: someLogins(), takeExternalLoginResult });
+    const fixture = await render(TestBed.createComponent(SparkExternalLoginsComponent));
+
+    expect(takeExternalLoginResult).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.errorKey()).toBe('auth.externalLoginError.login_already_associated');
+    expect(text(fixture)).toContain('auth.externalLoginError.login_already_associated');
+  });
+
+  it("shows a failed link's translated error, and nothing for popup_closed", async () => {
+    const linkProvider = vi.fn().mockResolvedValueOnce({ success: false, error: 'remote_failure' })
+      .mockResolvedValueOnce({ success: false, error: 'popup_closed' });
+    configure({ externalLogins: someLogins(), linkProvider });
+    const fixture = await render(TestBed.createComponent(SparkExternalLoginsComponent));
+
+    await fixture.componentInstance.link('Google');
+    expect(fixture.componentInstance.errorKey()).toBe('auth.externalLoginError.remote_failure');
+
+    await fixture.componentInstance.link('Google');
+    expect(fixture.componentInstance.errorKey()).toBe('');
+  });
+
+  it('disables the link buttons and shows a spinner while a link popup is pending', async () => {
+    const externalLoginPending = signal(false);
+    configure({ externalLogins: someLogins(), externalLoginPending });
+    const fixture = await render(TestBed.createComponent(SparkExternalLoginsComponent));
+    const el = fixture.nativeElement as HTMLElement;
+
+    externalLoginPending.set(true);
+    fixture.detectChanges();
+    expect(el.querySelector('.spark-available-login')?.hasAttribute('disabled')).toBe(true);
+    expect(el.querySelector('.spark-link-pending bs-spinner')).not.toBeNull();
+
+    externalLoginPending.set(false);
+    fixture.detectChanges();
+    expect(el.querySelector('.spark-available-login')?.hasAttribute('disabled')).toBe(false);
+    expect(el.querySelector('.spark-link-pending')).toBeNull();
   });
 });
 

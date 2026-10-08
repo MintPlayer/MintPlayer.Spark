@@ -1,3 +1,4 @@
+import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, Routes } from '@angular/router';
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- see the provider below
@@ -50,6 +51,11 @@ async function setup(
   const auth: any = {
     capabilities: vi.fn(capabilitiesImpl),
     loginWithProvider: vi.fn().mockResolvedValue({ success: false, error: 'popup_closed' }),
+    externalLoginPending: signal(false),
+    // The real implementation against the harness's real Router: reading and stripping
+    // ?sparkExternalLogin is the part under test, not a stub of it.
+    takeExternalLoginResult: vi.fn(() =>
+      (SparkAuthService.prototype.takeExternalLoginResult as () => unknown).call({ injector: TestBed.inject(Injector) })),
     ...authOverrides,
   };
 
@@ -116,18 +122,112 @@ describe('SparkSignInComponent', () => {
     expect(navigate).toHaveBeenCalledWith('/');
   });
 
-  it('stays put when sign-in fails, so the error it renders stays visible', async () => {
-    // Navigating away on failure would hide the very message this page just rendered. 'popup_closed'
-    // is not a failure either — it is "not now" — and it takes the same path.
+  it('stays put when sign-in fails, and shows the translated error', async () => {
+    // Navigating away on failure would hide the very message this page just rendered. Before D9 the
+    // result was discarded, so this test passed with no message on the page at all.
     const { harness, auth } = await setup(async () => capabilities({ externalProviders: [google] }));
-    auth.loginWithProvider.mockResolvedValue({ success: false, error: 'popup_blocked' });
+    auth.loginWithProvider.mockResolvedValue({ success: false, error: 'email_not_verified' });
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
 
     buttons(harness)[0].click();
     await harness.fixture.whenStable();
+    harness.detectChanges();
 
     expect(navigate).not.toHaveBeenCalled();
+    const alert = harness.routeNativeElement!.querySelector('.spark-external-error');
+    expect(alert?.textContent).toContain('auth.externalLoginError.email_not_verified');
+  });
+
+  it("shows nothing for 'popup_closed': it is \"not now\", not an error", async () => {
+    const { harness, component } = await setup(async () => capabilities({ externalProviders: [google] }));
+
+    await component.signInWith(component.providers()[0]);
+    harness.detectChanges();
+
+    expect(component.externalError()).toBe('');
+    expect(harness.routeNativeElement!.querySelector('.spark-external-error')).toBeNull();
+  });
+
+  it('clears the previous error when a new attempt starts', async () => {
+    const { harness, auth, component } = await setup(async () => capabilities({ externalProviders: [google] }));
+    auth.loginWithProvider.mockResolvedValueOnce({ success: false, error: 'remote_failure' });
+    await component.signInWith(component.providers()[0]);
+    expect(component.externalError()).toBe('auth.externalLoginError.remote_failure');
+
+    let resolve!: (value: unknown) => void;
+    auth.loginWithProvider.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    const running = component.signInWith(component.providers()[0]);
+    harness.detectChanges();
+
+    expect(component.externalError()).toBe('');
+    resolve({ success: false, error: 'popup_closed' });
+    await running;
+  });
+
+  it('reads ?sparkExternalLogin on load, shows it, and strips it from the URL', async () => {
+    // Redirect mode (inside an installed web app, or "Continue in this tab") brings the failure back
+    // as a query parameter (D3).
+    const { harness, auth } = await setup(
+      async () => capabilities({ externalProviders: [google] }), {}, '/sign-in?returnUrl=%2Fprojects&sparkExternalLogin=no_login_info');
+    // The strip is a deferred replaceUrl navigation.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(auth.takeExternalLoginResult).toHaveBeenCalledTimes(1);
+    expect(harness.routeNativeElement!.querySelector('.spark-external-error')?.textContent)
+      .toContain('auth.externalLoginError.no_login_info');
+    // Stripped with replaceUrl, so a reload or Back does not show it again; returnUrl survives.
+    expect(TestBed.inject(Router).url).toBe('/sign-in?returnUrl=%2Fprojects');
+  });
+
+  it('disables the provider buttons and shows a spinner while a popup is pending', async () => {
+    const { harness, auth } = await setup(async () => capabilities({ externalProviders: [github, google] }));
+
+    auth.externalLoginPending.set(true);
+    harness.detectChanges();
+    expect(buttons(harness).every((b) => b.disabled)).toBe(true);
+    expect(harness.routeNativeElement!.querySelector('.spark-external-pending bs-spinner')).not.toBeNull();
+
+    // D2: the popup was seen closed (or COOP made it look so); the buttons come back by themselves.
+    auth.externalLoginPending.set(false);
+    harness.detectChanges();
+    expect(buttons(harness).some((b) => b.disabled)).toBe(false);
+    expect(harness.routeNativeElement!.querySelector('.spark-external-pending')).toBeNull();
+  });
+
+  it("offers \"Continue in this tab\" on a blocked popup, which retries the same provider in redirect mode", async () => {
+    // No automatic fallback (F10): the user chooses the redirect.
+    const { harness, auth } = await setup(
+      async () => capabilities({ externalProviders: [github, google] }), {}, '/sign-in?returnUrl=%2Fprojects');
+    auth.loginWithProvider.mockResolvedValueOnce({ success: false, error: 'popup_blocked' });
+
+    buttons(harness)[1].click();
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement!.querySelector('.spark-external-error')?.textContent)
+      .toContain('auth.externalLoginError.popup_blocked');
+    const retry = harness.routeNativeElement!.querySelector<HTMLButtonElement>('.spark-continue-in-tab');
+    expect(retry).not.toBeNull();
+    expect(retry!.textContent).toContain('auth.continueInThisTab');
+
+    auth.loginWithProvider.mockReturnValueOnce(new Promise(() => { /* the page is going away */ }));
+    retry!.click();
+
+    expect(auth.loginWithProvider).toHaveBeenLastCalledWith('Google', { returnUrl: '/projects', mode: 'redirect' });
+  });
+
+  it('offers no "Continue in this tab" for any other failure', async () => {
+    const { harness, auth } = await setup(async () => capabilities({ externalProviders: [google] }));
+    auth.loginWithProvider.mockResolvedValue({ success: false, error: 'remote_failure' });
+
+    buttons(harness)[0].click();
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    expect(harness.routeNativeElement!.querySelector('.spark-continue-in-tab')).toBeNull();
   });
 
   it('reports that sign-in is unavailable when capabilities cannot be loaded', async () => {

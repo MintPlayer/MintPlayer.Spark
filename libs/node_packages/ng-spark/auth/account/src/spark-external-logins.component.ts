@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
@@ -7,6 +7,7 @@ import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import {
   SPARK_EXTERNAL_PROVIDERS,
+  SparkExternalLoginError,
   SparkExternalLogins,
   SparkExternalProviderPresentation,
 } from '@mintplayer/ng-spark/auth/models';
@@ -31,7 +32,7 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
         <bs-card-header><h3 class="mb-0">{{ 'auth.externalLoginsTitle' | t }}</h3></bs-card-header>
         <div class="p-4">
           @if (errorKey()) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-account-error">{{ errorKey() | t }}</bs-alert>
+            <bs-alert [type]="errorIsNotice() ? colors.info : colors.danger" class="mb-3 d-block spark-account-error">{{ errorKey() | t }}</bs-alert>
           }
           @if (loading()) {
             <div class="text-center"><bs-spinner /></div>
@@ -56,12 +57,15 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
               <h5 class="mt-4">{{ 'auth.addLogin' | t }}</h5>
               <div class="d-flex flex-wrap gap-2">
                 @for (provider of l.available; track provider.provider) {
-                  <button type="button" class="btn btn-outline-primary spark-available-login" [disabled]="busy()" (click)="link(provider.provider)">
+                  <button type="button" class="btn btn-outline-primary spark-available-login" [disabled]="busy() || linkPending()" (click)="link(provider.provider)">
                     @if (iconFor(provider.provider); as icon) { <i [class]="icon" class="me-2"></i> }
                     {{ nameFor(provider.provider, provider.displayName) }}
                   </button>
                 }
               </div>
+              @if (linkPending()) {
+                <div class="text-center mt-3 spark-link-pending"><bs-spinner /></div>
+              }
             }
           }
         </div>
@@ -80,8 +84,25 @@ export class SparkExternalLoginsComponent {
   readonly errorKey = signal('');
   readonly logins = signal<SparkExternalLogins | null>(null);
 
+  /**
+   * While a link popup is open. Taken from the service, not from the link() promise: under COOP the
+   * popup reads closed long before the result arrives, and the attempt keeps listening (D2).
+   */
+  readonly linkPending = computed(() => this.auth.externalLoginPending());
+
+  /** `link_confirmation_sent` travels as a failure but is news, not an error. */
+  readonly errorIsNotice = computed(() => this.errorKey() === 'auth.externalLoginError.link_confirmation_sent');
+
   constructor() {
+    // A redirect-mode link (inside an installed web app) comes back here with the outcome in the URL.
+    const returned = this.auth.takeExternalLoginResult();
+    if (returned) this.showLinkError(returned);
     void this.refresh();
+  }
+
+  private showLinkError(error: SparkExternalLoginError | undefined): void {
+    if (error === 'popup_closed') return;
+    this.errorKey.set(`auth.externalLoginError.${error ?? 'link_failed'}`);
   }
 
   private presentation(scheme: string): SparkExternalProviderPresentation | undefined {
@@ -108,18 +129,15 @@ export class SparkExternalLoginsComponent {
     }
   }
 
+  /**
+   * Links another provider. The buttons follow {@link linkPending} rather than this promise, which
+   * settles only on the result, a newer attempt or the 10-minute timeout.
+   */
   async link(provider: string): Promise<void> {
     this.errorKey.set('');
-    this.busy.set(true);
-    try {
-      const result = await this.auth.linkProvider(provider, { returnUrl: this.router.url });
-      if (!result.success && result.error !== 'popup_closed') {
-        this.errorKey.set(`auth.externalLoginError.${result.error ?? 'link_failed'}`);
-      }
-      await this.refresh();
-    } finally {
-      this.busy.set(false);
-    }
+    const result = await this.auth.linkProvider(provider, { returnUrl: this.router.url });
+    if (!result.success) this.showLinkError(result.error);
+    await this.refresh();
   }
 
   async unlink(provider: string, providerKey: string): Promise<void> {

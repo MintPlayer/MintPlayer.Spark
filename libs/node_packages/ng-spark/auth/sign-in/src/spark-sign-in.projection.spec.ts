@@ -58,6 +58,8 @@ async function setup(
   const auth: any = {
     capabilities: vi.fn(async () => reported),
     loginWithProvider: vi.fn().mockResolvedValue({ success: false, error: 'popup_closed' }),
+    externalLoginPending: () => false,
+    takeExternalLoginResult: () => null,
   };
 
   TestBed.configureTestingModule({
@@ -155,6 +157,8 @@ describe('SparkSignInComponent projection', () => {
     const auth: any = {
       capabilities: vi.fn(() => pending),
       loginWithProvider: vi.fn().mockResolvedValue({ success: false, error: 'popup_closed' }),
+      externalLoginPending: () => false,
+      takeExternalLoginResult: () => null,
     };
 
     TestBed.configureTestingModule({

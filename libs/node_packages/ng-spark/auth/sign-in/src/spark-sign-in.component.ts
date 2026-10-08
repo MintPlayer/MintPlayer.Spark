@@ -11,6 +11,8 @@ import {
   SparkAuthCapabilities,
   SparkExternalProvider,
   SparkExternalProviderPresentation,
+  SparkExternalLoginError,
+  SparkExternalLoginMode,
   SPARK_AUTH_CONFIG,
   isSafeReturnUrl,
   passkeysSupported,
@@ -31,6 +33,11 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
 export interface SparkProviderButtonContext {
   $implicit: SparkExternalProviderView;
   signIn: () => void;
+  /**
+   * Whether a sign-in popup is open: disable the button while it is. Read from the service's
+   * `externalLoginPending`, never from the sign-in promise (D2).
+   */
+  pending: boolean;
 }
 
 /** A provider the server reported, merged with whatever presentation the app declared for it. */
@@ -111,6 +118,28 @@ export class SparkSignInComponent {
   readonly passkeyError = signal('');
 
   /**
+   * The translation key of the last external sign-in failure, from the popup's result or from the
+   * `?sparkExternalLogin` a redirect came back with.
+   */
+  readonly externalError = signal('');
+
+  /** `link_confirmation_sent` travels as a failure but is news (check your mail), not an error. */
+  readonly externalErrorIsNotice = computed(() => this.externalError() === 'auth.externalLoginError.link_confirmation_sent');
+
+  /**
+   * The provider whose popup `window.open` refused. The page then offers "Continue in this tab":
+   * the same provider in redirect mode. Not automatic (F10): in Firefox's installed web app a null
+   * handle may still have started the flow inside the app, and a redirect would run a second one.
+   */
+  readonly blockedProvider = signal<SparkExternalProviderView | null>(null);
+
+  /**
+   * While a sign-in popup is open. The buttons follow this, not the promise: under COOP the popup
+   * reads closed long before its result arrives, and the attempt keeps listening (D2).
+   */
+  readonly externalPending = computed(() => this.authService.externalLoginPending());
+
+  /**
    * The server's list, decorated and ordered by whatever the application declared. Declared-but-not-
    * reported schemes are dropped and reported-but-not-declared ones keep a default button, so
    * neither side can produce a provider the other does not have.
@@ -140,7 +169,17 @@ export class SparkSignInComponent {
   });
 
   constructor() {
+    // A redirect-mode round trip (inside an installed web app, or "Continue in this tab") comes back
+    // with its failure in the URL.
+    const returned = this.authService.takeExternalLoginResult();
+    if (returned) this.showExternalError(returned);
     void this.load();
+  }
+
+  /** `popup_closed` is "not now", not an error, so it shows nothing. */
+  private showExternalError(error: SparkExternalLoginError | undefined): void {
+    if (error === 'popup_closed') return;
+    this.externalError.set(`auth.externalLoginError.${error ?? 'no_login_info'}`);
   }
 
   private async load(): Promise<void> {
@@ -176,7 +215,7 @@ export class SparkSignInComponent {
 
   /** The closure handed to a projected template, so a consumer never names a scheme itself. */
   contextFor(provider: SparkExternalProviderView): SparkProviderButtonContext {
-    return { $implicit: provider, signIn: () => this.signInWith(provider) };
+    return { $implicit: provider, signIn: () => this.signInWith(provider), pending: this.externalPending() };
   }
 
   /**
@@ -188,13 +227,29 @@ export class SparkSignInComponent {
    * succeeds, the topbar flips to the signed-in state, and the user is left staring at the login
    * page wondering whether it worked.
    *
-   * Failures deliberately do not navigate: the page already renders the error, and moving away
-   * would hide it. `popup_closed` is not an error — it is "not now" — so it is left alone too.
+   * Failures deliberately do not navigate: the page renders the error, and moving away would hide
+   * it. `popup_closed` is not an error — it is "not now" — so it shows nothing. `popup_blocked` also
+   * offers "Continue in this tab" ({@link continueInThisTab}).
+   *
+   * `mode` is left out unless given, so the configured `externalLoginMode` decides.
    */
-  async signInWith(provider: SparkExternalProviderView): Promise<void> {
+  async signInWith(provider: SparkExternalProviderView, mode?: SparkExternalLoginMode): Promise<void> {
+    this.externalError.set('');
+    this.blockedProvider.set(null);
     const returnUrl = this.effectiveReturnUrl() ?? this.config.defaultRedirectUrl;
-    const result = await this.authService.loginWithProvider(provider.scheme, { returnUrl });
-    if (result.success) await this.router.navigateByUrl(returnUrl);
+    const result = await this.authService.loginWithProvider(provider.scheme, mode ? { returnUrl, mode } : { returnUrl });
+    if (result.success) {
+      await this.router.navigateByUrl(returnUrl);
+      return;
+    }
+    this.showExternalError(result.error);
+    if (result.error === 'popup_blocked') this.blockedProvider.set(provider);
+  }
+
+  /** Retries the provider whose popup was blocked as a full-page redirect in this tab. */
+  continueInThisTab(): Promise<void> {
+    const provider = this.blockedProvider();
+    return provider ? this.signInWith(provider, 'redirect') : Promise.resolve();
   }
 
   /**
