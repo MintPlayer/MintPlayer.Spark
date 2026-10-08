@@ -67,5 +67,16 @@
     "showedOn": "query",
     "selectionRule": ">0",
     "variant": "danger"
+  },
+  "GenerateSecret": {
+    "icon": "key",
+    "showedOn": "detail",
+    "selectionRule": "=0"
+  },
+  "RevokeSecret": {
+    "icon": "trash",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger"
   }
 }

@@ -159,6 +159,36 @@
       "key": "golive-reject",
       "resource": "RejectGoLive/OidcGoLiveReview",
       "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "application-secret-administrators",
+      "resource": "GenerateSecret/OidcApplication",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "secrets-query-administrators",
+      "resource": "Query/OidcApplicationSecretRow",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "secrets-revoke-administrators",
+      "resource": "RevokeSecret/OidcApplicationSecretRow",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "application-secret-developers",
+      "resource": "GenerateSecret/OidcApplication",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "secrets-query-developers",
+      "resource": "Query/OidcApplicationSecretRow",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "secrets-revoke-developers",
+      "resource": "RevokeSecret/OidcApplicationSecretRow",
+      "groupId": "identity-provider:developers"
     }
   ]
 }

@@ -33,6 +33,7 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// </summary>
     [Inject] private readonly OidcCorsOrigins corsOrigins;
     [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IAccessControl accessControl;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
 
     public async ValueTask OnBeforeSaveAsync(OidcApplication entity, SaveContext context)
     {
@@ -52,6 +53,11 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
 
         ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
         ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
+        ValidateRedirectSchemes(entity, entity.RedirectUris, nameof(entity.RedirectUris));
+        ValidateRedirectSchemes(entity, entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
+        if (entity.RedirectUris.Count + entity.PostLogoutRedirectUris.Count > options.Apps.MaxRedirectUris)
+            throw new SparkValidationException(
+                $"An application can register at most {options.Apps.MaxRedirectUris} redirect URIs.", nameof(entity.RedirectUris));
         ValidateCorsOrigins(entity.AllowedCorsOrigins, nameof(entity.AllowedCorsOrigins));
         ValidateGrantTypes(entity);
         ValidateScopes(entity);
@@ -199,6 +205,30 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// (<c>com.example.app:/cb</c>) working for native clients.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// D5: https, or http on a loopback address only (a local dev server, RFC 8252 §7.3). A private-use
+    /// scheme (<c>com.example.app:/cb</c>, RFC 8252 §7.1) is for native apps, which are public clients.
+    /// A confidential web client redirecting over plain http would send its code across the network in clear.
+    /// </summary>
+    private static void ValidateRedirectSchemes(OidcApplication entity, List<string> uris, string field)
+    {
+        foreach (var uri in uris)
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed))
+                continue; // ValidateRedirectUris already refused it
+            if (parsed.Scheme == Uri.UriSchemeHttps)
+                continue;
+            if (parsed.Scheme == Uri.UriSchemeHttp)
+            {
+                if (parsed.IsLoopback)
+                    continue;
+                throw new SparkValidationException($"'{uri}' uses http. Only a loopback address (localhost, 127.0.0.1, [::1]) may; anything else needs https.", field);
+            }
+            if (!string.Equals(entity.ClientType, "public", StringComparison.OrdinalIgnoreCase))
+                throw new SparkValidationException($"'{uri}' uses the scheme '{parsed.Scheme}'. A private-use scheme is for a native app, which is a public client.", field);
+        }
+    }
+
     private static void ValidateRedirectUris(List<string> uris, string field)
     {
         foreach (var uri in uris)

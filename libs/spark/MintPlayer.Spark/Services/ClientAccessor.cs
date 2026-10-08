@@ -153,6 +153,13 @@ internal sealed partial class ClientAccessor : IClientAccessor
     public void RefreshQuery(string queryId)
         => _operations.Add(new RefreshQueryOperation { QueryId = queryId });
 
+    // --- ShowSecret -----------------------------------------------------
+    public void ShowSecret(string title, string message, string value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(value);
+        _operations.Add(new ShowSecretOperation { Title = title, Message = message, Value = value });
+    }
+
 
     // --- Framework-internal: retry push --------------------------------
 

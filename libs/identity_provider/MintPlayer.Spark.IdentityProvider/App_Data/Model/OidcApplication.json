@@ -475,7 +475,7 @@
         "order": 5,
         "asDetailType": "MintPlayer.Spark.IdentityProvider.Models.ClientSecret",
         "isArray": true,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -590,7 +590,8 @@
       }
     ],
     "queries": [
-      "oidc-application-members"
+      "oidc-application-members",
+      "oidc-application-secrets"
     ]
   },
   "queries": [

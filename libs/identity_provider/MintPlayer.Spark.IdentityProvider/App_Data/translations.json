@@ -42,6 +42,13 @@
         "fr": "Mises en ligne à approuver",
         "nl": "Livegangen ter goedkeuring"
       }
+    },
+    "Secrets": {
+      "label": {
+        "en": "Client secrets",
+        "fr": "Secrets client",
+        "nl": "Clientgeheimen"
+      }
     }
   },
   "model": {
@@ -1489,6 +1496,43 @@
           }
         }
       }
+    },
+    "OidcApplicationSecretRow": {
+      "label": {
+        "en": "Client secret",
+        "fr": "Secret client",
+        "nl": "Clientgeheim"
+      },
+      "attributes": {
+        "Description": {
+          "label": {
+            "en": "Note",
+            "fr": "Note",
+            "nl": "Notitie"
+          }
+        },
+        "CreatedAt": {
+          "label": {
+            "en": "Created",
+            "fr": "Créé le",
+            "nl": "Aangemaakt"
+          }
+        },
+        "ExpiresAt": {
+          "label": {
+            "en": "Expires",
+            "fr": "Expire le",
+            "nl": "Vervalt"
+          }
+        },
+        "LastUsedAt": {
+          "label": {
+            "en": "Last used",
+            "fr": "Dernière utilisation",
+            "nl": "Laatst gebruikt"
+          }
+        }
+      }
     }
   },
   "programUnits": {
@@ -1637,6 +1681,25 @@
         "fr": "Garder les applications sélectionnées en développement ?",
         "nl": "De geselecteerde applicaties in ontwikkeling houden?"
       }
+    },
+    "GenerateSecret": {
+      "label": {
+        "en": "Generate secret",
+        "fr": "Générer un secret",
+        "nl": "Geheim genereren"
+      }
+    },
+    "RevokeSecret": {
+      "label": {
+        "en": "Revoke",
+        "fr": "Révoquer",
+        "nl": "Intrekken"
+      },
+      "confirmation": {
+        "en": "Revoke the selected secrets? Clients still using them stop working at once.",
+        "fr": "Révoquer les secrets sélectionnés ? Les clients qui les utilisent encore cessent aussitôt de fonctionner.",
+        "nl": "De geselecteerde geheimen intrekken? Clients die ze nog gebruiken, werken dan meteen niet meer."
+      }
     }
   },
   "identityProvider": {
@@ -1694,6 +1757,21 @@
       "en": "The application is live.",
       "fr": "L'application est en ligne.",
       "nl": "De applicatie is live."
+    },
+    "secretTitle": {
+      "en": "Your new client secret",
+      "fr": "Votre nouveau secret client",
+      "nl": "Je nieuwe clientgeheim"
+    },
+    "secretShownOnce": {
+      "en": "Copy it now. It is shown only this once: the server keeps only a hash, and cannot show it again.",
+      "fr": "Copiez-le maintenant. Il n'est affiché qu'une seule fois : le serveur n'en garde qu'une empreinte et ne peut plus l'afficher.",
+      "nl": "Kopieer het nu. Het wordt maar één keer getoond: de server bewaart alleen een hash en kan het niet opnieuw tonen."
+    },
+    "publicClientNoSecret": {
+      "en": "A public client has no secret.",
+      "fr": "Un client public n'a pas de secret.",
+      "nl": "Een publieke client heeft geen geheim."
     }
   }
 }

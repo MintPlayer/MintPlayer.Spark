@@ -56,6 +56,12 @@ public interface IClientAccessor
     /// </summary>
     void RefreshQuery(string queryId);
 
+    /// <summary>
+    /// Show a value the server keeps only as a hash, once, in a dialog with a copy button
+    /// (<see cref="ShowSecretOperation"/>): a generated client secret, an API token.
+    /// </summary>
+    void ShowSecret(string title, string message, string value);
+
     // The DisableAction overloads (DisableActionsOn / DisableQueryActions / DisableActions /
     // DisableActionsForSession) are deleted (#460, D13). They emitted a client operation no client
     // honoured, the detail path dropped them, and nothing enforced them at submit. Disabling an action
