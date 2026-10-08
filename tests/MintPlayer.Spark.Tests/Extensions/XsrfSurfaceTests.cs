@@ -106,7 +106,7 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
     /// into the <em>attacker's</em> account, and everything the victim does next is captured there.
     /// </para>
     /// </summary>
-    // #460 M5: Spark maps its own account endpoints (SparkAccountEndpoints) and stamps antiforgery on
+    // #460 M5: Spark maps its own account endpoints (Endpoints/Account) and stamps antiforgery on
     // every one of them — register and resendConfirmationEmail included, which MapIdentityApi's
     // versions did not state (they were "unprotected" below). Recorded here in M8, when this test
     // first ran against the M5 surface.
@@ -280,6 +280,7 @@ public sealed class XsrfSurfaceHosts : SparkSharedDatabase
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.Configure<SparkAuthenticationOptions>(o => o.LocalCredentials = SparkLocalCredentials.Full);
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.AddAuthorization();
                     services.AddRouting();
@@ -290,7 +291,7 @@ public sealed class XsrfSurfaceHosts : SparkSharedDatabase
                     app.UseAuthentication();
                     app.UseAuthorization();
                     app.UseEndpoints(endpoints =>
-                        endpoints.MapSparkIdentityApi<SparkUser>(SparkLocalCredentials.Full));
+                        endpoints.MapSparkIdentityApi<SparkUser>());
                 }))
             .StartAsync();
 }

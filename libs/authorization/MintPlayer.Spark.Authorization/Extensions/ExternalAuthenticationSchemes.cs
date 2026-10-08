@@ -26,9 +26,11 @@ internal static class ExternalAuthenticationSchemes
         IdentityConstants.TwoFactorRememberMeScheme,
     };
 
-    internal static async Task<IReadOnlyList<AuthenticationScheme>> GetInteractiveAsync(IServiceProvider services)
+    internal static Task<IReadOnlyList<AuthenticationScheme>> GetInteractiveAsync(IServiceProvider services)
+        => GetInteractiveAsync(services.GetService(typeof(IAuthenticationSchemeProvider)) as IAuthenticationSchemeProvider);
+
+    internal static async Task<IReadOnlyList<AuthenticationScheme>> GetInteractiveAsync(IAuthenticationSchemeProvider? provider)
     {
-        var provider = services.GetService(typeof(IAuthenticationSchemeProvider)) as IAuthenticationSchemeProvider;
         if (provider is null)
             return [];
 

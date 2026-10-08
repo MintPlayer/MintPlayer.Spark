@@ -19,6 +19,14 @@ internal sealed partial class UnlinkExternalLogin<TUser> : IPostEndpoint
 {
     public static string Path => "/external-logins/unlink";
 
+    /// <summary>
+    /// Every linking mode but <see cref="SparkExternalLoginLinking.Disabled"/>. Under
+    /// <see cref="SparkExternalLoginLinking.ConfirmByEmail"/> too, although attaching is mailed there:
+    /// without unlink, links would accumulate with no way to undo one.
+    /// </summary>
+    static bool IEndpointBase.IsEnabled(IServiceProvider services)
+        => SparkAuthFeatures.ExternalLoginLinking(services) != SparkExternalLoginLinking.Disabled;
+
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {
         builder

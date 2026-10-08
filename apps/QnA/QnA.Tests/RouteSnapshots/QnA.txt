@@ -6,29 +6,29 @@ POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required
 GET /spark/aliases
 GET /spark/auth/capabilities
-POST /spark/auth/confirm-email | accepts(application/json) | antiforgery=required
+POST /spark/auth/confirm-email | antiforgery=required
 GET /spark/auth/confirm-external-link | allow-anonymous
 GET /spark/auth/confirmEmail
 POST /spark/auth/csrf-refresh | antiforgery=not-required
 GET /spark/auth/external-login
 GET /spark/auth/external-login-callback | allow-anonymous
-POST /spark/auth/forgotPassword | accepts(application/json) | antiforgery=required
+POST /spark/auth/forgotPassword | antiforgery=required
 POST /spark/auth/login | accepts(application/json) | antiforgery=required
 POST /spark/auth/logout | antiforgery=required
 POST /spark/auth/manage/2fa | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/2fa/authenticator-uri | authorize(policy=;roles=;schemes=)
 DELETE /spark/auth/manage/account | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/info | authorize(policy=;roles=;schemes=)
-POST /spark/auth/manage/info | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
-POST /spark/auth/manage/password | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/info | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/password | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/personal-data | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/profile | authorize(policy=;roles=;schemes=)
-POST /spark/auth/manage/profile | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/profile | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/me
 POST /spark/auth/refresh | accepts(application/json)
-POST /spark/auth/register | accepts(application/json) | antiforgery=required
-POST /spark/auth/resendConfirmationEmail | accepts(application/json) | antiforgery=required
-POST /spark/auth/resetPassword | accepts(application/json) | antiforgery=required
+POST /spark/auth/register | antiforgery=required
+POST /spark/auth/resendConfirmationEmail | antiforgery=required
+POST /spark/auth/resetPassword | antiforgery=required
 GET /spark/culture
 GET /spark/lookupref
 GET /spark/lookupref/{name}

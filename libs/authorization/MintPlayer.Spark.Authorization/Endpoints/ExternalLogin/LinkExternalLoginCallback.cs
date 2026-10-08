@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 
@@ -16,6 +17,10 @@ internal sealed partial class LinkExternalLoginCallback<TUser> : IGetEndpoint
     where TUser : SparkUser, new()
 {
     public static string Path => "/link-external-login-callback";
+
+    /// <summary><see cref="SparkExternalLoginLinking.WhenSignedIn"/> only, like <see cref="LinkExternalLoginChallenge{TUser}"/>.</summary>
+    static bool IEndpointBase.IsEnabled(IServiceProvider services)
+        => SparkAuthFeatures.ExternalLoginLinking(services) == SparkExternalLoginLinking.WhenSignedIn;
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
     {

@@ -60,7 +60,7 @@ public class GitHubChallengeShapeTests(SparkSharedDatabase database)
                     app.UseAuthentication();
                     app.UseAuthorization();
                     app.UseEndpoints(endpoints =>
-                        endpoints.MapSparkIdentityApi<SparkUser>(SparkLocalCredentials.Disabled));
+                        endpoints.MapSparkIdentityApi<SparkUser>());
                 }))
             .StartAsync();
     }
@@ -163,7 +163,7 @@ public class GitHubChallengeShapeTests(SparkSharedDatabase database)
                     app.UseAuthentication();
                     app.UseAuthorization();
                     app.UseEndpoints(endpoints =>
-                        endpoints.MapSparkIdentityApi<SparkUser>(SparkLocalCredentials.Disabled));
+                        endpoints.MapSparkIdentityApi<SparkUser>());
                 }))
             .StartAsync();
 

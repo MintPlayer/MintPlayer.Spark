@@ -49,7 +49,7 @@ public class PasskeyEndpointTests : SparkTestDriver
                     app.UseRouting();
                     app.UseAuthentication();
                     app.UseAuthorization();
-                    app.UseEndpoints(endpoints => endpoints.MapSparkIdentityApi<SparkUser>(localCredentials));
+                    app.UseEndpoints(endpoints => endpoints.MapSparkIdentityApi<SparkUser>());
                 }))
             .StartAsync();
     }

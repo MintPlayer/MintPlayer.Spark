@@ -17,10 +17,10 @@ namespace MintPlayer.Spark.Authorization.Extensions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Hand-mapped rather than source-generated, because the whole group is gated on
-/// <see cref="SparkPasskeys"/> and the generated mapper is unconditional. Microsoft's
+/// The endpoints are <see cref="PasskeyRequestOptions{TUser}"/> and <see cref="PasskeySignIn{TUser}"/>,
+/// each gated on <see cref="SparkPasskeys"/> through its own <c>IsEnabled</c>. Microsoft's
 /// <c>MapIdentityApi</c> contributes nothing here — measured, it maps no passkey route at all — so
-/// every endpoint below is Spark's own.
+/// every endpoint is Spark's own.
 /// </para>
 /// <para>
 /// A signed-in user's passkeys are not HTTP: listing, adding, renaming and removing them are the
@@ -59,28 +59,6 @@ internal static class PasskeyEndpoints
     /// </summary>
     internal static bool IsCeremonyInputFailure(Exception ex)
         => ex is PasskeyException or InvalidOperationException or JsonException or FormatException or ArgumentException;
-
-    internal static void MapPasskeyApi<TUser>(
-        IEndpointRouteBuilder endpoints,
-        RouteGroupBuilder authGroup)
-        where TUser : SparkUser, new()
-    {
-        var passkeys = endpoints.ServiceProvider
-            .GetService<IOptions<SparkAuthenticationOptions>>()?.Value.Passkeys
-            ?? SparkPasskeys.Disabled;
-
-        if (passkeys == SparkPasskeys.Disabled)
-            return;
-
-        // Generator endpoint classes. They are open generics, so this assembly's generated
-        // MapSparkAuthEndpoints() deliberately skips them (MPEP025, Info) and they are mapped here,
-        // where TUser is concrete. Mapped on `endpoints`, not `authGroup`: the /spark/auth prefix
-        // comes from [MemberOf<SparkAuthGroup>], and mapping onto the group as well would compose
-        // it twice.
-        endpoints.MapEndpoint<PasskeyRequestOptions<TUser>>();
-        endpoints.MapEndpoint<PasskeySignIn<TUser>>();
-    }
-
 
     #region Helpers
 

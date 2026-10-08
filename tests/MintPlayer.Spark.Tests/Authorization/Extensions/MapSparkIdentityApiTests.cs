@@ -38,6 +38,9 @@ public class MapSparkIdentityApiTests(SparkSharedDatabase database)
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    // The mode MapSparkIdentityApi's former parameter defaulted to.
+                    services.Configure<MintPlayer.Spark.Authorization.Configuration.SparkAuthenticationOptions>(
+                        o => o.LocalCredentials = MintPlayer.Spark.Authorization.Configuration.SparkLocalCredentials.Full);
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
 
                     // Append a cookie-backed external scheme that the SignInManager can

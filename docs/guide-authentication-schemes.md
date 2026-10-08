@@ -540,7 +540,7 @@ endpoint only asks it earlier. The E2E test that pinned the old 400 now asserts 
 ## Choosing how much of the local-credential surface to mount
 
 `spark.AddAuthentication<TUser>()` mounts the local-credential endpoint family under `/spark/auth`.
-Since #460 M5 most of it is **Spark's own** (`SparkAccountEndpoints`): `register`,
+Since #460 M5 most of it is **Spark's own** (endpoint classes in `Endpoints/Account`): `register`,
 `resendConfirmationEmail`, `confirmEmail`, `forgotPassword`, `resetPassword` and `POST manage/info`
 are filtered out of `MapIdentityApi` and mapped by Spark with the same contracts, alongside the
 account routes `MapIdentityApi` never had (`confirm-email`, `manage/password`, `manage/profile`,
@@ -576,7 +576,7 @@ spark.AddAuthentication<SparkUser>(
 
 The confirm routes are mapped in every mode because an external sign-up from a provider without a
 verified-email signal is confirmed by mail (D7) whatever the local-credential setting. The
-classification lives in `SparkAccountEndpoints.Map` and `LocalCredentialEndpointFilter`, and
+classification lives in each Spark endpoint's `IsEnabled` (through `LocalCredentialMode`) and in `LocalCredentialEndpointFilter`, and
 `AccountRouteClassificationTests` pins it for every route.
 
 `/spark/auth/me`, `/spark/auth/logout`, `/spark/auth/csrf-refresh`, `/spark/auth/external-login` and

@@ -39,6 +39,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
     [Inject] private readonly IOptions<SparkAuthenticationOptions> options;
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly SparkAccountMail<TUser> accountMail;
+    [Inject] private readonly IEnumerable<SparkExternalProviderRegistration> providerRegistrations;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -101,7 +102,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
             // described keeps the rule above: email_verified=true or no account. A provider that
             // declares it has no reliable signal gets an unconfirmed account and a confirmation mail
             // instead — the mail is then the proof the SSO could not give.
-            var policy = SparkExternalProviderPolicies.For(httpContext.RequestServices, info.LoginProvider);
+            var policy = SparkExternalProviderPolicies.For(options.Value, providerRegistrations, info.LoginProvider);
             var email = info.Principal.FindFirstValue(ClaimTypes.Email);
             var verification = policy.EmailVerification(info.Principal);
 
