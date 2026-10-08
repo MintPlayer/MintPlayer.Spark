@@ -9,6 +9,7 @@ using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -89,7 +90,14 @@ public static class SparkIdentityProviderExtensions
         }
 
         // Register OIDC endpoints
-        builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkIdentityProviderEndpoints());
+        // The user-generic endpoints close here, at map time, when every Add* call has run - so
+        // AddAuthentication<TUser>() may come before or after this method.
+        var registry = builder.Registry;
+        builder.Registry.AddEndpoints(endpoints =>
+        {
+            endpoints.MapSparkIdentityProviderEndpoints();
+            OidcUserEndpoints.Map(endpoints, registry.IdentityUserType);
+        });
 
         // Register middleware to deploy indexes
         builder.Registry.AddMiddleware(app =>

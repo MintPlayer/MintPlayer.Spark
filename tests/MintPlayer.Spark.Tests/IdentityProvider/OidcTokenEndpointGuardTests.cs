@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -182,6 +183,39 @@ public class OidcTokenEndpointGuardTests(OidcSharedHost host) : OidcTestHost(hos
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         using var session = Store.OpenAsyncSession();
         (await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refresh))).Status.Should().Be("revoked");
+    }
+
+    /// <summary>
+    /// The refusals that happen before any grant is looked at, byte for byte: the RFC 6749 §5.2
+    /// error body is the whole contract a client parses, so its exact shape — not just the
+    /// <c>error</c> member — is pinned. A request without <c>grant_type</c> is an unsupported grant;
+    /// a body that is not a form is an invalid request, whether it carries another content type or
+    /// none at all.
+    /// </summary>
+    [Theory]
+    [InlineData("form-without-grant-type", 400, """{"error":"unsupported_grant_type"}""")]
+    [InlineData("json", 400, """{"error":"invalid_request","error_description":"Content-Type must be application/x-www-form-urlencoded."}""")]
+    [InlineData("no-body", 400, """{"error":"invalid_request","error_description":"Content-Type must be application/x-www-form-urlencoded."}""")]
+    public async Task A_request_that_names_no_grant_is_refused_with_the_rfc_6749_error(string body, int status, string expected)
+    {
+        await SeedClientsAsync();
+
+        HttpContent? content = body switch
+        {
+            "form-without-grant-type" => new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["client_id"] = ClientId("webapp"),
+                ["client_secret"] = Secret,
+            }),
+            "json" => JsonContent.Create(new { grant_type = "client_credentials", client_id = ClientId("machine") }),
+            _ => null,
+        };
+
+        var response = await Client.PostAsync("/connect/token", content);
+
+        ((int)response.StatusCode).Should().Be(status);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
+        (await response.Content.ReadAsStringAsync()).Should().Be(expected);
     }
 
     [Fact]

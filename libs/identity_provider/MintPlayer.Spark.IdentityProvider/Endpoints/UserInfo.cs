@@ -62,7 +62,7 @@ internal static class UserInfo
         // Load user
         var registry = context.RequestServices.GetRequiredService<SparkModuleRegistry>();
 
-        // ⚠️ No `?? typeof(SparkUser)` fallback — see Token.LoadUserAsync. Defaulting resolves
+        // ⚠️ No `?? typeof(SparkUser)` fallback, deliberately. Defaulting resolves
         // UserManager<SparkUser> from a container holding UserManager<AppUser>, which throws at the
         // first request for any application with a derived user type. Same refusal shape as Login,
         // Logout and TwoFactor.

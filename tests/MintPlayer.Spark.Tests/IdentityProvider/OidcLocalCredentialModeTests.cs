@@ -48,6 +48,31 @@ public class OidcLocalCredentialModeTests(SparkSharedDatabase database)
             .Select(endpoint => endpoint.RoutePattern.RawText!)];
 
     [Fact]
+    public async Task The_provider_refuses_to_start_without_a_user_type()
+    {
+        // The token endpoint and the login submit are generic over the application's user type and
+        // are closed when the routes are mapped. Without AddAuthentication<TUser>() there is nothing
+        // to close them over; refusing at startup replaces a 500 on the first token request.
+        // The factory starts its host when it is constructed, so construction is what throws.
+        var start = async () =>
+        {
+            await using var factory = new SparkEndpointFactory<OidcTestContext>(
+                Store,
+                models: [],
+                configureSpark: spark => spark.AddIdentityProvider(options =>
+                {
+                    options.Issuer = "https://idp.test";
+                    options.SigningKeyPath = Path.Combine(
+                        Path.GetTempPath(), "spark-oidc-test-" + Guid.NewGuid().ToString("N") + ".json");
+                }),
+                environment: "Development");
+        };
+
+        await start.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*SparkModuleRegistry.IdentityUserType is null*");
+    }
+
+    [Fact]
     public async Task Disabled_mode_removes_the_identity_provider_login_pages()
     {
         await using var factory = CreateFactory(SparkLocalCredentials.Disabled);

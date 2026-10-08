@@ -9,18 +9,8 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 // to borrow - and a token that has to be presented cannot be supplied by the browser on the caller's
 // behalf. Requiring a token here would simply break every conforming OAuth client.
 
-/// <summary>The token endpoint.</summary>
-[MemberOf<OidcConnectCorsGroup>]
-internal sealed class OidcToken : IPostEndpoint
-{
-    public static string Path => "/token";
-
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        await Token.Handle(httpContext);
-        return Results.Empty;
-    }
-}
+// The token endpoint is OidcTokenEndpoint<TUser> (Endpoints/Token.cs): generic over the user type, so it is
+// closed and mapped by OidcUserEndpoints rather than by the generated mapping.
 
 /// <summary>The userinfo endpoint.</summary>
 [MemberOf<OidcConnectCorsGroup>]

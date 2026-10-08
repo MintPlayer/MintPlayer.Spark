@@ -2,9 +2,10 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.DependencyInjection;
-using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -15,56 +16,107 @@ using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
-internal static class Token
+/// <summary>
+/// The parameters of a token request (RFC 6749 §4.1.3, §4.4.2, §6), as the form carries them. Every
+/// member is optional at this level: which ones a grant requires is that grant's own check, and the
+/// error it answers with is part of the protocol.
+/// </summary>
+internal sealed record OidcTokenRequest(
+    string? GrantType,
+    string? ClientId,
+    string? ClientSecret,
+    string? Code,
+    string? RedirectUri,
+    string? CodeVerifier,
+    string? RefreshToken,
+    string? Scope);
+
+/// <summary>The token endpoint.</summary>
+/// <remarks>
+/// <para>
+/// Generic over the application's user type, which only the application knows: it is closed once,
+/// when the routes are mapped, from <c>SparkModuleRegistry.IdentityUserType</c>
+/// (<see cref="OidcUserEndpoints"/>), so the user is loaded through a typed
+/// <see cref="UserManager{TUser}"/> rather than a reflected one on every request.
+/// </para>
+/// <para>
+/// The body is <c>application/x-www-form-urlencoded</c> (RFC 6749 §3.2), so <see cref="BindRequestAsync"/>
+/// reads the form instead of the default JSON, and a bind failure answers in RFC 6749 §5.2's shape
+/// rather than as problem details: an OAuth client parses <c>error</c>, nothing else.
+/// </para>
+/// <para>
+/// ⚠️ Deliberately NOT antiforgery-protected: a machine endpoint authenticated by client credentials,
+/// never by an ambient cookie (see <see cref="OidcConnectCorsGroup"/>).
+/// </para>
+/// <para>
+/// ⚠️ Not named <c>OidcToken</c> like its siblings: that is the stored token document
+/// (<see cref="OidcToken"/>), and a generic <c>OidcToken&lt;TUser&gt;</c> in this namespace or an
+/// imported one makes every plain <c>OidcToken</c> beside it ambiguous (CS0104) or wrong (CS0117).
+/// </para>
+/// </remarks>
+[MemberOf<OidcConnectCorsGroup>]
+internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcTokenRequest>
+    where TUser : SparkUser, new()
 {
-    public static async Task Handle(HttpContext context)
+    public static string Path => "/token";
+
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly OidcTokenGenerator tokenGenerator;
+    [Inject] private readonly UserManager<TUser> userManager;
+
+    /// <summary>
+    /// The request being handled, kept from <see cref="BindRequestAsync"/>: the typed handler receives
+    /// only the bound request, and the issuer and the <c>no-store</c> headers are per request. The
+    /// endpoint is created per request, so this never outlives it.
+    /// </summary>
+    private HttpContext httpContext = null!;
+
+    protected override async ValueTask<OidcTokenRequest?> BindRequestAsync(HttpContext context)
     {
-        var ct = context.RequestAborted;
+        httpContext = context;
 
         if (!context.Request.HasFormContentType)
-        {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_request", error_description = "Content-Type must be application/x-www-form-urlencoded." });
-            return;
-        }
+            throw new EndpointBindingException(StatusCodes.Status400BadRequest, "Content-Type must be application/x-www-form-urlencoded.");
 
-        var form = await context.Request.ReadFormAsync(ct);
-        var grantType = form["grant_type"].FirstOrDefault();
-
-        switch (grantType)
-        {
-            case "authorization_code":
-                await HandleAuthorizationCodeGrant(context, form, ct);
-                break;
-            case "refresh_token":
-                await HandleRefreshTokenGrant(context, form, ct);
-                break;
-            case "client_credentials":
-                await HandleClientCredentialsGrant(context, form, ct);
-                break;
-            default:
-                context.Response.StatusCode = 400;
-                await context.Response.WriteAsJsonAsync(new { error = "unsupported_grant_type" });
-                break;
-        }
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return new OidcTokenRequest(
+            GrantType: form["grant_type"].FirstOrDefault(),
+            ClientId: form["client_id"].FirstOrDefault(),
+            ClientSecret: form["client_secret"].FirstOrDefault(),
+            Code: form["code"].FirstOrDefault(),
+            RedirectUri: form["redirect_uri"].FirstOrDefault(),
+            CodeVerifier: form["code_verifier"].FirstOrDefault(),
+            RefreshToken: form["refresh_token"].FirstOrDefault(),
+            Scope: form["scope"].FirstOrDefault());
     }
 
-    private static async Task HandleAuthorizationCodeGrant(HttpContext context, IFormCollection form, CancellationToken ct)
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(failure is null
+            ? Results.Json(new { error = "invalid_request" }, statusCode: StatusCodes.Status400BadRequest)
+            : Results.Json(new { error = "invalid_request", error_description = failure.Message }, statusCode: failure.StatusCode));
+
+    public override Task<IResult> HandleAsync(OidcTokenRequest request, CancellationToken ct)
+        => request.GrantType switch
+        {
+            "authorization_code" => HandleAuthorizationCodeGrant(request, ct),
+            "refresh_token" => HandleRefreshTokenGrant(request, ct),
+            "client_credentials" => HandleClientCredentialsGrant(request, ct),
+            _ => Task.FromResult(Results.Json(new { error = "unsupported_grant_type" }, statusCode: 400)),
+        };
+
+    private async Task<IResult> HandleAuthorizationCodeGrant(OidcTokenRequest request, CancellationToken ct)
     {
-        var clientId = form["client_id"].FirstOrDefault();
-        var clientSecret = form["client_secret"].FirstOrDefault();
-        var code = form["code"].FirstOrDefault();
-        var redirectUri = form["redirect_uri"].FirstOrDefault();
-        var codeVerifier = form["code_verifier"].FirstOrDefault();
+        var clientId = request.ClientId;
+        var clientSecret = request.ClientSecret;
+        var code = request.Code;
+        var redirectUri = request.RedirectUri;
+        var codeVerifier = request.CodeVerifier;
 
         if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(code) || string.IsNullOrEmpty(redirectUri))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_request", error_description = "Missing required parameters." });
-            return;
+            return Results.Json(new { error = "invalid_request", error_description = "Missing required parameters." }, statusCode: 400);
         }
 
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
         // Redemption is the point where a single-use credential is spent, so the write that
@@ -77,17 +129,13 @@ internal static class Token
         var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled)
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
-            return;
+            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
         }
 
         // Check grant type is allowed
         if (!app.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "unauthorized_client", error_description = "This client is not authorized for authorization_code grant." });
-            return;
+            return Results.Json(new { error = "unauthorized_client", error_description = "This client is not authorized for authorization_code grant." }, statusCode: 400);
         }
 
         // Validate client secret for confidential clients
@@ -96,11 +144,9 @@ internal static class Token
         // disabled client authentication altogether.
         if (!(string.Equals(app.ClientType, "public", StringComparison.OrdinalIgnoreCase) && app.Secrets.Count == 0))
         {
-            if (string.IsNullOrEmpty(clientSecret) || !VerifyClientSecret(clientSecret, app.Secrets))
+            if (string.IsNullOrEmpty(clientSecret) || !Token.VerifyClientSecret(clientSecret, app.Secrets))
             {
-                context.Response.StatusCode = 401;
-                await context.Response.WriteAsJsonAsync(new { error = "invalid_client", error_description = "Invalid client credentials." });
-                return;
+                return Results.Json(new { error = "invalid_client", error_description = "Invalid client credentials." }, statusCode: 401);
             }
         }
 
@@ -118,16 +164,12 @@ internal static class Token
             await RevokeAuthorizationChainAsync(session, codeToken, ct);
             await TrySaveAsync(session, ct);
 
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
         if (codeToken is not { Type: "authorization_code" })
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
         // The code must belong to the client redeeming it (RFC 6749 4.1.3). Without this a
@@ -137,9 +179,7 @@ internal static class Token
         // no client binding of its own.
         if (!string.Equals(codeToken.ApplicationId, app.Id, StringComparison.Ordinal))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
         // Validate the code hasn't expired
@@ -147,17 +187,13 @@ internal static class Token
         {
             codeToken.Status = "expired";
             await TrySaveAsync(session, ct);
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Authorization code has expired." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Authorization code has expired." }, statusCode: 400);
         }
 
         // Validate redirect_uri matches
         if (!string.Equals(codeToken.RedirectUri, redirectUri, StringComparison.Ordinal))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "redirect_uri mismatch." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "redirect_uri mismatch." }, statusCode: 400);
         }
 
         // Validate PKCE code_verifier
@@ -165,9 +201,7 @@ internal static class Token
         {
             if (string.IsNullOrEmpty(codeVerifier))
             {
-                context.Response.StatusCode = 400;
-                await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "PKCE code_verifier is required." });
-                return;
+                return Results.Json(new { error = "invalid_grant", error_description = "PKCE code_verifier is required." }, statusCode: 400);
             }
 
             // Constant-time, for consistency with the deliberate timing hygiene in
@@ -178,9 +212,7 @@ internal static class Token
             var computedChallenge = ComputeS256Challenge(codeVerifier);
             if (!FixedTimeEquals(computedChallenge, codeToken.CodeChallenge))
             {
-                context.Response.StatusCode = 400;
-                await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "PKCE verification failed." });
-                return;
+                return Results.Json(new { error = "invalid_grant", error_description = "PKCE verification failed." }, statusCode: 400);
             }
         }
 
@@ -189,20 +221,17 @@ internal static class Token
         codeToken.RedeemedAt = DateTime.UtcNow;
 
         // Load user
-        var user = await LoadUserAsync(context.RequestServices, codeToken.Subject, ct);
+        var user = await userManager.FindByIdAsync(codeToken.Subject);
         if (user == null)
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "User not found." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "User not found." }, statusCode: 400);
         }
 
         // Load scope definitions from DB
-        var grantedScopes = await LoadScopesAsync(session, codeToken.Scopes, ct);
+        var grantedScopes = await Token.LoadScopesAsync(session, codeToken.Scopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
 
-        var issuer = OidcIssuer.Resolve(context);
-        var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
+        var issuer = OidcIssuer.Resolve(httpContext);
 
         // Generate tokens
         var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
@@ -259,14 +288,11 @@ internal static class Token
         // a later replay would get.
         if (!await TrySaveAsync(session, ct))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
-        context.Response.ContentType = "application/json";
-        context.Response.Headers.CacheControl = "no-store";
-        context.Response.Headers.Pragma = "no-cache";
+        httpContext.Response.Headers.CacheControl = "no-store";
+        httpContext.Response.Headers.Pragma = "no-cache";
 
         // Built as a dictionary so an unissued refresh token is absent rather than present-and-
         // null: RFC 6749 §5.1 makes refresh_token optional, and a client testing for the key
@@ -286,7 +312,7 @@ internal static class Token
 
         AnnounceScope(response, codeToken.Scopes, grantedScopeNames);
 
-        await context.Response.WriteAsJsonAsync(response);
+        return Results.Json(response);
     }
 
     /// <summary>
@@ -327,20 +353,17 @@ internal static class Token
         => scopes.Contains("openid", StringComparer.OrdinalIgnoreCase);
 
 
-    private static async Task HandleRefreshTokenGrant(HttpContext context, IFormCollection form, CancellationToken ct)
+    private async Task<IResult> HandleRefreshTokenGrant(OidcTokenRequest request, CancellationToken ct)
     {
-        var clientId = form["client_id"].FirstOrDefault();
-        var clientSecret = form["client_secret"].FirstOrDefault();
-        var refreshToken = form["refresh_token"].FirstOrDefault();
+        var clientId = request.ClientId;
+        var clientSecret = request.ClientSecret;
+        var refreshToken = request.RefreshToken;
 
         if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(refreshToken))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_request" });
-            return;
+            return Results.Json(new { error = "invalid_request" }, statusCode: 400);
         }
 
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
         // Rotation spends the presented token, so it races exactly as code redemption does.
@@ -349,18 +372,14 @@ internal static class Token
         var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled)
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
-            return;
+            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
         }
 
         // The other two grants have always checked this; this one did not, so a client never
         // registered for refresh could still rotate one indefinitely.
         if (!AllowsRefreshTokens(app))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "unauthorized_client", error_description = "This client is not authorized for refresh_token grant." });
-            return;
+            return Results.Json(new { error = "unauthorized_client", error_description = "This client is not authorized for refresh_token grant." }, statusCode: 400);
         }
 
         // Fail closed: only a client explicitly marked public, holding no secrets, skips
@@ -368,11 +387,9 @@ internal static class Token
         // disabled client authentication altogether.
         if (!(string.Equals(app.ClientType, "public", StringComparison.OrdinalIgnoreCase) && app.Secrets.Count == 0))
         {
-            if (string.IsNullOrEmpty(clientSecret) || !VerifyClientSecret(clientSecret, app.Secrets))
+            if (string.IsNullOrEmpty(clientSecret) || !Token.VerifyClientSecret(clientSecret, app.Secrets))
             {
-                context.Response.StatusCode = 401;
-                await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
-                return;
+                return Results.Json(new { error = "invalid_client" }, statusCode: 401);
             }
         }
 
@@ -387,9 +404,7 @@ internal static class Token
             await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
             await TrySaveAsync(session, ct);
 
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
         if (refreshTokenDoc is not { Type: "refresh_token", Status: "valid" })
@@ -401,9 +416,7 @@ internal static class Token
             || refreshTokenDoc.ExpiresAt < DateTime.UtcNow
             || !string.Equals(refreshTokenDoc.ApplicationId, app.Id, StringComparison.Ordinal))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
         // Has the user withdrawn this grant? Checked here rather than inside LoadScopesAsync or
@@ -416,9 +429,7 @@ internal static class Token
             await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
             await session.SaveChangesAsync(ct);
 
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
         // What the presented token entitles the client to ask for. Never mutated: it is the
@@ -435,16 +446,14 @@ internal static class Token
             .ToList();
 
         // Load user
-        var user = await LoadUserAsync(context.RequestServices, refreshTokenDoc.Subject, ct);
+        var user = await userManager.FindByIdAsync(refreshTokenDoc.Subject);
         if (user == null)
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant" });
-            return;
+            return Results.Json(new { error = "invalid_grant" }, statusCode: 400);
         }
 
         // Load scope definitions from DB
-        var grantedScopes = await LoadScopesAsync(session, permittedScopes, ct);
+        var grantedScopes = await Token.LoadScopesAsync(session, permittedScopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
 
         // Nothing left to grant. Minting anyway produced a signed, subject-bearing, 60-minute
@@ -457,17 +466,14 @@ internal static class Token
             await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
             await session.SaveChangesAsync(ct);
 
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new
+            return Results.Json(new
             {
                 error = "invalid_scope",
                 error_description = "No scope on this refresh token is still available to this client.",
-            });
-            return;
+            }, statusCode: 400);
         }
 
-        var issuer = OidcIssuer.Resolve(context);
-        var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
+        var issuer = OidcIssuer.Resolve(httpContext);
 
         // Generate new tokens
         var (newAccessToken, newAccessTokenJti) = tokenGenerator.GenerateAccessToken(user, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
@@ -521,14 +527,11 @@ internal static class Token
         // simultaneous rotation writes nothing and is answered as a replay.
         if (!await TrySaveAsync(session, ct))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." });
-            return;
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
-        context.Response.ContentType = "application/json";
-        context.Response.Headers.CacheControl = "no-store";
-        context.Response.Headers.Pragma = "no-cache";
+        httpContext.Response.Headers.CacheControl = "no-store";
+        httpContext.Response.Headers.Pragma = "no-cache";
 
         var response = new Dictionary<string, object>
         {
@@ -548,47 +551,38 @@ internal static class Token
         // equal and the announcement silent for exactly the cases it existed to report.
         AnnounceScope(response, presentedScopes, grantedScopeNames);
 
-        await context.Response.WriteAsJsonAsync(response);
+        return Results.Json(response);
     }
 
-    private static async Task HandleClientCredentialsGrant(HttpContext context, IFormCollection form, CancellationToken ct)
+    private async Task<IResult> HandleClientCredentialsGrant(OidcTokenRequest request, CancellationToken ct)
     {
-        var clientId = form["client_id"].FirstOrDefault();
-        var clientSecret = form["client_secret"].FirstOrDefault();
-        var scope = form["scope"].FirstOrDefault();
+        var clientId = request.ClientId;
+        var clientSecret = request.ClientSecret;
+        var scope = request.Scope;
 
         if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_request", error_description = "client_id and client_secret are required." });
-            return;
+            return Results.Json(new { error = "invalid_request", error_description = "client_id and client_secret are required." }, statusCode: 400);
         }
 
-        var store = context.RequestServices.GetRequiredService<IDocumentStore>();
         using var session = store.OpenAsyncSession();
 
         var app = await Authorize.FindApplicationByClientIdAsync(session, clientId, ct);
         if (app == null || !app.Enabled)
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_client" });
-            return;
+            return Results.Json(new { error = "invalid_client" }, statusCode: 401);
         }
 
         // Check grant type is allowed
         if (!app.AllowedGrantTypes.Contains("client_credentials", StringComparer.OrdinalIgnoreCase))
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "unauthorized_client", error_description = "This client is not authorized for client_credentials grant." });
-            return;
+            return Results.Json(new { error = "unauthorized_client", error_description = "This client is not authorized for client_credentials grant." }, statusCode: 400);
         }
 
         // Validate client secret
-        if (!VerifyClientSecret(clientSecret, app.Secrets))
+        if (!Token.VerifyClientSecret(clientSecret, app.Secrets))
         {
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_client", error_description = "Invalid client credentials." });
-            return;
+            return Results.Json(new { error = "invalid_client", error_description = "Invalid client credentials." }, statusCode: 401);
         }
 
         // Parse and validate requested scopes
@@ -597,9 +591,7 @@ internal static class Token
         {
             if (!app.AllowedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
             {
-                context.Response.StatusCode = 400;
-                await context.Response.WriteAsJsonAsync(new { error = "invalid_scope", error_description = $"Scope '{s}' is not allowed for this client." });
-                return;
+                return Results.Json(new { error = "invalid_scope", error_description = $"Scope '{s}' is not allowed for this client." }, statusCode: 400);
             }
         }
 
@@ -609,13 +601,11 @@ internal static class Token
         // least privilege violated by omission and invisible at the call site.
         if (requestedScopes.Count == 0)
         {
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new { error = "invalid_scope", error_description = "scope is required; name the scopes this token needs." });
-            return;
+            return Results.Json(new { error = "invalid_scope", error_description = "scope is required; name the scopes this token needs." }, statusCode: 400);
         }
 
         // Load scope definitions from DB
-        var grantedScopes = await LoadScopesAsync(session, requestedScopes, ct);
+        var grantedScopes = await Token.LoadScopesAsync(session, requestedScopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
 
         // Refused rather than narrowed. There is no user and no consent step here: the caller
@@ -627,17 +617,14 @@ internal static class Token
         if (grantedScopeNames.Count != requestedScopes.Count)
         {
             var missing = requestedScopes.Except(grantedScopeNames, StringComparer.Ordinal);
-            context.Response.StatusCode = 400;
-            await context.Response.WriteAsJsonAsync(new
+            return Results.Json(new
             {
                 error = "invalid_scope",
                 error_description = $"No enabled scope is defined for: {string.Join(", ", missing)}.",
-            });
-            return;
+            }, statusCode: 400);
         }
 
-        var issuer = OidcIssuer.Resolve(context);
-        var tokenGenerator = context.RequestServices.GetRequiredService<OidcTokenGenerator>();
+        var issuer = OidcIssuer.Resolve(httpContext);
 
         // Generate access token only (no user, no ID token, no refresh token)
         var (accessToken, accessTokenJti) = tokenGenerator.GenerateAccessToken(null, app, issuer, grantedScopes, app.AccessTokenLifetimeMinutes);
@@ -660,49 +647,16 @@ internal static class Token
         await session.StoreAsync(accessTokenDoc, ct);
         await session.SaveChangesAsync(ct);
 
-        context.Response.ContentType = "application/json";
-        context.Response.Headers.CacheControl = "no-store";
-        context.Response.Headers.Pragma = "no-cache";
+        httpContext.Response.Headers.CacheControl = "no-store";
+        httpContext.Response.Headers.Pragma = "no-cache";
 
-        await context.Response.WriteAsJsonAsync(new
+        return Results.Json(new
         {
             access_token = accessToken,
             token_type = "Bearer",
             expires_in = app.AccessTokenLifetimeMinutes * 60,
             scope = string.Join(' ', grantedScopeNames),
         });
-    }
-
-    internal static async Task<SparkUser?> LoadUserAsync(IServiceProvider serviceProvider, string userId, CancellationToken ct)
-    {
-        var registry = serviceProvider.GetRequiredService<SparkModuleRegistry>();
-
-        // ⚠️ No `?? typeof(SparkUser)` fallback, deliberately. Defaulting here resolves
-        // UserManager<SparkUser> from a container in which AddIdentityApiEndpoints<TUser> registered
-        // UserManager<AppUser>, so an application with a derived user type would fail at the first
-        // request instead of at startup — and fail inside a token endpoint, where the cause is least
-        // visible. Login, Logout and TwoFactor already fail closed on this; Token and UserInfo did
-        // not, and the inconsistency was only unreachable because no application derives a user type
-        // yet, which is precisely the extensibility this surface exists to allow.
-        var userType = registry.IdentityUserType
-            ?? throw new InvalidOperationException(
-                "Identity is not configured: SparkModuleRegistry.IdentityUserType is null. "
-                + "Call AddSparkAuthentication<TUser>() during startup.");
-
-        var userManagerType = typeof(UserManager<>).MakeGenericType(userType);
-        var userManager = serviceProvider.GetRequiredService(userManagerType);
-
-        var findByIdMethod = userManagerType.GetMethod("FindByIdAsync")!;
-        var result = await (dynamic)findByIdMethod.Invoke(userManager, [userId])!;
-        return result as SparkUser;
-    }
-
-    internal static async Task<List<OidcScope>> LoadScopesAsync(IAsyncDocumentSession session, List<string> scopeNames, CancellationToken ct)
-    {
-        return await session
-            .Query<OidcScope>()
-            .Where(s => s.Name.In(scopeNames) && s.Enabled)
-            .ToListAsync(ct);
     }
 
     /// <summary>
@@ -762,6 +716,36 @@ internal static class Token
         }
     }
 
+    private static bool FixedTimeEquals(string a, string b)
+        => CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
+
+    private static string ComputeS256Challenge(string codeVerifier)
+    {
+        var bytes = Encoding.ASCII.GetBytes(codeVerifier);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToBase64String(hash).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+}
+
+/// <summary>
+/// The token rules the other protocol endpoints share: <c>/connect/authorize</c> resolves scopes the
+/// same way, and <c>/connect/introspect</c> and <c>/connect/revoke</c> authenticate clients the same way.
+/// </summary>
+/// <remarks>
+/// Kept outside <see cref="OidcTokenEndpoint{TUser}"/> because none of it depends on the user type, and a
+/// caller should not have to close a generic endpoint to reach a static rule.
+/// </remarks>
+internal static class Token
+{
+    internal static async Task<List<OidcScope>> LoadScopesAsync(IAsyncDocumentSession session, List<string> scopeNames, CancellationToken ct)
+    {
+        return await session
+            .Query<OidcScope>()
+            .Where(s => s.Name.In(scopeNames) && s.Enabled)
+            .ToListAsync(ct);
+    }
+
     internal static bool VerifyClientSecret(string secret, List<ClientSecret> secrets)
     {
         if (secrets.Count == 0) return false;
@@ -781,16 +765,5 @@ internal static class Token
         }
 
         return matched;
-    }
-
-    private static bool FixedTimeEquals(string a, string b)
-        => CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
-
-    private static string ComputeS256Challenge(string codeVerifier)
-    {
-        var bytes = Encoding.ASCII.GetBytes(codeVerifier);
-        var hash = SHA256.HashData(bytes);
-        return Convert.ToBase64String(hash).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 }

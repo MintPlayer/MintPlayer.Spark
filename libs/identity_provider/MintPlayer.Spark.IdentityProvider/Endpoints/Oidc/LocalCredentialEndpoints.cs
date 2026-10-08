@@ -5,40 +5,11 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 
 // The provider's own password form and its two-factor step. Membership of
 // OidcLocalCredentialsGroup is what gates them on SparkLocalCredentials - see that group's IsEnabled.
-
-/// <summary>Renders the provider's password form.</summary>
-[MemberOf<OidcLocalCredentialsGroup>]
-internal sealed class OidcLoginPage : IGetEndpoint
-{
-    public static string Path => "/login";
-
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        await Login.HandleGet(httpContext);
-        return Results.Empty;
-    }
-}
-
-/// <summary>Accepts the provider's password form.</summary>
-/// <remarks>
-/// ⚠️ The antiforgery stamp is explicit. These pages read the form body with <c>ReadFormAsync</c>
-/// rather than <c>[FromForm]</c>, so minimal APIs never inferred the metadata for them and the pages
-/// went unprotected.
-/// </remarks>
-[MemberOf<OidcLocalCredentialsGroup>]
-internal sealed class OidcLoginSubmit : IPostEndpoint
-{
-    public static string Path => "/login";
-
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
-        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        await Login.HandlePost(httpContext);
-        return Results.Empty;
-    }
-}
+// The login page and its submit are OidcLoginPage and OidcLoginSubmit<TUser> (Endpoints/Login.cs).
+//
+// ⚠️ The antiforgery stamp on the submits is explicit. These pages read the form body with
+// ReadFormAsync rather than [FromForm], so minimal APIs never inferred the metadata for them and the
+// pages went unprotected.
 
 /// <summary>Renders the two-factor step.</summary>
 [MemberOf<OidcLocalCredentialsGroup>]

@@ -1,32 +1,39 @@
 using MintPlayer.Spark.Authorization.Extensions;
 using System.Text;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
-/// <summary>
-/// MVC login page for the OIDC authorization flow.
-/// GET renders an HTML login form, POST authenticates and redirects to returnUrl.
-/// </summary>
-internal static class Login
+// The login page for the OIDC authorization flow: GET renders an HTML login form, POST authenticates
+// and redirects to returnUrl. Membership of OidcLocalCredentialsGroup is what gates both on
+// SparkLocalCredentials - see that group's IsEnabled.
+
+/// <summary>Renders the provider's password form.</summary>
+[MemberOf<OidcLocalCredentialsGroup>]
+internal sealed class OidcLoginPage : IGetEndpoint
 {
-    public static async Task HandleGet(HttpContext context)
+    public static string Path => "/login";
+
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         // Sanitized at the point of read: an unvalidated returnUrl sends a freshly-authenticated
         // user off-origin, which is high-value phishing precisely because they really did just
         // authenticate here. Shared with the Authorization package rather than duplicated.
-        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(context.Request.Query["returnUrl"].FirstOrDefault());
-        var error = context.Request.Query["error"].FirstOrDefault();
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(httpContext.Request.Query["returnUrl"].FirstOrDefault());
+        var error = httpContext.Request.Query["error"].FirstOrDefault();
 
-        context.Response.ContentType = "text/html; charset=utf-8";
+        httpContext.Response.ContentType = "text/html; charset=utf-8";
         var sb = new StringBuilder();
-        ConnectPageTheme.AppendDocumentStart(sb, context, "Login");
+        ConnectPageTheme.AppendDocumentStart(sb, httpContext, "Login");
         sb.Append("body{max-width:400px;margin:80px auto;padding:0 20px}");
         sb.Append("h2{margin-bottom:24px}");
         sb.Append(".form-group{margin-bottom:16px}");
@@ -46,12 +53,12 @@ internal static class Login
         }
 
         sb.Append("<form method=\"post\">");
-        ConnectPage.AppendAntiforgery(sb, context);
+        ConnectPage.AppendAntiforgery(sb, httpContext);
         sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(Encode(returnUrl)).Append("\" />");
         sb.Append("<div class=\"form-group\">");
         // Labelled from SparkAuthenticationOptions.SignInIdentifiers, which the POST's resolver
         // (SparkSignInManager) enforces; the field name stays "identifier" whatever it accepts.
-        var (label, type) = IdentifierField(context);
+        var (label, type) = IdentifierField(httpContext);
         sb.Append("<label for=\"identifier\">").Append(label).Append("</label>");
         sb.Append("<input type=\"").Append(type).Append("\" id=\"identifier\" name=\"identifier\" autocomplete=\"")
             .Append(type == "email" ? "email" : "username").Append("\" required autofocus />");
@@ -66,74 +73,8 @@ internal static class Login
         sb.Append("<button type=\"submit\" class=\"btn btn-primary\">Login</button>");
         sb.Append("</form></body></html>");
 
-        await context.Response.WriteAsync(sb.ToString());
-    }
-
-    public static async Task HandlePost(HttpContext context)
-    {
-        var form = await context.Request.ReadFormAsync(context.RequestAborted);
-        // "email" is the field name older copies of this page post; "identifier" is the current one.
-        var identifier = form["identifier"].FirstOrDefault() ?? form["email"].FirstOrDefault();
-        var password = form["password"].FirstOrDefault();
-        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
-        var rememberMe = string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal);
-
-        if (string.IsNullOrEmpty(identifier) || string.IsNullOrEmpty(password))
-        {
-            RedirectWithError(context, returnUrl, "missing_fields");
-            return;
-        }
-
-        // Resolve the configured user type and SignInManager dynamically
-        var registry = context.RequestServices.GetRequiredService<SparkModuleRegistry>();
-        var userType = registry.IdentityUserType;
-        if (userType == null)
-        {
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync("Identity not configured.");
-            return;
-        }
-
-        var signInManagerType = typeof(SignInManager<>).MakeGenericType(userType);
-        var signInManager = context.RequestServices.GetRequiredService(signInManagerType);
-
-        // Attempt password sign-in through the string overload, which SparkSignInManager overrides:
-        // the identifier is an email or a user name, resolved by the same rule as /spark/auth/login
-        // (#460, D4). An unknown identifier fails exactly like a wrong password.
-        //
-        // lockoutOnFailure was false, which meant failures never reached AccessFailedAsync: an
-        // unauthenticated, unthrottled endpoint would test passwords forever, and the
-        // IsLockedOut branch below was unreachable. MapIdentityApi's own login passes true, so
-        // this page was strictly weaker than the API beside it.
-        //
-        // isPersistent was hardcoded true, silently issuing every visitor a persistent cookie.
-        // It now follows the checkbox the user actually saw.
-        var passwordSignInMethod = signInManagerType.GetMethod("PasswordSignInAsync",
-            [typeof(string), typeof(string), typeof(bool), typeof(bool)])!;
-        var result = (SignInResult)await (dynamic)passwordSignInMethod.Invoke(
-            signInManager, [identifier, password, rememberMe, true])!;
-
-        if (result.Succeeded)
-        {
-            context.Response.Redirect(returnUrl);
-            return;
-        }
-
-        if (result.RequiresTwoFactor)
-        {
-            // The remember-me choice is made here and spent on the next hop, so it has to travel.
-            var carry = rememberMe ? "&rememberMe=true" : "";
-            context.Response.Redirect($"/connect/two-factor?returnUrl={Uri.EscapeDataString(returnUrl)}{carry}");
-            return;
-        }
-
-        if (result.IsLockedOut)
-        {
-            RedirectWithError(context, returnUrl, "locked_out");
-            return;
-        }
-
-        RedirectWithError(context, returnUrl, "invalid_credentials");
+        await httpContext.Response.WriteAsync(sb.ToString());
+        return Results.Empty;
     }
 
     private static (string Label, string Type) IdentifierField(HttpContext context)
@@ -148,12 +89,75 @@ internal static class Login
         };
     }
 
-    private static void RedirectWithError(HttpContext context, string returnUrl, string error)
-    {
-        var loginUrl = $"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}&error={Uri.EscapeDataString(error)}";
-        context.Response.Redirect(loginUrl);
-    }
-
     private static string Encode(string value) =>
         System.Net.WebUtility.HtmlEncode(value);
+}
+
+/// <summary>Accepts the provider's password form.</summary>
+/// <remarks>
+/// <para>
+/// Generic over the application's user type, closed once when the routes are mapped
+/// (<see cref="OidcUserEndpoints"/>), so it signs in through a typed <see cref="SignInManager{TUser}"/>
+/// instead of resolving and reflecting on one per request.
+/// </para>
+/// <para>
+/// ⚠️ The antiforgery stamp is explicit. This page reads the form body with <c>ReadFormAsync</c>
+/// rather than <c>[FromForm]</c>, so minimal APIs never inferred the metadata for it and the page
+/// went unprotected.
+/// </para>
+/// </remarks>
+[MemberOf<OidcLocalCredentialsGroup>]
+internal sealed partial class OidcLoginSubmit<TUser> : IPostEndpoint
+    where TUser : SparkUser, new()
+{
+    public static string Path => "/login";
+
+    [Inject] private readonly SignInManager<TUser> signInManager;
+
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    {
+        var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
+        // "email" is the field name older copies of this page post; "identifier" is the current one.
+        var identifier = form["identifier"].FirstOrDefault() ?? form["email"].FirstOrDefault();
+        var password = form["password"].FirstOrDefault();
+        var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
+        var rememberMe = string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal);
+
+        if (string.IsNullOrEmpty(identifier) || string.IsNullOrEmpty(password))
+            return RedirectWithError(returnUrl, "missing_fields");
+
+        // Attempt password sign-in through the string overload, which SparkSignInManager overrides:
+        // the identifier is an email or a user name, resolved by the same rule as /spark/auth/login
+        // (#460, D4). An unknown identifier fails exactly like a wrong password.
+        //
+        // lockoutOnFailure was false, which meant failures never reached AccessFailedAsync: an
+        // unauthenticated, unthrottled endpoint would test passwords forever, and the
+        // IsLockedOut branch below was unreachable. MapIdentityApi's own login passes true, so
+        // this page was strictly weaker than the API beside it.
+        //
+        // isPersistent was hardcoded true, silently issuing every visitor a persistent cookie.
+        // It now follows the checkbox the user actually saw.
+        var result = await signInManager.PasswordSignInAsync(identifier, password, isPersistent: rememberMe, lockoutOnFailure: true);
+
+        if (result.Succeeded)
+            return Results.Redirect(returnUrl);
+
+        if (result.RequiresTwoFactor)
+        {
+            // The remember-me choice is made here and spent on the next hop, so it has to travel.
+            var carry = rememberMe ? "&rememberMe=true" : "";
+            return Results.Redirect($"/connect/two-factor?returnUrl={Uri.EscapeDataString(returnUrl)}{carry}");
+        }
+
+        if (result.IsLockedOut)
+            return RedirectWithError(returnUrl, "locked_out");
+
+        return RedirectWithError(returnUrl, "invalid_credentials");
+    }
+
+    private static IResult RedirectWithError(string returnUrl, string error)
+        => Results.Redirect($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}&error={Uri.EscapeDataString(error)}");
 }
