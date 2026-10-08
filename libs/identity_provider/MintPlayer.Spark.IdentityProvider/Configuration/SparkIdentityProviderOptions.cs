@@ -37,6 +37,9 @@ public class SparkIdentityProviderOptions
     /// <summary>The second factor at the provider's own sign-in (<c>Spark:IdentityProvider:TwoFactor</c>, #490 PRD D11).</summary>
     public SparkIdentityProviderTwoFactorOptions TwoFactor { get; set; } = new();
 
+    /// <summary>How the <c>/connect/*</c> pages present the provider (<c>Spark:IdentityProvider:Branding</c>, PRD D7).</summary>
+    public SparkIdentityProviderBranding Branding { get; set; } = new();
+
     /// <summary>The audit trail (<c>Spark:IdentityProvider:Audit</c>, PRD D9).</summary>
     public SparkIdentityProviderAuditOptions Audit { get; set; } = new();
 

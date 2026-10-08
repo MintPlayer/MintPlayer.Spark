@@ -78,13 +78,36 @@ internal static partial class ConnectPageTheme
     /// page rules, then <c>&lt;/style&gt;&lt;/head&gt;&lt;body&gt;</c>. <paramref name="title"/> is
     /// raw text and is HTML-encoded here.
     /// </summary>
-    public static void AppendDocumentStart(StringBuilder sb, HttpContext context, string title)
+    public static void AppendDocumentStart(
+        StringBuilder sb, HttpContext context, string title, string? lang = null, Configuration.SparkIdentityProviderBranding? branding = null)
     {
         sb.Append("<!DOCTYPE html><html");
+        // D7: the page language, for screen readers and the browser's own translation offer.
+        if (!string.IsNullOrEmpty(lang)) sb.Append(" lang=\"").Append(ConnectPage.Encode(lang)).Append('"');
         var theme = ExplicitTheme(context.Request);
         if (theme is not null) sb.Append(" data-bs-theme=\"").Append(theme).Append('"');
         sb.Append("><head><meta charset=\"utf-8\"><meta name=\"color-scheme\" content=\"light dark\">");
-        sb.Append("<title>").Append(ConnectPage.Encode(title)).Append("</title>");
+        sb.Append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        var product = branding?.ProductName;
+        sb.Append("<title>").Append(ConnectPage.Encode(string.IsNullOrEmpty(product) ? title : $"{title} - {product}")).Append("</title>");
         sb.Append("<style>").Append(Css);
+        sb.Append(".idp-brand{display:flex;align-items:center;gap:10px;margin-bottom:24px;font-weight:600}.idp-brand img{max-height:40px;max-width:160px}");
+        // The operator's own CSS, from configuration: trusted like the rest of the host's settings,
+        // but kept inside the style element.
+        if (!string.IsNullOrEmpty(branding?.ExtraCss))
+            sb.Append(branding.ExtraCss.Replace("</", "<\\/", StringComparison.Ordinal));
+    }
+
+    /// <summary>The product's logo and name at the top of the page (D7, <c>Branding</c>), when configured.</summary>
+    public static void AppendBrand(StringBuilder sb, Configuration.SparkIdentityProviderBranding? branding)
+    {
+        if (branding is null || (string.IsNullOrEmpty(branding.LogoUrl) && string.IsNullOrEmpty(branding.ProductName)))
+            return;
+        sb.Append("<div class=\"idp-brand\">");
+        if (!string.IsNullOrEmpty(branding.LogoUrl))
+            sb.Append("<img src=\"").Append(ConnectPage.Encode(branding.LogoUrl)).Append("\" alt=\"\">");
+        if (!string.IsNullOrEmpty(branding.ProductName))
+            sb.Append("<span>").Append(ConnectPage.Encode(branding.ProductName)).Append("</span>");
+        sb.Append("</div>");
     }
 }

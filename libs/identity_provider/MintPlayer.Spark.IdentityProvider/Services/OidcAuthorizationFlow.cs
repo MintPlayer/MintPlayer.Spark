@@ -52,6 +52,7 @@ internal static class OidcAuthorizationFlow
         OidcApplication app,
         string userId,
         List<string> scopes,
+        bool remember,
         CancellationToken ct)
     {
         var authorizationId = OidcGrantReference.DocumentId(userId, app.Id!);
@@ -60,7 +61,7 @@ internal static class OidcAuthorizationFlow
         {
             try
             {
-                await WriteGrantAsync(session.Advanced.DocumentStore, authorizationId, app, userId, scopes, ct);
+                await WriteGrantAsync(session.Advanced.DocumentStore, authorizationId, app, userId, scopes, remember, ct);
                 return authorizationId;
             }
             catch (ConcurrencyException) when (attempt < 3)
@@ -77,6 +78,7 @@ internal static class OidcAuthorizationFlow
         OidcApplication app,
         string userId,
         List<string> scopes,
+        bool remember,
         CancellationToken ct)
     {
         using var session = store.OpenAsyncSession();
@@ -122,6 +124,13 @@ internal static class OidcAuthorizationFlow
             if (!auth.GrantedScopes.Contains(s, StringComparer.OrdinalIgnoreCase))
                 auth.GrantedScopes.Add(s);
         }
+
+        // D6: remember and expiry. The application decides whether remembering is offered and for
+        // how long; each consent restarts the clock.
+        var now = DateTime.UtcNow;
+        auth.ConsentedAt = now;
+        auth.Remembered = remember && app.AllowRememberConsent;
+        auth.ExpiresAt = auth.Remembered && app.ConsentLifetimeSeconds is > 0 ? now.AddSeconds(app.ConsentLifetimeSeconds.Value) : null;
 
         await session.SaveChangesAsync(ct);
     }

@@ -164,7 +164,7 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
 {
     public static string Path => "/applications/revoke";
 
-    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly OidcGrantWithdrawal withdrawal;
 
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8); the endpoint is created per request.</summary>
     private HttpContext context = null!;
@@ -193,7 +193,7 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
         // "not yours" and "no such grant" are the same missing document here, so the response
         // cannot distinguish them and cannot be used to probe which grants exist.
         var withdrawn = string.IsNullOrEmpty(applicationId)
-            || await TryWithdrawAsync(store, OidcGrantReference.DocumentId(userId, applicationId), ct);
+            || await withdrawal.WithdrawAsync(userId, applicationId, scopes: null, context.Connection.RemoteIpAddress?.ToString(), ct);
 
         // Reporting "Access removed" when the write lost a race would be the worst possible
         // outcome here: the user believes they have taken access back and has no reason to look
@@ -201,79 +201,5 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
         return Results.Redirect(withdrawn
             ? "/connect/applications?status=revoked"
             : "/connect/applications?status=failed");
-    }
-
-    /// <summary>
-    /// Marks the grant revoked and tears down its tokens, or reports that it could not.
-    /// <para>
-    /// Under optimistic concurrency, and retried: this is a read-modify-write on a document that
-    /// gates a security decision, racing directly against a consent that would set it back to
-    /// valid. Last-write-wins here means a user is told access was removed while it is live.
-    /// </para>
-    /// <para>
-    /// A grant that is already revoked counts as success — the user asked for it gone and it is
-    /// gone. Withdrawing is idempotent, not a transaction that has to be the one that did it.
-    /// </para>
-    /// </summary>
-    private static async Task<bool> TryWithdrawAsync(IDocumentStore store, string grantId, CancellationToken ct)
-    {
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            using var session = store.OpenAsyncSession();
-            session.Advanced.UseOptimisticConcurrency = true;
-
-            var grant = await session.LoadAsync<OidcGrant>(grantId, ct);
-            if (grant is null || grant.Status != "valid")
-                return true;
-
-            var now = DateTime.UtcNow;
-            grant.Status = "revoked";
-            grant.RevokedAt = now;
-            // Never cleared on reinstate — see OidcGrant.LastRevokedAt.
-            grant.LastRevokedAt = now;
-
-            await RevokeTokensAsync(session, grantId, ct);
-
-            try
-            {
-                await session.SaveChangesAsync(ct);
-                return true;
-            }
-            catch (ConcurrencyException)
-            {
-                // Someone else wrote the grant in between — most likely the user consenting again
-                // in another tab. Re-read and decide afresh rather than forcing a stale verdict.
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Revokes every outstanding token issued under this grant — both types.
-    /// <para>
-    /// The existing cascade on the revocation endpoint sweeps only <c>access_token</c>, which is
-    /// right for its own purpose and wrong here: leaving a refresh token alive would let the
-    /// client mint replacements, and withdrawal would achieve nothing.
-    /// </para>
-    /// <para>
-    /// The sweep rides an eventually-consistent index, so a token issued in the moments before
-    /// the withdrawal may be missed. That is tolerable only because it is not the enforcement:
-    /// issuance point-loads this grant and refuses, and introspection does the same, so a missed
-    /// token is caught the next time anything asks about it. The sweep is cleanup.
-    /// </para>
-    /// </summary>
-    private static async Task RevokeTokensAsync(IAsyncDocumentSession session, string authorizationId, CancellationToken ct)
-    {
-        var tokens = await session
-            .Query<OidcToken>()
-            .Where(t => t.AuthorizationId == authorizationId && t.Status == "valid")
-            .ToListAsync(ct);
-
-        foreach (var token in tokens)
-        {
-            token.Status = "revoked";
-            token.RedeemedAt = DateTime.UtcNow;
-        }
     }
 }

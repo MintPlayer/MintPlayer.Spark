@@ -74,6 +74,8 @@ public static class SparkIdentityProviderExtensions
         builder.Services.AddSingleton<OidcInvitations>();
         builder.Services.AddSingleton<OidcTeamMail>();
         builder.Services.AddScoped<OidcPortalAccess>();
+        builder.Services.AddScoped<ConnectText>();
+        builder.Services.AddSingleton<OidcGrantWithdrawal>();
         builder.AddGroupMembershipProvider<OidcDeveloperMembership>();
 
         // Constructed rather than resolved, because the CORS policy's predicate below has no service

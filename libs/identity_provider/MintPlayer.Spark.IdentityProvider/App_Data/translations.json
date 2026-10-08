@@ -1772,6 +1772,78 @@
       "en": "A public client has no secret.",
       "fr": "Un client public n'a pas de secret.",
       "nl": "Een publieke client heeft geen geheim."
+    },
+    "connect": {
+      "consentTitle": {
+        "en": "Authorize {0}",
+        "fr": "Autoriser {0}",
+        "nl": "{0} toestaan"
+      },
+      "consentHeading": {
+        "en": "{0} wants to access your account",
+        "fr": "{0} souhaite accéder à votre compte",
+        "nl": "{0} wil toegang tot je account"
+      },
+      "consentPublisher": {
+        "en": "by {0}",
+        "fr": "par {0}",
+        "nl": "door {0}"
+      },
+      "consentRedirect": {
+        "en": "You will be sent back to {0}.",
+        "fr": "Vous serez renvoyé vers {0}.",
+        "nl": "Je wordt teruggestuurd naar {0}."
+      },
+      "consentSignedInAs": {
+        "en": "Signed in as {0}.",
+        "fr": "Connecté en tant que {0}.",
+        "nl": "Aangemeld als {0}."
+      },
+      "consentNotYou": {
+        "en": "Not you?",
+        "fr": "Ce n'est pas vous ?",
+        "nl": "Ben jij dit niet?"
+      },
+      "consentIntro": {
+        "en": "This application asks for the following:",
+        "fr": "Cette application demande ce qui suit :",
+        "nl": "Deze applicatie vraagt het volgende:"
+      },
+      "consentAlreadyAllowed": {
+        "en": "already allowed",
+        "fr": "déjà autorisé",
+        "nl": "al toegestaan"
+      },
+      "consentRemember": {
+        "en": "Remember my decision",
+        "fr": "Mémoriser ma décision",
+        "nl": "Mijn keuze onthouden"
+      },
+      "consentAllow": {
+        "en": "Allow",
+        "fr": "Autoriser",
+        "nl": "Toestaan"
+      },
+      "consentDeny": {
+        "en": "Deny",
+        "fr": "Refuser",
+        "nl": "Weigeren"
+      },
+      "consentPrivacy": {
+        "en": "Privacy policy",
+        "fr": "Politique de confidentialité",
+        "nl": "Privacybeleid"
+      },
+      "consentTerms": {
+        "en": "Terms of service",
+        "fr": "Conditions d'utilisation",
+        "nl": "Gebruiksvoorwaarden"
+      },
+      "consentManage": {
+        "en": "Manage applications with access to your account",
+        "fr": "Gérer les applications ayant accès à votre compte",
+        "nl": "Applicaties met toegang tot je account beheren"
+      }
     }
   }
 }

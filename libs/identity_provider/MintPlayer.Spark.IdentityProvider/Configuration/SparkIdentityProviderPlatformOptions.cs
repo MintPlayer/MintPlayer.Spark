@@ -39,6 +39,19 @@ public class SparkIdentityProviderTwoFactorOptions
     public bool Enabled { get; set; } = true;
 }
 
+/// <summary><c>Spark:IdentityProvider:Branding</c>: how the <c>/connect/*</c> pages present the provider (D7).</summary>
+public class SparkIdentityProviderBranding
+{
+    /// <summary>The provider's name, shown beside the logo and in the window title.</summary>
+    public string? ProductName { get; set; }
+
+    /// <summary>The logo's address.</summary>
+    public string? LogoUrl { get; set; }
+
+    /// <summary>CSS appended to the pages' own stylesheet, e.g. to override the <c>--idp-*</c> colours.</summary>
+    public string? ExtraCss { get; set; }
+}
+
 /// <summary><c>Spark:IdentityProvider:Audit</c> (<c>docs/identity_provider_platform_PRD.md</c> D9).</summary>
 public class SparkIdentityProviderAuditOptions
 {

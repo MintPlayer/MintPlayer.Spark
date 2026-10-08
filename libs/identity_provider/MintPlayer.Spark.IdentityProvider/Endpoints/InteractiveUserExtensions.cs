@@ -39,6 +39,13 @@ internal static class InteractiveUserExtensions
     /// without it (issued by a plain <c>SignInManager</c>) falls back to the ticket's issue time, which a
     /// sliding refresh can move later but never earlier than the real sign-in.
     /// </remarks>
+    /// <summary>The signed-in person's user name (the cookie's Name claim), for "signed in as" on the consent page (D6).</summary>
+    public static async Task<string?> GetInteractiveUserNameAsync(this HttpContext context)
+    {
+        var result = await context.AuthenticateAsync(IdentityConstants.ApplicationScheme);
+        return result.Succeeded ? result.Principal?.Identity?.Name : null;
+    }
+
     public static async Task<(string? UserId, DateTimeOffset? AuthTime)> GetInteractiveUserAsync(this HttpContext context)
     {
         var result = await context.AuthenticateAsync(IdentityConstants.ApplicationScheme);

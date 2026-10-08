@@ -29,6 +29,8 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
     [QueryParam("code_challenge")] public string? CodeChallenge { get; set; }
     [QueryParam("code_challenge_method")] public string? CodeChallengeMethod { get; set; }
     [QueryParam("nonce")] public string? Nonce { get; set; }
+    /// <summary>D6: <c>true</c> adds the scopes the user already granted this client to the request (incremental authorization).</summary>
+    [QueryParam("include_granted_scopes")] public string? IncludeGrantedScopes { get; set; }
     [QueryParam("sparkExternalLogin")] public string? ExternalLogin { get; set; }
 
     [Inject] private readonly IDocumentStore store;
@@ -143,6 +145,7 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
                         ("code_challenge", CodeChallenge),
                         ("code_challenge_method", CodeChallengeMethod),
                         ("nonce", Nonce),
+                        ("include_granted_scopes", IncludeGrantedScopes),
                     }
                     .Where(p => p.Value is not null)
                     .Select(p => KeyValuePair.Create(p.Name, p.Value))).Value;
@@ -181,6 +184,15 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
 
         var withdrawn = existingAuth is not null && existingAuth.Status != "valid";
 
+        // D6, incremental authorization: the client asks for what it needs now and gets what was
+        // granted before as well. Only scopes the application may still request are added.
+        if (string.Equals(IncludeGrantedScopes, "true", StringComparison.OrdinalIgnoreCase) && existingAuth is { Status: "valid" })
+        {
+            var previously = OidcApplicationAccess.AvailableScopes(app, userId, existingAuth.GrantedScopes);
+            request.Scopes = [.. request.Scopes.Union(previously, StringComparer.OrdinalIgnoreCase)];
+            requestedScopes = request.Scopes;
+        }
+
         // Auto-approval says "this user already trusts this client", which is exactly the
         // statement a withdrawal retracts. Skipping the screen here — the branch returned before
         // the Status check below ever ran — meant a withdrawn grant came back with no screen, no
@@ -188,11 +200,14 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
         // asked again, whatever the client's consent type.
         if (app.ConsentType == "implicit" && options.AutoApproveImplicitConsent && !withdrawn)
         {
-            request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, userId, requestedScopes, ct);
+            request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, userId, requestedScopes, remember: true, ct);
             return Results.Redirect(await OidcAuthorizationFlow.IssueCodeAsync(session, request, ct));
         }
 
-        if (existingAuth is { Status: "valid" })
+        // D6: the consent screen is skipped only for a consent the user asked to be remembered, and
+        // only until it expires (ConsentLifetimeSeconds). A grant that was not remembered still backs
+        // the tokens issued under it, but the next sign-in asks again.
+        if (existingAuth is not null && existingAuth.RemembersConsentAt(DateTime.UtcNow))
         {
             var allScopesCovered = requestedScopes.All(s =>
                 existingAuth.GrantedScopes.Contains(s, StringComparer.OrdinalIgnoreCase));
