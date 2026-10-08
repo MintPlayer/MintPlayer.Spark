@@ -30,11 +30,14 @@ internal sealed partial class OidcDeveloperRequestActions : ISparkOwnsRowSecurit
     public async Task<IQueryable<OidcDeveloperRequest>> DeveloperRequests()
     {
         // The collection is an identifier (RqlIdentifier-validated in OidcUserDocuments); the status is a parameter.
+        // `id()`, not `id(u)` over an alias: in a plain (non-JavaScript) select the server rejected the
+        // aliased form with "id(doc) must be called with an object argument", a 500 on every load of the
+        // queue (found by the E2E journey, IdentityProviderJourneyTests).
         var rows = await session.Advanced
             .AsyncRawQuery<OidcDeveloperRequest>(
-                $"from '{users.Collection}' as u where u.{OidcDeveloper.FieldName}.Status = $status "
-              + $"select id(u) as Id, u.UserName as UserName, u.Email as Email, "
-              + $"u.{OidcDeveloper.FieldName}.RequestedAt as RequestedAt, u.{OidcDeveloper.FieldName}.TermsVersion as TermsVersion")
+                $"from '{users.Collection}' where {OidcDeveloper.FieldName}.Status = $status "
+              + $"select id() as Id, UserName, Email, "
+              + $"{OidcDeveloper.FieldName}.RequestedAt as RequestedAt, {OidcDeveloper.FieldName}.TermsVersion as TermsVersion")
             .AddParameter("status", OidcDeveloperStatuses.Requested)
             .ToListAsync();
         return rows.AsQueryable();

@@ -4,7 +4,7 @@
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
-identity-provider | MintPlayer.Spark.IdentityProvider | 744cb69e05e6
+identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8
 
 ## Reachable without signing in (expanded)
 (nothing)
@@ -28,6 +28,10 @@ Administrators (identity-provider:administrators) | grant | QueryRead/OidcAuditE
 Administrators (identity-provider:administrators) | grant | QueryRead/OidcGrant | identity-provider:grants-administrators | identity-provider
 Administrators (identity-provider:administrators) | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-administrators | identity-provider
 Administrators (identity-provider:administrators) | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | Read/OidcReviewDecision | identity-provider:review-decisions-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | ReadEditNewDelete/ClientClaim | identity-provider:application-claims-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-administrators | identity-provider
 Administrators (identity-provider:administrators) | grant | RejectDeveloper/OidcDeveloperRequest | identity-provider:developer-requests-reject | identity-provider
 Administrators (identity-provider:administrators) | grant | RejectGoLive/OidcGoLiveReview | identity-provider:golive-reject | identity-provider
 Administrators (identity-provider:administrators) | grant | RejectScope/OidcScopeApproval | identity-provider:scope-approvals-reject-administrators | identity-provider
@@ -46,6 +50,9 @@ Developers (identity-provider:developers) | grant | Query/OidcScopeApproval | id
 Developers (identity-provider:developers) | grant | QueryRead/OidcAuditEvent | identity-provider:audit-developers | identity-provider
 Developers (identity-provider:developers) | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-developers | identity-provider
 Developers (identity-provider:developers) | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-developers | identity-provider
+Developers (identity-provider:developers) | grant | Read/OidcReviewDecision | identity-provider:review-decisions-developers | identity-provider
+Developers (identity-provider:developers) | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-developers | identity-provider
+Developers (identity-provider:developers) | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-developers | identity-provider
 Developers (identity-provider:developers) | grant | RejectScope/OidcScopeApproval | identity-provider:scope-approvals-reject-developers | identity-provider
 Developers (identity-provider:developers) | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-developers | identity-provider
 Developers (identity-provider:developers) | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-developers | identity-provider

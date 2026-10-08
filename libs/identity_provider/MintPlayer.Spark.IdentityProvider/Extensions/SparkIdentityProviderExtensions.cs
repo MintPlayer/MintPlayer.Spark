@@ -83,6 +83,12 @@ public static class SparkIdentityProviderExtensions
         builder.Services.AddSingleton(sp => new OidcUserDocuments(moduleRegistry, sp.GetRequiredService<IDocumentStore>()));
         builder.Services.AddSingleton<OidcAudit>();
         builder.Services.AddSingleton<OidcPortalMail>();
+        // The portal mails' default templates (Mail/SparkIdentityProvider/*.mjml, embedded as SparkMail/…);
+        // an app's Templates/Mail/SparkIdentityProvider/*.mjml overrides them. Never declared before, so every
+        // portal mail (invitations, developer and review decisions) was dead-lettered with "No mail template
+        // 'SparkIdentityProvider/…'" (found by the E2E journey). Anchored on a type of this assembly.
+        MintPlayer.Spark.MailManager.SparkMailTemplateServiceCollectionExtensions.AddSparkMailTemplates(
+            builder.Services, typeof(OidcPortalMailTemplates).Assembly, "SparkMail/");
         builder.Services.AddSingleton<OidcPortalLinks>();
         builder.Services.AddSingleton<OidcInvitations>();
         builder.Services.AddSingleton<OidcTeamMail>();

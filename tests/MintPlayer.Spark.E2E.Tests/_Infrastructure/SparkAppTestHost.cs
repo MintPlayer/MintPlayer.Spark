@@ -222,6 +222,34 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             ? Directory.EnumerateFiles(MailPickupFolder, "*.eml").OrderBy(File.GetLastWriteTimeUtc).ToList()
             : [];
 
+    /// <summary>
+    /// Waits for a picked-up mail to <paramref name="to"/> whose subject contains <paramref name="subjectPart"/>.
+    /// Mail is queued through Messaging, so it lands a moment after the request that caused it; the
+    /// timeout is a failure bound, never an expected duration.
+    /// </summary>
+    public async Task<MimeKit.MimeMessage> WaitForMailAsync(string to, string subjectPart, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(60));
+        while (true)
+        {
+            foreach (var path in PickedUpMails())
+            {
+                MimeKit.MimeMessage message;
+                try { message = await MimeKit.MimeMessage.LoadAsync(path); }
+                catch (IOException) { continue; } // still being written
+                if (message.To.Mailboxes.Any(m => string.Equals(m.Address, to, StringComparison.OrdinalIgnoreCase))
+                    && message.Subject?.Contains(subjectPart, StringComparison.OrdinalIgnoreCase) == true)
+                    return message;
+            }
+
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException(
+                    $"No mail to {to} with '{subjectPart}' in its subject was picked up. Mails: "
+                    + string.Join(", ", PickedUpMails().Select(Path.GetFileName)) + $"\n{RecentLog(40)}");
+            await Task.Delay(250);
+        }
+    }
+
     /// <summary>The embedded Raven server, for subclasses that seed extra databases.</summary>
     protected SparkTestDriverHost RavenServer => _raven ?? throw new InvalidOperationException("Host not initialized");
 

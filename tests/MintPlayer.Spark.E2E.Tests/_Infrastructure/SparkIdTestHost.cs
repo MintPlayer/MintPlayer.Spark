@@ -49,6 +49,56 @@ public sealed class SparkIdTestHost : SparkAppTestHost
             ["Issuer"] = $"http://localhost:{context.HttpPort}",
             ["SigningKeyPath"] = signingKeyFileName,
         };
+
+        // The developer portal's mails (invitations, developer decisions) carry links, and outside
+        // Development the provider builds them only from a configured public base URL, never from the
+        // request's Host header (OidcPortalLinks). Without it an invitation is recorded but never mailed.
+        ((JsonObject)settings["Spark"]!)["Auth"] = new JsonObject { ["PublicBaseUrl"] = $"http://localhost:{context.HttpPort}" };
+    }
+
+    /// <summary>
+    /// Ensures the identity scope <paramref name="name"/> exists, as an administrator would create it.
+    /// SparkId's own seed (<c>M_202610081200_RelyingParties</c>) writes <c>openid</c>, <c>profile</c> and
+    /// <c>email</c> in Development only, and tests are not Development.
+    /// </summary>
+    public async Task SeedIdentityScopeAsync(string name, List<string> claimTypes, bool required)
+    {
+        using var appStore = OpenAppStore();
+        using var session = appStore.OpenAsyncSession();
+
+        var id = OidcScopeCatalog.ResourceId(name);
+        if (await session.Advanced.ExistsAsync(id))
+            return;
+        await session.StoreAsync(new OidcResource
+        {
+            Id = id,
+            Kind = OidcResourceKinds.Identity,
+            Name = name,
+            ClaimTypes = claimTypes,
+            Required = required,
+        });
+        await session.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Registers the API scope <paramref name="scopeName"/> on the API resource named <paramref name="audience"/>
+    /// (created if missing). With <paramref name="autoApprove"/>, an application of any team may add the
+    /// scope without the owner's approval (D4).
+    /// </summary>
+    public async Task SeedApiScopeAsync(string audience, string scopeName, bool autoApprove)
+    {
+        using var appStore = OpenAppStore();
+        using var session = appStore.OpenAsyncSession();
+
+        var resourceId = OidcScopeCatalog.ResourceId(audience);
+        var api = await session.LoadAsync<OidcResource>(resourceId);
+        if (api is null)
+        {
+            api = new OidcResource { Id = resourceId, Kind = OidcResourceKinds.Api, Name = audience, AutoApprove = autoApprove };
+            await session.StoreAsync(api);
+        }
+        api.Scopes.Add(new OidcApiScope { Name = scopeName });
+        await session.SaveChangesAsync();
     }
 
     /// <summary>An RSA key in the shape <c>OidcSigningKeyService</c> reads: base64url RSA parameters.</summary>

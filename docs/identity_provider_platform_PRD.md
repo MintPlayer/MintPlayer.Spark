@@ -27,7 +27,7 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
 | I10 keys, sessions | ✅ | 3758cfe4 | `OidcKeyRing` (RSA and EC, Data Protection, rotation by `OidcKeyRotationService`, legacy key import). `sid` in the cookie (OnSigningIn). `OidcSessionStore`: back-channel logout tokens, front-channel iframes, logout revokes the session's refresh tokens |
 | I11 operations | ✅ | 495e5a70, (I11+I12 commit) | The audit query (`OidcAuditEventActions`: admins all, app Admins their apps), the grants query with `RevokeGrant`, the menu fragment. `INC:Tokens` on the application per access token (`OidcExpiry.StoreExpiringAsync`). The disable cascade (`OidcDisableCascade`, from both interceptors' `OnAfterSaveAsync`). The named policy `SparkIdentityProviderMachine` on `OidcConnectCorsGroup` and the client-auth failure throttle (`Spark:IdentityProvider:RateLimits`). `GET /spark/identity-provider/admin/keys`, `POST .../admin/keys/rotate` |
 | I12 resource servers | ✅ | (I11+I12 commit) | `spark.AddSparkResourceServer(authority, audience, …)` in `MintPlayer.Spark.Authorization.ResourceServer`: at+jwt only, DPoP scheme and `cnf` (jkt, x5t#S256) enforced, or `UseIntrospection` (`SparkIntrospectionHandler`). `[RequireScope]` / `.RequireScope()`. `SparkDpopProof` is shared with the IdP's token endpoint. Introspection now answers `iss`, `cnf`, `group(s)`, `act`. Fleet: `GET /api/fleet/cars` needs `fleet.read`; SparkId seeds the `fleet` API resource and offers `fleet.read` to HR (`M_202610091000_FleetApi`). HR asks for `fleet.read`, saves SparkId's tokens, and `GET /api/hr/fleet-cars` calls Fleet with the user's access token |
-| I13 tests, conformance | ⏳ | | |
+| I13 tests, conformance | ✅ tests; conformance see below | 4a46cfad, db80416e, (journey commit) | 16 unit-test classes and D11 tests; the E2E journey `IdentityProviderJourneyTests` (developer request → approval → app → secret once → tester invite → Development refusal → Live → granular consent → token scopes → per-scope withdrawal); route snapshots regenerated; local sweep green. The OpenID conformance suite: see "Conformance" in the open work |
 | I14 docs, versions | ✅ | (I7 commit) | Release notes (`release-notes-preview-103.md` §8 and "New"), `Spark.Abstractions` and `Authorization.Abstractions` → preview.103 (the rest already were; ng-spark 22.31.0). The IdP README rewritten; `docs/guide-identity-provider-developers.md`; README index rows |
 | #490 D11 external-login 2FA | ✅ | (D11 commit) | `/spark/auth/external-login/two-factor` (GET/POST), `Spark:Auth:ExternalLogin:TwoFactor:{Enabled,AllowUserBypass}`, `SparkUser.BypassTwoFactorForExternalLogin` with `GET/POST /spark/auth/manage/external-login-two-factor` and the capability `externalLoginTwoFactorBypass`. `ConnectPageTheme` and the HTML helpers (`SparkPageHtml`, `ISparkPageBranding`) moved to `MintPlayer.Spark.Authorization.Pages`. The account-page toggle (SPA) is part of I7 |
 
@@ -84,6 +84,16 @@ Every commit builds `apps/SparkId`, `tests/MintPlayer.Spark.Tests` and
      false `RefreshTokenReuse` audit event.
   5. `ApproveDeveloper`/`RejectDeveloper` check for an administrator themselves, as the go-live decision
      does.
+- **Fixed from the E2E journey (`IdentityProviderJourneyTests`, I13):**
+  1. The developer-requests query's RQL (`id(u)` on an alias) answered 500; it is the unaliased form now.
+  2. The library's mail templates were never registered (`AddSparkMailTemplates`), so every portal mail
+     was dead-lettered.
+  3. AsDetail rows are checked against their own type: `OidcApplicationScope` and `OidcApiScope` get
+     `ReadEditNewDelete` for both slots, `ClientClaim` for administrators only (a `group` claim on a
+     client's tokens is authority at every resource server), `OidcReviewDecision` `Read` for both.
+  4. **The standard identity resources (`openid`, `profile`, `email`) are a library migration in every
+     environment** (`M_202610091100_StandardIdentityResources`): without `openid` no sign-in works, and
+     they used to exist only where SparkId's Development seed made them. Existing resources are left alone.
 - **Known and accepted:** `SparkIntrospectionHandler` fetches discovery through a static
   `ConfigurationManager` with a plain `HttpDocumentRetriever` (not `IHttpClientFactory`); its test seeds
   that field by reflection. `OidcInvitations` finds the invited account through an index, so an

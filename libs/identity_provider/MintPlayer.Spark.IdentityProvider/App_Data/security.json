@@ -9,7 +9,10 @@
     "never from seeding. Which rows a developer reaches is OidcApplicationActions / OidcResourceActions",
     "GetRowFilterAsync: members only, owners only. ManageAll/IdentityProvider lifts both filters.",
     "Drop one grant with { \"key\": \"identity-provider:<key>\", \"$remove\": true }, or all of them with",
-    "\"libraries\": { \"identity-provider\": false }."
+    "\"libraries\": { \"identity-provider\": false }.",
+    "AsDetail rows are judged by their own row type's rights (EntityMapper): without New/OidcApplicationScope",
+    "no application could be saved with a scope. ClientClaim rows are the administrators' only: a claim such",
+    "as group=... on a client's tokens is a grant at every resource server, not a developer's to set."
   ],
   "reservedTargets": [
     "IdentityProvider"
@@ -38,6 +41,41 @@
     {
       "key": "resources-developers",
       "resource": "QueryReadEditNewDelete/OidcResource",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "application-scopes-administrators",
+      "resource": "ReadEditNewDelete/OidcApplicationScope",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "application-scopes-developers",
+      "resource": "ReadEditNewDelete/OidcApplicationScope",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "application-claims-administrators",
+      "resource": "ReadEditNewDelete/ClientClaim",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "api-scopes-administrators",
+      "resource": "ReadEditNewDelete/OidcApiScope",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "api-scopes-developers",
+      "resource": "ReadEditNewDelete/OidcApiScope",
+      "groupId": "identity-provider:developers"
+    },
+    {
+      "key": "review-decisions-administrators",
+      "resource": "Read/OidcReviewDecision",
+      "groupId": "identity-provider:administrators"
+    },
+    {
+      "key": "review-decisions-developers",
+      "resource": "Read/OidcReviewDecision",
       "groupId": "identity-provider:developers"
     },
     {
