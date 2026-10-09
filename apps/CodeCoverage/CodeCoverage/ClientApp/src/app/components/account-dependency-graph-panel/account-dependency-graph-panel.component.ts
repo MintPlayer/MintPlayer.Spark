@@ -117,7 +117,22 @@ interface SelectedEdge {
   selector: 'app-account-dependency-graph-panel',
   imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent],
   template: `
-    @if (hasEdges()) {
+    @if (state() === 'pending' || state() === 'empty') {
+      <bs-card class="mt-3 d-block">
+        <bs-card-header><i class="bi bi-diagram-3"></i> Repository dependencies</bs-card-header>
+        <bs-card-body>
+          <div class="small text-muted">
+            @if (state() === 'pending') {
+              The repositories of this account have not been scanned yet. The graph appears after the first scan, which
+              runs nightly, after a push that changes a manifest, or when a repository is added.
+            } @else {
+              None of this account's repositories uses a package that another of them publishes.
+            }
+          </div>
+        </bs-card-body>
+      </bs-card>
+    }
+    @if (state() === 'graph') {
       <bs-card class="mt-3 d-block">
         <bs-card-header><i class="bi bi-diagram-3"></i> Repository dependencies</bs-card-header>
         <bs-card-body>
@@ -204,6 +219,17 @@ export class AccountDependencyGraphPanelComponent {
   });
 
   readonly hasEdges = computed(() => (this.elements()?.edges.length ?? 0) > 0);
+
+  /**
+   * hidden: no access, unknown account or an account without repositories; pending: no repository
+   * scanned yet; empty: scanned, but no repository uses a package another one publishes.
+   */
+  readonly state = computed<'hidden' | 'pending' | 'empty' | 'graph'>(() => {
+    const graph = this.graph();
+    if (!graph || graph.nodes.length === 0) return 'hidden';
+    if (this.hasEdges()) return 'graph';
+    return graph.nodes.some((n) => n.scannedAt !== null) ? 'empty' : 'pending';
+  });
 
   readonly legend = computed(() => (this.elements()?.ecosystems ?? []).map((name) => ({ name, color: this.colorOf(name) })));
 
