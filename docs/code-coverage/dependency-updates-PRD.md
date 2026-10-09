@@ -9,19 +9,47 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 |---|---|
 | Investigation: codebase, prior art, ecosystem mechanics | ✅ 2026-10-09 |
 | Grilling: decisions Q1–Q20 (§12) | ✅ 2026-10-09, owner |
-| Spikes S1–S11 (§10) | ⏳ not started |
-| **M3 dependency graph (§6) + an Account-page graph card** | ✅ in PR #501 (owner: "just that, nothing more") |
-| Other milestones (§11) | ⏳ not committed to; the owner uses a grouped Dependabot config for now |
+| **Interim: one weekly Dependabot PR** (`multi-ecosystem-groups`, all ecosystems) | ✅ in PR #501 |
+| **M3 dependency graph (§6) + an Account-page graph card** | ✅ in PR #501 (owner: "just that, nothing more"); the owner judged the card "perfect" in the browser, 2026-10-09 |
+| Spikes S1–S11 (§10) | ⏸ **postponed**, possibly never; owner, 2026-10-09: "we'll see" |
+| Every other milestone (§11: M1, M2, M4–M11) | ⏸ **postponed**, possibly never. Nothing beyond M3 is built |
 
-M3 as built in #501 (owner decisions 2026-10-09):
+The rest of this document (§1–§12) is the plan as grilled. It stays valid as a design, but nothing beyond M3 is
+committed to. If the work resumes, start from §12's decision log, which records why each choice was made.
+
+**Interim (in #501):**
+- **Config:** `.github/dependabot.yml` puts every ecosystem into one multi-ecosystem group, `all-dependencies`,
+  weekly on Monday:
+  - GitHub Actions, NuGet, and Docker (the CodeCoverage, DemoApp and SparkSchemas images);
+  - npm at `/` plus `/apps/CodeCoverage/action`.
+- **Angular majors** are ignored, because of the platform-major lock.
+- **Security settings** (owner decision): Dependabot security updates stay off, and alerts stay on. Fixes arrive
+  in the weekly PR.
+
+**M3 as built in #501** (owner decisions 2026-10-09):
 - **Producers:** declared names only, no registry confirmation. Edges only between repositories of the same
   account.
-- **Card:** on the Account page via the app's existing `extraContentTemplate` branch in `po-detail-page.component.ts`.
-  It uses Cytoscape.js + cytoscape-dagre, lazy-loaded (owner: "interactive, not a static SVG").
 - **Endpoint:** `GET api/browse/accounts/{provider}/{login}/dependency-graph`, filtered exactly like
-  `GetAccountRepos` (#453).
+  `GetAccountRepos` (#453). A hidden repository's manifest is never loaded.
 - **Scans:** triggered by a default-branch push that touches a manifest, the nightly reconcile (skipped when the
   tree sha is unchanged), and a repo being added.
+  - Migration `M_202610091400_BackfillRepositoryManifestScans` queues one first scan per connected repository at
+    deploy. It streams by id prefix, so it doesn't depend on an index, and uses the nightly per-day dedup key.
+  - Without it every node had `scannedAt: null` until the nightly run, and the card stayed hidden. Seen locally
+    2026-10-09.
+- **Card:** on the Account page, via the app's existing `extraContentTemplate` branch in
+  `po-detail-page.component.ts`. No Spark change was needed.
+  - **Library:** Cytoscape.js 3.34.3 + cytoscape-dagre 4.0.1 (dagre `rankDir: LR`). They are lazy-loaded into
+    their own chunks (442 kB + 46 kB). The initial bundle stays at the 1.37 MB master already had (CodeCoverage
+    image build, 2026-10-09). Owner: "interactive, not a static SVG".
+  - **States:** hidden (no access, or no repositories), "not scanned yet", "no dependencies", or the graph.
+  - **Interactions:** pan, zoom and drag; hover highlighting; click a repository to open it; click an edge to list
+    its packages; fit; a toggle for isolated repositories.
+  - **Edge labels** use the node label size. Each is capped at **90% of its edge's length** (owner), measured
+    endpoint to endpoint in graph units and refitted while a node is dragged. Longer labels end in "…", and edges
+    too short show no label.
+  - **Tooltips:** hovering an edge or node gives the full text as a native tooltip (the container's `title`
+    follows the pointer): "from → to" plus the packages, or the repository's full name.
 - **Not built from §6:**
   - the map-reduce "dependents of X" index (the endpoint doesn't need it);
   - locked versions (only the declared constraint is stored);
@@ -31,9 +59,6 @@ M3 as built in #501 (owner decisions 2026-10-09):
   - Web SDK projects count as not packable unless `IsPackable=true`.
   - `PrivateAssets=all` references and test projects count as dev.
   - pip `requirements*dev*|*test*` files and the dev/test/lint/docs groups count as dev.
-
-Interim relief while this is built is **not decided**. One option: a Dependabot `multi-ecosystem-group`
-(`patterns: ["*"]`) in this repo's `.github/dependabot.yml`.
 
 ## 1. Problem
 
