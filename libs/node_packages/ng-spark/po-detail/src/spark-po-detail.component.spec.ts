@@ -134,6 +134,37 @@ describe('SparkPoDetailComponent', () => {
     expect(c.customActions()).toHaveLength(1);
   });
 
+  it('never shows the next object under the previous object\'s Delete while its rights load', async () => {
+    // The component is reused across /po/:type/:id. Object 1 may be deleted; object 2 may not,
+    // and its rights arrive late. Before the fix the new object was published first, so object 2
+    // briefly rendered with object 1's Delete button.
+    let releaseSecond!: () => void;
+    const secondRights = new Promise<void>((resolve) => (releaseSecond = resolve));
+    const getPermissions = vi.fn()
+      .mockResolvedValueOnce({ canQuery: true, canRead: true, canCreate: true, canEdit: true, canDelete: true })
+      .mockImplementationOnce(async () => {
+        await secondRights;
+        return { canQuery: true, canRead: true, canCreate: false, canEdit: false, canDelete: false };
+      });
+    const { harness } = await setup({
+      get: vi.fn().mockImplementation(async (_type: string, id: string) => ({ ...existingItem, id })),
+      getPermissions,
+    } as Partial<SparkService>);
+
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    expect(c.canDelete()).toBe(true);
+
+    void harness.navigateByUrl('/po/person/people%2F2');
+    await vi.waitFor(() => expect(getPermissions).toHaveBeenCalledTimes(2));
+    // Rights for object 2 are still pending: the page must not yet claim object 2 with object 1's Delete.
+    expect(c.item()?.id === 'people/2' && c.canDelete()).toBe(false);
+
+    releaseSecond();
+    await vi.waitFor(() => expect(c.item()?.id).toBe('people/2'));
+    expect(c.canDelete()).toBe(false);
+  });
+
   it('prefers the per-row can block over type-level permissions (#236 G5)', async () => {
     // Type-level says edit+delete allowed, but this row's can block forbids both — a row the
     // caller may read but not mutate must hide its Edit/Delete buttons instead of 404ing.
