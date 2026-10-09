@@ -274,7 +274,7 @@ public class ExternalLoginManagementTests : SparkTestDriver
         var response = await client.GetAsync(
             "/spark/auth/link-external-login-callback?popup=1&returnUrl=%2Faccount");
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain($"error: '{expected}'");
+        ExternalLoginPopupPayload.ErrorFrom(await response.Content.ReadAsStringAsync()).Should().Be(expected);
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class ExternalLoginManagementTests : SparkTestDriver
         var response = await client.GetAsync(
             "/spark/auth/link-external-login-callback?popup=1&returnUrl=%2Faccount");
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain("success: true");
+        ExternalLoginPopupPayload.Parse(await response.Content.ReadAsStringAsync()).Success.Should().BeTrue();
         await _userManager.Received(1).AddLoginAsync(_user, Arg.Is<UserLoginInfo>(l =>
             l.LoginProvider == "GitLab" && l.ProviderKey == "gl-9"));
         await _signInManager.Received(1).RefreshSignInAsync(_user);
@@ -309,6 +309,56 @@ public class ExternalLoginManagementTests : SparkTestDriver
 
         _signInManager.Received(1).ConfigureExternalAuthenticationProperties(
             "GitLab", Arg.Any<string?>(), "users/alice");
+    }
+
+    /// <summary>#490 D1: the attach challenge takes the sign-in challenge's nonce rule.</summary>
+    [Fact]
+    public async Task The_attach_challenge_forwards_a_valid_nonce_with_ngsw_bypass()
+    {
+        const string nonce = "AbCdEfGhIjKlMnOpQrStUvWxYz012-_9";
+        using var server = await StartHostAsync(SparkExternalLoginLinking.WhenSignedIn);
+        using var client = server.CreateClient();
+
+        await client.GetAsync($"/spark/auth/external-logins/link?provider=GitLab&returnUrl=%2Faccount&popup=1&nonce={nonce}");
+
+        _signInManager.Received(1).ConfigureExternalAuthenticationProperties(
+            "GitLab",
+            Arg.Is<string?>(url => url != null
+                && url.StartsWith("/spark/auth/link-external-login-callback?")
+                && url.Contains("&popup=1")
+                && url.Contains($"&nonce={nonce}")
+                && url.Contains("&ngsw-bypass=true")),
+            "users/alice");
+    }
+
+    [Fact]
+    public async Task The_attach_challenge_without_a_nonce_keeps_the_legacy_callback_url()
+    {
+        using var server = await StartHostAsync(SparkExternalLoginLinking.WhenSignedIn);
+        using var client = server.CreateClient();
+
+        await client.GetAsync("/spark/auth/external-logins/link?provider=GitLab&returnUrl=%2Faccount&popup=1");
+
+        _signInManager.Received(1).ConfigureExternalAuthenticationProperties(
+            "GitLab",
+            Arg.Is<string?>(url => url != null && !url.Contains("nonce=") && url.Contains("&ngsw-bypass=true")),
+            "users/alice");
+    }
+
+    [Theory]
+    [InlineData("tooshort")]
+    [InlineData("AbCdEfGhIjKlMnOp'\"</script>")]
+    public async Task The_attach_challenge_refuses_an_invalid_nonce(string nonce)
+    {
+        using var server = await StartHostAsync(SparkExternalLoginLinking.WhenSignedIn);
+        using var client = server.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/spark/auth/external-logins/link?provider=GitLab&returnUrl=%2Faccount&popup=1&nonce={Uri.EscapeDataString(nonce)}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("\"invalid_nonce\"");
+        _signInManager.DidNotReceiveWithAnyArgs().ConfigureExternalAuthenticationProperties(default!, default, default);
     }
 
     // --- helpers --------------------------------------------------------

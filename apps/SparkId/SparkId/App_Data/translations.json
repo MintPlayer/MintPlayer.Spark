@@ -1,0 +1,52 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "app": {
+    "welcomeTitle": {
+      "en": "Welcome to Spark Identity",
+      "fr": "Bienvenue sur Spark Identity",
+      "nl": "Welkom bij Spark Identity"
+    },
+    "welcomeSubtitle": {
+      "en": "One account for HR, Fleet and QnA. Developers register their own applications here.",
+      "fr": "Un seul compte pour HR, Fleet et QnA. Les développeurs y enregistrent leurs propres applications.",
+      "nl": "Eén account voor HR, Fleet en QnA. Ontwikkelaars registreren hier hun eigen applicaties."
+    },
+    "selectMenuItem": {
+      "en": "Select a menu item from the sidebar to get started.",
+      "fr": "Sélectionnez un élément du menu latéral pour commencer.",
+      "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
+    }
+  },
+  "security": {
+    "groups": {
+      "Anonymous visitors": {
+        "label": {
+          "en": "Anonymous visitors",
+          "fr": "Visiteurs anonymes",
+          "nl": "Anonieme bezoekers"
+        }
+      },
+      "Signed-in users": {
+        "label": {
+          "en": "Signed-in users",
+          "fr": "Utilisateurs connectés",
+          "nl": "Aangemelde gebruikers"
+        }
+      },
+      "Administrators": {
+        "label": {
+          "en": "Administrators",
+          "fr": "Administrateurs",
+          "nl": "Beheerders"
+        }
+      },
+      "Developers": {
+        "label": {
+          "en": "Developers",
+          "fr": "Développeurs",
+          "nl": "Ontwikkelaars"
+        }
+      }
+    }
+  }
+}

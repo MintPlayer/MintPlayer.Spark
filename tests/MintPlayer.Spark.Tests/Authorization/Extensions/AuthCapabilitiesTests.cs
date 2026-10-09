@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.AspNetCore.Endpoints;
@@ -170,6 +171,56 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
         schemes.Should().NotContain(IdentityConstants.ApplicationScheme);
         schemes.Should().NotContain(IdentityConstants.ExternalScheme);
         schemes.Should().NotContain(IdentityConstants.BearerScheme);
+    }
+
+    [Fact]
+    public async Task Capabilities_lists_the_providers_enabled_from_configuration_with_their_display_names()
+    {
+        // #490 M4: Spark:Auth:Providers drives the buttons. Google has no ClientId, so it is absent.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Spark:Auth:Providers:GitHub:ClientId"] = "gh-id",
+                ["Spark:Auth:Providers:GitHub:ClientSecret"] = "gh-secret",
+                ["Spark:Auth:Providers:GitHub:DisplayName"] = "GitHub Enterprise",
+                ["Spark:Auth:Providers:Google:ClientId"] = "",
+                ["Spark:Auth:Providers:Twitter:ClientId"] = "x-id",
+                ["Spark:Auth:Providers:Twitter:ClientSecret"] = "x-secret",
+                ["Spark:Auth:Providers:OpenIdConnect:MintPlayer:DisplayName"] = "MintPlayer ID",
+                ["Spark:Auth:Providers:OpenIdConnect:MintPlayer:Authority"] = "https://idp.test",
+                ["Spark:Auth:Providers:OpenIdConnect:MintPlayer:ClientId"] = "rp",
+            })
+            .Build();
+
+        using var host = await new HostBuilder()
+            .ConfigureWebHost(webHost => webHost
+                .UseTestServer()
+                .ConfigureServices(services =>
+                {
+                    services.AddSingleton<IDocumentStore>(Store);
+                    services.AddSparkAuthentication<SparkUser>();
+                    services.Configure<SparkAuthenticationOptions>(o => o.LocalCredentials = SparkLocalCredentials.Disabled);
+                    services.AddTestMailSink();
+                    TestSparkAuth.Builder(services, configuration).AddExternalProviders(configuration);
+                    services.AddAuthorization();
+                    services.AddRouting();
+                })
+                .Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseAuthentication();
+                    app.UseAuthorization();
+                    app.UseEndpoints(endpoints => endpoints.MapSparkIdentityApi<SparkUser>());
+                }))
+            .StartAsync();
+
+        var body = await GetCapabilitiesAsync(host);
+        var providers = body.GetProperty("externalProviders")
+            .EnumerateArray()
+            .Select(provider => $"{provider.GetProperty("scheme").GetString()}={provider.GetProperty("displayName").GetString()}")
+            .ToArray();
+
+        providers.Should().BeEquivalentTo(["GitHub=GitHub Enterprise", "Twitter=X", "MintPlayer=MintPlayer ID"]);
     }
 
     [Theory]

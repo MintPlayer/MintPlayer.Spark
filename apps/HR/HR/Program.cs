@@ -7,7 +7,6 @@ using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
-using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication;
@@ -38,15 +37,18 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             auth.Passkeys = SparkPasskeys.Enabled;
         });
 
-    // HR doubles as the identity provider: it serves /connect/* and administers its own clients
-    // and scopes through the PersistentObject screens (see HRContext). Issuer is pinned rather
-    // than derived from the Host header — outside Development the provider requires it, because a
-    // caller-controlled issuer is a caller-controlled token audience.
-    spark.AddIdentityProvider(options =>
+    // External providers from Spark:Auth:Providers. appsettings.Development.json registers SparkId
+    // (the demo identity provider, https://localhost:5011) as the OpenID Connect scheme "SparkId";
+    // SparkId seeds the matching "hr" client in Development. HR hosted the provider itself until
+    // SparkId existed (docs/identity_provider_platform_PRD.md R1).
+    // The resource-server demo (docs/identity_provider_platform_PRD.md I12): HR also asks SparkId for
+    // fleet.read (optional, so the consent page lets the user untick it) and keeps the tokens, which
+    // the external-login callback stores on the user, so /api/hr/fleet-cars can call Fleet's API.
+    spark.AddExternalProviders(builder.Configuration, hooks => hooks.OpenIdConnect("SparkId", oidc =>
     {
-        options.Issuer = builder.Configuration["SparkIdentityProvider:Issuer"]
-            ?? "https://localhost:5002";
-    });
+        oidc.Scope.Add("fleet.read");
+        oidc.SaveTokens = true;
+    }));
 
     spark.AddMessaging();
     // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written
@@ -57,6 +59,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // Assemblies are the one setting configuration cannot express.
     spark.AddReplication(opt => opt.AssembliesToScan = [typeof(HR.Replicated.Car).Assembly]);
 });
+
+// For /api/hr/fleet-cars (the I12 demo).
+builder.Services.AddHttpClient();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -85,7 +90,8 @@ if (builder.VerifySparkSecurityIfRequested(args))
 
 var app = builder.Build();
 
-app.UseHttpsRedirection();
+if (builder.Configuration.GetValue("Spark:HttpsRedirection", true))
+    app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseSpaStaticFilesImproved();
 
@@ -95,6 +101,8 @@ app.UseSpark();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSpark();
+    // The app's own generator endpoints (Api/FleetCarsProxyEndpoint.cs, the I12 resource-server demo).
+    MintPlayer.AspNetCore.Endpoints.Generated.HREndpointsExtensions.MapHREndpoints(endpoints);
 });
 
 app.UseWhen(

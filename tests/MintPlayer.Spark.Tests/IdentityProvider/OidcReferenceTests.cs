@@ -29,16 +29,13 @@ public class OidcReferenceTests
     }
 
     [Fact]
-    public void TokenAndRequestIds_LandInDifferentCollections()
+    public void TokenAndRequestIds_LandInTheTokenCollection()
     {
+        // A pending authorization request is an OidcToken (Type authorization_request) now, so both
+        // handles hash into OidcTokens/. They cannot collide in practice: every handle is a fresh
+        // random value (GeneratedHandles_AreUnique), and the Type field tells the two apart.
         OidcTokenReference.DocumentId("x").Should().StartWith("OidcTokens/");
-        OidcRequestReference.DocumentId("x").Should().StartWith("OidcAuthorizationRequests/");
-    }
-
-    [Fact]
-    public void SameHandle_InDifferentCollections_DoesNotCollide()
-    {
-        OidcRequestReference.DocumentId("x").Should().NotBe(OidcTokenReference.DocumentId("x"));
+        OidcRequestReference.DocumentId("x").Should().StartWith("OidcTokens/");
     }
 
     [Theory]
@@ -67,16 +64,16 @@ public class OidcReferenceTests
     [Fact]
     public void AuthorizationId_IsDeterministicPerPair()
     {
-        OidcAuthorizationReference.DocumentId("SparkUsers/1", "OidcApplications/a").Should().Be(OidcAuthorizationReference.DocumentId("SparkUsers/1", "OidcApplications/a"));
+        OidcGrantReference.DocumentId("SparkUsers/1", "OidcApplications/a").Should().Be(OidcGrantReference.DocumentId("SparkUsers/1", "OidcApplications/a"));
     }
 
     [Fact]
     public void AuthorizationId_DiffersPerSubjectAndPerApplication()
     {
-        var baseline = OidcAuthorizationReference.DocumentId("SparkUsers/1", "OidcApplications/a");
+        var baseline = OidcGrantReference.DocumentId("SparkUsers/1", "OidcApplications/a");
 
-        OidcAuthorizationReference.DocumentId("SparkUsers/2", "OidcApplications/a").Should().NotBe(baseline);
-        OidcAuthorizationReference.DocumentId("SparkUsers/1", "OidcApplications/b").Should().NotBe(baseline);
+        OidcGrantReference.DocumentId("SparkUsers/2", "OidcApplications/a").Should().NotBe(baseline);
+        OidcGrantReference.DocumentId("SparkUsers/1", "OidcApplications/b").Should().NotBe(baseline);
     }
 
     [Fact]
@@ -84,13 +81,13 @@ public class OidcReferenceTests
     {
         // The two pairs concatenate to the same string under a bare separator. Length framing
         // is what keeps them apart.
-        OidcAuthorizationReference.DocumentId("x", "y|z").Should().NotBe(OidcAuthorizationReference.DocumentId("x|y", "z"));
+        OidcGrantReference.DocumentId("x", "y|z").Should().NotBe(OidcGrantReference.DocumentId("x|y", "z"));
     }
 
     [Fact]
     public void AuthorizationId_DoesNotSwapSubjectAndApplication()
     {
-        OidcAuthorizationReference.DocumentId("app", "alice").Should().NotBe(OidcAuthorizationReference.DocumentId("alice", "app"));
+        OidcGrantReference.DocumentId("app", "alice").Should().NotBe(OidcGrantReference.DocumentId("alice", "app"));
     }
 
     [Theory]
@@ -98,6 +95,6 @@ public class OidcReferenceTests
     [InlineData("alice", "")]
     public void AuthorizationId_RejectsEmptyParts(string subject, string applicationId)
     {
-        new Action(() => OidcAuthorizationReference.DocumentId(subject, applicationId)).Should().Throw<ArgumentException>();
+        new Action(() => OidcGrantReference.DocumentId(subject, applicationId)).Should().Throw<ArgumentException>();
     }
 }

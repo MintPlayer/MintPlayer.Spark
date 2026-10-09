@@ -1,0 +1,88 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "The identity provider's custom actions (docs/identity_provider_platform_PRD.md D2-D5), shipped as a",
+    "library layer. The classes are CustomActions/*Action.cs in this library; their rights are in this",
+    "library's security.json. Labels and confirmations are actions.<Name>.* in translations.json."
+  ],
+  "ApproveDeveloper": {
+    "icon": "check-lg",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "success"
+  },
+  "RejectDeveloper": {
+    "icon": "x-lg",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger"
+  },
+  "InviteMember": {
+    "icon": "person-plus",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "primary"
+  },
+  "SwitchToLive": {
+    "icon": "broadcast",
+    "showedOn": "detail",
+    "selectionRule": "=0"
+  },
+  "SwitchToDevelopment": {
+    "icon": "cone-striped",
+    "showedOn": "detail",
+    "selectionRule": "=0"
+  },
+  "ResendInvitation": {
+    "icon": "envelope-arrow-up",
+    "showedOn": "query",
+    "selectionRule": ">0"
+  },
+  "RemoveMember": {
+    "icon": "person-dash",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger"
+  },
+  "ApproveScope": {
+    "icon": "check-lg",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "success"
+  },
+  "RejectScope": {
+    "icon": "x-lg",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger"
+  },
+  "ApproveGoLive": {
+    "icon": "check-lg",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "success"
+  },
+  "RejectGoLive": {
+    "icon": "x-lg",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger"
+  },
+  "GenerateSecret": {
+    "icon": "key",
+    "showedOn": "detail",
+    "selectionRule": "=0"
+  },
+  "RevokeSecret": {
+    "icon": "trash",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger"
+  },
+  "RevokeGrant": {
+    "icon": "x-octagon",
+    "showedOn": "query",
+    "selectionRule": ">0",
+    "variant": "danger"
+  }
+}

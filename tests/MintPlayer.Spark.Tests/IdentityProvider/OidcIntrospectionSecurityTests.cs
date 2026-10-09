@@ -149,20 +149,18 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
             "a gateway introspecting for the resources behind it — opted into deliberately");
     }
 
-    /// <summary>Issues an access token whose granted scope declares <paramref name="audience"/>.</summary>
+    /// <summary>
+    /// Issues an access token addressed to <paramref name="audience"/>: a token's audience is the name
+    /// of the API resource its scope belongs to, so the scope is <c>&lt;audience&gt;.read</c> on an API
+    /// resource named after it (seeded by <see cref="OidcTestHost.SeedApplicationAsync"/>).
+    /// </summary>
     private async Task<(OidcApplication App, string AccessToken)> IssueAccessTokenForAudienceAsync(string audience)
     {
-        var app = await SeedApplicationAsync(ClientId("webapp"), allowedScopes: ["openid", "api.read"]);
-
-        using (var session = Store.OpenAsyncSession())
-        {
-            var scope = await session.LoadAsync<OidcScope>("OidcScopes/api.read");
-            scope.Audiences = [ClientId(audience)];
-            await session.SaveChangesAsync();
-        }
+        var apiScope = ClientId(audience) + ".read";
+        var app = await SeedApplicationAsync(ClientId("webapp"), allowedScopes: ["openid", apiScope]);
 
         await SeedUserAsync(UserEmail("alice"));
-        var code = await ObtainCodeAsync(app, UserEmail("alice"), ["openid", "api.read"]);
+        var code = await ObtainCodeAsync(app, UserEmail("alice"), ["openid", apiScope]);
 
         var body = await BodyAsync(await Client.PostAsync("/connect/token", new FormUrlEncodedContent(
             new Dictionary<string, string>
@@ -184,7 +182,7 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
         var response = await Client.PostAsync("/connect/introspect",
             new FormUrlEncodedContent(new Dictionary<string, string> { ["token"] = "anything" }));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "no client credentials is a failed client authentication (RFC 6749 §5.2)");
     }
 
     /// <summary>R-A2/R-A3 — unknown client and bad secret must look the same.</summary>

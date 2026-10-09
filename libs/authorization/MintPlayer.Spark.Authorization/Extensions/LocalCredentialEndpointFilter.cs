@@ -184,7 +184,8 @@ internal static class LocalCredentialEndpointFilter
         throw new InvalidOperationException(
             "Spark authentication is configured with LocalCredentials = Disabled, but no external "
             + "authentication provider is registered, so no user could sign in. Register a provider "
-            + "(for example identity.AddGitHub(...) via the configureProviders callback), or use "
+            + "(for example spark.AddGitHub(...), or spark.AddExternalProviders(configuration) with a "
+            + "Spark:Auth:Providers section), or use "
             + "SparkLocalCredentials.SignInOnly or SparkLocalCredentials.Full instead.");
     }
 

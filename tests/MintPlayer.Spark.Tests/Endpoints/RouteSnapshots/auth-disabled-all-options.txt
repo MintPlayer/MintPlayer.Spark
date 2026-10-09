@@ -2,14 +2,27 @@ GET /.well-known/jwks | cors=policy:SparkOidcCors
 GET /.well-known/openid-configuration | cors=policy:SparkOidcCors
 GET /connect/applications
 POST /connect/applications/revoke | antiforgery=required
+POST /connect/applications/revoke-scope | antiforgery=required
 GET /connect/authorize
+POST /connect/authorize | antiforgery=not-required
 GET /connect/consent
 POST /connect/consent | antiforgery=required
+GET /connect/device
+POST /connect/device | antiforgery=required
+POST /connect/device_authorization | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
+GET /connect/error
 POST /connect/introspect
+GET /connect/login
 GET /connect/logout
-POST /connect/revoke | cors=policy:SparkOidcCors
-POST /connect/token | cors=policy:SparkOidcCors
-GET /connect/userinfo | cors=policy:SparkOidcCors
+POST /connect/par | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/register
+DELETE /connect/register/{clientId}
+GET /connect/register/{clientId}
+PUT /connect/register/{clientId}
+POST /connect/revoke | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/token | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
+GET /connect/userinfo | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/userinfo | antiforgery=not-required | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required
@@ -21,6 +34,8 @@ GET /spark/auth/confirmEmail
 POST /spark/auth/csrf-refresh | antiforgery=not-required
 GET /spark/auth/external-login
 GET /spark/auth/external-login-callback | allow-anonymous
+GET /spark/auth/external-login/two-factor | allow-anonymous
+POST /spark/auth/external-login/two-factor | allow-anonymous | antiforgery=required
 GET /spark/auth/external-logins | authorize(policy=;roles=;schemes=)
 GET /spark/auth/external-logins/link | authorize(policy=;roles=;schemes=)
 POST /spark/auth/external-logins/unlink | antiforgery=required | authorize(policy=;roles=;schemes=)
@@ -37,6 +52,14 @@ GET /spark/auth/me
 POST /spark/auth/passkeys/request-options
 POST /spark/auth/passkeys/sign-in
 GET /spark/culture
+GET /spark/identity-provider/admin/keys | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/admin/keys/rotate | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/identity-provider/applications | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/applications/withdraw | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/identity-provider/developer | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/developer | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/developer/registration-token | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/invitations/accept | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/lookupref
 GET /spark/lookupref/{name}
 POST /spark/lookupref/{name} | antiforgery=required

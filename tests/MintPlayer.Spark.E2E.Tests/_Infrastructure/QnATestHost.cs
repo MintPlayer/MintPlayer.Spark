@@ -74,7 +74,26 @@ public sealed class QnATestHost : SparkAppTestHost
 
         // Outside Development an account mail is refused without it (#460 M5): a link built from the
         // request's Host header is password-reset poisoning.
-        spark["Auth"] = new JsonObject { ["PublicBaseUrl"] = context.HttpsUrl };
+        spark["Auth"] = new JsonObject
+        {
+            ["PublicBaseUrl"] = context.HttpsUrl,
+            // #490 M7: the "SparkId" OpenID Connect scheme the sign-in page declares (app.routes.ts), so its
+            // button exists here as in Development. Nothing contacts the authority: the hand-off tests
+            // stub window.open and open the callback themselves (ExternalLoginHandoffBrowserTests).
+            ["Providers"] = new JsonObject
+            {
+                ["OpenIdConnect"] = new JsonObject
+                {
+                    ["SparkId"] = new JsonObject
+                    {
+                        ["DisplayName"] = "Spark Identity",
+                        ["Authority"] = "https://localhost:1",
+                        ["ClientId"] = "e2e-dummy",
+                        ["ClientSecret"] = "e2e-dummy",
+                    },
+                },
+            },
+        };
 
         const string never = "0 0 31 2 *"; // 31 February: the jobs run only when a test asks.
         spark["Moderation"] = new JsonObject
@@ -174,35 +193,7 @@ public sealed class QnATestHost : SparkAppTestHost
         return revisions.Count;
     }
 
-    // ---------- mail ----------
-
-    /// <summary>
-    /// Waits for a picked-up mail to <paramref name="to"/> whose subject contains <paramref name="subjectPart"/>.
-    /// Mail is queued through Messaging, so it lands a moment after the request that caused it; the
-    /// timeout is a failure bound, never an expected duration.
-    /// </summary>
-    public async Task<MimeKit.MimeMessage> WaitForMailAsync(string to, string subjectPart, TimeSpan? timeout = null)
-    {
-        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(60));
-        while (true)
-        {
-            foreach (var path in PickedUpMails())
-            {
-                MimeKit.MimeMessage message;
-                try { message = await MimeKit.MimeMessage.LoadAsync(path); }
-                catch (IOException) { continue; } // still being written
-                if (message.To.Mailboxes.Any(m => string.Equals(m.Address, to, StringComparison.OrdinalIgnoreCase))
-                    && message.Subject?.Contains(subjectPart, StringComparison.OrdinalIgnoreCase) == true)
-                    return message;
-            }
-
-            if (DateTime.UtcNow > deadline)
-                throw new TimeoutException(
-                    $"No mail to {to} with '{subjectPart}' in its subject was picked up. Mails: "
-                    + string.Join(", ", PickedUpMails().Select(Path.GetFileName)) + $"\n{RecentLog(40)}");
-            await Task.Delay(250);
-        }
-    }
+    // Mail: WaitForMailAsync lives on SparkAppTestHost, shared with SparkId's invitation mails.
 }
 
 /// <summary>

@@ -2,11 +2,13 @@ namespace MintPlayer.Spark.Authorization.Configuration;
 
 /// <summary>
 /// A provider preset's declaration of its <see cref="SparkExternalProviderPolicy"/>, registered in DI by
-/// the preset (<c>AddGitHub</c>, <c>AddSparkGoogle</c>, …) under its scheme name.
+/// the preset (<c>spark.AddGitHub</c>, <c>spark.AddGoogle</c>, …) or by <c>spark.AddExternalScheme</c>
+/// under its scheme name.
 /// </summary>
 /// <remarks>
 /// A DI registration rather than a write into <see cref="SparkAuthenticationOptions"/>, because presets
-/// run inside <c>configureProviders</c>, after the options object is already built and published.
+/// run after <c>AddAuthentication</c>, when the options object is already built and published. A remote
+/// scheme with no registration is refused at startup (<c>SparkExternalSchemeGuard</c>).
 /// <see cref="SparkAuthenticationOptions.ExternalProviders"/> still wins, so an application can override
 /// what a preset declares.
 /// </remarks>

@@ -6,7 +6,7 @@ attribute renderers, client operations, the program-units shell, and the UI halv
 packages (soft delete, history, moderation).
 
 Sign-in, registration and the account pages are in the companion package
-[`@mintplayer/ng-spark-auth`](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/node_packages/ng-spark-auth/README.md).
+[`@mintplayer/ng-spark/auth`](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/node_packages/ng-spark/auth/README.md).
 
 ## Install
 
@@ -52,7 +52,7 @@ Import from the entry point, not from the package root; each one is a separate c
 
 | Entry point | What it provides |
 |---|---|
-| `@mintplayer/ng-spark` | `provideSpark(config?)`, `SPARK_CONFIG` (`baseUrl`), `SPARK_AUTH_STATE` (the bridge `ng-spark-auth` fills) |
+| `@mintplayer/ng-spark` | `provideSpark(config?)`, `SPARK_CONFIG` (`baseUrl`), `SPARK_AUTH_STATE` (the bridge `ng-spark/auth` fills) |
 | `/routes` | `sparkRoutes()` — the routed persistent-object and query pages |
 | `/services` | `SparkService`, `SparkStreamingService`, `SparkLanguageService`, `SparkQueryActionsService`, `RetryActionService`; the timezone feature `withSparkTimezone()` |
 | `/models` | The wire types (persistent objects, attributes, queries, envelopes) |

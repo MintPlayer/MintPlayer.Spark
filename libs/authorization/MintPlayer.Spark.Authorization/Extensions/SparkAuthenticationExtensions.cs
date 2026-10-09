@@ -13,6 +13,9 @@ using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
 using MintPlayer.Spark.Authorization.Endpoints.Passkeys;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using MintPlayer.Spark.MailManager;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
@@ -35,11 +38,12 @@ internal static class SparkAuthenticationExtensions
     ///     options.Lockout.MaxFailedAccessAttempts = 5;
     /// });
     ///
-    /// // With external login providers:
-    /// builder.Services
-    ///     .AddSparkAuthentication&lt;AppUser&gt;()
-    ///     .AddGoogle(o =&gt; builder.Configuration.GetSection("Authentication:Google").Bind(o))
-    ///     .AddMicrosoftAccount(o =&gt; builder.Configuration.GetSection("Authentication:Microsoft").Bind(o));
+    /// // External login providers are added on the Spark builder, after spark.AddAuthentication&lt;AppUser&gt;(),
+    /// // never as raw handlers on the returned IdentityBuilder (those skip Spark's email policy and are
+    /// // refused at startup unless declared with spark.AddExternalScheme):
+    /// spark.AddAuthentication&lt;AppUser&gt;();
+    /// spark.AddExternalProviders(builder.Configuration); // Spark:Auth:Providers
+    /// spark.AddGoogle(o =&gt; o.Scope.Add("https://www.googleapis.com/auth/calendar.readonly"));
     /// </code>
     /// </example>
     /// </summary>
@@ -157,6 +161,10 @@ internal static class SparkAuthenticationExtensions
     internal static IEndpointRouteBuilder MapSparkIdentityApi<TUser>(this IEndpointRouteBuilder endpoints)
         where TUser : SparkUser, new()
     {
+        // #464/#490 Q4b: a remote (external-login) scheme registered behind Spark's back is refused
+        // before anything is mapped — the sign-in page would offer it with no email policy.
+        SparkExternalSchemeGuard.GuardAgainstUndeclaredRemoteSchemes(endpoints.ServiceProvider);
+
         // Microsoft's mapper is all-or-nothing and its defaults attach no IAntiforgeryMetadata, so
         // both the filtering and the CSRF stamping live in LocalCredentialEndpointFilter.
         endpoints.MapLocalCredentialApi<TUser>(LocalCredentialMode.Get(endpoints.ServiceProvider));
@@ -192,6 +200,13 @@ internal static class SparkAuthenticationExtensions
 
         // External login: handle the OAuth callback.
         endpoints.MapEndpoint<ExternalLoginCallback<TUser>>();
+
+        // #490 D11: the application's own second factor after an external sign-in, server-rendered
+        // because the popup shows it.
+        endpoints.MapEndpoint<ExternalLoginTwoFactorPage<TUser>>();
+        endpoints.MapEndpoint<ExternalLoginTwoFactorSubmit<TUser>>();
+        endpoints.MapEndpoint<ExternalLoginTwoFactorBypassState<TUser>>();
+        endpoints.MapEndpoint<SetExternalLoginTwoFactorBypass<TUser>>();
 
         // 4e: the other half of ConfirmByEmail. Reached from a link in a mailbox, so it is a plain
         // top-level GET — there is no popup to post back to and no session to carry an antiforgery
@@ -321,7 +336,11 @@ internal static class SparkAuthenticationExtensions
         /// </remarks>
         public const string LockedOut = "locked_out";
 
-        /// <summary>The account needs a second factor, which this flow does not collect.</summary>
+        /// <summary>
+        /// The account needs a second factor and the two-factor step could not collect it: Identity's two-factor
+        /// cookie is missing or expired (#490 D11). A sign-in that needs the code is sent to
+        /// <c>/spark/auth/external-login/two-factor</c> instead.
+        /// </summary>
         public const string RequiresTwoFactor = "requires_two_factor";
 
         /// <summary>Sign-in is not permitted — typically an unconfirmed account.</summary>
@@ -329,6 +348,25 @@ internal static class SparkAuthenticationExtensions
 
         /// <summary>The login is attached, but Identity refused the sign-in for another reason.</summary>
         public const string SignInRefused = "sign_in_refused";
+
+        /// <summary>
+        /// The provider reported an error, or the round trip itself failed (correlation, state) —
+        /// anything at the provider hop other than the user declining (#490, D4).
+        /// </summary>
+        /// <remarks>
+        /// A provider-side <c>access_denied</c> — the user cancelled at the provider — is reported as
+        /// <see cref="NoLoginInfo"/> instead, the code that case has always produced.
+        /// </remarks>
+        public const string RemoteFailure = "remote_failure";
+
+        /// <summary>
+        /// The challenge's <c>nonce</c> was present but not 16–64 base64url characters (#490, D1).
+        /// </summary>
+        /// <remarks>
+        /// Only ever an HTTP 400 at the challenge; it never reaches a popup payload, because a nonce
+        /// that fails the check is never forwarded.
+        /// </remarks>
+        public const string InvalidNonce = "invalid_nonce";
     }
 
     /// <summary>
@@ -382,22 +420,69 @@ internal static class SparkAuthenticationExtensions
 
     /// <summary>
     /// How the external-login callback reports its result, in whichever way the caller can
-    /// actually receive it: a popup cannot navigate its opener, so it must post a message and
-    /// close, while a full-page flow simply redirects.
+    /// actually receive it: a popup cannot navigate its opener, so it serves a page that hands the
+    /// result back (see <see cref="ExternalLoginPopupHtml"/>), while a full-page flow simply redirects.
+    /// Shared by the sign-in and link callbacks and by the provider-failure handler.
     /// <para>
-    /// Every exit path goes through here — success <i>and</i> all three refusals. A branch that
+    /// Every exit path goes through here — success <i>and</i> every refusal. A branch that
     /// redirected unconditionally would leave a popup opener's listener waiting forever on a
     /// window the user had already closed, which is precisely the bug this milestone fixes.
     /// </para>
     /// </summary>
     /// <param name="error">
     /// <see langword="null"/> for success, otherwise a constant from <see cref="ExternalLoginErrors"/>.
-    /// It is interpolated into a JS object literal below, which is safe only while it stays a
-    /// compile-time constant — never pass caller-supplied text.
     /// </param>
+    /// <remarks>
+    /// The popup mode and the nonce are read from this request's query string, which is the callback
+    /// URL the challenge built (see <see cref="SparkExternalLoginNonce.AppendCallbackFlags"/>).
+    /// </remarks>
     internal static IResult ExternalLoginOutcome(HttpContext context, string safeReturnUrl, string? error)
+        => ExternalLoginOutcome(
+            popup: context.Request.Query.ContainsKey("popup"),
+            nonce: SparkExternalLoginNonce.Accept(context.Request.Query[SparkExternalLoginNonce.QueryParameter]),
+            safeReturnUrl,
+            error,
+            safeErrorUrl: SanitizeErrorUrl(context.Request.Query[ErrorUrlParameter]));
+
+    /// <summary>
+    /// The query parameter naming where a <b>redirect-mode</b> failure lands (#490 M6): the page that
+    /// started the flow and reads <c>?sparkExternalLogin</c>, such as the sign-in page or the identity
+    /// provider's <c>/connect/login</c>. Success still goes to <c>returnUrl</c>.
+    /// </summary>
+    internal const string ErrorUrlParameter = "errorUrl";
+
+    /// <summary>
+    /// <see cref="SanitizeReturnUrl"/> for an optional <c>errorUrl</c>: <see langword="null"/> when it is
+    /// absent, so the caller can fall back to the return URL, and the site root for anything off-origin.
+    /// </summary>
+    internal static string? SanitizeErrorUrl(string? errorUrl)
+        => string.IsNullOrEmpty(errorUrl) ? null : SanitizeReturnUrl(errorUrl);
+
+    /// <summary>
+    /// Appends an already sanitized <c>errorUrl</c> to a callback URL the challenge builds, so it survives
+    /// the provider round trip the same way <c>returnUrl</c> does.
+    /// </summary>
+    internal static string AppendErrorUrl(string callbackUrl, string? safeErrorUrl)
+        => safeErrorUrl is null ? callbackUrl : QueryHelpers.AddQueryString(callbackUrl, ErrorUrlParameter, safeErrorUrl);
+
+    /// <summary>
+    /// <see cref="ExternalLoginOutcome(HttpContext, string, string?)"/> with the hand-off flags given
+    /// explicitly — for a caller that is not the callback request itself, such as
+    /// <see cref="SparkExternalLoginRemoteFailure"/>, which reads them from the failed round trip's
+    /// <c>RedirectUri</c>.
+    /// </summary>
+    /// <param name="nonce">An already validated nonce (<see cref="SparkExternalLoginNonce.Accept"/>), or <see langword="null"/>.</param>
+    /// <param name="safeReturnUrl">An already sanitized return URL (<see cref="SanitizeReturnUrl"/>).</param>
+    /// <param name="safeErrorUrl">
+    /// An already sanitized error URL (<see cref="SanitizeErrorUrl"/>), or <see langword="null"/>. In
+    /// redirect mode a failure lands there instead of on <paramref name="safeReturnUrl"/>: the return URL
+    /// is where a <em>signed-in</em> user goes next (for the identity provider, the pending
+    /// <c>/connect/authorize</c>, which cannot show an error), while the error URL is the page that reads
+    /// <c>?sparkExternalLogin</c>. Popup mode ignores it.
+    /// </param>
+    internal static IResult ExternalLoginOutcome(bool popup, string? nonce, string safeReturnUrl, string? error, string? safeErrorUrl = null)
     {
-        if (!context.Request.Query.ContainsKey("popup"))
+        if (!popup)
         {
             // ⚠️ The redirect branch used to drop `error` entirely, so a refused sign-in in
             // full-page mode landed back on the sign-in page with nothing to show for it. That was
@@ -405,27 +490,171 @@ internal static class SparkAuthenticationExtensions
             // one of them means "check your mail", which the user will never do if nobody says so.
             return Results.Redirect(error is null
                 ? safeReturnUrl
-                : QueryHelpers.AddQueryString(safeReturnUrl, "sparkExternalLogin", error));
+                : QueryHelpers.AddQueryString(safeErrorUrl ?? safeReturnUrl, "sparkExternalLogin", error));
         }
 
-        var payload = error is null
-            ? "{ type: 'spark:external-login', success: true }"
-            : $"{{ type: 'spark:external-login', success: false, error: '{error}' }}";
+        return new ExternalLoginPopupPage(ExternalLoginPopupHtml(nonce, safeReturnUrl, error));
+    }
 
-        var html = $$"""
+    /// <summary>
+    /// The popup-mode callback page (#490, D1): static HTML whose only dynamic parts are a
+    /// <c>System.Text.Json</c>-serialized payload and return URL.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ Nothing from the request is spliced into the script as text. The payload is serialized by
+    /// <see cref="JsonSerializer"/>, whose default encoder escapes <c>&lt; &gt; &amp; '</c> (so not even
+    /// a <c>&lt;/script&gt;</c> inside a value could end the element); the nonce has already passed
+    /// <see cref="SparkExternalLoginNonce"/>'s shape check as well, and the return URL has been
+    /// sanitized before it is encoded the same way.
+    /// </para>
+    /// <para>
+    /// ⚠️ There is no Content-Security-Policy today. If one is ever added, this inline script needs a
+    /// CSP nonce (or hash), or every popup sign-in stops reporting back.
+    /// </para>
+    /// <para>
+    /// With a nonce, the page reports on every channel the opener might still be listening on — an
+    /// opener <c>postMessage</c>, a <c>BroadcastChannel</c> and a <c>localStorage</c> key — because
+    /// under COOP, or inside an installed app's captured tab, the opener may be gone. It closes itself
+    /// once acknowledged (or straight away in standalone mode, where an ack may never come), restores
+    /// the app when a captured tab is reopened after the hand-off, and otherwise shows a static
+    /// "you can close this window" text with a Close button after about three seconds.
+    /// </para>
+    /// <para>Without a nonce (a pre-#490 client) it keeps the old behaviour: opener message, then close.</para>
+    /// </remarks>
+    internal static string ExternalLoginPopupHtml(string? nonce, string safeReturnUrl, string? error)
+    {
+        var payload = JsonSerializer.Serialize(new ExternalLoginMessage(
+            Type: "spark:external-login",
+            Success: error is null,
+            Error: error,
+            Nonce: nonce));
+
+        if (nonce is null)
+        {
+            return $$"""
+                <!DOCTYPE html>
+                <html><head><meta charset="utf-8"><title>Signing in...</title></head>
+                <body>
+                <script>
+                (function () {
+                    var msg = {{payload}};
+                    if (window.opener) {
+                        window.opener.postMessage(msg, window.location.origin);
+                    }
+                    window.close();
+                })();
+                </script>
+                </body></html>
+                """;
+        }
+
+        var returnUrl = JsonSerializer.Serialize(safeReturnUrl);
+        var fallbackText = error is null
+            ? "Signed in — you can close this window and return to your browser."
+            : "Sign-in failed — you can close this window.";
+
+        return $$"""
             <!DOCTYPE html>
-            <html><head><title>Signing in...</title></head>
+            <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Signing in...</title></head>
             <body>
+            <div id="spark-external-login-fallback" hidden>
+            <p>{{fallbackText}}</p>
+            <button type="button" id="spark-external-login-close">Close</button>
+            </div>
             <script>
-            if (window.opener) {
-                window.opener.postMessage({{payload}}, window.location.origin);
-            }
-            window.close();
+            (function () {
+                var msg = {{payload}};
+                var returnUrl = {{returnUrl}};
+                var channelName = 'spark:external-login';
+                var storageKey = 'spark:external-login:' + msg.nonce;
+                var doneKey = 'spark:external-login-done:' + msg.nonce;
+                var standalone = (!!window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+                    || window.navigator.standalone === true;
+
+                function restore() {
+                    if (!standalone) return false;
+                    try {
+                        if (window.localStorage.getItem(doneKey) === null) return false;
+                        window.localStorage.removeItem(doneKey);
+                    } catch (e) { return false; }
+                    window.location.replace(returnUrl);
+                    return true;
+                }
+
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'visible') restore();
+                });
+                if (restore()) return;
+
+                // The ack listener first: the sign-in page reacts to the storage write below at once and
+                // acknowledges only its first delivery, so an ack sent before this channel existed was lost
+                // and the page never closed itself.
+                var bc = null;
+                try {
+                    bc = new BroadcastChannel(channelName);
+                    bc.onmessage = function (e) {
+                        var d = e.data;
+                        if (d && d.type === 'spark:external-login-ack' && d.nonce === msg.nonce) {
+                            try { window.localStorage.setItem(doneKey, '1'); } catch (x) { }
+                            window.close();
+                        }
+                    };
+                } catch (e) { bc = null; }
+
+                try {
+                    var stored = {};
+                    for (var k in msg) stored[k] = msg[k];
+                    stored.at = Date.now();
+                    window.localStorage.setItem(storageKey, JSON.stringify(stored));
+                } catch (e) { }
+
+                if (bc) {
+                    try { bc.postMessage(msg); } catch (e) { }
+                }
+
+                if (window.opener) {
+                    try { window.opener.postMessage(msg, window.location.origin); } catch (e) { }
+                }
+
+                if (standalone) window.close();
+
+                document.getElementById('spark-external-login-close').addEventListener('click', function () {
+                    window.close();
+                });
+                window.setTimeout(function () {
+                    document.getElementById('spark-external-login-fallback').hidden = false;
+                }, 3000);
+            })();
             </script>
             </body></html>
             """;
+    }
 
-        return Results.Content(html, "text/html");
+    /// <summary>The popup hand-off's wire payload. Property names are the contract the client reads.</summary>
+    private sealed record ExternalLoginMessage(
+        [property: JsonPropertyName("type")] string Type,
+        [property: JsonPropertyName("success")] bool Success,
+        [property: JsonPropertyName("error")] string? Error,
+        [property: JsonPropertyName("nonce")] string? Nonce);
+
+    /// <summary>
+    /// Writes the popup callback page, and makes sure it goes out without a
+    /// <c>Cross-Origin-Opener-Policy</c> (#490, D10).
+    /// </summary>
+    /// <remarks>
+    /// Spark sets no COOP anywhere, but an application's own header middleware might. On this page a
+    /// <c>same-origin</c> policy severs <c>window.opener</c> and the popup can no longer post back, so
+    /// a header already on the response is removed here. (A middleware that adds it from a later
+    /// <c>OnStarting</c> callback is beyond reach; don't.)
+    /// </remarks>
+    private sealed class ExternalLoginPopupPage(string html) : IResult
+    {
+        public Task ExecuteAsync(HttpContext httpContext)
+        {
+            httpContext.Response.Headers.Remove("Cross-Origin-Opener-Policy");
+            return Results.Content(html, "text/html", Encoding.UTF8).ExecuteAsync(httpContext);
+        }
     }
 
     /// <summary>

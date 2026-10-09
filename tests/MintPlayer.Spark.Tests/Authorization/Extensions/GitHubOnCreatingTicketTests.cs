@@ -13,7 +13,7 @@ using MintPlayer.Spark.Authorization.Identity;
 namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 
 /// <summary>
-/// The <c>OnCreatingTicket</c> event <see cref="GitHubAuthenticationExtensions.AddGitHub(Microsoft.AspNetCore.Identity.IdentityBuilder, Action{OAuthOptions})"/>
+/// The <c>OnCreatingTicket</c> event <see cref="GitHubAuthenticationExtensions.AddGitHub(MintPlayer.Spark.Abstractions.Builder.ISparkBuilder, Action{OAuthOptions}?)"/>
 /// installs: it fetches <c>/user</c> for the claims and <c>/user/emails</c> for the
 /// <c>email_verified</c> attestation auto-provisioning depends on. Driven by hand with a scripted
 /// backchannel, since a real OAuth callback needs GitHub.
@@ -113,7 +113,8 @@ public class GitHubOnCreatingTicketTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddSparkAuthentication<SparkUser>().AddGitHub(options =>
+        services.AddSparkAuthentication<SparkUser>();
+        TestSparkAuth.Builder(services).AddGitHub(options =>
         {
             options.ClientId = "test-client";
             options.ClientSecret = "test-secret";

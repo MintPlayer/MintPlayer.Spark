@@ -79,6 +79,16 @@ internal class OidcSigningKeyService
 
     public RsaSecurityKey GetSigningKey() => _signingKey;
 
+    /// <summary>
+    /// The credentials to sign with for a client that registered <paramref name="algorithm"/>
+    /// (<c>id_token_signed_response_alg</c>): RS256 by default, PS256 with the same RSA key.
+    /// </summary>
+    public SigningCredentials GetSigningCredentials(string? algorithm)
+        => new(_signingKey, algorithm == SecurityAlgorithms.RsaSsaPssSha256 ? SecurityAlgorithms.RsaSsaPssSha256 : SecurityAlgorithms.RsaSha256);
+
+    /// <summary>The signing algorithms this provider can produce, for discovery.</summary>
+    public IReadOnlyList<string> SupportedAlgorithms => [SecurityAlgorithms.RsaSha256, SecurityAlgorithms.RsaSsaPssSha256];
+
     public JsonWebKey GetPublicJwk() => _publicJwk;
 
     private static string Base64UrlEncode(byte[] data) =>

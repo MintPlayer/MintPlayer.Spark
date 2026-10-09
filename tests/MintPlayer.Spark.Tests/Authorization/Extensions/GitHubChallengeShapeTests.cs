@@ -46,7 +46,7 @@ public class GitHubChallengeShapeTests(SparkSharedDatabase database)
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
-                    new IdentityBuilder(typeof(SparkUser), services).AddGitHub(options =>
+                    TestSparkAuth.Builder(services).AddGitHub(options =>
                     {
                         options.ClientId = ClientId;
                         options.ClientSecret = "test-client-secret";
@@ -147,7 +147,7 @@ public class GitHubChallengeShapeTests(SparkSharedDatabase database)
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
-                    new IdentityBuilder(typeof(SparkUser), services).AddGitHub(options =>
+                    TestSparkAuth.Builder(services).AddGitHub(options =>
                     {
                         options.ClientId = ClientId;
                         options.ClientSecret = "test-client-secret";

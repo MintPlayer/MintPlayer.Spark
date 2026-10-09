@@ -8,14 +8,14 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective } from '@mintplayer/ng-spark/shell';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
-import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth/auth-bar';
+import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
 
 /**
  * The application frame. All responsive behaviour — breakpoints, the overlay drawer,
  * dismiss-on-navigate, the toggler↔drawer mirror — belongs to `<spark-shell>` and the
  * `mp-shell` web component underneath it; this component owns only what is specific to
  * Coverage: the sign-in link and the login-error alert. The sign-in page itself is
- * ng-spark-auth's, and renders one button per provider the server reports — so adding a
+ * ng-spark/auth's, and renders one button per provider the server reports — so adding a
  * forge changes nothing here.
  *
  * The sidebar menu is server-driven (`GET /spark/program-units`, already rights-filtered

@@ -72,7 +72,7 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
 |--------|------------|
 | `Authorization` | Group-based authorization (`security.json` behavior). |
 | `Identity` | ASP.NET Core Identity options (password rules, lockout, …). |
-| `IdentityProviders` | External login providers (Google, Microsoft, OIDC, …). |
+| `ExternalProviders` | External login providers, on the Spark builder after `AddAuthentication` (`spark => spark.AddExternalProviders(configuration)`, `spark.AddGitHub(…)`, …). |
 | `Messaging` | The durable message bus. |
 | `Replication` | Cross-module ETL replication (off unless set). |
 | `RateLimiter` | The `/spark/` rate limiter (off unless set; `_ => { }` enables defaults). |

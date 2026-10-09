@@ -1,0 +1,81 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "a6498518-0529-50da-a3e6-47131b7acb6a",
+    "name": "OidcReviewDecision",
+    "clrType": "MintPlayer.Spark.IdentityProvider.Models.OidcReviewDecision",
+    "breadcrumb": "{Status}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "0a534273-4839-538b-94fd-c79b493f1d29",
+        "name": "DecidedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5962b06d-1ab1-53d9-8967-d59ccd66da83",
+        "name": "DecidedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8f24de2b-9fdc-5e21-8345-13a8cfe20c9a",
+        "name": "Note",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4eba862f-1e49-5b37-a57b-24602de4744c",
+        "name": "RequestedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b9804748-0013-5f1c-9897-dbae447aa67e",
+        "name": "RequestedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3201427a-2f98-54d2-bd81-1f42346459b2",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

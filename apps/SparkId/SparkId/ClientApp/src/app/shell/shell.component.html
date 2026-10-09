@@ -1,0 +1,18 @@
+<spark-shell title="Spark Demo">
+  <!-- Replaces the topbar's trailing default (the bare language selector) to put the auth bar
+       next to it. The menu itself is fully server-driven — see programUnits.json. -->
+  <ng-container *sparkShellTopbarEnd>
+    <spark-language-selector />
+    <spark-auth-bar />
+  </ng-container>
+  <!-- The identity provider's SPA pages (routed, so not program units, which open queries and
+       objects only). The server-driven menu below lists the library's queries. -->
+  <nav *sparkShellSidebarTop class="nav flex-column mb-2 app-idp-links">
+    @if (auth.isAuthenticated()) {
+      <a class="nav-link" routerLink="/account/applications" routerLinkActive="active">{{ 'apps.title' | idp }}</a>
+      <a class="nav-link" routerLink="/developers" routerLinkActive="active">{{ 'dev.title' | idp }}</a>
+      <a class="nav-link" routerLink="/identity-provider/admin" routerLinkActive="active">{{ 'admin.title' | idp }}</a>
+    }
+  </nav>
+  <router-outlet />
+</spark-shell>

@@ -66,7 +66,7 @@ jobs:
 
     # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so
     # restore must run first on a fresh runner with no cache hit on `obj/`.
-    # Angular library builds (ng-spark, ng-spark-auth) and the rest of the
+    # Angular library builds (ng-spark, auth entries included) and the rest of the
     # solution build are covered by `nx affected --target=build` below.
     - name: dotnet restore
       run: dotnet restore
@@ -96,7 +96,7 @@ jobs:
     # Run build before tests so Angular-app build failures (e.g., broken
     # imports, type errors, budget overruns) block the PR. The .NET test
     # target already dependsOn build, but the demo Angular apps
-    # (@spark-demo/{demo-app,fleet-demo,hr-demo,qna-demo}) don't have
+    # (@spark-demo/{demo-app,fleet-demo,hr-demo,qna-demo,sparkid-demo}) don't have
     # a test target — without this step their build is never exercised in
     # CI, and the next deploy run is the first thing to notice.
     - name: Build affected projects (Nx)
@@ -105,11 +105,16 @@ jobs:
     # vitest strips TypeScript without checking it, and the library build (ng-packagr) excludes the
     # spec files, so a type error in a spec was never reported anywhere: ten had built up in
     # ng-spark's specs (#460), one of them a fixture silently set to `undefined` because it named an
-    # enum member that doesn't exist. Type-check the specs of both npm packages explicitly.
+    # enum member that doesn't exist. Type-check the npm package's specs explicitly.
     - name: Type-check the npm packages' specs
       run: |
         npx tsc --noEmit -p libs/node_packages/ng-spark/tsconfig.spec.json
-        npx tsc --noEmit -p libs/node_packages/ng-spark-auth/tsconfig.spec.json
+
+    # The repository's own Node tests (tools/*.test.mjs), among them the PWA guard (#464, D8): every
+    # app's ngsw-config.json keeps /spark/**, /signin-*, /connect/** and /.well-known/** out of the
+    # service worker, which would otherwise answer them with the cached index.html.
+    - name: Run the tools' Node tests
+      run: npm run test:tools
 
     # The two verifications below run `dotnet run --no-build` against all five apps, which needs all
     # five binaries on disk -- and `nx affected` above only schedules the ones it considers affected.
@@ -129,7 +134,7 @@ jobs:
     # code-coverage-deploy.yml maintains its ProjectReference closure as a hand-written path list. A
     # check that silently does nothing when that bookkeeping slips is worse than a slow one.
     - name: Restore the Spark app binaries the verifications need
-      run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,QnA,CodeCoverage
+      run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,QnA,SparkId,CodeCoverage
 
     # Catches a change that touched the entity classes without regenerating the model. Without this
     # the mismatch is only noticed at deployment, where it stops the application from starting.
@@ -140,7 +145,7 @@ jobs:
     # compiled against. Exit 3 means drift; the run fails before the slow test suite.
     - name: Verify Spark models are in sync
       run: |
-        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/CodeCoverage/CodeCoverage; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/SparkId/SparkId apps/CodeCoverage/CodeCoverage; do
           name="$(basename "$project")"
           # Globbed rather than hardcoding net11.0, so a target-framework bump cannot turn this
           # guard into a false alarm. Better than dotnet's start-process error, which names a path
@@ -165,7 +170,7 @@ jobs:
     # --spark-synchronize-security and commit the baseline. Exit 2: security.json does not compose.
     - name: Verify the anonymous surface has not widened
       run: |
-        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/CodeCoverage/CodeCoverage; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/SparkId/SparkId apps/CodeCoverage/CodeCoverage; do
           name="$(basename "$project")"
           # Globbed rather than hardcoding net11.0, so a target-framework bump cannot turn this
           # guard into a false alarm. Better than dotnet's start-process error, which names a path
@@ -224,7 +229,7 @@ jobs:
         done
 
         # npm: each package's version is its own; only the ones that changed need bumping.
-        for pkg in ng-spark ng-spark-auth; do
+        for pkg in ng-spark; do
           if echo "$changed" | grep -q "^libs/node_packages/$pkg/"; then
             if ! git diff "$base"...HEAD -- "libs/node_packages/$pkg/package.json" | grep -q '^+  "version"'; then
               echo "::error::libs/node_packages/$pkg changed but its package.json version was not bumped. npm-publish no-ops on an existing version, so this would merge and publish nothing."

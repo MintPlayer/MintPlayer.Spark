@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Hosting;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
 using NSubstitute;
 
@@ -31,6 +32,17 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
     }
 
     private ProgramUnitsLoader CreateLoader() => new(_hostEnv, TranslationsLoader.For(_hostEnv, []), NullLogger<ProgramUnitsLoader>.Instance);
+
+    /// <summary>
+    /// The groups this test's own file declares. The libraries this process loads ship menu layers of their own
+    /// (the identity provider's group), which every loader composes underneath the application's file.
+    /// </summary>
+    private static List<ProgramUnitGroup> Own(ProgramUnitsConfiguration config)
+        => [.. config.ProgramUnitGroups.Where(g => !LibraryGroupIds.Contains(g.Id))];
+
+    private static readonly HashSet<Guid> LibraryGroupIds =
+        [.. (System.Text.Json.JsonSerializer.Deserialize<ProgramUnitsConfiguration>(MintPlayer.Spark.Abstractions.SparkProgramUnitsFiles.Compose(null) ?? "{}",
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })?.ProgramUnitGroups ?? []).Select(g => g.Id)];
 
     private void WriteUnits(string json) =>
         File.WriteAllText(Path.Combine(_tempDir, "App_Data", "programUnits.json"), json);
@@ -64,7 +76,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
         var config = loader.GetProgramUnits();
 
         config.Should().NotBeNull();
-        config.ProgramUnitGroups.Should().BeEmpty();
+        Own(config).Should().BeEmpty();
     }
 
     [Fact]
@@ -80,7 +92,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
 
         var config = loader.GetProgramUnits();
 
-        var group = config.ProgramUnitGroups.Should().ContainSingle().Which;
+        var group = Own(config).Should().ContainSingle().Which;
         group.Icon.Should().Be("car");
         group.ProgramUnits.Should().ContainSingle().Which.Type.Should().Be("query");
     }
@@ -97,7 +109,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
             "queryId": "33333333-3333-3333-3333-333333333333"
             """));
 
-        var group = CreateLoader().GetProgramUnits().ProgramUnitGroups.Single();
+        var group = Own(CreateLoader().GetProgramUnits()).Single();
 
         group.Name.GetValue("en").Should().Be("Fleet");
         group.ProgramUnits.Single().Name.GetValue("en").Should().Be("Cars");
@@ -125,7 +137,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
             "objectId": "start"
             """));
 
-        var unit = CreateLoader().GetProgramUnits().ProgramUnitGroups[0].ProgramUnits[0];
+        var unit = Own(CreateLoader().GetProgramUnits())[0].ProgramUnits[0];
 
         unit.Type.Should().Be("persistentObject");
         unit.ObjectId.Should().Be("start");
@@ -180,7 +192,7 @@ public sealed class ProgramUnitsLoaderTests : IDisposable
 
         var config = loader.GetProgramUnits();
 
-        config.ProgramUnitGroups.Should().BeEmpty();
+        Own(config).Should().BeEmpty();
     }
 
     [Fact]

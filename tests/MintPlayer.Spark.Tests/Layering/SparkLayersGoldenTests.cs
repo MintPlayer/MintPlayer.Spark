@@ -83,6 +83,13 @@ public class SparkLayersGoldenTests
         return builder.ToString();
     }
 
+    /// <summary>With <c>SPARK_UPDATE_GOLDEN=1</c>, rewrites the golden file from what the test produced; review the diff.</summary>
+    internal static void UpdateGoldenIfRequested(string name, string actual)
+    {
+        if (Environment.GetEnvironmentVariable("SPARK_UPDATE_GOLDEN") == "1")
+            File.WriteAllText(RepoFile("tests", "MintPlayer.Spark.Tests", "Layering", "Golden", name), actual);
+    }
+
     internal static string Golden(string name)
         => File.ReadAllText(RepoFile("tests", "MintPlayer.Spark.Tests", "Layering", "Golden", name)).Replace("\r\n", "\n");
 

@@ -301,7 +301,7 @@ public class ModerationVoteTests : SparkTestDriver
     public async Task An_anonymous_caller_gets_no_reputation_and_no_401()
     {
         // The badge sits in every author cell of pages anonymous visitors may read; a 401 sent the
-        // whole QnA app to the sign-in page (ng-spark-auth's interceptor). "None" is the honest answer,
+        // whole QnA app to the sign-in page (ng-spark/auth's interceptor). "None" is the honest answer,
         // and it discloses nothing: not the caller's own (there is none), not anyone else's total.
         await using var host = await StartAsync();
         var post = await host.SeedPostAsync(Alice);

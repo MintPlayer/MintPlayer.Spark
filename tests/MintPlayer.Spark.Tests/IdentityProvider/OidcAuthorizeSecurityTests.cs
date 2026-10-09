@@ -141,8 +141,14 @@ public class OidcAuthorizeSecurityTests(OidcSharedHost host) : OidcTestHost(host
 
         var response = await Client.GetAsync(Url(responseType: responseType));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("unsupported_response_type");
+        // The redirect URI is registered, so the error goes back to the client (RFC 6749 §4.1.2.1), on the
+        // query string: never a fragment, and never a token.
+        response.StatusCode.Should().Be(HttpStatusCode.Found);
+        var location = response.Headers.Location!.OriginalString;
+        location.Should().Contain("error=unsupported_response_type");
+        location.Should().NotContain("#");
+        location.Should().NotContain("access_token");
+        location.Should().NotContain("id_token=");
     }
 
     /// <summary>A-S1 — a scope outside the client's allowed set.</summary>

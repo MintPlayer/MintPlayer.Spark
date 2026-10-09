@@ -165,7 +165,7 @@ jobs:
     #   - .NET projects have a `build:release` target (Release config —
     #     produces bin/Release/ artifacts that `dotnet pack --no-build`
     #     consumes below).
-    #   - Angular libraries (@mintplayer/ng-spark, @mintplayer/ng-spark-auth)
+    #   - Angular library (@mintplayer/ng-spark, auth entries included)
     #     only have a `build` target and produce ng-packagr `dist/` for the
     #     `JS-DevTools/npm-publish` steps below.
     - name: Build .NET projects (Release)
@@ -188,7 +188,7 @@ jobs:
       run: dotnet pack --no-build --configuration Release /p:ContinuousIntegrationBuild=true -o nupkgs
 
     - name: Build Angular libraries
-      run: npx nx run-many --target=build --projects=@mintplayer/ng-spark,@mintplayer/ng-spark-auth
+      run: npx nx run-many --target=build --projects=@mintplayer/ng-spark
 
     - name: Resolve Playwright version
       id: playwright
@@ -271,24 +271,6 @@ jobs:
       uses: JS-DevTools/npm-publish@v4
       with:
         package: 'libs/node_packages/ng-spark/dist/package.json'
-        registry: 'https://npm.pkg.github.com'
-        token: ${{ github.token }}
-        access: 'public'
-        provenance: true
-
-    - name: Push ng-spark-auth to NPM
-      uses: JS-DevTools/npm-publish@v4
-      with:
-        package: 'libs/node_packages/ng-spark-auth/dist/package.json'
-        registry: 'https://registry.npmjs.org'
-        token: ${{ secrets.PUBLISH_TO_NPMJS }}
-        access: 'public'
-        provenance: true
-
-    - name: Push ng-spark-auth to Github
-      uses: JS-DevTools/npm-publish@v4
-      with:
-        package: 'libs/node_packages/ng-spark-auth/dist/package.json'
         registry: 'https://npm.pkg.github.com'
         token: ${{ github.token }}
         access: 'public'

@@ -36,7 +36,7 @@ internal static class OidcGrants
         if (string.IsNullOrEmpty(token.AuthorizationId))
             return true;
 
-        var grant = await session.LoadAsync<OidcAuthorization>(token.AuthorizationId, ct);
+        var grant = await session.LoadAsync<OidcGrant>(token.AuthorizationId, ct);
 
         // The grant was deleted. Only reachable if someone removed it deliberately, and removing
         // a grant should end access rather than grant it forever. Same call as a missing token

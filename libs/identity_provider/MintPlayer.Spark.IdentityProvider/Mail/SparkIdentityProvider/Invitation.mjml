@@ -1,0 +1,22 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{ inviter }} invited you to {{ application }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">You are invited to join {{ application }}</mj-text>
+        <mj-text>{{ inviter }} invited you to the team of the application {{ application }} as {{ role }}.</mj-text>
+        <mj-button href="{{ link }}">Accept the invitation</mj-button>
+        <mj-text font-size="13px" color="#4b5563">If the button does not work, open this link: <a href="{{ link }}">{{ link }}</a></mj-text>
+        <mj-text font-size="13px" color="#4b5563">You have to sign in with the account this address belongs to. The invitation expires after {{ valid_for_days }} days. If you did not expect it, ignore this mail.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

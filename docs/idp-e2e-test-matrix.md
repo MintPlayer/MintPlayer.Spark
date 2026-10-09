@@ -2,6 +2,14 @@
 
 Companion to [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md) §8 and [coverage-handoff-plan.md](./coverage-handoff-plan.md) M12.6, and the evidence half of [findings-identity-provider-audit.md](./findings-identity-provider-audit.md).
 
+> **2026-10-09: reconciled with the identity-provider platform, PRD §0** ([identity_provider_platform_PRD.md](identity_provider_platform_PRD.md)). The rows that were [EXPECTED-FAIL], [CHARACTERIZATION], "still open" or "not yet written" were re-checked against the code and the tests (`tests/MintPlayer.Spark.Tests/IdentityProvider/`). Where a test exists under a different name than planned, its real name is given.
+> - **Gap closed and tested:** L-T4, T-G3, T-G5, T-M4, L-G4, R-J5/R-J6 (N4), R-X2 (N2: inverted), T-O1 (O15: inverted).
+> - **Gap closed, partly tested:** T-G4 (offline_access half only), T-M5 (O20, unit test only).
+> - **Gap closed, no test:** A-R10 (O21), A-S7 (O26).
+> - **Still open:** T-O2 (expired-code message), L-L5 (O27, accepted).
+> - **Already written, now marked:** A-C4.
+> - **Changed by the platform:** R-J4 (the JWKS now publishes several keys), R.8 (the key file is a legacy import), W "Not covered" (back-channel logout now exists), M-A6 and M-R2/M-R3 (renamed).
+
 **The invariant every case below serves:** no tampering reachable from a URL, a form field, a header or a cookie can make the provider mint a credential for a destination, a client, or a subject the attacker chose — and no legitimate flow is broken in the process.
 
 ## How to read this
@@ -55,7 +63,7 @@ All JSON400 `invalid_request`, **NO CODE**. The value is rejected before it is e
 | A-R7 | `Authorize_rejects_redirect_uri_fragment_smuggling` | `…/cb#https://evil.com` | |
 | A-R8 | `Authorize_validates_the_redirect_uri_it_actually_uses` | send the parameter **twice**, evil first then registered, and again in the opposite order | whichever value is validated must be the one used for the redirect. Both orders tested, because a mismatch here is a smuggling vector |
 | A-R9 | `Consent_post_ignores_injected_redirect_uri_field` | add `redirect_uri=https://evil.com` to the consent POST | field ignored entirely; redirect uses `request.RedirectUri` | the structural fix — this is *the* test for M12.5 |
-| A-R10 | `Redirect_url_is_well_formed_when_registered_uri_has_query` | register `https://good.example.com/cb?tenant=1` and complete a flow | **currently produces `…?tenant=1?code=…`** — malformed. Expected-to-fail until **O21** is fixed | O21 |
+| A-R10 | `Redirect_url_is_well_formed_when_registered_uri_has_query` | register `https://good.example.com/cb?tenant=1` and complete a flow | ~~currently produces `…?tenant=1?code=…`~~ **2026-10-09: fixed.** The code response goes through `RedirectUrl.With` (`Services/OidcAuthorizationFlow.cs:164`, `OidcAuthorizationResponse.cs:25`). **Test: not written** for authorize; only logout's twin exists (`OidcLoginSecurityTests.Logout_appends_state_to_a_uri_that_already_has_a_query`) | O21 (closed) |
 
 ### A.3 `client_id`
 
@@ -64,7 +72,7 @@ All JSON400 `invalid_request`, **NO CODE**. The value is rejected before it is e
 | A-C1 | `Authorize_rejects_unknown_client` | unknown `client_id` | JSON400 `invalid_client` | |
 | A-C2 | `Authorize_rejects_disabled_application` | `Enabled=false` | JSON400 `invalid_client` | |
 | A-C3 | `Authorize_rejects_client_not_registered_for_code_grant` | `AllowedGrantTypes=["client_credentials"]` | JSON400 `unauthorized_client` | regression pin for **O11** (closed) |
-| A-C4 | `Authorize_client_id_lookup_is_case_sensitive` | registered `AcmeApp`, request `acmeapp` | **must not resolve.** Expected-to-fail if RavenDB's default case-insensitive term matching applies | **O25** — run this one early; it decides whether O25 is cosmetic or impersonation |
+| A-C4 | `Authorize_client_id_lookup_is_case_sensitive` | registered `AcmeApp`, request `acmeapp` | **must not resolve.** Expected-to-fail if RavenDB's default case-insensitive term matching applies. **Written:** `OidcAuthorizeSecurityTests.Authorize_client_id_lookup_is_case_sensitive`, with `Authorize_accepts_the_exactly_registered_client_id` as its positive control | **O25** (closed) |
 | A-C5 | `Authorize_validation_order_does_not_leak_client_existence` | unknown client **and** `response_type=token` | `unsupported_response_type`, not `invalid_client` | pins the ordering so error shape can't be used to enumerate clients |
 
 ### A.4 `scope`
@@ -77,7 +85,7 @@ All JSON400 `invalid_request`, **NO CODE**. The value is rejected before it is e
 | A-S4 | `Authorize_tolerates_duplicate_scope_tokens` | `scope=openid openid profile` | succeeds, no double-grant in `EnsureAuthorizationAsync` | |
 | A-S5 | `Consent_post_cannot_inject_unrequested_scope` | request had `openid`; POST `scopes=openid&scopes=admin` where `admin` **is** in `AllowedScopes` | `admin` dropped; code carries `openid` only | the escalation M12.5 closed — highest-value case in A.4 |
 | A-S6 | `Consent_post_rejects_empty_scope_grant` | POST with no surviving scopes | JSON400, NO CODE | |
-| A-S7 | `Consent_post_omitting_required_scope` | forge a POST omitting a scope marked `Required` | **currently accepted** — expected-to-fail pending a decision on **O26** | O26 (new) |
+| A-S7 | `Consent_post_omitting_required_scope` | forge a POST omitting a scope marked `Required` | ~~currently accepted~~ **2026-10-09: fixed.** The POST re-adds every required scope from the stored request: the scope's own `Required` or the application's (`Endpoints/Consent.cs:263-273`). **Test: not written** | O26 (closed) |
 
 ### A.5 PKCE
 
@@ -208,16 +216,16 @@ Two markers are used below. **[EXPECTED-FAIL]** — the case pins correct behavi
 | T-S1 | `Token_refresh_narrows_scopes_when_AllowedScopes_shrinks` | 200; the removed scope is gone from the new token and persisted narrower | revoking a scope takes effect next refresh |
 | T-S2 | `Token_refresh_ignores_an_injected_scope_parameter` | 200 with the original scopes — the handler never reads `scope` on this grant. Not exploitable (intersection is always against stored scopes) but pin that it is ignored rather than honoured | |
 
-### T.7 Grant gating and machine scopes — open findings
+### T.7 Grant gating and machine scopes — ~~open findings~~ closed (2026-10-09)
 
 | # | Test | Expected | Pins |
 |---|---|---|---|
-| T-G1 | `Token_rejects_code_grant_for_client_not_allowing_it` | 400 `unauthorized_client` | |
-| T-G2 | `Token_rejects_client_credentials_grant_for_client_not_allowing_it` | 400 `unauthorized_client` | |
-| T-G3 | **[EXPECTED-FAIL]** `Token_rejects_refresh_grant_for_client_not_allowing_it` | **should** be 400 `unauthorized_client`; **currently 200** — `HandleRefreshTokenGrant` has no `AllowedGrantTypes` check at all, unlike the other two handlers | **O8** (first half) |
-| T-G4 | **[EXPECTED-FAIL]** `Token_does_not_mint_a_refresh_token_when_the_grant_is_not_allowed` | **should** omit it; **currently** every code redemption mints and stores a refresh token unconditionally — no check against `AllowedGrantTypes` or `offline_access`, so every browser client silently receives a 14-day credential it never asked for | **O8** (second half) |
-| T-G5 | **[EXPECTED-FAIL]** `Token_client_credentials_without_scope_does_not_grant_everything` | **currently** an omitted `scope` grants **all** `AllowedScopes`, `api.admin` included — least privilege violated by omission | **O14** |
-| T-G6 | `Token_client_credentials_rejects_scope_outside_AllowedScopes` | 400 `invalid_scope`, whole request fails, no partial grant | |
+| T-G1 | `Token_rejects_code_grant_for_client_not_allowing_it` | 400 `unauthorized_client` | Covered one step earlier: authorize refuses such a client (`OidcAuthorizeSecurityTests.Authorize_rejects_a_client_credentials_only_client`), so no code can exist. No token-side test written |
+| T-G2 | `Token_rejects_client_credentials_grant_for_client_not_allowing_it` | 400 `unauthorized_client` | **Written:** `OidcTokenSecurityTests.Client_credentials_is_refused_for_a_client_not_registered_for_it` |
+| T-G3 | ~~[EXPECTED-FAIL]~~ `Token_rejects_refresh_grant_for_client_not_allowing_it` | 400 `unauthorized_client`. ~~currently 200~~ fixed | **O8** (closed). **Written:** `OidcTokenSecurityTests.Refresh_grant_is_refused_for_a_client_not_registered_for_it` |
+| T-G4 | ~~[EXPECTED-FAIL]~~ `Token_does_not_mint_a_refresh_token_when_the_grant_is_not_allowed` | omitted unless `refresh_token` is registered **and** `offline_access` was granted. ~~currently minted unconditionally~~ fixed | **O8** (closed). **Written for the `offline_access` half:** `OidcTokenSecurityTests.Code_redemption_issues_no_refresh_token_without_offline_access`. The `AllowedGrantTypes` half has no test. The registration rule is `OidcApplicationActionsTests.Refresh_token_without_authorization_code_is_rejected` |
+| T-G5 | ~~[EXPECTED-FAIL]~~ `Token_client_credentials_without_scope_does_not_grant_everything` | `scope` is required on this grant. ~~omitted `scope` granted everything~~ fixed | **O14** (closed). **Written:** `OidcTokenSecurityTests.Client_credentials_requires_an_explicit_scope` |
+| T-G6 | `Token_client_credentials_rejects_scope_outside_AllowedScopes` | 400 `invalid_scope`, whole request fails, no partial grant | **Written:** `OidcTokenSecurityTests.Client_credentials_rejects_a_scope_outside_the_allowed_set` |
 
 ### T.10 Scope integrity — the token and its record must agree (N11)
 
@@ -234,10 +242,10 @@ The JWT is minted from the scopes that resolve to a defined, **enabled** `OidcSc
 
 | # | Test | Compare | Pins |
 |---|---|---|---|
-| T-O1 | **[CHARACTERIZATION]** `Token_distinguishes_unknown_client_from_bad_secret` | unknown client → `{"error":"invalid_client"}` with **no** `error_description`; known client + wrong secret → the same error **with** a description. That difference binary-searches the whole `client_id` namespace with no secret needed. **Invert this assertion when O15 is fixed** | **O15** |
-| T-O2 | **[CHARACTERIZATION]** `Token_distinguishes_never_issued_code_from_expired_code` | different `error_description` text. Narrower (needs a captured code first), same bug class | **O15** |
+| T-O1 | **[CHARACTERIZATION]** `Token_distinguishes_unknown_client_from_bad_secret` | unknown client → `{"error":"invalid_client"}` with **no** `error_description`; known client + wrong secret → the same error **with** a description. That difference binary-searches the whole `client_id` namespace with no secret needed. **Invert this assertion when O15 is fixed** | **O15**, client half closed. **Inverted and written:** `OidcClientAuthenticatorTests.A_wrong_secret_and_an_unknown_client_answer_the_same_invalid_client`, `OidcIntrospectionSecurityTests.Introspect_rejects_unknown_client_and_wrong_secret_alike` |
+| T-O2 | **[CHARACTERIZATION]** `Token_distinguishes_never_issued_code_from_expired_code` | different `error_description` text. Narrower (needs a captured code first), same bug class | **O15**, **still open** (`Endpoints/Token.cs:186` vs `:163`). **Not written.** `OidcTokenSecurityTests.Code_redemption_rejects_an_expired_code` checks the refusal, not the difference |
 | T-O3 | `Token_refresh_grant_has_no_such_oracle` | never-issued and expired both produce the identical message from one shared branch — **this grant is already right; use it as the model when fixing T-O1/T-O2** | contrast |
-| T-O4 | `Token_timing_unknown_vs_known_client` | unknown returns before any PBKDF2; known runs 100k iterations per unexpired secret. **Do not gate CI on HTTP wall-clock timing.** If asserted at all, wide margins over many reps, informational only; the durable form is a benchmark, not an e2e test | O15 (timing half) |
+| T-O4 | `Token_timing_unknown_vs_known_client` | unknown returns before any PBKDF2; known runs 100k iterations per unexpired secret. **Do not gate CI on HTTP wall-clock timing.** If asserted at all, wide margins over many reps, informational only; the durable form is a benchmark, not an e2e test | O15 (timing half). **2026-10-09:** closed in code: an unknown client runs a dummy PBKDF2 (`Services/OidcClientAuthenticator.cs:79,125,223`). **Not written**, deliberately, per the note in this row |
 
 ### T.9 Protocol basics and token shape
 
@@ -246,8 +254,8 @@ The JWT is minted from the scopes that resolve to a defined, **enabled** `OidcSc
 | T-M1 | `Token_rejects_unsupported_grant_type` | 400 `unsupported_grant_type` | |
 | T-M2 | `Token_rejects_non_form_content_type` | 400 `invalid_request` | |
 | T-M3 | `Token_rejects_missing_required_parameters` | 400 `invalid_request`, each parameter omitted in turn | |
-| T-M4 | **[EXPECTED-FAIL]** `Token_multi_audience_access_token_carries_every_audience` | two granted scopes with different `Audiences` → **currently only the first reaches the token.** `OidcTokenGenerator` builds `new ClaimsIdentity(claims)` *before* appending the remaining audiences, and the constructor copies the list rather than aliasing it, so the later `claims.Add` calls go nowhere. Fails closed (narrows), but the code's own comment describes behaviour it does not have | **O19**, confirmed by reading, not just cited |
-| T-M5 | `Token_id_token_nonce_round_trips` | the original `nonce` appears in the `id_token`. Regression guard only: the value is right today despite `OidcToken.State` being the field that holds it, and a future refactor that also stores the real OAuth `state` there would break this silently | O20 |
+| T-M4 | ~~[EXPECTED-FAIL]~~ **fixed (O19). Written:** `OidcTokenGeneratorTests.A_machine_token_carries_the_client_claims_and_every_audience`. Planned as `Token_multi_audience_access_token_carries_every_audience` | two granted scopes with different `Audiences` → **currently only the first reaches the token.** `OidcTokenGenerator` builds `new ClaimsIdentity(claims)` *before* appending the remaining audiences, and the constructor copies the list rather than aliasing it, so the later `claims.Add` calls go nowhere. Fails closed (narrows), but the code's own comment describes behaviour it does not have | **O19**, confirmed by reading, not just cited |
+| T-M5 | `Token_id_token_nonce_round_trips` | the original `nonce` appears in the `id_token`. Regression guard only: the value is right today despite `OidcToken.State` being the field that holds it, and a future refactor that also stores the real OAuth `state` there would break this silently | O20, **closed**: own field `OidcToken.Nonce` (`Models/OidcToken.cs:40`). **Unit test only:** `OidcTokenGeneratorTests.An_id_token_carries_the_nonce_when_one_was_sent`. The end-to-end round trip is not written |
 
 ## L — `/connect/login`, `/connect/two-factor`, logout, session
 
@@ -297,7 +305,7 @@ Source: `Endpoints/{Login,TwoFactor,Logout,ConnectPage}.cs`, `SparkAuthenticatio
 | L-L2 | `Login_lockout_message_does_not_reveal_password_correctness` | locked-out + right password and locked-out + wrong password produce the same text | the intended asymmetry is locked-vs-not, nothing finer |
 | L-L3 | `Login_lockout_precedes_the_two_factor_step` | a locked-out 2FA user submitting the **correct** password lands on the lockout error, not `/connect/two-factor` | inferred from stock `SignInManager.PreSignInCheck` — **verify empirically, this is not Spark's own code** |
 | L-L4 | `Login_unknown_and_wrong_password_return_identical_text` | both `Invalid email/user name or password.` | confirmed by reading — no message oracle |
-| L-L5 | **[CHARACTERIZATION]** `Login_unknown_email_responds_faster_than_a_wrong_password` | unknown short-circuits before PBKDF2; known runs it | **O27**, accepted risk — see the findings entry. Keep the test informational, never CI-gating: wall-clock assertions over HTTP are too noisy to gate on |
+| L-L5 | **[CHARACTERIZATION]** `Login_unknown_email_responds_faster_than_a_wrong_password` | unknown short-circuits before PBKDF2; known runs it | **O27**, accepted risk — see the findings entry. Keep the test informational, never CI-gating: wall-clock assertions over HTTP are too noisy to gate on. **2026-10-09: still open, accepted.** The `/connect` rate limit (D9) is the mitigation. **Not written** |
 
 ### L.4 Two-factor integrity
 
@@ -306,7 +314,7 @@ Source: `Endpoints/{Login,TwoFactor,Logout,ConnectPage}.cs`, `SparkAuthenticatio
 | L-T1 | `TwoFactor_post_without_the_password_step_is_rejected` | a fresh client posting a syntactically valid code with no partial-auth cookie fails — there is no `TwoFactorUserId` principal to resolve | **the "jump straight to 2FA" case**; partial-auth lives in a separate scheme |
 | L-T2 | `Consent_while_only_half_authenticated_redirects_to_login` | password done, 2FA not — `/connect/consent` bounces to login because `context.User` isn't authenticated under the application scheme | the same invariant proved from the consent side |
 | L-T3 | `TwoFactor_recovery_code_is_single_use` | first use succeeds, second fails | |
-| L-T4 | `TwoFactor_brute_force_eventually_locks_out` | repeated wrong codes trip the same lockout counter | **still open** — not yet written; see the note below |
+| L-T4 | `TwoFactor_brute_force_eventually_locks_out` | repeated wrong codes trip the same lockout counter | **Written:** `OidcTwoFactorSecurityTests.Repeated_wrong_codes_eventually_lock_the_account` (8 wrong codes → `IsLockedOutAsync`), plus `A_locked_out_account_at_the_second_factor_gets_the_generic_message` |
 
 ### L.4b Two-factor — implemented
 
@@ -321,7 +329,7 @@ Source: `Endpoints/{Login,TwoFactor,Logout,ConnectPage}.cs`, `SparkAuthenticatio
 
 **Testing note worth keeping.** A valid authenticator code cannot be obtained from Identity: `AuthenticatorTokenProvider.GenerateAsync` deliberately returns an empty string, because in the real flow the code comes from the user's phone and the server only ever validates. The fixture therefore implements RFC 6238 exactly as `Rfc6238AuthenticationService` does — HMAC-SHA1 over a big-endian 30-second timestep, dynamically truncated to six digits, no modifier — and plays the phone. The first run of these tests failed with `error=missing_code`, which is what surfaced this.
 
-**Not yet covered on this surface:** brute-force lockout on the 2FA step specifically (L-T4 above), and whether a failed second factor counts toward the same lockout counter as a failed password.
+~~**Not yet covered on this surface:** brute-force lockout on the 2FA step specifically (L-T4 above), and whether a failed second factor counts toward the same lockout counter as a failed password.~~ **2026-10-09:** L-T4 is written (see above). **Not written:** a test that mixes failed passwords and failed codes on one counter.
 
 ### L.5 Session and `rememberMe`
 
@@ -340,7 +348,7 @@ Source: `Endpoints/{Login,TwoFactor,Logout,ConnectPage}.cs`, `SparkAuthenticatio
 | L-G1 | `Logout_redirects_to_a_registered_post_logout_uri` | 302 to it | |
 | L-G2 | `Logout_rejects_an_unregistered_post_logout_uri` | 400 | |
 | L-G3 | `Logout_appends_state_with_a_single_question_mark` | `…/done?state=abc` | `Logout.cs` is the one place that builds URLs correctly — **use it as the model when fixing O21 elsewhere** |
-| L-G4 | **[EXPECTED-FAIL]** `Logout_rejects_another_apps_post_logout_uri` | currently **succeeds** — validation spans every enabled application, so any registered URI is accepted in any client's logout | **O12**, confirmed still reproducing |
+| L-G4 | ~~[EXPECTED-FAIL]~~ `Logout_rejects_another_apps_post_logout_uri` | ~~currently succeeds~~ refused: logout validates against the named client only | **O12** (closed). **Written:** `OidcLoginSecurityTests.Logout_refuses_another_applications_post_logout_uri` |
 | L-G5 | `Logout_is_idempotent_without_a_session` | 302 to the validated URI even when already signed out | |
 | L-G6 | `Logout_requires_no_antiforgery_token_by_design` | a bare GET succeeds | **accepted risk, decided** — front-channel logout must be plain-navigable; forcing a sign-out is a nuisance, not an escalation. Pinned so the absence reads as a decision |
 
@@ -436,11 +444,13 @@ This surface produced the audit's only **Critical** (N1, now fixed) precisely be
 | R-J1 | `Jwks_exposes_no_private_key_material` | keys carry only `kty/use/kid/alg/n/e` — assert the **absence** of `d/p/q/dp/dq/qi` | |
 | R-J2 | `Jwks_kid_matches_the_kid_in_issued_tokens` | exact match, so a relying party can select the key | |
 | R-J3 | `Jwks_published_key_verifies_a_real_token` | verify a freshly issued token offline using only the published `n`/`e` | end-to-end trust chain |
-| R-J4 | `Jwks_publishes_exactly_one_key` | length 1 — pins today's no-overlap behaviour so N4's fix visibly changes it | **N4** |
-| R-J5 | **[EXPECTED-FAIL]** `Jwks_kid_changes_when_the_key_is_replaced` | **currently** the literal `"spark-oidc-key-1"` survives rotation, so a relying party caching by `kid` keeps the stale key | **N4** |
-| R-J6 | **[EXPECTED-FAIL]** `Tokens_issued_before_rotation_remain_valid_until_expiry` | **currently** they fail instantly — one key is held, so rotation is a hard cutover with no overlap window | **N4** |
+| R-J4 | `Jwks_publishes_exactly_one_key` | ~~length 1~~ superseded by N4's fix: the ring starts with one active RSA and one active EC key and publishes both | **N4** (closed). **Written as** `OidcKeyRingTests.Startup_creates_one_active_rsa_and_one_active_ec_key_and_publishes_both` |
+| R-J5 | ~~[EXPECTED-FAIL]~~ `Jwks_kid_changes_when_the_key_is_replaced` | a rotation signs under a new random `kid` (`Services/OidcKeyRing.cs:257`) | **N4** (closed). **Written:** `OidcKeyRingTests.A_forced_rotation_signs_with_a_new_key_and_keeps_the_old_one_published`, `A_scheduled_rotation_publishes_the_next_key_ahead_without_signing_with_it` |
+| R-J6 | ~~[EXPECTED-FAIL]~~ `Tokens_issued_before_rotation_remain_valid_until_expiry` | the retired key stays published for `Keys:RetainRetiredDays`, then leaves the JWKS | **N4** (closed). **Written:** the same forced-rotation test, plus `A_retired_key_past_its_retention_is_removed_from_the_ring_and_the_jwks` |
 
 ### R.8 Signing key service
+
+> **2026-10-09:** signing keys live in `OidcKeys` (`OidcKeyRing`, I10). `OidcSigningKeyService` is now only a one-time import of a legacy key file, which the E2E hosts still write. R-K1 to R-K3 are covered against that file by `OidcSigningKeyServiceTests`: `A_missing_key_outside_development_refuses_to_start`, `A_generated_key_is_persisted_and_reloaded_after_a_restart` and `Reloading_is_exact_for_many_keys`. R-K4 is not written.
 
 | # | Test | Expected | Pins |
 |---|---|---|---|
@@ -449,12 +459,12 @@ This surface produced the audit's only **Critical** (N1, now fixed) precisely be
 | R-K3 | `SigningKey_is_stable_across_restarts` | tokens signed in run 1 verify against JWKS from run 2 | |
 | R-K4 | `SigningKey_corrupt_file_fails_loudly` | a clean exception, never a silent fallback to a fresh in-memory key | |
 
-### R.9 Audience — the open gap
+### R.9 Audience — ~~the open gap~~ closed (2026-10-09, I12)
 
 | # | Test | Expected | Pins |
 |---|---|---|---|
-| R-X1 | `Introspection_reports_aud_so_a_resource_server_can_check_it` | `aud` present in the response | **N2**, disclosure half — fixed |
-| R-X2 | **[CHARACTERIZATION]** `Audience_is_not_enforced_anywhere` | a token minted for resource A introspects `active:true` and is accepted at `/connect/userinfo` regardless of audience. Documents the current gap; invert if N2's enforcement half is ever decided in favour of enforcing here | **N2**, open |
+| R-X1 | `Introspection_reports_aud_so_a_resource_server_can_check_it` | `aud` present in the response (`Endpoints/Introspection.cs:124`) | **N2**, disclosure half — fixed |
+| R-X2 | ~~[CHARACTERIZATION] `Audience_is_not_enforced_anywhere`~~ **inverted** | **Decided both ways.** Introspection answers only the token's owner, a client named in its `aud`, or a client with `MayIntrospectAnyAudience` (`MayIntrospect`, `Introspection.cs:174-177`). `AddSparkResourceServer` refuses a token for another audience, on both the JWT path (`SparkResourceServerExtensions.cs:70-73`) and the introspection path (`SparkIntrospectionHandler.cs:131`). `/connect/userinfo` is the IdP's own endpoint and still checks no audience | **N2** (closed). **Written:** `SparkResourceServerTests.An_access_token_for_another_audience_is_refused`; `OidcIntrospectionSecurityTests.A_resource_server_may_introspect_a_token_minted_for_its_audience`, `An_unrelated_client_still_cannot_introspect_by_audience`, `A_gateway_may_opt_out_of_the_audience_restriction` |
 
 ## W — consent withdrawal (M13)
 
@@ -487,7 +497,7 @@ endpoint that is supposed to notice.
 ### Not covered
 
 - **A withdrawal racing an in-flight refresh.** Bounded to one access-token lifetime by design — every refresh re-reads the grant and the sweep catches the freshly minted pair — but not exercised, because it needs a parking hook in the token endpoint. Same gap as T-R3/T-R4.
-- **Back-channel logout.** Withdrawal does not end the user's session at the client app; there is no back-channel logout in the package at all.
+- **Back-channel logout.** Withdrawal does not end the user's session at the client app; there is no back-channel logout in the package at all. *(2026-10-09: back-channel and front-channel logout now exist (I10, `OidcSessionStore`). `OidcSessionLogoutTests.Logout_posts_a_signed_logout_token_to_the_back_channel_uri` covers it. Withdrawal still does not send one; that is not tested and not built.)*
 
 ## Q — row-level authorization on queries (M5)
 
@@ -525,7 +535,7 @@ generates**, not a hand-authored one.
 | M-A4b | `A_redirect_uri_without_a_usable_scheme_is_rejected` (Theory ×4) | `/callback`, `callback`, `//evil.example.com/cb`, `file:///etc/passwd` all refused. Pinned as a Theory because the original single case **passed on Windows and failed on Linux** — `Uri.TryCreate(…, Absolute, …)` accepts a bare path on Unix | **N22** |
 | M-A4c | `A_custom_scheme_is_still_accepted_for_native_clients` | `com.example.app:/oauth2redirect` accepted — tightening absoluteness must not shut out native clients | **N22** |
 | M-A5 | `An_unsupported_grant_type_is_refused_at_the_route` | 400 naming the supported grants | |
-| M-A6 | `A_duplicate_client_id_is_refused_at_the_route` | 400; two applications sharing a `client_id` makes impersonation a matter of index ordering | **O17** |
+| M-A6 | `A_duplicate_client_id_is_refused_at_the_route` → **now** `Two_registrations_posting_the_same_client_id_get_distinct_ones` | ~~400~~ the client id is generated server-side (D5), so both registrations succeed with distinct ids; the compare-exchange reservation is the atomic guard (`Services/OidcClientIdReservation.cs`) | **O17** (partly closed: direct document writes still bypass it) |
 | M-A7 | `A_scope_name_with_whitespace_is_refused_at_the_route` | 400 — scopes are space-delimited on the wire | **N6**-adjacent |
 | M-A8 | `Registration_requires_an_antiforgery_token` | 400 and **nothing written** — a registration a cross-site POST can perform is a client-registration endpoint open to any page the operator visits | |
 
@@ -542,7 +552,13 @@ exist.
 | M-R2 | `The_generated_model_carries_the_fields_an_operator_must_set` | `ClientId`, `RedirectUris`, `AllowedScopes`, `AllowedGrantTypes`, `Enabled`, `MayIntrospectAnyAudience` — the audit found each failing silently when wrong |
 | M-R3 | `Scopes_are_registered_alongside_applications` | `OidcScope.json` with `Audiences` (D11) |
 
+*2026-10-09: the IdP is now a library layer (PRD D2), and these tests were renamed:*
+- `The_package_is_a_library_layer_under_its_alias`;
+- M-R1 → `A_library_entity_becomes_a_persistent_object`;
+- M-R2 → `The_shipped_model_carries_the_fields_an_operator_must_set`;
+- M-R3 → `Resources_are_shipped_alongside_applications`, because `OidcScope` became `OidcResource` (D1).
+
 ### Not covered
 
-- **Authorization on these screens is demonstrated, not asserted.** HR's `security.json` grants them to Administrators alone, but no test drives the routes as a non-administrator. `SparkEndpointFactory` opts into `AllowAnonymousAccess()`, so a case would have to override `IAccessControl` — worth adding when M5 (row-level authz) is picked up, since it needs the same fixture.
+- **Authorization on these screens is demonstrated, not asserted.** HR's `security.json` grants them to Administrators alone, but no test drives the routes as a non-administrator. *(2026-10-09: partly asserted now. The admin key endpoints refuse non-administrators and anonymous callers: `OidcKeyRingTests.A_non_administrator_cannot_list_the_signing_keys`, `A_non_administrator_cannot_rotate_the_signing_keys`, `An_anonymous_caller_cannot_list_the_signing_keys`. So do `OidcOperationsTests.RevokeGrant_does_nothing_for_a_caller_who_is_not_an_administrator` and `OidcApprovalTests.An_application_admin_cannot_approve_its_own_go_live_request`. The `/spark/po/OidcApplication` routes as a non-member: still not written.)* `SparkEndpointFactory` opts into `AllowAnonymousAccess()`, so a case would have to override `IAccessControl` — worth adding when M5 (row-level authz) is picked up, since it needs the same fixture.
 - The Angular screens themselves. These are generated pages with no bespoke code; the four demo ClientApps have not been exercised since the IdP port either.

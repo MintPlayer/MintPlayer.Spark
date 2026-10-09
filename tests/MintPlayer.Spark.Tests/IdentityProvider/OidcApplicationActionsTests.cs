@@ -17,13 +17,14 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 public class OidcApplicationActionsTests
 {
     // No session: the before-write uniqueness query is skipped, as for any interceptor called by hand.
-    private static OidcApplicationInterceptors Interceptors() => new(corsOrigins: new OidcCorsOrigins());
+    private static OidcApplicationInterceptors Interceptors() => new(corsOrigins: new OidcCorsOrigins(), accessControl: Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IAccessControl>(), options: new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions(), audit: new OidcAudit(new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions()));
 
     /// <summary>A save context with no session: the rules are judged, the uniqueness query is skipped.</summary>
-    internal static SaveContext Context(Type entityType, object entity) => new()
+    internal static SaveContext Context(Type entityType, object entity,
+        PersistentObjectOperation operation = PersistentObjectOperation.New) => new()
     {
         EntityType = entityType,
-        Operation = PersistentObjectOperation.New,
+        Operation = operation,
         PersistentObject = new PersistentObject { Name = entityType.Name, ObjectTypeId = Guid.NewGuid() },
         Entity = entity,
         Session = new object(),
@@ -35,15 +36,16 @@ public class OidcApplicationActionsTests
         DisplayName = "Web App",
         ClientType = "confidential",
         RedirectUris = ["https://webapp.test/cb"],
-        AllowedScopes = ["openid"],
+        Scopes = [new OidcApplicationScope { Name = "openid", Required = true }],
         AllowedGrantTypes = ["authorization_code"],
     };
 
-    private static async Task<Exception?> SaveAsync(OidcApplication app)
+    private static async Task<Exception?> SaveAsync(OidcApplication app,
+        PersistentObjectOperation operation = PersistentObjectOperation.New)
     {
         try
         {
-            await Interceptors().OnBeforeSaveAsync(app, Context(typeof(OidcApplication), app));
+            await Interceptors().OnBeforeSaveAsync(app, Context(typeof(OidcApplication), app, operation));
             return null;
         }
         catch (Exception ex)
@@ -153,6 +155,9 @@ public class OidcApplicationActionsTests
     public async Task A_custom_scheme_is_still_accepted_for_native_clients()
     {
         var app = Valid();
+        // A native app is a public client (RFC 8252 §8.4); the scheme is refused for a confidential one.
+        app.ClientType = "public";
+        app.Secrets = [];
         app.RedirectUris = ["com.example.app:/oauth2redirect"];
 
         (await SaveAsync(app)).Should().BeNull(
@@ -257,25 +262,44 @@ public class OidcApplicationActionsTests
     }
 
     [Fact]
+    public async Task A_missing_client_id_is_generated_on_create()
+    {
+        var app = Valid();
+        app.ClientId = "";
+
+        (await SaveAsync(app)).Should().BeNull();
+        app.ClientId.Should().NotBeNullOrWhiteSpace("a new application gets a server-generated client id (D5)");
+    }
+
+    [Fact]
     public async Task A_missing_client_id_is_rejected()
     {
         var app = Valid();
         app.ClientId = "";
 
-        (await SaveAsync(app))!.Message.Should().Contain("Client id is required");
+        (await SaveAsync(app, PersistentObjectOperation.Save))!.Message.Should().Contain("Client id is required");
+    }
+
+    [Fact]
+    public async Task An_unknown_mode_is_rejected()
+    {
+        var app = Valid();
+        app.Mode = "Production";
+
+        (await SaveAsync(app))!.Message.Should().Contain("Mode must be");
     }
 }
 
-/// <summary>Validation for the scope screen — the half that decides what a token carries.</summary>
-public class OidcScopeActionsTests
+/// <summary>Validation for the resource screen — the half that decides what a token carries.</summary>
+public class OidcResourceActionsTests
 {
-    private static OidcScopeInterceptors Interceptors() => new();
+    private static OidcResourceInterceptors Interceptors() => new(new OidcAudit(new MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions()));
 
-    private static async Task<Exception?> SaveAsync(OidcScope scope)
+    private static async Task<Exception?> SaveAsync(OidcResource resource)
     {
         try
         {
-            await Interceptors().OnBeforeSaveAsync(scope, OidcApplicationActionsTests.Context(typeof(OidcScope), scope));
+            await Interceptors().OnBeforeSaveAsync(resource, OidcApplicationActionsTests.Context(typeof(OidcResource), resource));
             return null;
         }
         catch (Exception ex)
@@ -284,16 +308,27 @@ public class OidcScopeActionsTests
         }
     }
 
-    [Fact]
-    public async Task A_valid_scope_is_accepted()
+    private static OidcResource Api(string name, params string[] scopes) => new()
     {
-        (await SaveAsync(new OidcScope { Name = "api.read", Enabled = true })).Should().BeNull();
+        Kind = OidcResourceKinds.Api,
+        Name = name,
+        Scopes = [.. scopes.Select(s => new OidcApiScope { Name = s })],
+    };
+
+    [Fact]
+    public async Task A_valid_resource_is_accepted_and_gets_its_natural_id()
+    {
+        var api = Api("api", "api.read");
+
+        (await SaveAsync(api)).Should().BeNull();
+        api.Id.Should().Be(OidcScopeCatalog.ResourceId("api"));
+        (await SaveAsync(new OidcResource { Name = "profile" })).Should().BeNull();
     }
 
     [Fact]
-    public async Task A_scope_name_with_whitespace_is_rejected()
+    public async Task A_resource_name_with_whitespace_is_rejected()
     {
-        var error = await SaveAsync(new OidcScope { Name = "api read" });
+        var error = await SaveAsync(new OidcResource { Name = "api read" });
 
         error!.Message.Should().Contain("space-delimited",
             "scopes are space-delimited on the wire, so this would be read as two names, "
@@ -301,16 +336,42 @@ public class OidcScopeActionsTests
     }
 
     [Fact]
-    public async Task An_empty_scope_name_is_rejected()
+    public async Task An_api_scope_name_with_whitespace_is_rejected()
     {
-        (await SaveAsync(new OidcScope { Name = "" }))!.Message.Should().Contain("required");
+        (await SaveAsync(Api("api", "api.read all")))!.Message.Should().Contain("space-delimited");
     }
 
     [Fact]
-    public async Task An_empty_audience_is_rejected()
+    public async Task An_empty_resource_name_is_rejected()
     {
-        var scope = new OidcScope { Name = "api.read", Audiences = [""] };
+        (await SaveAsync(new OidcResource { Name = "" }))!.Message.Should().Contain("required");
+    }
 
-        (await SaveAsync(scope))!.Message.Should().Contain("audience cannot be empty");
+    [Fact]
+    public async Task An_empty_api_scope_name_is_rejected()
+    {
+        (await SaveAsync(Api("api", "")))!.Message.Should().Contain("needs a name");
+    }
+
+    [Theory]
+    [InlineData("api.read", "dot")]
+    [InlineData("api/read", "slash")]
+    public async Task A_resource_name_with_a_separator_is_rejected(string name, string expected)
+    {
+        (await SaveAsync(new OidcResource { Name = name }))!.Message.Should().Contain(expected);
+    }
+
+    [Fact]
+    public async Task An_api_scope_outside_the_apis_prefix_is_rejected()
+    {
+        (await SaveAsync(Api("api", "other.read")))!.Message.Should().Contain("must start with the API's name");
+    }
+
+    [Fact]
+    public async Task An_identity_resource_with_scopes_is_rejected()
+    {
+        var resource = new OidcResource { Name = "profile", Scopes = [new OidcApiScope { Name = "profile.x" }] };
+
+        (await SaveAsync(resource))!.Message.Should().Contain("no scopes of its own");
     }
 }

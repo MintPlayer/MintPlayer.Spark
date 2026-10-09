@@ -10,7 +10,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Moderation</PackageId>
-		<Version>11.0.0-preview.102</Version>
+		<Version>11.0.0-preview.103</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Community moderation for MintPlayer.Spark: votes and a reputation ledger on IModeratable entities, privileges earned as security.json groups (bounded to reversible rights), ten vote-fraud defences (age and activity gates, diversity, eligibility, caps, delayed crediting, a nightly detector with compensating reversals, hashed network observations), flags and a review queue, locks, suspensions and an audit log. Configured through moderation.json layered under IConfiguration.</Description>

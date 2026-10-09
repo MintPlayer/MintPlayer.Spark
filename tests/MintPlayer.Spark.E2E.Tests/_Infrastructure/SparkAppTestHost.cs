@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 /// <param name="DatabasePrefix">Prefix of the per-host app database; a random suffix is appended.</param>
 /// <param name="CoverageSlug">
 /// Prefix of the host's coverage report directory (<c>coverage/{slug}-host-{env}-{suffix}/</c>).
-/// ⚠️ <c>tools/verify-coverage-paths.mjs</c> knows each slug by name (<c>fleet</c>, <c>qna</c>); another app's
+/// ⚠️ <c>tools/verify-coverage-paths.mjs</c> knows each slug by name (<c>fleet</c>, <c>qna</c>, <c>hr</c>, <c>sparkid</c>); another app's
 /// slug must be added there, or its report is rejected.
 /// </param>
 public sealed record SparkAppDescriptor(
@@ -47,7 +47,6 @@ public sealed record SparkAppDescriptor(
     public IReadOnlyList<string> BundleSourceRoots { get; init; } =
     [
         Path.Combine("libs", "node_packages", "ng-spark"),
-        Path.Combine("libs", "node_packages", "ng-spark-auth"),
     ];
 
     /// <summary>The dotnet-coverage settings file in the E2E test project directory.</summary>
@@ -222,6 +221,34 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         Directory.Exists(MailPickupFolder)
             ? Directory.EnumerateFiles(MailPickupFolder, "*.eml").OrderBy(File.GetLastWriteTimeUtc).ToList()
             : [];
+
+    /// <summary>
+    /// Waits for a picked-up mail to <paramref name="to"/> whose subject contains <paramref name="subjectPart"/>.
+    /// Mail is queued through Messaging, so it lands a moment after the request that caused it; the
+    /// timeout is a failure bound, never an expected duration.
+    /// </summary>
+    public async Task<MimeKit.MimeMessage> WaitForMailAsync(string to, string subjectPart, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(60));
+        while (true)
+        {
+            foreach (var path in PickedUpMails())
+            {
+                MimeKit.MimeMessage message;
+                try { message = await MimeKit.MimeMessage.LoadAsync(path); }
+                catch (IOException) { continue; } // still being written
+                if (message.To.Mailboxes.Any(m => string.Equals(m.Address, to, StringComparison.OrdinalIgnoreCase))
+                    && message.Subject?.Contains(subjectPart, StringComparison.OrdinalIgnoreCase) == true)
+                    return message;
+            }
+
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException(
+                    $"No mail to {to} with '{subjectPart}' in its subject was picked up. Mails: "
+                    + string.Join(", ", PickedUpMails().Select(Path.GetFileName)) + $"\n{RecentLog(40)}");
+            await Task.Delay(250);
+        }
+    }
 
     /// <summary>The embedded Raven server, for subclasses that seed extra databases.</summary>
     protected SparkTestDriverHost RavenServer => _raven ?? throw new InvalidOperationException("Host not initialized");
@@ -737,7 +764,32 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         return (proc.ExitCode, $"stdout: {await stdoutTask}\nstderr: {await stderrTask}");
     }
 
+    /// <summary>
+    /// Starts the app, on fresh ports again when the ones picked were taken before it could bind them.
+    /// GetFreeTcpPort releases its port before the app binds it, so in a parallel sweep another process
+    /// (an embedded RavenDB, another host) can take it first and the app exits with "address already in
+    /// use". That used to fail the whole collection, after a 120 s wait for a process that had exited.
+    /// </summary>
     private async Task<string> StartAppAsync(string[] ravenUrls)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await StartAppOnceAsync(ravenUrls);
+            }
+            catch (PortTakenException) when (attempt < 3)
+            {
+                _appProcess?.Dispose();
+                _appProcess = null;
+                lock (_logLock) _appLog.Clear();
+            }
+        }
+    }
+
+    private sealed class PortTakenException(string message, Exception inner) : Exception(message, inner);
+
+    private async Task<string> StartAppOnceAsync(string[] ravenUrls)
     {
         var httpsPort = GetFreeTcpPort();
         var httpPort = GetFreeTcpPort();
@@ -767,6 +819,9 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             ["DataProtection"] = new JsonObject { ["Storage"] = "RavenDb" },
             ["HttpsRedirection"] = false,
             ["RateLimiter"] = new JsonObject { ["PermitLimit"] = RateLimitPermits },
+            // The identity provider's machine endpoints have a budget of their own (PRD D9); inert in apps
+            // that do not host the identity provider.
+            ["IdentityProvider"] = new JsonObject { ["RateLimits"] = new JsonObject { ["PermitLimit"] = RateLimitPermits } },
         };
 
         if (App.UsesMailPickup)
@@ -847,8 +902,20 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         catch (TimeoutException ex)
         {
             string dump;
-            lock (_logLock) dump = string.Join('\n', _appLog.TakeLast(120));
-            throw new TimeoutException($"{ex.Message}\n\n--- {App.AppName} process output (last 120 lines) ---\n{dump}", ex);
+            bool portTaken;
+            // An exited process's last lines may still be in the pipes; WaitForExit drains them.
+            if (_appProcess.HasExited)
+                _appProcess.WaitForExit();
+            lock (_logLock)
+            {
+                dump = string.Join('\n', _appLog.TakeLast(120));
+                portTaken = _appProcess.HasExited
+                    && _appLog.Any(l => l.Contains("address already in use", StringComparison.OrdinalIgnoreCase));
+            }
+            var message = $"{ex.Message}\n\n--- {App.AppName} process output (last 120 lines) ---\n{dump}";
+            if (portTaken)
+                throw new PortTakenException(message, ex);
+            throw new TimeoutException(message, ex);
         }
         return httpsUrl;
     }
@@ -864,6 +931,10 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(120);
         while (DateTime.UtcNow < deadline)
         {
+            // An exited process never becomes ready: say so now, not after the full wait.
+            if (_appProcess is { HasExited: true } exited)
+                throw new TimeoutException($"{App.AppName} exited with code {exited.ExitCode} before it became ready at {baseUrl}");
+
             try
             {
                 using var response = await client.GetAsync($"{baseUrl}/");

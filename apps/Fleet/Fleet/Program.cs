@@ -9,7 +9,7 @@ using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Replication.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
-using MintPlayer.Spark.IdentityProvider.Extensions;
+using MintPlayer.Spark.Authorization.ResourceServer;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -84,46 +84,37 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // every Spark endpoint, which is the point of M9's composite scheme.
         spark.AddModuleCertificateAuthentication();
 
-        // Fleet both issues and consumes machine tokens here. In a real topology those are separate
-        // deployments — a central SparkId issues, each resource server validates — but keeping both
-        // in one app is what makes the round trip demonstrable, and the two halves are configured
-        // independently either way.
-        var issuer = builder.Configuration["SparkIdentityProvider:Issuer"];
-        if (!string.IsNullOrWhiteSpace(issuer))
-        {
-            spark.AddIdentityProvider(idp =>
-            {
-                idp.Issuer = issuer;
+        // People sign in through SparkId, the demo identity provider: appsettings.Development.json
+        // registers it as the OpenID Connect scheme "SparkId", and SparkId seeds the "fleet" client.
+        spark.AddExternalProviders(builder.Configuration);
 
-                // Outside Development the provider requires a key rather than generating one, so
-                // this has to be configurable — a key that appears on first use is a key nobody
-                // backed up, and every token in flight dies at the next restart.
-                idp.SigningKeyPath = builder.Configuration["SparkIdentityProvider:SigningKeyPath"]
-                    ?? idp.SigningKeyPath;
-            });
-        }
-
-        // Who this app TRUSTS is a separate question from who it IS, and configuring them
-        // separately is the difference between a demo and the real topology. These were briefly the
-        // same value here, which quietly made "validate tokens from SparkId" impossible: Fleet could
-        // only trust an issuer it was also hosting at that URL. Defaulting to the self-hosted issuer
-        // keeps the single-app demo working; setting Spark:JwtBearer:Authority points Fleet at a
-        // separate provider, which is what a real deployment does.
-        var authority = builder.Configuration["Spark:JwtBearer:Authority"] ?? issuer;
+        // Fleet is a resource server: SparkId issues machine tokens, Fleet validates them. Fleet used
+        // to host an issuer of its own for this round trip; since SparkId exists the topology is the
+        // real one (docs/identity_provider_platform_PRD.md R1), and Spark:JwtBearer:Authority names
+        // the issuer Fleet trusts. Unset, Fleet accepts no bearer tokens at all.
+        var authority = builder.Configuration["Spark:JwtBearer:Authority"];
         if (!string.IsNullOrWhiteSpace(authority))
         {
             // The consumer half of client_credentials, and the reason a CI job can POST here at all.
             // Audience is required by the extension: without it this app would accept every token
             // the issuer ever minted, including ones a client obtained for a different resource.
-            spark.AddJwtBearerCredential(jwt =>
-            {
-                jwt.Authority = authority;
-                jwt.Audience = builder.Configuration["Spark:JwtBearer:Audience"] ?? "fleet-api";
+            // As a resource server (PRD I12) it also accepts only at+jwt access tokens and enforces
+            // DPoP and certificate binding; /api/fleet/cars below needs the fleet.read scope.
+            spark.AddSparkResourceServer(
+                authority,
+                builder.Configuration["Spark:JwtBearer:Audience"] ?? "fleet-api",
+                rs =>
+                {
+                    // Discovery is fetched over the issuer's own scheme. Left at the default this
+                    // demands HTTPS, which a local http issuer cannot satisfy.
+                    rs.RequireHttpsMetadata = authority.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
 
-                // Discovery is fetched over the issuer's own scheme. Left at the default this
-                // demands HTTPS, which a local http issuer cannot satisfy.
-                jwt.RequireHttpsMetadata = authority.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-            });
+                    // Ask SparkId about every token instead of trusting it until it expires. The
+                    // introspecting client's id must be the audience (SparkId's MayIntrospect).
+                    rs.UseIntrospection = builder.Configuration.GetValue("Spark:JwtBearer:UseIntrospection", false);
+                    rs.IntrospectionClientId = builder.Configuration["Spark:JwtBearer:IntrospectionClientId"];
+                    rs.IntrospectionClientSecret = builder.Configuration["Spark:JwtBearer:IntrospectionClientSecret"];
+                });
         }
     };
 });
@@ -169,6 +160,8 @@ app.UseSparkFull();
 app.UseEndpoints(endpoints =>
 {
     endpoints.MapSparkFull();
+    // The app's own generator endpoints (Api/FleetCarsEndpoint.cs, the I12 resource-server demo).
+    MintPlayer.AspNetCore.Endpoints.Generated.FleetEndpointsExtensions.MapFleetEndpoints(endpoints);
 });
 
 app.UseWhen(

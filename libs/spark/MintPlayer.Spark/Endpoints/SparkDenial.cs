@@ -22,7 +22,7 @@ namespace MintPlayer.Spark.Endpoints;
 /// <item><b>Anonymous</b> — 401, always, whether or not the resource exists. This is not an
 /// oracle: authorization is evaluated against the principal alone and <i>before</i> anything is
 /// loaded, so the answer is identical for a real id, a nonexistent one and a typo. It is also
-/// load-bearing — <c>ng-spark-auth</c>'s interceptor turns a 401 into the login redirect, and
+/// load-bearing — <c>ng-spark/auth</c>'s interceptor turns a 401 into the login redirect, and
 /// nothing else will.</item>
 /// <item><b>Authenticated but denied</b> — 404, with a body <b>byte-identical</b> to the genuine
 /// not-found for that endpoint. Equal status is not enough; a differing message is the same
@@ -94,7 +94,7 @@ public static class SparkDenial
     /// <b>Not</b> "does the anonymous group hold any grant", which was the obvious-looking answer
     /// and is wrong. Fleet and HR each grant anonymous exactly one right, so that predicate turns
     /// <em>everything</em> into <em>something</em>: both would flip from 401 to 404 and silently
-    /// lose the sign-in redirect, since <c>ng-spark-auth</c>'s interceptor reacts to 401 alone.
+    /// lose the sign-in redirect, since <c>ng-spark/auth</c>'s interceptor reacts to 401 alone.
     /// </para>
     /// <para>
     /// Fails toward 401 when the registry cannot be resolved — outside a Spark-configured host

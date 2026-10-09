@@ -1,0 +1,22 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{ inviter }} nodigt je uit voor {{ application }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Je bent uitgenodigd voor {{ application }}</mj-text>
+        <mj-text>{{ inviter }} heeft je uitgenodigd in het team van de applicatie {{ application }} als {{ role }}.</mj-text>
+        <mj-button href="{{ link }}">Uitnodiging aanvaarden</mj-button>
+        <mj-text font-size="13px" color="#4b5563">Werkt de knop niet? Open dan deze link: <a href="{{ link }}">{{ link }}</a></mj-text>
+        <mj-text font-size="13px" color="#4b5563">Je moet aanmelden met het account waartoe dit adres behoort. De uitnodiging vervalt na {{ valid_for_days }} dagen. Verwachtte je ze niet? Negeer dan deze mail.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

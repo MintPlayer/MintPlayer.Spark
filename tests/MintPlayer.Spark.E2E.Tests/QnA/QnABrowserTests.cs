@@ -69,7 +69,7 @@ public class QnABrowserTests
     public async Task An_anonymous_visitor_stays_on_the_questions_page()
     {
         // The author cell's reputation badge asked /spark/moderation/reputation, which answered an
-        // anonymous visitor 401, and ng-spark-auth's interceptor sent the whole app to /login.
+        // anonymous visitor 401, and ng-spark/auth's interceptor sent the whole app to /login.
         var host = fixture.Host;
         using var author = await host.CreateUserAsync("ui-anon-author");
         var title = "Anonymous read " + Guid.NewGuid().ToString("N")[..10];

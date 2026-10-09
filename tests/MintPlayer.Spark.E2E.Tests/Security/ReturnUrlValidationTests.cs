@@ -98,7 +98,7 @@ public class ReturnUrlValidationTests
 
         await page.GotoAsync($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
 
-        // ng-spark-auth's login component renders the email field as <input type="text"
+        // ng-spark/auth's login component renders the email field as <input type="text"
         // id="email" formControlName="email"> — no name attribute. Match on id.
         var emailField = page.Locator("input#email").First;
         await emailField.WaitForAsync(new() { Timeout = 15_000 });

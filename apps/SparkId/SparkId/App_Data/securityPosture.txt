@@ -1,0 +1,69 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+identity-provider | MintPlayer.Spark.IdentityProvider | a47cb40caae8
+
+## Reachable without signing in (expanded)
+(nothing)
+
+## Granted to @anonymous
+(nothing)
+
+## Rights
+Administrators (identity-provider:administrators) | grant | ApproveDeveloper/OidcDeveloperRequest | identity-provider:developer-requests-approve | identity-provider
+Administrators (identity-provider:administrators) | grant | ApproveGoLive/OidcGoLiveReview | identity-provider:golive-approve | identity-provider
+Administrators (identity-provider:administrators) | grant | ApproveScope/OidcScopeApproval | identity-provider:scope-approvals-approve-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | InviteMember/OidcApplication | identity-provider:application-team-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | ManageAll/IdentityProvider | identity-provider:manage-all | identity-provider
+Administrators (identity-provider:administrators) | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | Query/OidcDeveloperRequest | identity-provider:developer-requests-query | identity-provider
+Administrators (identity-provider:administrators) | grant | Query/OidcGoLiveReview | identity-provider:golive-query | identity-provider
+Administrators (identity-provider:administrators) | grant | Query/OidcScopeApproval | identity-provider:scope-approvals-query-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | QueryRead/OidcAuditEvent | identity-provider:audit-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | QueryRead/OidcGrant | identity-provider:grants-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | Read/OidcReviewDecision | identity-provider:review-decisions-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | ReadEditNewDelete/ClientClaim | identity-provider:application-claims-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | RejectDeveloper/OidcDeveloperRequest | identity-provider:developer-requests-reject | identity-provider
+Administrators (identity-provider:administrators) | grant | RejectGoLive/OidcGoLiveReview | identity-provider:golive-reject | identity-provider
+Administrators (identity-provider:administrators) | grant | RejectScope/OidcScopeApproval | identity-provider:scope-approvals-reject-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | RevokeGrant/OidcGrant | identity-provider:grants-revoke | identity-provider
+Administrators (identity-provider:administrators) | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-administrators | identity-provider
+Administrators (identity-provider:administrators) | grant | SwitchToLive/OidcApplication | identity-provider:application-live-administrators | identity-provider
+Developers (identity-provider:developers) | grant | ApproveScope/OidcScopeApproval | identity-provider:scope-approvals-approve-developers | identity-provider
+Developers (identity-provider:developers) | grant | GenerateSecret/OidcApplication | identity-provider:application-secret-developers | identity-provider
+Developers (identity-provider:developers) | grant | InviteMember/OidcApplication | identity-provider:application-team-developers | identity-provider
+Developers (identity-provider:developers) | grant | Query/OidcApplicationMemberRow | identity-provider:members-query-developers | identity-provider
+Developers (identity-provider:developers) | grant | Query/OidcApplicationSecretRow | identity-provider:secrets-query-developers | identity-provider
+Developers (identity-provider:developers) | grant | Query/OidcScopeApproval | identity-provider:scope-approvals-query-developers | identity-provider
+Developers (identity-provider:developers) | grant | QueryRead/OidcAuditEvent | identity-provider:audit-developers | identity-provider
+Developers (identity-provider:developers) | grant | QueryReadEditNewDelete/OidcApplication | identity-provider:applications-developers | identity-provider
+Developers (identity-provider:developers) | grant | QueryReadEditNewDelete/OidcResource | identity-provider:resources-developers | identity-provider
+Developers (identity-provider:developers) | grant | Read/OidcReviewDecision | identity-provider:review-decisions-developers | identity-provider
+Developers (identity-provider:developers) | grant | ReadEditNewDelete/OidcApiScope | identity-provider:api-scopes-developers | identity-provider
+Developers (identity-provider:developers) | grant | ReadEditNewDelete/OidcApplicationScope | identity-provider:application-scopes-developers | identity-provider
+Developers (identity-provider:developers) | grant | RejectScope/OidcScopeApproval | identity-provider:scope-approvals-reject-developers | identity-provider
+Developers (identity-provider:developers) | grant | RemoveMember/OidcApplicationMemberRow | identity-provider:members-remove-developers | identity-provider
+Developers (identity-provider:developers) | grant | ResendInvitation/OidcApplicationMemberRow | identity-provider:members-resend-developers | identity-provider
+Developers (identity-provider:developers) | grant | RevokeSecret/OidcApplicationSecretRow | identity-provider:secrets-revoke-developers | identity-provider
+Developers (identity-provider:developers) | grant | SwitchToDevelopment/OidcApplication | identity-provider:application-development-developers | identity-provider
+Developers (identity-provider:developers) | grant | SwitchToLive/OidcApplication | identity-provider:application-live-developers | identity-provider
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+
+## Inert: libraries switched off in "libraries"
+(nothing)

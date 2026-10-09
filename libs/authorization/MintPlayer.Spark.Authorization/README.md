@@ -22,7 +22,7 @@ What this package still gives you:
   endpoint family, and how much of it to mount (`SparkLocalCredentials`)
 - **External login** — GitHub and any other OAuth/OIDC provider
 - **JWT bearer** — for machine callers
-- **The Angular half** — `@mintplayer/ng-spark-auth`, installed and scaffolded by MSBuild
+- **The Angular half** — the `@mintplayer/ng-spark/auth/*` entry points of `@mintplayer/ng-spark`, installed and scaffolded by MSBuild
 
 Custom group membership is a core concern now: use `spark.UseGroupMembershipProvider<T>()` from
 `MintPlayer.Spark.Extensions`, with or without this package.
@@ -128,7 +128,7 @@ spark.AddAuthentication<SparkUser>(auth =>
 - A disallowed kind is refused **exactly like an unknown account** (same 401, no lookup, no failed
   attempt counted), so it reveals nothing about accounts.
 - `/spark/auth/capabilities` reports it as `signInIdentifiers` (`["email"]`, `["userName"]` or both;
-  empty under `LocalCredentials = Disabled`). ng-spark-auth's login page labels its field from it —
+  empty under `LocalCredentials = Disabled`). ng-spark/auth's login page labels its field from it —
   "Email" (`type=email`, `autocomplete=email`), "User name" or "Email or user name"
   (`autocomplete=username`) — and so does the OIDC `/connect/login` page.
 - A value allowing neither is refused at startup unless `LocalCredentials` is `Disabled`, where there
@@ -146,7 +146,7 @@ browser, so:
   external sign-up, the profile page, an application's own `UserManager` calls. Error code
   `UserNameContainsAt`. It also keeps the two sign-in lookups from colliding.
 - **`POST /register` requires a `userName`** (`SparkRegisterRequest`: `email`, `password`,
-  `userName`); a missing or blank one is a 400. ng-spark-auth's register page asks for it, and
+  `userName`); a missing or blank one is a 400. ng-spark/auth's register page asks for it, and
   `SparkClient.RegisterAsync(email, password, userName)` sends it.
 - **A confirmed email change never touches the user name.** (`SparkUserManager<TUser>`, whose only
   job was to move an email-shaped user name along, is removed.)
@@ -199,18 +199,111 @@ absent until the provider issues new ones. `SparkUser.CreatedAtUtc` and `Registr
 (`password`, `external:{scheme}`, `other`) are stamped on create; the backfill fills `CreatedAtUtc`
 from the oldest revision where revisions exist (RavenDB keeps no creation date in metadata).
 
-#### External providers (#460 D7)
+#### External providers (#460 D7, #490 D5/D6/D7)
 
-Presets: `AddGitHub`, `AddSparkGoogle`, `AddSparkMicrosoftAccount`, `AddSparkFacebook`,
-`AddSparkTwitter`, `AddSparkLinkedIn` (on the `IdentityBuilder` in `configureProviders`). Each declares
-its **verified-email signal**: verified → a confirmed account; a reliable signal saying "not verified"
-→ no account (`email_not_verified`); **no reliable signal** (Facebook, X, Microsoft work/school
-accounts) → an **unconfirmed** account and a confirmation mail (`confirm_email_sent` when
-`RequireConfirmedEmail` is on). Microsoft is trusted only for personal accounts (id-token `tid` = the
-consumers tenant). A scheme with no preset keeps the old rule: `email_verified=true` or no account.
-Override per scheme with `SparkAuthenticationOptions.ExternalProviders[scheme]`. New user names are a
-**slug of the display name** (`john-doe`, `john-doe-2`, never the email's local part), editable on
-the profile page; GitHub keeps the login verbatim (applications compare it with repository owners).
+Every provider is added on the Spark builder, **after** `spark.AddAuthentication<TUser>()` (a preset
+called before it throws). There is no `configureProviders` parameter any more.
+
+```csharp
+builder.Services.AddSpark(builder.Configuration, spark =>
+{
+    spark.AddAuthentication<SparkUser>();
+
+    // Everything configured under Spark:Auth:Providers (below), with optional code tuning:
+    spark.AddExternalProviders(builder.Configuration, providers => providers
+        .GitHub(o => o.Scope.Add("read:org")));
+
+    // Or one preset at a time, in code:
+    spark.AddGitHub(o => { o.ClientId = "…"; o.ClientSecret = "…"; });
+    spark.AddGoogle(o => { … });
+    spark.AddMicrosoftAccount(o => { … });
+    spark.AddFacebook(o => { … });
+    spark.AddTwitter(o => { … });   // X, OAuth 2.0 + PKCE
+    spark.AddLinkedIn(o => { … });
+    spark.AddOpenIdConnect("MintPlayer", "MintPlayer ID", o =>
+    {
+        o.Authority = "https://id.example";   // e.g. another app's MintPlayer.Spark.IdentityProvider
+        o.ClientId = "…";
+        o.ClientSecret = "…";
+    });
+});
+```
+
+Each preset takes an optional `Action<TOptions>`, which runs after Spark's defaults (and after the
+configuration binding), and an overload `(scheme, displayName, configure)` for a second instance or
+another label. Calling a preset twice for the same scheme **merges**: the handler is registered once
+and each call's `configure` runs in call order — so `AddExternalProviders(configuration)` followed by
+`spark.AddGitHub(o => …)` binds the configuration first and applies the code after it. Two different
+presets on one scheme throw.
+
+**Configuration** (`Spark:Auth:Providers`):
+
+```json
+{
+  "Spark": {
+    "Auth": {
+      "Providers": {
+        "GitHub":           { "ClientId": "…", "ClientSecret": "…" },
+        "Google":           { "ClientId": "…", "ClientSecret": "…" },
+        "MicrosoftAccount": { "ClientId": "…", "ClientSecret": "…" },
+        "Facebook":         { "ClientId": "…", "ClientSecret": "…" },
+        "Twitter":          { "ClientId": "…", "ClientSecret": "…", "DisplayName": "X" },
+        "LinkedIn":         { "ClientId": "…", "ClientSecret": "…" },
+        "OpenIdConnect": {
+          "MintPlayer": {
+            "DisplayName": "MintPlayer ID",
+            "Authority": "https://id.example",
+            "ClientId": "…",
+            "ClientSecret": "…"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+- The social keys are fixed scheme names; `DisplayName` is optional and labels the button
+  (`/spark/auth/capabilities` serves it). Each `OpenIdConnect:<scheme>` becomes a scheme of that name.
+- A provider with no section, or an empty `ClientId`, is **not registered** — the capabilities
+  endpoint, and so the sign-in buttons, follow. Keep secrets in user-secrets or environment variables
+  (`Spark__Auth__Providers__GitHub__ClientSecret`).
+- **An unknown key throws at startup**, listing the valid keys (`GitHub`, `Google`, `MicrosoftAccount`,
+  `Facebook`, `Twitter`, `LinkedIn`, `OpenIdConnect`): a misspelt provider would otherwise silently
+  never appear.
+- The `providers => providers.GitHub(…)` / `.OpenIdConnect("MintPlayer", …)` hooks run only for a
+  provider the configuration enabled.
+
+**Raw handlers must be declared.** A remote scheme (any `RemoteAuthenticationHandler`: OAuth, OIDC,
+…) registered through `services.AddAuthentication()` without a Spark declaration **throws at
+startup** — nothing would say whether its email can be trusted. Declare it with
+`spark.AddExternalScheme("MyProvider", SparkExternalProviderPolicy.Default)` (an entry in
+`SparkAuthenticationOptions.ExternalProviders` counts too). A raw handler does not get Spark's
+`OnRemoteFailure` report; the presets do.
+
+**Verified-email signal.** Each preset declares one: verified → a confirmed account; a reliable signal
+saying "not verified" → no account (`email_not_verified`); **no reliable signal** (Facebook, X,
+Microsoft work/school accounts) → an **unconfirmed** account and a confirmation mail
+(`confirm_email_sent` when `RequireConfirmedEmail` is on). Microsoft is trusted only for personal
+accounts (id-token `tid` = the consumers tenant). OpenID Connect reads `email_verified` (boolean, or the
+string `"true"`). Override per scheme with `SparkAuthenticationOptions.ExternalProviders[scheme]`. New
+user names are a **slug of the display name** (`john-doe`, `john-doe-2`, never the email's local part),
+editable on the profile page; GitHub keeps the login verbatim (applications compare it with repository
+owners).
+
+**Per provider:**
+
+| Preset | Scheme / callback | Notes |
+|---|---|---|
+| `AddGitHub` | `GitHub` · `/signin-github` | `user:email` scope; verified email from `/user/emails` |
+| `AddGoogle` | `Google` · `/signin-google` | |
+| `AddMicrosoftAccount` | `Microsoft` · `/signin-microsoft` | adds `openid` for the `tid` |
+| `AddFacebook` | `Facebook` · `/signin-facebook` | |
+| `AddTwitter` | `Twitter` (label "X") · `/signin-twitter` | OAuth 2.0 + PKCE, scopes `users.read tweet.read users.email`, HTTP Basic client auth on the token request. **The email needs the "Request email from users" setting on the X developer app**; without it `confirmed_email` is absent and the account has no email. |
+| `AddLinkedIn` | `LinkedIn` · `/signin-linkedin` | OIDC userinfo |
+| `AddOpenIdConnect` | `<scheme>` · `/signin-<scheme>`, `/signout-callback-<scheme>` | code + PKCE, `response_mode=query`, `openid profile email`, userinfo claims, tokens not saved, `client_id` sent on sign-out |
+
+Register the callback URL (`https://<host>/signin-…`) with the provider.
 
 #### Account deletion and personal data (#460 D8)
 
@@ -317,7 +410,7 @@ by granting `*/*`.
 
 When you reference `MintPlayer.Spark.Authorization` (via NuGet), the package's MSBuild targets:
 
-1. **Check that the SPA declares `@mintplayer/ng-spark-auth`** — warning `SPARK030` when
+1. **Check that the SPA declares `@mintplayer/ng-spark`** (it ships the `@mintplayer/ng-spark/auth/*` entry points) — warning `SPARK030` when
    `$(SpaRoot)package.json` does not. The build never runs `npm` (it used to, in the wrong directory
    for a root-level `node_modules`, writing an unpinned range); add the dependency yourself with the
    major matching your Angular major.
@@ -389,6 +482,20 @@ It defaults to a popup and resolves once the flow ends, whichever way it ends. P
 `{ mode: 'redirect' }` for a full-page navigation instead; that promise never settles,
 because the outcome arrives as the next page load rather than as a value.
 
+**Where a redirect-mode outcome lands (`errorUrl`, #490 M6).** `GET /spark/auth/external-login` and
+`GET /spark/auth/external-logins/link` take an optional `errorUrl` next to `returnUrl`. Both are
+sanitized the same way (a local path, anything else becomes `/`) and carried through the provider
+round trip on the callback URL. In redirect mode:
+
+- success redirects to `returnUrl`;
+- a refusal, including a failure at the provider (`remote_failure`, `no_login_info` on cancel), redirects
+  to `errorUrl` with `sparkExternalLogin=<code>` appended — or to `returnUrl` when no `errorUrl` was given.
+
+Popup mode ignores it. The shipped sign-in and account pages pass their own URL (with its `returnUrl`
+query, minus a stale `sparkExternalLogin`), so the code lands on the page that reads and shows it; a
+custom page passes `{ errorUrl }` to `loginWithProvider` / `linkProvider`. The identity provider's
+`/connect/login` does the same with its federation buttons.
+
 On failure `result.error` is one of `no_login_info` (the user cancelled at the provider),
 `email_not_verified` (the provider did not attest the address, so no account was created),
 `account_creation_failed`, `popup_blocked` or `popup_closed`. The codes are deliberately
@@ -399,14 +506,17 @@ success, a server-side refusal, a blocked window, and a user who simply closes i
 listener that is only removed on success leaks on the other three.
 
 `twitterProvider()` (scheme `Twitter`, labelled "X") and `linkedInProvider()` (scheme `LinkedIn`) match
-the server's `AddSparkTwitter()` / `AddSparkLinkedIn()` presets, next to `githubProvider()`,
-`googleProvider()`, `facebookProvider()` and `microsoftProvider()`.
+the server's `spark.AddTwitter()` / `spark.AddLinkedIn()` presets, next to `githubProvider()`,
+`googleProvider()`, `facebookProvider()` and `microsoftProvider()`. For an OpenID Connect scheme
+(`spark.AddOpenIdConnect(scheme, …)` or `Spark:Auth:Providers:OpenIdConnect:<scheme>`) use
+`oidcProvider(scheme, displayName, iconClass?)`, e.g. `oidcProvider('HR', 'Spark HR')`; the scheme must
+match the server's exactly.
 
 ### Account pages (`withAccount()`, #460 D16)
 
 ```typescript
-import { sparkAuthRoutes, withLocalLogin, withAccount } from '@mintplayer/ng-spark-auth/routes';
-import { provideSparkAccountProfileFields } from '@mintplayer/ng-spark-auth/models';
+import { sparkAuthRoutes, withLocalLogin, withAccount } from '@mintplayer/ng-spark/auth/routes';
+import { provideSparkAccountProfileFields } from '@mintplayer/ng-spark/auth/models';
 
 // routes
 ...sparkAuthRoutes(withLocalLogin(), withAccount()),
@@ -475,10 +585,10 @@ export function setupSparkAuthProviders(config?: Partial<SparkAuthConfig>) {
 You can also skip the generated file and import directly from the npm package:
 
 ```typescript
-import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark-auth';
+import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import {
   sparkAuthRoutes, withLocalLogin, withRegistration, withExternalLogin, githubProvider,
-} from '@mintplayer/ng-spark-auth/routes';
+} from '@mintplayer/ng-spark/auth/routes';
 ```
 
 The root entry point carries the bootstrap API only; everything else lives on a sub-path (`/routes`,
@@ -503,7 +613,7 @@ Customize the build targets by setting these properties in your `.csproj`:
 | `GenerateSparkAuthSetupFile` | `true` | Set to `false` to skip generating the TypeScript setup file |
 | `SpaRoot` | `ClientApp\` | Path to the SPA source directory |
 | `SparkAuthSetupFile` | `$(SpaRoot)src\spark-auth.setup.ts` | Path for the generated TypeScript file |
-| `SparkAuthNpmPackage` | `@mintplayer/ng-spark-auth` | npm package to install |
+| `SparkAuthNpmPackage` | `@mintplayer/ng-spark` | npm package the SPA must declare |
 
 Example - disable automatic frontend setup:
 

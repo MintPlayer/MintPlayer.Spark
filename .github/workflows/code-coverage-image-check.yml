@@ -34,7 +34,6 @@ on:
       - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
       - 'libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/**'
       - 'libs/node_packages/ng-spark/**'
-      - 'libs/node_packages/ng-spark-auth/**'
       - 'package.json'
       - 'package-lock.json'
       - 'nx.json'

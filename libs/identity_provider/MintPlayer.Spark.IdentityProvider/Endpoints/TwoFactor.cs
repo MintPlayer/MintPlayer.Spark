@@ -6,6 +6,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
+using MintPlayer.Spark.IdentityProvider.Services;
 
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
@@ -28,6 +29,8 @@ internal sealed partial class OidcTwoFactorPage : IGetEndpoint<string>
 
     [Inject] private readonly IAntiforgery antiforgery;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ConnectText text;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
 
     public override Task<IResult> HandleAsync(CancellationToken ct)
     {
@@ -37,6 +40,8 @@ internal sealed partial class OidcTwoFactorPage : IGetEndpoint<string>
         var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(ReturnUrl);
         var useRecoveryCode = Recovery == "true";
         var rememberMe = RememberMe == "true";
+        // D7: the pending authorize request's ui_locales, when that is what this sign-in resumes.
+        text.UseUiLocalesOfReturnUrl(returnUrl);
 
         return Task.FromResult(ConnectResults.Html(
             BuildFormHtml(httpContextAccessor.HttpContext!, returnUrl, Error, useRecoveryCode, rememberMe)));
@@ -45,7 +50,7 @@ internal sealed partial class OidcTwoFactorPage : IGetEndpoint<string>
     private string BuildFormHtml(HttpContext context, string returnUrl, string? error, bool useRecoveryCode, bool rememberMe)
     {
         var sb = new StringBuilder();
-        ConnectPageTheme.AppendDocumentStart(sb, context, "Two-Factor Authentication");
+        ConnectPageTheme.AppendDocumentStart(sb, context, text["twoFactorTitle"], text.Culture, options.Branding);
         sb.Append("body{max-width:400px;margin:80px auto;padding:0 20px}");
         sb.Append("h2{margin-bottom:24px}");
         sb.Append(".form-group{margin-bottom:16px}");
@@ -59,11 +64,13 @@ internal sealed partial class OidcTwoFactorPage : IGetEndpoint<string>
         sb.Append(".error{color:var(--idp-error-color);background:var(--idp-error-bg);border:1px solid var(--idp-error-border);padding:8px 12px;border-radius:6px;margin-bottom:16px;font-size:14px}");
         sb.Append(".info{color:var(--idp-info-color);background:var(--idp-info-bg);border:1px solid var(--idp-info-border);padding:8px 12px;border-radius:6px;margin-bottom:16px;font-size:14px}");
         sb.Append("</style></head><body>");
-        sb.Append("<h2>Two-Factor Authentication</h2>");
+        ConnectPageTheme.AppendBrand(sb, options.Branding);
+        sb.Append("<h2>").Append(ConnectPage.Encode(text["twoFactorTitle"])).Append("</h2>");
 
-        if (!string.IsNullOrEmpty(error))
+        // A fixed message per code, never the query text itself (see ConnectPage.ErrorKey).
+        if (ConnectPage.ErrorKey(error) is { } errorKey)
         {
-            sb.Append("<div class=\"error\">").Append(ConnectPage.Encode(ConnectPage.ErrorMessage(error)!)).Append("</div>");
+            sb.Append("<div class=\"error\">").Append(ConnectPage.Encode(text[errorKey])).Append("</div>");
         }
 
         sb.Append("<form method=\"post\">");
@@ -74,26 +81,28 @@ internal sealed partial class OidcTwoFactorPage : IGetEndpoint<string>
 
         if (useRecoveryCode)
         {
-            sb.Append("<div class=\"info\">Enter one of your recovery codes.</div>");
+            sb.Append("<div class=\"info\">").Append(ConnectPage.Encode(text["twoFactorRecoveryInfo"])).Append("</div>");
             sb.Append("<input type=\"hidden\" name=\"useRecoveryCode\" value=\"true\" />");
             sb.Append("<div class=\"form-group\">");
-            sb.Append("<label for=\"recoveryCode\">Recovery Code</label>");
+            sb.Append("<label for=\"recoveryCode\">").Append(ConnectPage.Encode(text["twoFactorRecoveryLabel"])).Append("</label>");
             sb.Append("<input type=\"text\" id=\"recoveryCode\" name=\"recoveryCode\" required autofocus autocomplete=\"off\" />");
             sb.Append("</div>");
-            sb.Append("<button type=\"submit\" class=\"btn btn-primary\">Verify</button>");
+            sb.Append("<button type=\"submit\" class=\"btn btn-primary\">").Append(ConnectPage.Encode(text["twoFactorVerify"])).Append("</button>");
             sb.Append("</form>");
-            sb.Append("<a href=\"/connect/two-factor?returnUrl=").Append(Uri.EscapeDataString(returnUrl)).Append(rememberMe ? "&rememberMe=true" : "").Append("\" class=\"btn-link\">Use authenticator code instead</a>");
+            sb.Append("<a href=\"/connect/two-factor?returnUrl=").Append(Uri.EscapeDataString(returnUrl)).Append(rememberMe ? "&rememberMe=true" : "").Append("\" class=\"btn-link\">")
+              .Append(ConnectPage.Encode(text["twoFactorUseAuthenticator"])).Append("</a>");
         }
         else
         {
-            sb.Append("<div class=\"info\">Enter the 6-digit code from your authenticator app.</div>");
+            sb.Append("<div class=\"info\">").Append(ConnectPage.Encode(text["twoFactorCodeInfo"])).Append("</div>");
             sb.Append("<div class=\"form-group\">");
-            sb.Append("<label for=\"code\">Authentication Code</label>");
+            sb.Append("<label for=\"code\">").Append(ConnectPage.Encode(text["twoFactorCodeLabel"])).Append("</label>");
             sb.Append("<input type=\"text\" id=\"code\" name=\"code\" required autofocus autocomplete=\"one-time-code\" inputmode=\"numeric\" pattern=\"[0-9]*\" maxlength=\"6\" />");
             sb.Append("</div>");
-            sb.Append("<button type=\"submit\" class=\"btn btn-primary\">Verify</button>");
+            sb.Append("<button type=\"submit\" class=\"btn btn-primary\">").Append(ConnectPage.Encode(text["twoFactorVerify"])).Append("</button>");
             sb.Append("</form>");
-            sb.Append("<a href=\"/connect/two-factor?returnUrl=").Append(Uri.EscapeDataString(returnUrl)).Append("&recovery=true").Append(rememberMe ? "&rememberMe=true" : "").Append("\" class=\"btn-link\">Use a recovery code instead</a>");
+            sb.Append("<a href=\"/connect/two-factor?returnUrl=").Append(Uri.EscapeDataString(returnUrl)).Append("&recovery=true").Append(rememberMe ? "&rememberMe=true" : "").Append("\" class=\"btn-link\">")
+              .Append(ConnectPage.Encode(text["twoFactorUseRecovery"])).Append("</a>");
         }
 
         sb.Append("</body></html>");

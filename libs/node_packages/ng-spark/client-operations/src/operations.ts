@@ -76,6 +76,22 @@ export interface RetryOperation {
 }
 
 /**
+ * A value the server shows exactly once (a generated client secret, an API token), in a dialog with
+ * a copy button (`IClientAccessor.ShowSecret`, `docs/identity_provider_platform_PRD.md` D5). The server
+ * keeps only a hash. The value is never written to the page's state, the URL or browser storage, and
+ * closing the dialog discards it.
+ */
+export interface ShowSecretOperation {
+    type: 'showSecret';
+    /** The dialog's title, in the request's language. */
+    title: string;
+    /** The explanation shown above the value, in the request's language. */
+    message: string;
+    /** The value itself. */
+    value: string;
+}
+
+/**
  * Discriminated union of known operation types, plus an open shape for unknown
  * future operations. Handlers should narrow via the `type` discriminator before
  * accessing fields specific to their operation type.
@@ -86,6 +102,7 @@ export type ClientOperation =
     | RefreshAttributeOperation
     | RefreshQueryOperation
     | RetryOperation
+    | ShowSecretOperation
     | { type: string; [key: string]: unknown };
 
 /**

@@ -148,14 +148,15 @@ MintPlayer.Spark/
 │   │   └── MintPlayer.Spark.Testing/             # Test harness: embedded RavenDB driver, in-memory host factory
 │   ├── socket_extensions/
 │   │   └── MintPlayer.Dotnet.SocketExtensions/   # WebSocket read/write helpers
-│   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, ng-spark-auth)
+│   └── node_packages/                            # Angular libraries (@mintplayer/ng-spark, auth entries under ng-spark/auth)
 ├── tests/                                        # Test projects (unit, source-generator, client, E2E)
 ├── apps/                                         # Applications: the demos, and CodeCoverage
 │   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
-│   ├── DemoApp/                                  # Sample ASP.NET Core + Angular application
+│   ├── DemoApp/                                  # The minimal Spark app: core only, no Authorization, no identity provider
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
 │   ├── HR/                                       # HR demo (auth, messaging, replication)
-│   └── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
+│   ├── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
+│   └── SparkId/                                  # The demo identity provider (HR, Fleet and QnA sign in here)
 └── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```
 
@@ -185,6 +186,8 @@ MintPlayer.Spark/
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
+| [Identity provider](libs/identity_provider/MintPlayer.Spark.IdentityProvider/README.md) | Making a Spark app an OpenID Connect provider: the library layer and its two groups, endpoints, options, keys, consent, sessions, and resource servers (`AddSparkResourceServer`, `RequireScope`) |
+| [Registering applications (developers)](docs/guide-identity-provider-developers.md) | For developers using a Spark identity provider: becoming a developer, teams and invitations, Development and Live, secrets shown once, scopes and API resources, client authentication, dynamic registration |
 | [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions (no wildcards), the four precedence tiers, and what `Query` without `Read` does to a grid |
 | [Row Security](docs/guide-row-security.md) | Row filters and checks per type, row policies for many types, persistent-object interceptors, `WITH CHECK`, attribute redaction — and the documented override gaps |
 | [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |
@@ -211,7 +214,7 @@ MintPlayer.Spark/
 | [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
 | [Testing without a browser — `SparkClient`](libs/client/MintPlayer.Spark.Client/README.md) | Drive a real Spark backend from C# over the same protocol the Angular frontend uses: CRUD, queries, actions, auth. What it covers, what it cannot do yet, and why it will never replace browser tests |
 | [`@mintplayer/ng-spark`](libs/node_packages/ng-spark/README.md) | The Angular front end: `provideSpark()`, `sparkRoutes()` and every secondary entry point — panels, soft delete, history, moderation, renderers, client operations, `withSparkTimezone` |
-| [`@mintplayer/ng-spark-auth`](libs/node_packages/ng-spark-auth/README.md) | The Angular half of Authorization: `provideSparkAuth()`, `sparkAuthRoutes(...)` with `withLocalLogin` / `withRegistration` / `withExternalLogin` / `withPasskeys` / `withAccount()`, the guards and entry points |
+| [`@mintplayer/ng-spark/auth`](libs/node_packages/ng-spark/auth/README.md) | The Angular half of Authorization: `provideSparkAuth()`, `sparkAuthRoutes(...)` with `withLocalLogin` / `withRegistration` / `withExternalLogin` / `withPasskeys` / `withAccount()`, the guards and entry points |
 
 ### Reference
 
@@ -285,10 +288,11 @@ The other demos run the same way, each from its own project directory:
 
 | Demo | Directory | Host | Shows |
 | --- | --- | --- | --- |
-| DemoApp | `apps/DemoApp/DemoApp` | `https://localhost:5007` | the core PersistentObject pattern |
-| Fleet | `apps/Fleet/Fleet` | `https://localhost:5003` | authentication, messaging, replication (with HR) |
-| HR | `apps/HR/HR` | `https://localhost:5005` | authentication, the identity provider, replication (with Fleet) |
+| DemoApp | `apps/DemoApp/DemoApp` | `https://localhost:5007` | the minimal Spark app: core only, no Authorization, no identity provider |
+| Fleet | `apps/Fleet/Fleet` | `https://localhost:5003` | authentication, messaging, replication (with HR), a resource server for SparkId's machine tokens |
+| HR | `apps/HR/HR` | `https://localhost:5005` | authentication, replication (with Fleet) |
 | QnA | `apps/QnA/QnA` | `https://localhost:5009` | the #460 packages: Moderation, SoftDelete, History, MailManager, the account pages — see [apps/QnA/README.md](apps/QnA/README.md) |
+| SparkId | `apps/SparkId/SparkId` | `https://localhost:5011` | the identity provider: HR, Fleet and QnA sign in here ("Spark Identity" on their sign-in pages) |
 
 **Docker image (DemoApp).** DemoApp is the only demo with a Dockerfile. Build it from the repository root, since it needs the whole workspace as context:
 
@@ -317,7 +321,7 @@ Use **10.0.1+**, which builds the projects sequentially before launching them in
 
 > The `/spark/*` endpoints live on the **host** port above. Each host also spawns its own Angular dev server on a separate random port (printed as `➜ Local: http://localhost:<port>/`); hitting that dev-server port directly serves `index.html` for every path, so a request like `/spark/program-units` looks like a 404. Always use the host port for API/middleware requests.
 
-**Library HMR:** edit any file under `libs/node_packages/ng-spark/src/**` or `libs/node_packages/ng-spark-auth/src/**` while a demo is running — changes reflect in the browser without a restart, with component state preserved. Libraries are consumed as **source** during dev (tsconfig path aliases resolve directly to `.ts` files). The ng-packagr `build` target on each library produces the publishable dist for `npm publish`; dev never consumes dist.
+**Library HMR:** edit any file under `libs/node_packages/ng-spark/**` (auth entries included) while a demo is running — changes reflect in the browser without a restart, with component state preserved. Libraries are consumed as **source** during dev (tsconfig path aliases resolve directly to `.ts` files). The ng-packagr `build` target on each library produces the publishable dist for `npm publish`; dev never consumes dist.
 
 ### Model Synchronization
 
@@ -432,8 +436,8 @@ A pull request must pass these before merging.
 
 [`pull-request.yml`](.github/workflows/pull-request.yml), job `pull-request`:
 - **Build affected projects** — `nx affected --target=build`, .NET and Angular.
-- **Type-check the npm packages' specs** — `tsc --noEmit` on ng-spark's and ng-spark-auth's `tsconfig.spec.json` (vitest does not type-check, and ng-packagr skips specs).
-- **Verify Spark models are in sync** — `--spark-verify-model` for every app (DemoApp, HR, Fleet, QnA, CodeCoverage).
+- **Type-check the npm packages' specs** — `tsc --noEmit` on ng-spark's `tsconfig.spec.json` (auth entries included) (vitest does not type-check, and ng-packagr skips specs).
+- **Verify Spark models are in sync** — `--spark-verify-model` for every app (DemoApp, HR, Fleet, QnA, SparkId, CodeCoverage).
 - **Verify the anonymous surface has not widened** — `--spark-verify-security` against each app's committed `securityPosture.txt`.
 - **Verify a changed package was version-bumped** — every touched `libs/` package must carry a new version.
 - **Run tests** — `nx run-many --target=test`: all .NET test projects (including E2E) and vitest.
@@ -457,7 +461,7 @@ A pull request must pass these before merging.
 
 - **MintPlayer.Spark** - Core library, no application-specific code
 - **MintPlayer.Spark.Abstractions** - Interfaces and models shared across projects
-- **apps/DemoApp** - Sample application for testing features
+- **apps/DemoApp** - The minimal Spark app (core only); new features land in the other demos
 - **apps/DemoApp.Library** - Example of shared entity definitions
 
 ## License

@@ -30,7 +30,7 @@ import { spawnSync } from 'node:child_process';
 const E2E = 'MintPlayer.Spark.E2E.Tests';
 // The apps the E2E suite hosts (the SparkAppDescriptor in each *TestHost.cs under
 // tests/MintPlayer.Spark.E2E.Tests). Add one here when a new host appears, or it runs stale.
-const E2E_APPS = ['Fleet', 'QnA', 'HR'];
+const E2E_APPS = ['Fleet', 'QnA', 'HR', 'SparkId'];
 
 const passthrough = process.argv.slice(2);
 

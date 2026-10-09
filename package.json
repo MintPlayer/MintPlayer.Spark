@@ -3,20 +3,20 @@
   "description": "Root package.json - npm workspaces monorepo. Single node_modules for all Angular projects.",
   "scripts": {
     "test:ng-spark": "npm --workspace @mintplayer/ng-spark run test",
-    "test:ng-spark-auth": "npm --workspace @mintplayer/ng-spark-auth run test",
-    "test:ng": "npm run test:ng-spark && npm run test:ng-spark-auth",
+    "test:ng": "npm run test:ng-spark",
     "test:affected": "node tools/test-local.mjs",
     "test:layer-transport": "node tools/layer-transport-check.mjs",
+    "test:tools": "node --test \"tools/*.test.mjs\"",
     "stamp:library-model-ids": "node tools/stamp-library-model-ids.mjs",
     "test": "nx run-many --target=test"
   },
   "workspaces": [
     "libs/node_packages/ng-spark",
-    "libs/node_packages/ng-spark-auth",
     "apps/DemoApp/DemoApp/ClientApp",
     "apps/Fleet/Fleet/ClientApp",
     "apps/HR/HR/ClientApp",
     "apps/QnA/QnA/ClientApp",
+    "apps/SparkId/SparkId/ClientApp",
     "apps/CodeCoverage/CodeCoverage/ClientApp",
     "apps/CodeCoverage/action"
   ],
@@ -29,6 +29,7 @@
     "@angular/forms": "22.2.0",
     "@angular/platform-browser": "22.2.0",
     "@angular/router": "22.2.0",
+    "@angular/service-worker": "22.2.0",
     "@mintplayer/dailymotion-player": "^20.0.0",
     "@mintplayer/file-player": "^20.0.0",
     "@mintplayer/ng-animations": "22.1.0",

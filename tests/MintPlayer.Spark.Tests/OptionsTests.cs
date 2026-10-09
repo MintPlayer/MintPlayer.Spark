@@ -10,7 +10,7 @@ public class SparkFullOptionsTests
         var options = new SparkFullOptions();
 
         options.Identity.Should().BeNull();
-        options.IdentityProviders.Should().BeNull();
+        options.ExternalProviders.Should().BeNull();
         options.Messaging.Should().BeNull();
         options.Replication.Should().BeNull();
     }

@@ -1,5 +1,6 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
+import { provideSparkServiceWorker } from '@mintplayer/ng-spark/pwa';
 import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
 import { withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideAnimations } from '@angular/platform-browser/animations';
@@ -11,6 +12,7 @@ import { AddressCardDetailRendererComponent } from './renderers/address-card-det
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    provideSparkServiceWorker(),
     provideRouter(routes),
     provideHttpClient(withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' }), ...withSparkTimezone()),
     provideAnimations(),

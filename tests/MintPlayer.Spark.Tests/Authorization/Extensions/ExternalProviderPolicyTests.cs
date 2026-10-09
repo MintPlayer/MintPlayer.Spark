@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.MicrosoftAccount;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Authentication.OAuth.Claims;
-using Microsoft.AspNetCore.Authentication.Twitter;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
@@ -66,7 +65,7 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
 
         var response = await SignUpAsync(host, "nosignal@example.com", "Jöhn Doe", verified: false);
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain("success: true", "RequireConfirmedEmail is off, so the person is signed in");
+        ExternalLoginPopupPayload.Parse(await response.Content.ReadAsStringAsync()).Success.Should().BeTrue("RequireConfirmedEmail is off, so the person is signed in");
         var user = (await host.FindByEmailAsync("nosignal@example.com"))!;
         user.EmailConfirmed.Should().BeFalse();
         user.UserName.Should().Be("john-doe");
@@ -83,7 +82,7 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
 
         var response = await SignUpAsync(host, "gated@example.com", "Gated", verified: false);
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain("error: 'confirm_email_sent'");
+        ExternalLoginPopupPayload.ErrorFrom(await response.Content.ReadAsStringAsync()).Should().Be("confirm_email_sent");
         AccountTestHost.CookieHeader(response).Should().NotContain(".AspNetCore.Identity.Application=");
         (await host.FindByEmailAsync("gated@example.com")).Should().NotBeNull();
     }
@@ -95,7 +94,7 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
 
         var response = await SignUpAsync(host, "unverified@example.com", "Someone", verified: false);
 
-        (await response.Content.ReadAsStringAsync()).Should().Contain("error: 'email_not_verified'");
+        ExternalLoginPopupPayload.ErrorFrom(await response.Content.ReadAsStringAsync()).Should().Be("email_not_verified");
         (await host.FindByEmailAsync("unverified@example.com")).Should().BeNull();
         host.Mail.Sent.Should().BeEmpty();
     }
@@ -164,13 +163,14 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
         services.AddLogging();
         services.AddSingleton(TimeProvider.System);
         services.AddDataProtection();
-        var identity = services.AddIdentityCore<SparkUser>();
+        services.AddIdentityCore<SparkUser>();
+        var identity = TestSparkAuth.Builder(services);
         identity.AddGitHub(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
-        identity.AddSparkGoogle(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
-        identity.AddSparkMicrosoftAccount(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
-        identity.AddSparkFacebook(o => { o.AppId = "id"; o.AppSecret = "secret"; });
-        identity.AddSparkTwitter(o => { o.ConsumerKey = "id"; o.ConsumerSecret = "secret"; });
-        identity.AddSparkLinkedIn(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
+        identity.AddGoogle(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
+        identity.AddMicrosoftAccount(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
+        identity.AddFacebook(o => { o.AppId = "id"; o.AppSecret = "secret"; });
+        identity.AddTwitter(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
+        identity.AddLinkedIn(o => { o.ClientId = "id"; o.ClientSecret = "secret"; });
         return services.BuildServiceProvider();
     }
 
@@ -184,13 +184,13 @@ public class ExternalProviderPolicyTests(ITestOutputHelper output) : SparkTestDr
         var google = provider.GetRequiredService<IOptionsMonitor<GoogleOptions>>().Get(GoogleDefaults.AuthenticationScheme);
         var microsoft = provider.GetRequiredService<IOptionsMonitor<MicrosoftAccountOptions>>().Get(MicrosoftAccountDefaults.AuthenticationScheme);
         var facebook = provider.GetRequiredService<IOptionsMonitor<FacebookOptions>>().Get(FacebookDefaults.AuthenticationScheme);
-        var twitter = provider.GetRequiredService<IOptionsMonitor<TwitterOptions>>().Get(TwitterDefaults.AuthenticationScheme);
+        var twitter = provider.GetRequiredService<IOptionsMonitor<OAuthOptions>>().Get("Twitter");
         var linkedIn = provider.GetRequiredService<IOptionsMonitor<OAuthOptions>>().Get("LinkedIn");
 
         output.WriteLine($"GOOGLE userinfo={google.UserInformationEndpoint} scopes={string.Join(" ", google.Scope)} claims=[{Describe(google.ClaimActions)}]");
         output.WriteLine($"MICROSOFT authorize={microsoft.AuthorizationEndpoint} userinfo={microsoft.UserInformationEndpoint} scopes={string.Join(" ", microsoft.Scope)} claims=[{Describe(microsoft.ClaimActions)}]");
         output.WriteLine($"FACEBOOK userinfo={facebook.UserInformationEndpoint} fields={string.Join(",", facebook.Fields)} scopes={string.Join(" ", facebook.Scope)} claims=[{Describe(facebook.ClaimActions)}]");
-        output.WriteLine($"TWITTER retrieveUserDetails={twitter.RetrieveUserDetails} claims=[{Describe(twitter.ClaimActions)}]");
+        output.WriteLine($"TWITTER authorize={twitter.AuthorizationEndpoint} userinfo={twitter.UserInformationEndpoint} pkce={twitter.UsePkce} scopes={string.Join(" ", twitter.Scope)} claims=[{Describe(twitter.ClaimActions)}]");
         output.WriteLine($"LINKEDIN userinfo={linkedIn.UserInformationEndpoint} scopes={string.Join(" ", linkedIn.Scope)} claims=[{Describe(linkedIn.ClaimActions)}]");
 
         var registrations = provider.GetServices<SparkExternalProviderRegistration>().ToArray();

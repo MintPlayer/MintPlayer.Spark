@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
@@ -20,10 +21,11 @@ namespace MintPlayer.Spark.IdentityProvider.Interceptors;
 /// the answer.
 /// </para>
 /// </summary>
-public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplication>, IAfterSave<OidcApplication>
+public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplication>, IAfterSave<OidcApplication>, IBeforeDelete<OidcApplication>, IAfterDelete<OidcApplication>
 {
     private static readonly string[] SupportedGrantTypes =
-        ["authorization_code", "refresh_token", "client_credentials"];
+        ["authorization_code", "refresh_token", "client_credentials",
+         "urn:ietf:params:oauth:grant-type:device_code", "urn:ietf:params:oauth:grant-type:token-exchange"];
 
     /// <summary>
     /// Always registered, even when <c>EnableDynamicCors</c> is off — an unused snapshot costs
@@ -31,24 +33,185 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// which the injection generator cannot place before the required ones.
     /// </summary>
     [Inject] private readonly OidcCorsOrigins corsOrigins;
+    [Inject] private readonly MintPlayer.Spark.Abstractions.Authorization.IAccessControl accessControl;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly OidcAudit audit;
 
     public async ValueTask OnBeforeSaveAsync(OidcApplication entity, SaveContext context)
     {
+        StampNewApplication(entity, context);
+
         if (string.IsNullOrWhiteSpace(entity.ClientId))
             throw new SparkValidationException("Client id is required.", nameof(entity.ClientId));
 
-        ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
-        ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
-        ValidateCorsOrigins(entity.AllowedCorsOrigins, nameof(entity.AllowedCorsOrigins));
-        ValidateGrantTypes(entity);
-        HashAnyNewSecrets(entity);
+        // D5: generated server-side and read-only. Every token, grant and redirect a client ever
+        // obtained is tied to its client id, so changing it orphans all of them.
+        if (context.Before is OidcApplication before
+            && !string.IsNullOrEmpty(before.ClientId)
+            && !string.Equals(before.ClientId, entity.ClientId, StringComparison.Ordinal))
+        {
+            throw new SparkValidationException("The client id cannot be changed.", nameof(entity.ClientId));
+        }
 
-        // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused with
-        // a 400 while staying stored. A pre-commit read still races two concurrent saves — both find
-        // nothing and both proceed; true uniqueness needs a compare-exchange reservation.
+        ValidateDefinition(entity, options);
+
         // Not a session only when the interceptor is called by hand (unit tests of the rules above).
         if (context.Session is IAsyncDocumentSession session)
+        {
+            await ApplyScopeApprovalsAsync(session, entity, context);
+            // Before the commit (#467 finding, #482): checked only afterwards, a duplicate was refused
+            // with a 400 while staying stored.
             await EnsureClientIdUniqueAsync(session, entity);
+            // The query above races two concurrent saves: both find nothing and both proceed. The
+            // compare-exchange reservation is the atomic half (O17).
+            await OidcClientIdReservation.ReserveAsync(session, entity);
+        }
+    }
+
+    /// <summary>
+    /// Every rule on an application's own fields: redirect URIs and their schemes and number, CORS
+    /// origins, grant types, scopes, mode, and hashing a typed secret. Shared with dynamic client
+    /// registration (RFC 7591), which creates applications without the PersistentObject screens.
+    /// </summary>
+    internal static void ValidateDefinition(OidcApplication entity, Configuration.SparkIdentityProviderOptions options)
+    {
+        ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
+        ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
+        ValidateRedirectSchemes(entity, entity.RedirectUris, nameof(entity.RedirectUris));
+        ValidateRedirectSchemes(entity, entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
+        if (entity.RedirectUris.Count + entity.PostLogoutRedirectUris.Count > options.Apps.MaxRedirectUris)
+            throw new SparkValidationException(
+                $"An application can register at most {options.Apps.MaxRedirectUris} redirect URIs.", nameof(entity.RedirectUris));
+        ValidateCorsOrigins(entity.AllowedCorsOrigins, nameof(entity.AllowedCorsOrigins));
+        ValidateGrantTypes(entity);
+        ValidateScopes(entity);
+        ValidateMode(entity);
+        ValidateEncryption(entity);
+        HashAnyNewSecrets(entity);
+    }
+
+    /// <summary>Spike S2: Wilson encrypts with the CBC-HS content algorithms only; anything else is refused here rather than failing at issuance.</summary>
+    private static void ValidateEncryption(OidcApplication entity)
+    {
+        foreach (var (alg, enc, field) in new[]
+        {
+            (entity.IdTokenEncryptedResponseAlg, entity.IdTokenEncryptedResponseEnc, nameof(entity.IdTokenEncryptedResponseAlg)),
+            (entity.UserinfoEncryptedResponseAlg, entity.UserinfoEncryptedResponseEnc, nameof(entity.UserinfoEncryptedResponseAlg)),
+        })
+        {
+            if (!string.IsNullOrEmpty(alg) && !Services.OidcJwe.KeyAlgorithms.Contains(alg))
+                throw new SparkValidationException($"Key-management algorithm '{alg}' is not supported. Use one of: {string.Join(", ", Services.OidcJwe.KeyAlgorithms)}.", field);
+            if (!string.IsNullOrEmpty(enc) && !Services.OidcJwe.ContentAlgorithms.Contains(enc))
+                throw new SparkValidationException($"Content-encryption algorithm '{enc}' is not supported. Use one of: {string.Join(", ", Services.OidcJwe.ContentAlgorithms)}.", field);
+        }
+        if (!string.IsNullOrEmpty(entity.TokenEndpointAuthMethod) && !OidcClientAuthMethods.All.Contains(entity.TokenEndpointAuthMethod))
+            throw new SparkValidationException($"Token endpoint authentication method '{entity.TokenEndpointAuthMethod}' is not supported.", nameof(entity.TokenEndpointAuthMethod));
+    }
+
+    /// <summary>
+    /// A new application gets a generated client id, a document id of its own (the reservation
+    /// names it), Development mode (D4), and its creator as its first Admin (D3).
+    /// </summary>
+    private static void StampNewApplication(OidcApplication entity, SaveContext context)
+    {
+        if (!context.IsNew)
+            return;
+
+        if (string.IsNullOrWhiteSpace(entity.ClientId))
+            entity.ClientId = OidcClientIdReservation.GenerateClientId();
+
+        entity.Id ??= "OidcApplications/" + Guid.NewGuid().ToString("N");
+        entity.CreatedAt ??= DateTime.UtcNow;
+
+        if (context.User?.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId)
+        {
+            entity.CreatedBy ??= userId;
+            if (entity.Members.Count == 0)
+            {
+                entity.Members.Add(new OidcApplicationMember
+                {
+                    MemberId = Guid.NewGuid().ToString("N"),
+                    UserId = userId,
+                    Role = OidcMemberRoles.Admin,
+                    Status = OidcMemberStatuses.Active,
+                    AcceptedAt = DateTime.UtcNow,
+                });
+            }
+        }
+    }
+
+    private static void ValidateScopes(OidcApplication entity)
+    {
+        foreach (var scope in entity.Scopes)
+        {
+            scope.Name = scope.Name?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(scope.Name) || scope.Name.Any(char.IsWhiteSpace))
+                throw new SparkValidationException(
+                    $"'{scope.Name}' is not a scope name. Scopes are space-delimited on the wire, so a name has no whitespace.",
+                    nameof(entity.Scopes));
+
+            if (scope.Status is not (OidcScopeStatuses.Approved or OidcScopeStatuses.Pending or OidcScopeStatuses.Rejected))
+                throw new SparkValidationException($"Scope '{scope.Name}' has an unknown status '{scope.Status}'.", nameof(entity.Scopes));
+        }
+
+        var duplicate = entity.Scopes.GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase).FirstOrDefault(g => g.Count() > 1);
+        if (duplicate != null)
+            throw new SparkValidationException($"Scope '{duplicate.Key}' is listed more than once.", nameof(entity.Scopes));
+    }
+
+    /// <summary>
+    /// D4: an API scope from a resource none of the application's members owns starts as
+    /// <c>Pending</c> until an owner (or an identity-provider administrator) approves it. Identity
+    /// scopes, the team's own APIs and <c>AutoApprove</c> resources are approved at once. A scope the
+    /// application already had keeps its status: editing the application never re-opens a decision.
+    /// An administrator adding a scope is the approval.
+    /// </summary>
+    private async Task ApplyScopeApprovalsAsync(IAsyncDocumentSession session, OidcApplication entity, SaveContext context)
+    {
+        var before = (context.Before as OidcApplication)?.Scopes ?? [];
+        var added = entity.Scopes
+            .Where(s => !before.Any(b => string.Equals(b.Name, s.Name, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (added.Count == 0)
+            return;
+
+        // Statuses are the server's to decide: a value posted for a new scope means nothing.
+        foreach (var scope in added)
+            scope.Status = OidcScopeStatuses.Approved;
+
+        if (context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
+            return;
+
+        await MarkCrossOwnerScopesAsync(session, entity, added, context.User?.FindFirstValue(ClaimTypes.NameIdentifier));
+    }
+
+    /// <summary>D4: marks the <paramref name="added"/> API scopes whose API the team does not own as Pending.</summary>
+    internal static async Task MarkCrossOwnerScopesAsync(IAsyncDocumentSession session, OidcApplication entity, IEnumerable<OidcApplicationScope> added, string? requestedBy)
+    {
+        var team = entity.Members.Where(m => m.Status == OidcMemberStatuses.Active && m.UserId is not null)
+            .Select(m => m.UserId!).ToHashSet(StringComparer.Ordinal);
+        foreach (var scope in added)
+        {
+            if (OidcScopeCatalog.ApiResourceNameOf(scope.Name) is not { } apiName)
+                continue; // identity scope
+            var api = await session.LoadAsync<OidcResource>(OidcScopeCatalog.ResourceId(apiName));
+            if (api is null || api.Kind != OidcResourceKinds.Api || api.AutoApprove || api.Owners.Any(team.Contains))
+                continue;
+            scope.Status = OidcScopeStatuses.Pending;
+            scope.Review = new OidcReviewDecision
+            {
+                Status = OidcScopeStatuses.Pending,
+                RequestedAt = DateTime.UtcNow,
+                RequestedBy = requestedBy,
+            };
+        }
+    }
+
+    private static void ValidateMode(OidcApplication entity)
+    {
+        if (entity.Mode is not (OidcApplicationModes.Development or OidcApplicationModes.Live))
+            throw new SparkValidationException(
+                $"Mode must be '{OidcApplicationModes.Development}' or '{OidcApplicationModes.Live}'.", nameof(entity.Mode));
     }
 
     private static async Task EnsureClientIdUniqueAsync(IAsyncDocumentSession session, OidcApplication entity)
@@ -79,6 +242,30 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// (<c>com.example.app:/cb</c>) working for native clients.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// D5: https, or http on a loopback address only (a local dev server, RFC 8252 §7.3). A private-use
+    /// scheme (<c>com.example.app:/cb</c>, RFC 8252 §7.1) is for native apps, which are public clients.
+    /// A confidential web client redirecting over plain http would send its code across the network in clear.
+    /// </summary>
+    private static void ValidateRedirectSchemes(OidcApplication entity, List<string> uris, string field)
+    {
+        foreach (var uri in uris)
+        {
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out var parsed))
+                continue; // ValidateRedirectUris already refused it
+            if (parsed.Scheme == Uri.UriSchemeHttps)
+                continue;
+            if (parsed.Scheme == Uri.UriSchemeHttp)
+            {
+                if (parsed.IsLoopback)
+                    continue;
+                throw new SparkValidationException($"'{uri}' uses http. Only a loopback address (localhost, 127.0.0.1, [::1]) may; anything else needs https.", field);
+            }
+            if (!string.Equals(entity.ClientType, "public", StringComparison.OrdinalIgnoreCase))
+                throw new SparkValidationException($"'{uri}' uses the scheme '{parsed.Scheme}'. A private-use scheme is for a native app, which is a public client.", field);
+        }
+    }
+
     private static void ValidateRedirectUris(List<string> uris, string field)
     {
         foreach (var uri in uris)
@@ -157,10 +344,11 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
         // refresh_token without authorization_code cannot produce a first refresh token, so the
         // combination is unreachable rather than merely unusual.
         if (entity.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase)
-            && !entity.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase))
+            && !entity.AllowedGrantTypes.Contains("authorization_code", StringComparer.OrdinalIgnoreCase)
+            && !entity.AllowedGrantTypes.Contains("urn:ietf:params:oauth:grant-type:device_code", StringComparer.Ordinal))
         {
             throw new SparkValidationException(
-                "refresh_token requires authorization_code — there is no other way for this client to obtain a refresh token.",
+                "refresh_token requires authorization_code or device_code — there is no other way for this client to obtain a refresh token.",
                 nameof(entity.AllowedGrantTypes));
         }
 
@@ -186,6 +374,10 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
 
             if (!ClientSecretHasher.IsHashed(secret.Hash))
                 secret.Hash = ClientSecretHasher.Hash(secret.Hash);
+
+            // Revocation and the audit trail name a secret by this id, never by its value (D5).
+            if (string.IsNullOrEmpty(secret.SecretId))
+                secret.SecretId = Guid.NewGuid().ToString("N")[..12];
         }
     }
 
@@ -194,9 +386,43 @@ public sealed partial class OidcApplicationInterceptors : IBeforeSave<OidcApplic
     /// would watch the screen say it saved and the browser keep refusing for minutes. The admin screen
     /// is the only in-app writer, which is what makes invalidating after its commit enough.
     /// </summary>
-    public ValueTask OnAfterSaveAsync(OidcApplication entity, SaveContext context)
+    public async ValueTask OnAfterSaveAsync(OidcApplication entity, SaveContext context)
     {
         corsOrigins.Invalidate();
-        return ValueTask.CompletedTask;
+
+        // G26 (PRD D9): disabling takes the application's tokens and grants down with it. Only on the
+        // transition, so saving an application that is already disabled patches nothing.
+        if (context.Before is OidcApplication { Enabled: true } && !entity.Enabled
+            && context.Session is IAsyncDocumentSession session && entity.Id is { } applicationId)
+        {
+            var store = session.Advanced.DocumentStore;
+            await OidcDisableCascade.RevokeApplicationAsync(store, applicationId);
+            using var auditSession = store.OpenAsyncSession();
+            await audit.RecordAsync(auditSession, OidcAuditKinds.ApplicationDisabled,
+                context.User?.FindFirstValue(ClaimTypes.NameIdentifier), applicationId);
+            await auditSession.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
+    /// D3: deleting is the application Admin's, not a Developer's, although both pass the
+    /// members-only row filter. An identity-provider administrator may delete any application.
+    /// </summary>
+    public async ValueTask OnBeforeDeleteAsync(OidcApplication entity, DeleteContext context)
+    {
+        if (context.IsSystemContext || await accessControl.IsAllowedAsync(Actions.OidcApplicationActions.ManageAllResource))
+            return;
+
+        var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (entity.ActiveMember(userId) is not { Role: OidcMemberRoles.Admin })
+            throw new SparkValidationException("Only an Admin of this application can delete it.", nameof(entity.Members));
+    }
+
+    /// <summary>Frees the client id of a deleted application, and its CORS origins.</summary>
+    public async ValueTask OnAfterDeleteAsync(OidcApplication entity, DeleteContext context)
+    {
+        corsOrigins.Invalidate();
+        if (context.Session is IAsyncDocumentSession session && !string.IsNullOrEmpty(entity.ClientId))
+            await OidcClientIdReservation.ReleaseAsync(session, entity);
     }
 }

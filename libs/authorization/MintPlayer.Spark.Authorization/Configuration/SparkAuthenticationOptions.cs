@@ -8,8 +8,8 @@ namespace MintPlayer.Spark.Authorization.Configuration;
 /// <example>
 /// <code>
 /// // An application that only allows GitHub sign-in — the default posture:
-/// spark.AddAuthentication&lt;SparkUser&gt;(
-///     configureProviders: identity =&gt; identity.AddGitHub(...));
+/// spark.AddAuthentication&lt;SparkUser&gt;();
+/// spark.AddGitHub(...);
 ///
 /// // An application that also wants email/password sign-in:
 /// spark.AddAuthentication&lt;SparkUser&gt;(
@@ -50,7 +50,7 @@ public class SparkAuthenticationOptions
     /// <para>
     /// A disallowed kind is refused exactly like an unknown account — the same 401, and no lookup —
     /// so the setting is invisible to someone probing for accounts. It is not a secret either:
-    /// <c>/spark/auth/capabilities</c> reports it, and ng-spark-auth's login page labels its field from
+    /// <c>/spark/auth/capabilities</c> reports it, and ng-spark/auth's login page labels its field from
     /// it.
     /// </para>
     /// <para>
@@ -159,9 +159,9 @@ public class SparkAuthenticationOptions
 
     /// <summary>
     /// Per-provider sign-up policy — verified-email trust and user-name source (#460, D7), keyed by
-    /// authentication scheme (case-insensitive). The Spark provider presets (<c>AddGitHub</c>,
-    /// <c>AddSparkGoogle</c>, …) fill their own entry; a scheme without one gets
-    /// <see cref="SparkExternalProviderPolicy.Default"/>.
+    /// authentication scheme (case-insensitive). The Spark provider presets (<c>spark.AddGitHub</c>,
+    /// <c>spark.AddGoogle</c>, …) and <c>spark.AddExternalScheme</c> declare their own policy; an entry
+    /// here overrides it, and also counts as the declaration a remote scheme needs at startup.
     /// </summary>
     public IDictionary<string, SparkExternalProviderPolicy> ExternalProviders { get; } =
         new Dictionary<string, SparkExternalProviderPolicy>(StringComparer.OrdinalIgnoreCase);
@@ -171,6 +171,32 @@ public class SparkAuthenticationOptions
     /// <see langword="true"/>; the pass is a no-op after its completion marker exists.
     /// </summary>
     public bool BackfillUsersOnStartup { get; set; } = true;
+
+    /// <summary>
+    /// The application's own second factor after an external sign-in (#490 D11). Also read from
+    /// <c>Spark:Auth:ExternalLogin:TwoFactor:Enabled</c> and <c>…:AllowUserBypass</c>, which win when set.
+    /// </summary>
+    public SparkExternalLoginTwoFactorOptions ExternalLoginTwoFactor { get; set; } = new();
+}
+
+/// <summary>
+/// Whether a user who signs in through an external provider (SparkId, Google, GitHub, …) and has two-factor
+/// authentication on this application's account is also asked for this application's code (#490 D11).
+/// </summary>
+public class SparkExternalLoginTwoFactorOptions
+{
+    /// <summary>
+    /// Ask for the code. Defaults to <see langword="true"/>: a provider's sign-in proves the provider account,
+    /// not possession of this account's authenticator, so a user with two-factor on both sides is asked twice.
+    /// Off, the external sign-in alone suffices (the pre-D11 behaviour refused the sign-in instead).
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Let each user skip the step for external sign-ins from their account's two-factor settings, which needs a
+    /// valid authenticator code to switch on. Defaults to <see langword="false"/>.
+    /// </summary>
+    public bool AllowUserBypass { get; set; }
 }
 
 /// <summary>
@@ -192,6 +218,6 @@ public class SparkAuthLinkOptions
     /// <summary>The page that confirms an email (and a changed email). Default <c>/confirm-email</c>; receives <c>userId</c>, <c>code</c> and, for a change, <c>changedEmail</c>.</summary>
     public string ConfirmEmailPath { get; set; } = "/confirm-email";
 
-    /// <summary>The page that completes a password reset. Default <c>/reset-password</c> (ng-spark-auth's); receives <c>email</c> and <c>code</c>.</summary>
+    /// <summary>The page that completes a password reset. Default <c>/reset-password</c> (ng-spark/auth's); receives <c>email</c> and <c>code</c>.</summary>
     public string ResetPasswordPath { get; set; } = "/reset-password";
 }

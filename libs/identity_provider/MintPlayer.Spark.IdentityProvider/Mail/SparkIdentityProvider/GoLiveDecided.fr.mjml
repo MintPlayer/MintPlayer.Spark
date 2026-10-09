@@ -1,0 +1,22 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{ application }} {{ if approved }}est en ligne{{ else }}reste en développement{{ end }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if approved }}{{ application }} est en ligne{{ else }}La mise en ligne de {{ application }} n'a pas été approuvée{{ end }}</mj-text>
+        <mj-text>{{ if approved }}Tout le monde peut désormais se connecter à {{ application }}.{{ else }}Un administrateur n'a pas approuvé le passage en Live. Seule son équipe peut s'y connecter.{{ end }}</mj-text>
+{{ if note }}
+        <mj-text>La raison donnée : {{ note }}</mj-text>
+{{ end }}
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

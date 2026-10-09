@@ -296,8 +296,8 @@ in the app's `ProjectReference` closure (`libs/spark/MintPlayer.Spark`, `…Abst
 `libs/cron/…`, `libs/messaging/…` + `.Abstractions`, `libs/mail/…` + `.Abstractions`,
 `libs/migrations/…`, `libs/webhooks/…GitHub` + `.DevTunnel`,
 `libs/subscription_worker/…Abstractions`, `libs/source_generators/…SourceGenerators` +
-`…LibraryGenerators`, `libs/socket_extensions/…`); `libs/node_packages/ng-spark/**` and
-`ng-spark-auth/**`; `package.json`, `package-lock.json`, `nx.json`, `tsconfig.base.json`. ⚠️
+`…LibraryGenerators`, `libs/socket_extensions/…`); `libs/node_packages/ng-spark/**` (auth entries included);
+`package.json`, `package-lock.json`, `nx.json`, `tsconfig.base.json`. ⚠️
 Hand-maintained: a new Spark dependency of CodeCoverage goes in **three** places, or it breaks
 silently:
 1. this deploy filter, or its changes will not deploy;

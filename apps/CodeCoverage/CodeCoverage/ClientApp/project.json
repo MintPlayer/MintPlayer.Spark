@@ -42,7 +42,8 @@
             { "type": "initial", "maximumWarning": "1MB", "maximumError": "1.5MB" },
             { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "serviceWorker": "apps/CodeCoverage/CodeCoverage/ClientApp/ngsw-config.json"
         },
         "development": {
           "optimization": false,

@@ -33,6 +33,10 @@
     <Project Path="apps/QnA/QnA.Tests/QnA.Tests.csproj" />
     <Project Path="apps/QnA/QnA/QnA.csproj" />
   </Folder>
+  <Folder Name="/apps/SparkId/">
+    <Project Path="apps/SparkId/SparkId.Tests/SparkId.Tests.csproj" />
+    <Project Path="apps/SparkId/SparkId/SparkId.csproj" />
+  </Folder>
   <Folder Name="/libs/" />
   <Folder Name="/libs/all_features/">
     <Project Path="libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" />
@@ -86,9 +90,6 @@
     <Project Path="libs/moderation/MintPlayer.Spark.Moderation/MintPlayer.Spark.Moderation.csproj" />
   </Folder>
   <Folder Name="/libs/node_packages/">
-    <Project Path="libs/node_packages/ng-spark-auth/ng-spark-auth.esproj">
-      <Platform Project="AnyCPU" />
-    </Project>
     <Project Path="libs/node_packages/ng-spark/ng-spark.esproj">
       <Platform Project="AnyCPU" />
     </Project>

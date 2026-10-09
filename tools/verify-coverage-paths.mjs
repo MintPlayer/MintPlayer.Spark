@@ -24,7 +24,7 @@
  * The matching rules below are a port of the server's, not an approximation of them.
  * An earlier version tried every `<source>` + filename join and accepted ANY tracked
  * hit, which the server never did: it passed `pipes/src/translate-key.pipe.ts` (a tail
- * ng-spark and ng-spark-auth share) while the server dropped both files. A verifier
+ * ng-spark and the former ng-spark-auth package shared) while the server dropped both files. A verifier
  * more lenient than the thing it verifies is a false green. Change the two together:
  * `apps/CodeCoverage/CodeCoverage/Ingestion/PathNormalizer.cs` and `createResolver` here.
  *
@@ -39,8 +39,9 @@ import { globSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// One slug per app the E2E suite hosts (SparkAppDescriptor.CoverageSlug): Fleet, QnA since #460 M13, HR since #264.
-const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna|hr)-host-[^/]+\/coverage\.cobertura\.xml$/;
+// One slug per app the E2E suite hosts (SparkAppDescriptor.CoverageSlug): Fleet, QnA since #460 M13, HR since #264,
+// SparkId since the identity-provider platform (docs/identity_provider_platform_PRD.md I0).
+const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna|hr|sparkid)-host-[^/]+\/coverage\.cobertura\.xml$/;
 
 /**
  * The marker SparkAppTestHost writes into a host's report directory before it starts the app under
@@ -115,11 +116,17 @@ export const EXPECTED_REPORTS = [
     match: E2E_HOST_REPORT,
     required: hostReportRequired('hr'),
   },
+  // The SparkId host (SparkIdTestHost), the same shape.
+  {
+    name: 'E2E SparkId host subprocess coverage',
+    glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/sparkid-host-*/coverage.cobertura.xml',
+    match: E2E_HOST_REPORT,
+    required: hostReportRequired('sparkid'),
+  },
   { name: 'MintPlayer.Spark.SourceGenerators.Tests', glob: 'tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'MintPlayer.Spark.Client.Tests', glob: 'tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'CodeCoverage.Tests', glob: 'apps/CodeCoverage/CodeCoverage.Tests/coverage/**/coverage.cobertura.xml' },
   { name: '@mintplayer/ng-spark', glob: 'libs/node_packages/ng-spark/coverage/cobertura-coverage.xml' },
-  { name: '@mintplayer/ng-spark-auth', glob: 'libs/node_packages/ng-spark-auth/coverage/cobertura-coverage.xml' },
   { name: '@spark-apps/code-coverage (SPA)', glob: 'coverage/@spark-apps/code-coverage/cobertura-coverage.xml' },
   { name: '@mintplayer/coverage-upload-action', glob: 'apps/CodeCoverage/action/coverage/cobertura-coverage.xml' },
 ];

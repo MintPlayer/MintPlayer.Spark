@@ -32,6 +32,8 @@ GET /spark/auth/confirmEmail
 POST /spark/auth/csrf-refresh | antiforgery=not-required
 GET /spark/auth/external-login
 GET /spark/auth/external-login-callback | allow-anonymous
+GET /spark/auth/external-login/two-factor | allow-anonymous
+POST /spark/auth/external-login/two-factor | allow-anonymous | antiforgery=required
 POST /spark/auth/logout | antiforgery=required
 POST /spark/auth/manage/2fa | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/2fa/authenticator-uri | authorize(policy=;roles=;schemes=)

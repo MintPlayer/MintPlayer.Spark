@@ -539,14 +539,12 @@ For user-facing features that need the user's *own* GitHub token (e.g., listing 
 ```csharp
 var envPrefix = builder.Environment.IsDevelopment() ? "Development" : "Production";
 
-spark.AddAuthentication<SparkUser>(configureProviders: identity =>
+spark.AddAuthentication<SparkUser>();
+spark.AddGitHub(options =>
 {
-    identity.AddGitHub(options =>
-    {
-        options.ClientId = builder.Configuration[$"GitHub:{envPrefix}:ClientId"]!;
-        options.ClientSecret = builder.Configuration[$"GitHub:{envPrefix}:ClientSecret"]!;
-        options.SaveTokens = true;
-    });
+    options.ClientId = builder.Configuration[$"GitHub:{envPrefix}:ClientId"]!;
+    options.ClientSecret = builder.Configuration[$"GitHub:{envPrefix}:ClientSecret"]!;
+    options.SaveTokens = true;
 });
 ```
 

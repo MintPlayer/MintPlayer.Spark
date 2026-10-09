@@ -9,7 +9,7 @@ using MintPlayer.Spark.Authorization.Identity;
 namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 
 /// <summary>
-/// DI-shape tests for <see cref="GitHubAuthenticationExtensions.AddGitHub(IdentityBuilder, Action{OAuthOptions})"/>.
+/// DI-shape tests for <see cref="GitHubAuthenticationExtensions.AddGitHub(MintPlayer.Spark.Abstractions.Builder.ISparkBuilder, Action{OAuthOptions}?)"/>.
 /// Pins GitHub OAuth defaults: registering a scheme misconfigured on these endpoints would
 /// silently send users to wrong URLs. The OAuth backchannel + claim-actions logic itself
 /// runs in <c>OnCreatingTicket</c> and needs an integration test to exercise the HttpClient
@@ -21,9 +21,10 @@ public class GitHubAuthenticationExtensionsTests
     public async Task AddGitHub_registers_authentication_scheme_with_default_name()
     {
         var services = new ServiceCollection();
-        var identityBuilder = services.AddSparkAuthentication<SparkUser>();
+        services.AddSparkAuthentication<SparkUser>();
+        var spark = TestSparkAuth.Builder(services);
 
-        identityBuilder.AddGitHub(_ => { });
+        spark.AddGitHub(_ => { });
 
         using var provider = services.BuildServiceProvider();
         var schemeProvider = provider.GetRequiredService<IAuthenticationSchemeProvider>();
@@ -37,9 +38,10 @@ public class GitHubAuthenticationExtensionsTests
     public async Task AddGitHub_with_custom_scheme_name_registers_under_that_name()
     {
         var services = new ServiceCollection();
-        var identityBuilder = services.AddSparkAuthentication<SparkUser>();
+        services.AddSparkAuthentication<SparkUser>();
+        var spark = TestSparkAuth.Builder(services);
 
-        identityBuilder.AddGitHub("CustomGitHub", _ => { });
+        spark.AddGitHub("CustomGitHub", displayName: null, _ => { });
 
         using var provider = services.BuildServiceProvider();
         var schemeProvider = provider.GetRequiredService<IAuthenticationSchemeProvider>();
@@ -52,9 +54,10 @@ public class GitHubAuthenticationExtensionsTests
     public void AddGitHub_pins_GitHub_OAuth_endpoints_and_callback_path()
     {
         var services = new ServiceCollection();
-        var identityBuilder = services.AddSparkAuthentication<SparkUser>();
+        services.AddSparkAuthentication<SparkUser>();
+        var spark = TestSparkAuth.Builder(services);
 
-        identityBuilder.AddGitHub(options =>
+        spark.AddGitHub(options =>
         {
             options.ClientId = "test-client";
             options.ClientSecret = "test-secret";
@@ -75,9 +78,10 @@ public class GitHubAuthenticationExtensionsTests
     {
         // The built-in setup runs first, then the user's callback — so user config wins.
         var services = new ServiceCollection();
-        var identityBuilder = services.AddSparkAuthentication<SparkUser>();
+        services.AddSparkAuthentication<SparkUser>();
+        var spark = TestSparkAuth.Builder(services);
 
-        identityBuilder.AddGitHub(options =>
+        spark.AddGitHub(options =>
         {
             options.ClientId = "test-client";
             options.ClientSecret = "test-secret";
@@ -91,13 +95,14 @@ public class GitHubAuthenticationExtensionsTests
     }
 
     [Fact]
-    public void AddGitHub_returns_the_IdentityBuilder_for_chaining()
+    public void AddGitHub_returns_the_Spark_builder_for_chaining()
     {
         var services = new ServiceCollection();
-        var identityBuilder = services.AddSparkAuthentication<SparkUser>();
+        services.AddSparkAuthentication<SparkUser>();
+        var spark = TestSparkAuth.Builder(services);
 
-        var returned = identityBuilder.AddGitHub(_ => { });
+        var returned = spark.AddGitHub(_ => { });
 
-        returned.Should().BeSameAs(identityBuilder);
+        returned.Should().BeSameAs(spark);
     }
 }

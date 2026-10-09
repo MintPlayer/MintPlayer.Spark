@@ -30,7 +30,7 @@ describe('QnA routes', () => {
   });
 
   it('mounts the account pages QnA offers, before the Spark routes, and not the ones it has no server side for', () => {
-    for (const path of ['confirm-email', 'account', 'account/profile', 'account/password', 'account/two-factor', 'account/personal-data', 'login', 'register']) {
+    for (const path of ['confirm-email', 'account', 'account/profile', 'account/password', 'account/two-factor', 'account/personal-data', 'sign-in', 'login', 'register']) {
       const index = paths.indexOf(path);
       expect(index, path).toBeGreaterThanOrEqual(0);
       expect(index, path).toBeLessThan(firstParameterised);

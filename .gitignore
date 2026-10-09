@@ -223,7 +223,6 @@ PublishScripts/
 # except ng-spark Angular libraries
 !**/[Pp]ackages/node_packages/
 !**/[Nn]ode_packages/ng-spark/
-!**/[Nn]ode_packages/ng-spark-auth/
 # Uncomment if necessary however generally it will be regenerated when needed
 #!**/[Pp]ackages/repositories.config
 # NuGet v3's project.json files produces more ignorable files
@@ -388,7 +387,6 @@ FodyWeavers.xsd
 
 # ng-spark build output
 libs/node_packages/ng-spark/dist/
-libs/node_packages/ng-spark-auth/dist/
 # Angular build output for every app. The demo ClientApps each carry their own .gitignore with
 # /dist, but apps/CodeCoverage does not -- the Coverage repo covered it from its root file, and
 # that did not come across with the app. A root rule covers all of them, including future apps,

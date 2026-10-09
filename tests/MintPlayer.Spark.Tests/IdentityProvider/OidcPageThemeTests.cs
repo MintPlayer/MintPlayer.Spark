@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Authorization.Pages;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
 using MintPlayer.Spark.Testing;
@@ -34,7 +35,7 @@ public class OidcPageThemeTests(OidcSharedHost host)
     public async Task A_dark_cookie_renders_data_bs_theme_dark(string url)
     {
         var html = await GetWithThemeCookieAsync(url, "dark");
-        html.Should().StartWith("<!DOCTYPE html><html data-bs-theme=\"dark\">");
+        html.Should().StartWith("<!DOCTYPE html><html lang=\"en\" data-bs-theme=\"dark\">");
     }
 
     [Theory]
@@ -42,7 +43,7 @@ public class OidcPageThemeTests(OidcSharedHost host)
     public async Task A_light_cookie_renders_data_bs_theme_light(string url)
     {
         var html = await GetWithThemeCookieAsync(url, "light");
-        html.Should().StartWith("<!DOCTYPE html><html data-bs-theme=\"light\">");
+        html.Should().StartWith("<!DOCTYPE html><html lang=\"en\" data-bs-theme=\"light\">");
     }
 
     [Theory]
@@ -50,8 +51,8 @@ public class OidcPageThemeTests(OidcSharedHost host)
     public async Task No_cookie_renders_no_attribute_and_the_media_block_follows_the_os(string url)
     {
         var html = await GetWithThemeCookieAsync(url, null);
-        html.Should().StartWith("<!DOCTYPE html><html>");
-        html.Should().NotContain("<html data-bs-theme");
+        html.Should().StartWith("<!DOCTYPE html><html lang=\"en\">");
+        html.Should().NotContain(" data-bs-theme=\"");
         html.Should().Contain(MediaBlock);
         html.Should().Contain(":root{color-scheme:light dark;");
     }
@@ -60,7 +61,7 @@ public class OidcPageThemeTests(OidcSharedHost host)
     public async Task Auto_renders_no_attribute()
     {
         var html = await GetWithThemeCookieAsync("/connect/login?returnUrl=/", "auto");
-        html.Should().StartWith("<!DOCTYPE html><html>");
+        html.Should().StartWith("<!DOCTYPE html><html lang=\"en\">");
     }
 
     /// <summary>
@@ -75,8 +76,8 @@ public class OidcPageThemeTests(OidcSharedHost host)
     public async Task A_garbage_cookie_renders_no_attribute_and_is_not_echoed(string value)
     {
         var html = await GetWithThemeCookieAsync("/connect/login?returnUrl=/", value);
-        html.Should().StartWith("<!DOCTYPE html><html>");
-        html.Should().NotContain("<html data-bs-theme");
+        html.Should().StartWith("<!DOCTYPE html><html lang=\"en\">");
+        html.Should().NotContain(" data-bs-theme=\"");
         html.Should().NotContain(Uri.UnescapeDataString(value));
         html.Should().NotContain(value);
     }

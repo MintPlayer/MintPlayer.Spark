@@ -103,6 +103,8 @@ public class HiddenAttributesStayProtectedTests
             .Select(app => (App: Path.GetFileName(app), Model: Path.Combine(app, Path.GetFileName(app), "App_Data", "Model")))
             .Where(x => Directory.Exists(x.Model))
             .ToList();
+        // Six applications, five with a model of their own: SparkId's entities all come from the identity
+        // provider's library layer, so it has no App_Data/Model in git (an empty folder only exists locally).
         modelDirectories.Count.Should().BeGreaterThanOrEqualTo(5, "the scan must find every application's model directory");
 
         var offenders = new List<string>();

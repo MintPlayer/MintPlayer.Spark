@@ -77,6 +77,9 @@ internal sealed partial class GetAuthCapabilities : IGetEndpoint
             if (identifiers.HasFlag(SparkSignInIdentifiers.UserName)) signInIdentifiers.Add("userName");
         }
 
+        // #490 D11: the account page offers the skip only where its endpoint is mapped (AllowUserBypass).
+        var externalLoginTwoFactorBypass = endpoints.IsEndpointMapped(typeof(ExternalLoginTwoFactorBypassState<>));
+
         var providers = await ExternalAuthenticationSchemes.GetInteractiveAsync(schemes);
 
         return Results.Ok(new
@@ -87,6 +90,7 @@ internal sealed partial class GetAuthCapabilities : IGetEndpoint
             twoFactor,
             emailChange,
             externalLogins,
+            externalLoginTwoFactorBypass,
             externalProviders = providers
                 .Select(scheme => new { scheme = scheme.Name, displayName = scheme.DisplayName })
                 .ToArray(),

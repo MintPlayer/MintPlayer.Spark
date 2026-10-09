@@ -1,0 +1,94 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "OidcApplicationMemberRow, one row of an application's team (D3): built from the parent OidcApplication by",
+    "Custom.Members (OidcApplicationMemberRowActions). Pending invitations show the typed address only (#453).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'identity-provider:OidcApplicationMemberRow[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "bdac87b9-c715-5aca-8ffd-ab9a671d633f",
+    "name": "OidcApplicationMemberRow",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "467a060a-86a7-55cc-893c-392b7effacdd",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "c2b0356b-e255-5086-b2ed-92cc24b0c536",
+        "name": "Role",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": [],
+        "lookupReferenceType": "OidcMemberRole"
+      },
+      {
+        "id": "98619c21-bada-596f-8ead-d01042596a65",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "6724e844-b85e-592b-85ba-3889bd9a44c6",
+        "name": "InvitedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "20b40376-d151-5516-8bf5-e4f2e66cbc46",
+        "name": "AcceptedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "oidc-application-members"
+    ]
+  },
+  "queries": [
+    {
+      "id": "c6c63245-b673-50ea-b8fb-63c953d21e53",
+      "name": "Members",
+      "source": "Custom.Members",
+      "alias": "oidc-application-members",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "OidcApplicationMemberRow",
+      "isStreamingQuery": false
+    }
+  ]
+}

@@ -17,9 +17,8 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// issued authenticated nothing.
 /// </para>
 /// <para>
-/// Fleet plays both roles here — issuer and resource server. A real topology separates them (one
-/// SparkId, many resource servers), but the two halves are configured independently either way, and
-/// one host is what makes the round trip testable without a second deployment.
+/// The real topology, in two processes: SparkId issues, Fleet validates
+/// (<c>docs/identity_provider_platform_PRD.md</c> I0). Fleet used to play both roles.
 /// </para>
 /// <para>
 /// The issuer runs on <b>http</b> in tests. The JWT handler fetches the discovery document from the
@@ -27,11 +26,11 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// on a dev machine, not on a CI runner. Tokens are then presented over https like any other call.
 /// </para>
 /// </summary>
-[Collection(FleetE2ECollection.Name)]
+[Collection(SparkIdFleetE2ECollection.Name)]
 public class JwtBearerCredentialTests
 {
-    private readonly FleetE2ECollectionFixture _fixture;
-    public JwtBearerCredentialTests(FleetE2ECollectionFixture fixture) => _fixture = fixture;
+    private readonly SparkIdFleetE2EFixture _fixture;
+    public JwtBearerCredentialTests(SparkIdFleetE2EFixture fixture) => _fixture = fixture;
 
     /// <summary>Matches the audience Fleet's E2E configuration requires of every token it accepts.</summary>
     private const string Audience = "fleet-api";
@@ -43,7 +42,7 @@ public class JwtBearerCredentialTests
     {
         ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
     })
-    { BaseAddress = new Uri(_fixture.Host.FleetUrl) };
+    { BaseAddress = new Uri(_fixture.Fleet.FleetUrl) };
 
     /// <summary>
     /// Completes a real <c>client_credentials</c> exchange against the running issuer and returns the
@@ -52,7 +51,7 @@ public class JwtBearerCredentialTests
     /// </summary>
     private async Task<string> GetAccessTokenAsync(string clientId, string secret, string scope)
     {
-        using var http = new HttpClient { BaseAddress = new Uri(_fixture.Host.FleetHttpUrl) };
+        using var http = new HttpClient { BaseAddress = new Uri(_fixture.SparkId.Issuer) };
 
         var response = await http.PostAsync("/connect/token", new FormUrlEncodedContent(
         [
@@ -70,7 +69,7 @@ public class JwtBearerCredentialTests
             // is broken" when it is usually the seeded client that is wrong.
             throw new InvalidOperationException(
                 $"Token request failed ({(int)response.StatusCode}): {body}\n"
-                + $"--- Fleet log ---\n{_fixture.Host.RecentLog(40)}");
+                + $"--- SparkId log ---\n{_fixture.SparkId.RecentLog(40)}");
         }
 
         return JsonDocument.Parse(body).RootElement.GetProperty("access_token").GetString()!;
@@ -83,8 +82,7 @@ public class JwtBearerCredentialTests
     public async Task A_client_credentials_token_authenticates_and_carries_its_security_json_rights()
     {
         var clientId = $"fleet-ci-{Guid.NewGuid():N}"[..20];
-        var scope = $"api-{Guid.NewGuid():N}"[..12];
-        var secret = await _fixture.Host.SeedMachineClientAsync(clientId, scope, Audience, MachineGroup);
+        var (secret, scope) = await _fixture.SparkId.SeedMachineClientAsync(clientId, $"api{Guid.NewGuid():N}"[..12], Audience, MachineGroup);
 
         var token = await GetAccessTokenAsync(clientId, secret, scope);
 
@@ -100,7 +98,7 @@ public class JwtBearerCredentialTests
         response.IsSuccessStatusCode.Should().BeTrue(
             "{0} is granted ReadEditNew/Car, so a token carrying that group may create one — got {1}.\n"
             + "--- Fleet log ---\n{2}",
-            MachineGroup, response.StatusCode, _fixture.Host.RecentLog(30));
+            MachineGroup, response.StatusCode, _fixture.Fleet.RecentLog(30));
     }
 
     [Fact]
@@ -110,9 +108,8 @@ public class JwtBearerCredentialTests
         // an Audience. This token is genuine — same issuer, same signing key, correct signature —
         // and was simply obtained for a different resource. Only the audience says otherwise.
         var clientId = $"other-{Guid.NewGuid():N}"[..20];
-        var scope = $"other-{Guid.NewGuid():N}"[..12];
-        var secret = await _fixture.Host.SeedMachineClientAsync(
-            clientId, scope, audience: "some-other-api", group: MachineGroup);
+        var (secret, scope) = await _fixture.SparkId.SeedMachineClientAsync(
+            clientId, $"other{Guid.NewGuid():N}"[..12], audience: "some-other-api", group: MachineGroup);
 
         var token = await GetAccessTokenAsync(clientId, secret, scope);
 

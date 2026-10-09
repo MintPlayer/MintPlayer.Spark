@@ -150,51 +150,60 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         {
             auth.PasskeyServerDomain = baseUrl.Host;
         }
-    },
-    configureProviders: identity =>
+    });
+
+    // Fail loud (D5). GitHub is the only way into this app: LocalCredentials
+    // defaults to Disabled since preview.58, so an unregistered provider means
+    // nobody can sign in at all. Spark's own guard already throws for that, but
+    // it can only say "register a provider" — naming the missing key here turns
+    // a fresh clone's first run into a one-line fix. The cost is deliberate:
+    // boot-without-credentials is gone, so fork PRs and clean clones must
+    // configure user-secrets before `dotnet run` (see README, local setup).
+    //
+    // Keys stay GitHub:{envPrefix}:* rather than Spark:Auth:Providers:GitHub, so the
+    // production environment variables and every developer's user-secrets keep working.
+    var gitHubClientId = builder.Configuration[$"GitHub:{envPrefix}:ClientId"];
+    if (!string.IsNullOrEmpty(gitHubClientId))
     {
-        // Fail loud (D5). GitHub is the only way into this app: LocalCredentials
-        // defaults to Disabled since preview.58, so an unregistered provider means
-        // nobody can sign in at all. Spark's own guard already throws for that, but
-        // it can only say "register a provider" — naming the missing key here turns
-        // a fresh clone's first run into a one-line fix. The cost is deliberate:
-        // boot-without-credentials is gone, so fork PRs and clean clones must
-        // configure user-secrets before `dotnet run` (see README, local setup).
-        var gitHubClientId = builder.Configuration[$"GitHub:{envPrefix}:ClientId"];
-        if (string.IsNullOrEmpty(gitHubClientId))
-        {
-            // A build command never serves a request, so no provider is needed and
-            // none is registered. Spark's own unreachable-sign-in guard runs at
-            // endpoint mapping, which these commands return before reaching.
-            if (isSparkBuildCommand)
-                return;
-
-            throw new InvalidOperationException(
-                $"GitHub sign-in is not configured: 'GitHub:{envPrefix}:ClientId' is missing. "
-                + "It is the only authentication provider this app registers, so without it no "
-                + $"user could sign in. Set it (and 'GitHub:{envPrefix}:ClientSecret') via "
-                + "user-secrets for local development, or environment variables in production.");
-        }
-
-        identity.AddGitHub(options =>
+        spark.AddGitHub(options =>
         {
             options.ClientId = gitHubClientId;
             options.ClientSecret = builder.Configuration[$"GitHub:{envPrefix}:ClientSecret"] ?? string.Empty;
             options.SaveTokens = true;
+
             // GitHub can hit the callback with a code but no OAuth state —
             // notably the App's "Request user authorization during
             // installation" flow, which our server never initiated. Without
             // this the handler throws and the user gets a 500 instead of
             // the app; the real sign-in path is unaffected (it always has
             // state). Sign-in itself stays available via the shell button.
+            //
+            // Every other failure (a cancel at GitHub, a correlation failure) goes to
+            // Spark's own handler, which reports it to the popup or the sign-in page
+            // (#490 D4). It is the value the preset assigned before this callback runs.
+            var sparkRemoteFailure = options.Events.OnRemoteFailure;
             options.Events.OnRemoteFailure = context =>
             {
+                if (!string.IsNullOrEmpty(context.Request.Query["state"]))
+                    return sparkRemoteFailure(context);
+
                 context.Response.Redirect("/home");
                 context.HandleResponse();
                 return Task.CompletedTask;
             };
         });
-    });
+    }
+    else if (!isSparkBuildCommand)
+    {
+        // A build command never serves a request, so no provider is needed and
+        // none is registered. Spark's own unreachable-sign-in guard runs at
+        // endpoint mapping, which these commands return before reaching.
+        throw new InvalidOperationException(
+            $"GitHub sign-in is not configured: 'GitHub:{envPrefix}:ClientId' is missing. "
+            + "It is the only authentication provider this app registers, so without it no "
+            + $"user could sign in. Set it (and 'GitHub:{envPrefix}:ClientSecret') via "
+            + "user-secrets for local development, or environment variables in production.");
+    }
     // Registered as a Spark credential scheme (non-ambient): the composite
     // default-authenticate scheme tries it, which both silences the
     // "refused by every registered scheme" warning on CI uploads and earns

@@ -50,7 +50,7 @@ public class OidcTokenEndpointGuardTests(OidcSharedHost host) : OidcTestHost(hos
     [InlineData("refresh_token", "webapp", null, "refresh_token", "x", 401, "invalid_client")]
     [InlineData("refresh_token", "webapp", "wrong-secret", "refresh_token", "x", 401, "invalid_client")]
     [InlineData("refresh_token", "webapp", Secret, "refresh_token", "never-issued", 400, "invalid_grant")]
-    [InlineData("client_credentials", "machine", null, "scope", "api.read", 400, "invalid_request")]
+    [InlineData("client_credentials", "machine", null, "scope", "api.read", 401, "invalid_client")] // no secret: a failed client authentication (RFC 6749 §5.2)
     [InlineData("client_credentials", "unknown", Secret, "scope", "api.read", 401, "invalid_client")]
     [InlineData("client_credentials", "disabled", Secret, "scope", "api.read", 401, "invalid_client")]
     public async Task A_bad_request_is_refused_with_the_right_error(

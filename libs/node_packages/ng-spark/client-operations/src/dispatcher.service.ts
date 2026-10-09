@@ -15,7 +15,7 @@ import { SPARK_CLIENT_OPERATION_HANDLERS, type ClientOperationHandler } from './
  *   The dispatcher treats handler resolution as allow-list-by-type (unknown
  *   types drop). It does NOT validate the *content* of each operation. Handlers
  *   that act on URL-shaped fields (navigate, redirect, openWindow) MUST run
- *   the value through `sanitizeReturnUrl` from `@mintplayer/ng-spark-auth/models`
+ *   the value through `sanitizeReturnUrl` from `@mintplayer/ng-spark/auth/models`
  *   (or an equivalent same-origin check) before acting on it. Otherwise a
  *   single attribute-echo XSS or a single mid-channel byte flip on a non-TLS
  *   path lets the server drive client navigation to an attacker host. The

@@ -52,15 +52,16 @@ internal static class OidcAuthorizationFlow
         OidcApplication app,
         string userId,
         List<string> scopes,
+        bool remember,
         CancellationToken ct)
     {
-        var authorizationId = OidcAuthorizationReference.DocumentId(userId, app.Id!);
+        var authorizationId = OidcGrantReference.DocumentId(userId, app.Id!);
 
         for (var attempt = 0; ; attempt++)
         {
             try
             {
-                await WriteGrantAsync(session.Advanced.DocumentStore, authorizationId, app, userId, scopes, ct);
+                await WriteGrantAsync(session.Advanced.DocumentStore, authorizationId, app, userId, scopes, remember, ct);
                 return authorizationId;
             }
             catch (ConcurrencyException) when (attempt < 3)
@@ -77,16 +78,17 @@ internal static class OidcAuthorizationFlow
         OidcApplication app,
         string userId,
         List<string> scopes,
+        bool remember,
         CancellationToken ct)
     {
         using var session = store.OpenAsyncSession();
         session.Advanced.UseOptimisticConcurrency = true;
 
-        var auth = await session.LoadAsync<OidcAuthorization>(authorizationId, ct);
+        var auth = await session.LoadAsync<OidcGrant>(authorizationId, ct);
 
         if (auth == null)
         {
-            auth = new OidcAuthorization
+            auth = new OidcGrant
             {
                 Id = authorizationId,
                 ApplicationId = app.Id!,
@@ -123,6 +125,13 @@ internal static class OidcAuthorizationFlow
                 auth.GrantedScopes.Add(s);
         }
 
+        // D6: remember and expiry. The application decides whether remembering is offered and for
+        // how long; each consent restarts the clock.
+        var now = DateTime.UtcNow;
+        auth.ConsentedAt = now;
+        auth.Remembered = remember && app.AllowRememberConsent;
+        auth.ExpiresAt = auth.Remembered && app.ConsentLifetimeSeconds is > 0 ? now.AddSeconds(app.ConsentLifetimeSeconds.Value) : null;
+
         await session.SaveChangesAsync(ct);
     }
 
@@ -131,9 +140,35 @@ internal static class OidcAuthorizationFlow
     /// that delivers it back to the client. Everything the code carries comes from
     /// <paramref name="request"/>, never from the current HTTP request.
     /// </summary>
+    /// <summary>
+    /// <see cref="IssueCodeAsync"/>, delivered the way the client asked (<c>response_mode</c>: query or
+    /// form_post) and with <c>iss</c> (RFC 9207).
+    /// </summary>
+    internal static async Task<IResult> IssueCodeResponseAsync(
+        IAsyncDocumentSession session,
+        OidcToken request,
+        string issuer,
+        CancellationToken ct)
+    {
+        var (code, _) = await MintCodeAsync(session, request, ct);
+        return OidcAuthorizationResponse.Deliver(request.RedirectUri!, request.Properties.GetValueOrDefault("response_mode"), issuer,
+            ("code", code), ("state", request.State));
+    }
+
     internal static async Task<string> IssueCodeAsync(
         IAsyncDocumentSession session,
-        OidcAuthorizationRequest request,
+        OidcToken request,
+        CancellationToken ct)
+    {
+        var (code, _) = await MintCodeAsync(session, request, ct);
+        return RedirectUrl.With(request.RedirectUri!,
+            ("code", code),
+            ("state", request.State));
+    }
+
+    private static async Task<(string Code, OidcToken Token)> MintCodeAsync(
+        IAsyncDocumentSession session,
+        OidcToken request,
         CancellationToken ct)
     {
         var code = OidcTokenReference.GenerateValue();
@@ -146,7 +181,7 @@ internal static class OidcAuthorizationFlow
             ApplicationId = request.ApplicationId,
             AuthorizationId = request.AuthorizationId,
             Subject = request.Subject,
-            Type = "authorization_code",
+            Type = OidcTokenTypes.AuthorizationCode,
             CodeChallenge = request.CodeChallenge,
             CodeChallengeMethod = request.CodeChallengeMethod,
             RedirectUri = request.RedirectUri,
@@ -154,32 +189,36 @@ internal static class OidcAuthorizationFlow
             Status = "valid",
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(5), // 5 minute lifetime
-            State = request.Nonce, // Store nonce for ID token generation
+            Nonce = request.Nonce,
+            // amr, acr, sid, claims, resource: what the code's tokens are built from (D8).
+            Properties = new Dictionary<string, string>(request.Properties),
+            AuthTime = request.AuthTime,
+            SessionId = request.SessionId,
         };
 
         // A request mints exactly one code. Re-submitting the consent form, or replaying the
         // handle from browser history, finds a consumed request rather than a second code.
         request.Status = "consumed";
 
-        await session.StoreAsync(token, ct);
+        await session.StoreExpiringAsync(token, ct);
+        // I10: the client joins the provider session, so logging out reaches it.
+        await OidcSessionStore.JoinAsync(session, request.SessionId, request.Subject, request.ApplicationId, ct);
         await session.SaveChangesAsync(ct);
 
-        return RedirectUrl.With(request.RedirectUri,
-            ("code", code),
-            ("state", request.State));
+        return (code, token);
     }
 
     /// <summary>
     /// Loads the request behind a <c>request_id</c>, or null if it is unknown, expired,
     /// already used, or belongs to a different signed-in user.
     /// </summary>
-    internal static async Task<OidcAuthorizationRequest?> LoadPendingRequestAsync(
+    internal static async Task<OidcToken?> LoadPendingRequestAsync(
         IAsyncDocumentSession session, string requestId, string userId, CancellationToken ct)
     {
-        var request = await session.LoadAsync<OidcAuthorizationRequest>(
+        var request = await session.LoadAsync<OidcToken>(
             OidcRequestReference.DocumentId(requestId), ct);
 
-        if (request is not { Status: "pending" })
+        if (request is not { Type: OidcTokenTypes.AuthorizationRequest, Status: "pending" })
             return null;
 
         if (request.ExpiresAt < DateTime.UtcNow)

@@ -1,0 +1,37 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "86356a6e-211d-531b-994b-a185dc398ba2",
+    "name": "ClientClaim",
+    "clrType": "MintPlayer.Spark.IdentityProvider.Models.ClientClaim",
+    "breadcrumb": "{Type}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "6035f774-3e33-53cb-b2fa-22741554f26c",
+        "name": "Type",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e27f1515-7fdc-54dd-96b9-ec42b95861f2",
+        "name": "Value",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

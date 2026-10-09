@@ -1,0 +1,152 @@
+import { TestBed } from '@angular/core/testing';
+import { UrlTree, provideRouter, type ActivatedRouteSnapshot, type RouterStateSnapshot } from '@angular/router';
+import { describe, expect, it, vi } from 'vitest';
+
+import { SPARK_PASSKEYS_PAGE_URL, linkedInProvider, sparkAuthRoutes, twitterProvider, withAccount, withPasskeys } from './spark-auth-routes';
+import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, defaultSparkAuthConfig } from '@mintplayer/ng-spark/auth/models';
+import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
+import { sparkAuthGuard, sparkAuthenticatedGuard } from '@mintplayer/ng-spark/auth/guards';
+
+// Stubbed with classes of the real export names, for the reason given in spark-auth-routes.spec.ts:
+// the loaders are asserted by which export they resolve to, and loading the real pages blew the
+// 5 s test timeout under the parallel sweep. Every export of the account entry point is stubbed, so
+// a loader that picks the wrong page from the right module still fails.
+const { stubPages } = vi.hoisted(() => ({
+  stubPages: (...names: string[]) => Object.fromEntries(names.map(n => [n, ({ [n]: class {} })[n]])),
+}));
+vi.mock('@mintplayer/ng-spark/auth/confirm-email', () => stubPages('SparkConfirmEmailComponent'));
+vi.mock('@mintplayer/ng-spark/auth/account', () => stubPages(
+  'SparkAccountOverviewComponent', 'SparkAccountProfileComponent', 'SparkChangePasswordComponent',
+  'SparkExternalLoginsComponent', 'SparkPersonalDataComponent', 'SparkTwoFactorSetupComponent',
+));
+
+describe('withAccount (#460, D16)', () => {
+  const children = (...features: Parameters<typeof sparkAuthRoutes>) => sparkAuthRoutes(...features)[0].children;
+  const paths = (...features: Parameters<typeof sparkAuthRoutes>) =>
+    sparkAuthRoutes(...features)[0].providers.find((p: any) => p.provide === SPARK_AUTH_ROUTE_PATHS).useValue;
+
+  it('mounts the account pages at their default paths', () => {
+    expect(children(withAccount()).map((c: any) => c.path)).toEqual([
+      'confirm-email',
+      'account/profile',
+      'account/password',
+      'account/two-factor',
+      'account/logins',
+      'account/passkeys',
+      'account/personal-data',
+      'account',
+    ]);
+    expect(paths(withAccount())).toEqual({
+      confirmEmail: '/confirm-email',
+      profile: '/account/profile',
+      changePassword: '/account/password',
+      twoFactorSetup: '/account/two-factor',
+      externalLogins: '/account/logins',
+      passkeys: '/account/passkeys',
+      personalData: '/account/personal-data',
+      account: '/account',
+    });
+  });
+
+  it('guards every signed-in page with the waiting guard, but never confirm-email', () => {
+    for (const child of children(withAccount())) {
+      if (child.path === 'confirm-email') expect(child.canActivate).toBeUndefined();
+      else expect(child.canActivate![0]).toBe(sparkAuthGuard);
+    }
+    // The passkeys path keeps only its forwarding guard.
+    expect(children(withAccount({ canActivate: [] })).filter((c: any) => c.canActivate).map((c: any) => c.path))
+      .toEqual(['account/passkeys']);
+  });
+
+  it('forwards account/passkeys to the generic passkeys page, after the sign-in guard', async () => {
+    const passkeys = children(withAccount()).find((c: any) => c.path === 'account/passkeys');
+    expect(passkeys.loadComponent).toBeUndefined();
+    expect(passkeys.children).toEqual([]);
+    expect(passkeys.canActivate).toHaveLength(2);
+    expect(passkeys.canActivate[0]).toBe(sparkAuthGuard);
+
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const target = TestBed.runInInjectionContext(() =>
+      passkeys.canActivate[1]({} as ActivatedRouteSnapshot, { url: '/account/passkeys' } as RouterStateSnapshot));
+    expect(target instanceof UrlTree).toBe(true);
+    expect(target.toString()).toBe(SPARK_PASSKEYS_PAGE_URL);
+  });
+
+  it('keeps an application\'s own passkeys component', async () => {
+    class OwnPasskeys { }
+    const passkeys = children(withAccount({ passkeys: { path: 'account/passkeys', component: OwnPasskeys } }))
+      .find((c: any) => c.path === 'account/passkeys');
+    expect(await passkeys.loadComponent()).toBe(OwnPasskeys);
+    expect(passkeys.canActivate).toEqual([sparkAuthGuard]);
+  });
+
+  it('honours path overrides and exclusions', () => {
+    const feature = withAccount({ profile: 'me', confirmEmail: 'verify', exclude: ['externalLogins', 'changePassword'] });
+    const mounted = children(feature).map((c: any) => c.path);
+    expect(mounted).toContain('me');
+    expect(mounted).toContain('verify');
+    expect(mounted).not.toContain('account/logins');
+    expect(mounted).not.toContain('account/password');
+    expect(paths(feature).externalLogins).toBeUndefined();
+  });
+
+  it('no path has a parameterised first segment, so it cannot shadow sparkRoutes()', () => {
+    for (const child of children(withAccount())) expect(child.path.split('/')[0].startsWith(':')).toBe(false);
+  });
+
+  it('lazily loads the library pages', async () => {
+    const byPath = Object.fromEntries(children(withAccount()).map((c: any) => [c.path, c]));
+    expect((await byPath['confirm-email'].loadComponent()).name).toBe('SparkConfirmEmailComponent');
+    expect((await byPath['account/profile'].loadComponent()).name).toBe('SparkAccountProfileComponent');
+    expect((await byPath['account/password'].loadComponent()).name).toBe('SparkChangePasswordComponent');
+    expect((await byPath['account/two-factor'].loadComponent()).name).toBe('SparkTwoFactorSetupComponent');
+    expect((await byPath['account/logins'].loadComponent()).name).toBe('SparkExternalLoginsComponent');
+    expect((await byPath['account/personal-data'].loadComponent()).name).toBe('SparkPersonalDataComponent');
+    expect((await byPath['account'].loadComponent()).name).toBe('SparkAccountOverviewComponent');
+    // The library has no passkeys component left to load (plan M6): the page is the generic one.
+    expect(byPath['account/passkeys'].loadComponent).toBeUndefined();
+  });
+
+  it('combines with withPasskeys (the later feature owns the passkeys path)', () => {
+    expect(paths(withPasskeys(), withAccount()).passkeys).toBe('/account/passkeys');
+  });
+});
+
+describe('twitterProvider / linkedInProvider', () => {
+  it('match the server presets\' schemes', () => {
+    expect(twitterProvider()).toEqual({ scheme: 'Twitter', displayName: 'X', iconClass: 'bi bi-twitter-x' });
+    expect(linkedInProvider()).toEqual({ scheme: 'LinkedIn', iconClass: 'bi bi-linkedin' });
+    expect(twitterProvider({ displayName: 'Twitter' }).displayName).toBe('Twitter');
+  });
+});
+
+describe('sparkAuthenticatedGuard', () => {
+  function run(auth: Partial<SparkAuthService>) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        { provide: SPARK_AUTH_CONFIG, useValue: defaultSparkAuthConfig },
+        { provide: SparkAuthService, useValue: auth },
+      ],
+    });
+    return TestBed.runInInjectionContext(() =>
+      sparkAuthenticatedGuard({} as ActivatedRouteSnapshot, { url: '/account/profile' } as RouterStateSnapshot)) as Promise<boolean | UrlTree>;
+  }
+
+  it('passes a known session without a round trip', async () => {
+    const checkAuth = vi.fn();
+    expect(await run({ isAuthenticated: (() => true) as any, checkAuth })).toBe(true);
+    expect(checkAuth).not.toHaveBeenCalled();
+  });
+
+  it('waits for the session check on a hard reload', async () => {
+    const result = await run({ isAuthenticated: (() => false) as any, checkAuth: vi.fn().mockResolvedValue({ isAuthenticated: true }) });
+    expect(result).toBe(true);
+  });
+
+  it('sends an anonymous visitor to sign in with a return url', async () => {
+    const result = await run({ isAuthenticated: (() => false) as any, checkAuth: vi.fn().mockResolvedValue(null) });
+    expect(result instanceof UrlTree).toBe(true);
+    expect(result.toString()).toContain('returnUrl=%2Faccount%2Fprofile');
+  });
+});

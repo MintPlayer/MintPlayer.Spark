@@ -78,11 +78,11 @@ public sealed class LabelsFollowTranslationsReloadTests : IDisposable
             """);
         Translate("programUnits.groups.fleet", "Fleet", reload: false);
         using var loader = new ProgramUnitsLoader(_hostEnv, _translations, NullLogger<ProgramUnitsLoader>.Instance);
-        loader.GetProgramUnits().ProgramUnitGroups[0].Name.GetValue("en").Should().Be("Fleet");
+        loader.GetProgramUnits().ProgramUnitGroups.Single(g => g.Id == Guid.Parse("11111111-1111-1111-1111-111111111111")).Name.GetValue("en").Should().Be("Fleet");
 
         Translate("programUnits.groups.fleet", "Vehicles", reload: true);
 
-        loader.GetProgramUnits().ProgramUnitGroups[0].Name.GetValue("en").Should().Be("Vehicles");
+        loader.GetProgramUnits().ProgramUnitGroups.Single(g => g.Id == Guid.Parse("11111111-1111-1111-1111-111111111111")).Name.GetValue("en").Should().Be("Vehicles");
     }
 
     [Fact]

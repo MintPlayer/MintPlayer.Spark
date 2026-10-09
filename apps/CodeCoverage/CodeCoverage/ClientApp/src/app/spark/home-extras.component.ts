@@ -3,7 +3,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { RouterModule } from '@angular/router';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
-import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
+import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import { AccountsService } from '../services/accounts.service';
 
 /**

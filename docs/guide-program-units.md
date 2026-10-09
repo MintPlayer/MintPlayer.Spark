@@ -152,7 +152,7 @@ omitted slot renders its default:
 
 ```html
 <spark-shell title="Spark Demo">
-  <!-- auth is app territory: ng-spark cannot depend on ng-spark-auth, so the auth bar is
+  <!-- auth is app territory: ng-spark's shell cannot import ng-spark/auth, so the auth bar is
        always slotted. Include the language selector again if you still want it. -->
   <ng-container *sparkShellTopbarEnd>
     <spark-language-selector />
@@ -215,7 +215,7 @@ Notes:
 
 The menu tracks the optional `SPARK_AUTH_STATE` token — a `Signal<unknown>` that changes when
 the user changes. `provideSparkAuth()` supplies it automatically from `SparkAuthService.user`,
-so apps using `@mintplayer/ng-spark-auth` get the re-fetch with no wiring. An app with its own
+so apps using `@mintplayer/ng-spark/auth` get the re-fetch with no wiring. An app with its own
 auth stack provides its own signal:
 
 ```ts

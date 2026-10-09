@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -40,15 +42,30 @@ public static class SparkIdentityProviderExtensions
         Action<SparkIdentityProviderOptions>? configure = null)
     {
         var options = new SparkIdentityProviderOptions();
+        // Spark:IdentityProvider first, the lambda second: code wins over configuration, as everywhere in Spark.
+        builder.Configuration?.GetSection("Spark:IdentityProvider").Bind(options);
         configure?.Invoke(options);
         builder.Services.AddSingleton(options);
 
         // Register services
-        builder.Services.AddSingleton(sp =>
-        {
-            var env = sp.GetRequiredService<IHostEnvironment>();
-            return new OidcSigningKeyService(env, options.SigningKeyPath);
-        });
+        // I10: the signing keys live in OidcKeys, protected with Data Protection; a key file named by
+        // SigningKeyPath is imported once. Rotated on schedule by OidcKeyRotationService.
+        builder.Services.AddSingleton<OidcKeyRing>();
+        builder.Services.AddHostedService<OidcKeyRotationService>();
+
+        // I10: every sign-in at the provider gets a session id (sid) in its cookie, so logout can
+        // reach the clients that received tokens in that session.
+        builder.Services.AddSingleton<OidcSessionStore>();
+        builder.Services.PostConfigure<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions>(
+            Microsoft.AspNetCore.Identity.IdentityConstants.ApplicationScheme, cookie =>
+            {
+                var previous = cookie.Events.OnSigningIn;
+                cookie.Events.OnSigningIn = async context =>
+                {
+                    OidcSessionStore.StampSessionId(context.Principal!);
+                    await previous(context);
+                };
+            });
         builder.Services.AddSingleton<OidcTokenGenerator>();
         builder.Services.AddSingleton<OidcIssuer>();
         // The typed /connect pages reach their HttpContext through the accessor (D8). AddSpark
@@ -57,8 +74,48 @@ public static class SparkIdentityProviderExtensions
 
         // Validation of the OIDC admin screens (#482: interceptors, not Actions-class overrides).
         builder.AddInterceptor<Interceptors.OidcApplicationInterceptors>();
-        builder.AddInterceptor<Interceptors.OidcScopeInterceptors>();
-        builder.Services.AddHostedService<OidcTokenCleanupService>();
+        builder.AddInterceptor<Interceptors.OidcResourceInterceptors>();
+
+        // The developer portal (PRD D2): developer status on the user document, membership of the
+        // bound developers group derived from it per request, and the audit trail (D9).
+        builder.Services.AddSingleton<OidcDevelopers>();
+        var moduleRegistry = builder.Registry;
+        builder.Services.AddSingleton(sp => new OidcUserDocuments(moduleRegistry, sp.GetRequiredService<IDocumentStore>()));
+        builder.Services.AddSingleton<OidcAudit>();
+        builder.Services.AddSingleton<OidcPortalMail>();
+        // The portal mails' default templates (Mail/SparkIdentityProvider/*.mjml, embedded as SparkMail/…);
+        // an app's Templates/Mail/SparkIdentityProvider/*.mjml overrides them. Never declared before, so every
+        // portal mail (invitations, developer and review decisions) was dead-lettered with "No mail template
+        // 'SparkIdentityProvider/…'" (found by the E2E journey). Anchored on a type of this assembly.
+        MintPlayer.Spark.MailManager.SparkMailTemplateServiceCollectionExtensions.AddSparkMailTemplates(
+            builder.Services, typeof(OidcPortalMailTemplates).Assembly, "SparkMail/");
+        builder.Services.AddSingleton<OidcPortalLinks>();
+        builder.Services.AddSingleton<OidcInvitations>();
+        builder.Services.AddSingleton<OidcTeamMail>();
+        builder.Services.AddScoped<OidcPortalAccess>();
+        builder.Services.AddScoped<ConnectText>();
+        builder.Services.AddSingleton<OidcGrantWithdrawal>();
+
+        // Protocol (PRD D8): client authentication and the clients' own keys.
+        builder.Services.AddHttpClient();
+        builder.Services.AddMemoryCache();
+        builder.Services.Configure<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>(rl =>
+            rl.AddPolicy(RateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.RateLimits.PermitLimit,
+                    Window = options.RateLimits.Window,
+                    QueueLimit = 0,
+                })));
+        builder.Services.AddSingleton<OidcClientKeys>();
+        builder.Services.AddSingleton<OidcClientAuthenticator>();
+        builder.Services.AddSingleton<OidcRequestObjects>();
+        builder.Services.AddSingleton<OidcProofOfPossession>();
+        builder.Services.AddSingleton<OidcJwe>();
+        builder.Services.AddSingleton<OidcClientRegistration>();
+        builder.Services.AddScoped<OidcAuthorizeHandler>();
+        builder.AddGroupMembershipProvider<OidcDeveloperMembership>();
 
         // Constructed rather than resolved, because the CORS policy's predicate below has no service
         // provider of its own. Registered unconditionally: an unused snapshot costs nothing, and it
@@ -142,6 +199,10 @@ public static class SparkIdentityProviderExtensions
             var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
             new OidcApplications_ByClientId().Execute(documentStore);
 
+            // The key ring before the first request: a ring that cannot be decrypted stops startup here,
+            // with the reason, rather than failing the first token request.
+            app.ApplicationServices.GetRequiredService<OidcKeyRing>().InitializeAsync().GetAwaiter().GetResult();
+
             // Load the CORS origin snapshot before the first request, not lazily: a browser does
             // not retry a preflight it lost, and this fails closed until the load lands.
             if (options.EnableDynamicCors)
@@ -153,8 +214,7 @@ public static class SparkIdentityProviderExtensions
                 corsOrigins.LoadAsync().GetAwaiter().GetResult();
             }
 
-            new OidcTokens_ByExpiration().Execute(documentStore);
-            new OidcAuthorizations_BySubject().Execute(documentStore);
+            new OidcGrants_BySubject().Execute(documentStore);
 
             // Authorization requests carry @expires, so RavenDB reaps them itself rather than
             // needing a sweeper. Deletion is housekeeping only — an expired request is refused
@@ -187,4 +247,15 @@ public static class SparkIdentityProviderExtensions
     /// </remarks>
     internal const string CorsPolicy = "SparkOidcCors";
 
+    /// <summary>
+    /// The named rate-limit policy on the machine endpoints (<c>docs/identity_provider_platform_PRD.md</c> D9):
+    /// a fixed window per caller IP address from <see cref="SparkIdentityProviderOptions.RateLimits"/>.
+    /// </summary>
+    /// <remarks>
+    /// It is always registered, so an application that runs the rate-limiting middleware never meets an unknown
+    /// policy name; in one that does not, the endpoint metadata is inert. It applies on top of Spark's global
+    /// per-IP budget for <c>/connect</c> (<c>spark.AddRateLimiter()</c>), giving the endpoints a client polls or
+    /// scripts against (token, device polling) a budget of their own that the interactive pages do not share.
+    /// </remarks>
+    public const string RateLimitPolicy = "SparkIdentityProviderMachine";
 }

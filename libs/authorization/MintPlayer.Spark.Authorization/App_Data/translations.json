@@ -290,6 +290,11 @@
       "fr": "Continuer",
       "nl": "Doorgaan"
     },
+    "continueInThisTab": {
+      "en": "Continue in this tab",
+      "fr": "Continuer dans cet onglet",
+      "nl": "Doorgaan in dit tabblad"
+    },
     "confirmEmailTitle": {
       "en": "Confirm email address",
       "fr": "Confirmer l'adresse e-mail",
@@ -592,6 +597,41 @@
         "en": "The provider did not return a login.",
         "fr": "Le fournisseur n'a pas renvoyé de connexion.",
         "nl": "De provider gaf geen aanmelding terug."
+      },
+      "email_not_verified": {
+        "en": "The provider has not verified that email address.",
+        "fr": "Le fournisseur n'a pas vérifié cette adresse e-mail.",
+        "nl": "De provider heeft dat e-mailadres niet geverifieerd."
+      },
+      "account_creation_failed": {
+        "en": "The account could not be created. Please try again.",
+        "fr": "Le compte n'a pas pu être créé. Veuillez réessayer.",
+        "nl": "Het account kon niet worden aangemaakt. Probeer het opnieuw."
+      },
+      "email_already_registered": {
+        "en": "An account with that email address already exists. Sign in to it first, then connect this login from your account page.",
+        "fr": "Un compte avec cette adresse e-mail existe déjà. Connectez-vous d'abord à ce compte, puis liez cette connexion depuis la page de votre compte.",
+        "nl": "Er bestaat al een account met dat e-mailadres. Meld u daar eerst bij aan en koppel deze aanmelding daarna via uw accountpagina."
+      },
+      "sign_in_to_link": {
+        "en": "Sign in first to connect this login to your account.",
+        "fr": "Connectez-vous d'abord pour lier cette connexion à votre compte.",
+        "nl": "Meld u eerst aan om deze aanmelding aan uw account te koppelen."
+      },
+      "link_confirmation_sent": {
+        "en": "We sent you an email. Follow its link to connect this login to your account.",
+        "fr": "Nous vous avons envoyé un e-mail. Suivez son lien pour lier cette connexion à votre compte.",
+        "nl": "We hebben u een e-mail gestuurd. Volg de link erin om deze aanmelding aan uw account te koppelen."
+      },
+      "remote_failure": {
+        "en": "The provider reported a problem with the sign-in. Please try again.",
+        "fr": "Le fournisseur a signalé un problème lors de la connexion. Veuillez réessayer.",
+        "nl": "De provider meldde een probleem met de aanmelding. Probeer het opnieuw."
+      },
+      "invalid_nonce": {
+        "en": "The sign-in request was not valid. Please try again.",
+        "fr": "La demande de connexion n'était pas valide. Veuillez réessayer.",
+        "nl": "Het aanmeldverzoek was niet geldig. Probeer het opnieuw."
       }
     },
     "unlinkError": {
@@ -610,6 +650,71 @@
         "fr": "La connexion n'a pas pu être supprimée.",
         "nl": "De aanmelding kon niet worden verwijderd."
       }
+    },
+    "externalTwoFactorTitle": {
+      "en": "Two-factor authentication",
+      "fr": "Authentification à deux facteurs",
+      "nl": "Tweestapsverificatie"
+    },
+    "externalTwoFactorCodeInfo": {
+      "en": "You signed in with an external account. This account also asks for the code from your authenticator app.",
+      "fr": "Vous vous êtes connecté avec un compte externe. Ce compte demande aussi le code de votre application d'authentification.",
+      "nl": "Je meldde je aan met een extern account. Dit account vraagt ook de code uit je authenticator-app."
+    },
+    "externalTwoFactorCodeLabel": {
+      "en": "Authenticator code",
+      "fr": "Code d'authentification",
+      "nl": "Authenticatorcode"
+    },
+    "externalTwoFactorRecoveryInfo": {
+      "en": "Enter one of the recovery codes you saved when you set up two-factor authentication.",
+      "fr": "Saisissez l'un des codes de récupération que vous avez enregistrés lors de la configuration.",
+      "nl": "Geef een van de herstelcodes in die je bewaarde toen je tweestapsverificatie instelde."
+    },
+    "externalTwoFactorRecoveryLabel": {
+      "en": "Recovery code",
+      "fr": "Code de récupération",
+      "nl": "Herstelcode"
+    },
+    "externalTwoFactorRememberBrowser": {
+      "en": "Remember this browser",
+      "fr": "Mémoriser ce navigateur",
+      "nl": "Deze browser onthouden"
+    },
+    "externalTwoFactorVerify": {
+      "en": "Verify",
+      "fr": "Vérifier",
+      "nl": "Verifiëren"
+    },
+    "externalTwoFactorUseRecovery": {
+      "en": "Use a recovery code instead",
+      "fr": "Utiliser plutôt un code de récupération",
+      "nl": "Een herstelcode gebruiken"
+    },
+    "externalTwoFactorUseAuthenticator": {
+      "en": "Use your authenticator app instead",
+      "fr": "Utiliser plutôt votre application d'authentification",
+      "nl": "Je authenticator-app gebruiken"
+    },
+    "externalTwoFactorInvalidCode": {
+      "en": "That code is not valid. Try again.",
+      "fr": "Ce code n'est pas valide. Réessayez.",
+      "nl": "Die code is niet geldig. Probeer opnieuw."
+    },
+    "externalTwoFactorInvalidRecoveryCode": {
+      "en": "That recovery code is not valid.",
+      "fr": "Ce code de récupération n'est pas valide.",
+      "nl": "Die herstelcode is niet geldig."
+    },
+    "externalTwoFactorBypassLabel": {
+      "en": "Skip the code when I sign in with an external account",
+      "fr": "Ne pas demander le code lors d’une connexion avec un compte externe",
+      "nl": "De code overslaan wanneer ik aanmeld met een extern account"
+    },
+    "externalTwoFactorBypassHint": {
+      "en": "Your external account then protects this account on its own. Turning this on needs a code from your authenticator app.",
+      "fr": "Votre compte externe protège alors seul ce compte. L'activer demande un code de votre application d'authentification.",
+      "nl": "Je externe account beschermt dit account dan alleen. Dit inschakelen vraagt een code uit je authenticator-app."
     }
   },
   "actions": {

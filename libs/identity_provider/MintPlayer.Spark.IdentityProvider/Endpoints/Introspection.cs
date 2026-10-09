@@ -26,16 +26,23 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
     public static string Path => "/introspect";
 
     [Inject] private readonly IDocumentStore store;
-    [Inject] private readonly OidcSigningKeyService signingKeyService;
+    [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
+    [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
 
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8) for the issuer; the endpoint is created per request.</summary>
     private HttpContext httpContext = null!;
 
-    protected override ValueTask<OidcClientTokenRequest?> BindRequestAsync(HttpContext context)
+    /// <summary>The form the binder read, kept for client authentication (which needs the raw fields).</summary>
+    private IFormCollection form = null!;
+
+    protected override async ValueTask<OidcClientTokenRequest?> BindRequestAsync(HttpContext context)
     {
         httpContext = context;
-        return OidcClientTokenRequest.BindAsync(context);
+        var request = await OidcClientTokenRequest.BindAsync(context);
+        // Read once by the binder above; ReadFormAsync returns the cached collection.
+        form = await context.Request.ReadFormAsync(context.RequestAborted);
+        return request;
     }
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
@@ -44,22 +51,22 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
     public override async Task<IResult> HandleAsync(OidcClientTokenRequest request, CancellationToken ct)
     {
         var token = request.Token;
-        var clientId = request.ClientId;
-        var clientSecret = request.ClientSecret;
 
-        if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))
+        if (string.IsNullOrEmpty(token))
         {
-            return Results.Json(new { error = "invalid_request", error_description = "token, client_id, and client_secret are required." }, statusCode: 400);
+            return Results.Json(new { error = "invalid_request", error_description = "token is required." }, statusCode: 400);
         }
 
         using var session = store.OpenAsyncSession();
 
-        // Authenticate client
-        var app = await OidcAuthorizationFlow.FindApplicationByClientIdAsync(session, clientId, ct);
-        if (app == null || !app.Enabled || !Token.VerifyClientSecret(clientSecret, app.Secrets))
-        {
+        // Authenticate client (D8). Introspection discloses a token's subject and scopes, so a public
+        // client, which proves nothing about who it is, may not use it.
+        var client = await clientAuthenticator.AuthenticateAsync(httpContext, form, session, ct);
+        if (!client.Succeeded)
+            return client.ToResult(httpContext);
+        if (client.Method == OidcClientAuthMethods.None)
             return Results.Json(new { error = "invalid_client" }, statusCode: 401);
-        }
+        var app = client.Application!;
 
         // token_type_hint is advisory only. RFC 7662 §2.1 requires the search to extend to the
         // other token types when the hinted one does not resolve, so it must not gate a branch:
@@ -105,20 +112,29 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
 
             // active reflects the database, not merely the signature. Reporting a revoked
             // token as active is precisely the failure RFC 7662 exists to prevent.
-            return Results.Json(new
+            var answer = new Dictionary<string, object?>
             {
-                active = resolved.IsActive,
-                sub = resolved.Subject,
-                client_id = resolved.ClientId ?? app.ClientId,
+                ["active"] = resolved.IsActive,
+                ["iss"] = issuer,
+                ["sub"] = resolved.Subject,
+                ["client_id"] = resolved.ClientId ?? app.ClientId,
                 // Without aud a resource server cannot answer "was this minted for me?" —
                 // AccessTokens deliberately does not validate audience, so this is the only
                 // channel through which the caller can check it.
-                aud = resolved.Audiences,
-                scope = resolved.Scope,
-                token_type = "access_token",
-                exp = expObj,
-                iat = iatObj,
-            });
+                ["aud"] = resolved.Audiences,
+                ["scope"] = resolved.Scope,
+                ["token_type"] = "access_token",
+                ["exp"] = expObj,
+                ["iat"] = iatObj,
+            };
+            // I12: the binding (RFC 7662 §2.2 allows any token claim) so the resource server can demand the
+            // proof, and the groups so security.json governs the caller as it would with the JWT itself.
+            foreach (var name in new[] { "cnf", "group", "groups", "act" })
+            {
+                if (resolved.Claims.TryGetValue(name, out var value))
+                    answer[name] = value;
+            }
+            return Results.Json(answer);
         }
 
         // Token not recognized — return inactive

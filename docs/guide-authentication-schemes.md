@@ -129,7 +129,7 @@ end.
 | `Identity.External` | same | Transient cookie during an OAuth round trip | — | No |
 | `Identity.TwoFactorUserId` | same | Cookie holding a **partially** authenticated user between password and second factor — and, since passkeys, the in-flight WebAuthn ceremony state (see [passkeys](guide-passkeys.md)) | — | **No** |
 | `Identity.TwoFactorRememberMe` | same | "Don't ask again on this device" cookie | — | No |
-| External providers (GitHub, Google, Microsoft, Apple) | `configureProviders` on `spark.AddAuthentication<TUser>()`; GitHub via `GitHubAuthenticationExtensions.cs` | OAuth round trip; signs into `Identity.External` (`GitHubAuthenticationExtensions.cs:32`) | — | No — challenge-only; never authenticates an incoming Spark request |
+| External providers (GitHub, Google, Microsoft, Apple) | `spark.AddGitHub()` / `AddGoogle()` / … / `AddOpenIdConnect()` / `AddExternalProviders(configuration)` after `spark.AddAuthentication<TUser>()`; raw handlers declared with `spark.AddExternalScheme()` | OAuth round trip; signs into `Identity.External` (`GitHubAuthenticationExtensions.cs:32`) | — | No — challenge-only; never authenticates an incoming Spark request |
 
 Two further schemes exist as of M10, both **opt-in** — an app registers them only if it accepts that
 kind of caller:
@@ -551,8 +551,8 @@ chooses how much is mapped:
 
 ```csharp
 spark.AddAuthentication<SparkUser>(
-    configure: auth => auth.LocalCredentials = SparkLocalCredentials.Disabled,
-    configureProviders: identity => identity.AddGitHub(options => { /* … */ }));
+    configure: auth => auth.LocalCredentials = SparkLocalCredentials.Disabled);
+spark.AddGitHub(options => { /* … */ });
 ```
 
 | Route (under `/spark/auth`) | Method | Owner | `Full` (default) | `SignInOnly` | `Disabled` |

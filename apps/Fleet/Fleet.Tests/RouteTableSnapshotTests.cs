@@ -9,7 +9,7 @@ namespace Fleet.Tests;
 /// </summary>
 /// <remarks>
 /// Fleet composes everything through <c>AddSparkFull</c>. The settings are the E2E host's (<c>FleetTestHost</c>):
-/// with an issuer configured, Fleet also maps the identity provider and accepts JWT bearer tokens.
+/// with an authority configured, Fleet accepts JWT bearer tokens. It no longer hosts an identity provider (SparkId does).
 /// See <see cref="RouteTableSnapshot"/> for what a line records; set <c>SPARK_UPDATE_ROUTE_SNAPSHOT=1</c>
 /// to accept an intended change, then review the fixture diff like code.
 /// </remarks>
@@ -22,8 +22,7 @@ public class RouteTableSnapshotTests : SparkTestDriver
             Store,
             new Dictionary<string, string?>
             {
-                ["SparkIdentityProvider:Issuer"] = "http://localhost",
-                ["SparkIdentityProvider:SigningKeyPath"] = SparkAppSigningKey.NewFile(),
+                ["Spark:JwtBearer:Authority"] = "http://localhost",
                 ["Spark:JwtBearer:Audience"] = "fleet-api",
                 ["Spark:Replication:ModuleUrl"] = "http://localhost",
                 ["Spark:Replication:SparkModulesUrls:0"] = Store.Urls[0],

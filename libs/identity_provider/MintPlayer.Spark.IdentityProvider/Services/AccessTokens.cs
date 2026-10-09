@@ -30,7 +30,7 @@ internal static class AccessTokens
     /// <summary>Resolves the token, or null if it is not a well-formed token we signed.</summary>
     public static async Task<ResolvedAccessToken?> ResolveAsync(
         IAsyncDocumentSession session,
-        OidcSigningKeyService keys,
+        OidcKeyRing keys,
         string token,
         string issuer,
         CancellationToken ct)
@@ -44,7 +44,7 @@ internal static class AccessTokens
             // Expiry is judged below so callers can distinguish "expired" from "not ours"
             // rather than both surfacing as a validation failure.
             ValidateLifetime = false,
-            IssuerSigningKey = keys.GetSigningKey(),
+            IssuerSigningKeys = keys.ValidationKeys,
         });
 
         if (!validation.IsValid || validation.SecurityToken is not JsonWebToken jwt)
@@ -103,6 +103,19 @@ internal sealed record ResolvedAccessToken(
     /// resource server can decide for itself.
     /// </summary>
     public IReadOnlyList<string> Audiences => Jwt.Audiences?.ToList() ?? [];
+
+    /// <summary>The DPoP key thumbprint the token is bound to (<c>cnf.jkt</c>, RFC 9449), or null.</summary>
+    public string? ConfirmationJkt => Confirmation("jkt");
+
+    /// <summary>The certificate thumbprint the token is bound to (<c>cnf.x5t#S256</c>, RFC 8705), or null.</summary>
+    public string? ConfirmationX5t => Confirmation("x5t#S256");
+
+    private string? Confirmation(string member)
+        => Jwt.TryGetPayloadValue<System.Text.Json.JsonElement>("cnf", out var cnf)
+           && cnf.ValueKind == System.Text.Json.JsonValueKind.Object
+           && cnf.TryGetProperty(member, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private string? Claim(string type) => Claims.TryGetValue(type, out var value) ? value?.ToString() : null;
 }

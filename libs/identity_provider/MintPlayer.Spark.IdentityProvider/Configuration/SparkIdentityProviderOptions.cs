@@ -28,10 +28,26 @@ public class SparkIdentityProviderOptions
     /// </summary>
     public bool AutoApproveImplicitConsent { get; set; } = true;
 
-    /// <summary>
-    /// Token cleanup interval. Default: 1 hour.
-    /// </summary>
-    public TimeSpan TokenCleanupInterval { get; set; } = TimeSpan.FromHours(1);
+    /// <summary>Who may become a developer, and on what terms (<c>Spark:IdentityProvider:Developers</c>, PRD D2).</summary>
+    public SparkIdentityProviderDeveloperOptions Developers { get; set; } = new();
+
+    /// <summary>How applications go live (<c>Spark:IdentityProvider:Apps</c>, PRD D4).</summary>
+    public SparkIdentityProviderAppOptions Apps { get; set; } = new();
+
+    /// <summary>The second factor at the provider's own sign-in (<c>Spark:IdentityProvider:TwoFactor</c>, #490 PRD D11).</summary>
+    public SparkIdentityProviderTwoFactorOptions TwoFactor { get; set; } = new();
+
+    /// <summary>How the <c>/connect/*</c> pages present the provider (<c>Spark:IdentityProvider:Branding</c>, PRD D7).</summary>
+    public SparkIdentityProviderBranding Branding { get; set; } = new();
+
+    /// <summary>The signing-key rotation schedule (<c>Spark:IdentityProvider:Keys</c>, PRD D8).</summary>
+    public SparkIdentityProviderKeyOptions Keys { get; set; } = new();
+
+    /// <summary>The audit trail (<c>Spark:IdentityProvider:Audit</c>, PRD D9).</summary>
+    public SparkIdentityProviderAuditOptions Audit { get; set; } = new();
+
+    /// <summary>The machine-endpoint policy and the client-authentication throttle (<c>Spark:IdentityProvider:RateLimits</c>, PRD D9).</summary>
+    public SparkIdentityProviderRateLimitOptions RateLimits { get; set; } = new();
 
     /// <summary>
     /// Opt in to cross-origin access on the OIDC protocol endpoints. <b>Off by default.</b>

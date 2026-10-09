@@ -1,0 +1,86 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "OidcDeveloperRequest, the administrators' queue of pending developer requests",
+    "(docs/identity_provider_platform_PRD.md D2), shipped by MintPlayer.Spark.IdentityProvider. A virtual",
+    "row type: no clrType; its rows are users whose Developer.Status is Requested, projected per request by",
+    "Custom.DeveloperRequests (OidcDeveloperRequestActions). Only Query is granted, never Read: the rows have",
+    "no detail page. ApproveDeveloper and RejectDeveloper are its row actions.",
+    "",
+    "HAND-AUTHORED. The ids are UUIDv5 of 'identity-provider:OidcDeveloperRequest[.attributes|queries.<Name>]',",
+    "written by 'npm run stamp:library-model-ids -- libs/identity_provider/MintPlayer.Spark.IdentityProvider'."
+  ],
+  "persistentObject": {
+    "id": "8366dd7e-a4c2-5457-b8a5-fd8d329490e1",
+    "name": "OidcDeveloperRequest",
+    "breadcrumb": "{UserName}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "c5d35095-f4bb-5d57-b3fa-eb3599171618",
+        "name": "UserName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "941ef12a-380e-5ba7-bb57-0fd60af51db2",
+        "name": "Email",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "d65423cb-1d0e-5eef-914a-81afc62557e5",
+        "name": "RequestedAt",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "4f36d53a-17b3-56ac-83ac-452ed4a8a9a7",
+        "name": "TermsVersion",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "oidc-developer-requests"
+    ]
+  },
+  "queries": [
+    {
+      "id": "d78fc79d-0079-53f8-a9f7-5222f251ad87",
+      "name": "DeveloperRequests",
+      "source": "Custom.DeveloperRequests",
+      "alias": "oidc-developer-requests",
+      "sortColumns": [
+        {
+          "property": "RequestedAt",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "OidcDeveloperRequest",
+      "isStreamingQuery": false
+    }
+  ]
+}

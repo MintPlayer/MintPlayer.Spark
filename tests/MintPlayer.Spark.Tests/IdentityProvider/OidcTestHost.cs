@@ -89,10 +89,14 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     /// The provider host every OIDC test boots. Shared with <see cref="OidcSharedHost"/>, which
     /// boots it once per class for the classes that write nothing.
     /// </summary>
-    internal static SparkEndpointFactory<OidcTestContext> CreateFactory(IDocumentStore store) =>
+    internal static SparkEndpointFactory<OidcTestContext> CreateFactory(
+        IDocumentStore store,
+        Action<MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions>? configureIdentityProvider = null,
+        Action<IServiceCollection>? configureServices = null) =>
         new SparkEndpointFactory<OidcTestContext>(
             store,
             models: [],
+            configureServices: configureServices,
             configureSpark: spark =>
             {
                 // Explicit since preview.60: LocalCredentials now defaults to Disabled, and these
@@ -106,6 +110,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
                     // assert the value the endpoints actually stamp.
                     options.Issuer = Issuer;
                     options.SigningKeyPath = CopyOfSharedSigningKey();
+                    configureIdentityProvider?.Invoke(options);
                 });
             },
             // Development so the provider generates its own signing key. Production refusing to
@@ -177,8 +182,11 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
             ConsentType = consentType,
             RedirectUris = [.. redirectUris ?? [$"https://{clientId}.test/cb"]],
             PostLogoutRedirectUris = [.. postLogoutRedirectUris ?? []],
-            AllowedScopes = [.. allowedScopes ?? ["openid", "profile"]],
+            Scopes = [.. (allowedScopes ?? ["openid", "profile"]).Select(n => new OidcApplicationScope { Name = n, Required = n == "openid" })],
             AllowedGrantTypes = [.. grantTypes ?? ["authorization_code"]],
+            // Live: a Development application only serves its members, and these fixtures sign in
+            // as arbitrary users.
+            Mode = OidcApplicationModes.Live,
         };
 
         if (secret != null)
@@ -197,23 +205,47 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
 
             // Define every scope the client is allowed to ask for. A real deployment does this; a
             // fixture that skipped it produced tokens whose `scope` claim was silently empty, because
-            // issuance resolves scopes from OidcScope documents rather than from the client's list.
+            // issuance resolves scopes from OidcResource documents rather than from the client's list.
             // Addressed by a derived id, not found through an index: two applications sharing a
             // scope seed concurrently, and an index query is eventually consistent, so the second
             // would not see the first and would create a duplicate. That made the suite fail only
             // under full-run load — the same staleness trap this package's own lookups kept falling
             // into.
-            foreach (var name in app.AllowedScopes)
+            foreach (var name in app.ScopeNames())
             {
-                var id = "OidcScopes/" + name.ToLowerInvariant();
-                if (await session.LoadAsync<OidcScope>(id) != null)
+                if (OidcScopeCatalog.ApiResourceNameOf(name) is { } apiName)
+                {
+                    // An API scope lives inside the resource its prefix names (fleet.read → fleet).
+                    var apiId = OidcScopeCatalog.ResourceId(apiName);
+                    var api = await session.LoadAsync<OidcResource>(apiId);
+                    if (api == null)
+                    {
+                        api = new OidcResource
+                        {
+                            Id = apiId,
+                            Kind = OidcResourceKinds.Api,
+                            Name = apiName,
+                            DisplayName = TranslatedString.Create(apiName),
+                            Enabled = true,
+                        };
+                        await session.StoreAsync(api);
+                    }
+
+                    if (!api.Scopes.Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)))
+                        api.Scopes.Add(new OidcApiScope { Name = name, DisplayName = TranslatedString.Create(name) });
+                    continue;
+                }
+
+                var id = OidcScopeCatalog.ResourceId(name);
+                if (await session.LoadAsync<OidcResource>(id) != null)
                     continue;
 
-                await session.StoreAsync(new OidcScope
+                await session.StoreAsync(new OidcResource
                 {
                     Id = id,
+                    Kind = OidcResourceKinds.Identity,
                     Name = name,
-                    DisplayName = name,
+                    DisplayName = TranslatedString.Create(name),
                     Enabled = true,
                     Required = name == "openid",
                 });
@@ -236,12 +268,19 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     /// and against a stale auto-index an absence assertion passes for the wrong reason.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// Issued tokens only. Pending authorization requests, pushed requests and sessions are stored as
+    /// <see cref="OidcToken"/>s too (D1), but they are bookkeeping, not something a client holds.
+    /// </remarks>
     protected async Task<List<OidcToken>> CaseTokensAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => [.. (await session.Query<OidcToken>().ToListAsync()).Where(t => seededApplicationIds.Contains(t.ApplicationId))];
+        => [.. (await CaseRecordsAsync(session)).Where(t => t.Type is not (OidcTokenTypes.AuthorizationRequest or OidcTokenTypes.PushedRequest or OidcTokenTypes.Session))];
 
-    /// <summary>The <see cref="OidcAuthorizationRequest"/> counterpart of <see cref="CaseTokensAsync"/>.</summary>
-    protected async Task<List<OidcAuthorizationRequest>> CaseAuthorizationRequestsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => [.. (await session.Query<OidcAuthorizationRequest>().ToListAsync()).Where(r => seededApplicationIds.Contains(r.ApplicationId))];
+    /// <summary>The authorization requests (<see cref="OidcTokenTypes.AuthorizationRequest"/> tokens) counterpart of <see cref="CaseTokensAsync"/>.</summary>
+    protected async Task<List<OidcToken>> CaseAuthorizationRequestsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
+        => [.. (await CaseRecordsAsync(session)).Where(t => t.Type == OidcTokenTypes.AuthorizationRequest)];
+
+    private async Task<List<OidcToken>> CaseRecordsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
+        => [.. (await session.Query<OidcToken>().ToListAsync()).Where(t => seededApplicationIds.Contains(t.ApplicationId))];
 
     protected const string Password = "Aa1!test-password";
 
@@ -613,9 +652,10 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
         DateTime? expiresAt = null)
     {
         var handle = OidcRequestReference.GenerateValue();
-        var request = new OidcAuthorizationRequest
+        var request = new OidcToken
         {
             Id = OidcRequestReference.DocumentId(handle),
+            Type = OidcTokenTypes.AuthorizationRequest,
             ApplicationId = app.Id!,
             Subject = subject,
             RedirectUri = redirectUri ?? app.RedirectUris[0],
@@ -642,7 +682,19 @@ public sealed class OidcTestContext : SparkContext
 /// derive from <see cref="OidcTestHost"/>, which scopes their identifiers per case; classes that
 /// seed nothing and only read pages may take it directly.
 /// </summary>
-public sealed class OidcSharedHost : SharedSparkHost<OidcTestContext>
+/// <remarks>
+/// A class needing different provider options derives a host of its own and overrides
+/// <see cref="ConfigureIdentityProvider"/> / <see cref="ConfigureServices"/>, then takes that host
+/// through <c>IClassFixture&lt;TheDerivedHost&gt;</c>.
+/// </remarks>
+public class OidcSharedHost : SharedSparkHost<OidcTestContext>
 {
-    protected override SparkEndpointFactory<OidcTestContext> CreateFactory() => OidcTestHost.CreateFactory(Store);
+    /// <summary>Runs after the defaults (issuer, signing key) inside <c>AddIdentityProvider</c>.</summary>
+    protected virtual void ConfigureIdentityProvider(MintPlayer.Spark.IdentityProvider.Configuration.SparkIdentityProviderOptions options) { }
+
+    /// <summary>Runs last on the host's services: swap a service for a stub here.</summary>
+    protected virtual void ConfigureServices(IServiceCollection services) { }
+
+    protected override SparkEndpointFactory<OidcTestContext> CreateFactory()
+        => OidcTestHost.CreateFactory(Store, ConfigureIdentityProvider, ConfigureServices);
 }
