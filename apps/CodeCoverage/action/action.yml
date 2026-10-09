@@ -146,5 +146,5 @@ outputs:
       The upload contract the server implements. 0 means the server predates the capabilities
       endpoint, which is what a deployed image older than this action reports.
 runs:
-  using: node20
+  using: node24
   main: dist/index.js

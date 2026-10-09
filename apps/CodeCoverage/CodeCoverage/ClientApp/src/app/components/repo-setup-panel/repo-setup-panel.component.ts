@@ -166,7 +166,7 @@ ${upload()}`),
         note: 'Jest writes coverage/lcov.info when run with --coverage; lcov is auto-detected.',
         code: header(`      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: npm ci
       - run: npx jest --coverage
 ${upload()}`),
@@ -177,7 +177,7 @@ ${upload()}`),
         note: 'ng test --code-coverage emits coverage/<project>/lcov.info via karma-coverage.',
         code: header(`      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: npm ci
       - run: npx ng test --watch=false --code-coverage --browsers=ChromeHeadless
 ${upload()}`),
@@ -188,7 +188,7 @@ ${upload()}`),
         note: 'Vitest with the v8 provider writes an lcov report; for CRA/jest use "npm test -- --coverage --watchAll=false" instead.',
         code: header(`      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: npm ci
       - run: npx vitest run --coverage --coverage.reporter=lcov
 ${upload()}`),
@@ -250,7 +250,7 @@ export default defineConfig({
         },
         code: header(`      - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npx nx run-many -t test --coverage

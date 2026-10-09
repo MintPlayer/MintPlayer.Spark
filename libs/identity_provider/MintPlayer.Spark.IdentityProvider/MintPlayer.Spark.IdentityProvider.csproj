@@ -13,7 +13,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.IdentityProvider</PackageId>
-		<Version>11.0.0-preview.103</Version>
+		<Version>11.0.0-preview.104</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Self-contained OIDC Identity Provider for MintPlayer.Spark. Adds Authorization Code + PKCE flow with RavenDB storage. No external OIDC framework required.</Description>
@@ -47,7 +47,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.22.0" />
+		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
 		<!-- Global usings required by the MintPlayer.AspNetCore.Endpoints source generator output -->
 		<Using Include="Microsoft.AspNetCore.Builder" />

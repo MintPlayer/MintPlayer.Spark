@@ -14,7 +14,7 @@ FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 # Node.js for the Angular build
 RUN apt-get update && \
     apt-get -y install curl && \
-    curl -sL https://deb.nodesource.com/setup_22.x | bash && \
+    curl -sL https://deb.nodesource.com/setup_24.x | bash && \
     apt-get -y install nodejs && \
     rm -rf /var/lib/apt/lists/*
 

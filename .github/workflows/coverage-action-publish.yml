@@ -165,7 +165,7 @@ jobs:
       with:
         working-directory: apps/CodeCoverage/action
         output-dir: dist
-        node-version: 22.x
+        node-version: 24.x
         install-command: npm ci
         test-command: npm test
         build-command: npm run build
