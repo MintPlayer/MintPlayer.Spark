@@ -4,7 +4,7 @@
 # Dependabot opens a single PR per week instead of one PR per package per project
 # directory (2026-07-04 → 2026-10-09: ~7 PRs/week, 0 merged, ~17–21 runner-minutes
 # each). See docs/code-coverage/dependency-updates-PRD.md (#419) §1.
-# Security updates are not affected: they still arrive as their own PRs.
+# Security updates are a repository setting, not part of this file (currently off).
 #
 # R2-H16: third-party actions used to ride floating tags (@v4, @v1.0.0). Tag
 # rebinds let a compromised maintainer ship backdoored code with secrets
