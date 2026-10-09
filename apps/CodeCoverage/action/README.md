@@ -85,7 +85,7 @@ consumes it are the same pull request — and so
 locally-hosted CodeCoverage instance with `uses: ./apps/CodeCoverage/action`, which no other
 arrangement allows. The rationale is [`docs/coverage_action_home_PRD.md`](../../../docs/coverage_action_home_PRD.md).
 
-It is deliberately **outside** the repo's npm workspaces: a CommonJS node20 bundle with its own
+It is deliberately **outside** the repo's npm workspaces: a CommonJS node24 bundle with its own
 lockfile and its own TypeScript version, none of which should move when the Angular workspace moves.
 `npm install` here, not at the repo root.
 

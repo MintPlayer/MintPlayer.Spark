@@ -843,7 +843,7 @@ were read on 2026-09-29.
 
 Prerequisites:
 
-- .NET 11 SDK (the solution and the Dockerfile target `net11.0`), Node 22+
+- .NET 11 SDK (the solution and the Dockerfile target `net11.0`), Node 24+
 - RavenDB running unsecured on `http://localhost:8080` (the `Coverage` database is
   auto-created in Development)
 - A GitHub App (for sign-in + webhooks) — a **separate development App**, set up as in

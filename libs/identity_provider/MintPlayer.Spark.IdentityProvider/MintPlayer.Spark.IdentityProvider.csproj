@@ -47,7 +47,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.22.0" />
+		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
 		<!-- Global usings required by the MintPlayer.AspNetCore.Endpoints source generator output -->
 		<Using Include="Microsoft.AspNetCore.Builder" />

@@ -228,7 +228,7 @@
 		<Compile Include="$(MSBuildThisFileDirectory)tests\Shared\NoSystemProxy.cs" Link="_Shared\NoSystemProxy.cs" />
 	</ItemGroup>
 	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
-		<PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="3.3.4">
+		<PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>

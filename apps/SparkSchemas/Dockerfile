@@ -8,7 +8,7 @@
 # Build context: apps/SparkSchemas (nothing else of the repository is needed).
 #   docker build --secret id=github_token,env=GH_TOKEN --build-arg SCHEMAS_REFRESH=$(date +%s) apps/SparkSchemas
 
-FROM alpine:3.22 AS fetch
+FROM alpine:3.24 AS fetch
 RUN apk add --no-cache curl jq
 ARG GITHUB_REPOSITORY=MintPlayer/MintPlayer.Spark
 COPY fetch-releases.sh /usr/local/bin/fetch-releases.sh
@@ -20,7 +20,7 @@ ARG SCHEMAS_REFRESH=0
 RUN --mount=type=secret,id=github_token,required=false \
     echo "refresh: ${SCHEMAS_REFRESH}" && fetch-releases.sh "${GITHUB_REPOSITORY}" /site
 
-FROM nginx:1.29-alpine
+FROM nginx:1.31-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=fetch /site /usr/share/nginx/html
 EXPOSE 80
