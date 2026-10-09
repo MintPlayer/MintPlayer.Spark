@@ -1,54 +1,65 @@
-# Auto-pin third-party GitHub Actions and Docker base images.
+# One weekly pull request for every version update, across all ecosystems.
+#
+# Every `updates` entry joins the `all-dependencies` multi-ecosystem group, so
+# Dependabot opens a single PR per week instead of one PR per package per project
+# directory (2026-07-04 → 2026-10-09: ~7 PRs/week, 0 merged, ~17–21 runner-minutes
+# each). See docs/code-coverage/dependency-updates-PRD.md (#419) §1.
+# Security updates are not affected: they still arrive as their own PRs.
 #
 # R2-H16: third-party actions used to ride floating tags (@v4, @v1.0.0). Tag
 # rebinds let a compromised maintainer ship backdoored code with secrets
-# in scope (npm publish token, VPS SSH key). Dependabot opens PRs that pin
-# each `uses:` ref to a full 40-char commit SHA and tracks the upstream
-# version in a comment so future bumps are visible.
+# in scope (npm publish token, VPS SSH key). Dependabot pins each `uses:` ref
+# to a full 40-char commit SHA and tracks the upstream version in a comment
+# so future bumps are visible.
 #
 # R2-M16: same shape for the Dockerfile base images — pinning to a digest
 # stops the build pulling whatever's currently behind `:10.0`.
+#
+# Platform majors are locked (CLAUDE.md "Versioning"): npm packages track the
+# Angular major, NuGet packages the .NET major. Angular majors are ignored
+# below; a .NET/Angular platform upgrade is done by hand in its own PR.
 
 version: 2
+
+multi-ecosystem-groups:
+  all-dependencies:
+    schedule:
+      interval: weekly
+      day: monday
+
 updates:
   - package-ecosystem: github-actions
     directory: "/"
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    # Pin to SHA on update. Dependabot writes the SHA + a comment with the
-    # version it resolves to.
-    groups:
-      actions:
-        patterns:
-          - "*"
+    patterns: ["*"]
+    multi-ecosystem-group: all-dependencies
 
   - package-ecosystem: nuget
     directory: "/"
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
-    # Group all transitive Microsoft.* bumps so we get one PR per week rather
-    # than dozens.
-    groups:
-      microsoft:
-        patterns:
-          - "Microsoft.*"
-      ravendb:
-        patterns:
-          - "RavenDB.*"
+    patterns: ["*"]
+    multi-ecosystem-group: all-dependencies
 
+  # The root workspace (apps/*/ClientApp, libs/node_packages/*) shares the root
+  # lockfile; the coverage-upload action has its own.
   - package-ecosystem: npm
-    directory: "/"
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
-    groups:
-      angular:
-        patterns:
-          - "@angular/*"
-          - "@angular-devkit/*"
-      nx:
-        patterns:
-          - "@nx/*"
-          - "nx"
+    directories:
+      - "/"
+      - "/apps/CodeCoverage/action"
+    patterns: ["*"]
+    multi-ecosystem-group: all-dependencies
+    ignore:
+      - dependency-name: "@angular/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@angular-devkit/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@schematics/angular"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "ng-packagr"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: docker
+    directories:
+      - "/apps/CodeCoverage/CodeCoverage"
+      - "/apps/DemoApp/DemoApp"
+      - "/apps/SparkSchemas"
+    patterns: ["*"]
+    multi-ecosystem-group: all-dependencies
