@@ -72,4 +72,7 @@ if (affected.includes(E2E)) {
 }
 
 const parallel = passthrough.some(a => /^--parallel\b/.test(a)) ? [] : ['--parallel=4'];
-finish(nx(['affected', '-t', 'test', '-c', 'local', ...parallel, ...passthrough], { env }).status);
+// Nx 23.3 prints only a "full log:" path for a failed task, and the next run of the same task hash
+// overwrites that file. Static output keeps each task's output in the sweep's own log.
+const outputStyle = passthrough.some(a => /^--output-?[sS]tyle\b/.test(a)) ? [] : ['--output-style=static'];
+finish(nx(['affected', '-t', 'test', '-c', 'local', ...parallel, ...outputStyle, ...passthrough], { env }).status);

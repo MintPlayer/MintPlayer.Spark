@@ -203,6 +203,9 @@ public class IdentityProviderJourneyTests
             claims.TryGetProperty("email", out _).Should().BeFalse("no email scope, no email claim");
         }
 
+        // The list reads OidcGrants_BySubject, which is eventually consistent by design (display
+        // only). Under a loaded sweep the grant written by the consent above was not indexed yet.
+        await SparkId.WaitForIndexingAsync();
         var connected = await GetJsonAsync<List<ConnectedApplicationRow>>(outsider, "/spark/identity-provider/applications");
         var grant = connected.Single(a => a.ApplicationId == applicationId);
         grant.Scopes.Select(s => s.Name).Should().BeEquivalentTo(new[] { "openid", "profile", apiScope });
