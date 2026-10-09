@@ -56,7 +56,7 @@ function buildStyle(): cytoscape.StylesheetJson {
         'label': 'data(label)',
         'color': body,
         'font-family': font,
-        'font-size': 12,
+        'font-size': FONT_SIZE,
         'text-valign': 'center',
         'text-halign': 'center',
         'transition-property': 'opacity',
@@ -79,7 +79,7 @@ function buildStyle(): cytoscape.StylesheetJson {
         'text-wrap': 'ellipsis',
         'color': body,
         'font-family': font,
-        'font-size': 10,
+        'font-size': FONT_SIZE,
         'text-background-color': bodyBg,
         'text-background-opacity': 0.85,
         'text-background-padding': 2,
@@ -103,6 +103,9 @@ function buildStyle(): cytoscape.StylesheetJson {
   ];
   return sheet as unknown as cytoscape.StylesheetJson;
 }
+
+/** One label size for repositories and arrows alike. */
+const FONT_SIZE = 12;
 
 /** Below this many graph pixels an edge shows no label at all; "…" alone tells nothing. */
 const MIN_LABEL_WIDTH = 24;
