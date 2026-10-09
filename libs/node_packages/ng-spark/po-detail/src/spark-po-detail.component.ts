@@ -281,18 +281,30 @@ export class SparkPoDetailComponent {
         this.loadItem()
       ]);
 
+      const et = entityTypes.find(t => t.id === this.type || t.alias === this.type) || null;
+      // Rights and actions are fetched BEFORE the object is published. The component is reused when
+      // the route moves to another object, so publishing the new object first would show it under
+      // the previous object's Edit/Delete/custom actions until these arrive: a Delete the caller
+      // holds on the page they came from flashed on one where they hold none.
+      const [permissions, actions] = et
+        ? await Promise.all([
+          this.sparkService.getPermissions(et.id),
+          this.sparkService.getCustomActions(et.id)
+        ])
+        : [null, null];
+
       this.allEntityTypes.set(entityTypes);
-      this.entityType.set(entityTypes.find(t => t.id === this.type || t.alias === this.type) || null);
+      this.entityType.set(et);
       this.item.set(item);
       this.loadLookupReferenceOptions();
       this.loadAsDetailTypes();
 
-      const et = this.entityType();
-      if (et) {
-        const [permissions, actions] = await Promise.all([
-          this.sparkService.getPermissions(et.id),
-          this.sparkService.getCustomActions(et.id)
-        ]);
+      if (!et || !permissions || !actions) {
+        this.permissions.set(null);
+        this.editAction.set(null);
+        this.deleteAction.set(null);
+        this.customActions.set([]);
+      } else {
         // Prefer the per-row affordances (#236 G5) when the server attached them — a row the
         // caller may read but not mutate then hides its Edit/Delete buttons instead of rendering
         // ones that 404. `can` is absent for types with no row rule, so fall back to type-level.

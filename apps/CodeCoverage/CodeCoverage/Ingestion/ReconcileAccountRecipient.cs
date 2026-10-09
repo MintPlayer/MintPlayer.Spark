@@ -12,6 +12,7 @@ public partial class ReconcileAccountRecipient : IRecipient<ReconcileAccountMess
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IForgeIntegrationResolver forges;
+    [Inject] private readonly Dependencies.IManifestScanScheduler manifestScans;
     [Inject] private readonly ILogger<ReconcileAccountRecipient> logger;
 
     public async Task HandleAsync(ReconcileAccountMessage message, CancellationToken cancellationToken = default)
@@ -31,6 +32,11 @@ public partial class ReconcileAccountRecipient : IRecipient<ReconcileAccountMess
 
         await forges.For(account.Provider).ReconcileAsync(account, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
+
+        // An installation change is how a repository gets added, and this reconcile is what gives it
+        // a default branch — so this is the moment it can first be scanned. The index wait is for
+        // the repositories the reconcile just created.
+        await manifestScans.ScheduleAccountAsync(account, waitForIndex: true, cancellationToken);
 
         logger.LogInformation("Reconciled {Login} after an installation change", account.Login);
     }

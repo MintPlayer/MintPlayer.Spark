@@ -25,6 +25,7 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IForgeIntegrationResolver forges;
+    [Inject] private readonly Dependencies.IManifestScanScheduler manifestScans;
     [Inject] private readonly ILogger<ReconcileForgeStateCronJob> logger;
 
     /// <summary>03:20 UTC. Nightly is enough: the webhook path handles the timely case, and this
@@ -74,6 +75,10 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
                 // half-applied reconcile, saved as though it were a whole one.
                 await session.SaveChangesAsync(cancellationToken);
                 reconciled++;
+
+                // Nightly manifest rescan (dependency-updates PRD §6.3), once the account's
+                // repositories are current. Never throws; a scan that finds nothing changed is cheap.
+                await manifestScans.ScheduleAccountAsync(account, waitForIndex: false, cancellationToken);
             }
             catch (Exception ex)
             {

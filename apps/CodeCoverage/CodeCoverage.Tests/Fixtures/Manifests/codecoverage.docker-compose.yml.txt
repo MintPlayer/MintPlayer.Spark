@@ -1,0 +1,266 @@
+services:
+
+  coverage-raven:
+    # Pinned (not 7.1-latest): floating tags have previously advanced to builds
+    # that reject unsecured access on a 0.0.0.0 bind, breaking deploys on a
+    # plain `docker compose pull`.
+    image: docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64
+    environment:
+      - RAVEN_Setup_Mode=None
+      # Raven only permits unsecured access on a 0.0.0.0 bind with this flag.
+      # What keeps Raven off the public internet is the network topology:
+      # coverage-raven publishes no host ports and lives only on the internal
+      # network below, never on the public 'web' Traefik network.
+      - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
+      - RAVEN_ServerUrl=http://0.0.0.0:8080
+      # No licence settings here on purpose. Measured against this exact image
+      # (7.1.10): a licence supplied through *configuration* is silently ignored
+      # — RAVEN_License (inline JSON), RAVEN_License_Path, --License.Path via
+      # RAVEN_ARGS, RAVEN_SETTINGS and an embedded License object in
+      # settings.json were each tried, and every one left the server on
+      # "AGPL - Open Source" with nothing in the log. The licence is applied by
+      # the coverage-raven-license service below, which is what actually works.
+    volumes:
+      - raven-data:/var/lib/ravendb/data
+    networks:
+      - coverage-internal
+    # No curl/wget assumptions: bash's /dev/tcp is enough for "is it listening".
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  # One-shot: POSTs ./raven-license.json to Raven's activation endpoint, then exits. The
+  # licence lands in the system database, so it survives restarts and container
+  # recreation (it lives in the raven-data volume) — this only has to succeed
+  # once, and re-running it with the same licence is a no-op (verified).
+  #
+  # Runs on every `up` so a recreated volume re-licenses itself instead of
+  # quietly reverting to AGPL. Without ./raven-license.json the POST fails, this
+  # container exits non-zero and the deployment carries on unlicensed, exactly
+  # as it did before — coverage-app deliberately does not depend on it.
+  #
+  # The endpoint needs no credentials because coverage-raven is unsecured and
+  # reachable only from coverage-internal.
+  coverage-raven-license:
+    image: curlimages/curl:8.11.1
+    depends_on:
+      coverage-raven:
+        condition: service_healthy
+    volumes:
+      - ./raven-license.json:/raven-license.json:ro
+    networks:
+      - coverage-internal
+    # curl IS the entrypoint, so this is an argument list.
+    command:
+      - "-sS"
+      - "-f"
+      - "--retry"
+      - "10"
+      - "--retry-delay"
+      - "3"
+      - "--retry-connrefused"
+      - "-X"
+      - "POST"
+      - "-H"
+      - "Content-Type: application/json"
+      - "--data-binary"
+      - "@/raven-license.json"
+      - "http://coverage-raven:8080/admin/license/activate"
+    restart: "no"
+
+  # Outgoing mail only. The app hands a message to this container and returns; the
+  # container queues it and does the delivering.
+  #
+  # ⚠️ Why a container rather than the app talking SMTP itself: the send happens INSIDE
+  # the external-login callback, while somebody is waiting on an HTTP response. A handoff
+  # one hop away takes milliseconds and succeeds whether or not the receiving mail server
+  # is reachable, and a queue that retries for days is the difference between "delivered
+  # late" and "the link was never sent". Putting an internet round-trip and its timeouts
+  # in the middle of a sign-in is the thing being avoided.
+  #
+  # ⚠️ It is NOT a mail server in the inbound sense. No ports are published and it sits
+  # only on coverage-internal, so nothing outside this compose project can reach it —
+  # which is also what makes running it without authentication safe.
+  coverage-smtp:
+    image: boky/postfix:v4.3.0
+    environment:
+      # Which envelope senders are accepted. Anything else is refused rather than
+      # relayed, so a bug cannot turn this into an open relay for another domain.
+      - ALLOWED_SENDER_DOMAINS=${MAIL_SENDER_DOMAIN:-coverage.mintplayer.com}
+      # Announced in HELO and used in Message-ID. ⚠️ Must match the server's reverse DNS
+      # or a good share of receivers will refuse the mail outright — see README.
+      - HOSTNAME=${MAIL_HELO_HOSTNAME:-coverage.mintplayer.com}
+      # Empty = deliver straight to each recipient's MX, which needs outbound port 25.
+      # Set it to a provider's submission host to relay instead, which is the fallback if
+      # deliverability from this IP turns out to be poor.
+      - RELAYHOST=${MAIL_RELAY_HOST:-}
+      - RELAYHOST_USERNAME=${MAIL_RELAY_USERNAME:-}
+      - RELAYHOST_PASSWORD=${MAIL_RELAY_PASSWORD:-}
+      # The DKIM selector half of the DNS record; the key is mounted below.
+      - DKIM_SELECTOR=${MAIL_DKIM_SELECTOR:-mail}
+      # ⚠️ Send over IPv4 ONLY, never IPv6. Measured 2026-09-29, IPv6 fails on three counts:
+      #   - the VPS sends from 2a01:4f8:c0c:f87c::1, but coverage.mintplayer.com's AAAA and
+      #     its SPF name only 2a01:4f8:c0c:f87c:: (::0), so an IPv6 send fails SPF (-all);
+      #   - that ::1 address has no PTR (Hetzner sets reverse DNS per address);
+      #   - Gmail and Outlook refuse IPv6 senders without a matching PTR.
+      # IPv4 is clean: 188.245.190.60's PTR is coverage.mintplayer.com (set 2026-09-29), which
+      # matches HOSTNAME above and resolves back to the same address. inet_protocols=ipv4
+      # makes Postfix never try IPv6, not merely prefer IPv4 as smtp_address_preference did.
+      - POSTFIX_inet_protocols=ipv4
+      - POSTFIX_smtp_address_preference=ipv4
+    volumes:
+      # ⚠️ Close to mandatory. mintplayer.com publishes DMARC sp=reject, so mail from a
+      # subdomain that fails alignment is REJECTED rather than junked, and without DKIM
+      # the whole thing rests on SPF — which breaks the moment a recipient forwards the
+      # message. Both gotchas below were measured against this image, twice each:
+      #
+      #   1. The key must be FLAT: mail-dkim/<domain>.private. opendkim-genkey writes
+      #      <domain>/<selector>.private, and the image silently logs "Skipping DKIM"
+      #      and delivers UNSIGNED — which still succeeds on SPF, so the failure hides.
+      #   2. It must be owned by opendkim (101:104 in v4.3.0) on the HOST. The image
+      #      tries to chown what it cannot read, the read-only mount refuses, and the
+      #      container then exits rather than starting unsigned.
+      #
+      # Verify with opendkim-testkey; it prints "key OK" only when the private key and
+      # the published TXT record agree. See README "Outgoing mail".
+      - ./mail-dkim:/etc/opendkim/keys:ro
+      # Survives recreation, so a message queued during an outage is not lost when the
+      # stack is redeployed.
+      - smtp-queue:/var/spool/postfix
+    networks:
+      - coverage-internal
+    # bash, not sh: /dev/tcp is a bash feature, and this image's sh is dash, so the sh form
+    # failed on every probe and marked a working relay "unhealthy" in production. The image is
+    # Debian-based and ships /usr/bin/bash, as the other two healthchecks here assume.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/587"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  coverage-app:
+    # Pull-only: no build block, so `docker compose up -d` on the VPS can
+    # never fall back to building from source — deploys are pull + restart.
+    image: ghcr.io/mintplayer/codecoverage:master
+    # Long enough for an in-flight message handler to finish on SIGTERM. Docker's default is
+    # 10 seconds, which is not enough for coverage report parsing, and a handler killed
+    # mid-flight leaves its message claimed until SparkMessagingOptions.ClaimTtl (5 min)
+    # lapses and the sweeper reclaims it — so the work is not lost, but it is delayed and
+    # partially re-run. Keep this comfortably BELOW ClaimTtl: a grace period longer than the
+    # claim would let the sweeper hand the message to a new container while the old one is
+    # still working on it.
+    stop_grace_period: 120s
+    depends_on:
+      coverage-raven:
+        condition: service_healthy
+      # Started, not waited on: mail is not on the critical path for serving coverage, and
+      # a relay that is slow to come up must not hold back the whole deployment.
+      coverage-smtp:
+        condition: service_started
+    environment:
+      # Explicit: Program.cs derives the GitHub__{env}__* config prefix from
+      # the environment name — anything else silently disables sign-in.
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Spark__RavenDb__Urls__0=http://coverage-raven:8080
+      - Spark__RavenDb__EnsureDatabaseCreated=true
+      # Data Protection key ring (auth + antiforgery cookies decrypt with it). Kept on the
+      # dataprotection-keys volume so a redeploy does not sign everyone out; Spark refuses to
+      # start in Production without a location. appsettings.json deliberately sets no
+      # Storage, because KeysPath and Storage=RavenDb together also refuse startup.
+      - Spark__DataProtection__KeysPath=/var/lib/codecoverage/dataprotection-keys
+      # OIDC audience: workflows must request an id-token with this audience
+      - Coverage__BaseUrl=https://coverage.mintplayer.com
+      # Signs the per-pull-request badge URL the bot puts in a PR comment, so a
+      # private repository's comment never carries the repo-wide badge token.
+      # Unset degrades those comments to text-only numbers; rotating it only
+      # invalidates the badge images inside comments already posted.
+      - Coverage__BadgeSigningKey=${COVERAGE_BADGE_SIGNING_KEY:-}
+      - GitHub__WebhookSecret=${GITHUB_WEBHOOK_SECRET}
+      - GitHub__Production__AppId=${GITHUB_APP_ID}
+      # Optional: the App's public slug (github.com/apps/<slug>) for "install
+      # the App" links; empty falls back to the generic apps page.
+      - GitHub__Production__AppSlug=${GITHUB_APP_SLUG:-}
+      # Optional dev App id: webhooks arriving for THAT app are not processed
+      # here but downstreamed to connected dev clients (single webhook URL).
+      - GitHub__Development__AppId=${GITHUB_DEVELOPMENT_APP_ID:-}
+      - GitHub__Production__ClientId=${GITHUB_APP_CLIENT_ID}
+      - GitHub__Production__ClientSecret=${GITHUB_APP_CLIENT_SECRET}
+      - GitHub__Production__PrivateKeyPath=/run/secrets/github-app.pem
+      # Outgoing mail through Spark MailManager (#460 M8; was Coverage__Mail__*). The .env
+      # variables are the same ones as before. MailManager is added only when Host AND
+      # From:Address are set, so an unset MAIL_FROM_ADDRESS still means "this deployment
+      # cannot send" — supported as long as ExternalLoginLinking is not ConfirmByEmail
+      # (startup refuses that combination rather than discarding confirmations silently).
+      # Security=None: the relay is reachable only on coverage-internal and advertises
+      # STARTTLS it has no certificate for; None never sends STARTTLS (spike S-M6), exactly
+      # what the old System.Net.Mail client (EnableSsl=false) did.
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
+      - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
+      - Spark__Mail__Smtp__Security=None
+      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-}
+      - Spark__Mail__From__Name=${MAIL_FROM_NAME:-MintPlayer Coverage}
+      # Links in mail are built from this, never from the request Host (#460 M5).
+      - Spark__Auth__PublicBaseUrl=https://coverage.mintplayer.com
+      # Disabled | WhenSignedIn | ConfirmByEmail. Left at the Spark default (Disabled)
+      # until there is a second forge worth linking to.
+      - Spark__Auth__ExternalLoginLinking=${EXTERNAL_LOGIN_LINKING:-Disabled}
+    volumes:
+      # GitHub App private key, downloaded from the App settings page; see
+      # .env.example for the expected location.
+      - ./github-app.pem:/run/secrets/github-app.pem:ro
+      # Survives `docker compose down` / image updates. Deleting this volume signs every user
+      # out once and invalidates outstanding antiforgery tokens -- nothing else is lost.
+      - dataprotection-keys:/var/lib/codecoverage/dataprotection-keys
+    labels:
+      - "traefik.enable=true"
+      # Hardcoded like every other MintPlayer deployment: interpolating the
+      # host from the server .env produced a non-matching router (empty/CRLF
+      # value -> SNI never matches -> Traefik serves its default cert and
+      # never requests one from Let's Encrypt).
+      - "traefik.http.routers.coverage.rule=Host(`coverage.mintplayer.com`)"
+      - "traefik.http.routers.coverage.entrypoints=websecure"
+      - "traefik.http.routers.coverage.tls.certresolver=letsencrypt"
+      # Pin the upstream port explicitly so Traefik never guesses.
+      - "traefik.http.services.coverage.loadbalancer.server.port=8080"
+      # The app sits on two networks; without this Traefik may resolve the
+      # container's coverage-internal IP, which it can't reach (random 504s).
+      - "traefik.docker.network=web"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      # ⚠️ Raised from 60s for the M6 re-key, which runs at startup and blocks before the app
+      # listens. Measured on a restored production copy: ~80s to write the new ids across 224k
+      # documents, ~20s to delete the legacy ones, plus 708 attachment moves. This VPS is a
+      # shared-vCPU box, so the budget is deliberately several times the measured figure — the
+      # failure this prevents is a container marked unhealthy while doing precisely what the
+      # deploy asked of it, which reads as a broken release.
+      #
+      # It is a *start* period, not a timeout: a healthy app is marked healthy at the first
+      # successful check, so an over-generous value costs nothing on an ordinary deploy where no
+      # migration is pending.
+      start_period: 600s
+    networks:
+      - web
+      - coverage-internal
+    restart: unless-stopped
+
+volumes:
+  raven-data:
+  smtp-queue:
+  dataprotection-keys:
+
+networks:
+  web:
+    external: true
+  # Dedicated internal network for app<->Raven traffic. Raven sits on this
+  # network only; the public Traefik network never reaches port 8080.
+  coverage-internal:
+    driver: bridge

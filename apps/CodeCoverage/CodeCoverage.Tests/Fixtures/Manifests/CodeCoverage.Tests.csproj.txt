@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+		<!-- Transitive MintPlayer.AspNetCore.NodeServices targets default to building
+		     a ClientApp\ SPA, which this test project doesn't have. -->
+		<EnableSpaBuilder>false</EnableSpaBuilder>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Using Include="MintPlayer.Assertions" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		  Real tool-produced reports, committed as fixtures. Note the sibling
+		  coverage\ folder is matched by .gitignore's **/coverage/ rule, so reports
+		  there are local artifacts CI never sees — fixtures must live here.
+		-->
+		<Content Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="coverlet.collector" Version="10.0.1">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.5" />
+		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0-rc.1.26425.128" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+		<PackageReference Include="NSubstitute" Version="6.2.0" />
+		<!-- Embedded RavenDB for tests that must exercise the real client
+		     session (request budget, attachments, streaming). -->
+		<PackageReference Include="RavenDB.TestDriver" Version="7.2.6" />
+		<PackageReference Include="xunit" Version="2.9.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		  Linked rather than referenced through MintPlayer.Spark.Testing. That project pins
+		  RavenDB.TestDriver 7.2.5 where this one pins 7.2.1, so a ProjectReference would silently
+		  bump the server version under 435 tests of a production app and drag in Verify besides.
+		  The locator is version-agnostic — it reads the version from this project's own deps.json.
+		-->
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenServerLocator.cs" Link="RavenServerLocator.cs" />
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenDatabaseDeletion.cs" Link="RavenDatabaseDeletion.cs" />
+		<!-- SparkTestDriver's JSON seeding, linked for the same reason: fixtures under Fixtures\. -->
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\JsonFixtureImporter.cs" Link="JsonFixtureImporter.cs" />
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexHelper.cs" Link="RavenIndexHelper.cs" />
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexingExtensions.cs" Link="RavenIndexingExtensions.cs" />
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexDeploymentException.cs" Link="RavenIndexDeploymentException.cs" />
+		<!-- The route-table snapshot (endpoints_generator_completion_plan.md M0), shared with the library's hosts. -->
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RouteTableSnapshot.cs" Link="RouteTableSnapshot.cs" />
+		<ProjectReference Include="..\CodeCoverage\CodeCoverage.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- Half the cores, like MintPlayer.Spark.Tests: measured 143 s against 172 s at xUnit's
+		     default (all cores) on a 4-core/8-thread laptop, because the embedded server needs CPU too. -->
+		<Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+</Project>

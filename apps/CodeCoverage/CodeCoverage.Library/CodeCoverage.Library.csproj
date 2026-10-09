@@ -9,6 +9,11 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- pyproject.toml for the repository dependency graph (Dependencies/ManifestParsers). -->
+		<PackageReference Include="Tomlyn" Version="2.10.1" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<!-- Attributes (+ Model) only, never the Web-SDK Abstractions: SPARKLIB001 fails the build if ASP.NET Core creeps back in (#388). -->
 		<ProjectReference Include="..\..\..\libs\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
 		<ProjectReference Include="..\..\..\libs\model\MintPlayer.Spark.Model\MintPlayer.Spark.Model.csproj" />

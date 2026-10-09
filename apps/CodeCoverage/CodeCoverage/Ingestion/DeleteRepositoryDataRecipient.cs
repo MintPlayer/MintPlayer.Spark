@@ -132,6 +132,10 @@ public partial class DeleteRepositoryDataRecipient : IRecipient<DeleteRepository
 
         // Last, and only now that nothing beneath it remains: this document is what the guards
         // above gate on, so while it exists the sweep can always be resumed.
+        // Its dependency-graph manifest: one document at an id derived from the repository's, so no
+        // query. Deleting an id that was never written is a no-op.
+        session.Delete(RepositoryManifest.ForRepository(repositoryId));
+
         session.Delete(repository);
         await session.SaveChangesAsync(cancellationToken);
 

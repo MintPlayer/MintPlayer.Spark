@@ -276,7 +276,7 @@ public class IngestionJobsTests : CoverageRavenTest
         var forge = Substitute.For<IForgeIntegration>();
 
         using (var session = store.OpenAsyncSession())
-            await new ReconcileAccountRecipient(session, Forges(forge), NullLogger<ReconcileAccountRecipient>.Instance)
+            await new ReconcileAccountRecipient(session, Forges(forge), Substitute.For<CodeCoverage.Dependencies.IManifestScanScheduler>(), NullLogger<ReconcileAccountRecipient>.Instance)
                 .HandleAsync(new ReconcileAccountMessage { Provider = EForgeProvider.GitHub, AccountId = 1 });
 
         await forge.Received(1).ReconcileAsync(Arg.Is<Account>(a => a.Login == "acme"), Arg.Any<CancellationToken>());
@@ -292,7 +292,7 @@ public class IngestionJobsTests : CoverageRavenTest
         var forge = Substitute.For<IForgeIntegration>();
 
         using (var session = store.OpenAsyncSession())
-            await new ReconcileAccountRecipient(session, Forges(forge), NullLogger<ReconcileAccountRecipient>.Instance)
+            await new ReconcileAccountRecipient(session, Forges(forge), Substitute.For<CodeCoverage.Dependencies.IManifestScanScheduler>(), NullLogger<ReconcileAccountRecipient>.Instance)
                 .HandleAsync(new ReconcileAccountMessage { Provider = EForgeProvider.GitHub, AccountId = accountId });
 
         await forge.DidNotReceiveWithAnyArgs().ReconcileAsync(default!, default);
@@ -306,7 +306,7 @@ public class IngestionJobsTests : CoverageRavenTest
     {
         WaitForIndexing(store);
         using var session = store.OpenAsyncSession();
-        await new ReconcileForgeStateCronJob(session, Forges(forge), NullLogger<ReconcileForgeStateCronJob>.Instance).RunAsync(default);
+        await new ReconcileForgeStateCronJob(session, Forges(forge), Substitute.For<CodeCoverage.Dependencies.IManifestScanScheduler>(), NullLogger<ReconcileForgeStateCronJob>.Instance).RunAsync(default);
     }
 
     [Fact]

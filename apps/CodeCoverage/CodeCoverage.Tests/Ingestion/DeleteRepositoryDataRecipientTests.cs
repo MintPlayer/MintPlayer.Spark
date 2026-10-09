@@ -109,6 +109,11 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
                 PullRequestNumber = 3,
             }, PullRequestFeedback.DocumentId(EForgeProvider.GitHub, id, 3));
 
+            await session.StoreAsync(new RepositoryManifest
+            {
+                Repository = Repository.DocumentId(EForgeProvider.GitHub, id),
+            }, RepositoryManifest.DocumentId(EForgeProvider.GitHub, id));
+
             await session.StoreAsync(new ApiToken
             {
                 Scope = "Repository",
@@ -173,6 +178,9 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         (await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId))).Should().BeNull();
+        // Its dependency-graph manifest goes with it; the other repository's stays.
+        (await verify.LoadAsync<RepositoryManifest>(RepositoryManifest.DocumentId(EForgeProvider.GitHub, RepoId))).Should().BeNull();
+        (await verify.LoadAsync<RepositoryManifest>(RepositoryManifest.DocumentId(EForgeProvider.GitHub, OtherRepoId))).Should().NotBeNull();
         (await verify.Query<ApiToken>()
             .Customize(q => q.WaitForNonStaleResults())
             .Where(t => t.Hash == $"hash{RepoId}")

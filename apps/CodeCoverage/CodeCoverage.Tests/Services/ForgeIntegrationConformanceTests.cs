@@ -49,7 +49,17 @@ public class ForgeIntegrationConformanceTests
         ],
     };
 
-    private static Repository SampleRepository => new() { Id = "Repositories/1", OwnerLogin = "acme", Name = "widget" };
+    /// <summary>
+    /// Members no capability governs, because every forge can answer them. Refusing one with
+    /// <see cref="NotSupportedException"/> would turn an availability question into a capability
+    /// one that callers have no array to filter on, so they must never refuse.
+    /// </summary>
+    private static readonly (string Name, Func<IForgeIntegration, Task> Invoke)[] Ungoverned =
+    [
+        (nameof(IForgeIntegration.GetTreeAsync), forge => forge.GetTreeAsync(SampleRepository, "main", CancellationToken.None)),
+    ];
+
+    private static Repository SampleRepository =>new() { Id = "Repositories/1", OwnerLogin = "acme", Name = "widget" };
 
     public static TheoryData<Type> Implementations
     {
@@ -113,6 +123,12 @@ public class ForgeIntegrationConformanceTests
         => (await ViolationsAsync(new BoastfulForge())).Should()
             .ContainSingle().Which.Should().Contain("Boards").And.Contain("no members");
 
+    /// <summary>A member outside every capability is not optional: refusing it is a violation.</summary>
+    [Fact]
+    public async Task A_forge_that_refuses_an_ungoverned_member_is_a_violation()
+        => (await ViolationsAsync(new TreelessForge())).Should()
+            .ContainSingle().Which.Should().Contain("GetTreeAsync").And.Contain("no capability governs");
+
     // ── The rules themselves ─────────────────────────────────────────────────────────────────────
 
     private static async Task<IReadOnlyList<string>> ViolationsAsync(IForgeIntegration forge)
@@ -136,6 +152,10 @@ public class ForgeIntegrationConformanceTests
                     violations.Add($"{name} does not advertise {capability} but supports it — a caller filtering on Capabilities would skip a forge that could have answered.");
             }
         }
+
+        foreach (var (member, invoke) in Ungoverned)
+            if (await CaptureAsync(invoke, forge) is NotSupportedException)
+                violations.Add($"{name} refuses {member}, which no capability governs — every forge must answer it.");
 
         return violations;
     }
@@ -196,6 +216,7 @@ public class ForgeIntegrationConformanceTests
         public Task<CommitComparison?> CompareAsync(Repository repository, string baseRef, string headSha, CancellationToken cancellationToken = default) => Task.FromResult<CommitComparison?>(null);
         public Task<string?> GetFirstParentAsync(Repository repository, string sha, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
         public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+        public virtual Task<ForgeTree?> GetTreeAsync(Repository repository, string branch, CancellationToken cancellationToken = default) => Task.FromResult<ForgeTree?>(null);
         public Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default) => Task.FromResult<ForgePullRequest?>(null);
         public Task ReconcileAsync(Account account, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
@@ -213,6 +234,15 @@ public class ForgeIntegrationConformanceTests
     {
         public override EForgeCapability[] Capabilities => [EForgeCapability.Statuses, EForgeCapability.Comments];
         public override Task PublishCommentAsync(Repository repository, int pullRequestNumber, string sha, string body, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    /// <summary>Conforms on every capability, but refuses to list a tree.</summary>
+    private sealed class TreelessForge : ConformanceDouble
+    {
+        public override EForgeCapability[] Capabilities => [EForgeCapability.Statuses, EForgeCapability.Comments];
+        public override Task<long> PublishStatusAsync(Repository repository, string sha, string name, ForgeVerdict verdict, long? existingId, CancellationToken cancellationToken = default) => Task.FromResult(1L);
+        public override Task PublishCommentAsync(Repository repository, int pullRequestNumber, string sha, string body, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public override Task<ForgeTree?> GetTreeAsync(Repository repository, string branch, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     /// <summary>Declares a capability that has no members yet.</summary>

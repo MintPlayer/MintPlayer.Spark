@@ -1,0 +1,106 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>library</OutputType>
+		<IsPackable>true</IsPackable>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of every right key and model id the library ships. -->
+		<SparkLibraryAlias>spark</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark</PackageId>
+		<Version>11.0.0-preview.103</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
+		<PackageTags>low-code;framework;ravendb;crud;persistentobject;angular</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		Validates consumer wiring of MintPlayer.Spark.SourceGenerators.
+		buildTransitive/ makes this flow to transitive consumers as well.
+		-->
+		<None Include="Targets\spark.props" Pack="true" PackagePath="buildTransitive/$(PackageId).props" />
+		<None Include="Targets\spark.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+
+		<!-- The framework specification. spark.targets copies it into each consuming project on build. -->
+		<None Include="AGENTS.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<!-- Allows NSubstitute (Castle DynamicProxy) to mock internal interfaces -->
+		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.1">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.1" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<!--
+	  #264 G-Q21: the schema revision this package writes into "$schema" URLs
+	  (https://schemas.spark.mintplayer.com/v{n}/<file>.schema.json), compiled in as the internal
+	  constant SparkSchemaRevision.Current.
+
+	  The publish workflow passes it (environment variable or /p:SparkSchemaRevision=n) after it has
+	  made sure the schemas/v{n} release exists, so a package can never name a revision that is not
+	  online. Any other build derives it from the nearest schemas/v* tag, and falls back to 0 where
+	  there is none or no git at all (a shallow clone, a Docker build context). 0 means "no published
+	  revision": the synchronizer then leaves $schema alone rather than write a URL that 404s.
+
+	  The file is only rewritten when the number changes, so an unchanged revision does not force a
+	  recompile.
+	-->
+	<Target Name="SparkGenerateSchemaRevision" BeforeTargets="CoreCompile">
+		<Exec Condition="'$(SparkSchemaRevision)' == ''"
+			  Command="git describe --tags --match &quot;schemas/v*&quot; --abbrev=0"
+			  WorkingDirectory="$(MSBuildProjectDirectory)"
+			  ConsoleToMSBuild="true" EchoOff="true" IgnoreExitCode="true" ContinueOnError="true"
+			  IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low" StandardErrorImportance="low">
+			<Output TaskParameter="ConsoleOutput" PropertyName="_SparkSchemaTag" />
+		</Exec>
+		<PropertyGroup>
+			<_SparkSchemaRevision>$(SparkSchemaRevision)</_SparkSchemaRevision>
+			<_SparkSchemaRevision Condition="'$(_SparkSchemaRevision)' == '' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_SparkSchemaTag)', '^schemas/v[0-9]+$'))">$(_SparkSchemaTag.Substring(9))</_SparkSchemaRevision>
+			<_SparkSchemaRevision Condition="'$(_SparkSchemaRevision)' == ''">0</_SparkSchemaRevision>
+			<_SparkSchemaRevisionFile>$(IntermediateOutputPath)SparkSchemaRevision.g.cs</_SparkSchemaRevisionFile>
+		</PropertyGroup>
+		<Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(_SparkSchemaRevision)', '^[0-9]+$'))"
+			   Text="SparkSchemaRevision must be a whole number, got '$(_SparkSchemaRevision)'." />
+		<WriteLinesToFile File="$(_SparkSchemaRevisionFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+						  Lines="// &lt;auto-generated/&gt; by SparkGenerateSchemaRevision in MintPlayer.Spark.csproj (#264 G-Q21)&#xA;namespace MintPlayer.Spark.Services%3B&#xA;&#xA;internal static class SparkSchemaRevision&#xA;{&#xA;    /// &lt;summary&gt;The published schemas/v{n} revision, or 0 when this build knows of none.&lt;/summary&gt;&#xA;    public const int Current = $(_SparkSchemaRevision)%3B&#xA;}" />
+		<ItemGroup>
+			<Compile Include="$(_SparkSchemaRevisionFile)" />
+			<FileWrites Include="$(_SparkSchemaRevisionFile)" />
+		</ItemGroup>
+	</Target>
+
+	<ItemGroup>
+	  <PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
+	  <PackageReference Include="MintPlayer.AspNetCore.SpaServices.Xsrf" Version="11.0.0-rc.3" />
+	  <ProjectReference Include="..\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
+</Project>

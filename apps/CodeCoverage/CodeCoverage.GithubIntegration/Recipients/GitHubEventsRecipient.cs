@@ -1,4 +1,5 @@
 using CodeCoverage.Services;
+using CodeCoverage.Dependencies;
 using CodeCoverage.Forge;
 using System.Text.Json;
 using CodeCoverage.Entities;
@@ -323,6 +324,32 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 Sha: evt.After,
                 Message: evt.HeadCommit.Message,
                 AuthoredAt: authoredAt)), ct);
+
+        await RequestManifestScanAsync(evt, branch, repository, ct);
+    }
+
+    /// <summary>
+    /// Rescans the repository's manifests when a push to its default branch may have changed one
+    /// (dependency-updates PRD §6.3). Other branches never feed the dependency graph.
+    /// </summary>
+    /// <remarks>
+    /// The payload's file lists decide, so an ordinary code push costs nothing. A push of
+    /// <see cref="ManifestScanTriggers.PushCommitListCap"/> or more commits always scans, because
+    /// GitHub truncates the list there and the missing commits could be the ones that touched a
+    /// manifest. Keyed on the pushed head, so a redelivered webhook queues nothing new.
+    /// </remarks>
+    private async Task RequestManifestScanAsync(PushEvent evt, string branch, Repository repository, CancellationToken ct)
+    {
+        if (!string.Equals(branch, evt.Repository!.DefaultBranch, StringComparison.Ordinal)) return;
+
+        var commits = evt.Commits ?? [];
+        var changedPaths = commits.SelectMany(c => (c.Added ?? []).Concat(c.Modified ?? []).Concat(c.Removed ?? []));
+        if (!ManifestScanTriggers.PushTouchesManifests(commits.Count, changedPaths)) return;
+
+        await messageBus.BroadcastOnceAsync(
+            new ScanRepositoryManifestsMessage { RepositoryId = repository.Id! },
+            ManifestScanTriggers.PushKey(repository.Id!, evt.After),
+            ct);
     }
 
     private async Task OnPullRequest(PullRequestEvent evt, CancellationToken ct)
