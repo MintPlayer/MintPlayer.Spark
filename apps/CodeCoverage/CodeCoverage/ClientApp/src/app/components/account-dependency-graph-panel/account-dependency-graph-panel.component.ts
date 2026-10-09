@@ -75,6 +75,8 @@ function buildStyle(): cytoscape.StylesheetJson {
         'target-arrow-shape': 'triangle',
         'arrow-scale': 1.1,
         'label': 'data(label)',
+        // The max width is set per edge by fitEdgeLabels() (90% of the edge's length); a longer label is cut with "…".
+        'text-wrap': 'ellipsis',
         'color': body,
         'font-family': font,
         'font-size': 10,
@@ -87,6 +89,8 @@ function buildStyle(): cytoscape.StylesheetJson {
       },
     },
     { selector: 'edge.dev', style: { 'line-style': 'dashed' } },
+    // A label narrower than its ellipsis says nothing: hidden on edges too short to carry one.
+    { selector: 'edge.no-label', style: { 'label': '' } },
     ...ECOSYSTEMS.map((eco) => {
       const color = cssVar(ECOSYSTEM_COLORS[eco].cssVar, ECOSYSTEM_COLORS[eco].fallback);
       return { selector: `edge[ecosystem = "${eco}"]`, style: { 'line-color': color, 'target-arrow-color': color } };
@@ -98,6 +102,25 @@ function buildStyle(): cytoscape.StylesheetJson {
     { selector: 'node.archived.faded', style: { 'opacity': 0.1 } },
   ];
   return sheet as unknown as cytoscape.StylesheetJson;
+}
+
+/** Below this many graph pixels an edge shows no label at all; "…" alone tells nothing. */
+const MIN_LABEL_WIDTH = 24;
+
+/**
+ * Caps every edge's label at 90% of the edge's visible length (endpoint to endpoint, in graph
+ * coordinates, so the ratio holds at every zoom level). Longer labels end in "…" (`text-wrap:
+ * ellipsis`); the full package list stays one click away. Set as a style bypass, which survives the
+ * stylesheet swap on a theme change.
+ */
+function fitEdgeLabels(edges: cytoscape.EdgeCollection): void {
+  edges.forEach((edge) => {
+    const from = edge.sourceEndpoint();
+    const to = edge.targetEndpoint();
+    const width = Math.floor(0.9 * Math.hypot(to.x - from.x, to.y - from.y));
+    edge.toggleClass('no-label', width < MIN_LABEL_WIDTH);
+    edge.style('text-max-width', `${Math.max(width, MIN_LABEL_WIDTH)}px`);
+  });
 }
 
 interface SelectedEdge {
@@ -326,15 +349,30 @@ export class AccountDependencyGraphPanelComponent {
     // Nodes are draggable but never "selected": selection is reserved for the edge whose packages are listed.
     cy.nodes().unselectify();
 
+    // dagre runs synchronously inside the constructor, so positions are final here; dragging a node
+    // changes the length of its edges, so their labels are refitted while it moves.
+    fitEdgeLabels(cy.edges());
+    cy.on('position', 'node', (e) => fitEdgeLabels(e.target.connectedEdges()));
+
     const focus = (hood: cytoscape.CollectionReturnValue) => cy.batch(() => {
       cy.elements().not(hood).addClass('faded');
       hood.addClass('highlighted');
     });
     const blur = () => cy.batch(() => cy.elements().removeClass('faded highlighted'));
 
-    cy.on('mouseover', 'node', (e) => { host.style.cursor = 'pointer'; focus(e.target.closedNeighborhood()); });
-    cy.on('mouseover', 'edge', (e) => { host.style.cursor = 'pointer'; focus(e.target.union(e.target.connectedNodes())); });
-    cy.on('mouseout', 'node, edge', () => { host.style.cursor = ''; blur(); });
+    // A canvas has no per-element title, so the container's title follows the pointer: the browser's
+    // native tooltip then shows the full text an edge label may have cut short.
+    cy.on('mouseover', 'node', (e) => {
+      host.style.cursor = 'pointer';
+      host.title = this.tooltipForNode(e.target.id());
+      focus(e.target.closedNeighborhood());
+    });
+    cy.on('mouseover', 'edge', (e) => {
+      host.style.cursor = 'pointer';
+      host.title = this.tooltipForEdge(e.target.id());
+      focus(e.target.union(e.target.connectedNodes()));
+    });
+    cy.on('mouseout', 'node, edge', () => { host.style.cursor = ''; host.removeAttribute('title'); blur(); });
     cy.on('grab', 'node', blur);
 
     cy.on('tap', 'node', (e) => {
@@ -346,6 +384,19 @@ export class AccountDependencyGraphPanelComponent {
     });
 
     this.cy = cy;
+  }
+
+  private tooltipForNode(id: string): string {
+    return this.graph()?.nodes.find((n) => n.id === id)?.fullName ?? '';
+  }
+
+  private tooltipForEdge(id: string): string {
+    const graph = this.graph();
+    const edge = graph?.edges.find((e) => edgeId(e) === id);
+    if (!graph || !edge) return '';
+    const nameOf = (nodeId: string) => graph.nodes.find((n) => n.id === nodeId)?.name ?? nodeId;
+    const packages = [...new Set(edge.dependencies.map((d) => `${d.ecosystem}: ${d.name}${d.dev ? ' (dev)' : ''}`))].sort();
+    return `${nameOf(edge.from)} → ${nameOf(edge.to)}\n${packages.join('\n')}`;
   }
 
   private select(id: string): void {
