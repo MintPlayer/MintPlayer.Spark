@@ -7,7 +7,7 @@ public sealed record DependencyGraphResponse(IReadOnlyList<DependencyGraphNode> 
 
 /// <summary>One repository. <see cref="ScannedAt"/> is null until its manifests were first scanned.</summary>
 public sealed record DependencyGraphNode(
-    string Id, string FullName, string Name, bool IsPrivate, bool Archived, DateTime? ScannedAt, string? ScanError);
+    string Id, string FullName, string Name, bool IsPrivate, bool Archived, DateTimeOffset? ScannedAt, string? ScanError);
 
 /// <summary><see cref="From"/> produces packages that <see cref="To"/> consumes.</summary>
 public sealed record DependencyGraphEdge(string From, string To, IReadOnlyList<DependencyGraphDependency> Dependencies);

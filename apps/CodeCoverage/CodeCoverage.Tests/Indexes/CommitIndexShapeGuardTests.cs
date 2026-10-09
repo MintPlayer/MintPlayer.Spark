@@ -14,9 +14,10 @@ namespace CodeCoverage.Tests.Indexes;
 /// <remarks>
 /// <para>
 /// RavenDB destroys a <c>DateTimeOffset</c>'s offset when the value becomes a <em>stored scalar index
-/// field</em> read back through a projection. <see cref="Commit"/> is the only entity in this app
-/// carrying a <c>DateTimeOffset</c> (<c>AuthoredAt</c>, <c>FirstSeenAtUtc</c>, <c>Date</c>) — and the
-/// only one without a generated index, so the trigger and the type never meet. Every generated index
+/// field</em> read back through a projection. <see cref="Commit"/> is the only <em>indexed</em> entity
+/// in this app carrying a <c>DateTimeOffset</c> (<c>AuthoredAt</c>, <c>FirstSeenAtUtc</c>, <c>Date</c>) —
+/// and it has no generated index, so the trigger and the type never meet. (Entities that are only
+/// loaded by id, such as <c>RepositoryManifest</c>, may carry one: the document keeps the offset.) Every generated index
 /// emits <c>StoreAllFields</c> unconditionally; <see cref="Commits_ByRepository"/> stores nothing.
 /// </para>
 /// <para>
@@ -131,25 +132,94 @@ public class CommitIndexShapeGuardTests
     /// precisely the class of silent loss this guard was written to catch.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// Scoped to entities an index reads, deliberately. A document that is only ever loaded by id
+    /// (<c>RepositoryManifest.ScannedAt</c>) keeps its offset: RavenDB stores a <c>DateTimeOffset</c>
+    /// in the document JSON intact, and the defect needs a stored index field read back through a
+    /// projection. Banning the type on every entity forced such fields to <c>DateTime</c> for no
+    /// reason. An entity that gains an index is caught again the moment it does.
+    /// </remarks>
     [Fact]
-    public void Commit_is_still_the_only_entity_carrying_a_DateTimeOffset()
+    public void Commit_is_still_the_only_indexed_entity_carrying_a_DateTimeOffset()
     {
-        var offenders = typeof(Commit).Assembly.GetTypes()
-            // Entities only. The defect is an index projection flattening the offset, so it can
-            // only reach a type that becomes a Raven document and gets indexed. A bus message
-            // payload lives inside SparkMessage's JSON, is never indexed and is never projected, so
-            // a DateTimeOffset on one is a different risk class — and forcing it to DateTime would
-            // drop the offset in transit, which is the very thing this guard exists to prevent.
-            .Where(t => t.Namespace == typeof(Commit).Namespace)
-            .Where(t => t.IsClass && !t.IsAbstract && t != typeof(Commit))
-            .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(DateTimeOffset))
-                .Select(p => $"{t.Name}.{p.Name}"))
-            .OrderBy(x => x)
+        var offenders = DateTimeOffsetOffenders(EntityTypes(), IndexedEntities(EntityTypes(), IndexTypes()))
+            .Where(o => !o.StartsWith(nameof(Commit) + ".", StringComparison.Ordinal))
             .ToList();
 
         offenders.Should().BeEmpty(
-            "every other temporal field in this app is a plain DateTime, which the defect does not " +
-            "touch; a new DateTimeOffset needs its index shape checked");
+            "every other temporal field an index reads is a plain DateTime, which the defect does not " +
+            "touch; a new DateTimeOffset on an indexed entity needs its index shape checked");
     }
+
+    /// <summary>
+    /// Makes the guard above falsifiable: if index discovery found nothing, it would pass vacuously.
+    /// These are the app's indexed entities as of 2026-10-09 — two hand-written indexes and five
+    /// <c>[GenerateIndex]</c> entities.
+    /// </summary>
+    [Fact]
+    public void Index_discovery_finds_the_known_indexed_entities()
+    {
+        var indexed = IndexedEntities(EntityTypes(), IndexTypes()).Select(t => t.Name).ToList();
+
+        indexed.Should().Contain(nameof(Commit));
+        indexed.Should().Contain(nameof(ApiToken));
+        indexed.Should().Contain(nameof(Repository));
+        indexed.Should().Contain(nameof(Account));
+        indexed.Should().NotContain(nameof(RepositoryManifest), "it is loaded by id only");
+    }
+
+    [Fact]
+    public void A_DateTimeOffset_is_an_offender_only_on_an_indexed_entity()
+    {
+        var entities = new[] { typeof(IndexedFixture), typeof(UnindexedFixture) };
+        var indexed = IndexedEntities(entities, [typeof(IndexedFixtureIndex)]);
+
+        DateTimeOffsetOffenders(entities, indexed).Should().Equal("IndexedFixture.When");
+    }
+
+    private static IEnumerable<Type> EntityTypes() => typeof(Commit).Assembly.GetTypes()
+        // Entities only: a bus message payload lives inside SparkMessage's JSON and is never indexed
+        // (BranchCommitPushed.AuthoredAt), and forcing it to DateTime would drop the offset in transit.
+        .Where(t => t.Namespace == typeof(Commit).Namespace && t.IsClass && !t.IsAbstract);
+
+    private static IEnumerable<Type> IndexTypes() =>
+        typeof(Commits_ByRepository).Assembly.GetTypes().Concat(typeof(Commit).Assembly.GetTypes());
+
+    /// <summary>
+    /// The entities an index maps: a <c>[GenerateIndex]</c> entity, or the document type of an
+    /// <see cref="AbstractIndexCreationTask{TDocument}"/>. ⚠️ A <c>LoadDocument&lt;T&gt;</c> inside a
+    /// map is not visible to reflection; such a T must also be indexed directly or carry no
+    /// DateTimeOffset (today: ApiTokens_Overview loads Account, which is <c>[GenerateIndex]</c>).
+    /// </summary>
+    private static List<Type> IndexedEntities(IEnumerable<Type> entities, IEnumerable<Type> indexTypes)
+    {
+        var mapped = indexTypes
+            .Where(t => t.IsClass && !t.IsAbstract)
+            .Select(DocumentTypeOf)
+            .OfType<Type>()
+            .ToHashSet();
+        return entities
+            .Where(t => mapped.Contains(t) || t.GetCustomAttribute<GenerateIndexAttribute>() is not null)
+            .ToList();
+    }
+
+    private static Type? DocumentTypeOf(Type index)
+    {
+        for (var t = index.BaseType; t is not null; t = t.BaseType)
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(AbstractIndexCreationTask<>))
+                return t.GetGenericArguments()[0];
+        return null;
+    }
+
+    private static IEnumerable<string> DateTimeOffsetOffenders(IEnumerable<Type> entities, IReadOnlyCollection<Type> indexed) =>
+        entities
+            .Where(indexed.Contains)
+            .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(DateTimeOffset))
+                .Select(p => $"{t.Name}.{p.Name}"))
+            .OrderBy(x => x, StringComparer.Ordinal);
+
+    private sealed class IndexedFixture { public DateTimeOffset When { get; set; } }
+    private sealed class UnindexedFixture { public DateTimeOffset When { get; set; } }
+    private sealed class IndexedFixtureIndex : AbstractIndexCreationTask<IndexedFixture> { }
 }

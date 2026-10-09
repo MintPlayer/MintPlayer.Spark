@@ -59,7 +59,7 @@ public class DependencyGraphEndpointTests : CoverageRavenTest
     private static ManifestPackage Makes(string ecosystem, string name, string path)
         => new() { Ecosystem = ecosystem, Name = name, Path = path };
 
-    private static readonly DateTime ScannedAt = new(2026, 10, 9, 3, 20, 0, DateTimeKind.Utc);
+    private static readonly DateTimeOffset ScannedAt = new(2026, 10, 9, 3, 20, 0, TimeSpan.Zero);
 
     /// <summary>
     /// acme/lib publishes @acme/lib; the private acme/secret consumes it and publishes Acme.Secret;

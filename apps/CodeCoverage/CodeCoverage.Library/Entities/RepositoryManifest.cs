@@ -51,11 +51,12 @@ public class RepositoryManifest
     public int ParserVersion { get; set; }
 
     /// <summary>
-    /// When the last scan attempt finished, successful or not, in UTC. A plain <see cref="DateTime"/>:
-    /// <c>Commit</c> is the only entity allowed a <see cref="DateTimeOffset"/>
-    /// (<c>CommitIndexShapeGuardTests</c>).
+    /// When the last scan attempt finished, successful or not. Safe as a <see cref="DateTimeOffset"/>
+    /// because no index reads this entity (it is loaded by id); if one ever does, it needs the
+    /// <c>{Name}Raw</c> companion (<c>docs/guide-dates-and-sorting.md</c>), and
+    /// <c>CommitIndexShapeGuardTests</c> will say so.
     /// </summary>
-    public DateTime? ScannedAt { get; set; }
+    public DateTimeOffset? ScannedAt { get; set; }
 
     /// <summary>Why the last scan could not complete, fit to show the owner. Null when it did.</summary>
     public string? ScanError { get; set; }
