@@ -118,7 +118,9 @@ public class RegistrationInventoryTests : CoverageRavenTest
     /// </summary>
     [Fact]
     public void The_application_services_are_registered() => AssertRegistered(
-        typeof(IMyAccountsService));
+        typeof(IMyAccountsService),
+        typeof(global::CodeCoverage.Dependencies.IRepositoryManifestScanner),
+        typeof(global::CodeCoverage.Dependencies.IManifestScanScheduler));
 
     /// <summary>
     /// Message handlers. A wire type whose handler is missing is <b>dropped silently</b> — the
@@ -139,5 +141,6 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<global::CodeCoverage.Ingestion.AssembleCommitMessage>),
         typeof(IRecipient<global::CodeCoverage.Feedback.PublishFeedbackMessage>),
         typeof(IRecipient<global::CodeCoverage.Feedback.PublishPullRequestCommentMessage>),
-        typeof(IRecipient<global::CodeCoverage.Feedback.OpenPullRequestCommentMessage>));
+        typeof(IRecipient<global::CodeCoverage.Feedback.OpenPullRequestCommentMessage>),
+        typeof(IRecipient<global::CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>));
 }

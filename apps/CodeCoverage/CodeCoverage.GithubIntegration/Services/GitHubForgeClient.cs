@@ -123,6 +123,55 @@ public partial class GitHubForgeClient : IForgeClient
     /// Memoized including the null result, so a repository with no installation does not re-load
     /// the account document on every read within a request.
     /// </remarks>
+    /// <remarks>
+    /// Two requests: the branch, for the commit it points at, then that commit's tree with
+    /// <c>?recursive=1</c>. Listing by the commit sha rather than the branch name pins the snapshot
+    /// the caller then reads files from. GitHub truncates a recursive listing beyond 100,000 entries
+    /// or 7 MB and says so in <c>truncated</c>, which is passed through rather than hidden.
+    /// <para>
+    /// ⚠️ Installation only. Public repositories have an anonymous fallback for file content, but
+    /// not here: an anonymous tree listing spends the 60-requests-per-hour per-IP budget the whole
+    /// server shares, and a repository we are not installed on has nothing to scan for anyway.
+    /// </para>
+    /// </remarks>
+    public async Task<ForgeTree?> GetTreeAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(repository);
+
+        var installationId = await ResolveInstallationAsync(repository, cancellationToken);
+        if (installationId is null)
+        {
+            logger.LogDebug("No installation for {FullName}; cannot list its tree.", repository.FullName);
+            return null;
+        }
+
+        try
+        {
+            var client = await installationService.CreateInstallationClientAsync(installationId.Value);
+            var head = await client.Repository.Branch.Get(repository.GitHubId, branch);
+            var tree = await client.Git.Tree.GetRecursive(repository.GitHubId, head.Commit.Sha);
+
+            var entries = tree.Tree
+                .Where(item => item.Type.StringValue == "blob")
+                .Select(item => new ForgeTreeEntry(item.Path, item.Size))
+                .ToList();
+
+            return new ForgeTree(head.Commit.Sha, tree.Sha, entries, tree.Truncated);
+        }
+        catch (Octokit.NotFoundException)
+        {
+            // A branch that no longer exists, an empty repository (no commits, so no tree), or one
+            // this installation can no longer see. All three mean "nothing to list".
+            logger.LogInformation("No tree for {FullName}@{Branch}: not found.", repository.FullName, branch);
+            return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Could not list the tree of {FullName}@{Branch}.", repository.FullName, branch);
+            return null;
+        }
+    }
+
     private async Task<long?> ResolveInstallationAsync(Repository repository, CancellationToken cancellationToken)
     {
         if (repository.Id is not null && installations.TryGetValue(repository.Id, out var memoized))

@@ -124,6 +124,12 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default)
         => Task.FromResult(Files.TryGetValue($"{sha}/{path}", out var content) ? content : null);
 
+    /// <summary>Trees by branch name; an unscripted branch lists as null (unavailable).</summary>
+    public Dictionary<string, ForgeTree> Trees { get; } = new(StringComparer.Ordinal);
+
+    public Task<ForgeTree?> GetTreeAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
+        => Task.FromResult(Trees.TryGetValue(branch, out var tree) ? tree : null);
+
     /// <summary>Branches this forge was asked to delete, in order.</summary>
     public List<string> DeletedBranches { get; } = [];
 

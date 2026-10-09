@@ -70,6 +70,9 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default)
         => client.GetFileContentAsync(repository, sha, path, cancellationToken);
 
+    public Task<ForgeTree?> GetTreeAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
+        => client.GetTreeAsync(repository, branch, cancellationToken);
+
     public Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => client.GetPullRequestAsync(repository, number, cancellationToken);
 

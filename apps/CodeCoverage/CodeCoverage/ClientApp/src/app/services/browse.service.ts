@@ -26,6 +26,41 @@ export interface RepoInfo {
   baseUrl?: string;
 }
 
+/** The package ecosystems the dependency scanner reads manifests for. */
+export type DependencyEcosystem = 'npm' | 'nuget' | 'pip' | 'composer' | 'actions' | 'docker';
+
+/** A repository of the account, as a node of its dependency graph. */
+export interface DependencyGraphNode {
+  /** Repository document id (`Repositories/github/123`). */
+  id: string;
+  fullName: string;
+  name: string;
+  isPrivate: boolean;
+  archived: boolean;
+  scannedAt: string | null;
+  scanError: string | null;
+}
+
+/** One package a consumer repository takes from a producer repository. */
+export interface DependencyGraphPackage {
+  ecosystem: DependencyEcosystem;
+  name: string;
+  manifestPath: string;
+  dev: boolean;
+}
+
+/** `from` produces the packages that `to` consumes. */
+export interface DependencyGraphEdge {
+  from: string;
+  to: string;
+  dependencies: DependencyGraphPackage[];
+}
+
+export interface DependencyGraph {
+  nodes: DependencyGraphNode[];
+  edges: DependencyGraphEdge[];
+}
+
 export interface CommitInfo {
   sha: string;
   branch?: string;
@@ -171,6 +206,11 @@ export class BrowseService {
 
   getAccountRepos(provider: string, login: string): Promise<RepoInfo[]> {
     return firstValueFrom(this.http.get<RepoInfo[]>(`/api/browse/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/repos`));
+  }
+
+  getDependencyGraph(provider: string, login: string): Promise<DependencyGraph> {
+    return firstValueFrom(this.http.get<DependencyGraph>(
+      `/api/browse/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/dependency-graph`));
   }
 
   getRepo(provider: string, owner: string, name: string): Promise<RepoInfo> {

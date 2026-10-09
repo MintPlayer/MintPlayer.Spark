@@ -59,6 +59,17 @@ public interface IForgeClient
     Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every file in the head commit of <paramref name="branch"/>: the commit and tree it resolved to,
+    /// each blob's path and size, and whether the forge truncated the listing. Null when there is no
+    /// credential, the branch does not exist, or the forge fails — never an exception.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Fetch file content at <see cref="ForgeTree.CommitSha"/>, never at the branch name: content
+    /// is cached by ref, and a branch name is not immutable.
+    /// </remarks>
+    Task<ForgeTree?> GetTreeAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reads one pull request on <paramref name="repository"/>, or null when it cannot be read.
     /// </summary>
     /// <remarks>

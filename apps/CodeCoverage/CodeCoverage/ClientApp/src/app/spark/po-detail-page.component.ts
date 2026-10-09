@@ -5,6 +5,7 @@ import { valueFor } from '@mintplayer/ng-spark/models';
 import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-badge-panel.component';
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
 import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
+import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
 import { forgeOf } from './forge-of';
 import { HomeExtrasComponent } from './home-extras.component';
@@ -34,6 +35,7 @@ import { HomeExtrasComponent } from './home-extras.component';
   imports: [
     SparkPoDetailComponent,
     RepoBadgePanelComponent, RepoTrendPanelComponent, RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent,
+    AccountDependencyGraphPanelComponent,
   ],
   template: `
     <spark-po-detail [extraContentTemplate]="extras" />
@@ -44,6 +46,10 @@ import { HomeExtrasComponent } from './home-extras.component';
           <app-repo-badge-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-trend-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-setup-panel />
+        }
+      } @else if (entityType.name === 'Account') {
+        @if (accountOf(po); as account) {
+          <app-account-dependency-graph-panel [provider]="account.provider" [login]="account.login" />
         }
       } @else if (entityType.name === 'Commit') {
         <app-commit-files-extras [po]="po" />
@@ -67,6 +73,13 @@ export default class PoDetailPageComponent {
     const provider = forgeOf(po) ?? '';
 
     return owner && name && provider ? { provider, owner, name } : null;
+  }
+
+  /** The forge (from the document id, like `repoOf`) and login an Account's dependency graph is fetched by. */
+  accountOf(po: PersistentObject): { provider: string; login: string } | null {
+    const login = valueFor(po, 'Login')?.value;
+    const provider = forgeOf(po);
+    return typeof login === 'string' && login && provider ? { provider, login } : null;
   }
 
 }

@@ -122,6 +122,18 @@ public interface IForgeIntegration
     Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every file in the head commit of <paramref name="branch"/>, or null when it cannot be listed.
+    /// See <see cref="IForgeClient.GetTreeAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// No capability guards this: every forge can list a repository tree (GitHub's git trees, GitLab's
+    /// repository tree, Bitbucket's src listing), so refusing would be an availability answer rather
+    /// than a capability one — the same reasoning as <see cref="DeleteBranchAsync"/>. The conformance
+    /// test holds every implementation to never refusing it.
+    /// </remarks>
+    Task<ForgeTree?> GetTreeAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reads one pull request on <paramref name="repository"/>, or null when it cannot be read.
     /// See <see cref="IForgeClient.GetPullRequestAsync"/> — null is a refusal, never an absence.
     /// </summary>

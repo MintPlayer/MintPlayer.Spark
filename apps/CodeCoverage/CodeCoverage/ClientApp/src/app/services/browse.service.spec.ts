@@ -74,6 +74,10 @@ describe('BrowseService', () => {
     const sparklines = service.getSparklines(provider, owner);
     answer('GET', `/api/browse/accounts/${P}/${O}/sparklines`, { r: [1, 2] });
     expect(await sparklines).toEqual({ r: [1, 2] });
+
+    const graph = service.getDependencyGraph(provider, owner);
+    answer('GET', `/api/browse/accounts/${P}/${O}/dependency-graph`, { nodes: [], edges: [] });
+    expect(await graph).toEqual({ nodes: [], edges: [] });
   });
 
   it('getRepo and getBranches encode every route segment', async () => {

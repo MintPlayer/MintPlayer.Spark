@@ -8,6 +8,7 @@ import { SparkPoDetailComponent } from '@mintplayer/ng-spark/po-detail';
 import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-badge-panel.component';
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
 import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
+import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
 import { HomeExtrasComponent } from './home-extras.component';
 import PoDetailPageComponent from './po-detail-page.component';
@@ -58,15 +59,21 @@ class StubCommitFilesExtras {
 @Component({ selector: 'app-home-extras', template: '' })
 class StubHomeExtras {}
 
+@Component({ selector: 'app-account-dependency-graph-panel', template: '' })
+class StubDependencyGraphPanel {
+  readonly provider = input<string>();
+  readonly login = input<string>();
+}
+
 describe('PoDetailPageComponent', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
     TestBed.overrideComponent(PoDetailPageComponent, {
       remove: {
         imports: [SparkPoDetailComponent, RepoBadgePanelComponent, RepoTrendPanelComponent, RepoSetupPanelComponent,
-          CommitFilesExtrasComponent, HomeExtrasComponent],
+          CommitFilesExtrasComponent, HomeExtrasComponent, AccountDependencyGraphPanelComponent],
       },
-      add: { imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras] },
+      add: { imports: [StubPoDetail, StubBadgePanel, StubTrendPanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras, StubDependencyGraphPanel] },
     });
   });
 
@@ -110,13 +117,24 @@ describe('PoDetailPageComponent', () => {
     expect(has(fixture, StubBadgePanel)).toBe(false);
   });
 
-  it('mounts the Home extras on Home, and nothing on any other type', () => {
+  it('mounts the Home extras on Home, and no repository, commit or home panel on an Account', () => {
     expect(has(render('Home', po({})), StubHomeExtras)).toBe(true);
 
     const account = render('Account', po({ FullName: 'acme/widgets' }, 'Accounts/github/1'));
     for (const type of [StubBadgePanel, StubTrendPanel, StubSetupPanel, StubCommitFilesExtras, StubHomeExtras]) {
       expect(has(account, type)).toBe(false);
     }
+  });
+
+  it('mounts the dependency graph on an Account, scoped to its forge and login', () => {
+    const fixture = render('Account', po({ Login: 'acme', Provider: 'GitLab' }, 'Accounts/gitlab/7'));
+    const panel = fixture.debugElement.query(By.directive(StubDependencyGraphPanel)).componentInstance as StubDependencyGraphPanel;
+    expect([panel.provider(), panel.login()]).toEqual(['gitlab', 'acme']);
+
+    for (const object of [po({ Login: 'acme' }), po({}, 'Accounts/github/1'), po({ Login: 3 }, 'Accounts/github/1')]) {
+      expect(has(render('Account', object), StubDependencyGraphPanel)).toBe(false);
+    }
+    expect(has(render('Repository', po({ FullName: 'acme/widgets', Login: 'acme' }, 'Repositories/github/1')), StubDependencyGraphPanel)).toBe(false);
   });
 
   // Provider serialises as "GitHub"; only the document id holds the URL spelling.

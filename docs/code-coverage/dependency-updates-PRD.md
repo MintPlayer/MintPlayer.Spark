@@ -10,7 +10,27 @@ empty body, so this document is its design. App: `apps/CodeCoverage` (**producti
 | Investigation: codebase, prior art, ecosystem mechanics | ✅ 2026-10-09 |
 | Grilling: decisions Q1–Q20 (§12) | ✅ 2026-10-09, owner |
 | Spikes S1–S11 (§10) | ⏳ not started |
-| Milestones M1–M11 (§11) | ⏳ blocked on spikes |
+| **M3 dependency graph (§6) + an Account-page graph card** | ✅ in PR #501 (owner: "just that, nothing more") |
+| Other milestones (§11) | ⏳ not committed to; the owner uses a grouped Dependabot config for now |
+
+M3 as built in #501 (owner decisions 2026-10-09):
+- **Producers:** declared names only, no registry confirmation. Edges only between repositories of the same
+  account.
+- **Card:** on the Account page via the app's existing `extraContentTemplate` branch in `po-detail-page.component.ts`.
+  It uses Cytoscape.js + cytoscape-dagre, lazy-loaded (owner: "interactive, not a static SVG").
+- **Endpoint:** `GET api/browse/accounts/{provider}/{login}/dependency-graph`, filtered exactly like
+  `GetAccountRepos` (#453).
+- **Scans:** triggered by a default-branch push that touches a manifest, the nightly reconcile (skipped when the
+  tree sha is unchanged), and a repo being added.
+- **Not built from §6:**
+  - the map-reduce "dependents of X" index (the endpoint doesn't need it);
+  - locked versions (only the declared constraint is stored);
+  - the `coverage.yml` `exclude` list;
+  - re-reading only the changed paths (a changed tree is rescanned whole).
+- **Judgement calls in the parsers, to confirm:**
+  - Web SDK projects count as not packable unless `IsPackable=true`.
+  - `PrivateAssets=all` references and test projects count as dev.
+  - pip `requirements*dev*|*test*` files and the dev/test/lint/docs groups count as dev.
 
 Interim relief while this is built is **not decided**. One option: a Dependabot `multi-ecosystem-group`
 (`patterns: ["*"]`) in this repo's `.github/dependabot.yml`.

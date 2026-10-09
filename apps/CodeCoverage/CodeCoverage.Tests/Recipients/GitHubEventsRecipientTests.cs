@@ -49,8 +49,13 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
             return Task.CompletedTask;
         }
 
+        public List<string> DeduplicationKeys { get; } = [];
+
+        public IEnumerable<T> Of<T>() => Messages.OfType<T>();
+
         public Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, CancellationToken cancellationToken = default)
         {
+            DeduplicationKeys.Add(deduplicationKey);
             Messages.Add(message!);
             return Task.CompletedTask;
         }
@@ -763,4 +768,109 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         { "403 as a bare ApiException", new Octokit.ApiException(ResponseWith(System.Net.HttpStatusCode.Forbidden)) },
         { "anything else", new InvalidOperationException("boom") },
     };
+
+    // ------------------------------------------------------------------------------------------
+    // Manifest scan trigger (dependency-updates PRD §6.3)
+    // ------------------------------------------------------------------------------------------
+
+    /// <summary>A push payload commit, in GitHub's shape, touching the given paths.</summary>
+    private static string PushCommitJson(int index, string[]? added = null, string[]? modified = null, string[]? removed = null)
+    {
+        static string List(string[]? paths) => "[" + string.Join(",", (paths ?? []).Select(p => $"\"{p}\"")) + "]";
+        return $$"""
+            {
+              "id": "{{index:x40}}", "tree_id": "t{{index}}", "distinct": true,
+              "message": "commit {{index}}", "timestamp": "2026-08-18T09:00:00Z",
+              "url": "https://github.com/acme/widgets/commit/{{index:x40}}",
+              "author": { "name": "Ada", "email": "ada@example.com" },
+              "committer": { "name": "Ada", "email": "ada@example.com" },
+              "added": {{List(added)}}, "removed": {{List(removed)}}, "modified": {{List(modified)}}
+            }
+            """;
+    }
+
+    private static string PushWithCommits(string branch, params string[] commits)
+        => PushJson(after: HeadSha, before: PreviousTip)
+            .Replace("\"ref\": \"refs/heads/master\"", $"\"ref\": \"refs/heads/{branch}\"")
+            .Replace("\"commits\": []", "\"commits\": [" + string.Join(",", commits) + "]");
+
+    [Fact]
+    public async Task A_default_branch_push_that_changes_a_manifest_queues_one_scan_keyed_on_the_head()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var json = PushWithCommits("master",
+            PushCommitJson(1, modified: ["src/app.ts"]),
+            PushCommitJson(2, modified: ["libs/widget/package.json"]));
+
+        await CreateRecipient(session, out var bus).HandleAsync(Message("push", json));
+
+        var scan = bus.Of<CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>().Should().ContainSingle().Which;
+        scan.RepositoryId.Should().Be(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+        bus.DeduplicationKeys.Should().Contain($"manifest-scan-{scan.RepositoryId}-{HeadSha}");
+    }
+
+    /// <summary>A deleted manifest changes what the repository consumes just as much as an edited one.</summary>
+    [Theory]
+    [InlineData("added", "src/Widget/Widget.csproj")]
+    [InlineData("removed", ".github/workflows/ci.yml")]
+    [InlineData("modified", "docker/Dockerfile")]
+    public async Task Added_removed_and_modified_manifests_all_trigger(string list, string path)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var commit = list switch
+        {
+            "added" => PushCommitJson(1, added: [path]),
+            "removed" => PushCommitJson(1, removed: [path]),
+            _ => PushCommitJson(1, modified: [path]),
+        };
+
+        await CreateRecipient(session, out var bus).HandleAsync(Message("push", PushWithCommits("master", commit)));
+
+        bus.Of<CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>().Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_push_that_changes_no_manifest_queues_no_scan()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var json = PushWithCommits("master",
+            PushCommitJson(1, modified: ["src/app.ts"]),
+            // Under a skipped directory, so not a manifest of this repository.
+            PushCommitJson(2, added: ["node_modules/left-pad/package.json"]));
+
+        await CreateRecipient(session, out var bus).HandleAsync(Message("push", json));
+
+        bus.Of<CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_manifest_change_on_another_branch_queues_no_scan()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var json = PushWithCommits("feature", PushCommitJson(1, modified: ["package.json"]));
+
+        await CreateRecipient(session, out var bus).HandleAsync(Message("push", json));
+
+        bus.Of<CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>().Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// GitHub lists at most 20 commits in a push payload, so a push of 20 may have dropped the one
+    /// that changed a manifest: it scans even though no listed commit touched one.
+    /// </summary>
+    [Fact]
+    public async Task A_push_whose_commit_list_may_be_truncated_always_scans()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var commits = Enumerable.Range(1, 20).Select(i => PushCommitJson(i, modified: [$"src/file{i}.ts"])).ToArray();
+
+        await CreateRecipient(session, out var bus).HandleAsync(Message("push", PushWithCommits("master", commits)));
+
+        bus.Of<CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>().Should().ContainSingle();
+    }
 }

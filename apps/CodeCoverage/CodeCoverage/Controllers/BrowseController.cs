@@ -83,6 +83,38 @@ public partial class BrowseController : ControllerBase
             .Select(r => ToRepoInfo(r, includePrivate)));
     }
 
+    /// <summary>
+    /// Which of the account's repositories consume packages another of them produces
+    /// (dependency-updates PRD §6). Nodes are exactly the repositories <see cref="GetAccountRepos"/>
+    /// lists for this viewer, and edges are drawn only between nodes, so a private repository the
+    /// viewer cannot see appears neither as a node nor as either end of an edge (#453).
+    /// </summary>
+    [HttpGet("accounts/{provider}/{login}/dependency-graph")]
+    public async Task<ActionResult<Dependencies.DependencyGraphResponse>> GetDependencyGraph(string provider, string login, CancellationToken cancellationToken)
+    {
+        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
+        var forge = TryForge(provider);
+        if (forge is null) return Refuse();
+        var ownerKey = new ForgeOwner(forge.Value, login).ToString();
+
+        var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
+            .Where(r => r.OwnerKey == ownerKey)
+            .Take(1024)
+            .ToListAsync(cancellationToken);
+        var visible = repos.Where(r => RepositoryVisibility.IsListed(r, owners)).ToList();
+
+        // Loaded by derived id, only for repositories that passed the filter: a hidden repository's
+        // manifest is never read, so nothing of it can leak into an edge.
+        var manifests = visible.Count == 0
+            ? new Dictionary<string, RepositoryManifest>()
+            : await session.LoadAsync<RepositoryManifest>(visible.Select(r => RepositoryManifest.ForRepository(r.Id!)), cancellationToken);
+        var byRepository = visible.ToDictionary(
+            r => r.Id!,
+            r => manifests.GetValueOrDefault(RepositoryManifest.ForRepository(r.Id!)));
+
+        return Ok(Dependencies.DependencyGraph.Build(visible, byRepository));
+    }
+
     [HttpGet("repos/{provider}/{owner}/{name}")]
     public async Task<ActionResult<RepoInfo>> GetRepo(string provider, string owner, string name, CancellationToken cancellationToken)
     {

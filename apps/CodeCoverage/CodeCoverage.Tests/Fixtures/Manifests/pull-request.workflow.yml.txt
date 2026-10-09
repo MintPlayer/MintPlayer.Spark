@@ -1,0 +1,361 @@
+name: pull-request
+
+on:
+  pull_request:
+    branches: [ master ]
+
+# R2-H18: explicit least-privilege token. Without this the workflow inherited
+# the repo default GITHUB_TOKEN scope, which on older repos could be
+# read-write across every API. Fork PRs already don't get secrets, but a
+# malicious PR script (compromised third-party action, future-added
+# postinstall) could otherwise push commits / open issues under the repo's
+# default scope.
+#
+# packages: read is required because dotnet restore pulls
+# @mintplayer/* packages from the org's GitHub Packages NuGet feed. When ANY
+# explicit permissions block is set, GitHub defaults every unlisted scope to
+# none — so omitting packages here turns dotnet restore into 403s.
+permissions:
+  contents: read
+  packages: read
+
+env:
+  NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
+  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || secrets.NX_CACHE_RO_TOKEN }}
+  # Runs the E2E suite's Fleet host under dotnet-coverage, so the framework code it
+  # exercises there is measured (FleetTestHost.HostCoverageEnabled). Workflow-level
+  # rather than on the test step: the path verifier reads it too, to require the report.
+  SPARK_E2E_HOST_COVERAGE: 'true'
+
+jobs:
+  build:
+
+    name: pull-request
+    runs-on: ubuntu-latest
+    # Normal runs finish in 2-7 minutes; without a ceiling a wedged run holds
+    # the default 6-hour GitHub timeout (measured twice on PR #269, once on
+    # PR #277 — the E2E suite hanging silently after the other suites passed).
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0  # nx affected needs git history to compute base SHA
+
+    - name: Derive base SHA for nx affected
+      uses: nrwl/nx-set-shas@v5
+
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 11.0.100-rc.1.26425.128
+        # Authenticates packages to push to GPR
+        source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      env:
+        NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: 22
+        cache: npm
+
+    - name: Install npm dependencies
+      run: npm ci
+
+    # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so
+    # restore must run first on a fresh runner with no cache hit on `obj/`.
+    # Angular library builds (ng-spark, auth entries included) and the rest of the
+    # solution build are covered by `nx affected --target=build` below.
+    - name: dotnet restore
+      run: dotnet restore
+      env:
+        NUGET_AUTH_TOKEN: ${{ github.token }}
+
+    # dotnet-coverage, for the E2E Fleet host (SPARK_E2E_HOST_COVERAGE above).
+    - name: dotnet tool restore
+      run: dotnet tool restore
+
+    - name: Resolve Playwright version
+      id: playwright
+      run: |
+        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
+          | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        echo "version=${version}" >> "$GITHUB_OUTPUT"
+        echo "Playwright version: ${version}"
+
+    - name: Cache Playwright browsers
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-
+
+    # Run build before tests so Angular-app build failures (e.g., broken
+    # imports, type errors, budget overruns) block the PR. The .NET test
+    # target already dependsOn build, but the demo Angular apps
+    # (@spark-demo/{demo-app,fleet-demo,hr-demo,qna-demo,sparkid-demo}) don't have
+    # a test target — without this step their build is never exercised in
+    # CI, and the next deploy run is the first thing to notice.
+    - name: Build affected projects (Nx)
+      run: npx nx affected --target=build
+
+    # vitest strips TypeScript without checking it, and the library build (ng-packagr) excludes the
+    # spec files, so a type error in a spec was never reported anywhere: ten had built up in
+    # ng-spark's specs (#460), one of them a fixture silently set to `undefined` because it named an
+    # enum member that doesn't exist. Type-check the npm package's specs explicitly.
+    - name: Type-check the npm packages' specs
+      run: |
+        npx tsc --noEmit -p libs/node_packages/ng-spark/tsconfig.spec.json
+
+    # The repository's own Node tests (tools/*.test.mjs), among them the PWA guard (#464, D8): every
+    # app's ngsw-config.json keeps /spark/**, /signin-*, /connect/** and /.well-known/** out of the
+    # service worker, which would otherwise answer them with the cached index.html.
+    - name: Run the tools' Node tests
+      run: npm run test:tools
+
+    # The two verifications below run `dotnet run --no-build` against all five apps, which needs all
+    # five binaries on disk -- and `nx affected` above only schedules the ones it considers affected.
+    # A pull request that leaves an app unaffected therefore died on dotnet's opaque "An error
+    # occurred trying to start process ... No such file or directory". Latent until now, because
+    # almost every change touches libs/spark/** and makes all five affected at once.
+    #
+    # Naming the projects explicitly is what fixes it: nx only replays a cached output for a task it
+    # actually schedules, so asking for the task is what produces the binary. For an unaffected app
+    # that is a cache hit -- `build` declares bin/Debug and obj/Debug as its outputs (nx.json), so
+    # the artifacts are restored rather than recompiled -- and for an affected one it is a no-op the
+    # step above already did.
+    #
+    # Verifying all five, rather than skipping the unaffected ones, is deliberate. Skipping would be
+    # sound only if `affected` were exactly right, and dependency tracking here is not purely
+    # automatic: CodeCoverage/project.json carries implicitDependencies by hand, and
+    # code-coverage-deploy.yml maintains its ProjectReference closure as a hand-written path list. A
+    # check that silently does nothing when that bookkeeping slips is worse than a slow one.
+    - name: Restore the Spark app binaries the verifications need
+      run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,QnA,SparkId,CodeCoverage
+
+    # Catches a change that touched the entity classes without regenerating the model. Without this
+    # the mismatch is only noticed at deployment, where it stops the application from starting.
+    #
+    # --spark-verify-model writes nothing and needs no database: model synchronization reflects over
+    # property types and never opens a session, which is why no RavenDB service container appears
+    # here. --no-build reuses the output built above, so the model verified is the one the binary was
+    # compiled against. Exit 3 means drift; the run fails before the slow test suite.
+    - name: Verify Spark models are in sync
+      run: |
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/SparkId/SparkId apps/CodeCoverage/CodeCoverage; do
+          name="$(basename "$project")"
+          # Globbed rather than hardcoding net11.0, so a target-framework bump cannot turn this
+          # guard into a false alarm. Better than dotnet's start-process error, which names a path
+          # without saying why it is absent.
+          if [ -z "$(ls -d $project/bin/Debug/*/$name 2>/dev/null)" ]; then
+            echo "::error::$name was not built and no cached output was restored for it, so it cannot be verified."
+            exit 1
+          fi
+          echo "::group::$project"
+          dotnet run --project "$project" --no-build -c Debug -- --spark-verify-model
+          echo "::endgroup::"
+        done
+
+    # The same idea one layer up: security.json is a data file, and widening the set of rights
+    # reachable WITHOUT signing in is a one-line diff that reads no differently from narrowing it.
+    # The committed App_Data/securityPosture.txt turns that into something a reviewer sees change.
+    # It is the table of every effective right with the layer it came from (composition D4), so a
+    # library that ships rights, or an update that changes them, shows up here too.
+    #
+    # Needs no database either -- the posture is computed from configuration alone. Exit 3 means
+    # the posture moved (with a ::warning:: of its own when the anonymous surface did); run
+    # --spark-synchronize-security and commit the baseline. Exit 2: security.json does not compose.
+    - name: Verify the anonymous surface has not widened
+      run: |
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/QnA/QnA apps/SparkId/SparkId apps/CodeCoverage/CodeCoverage; do
+          name="$(basename "$project")"
+          # Globbed rather than hardcoding net11.0, so a target-framework bump cannot turn this
+          # guard into a false alarm. Better than dotnet's start-process error, which names a path
+          # without saying why it is absent.
+          if [ -z "$(ls -d $project/bin/Debug/*/$name 2>/dev/null)" ]; then
+            echo "::error::$name was not built and no cached output was restored for it, so it cannot be verified."
+            exit 1
+          fi
+          echo "::group::$project"
+          dotnet run --project "$project" --no-build -c Debug -- --spark-verify-security
+          echo "::endgroup::"
+        done
+
+    # A published package changed but its version did not, which on master is a SILENT no-op:
+    # `dotnet nuget push --skip-duplicate` turns the 409 into a success, and npm-publish no-ops on
+    # an existing version, so the release job goes green having shipped nothing. Nothing else in CI
+    # compares the in-repo version against a registry, so review was the only control -- and on
+    # PR #390 it did not fire: an EntityMapper fix and two ng-spark pipes merged to master and
+    # reached no published artifact.
+    #
+    # Deliberately a diff check rather than a registry query: it needs no network, no credentials,
+    # and it answers the question that is actually actionable -- "you changed a package and did not
+    # bump it" -- rather than "master happens to equal what is published right now".
+    - name: Verify a changed package was version-bumped
+      run: |
+        base="${{ github.event.pull_request.base.sha }}"
+        changed="$(git diff --name-only "$base"...HEAD -- 'libs/**')"
+
+        if [ -z "$changed" ]; then
+          echo "No libs/** changes; nothing to verify."
+          exit 0
+        fi
+
+        fail=0
+
+        # NuGet: each packable csproj under libs/ carries its OWN <Version>, and
+        # `dotnet nuget push --skip-duplicate` silently skips a version that already exists on
+        # nuget.org. So a project whose source changed without its own <Version> moving merges and
+        # publishes nothing — precisely the failure this gate exists to catch.
+        #
+        # This used to ask only whether SOME csproj under libs/ had bumped, which is not the same
+        # question and let exactly that through: MintPlayer.Spark and .Abstractions were bumped while
+        # MintPlayer.Spark.SourceGenerators changed in the same PR and stayed behind, so consumers
+        # would have got the new runtime with the old analyzer.
+        for proj in $(echo "$changed" | grep -v '^libs/node_packages/' | sed -E 's|^(libs/[^/]+/[^/]+)/.*|\1|' | sort -u); do
+          csproj="$(ls "$proj"/*.csproj 2>/dev/null | head -1)"
+          [ -z "$csproj" ] && continue
+
+          # No <Version> of its own: not independently packable, nothing to bump.
+          grep -q '<Version>' "$csproj" || continue
+
+          if ! git diff "$base"...HEAD -- "$csproj" | grep -q '^+.*<Version>'; then
+            echo "::error::$proj changed but its own <Version> was not bumped. dotnet nuget push --skip-duplicate silently skips an existing version, so this would merge and publish nothing."
+            fail=1
+          fi
+        done
+
+        # npm: each package's version is its own; only the ones that changed need bumping.
+        for pkg in ng-spark; do
+          if echo "$changed" | grep -q "^libs/node_packages/$pkg/"; then
+            if ! git diff "$base"...HEAD -- "libs/node_packages/$pkg/package.json" | grep -q '^+  "version"'; then
+              echo "::error::libs/node_packages/$pkg changed but its package.json version was not bumped. npm-publish no-ops on an existing version, so this would merge and publish nothing."
+              fail=1
+            fi
+          fi
+        done
+
+        if [ "$fail" -ne 0 ]; then
+          echo "Majors are locked to the platform: npm major = Angular major, NuGet major = .NET major. An API change inside a generation is a MINOR bump, never a major."
+          exit 1
+        fi
+        echo "Version bumps present for every changed package."
+
+    - name: Run tests (.NET + Angular via Nx)
+      id: test
+      # Step-level so the known hang (E2E suite wedging with no output) fails
+      # here and the `if: always()` coverage upload below still runs with
+      # whatever the completed suites produced.
+      timeout-minutes: 20
+      # run-many, NOT affected. `test` declares its coverage directories as cached
+      # outputs (nx.json), so an unaffected project's report is RESTORED from the
+      # cache rather than regenerated -- same wall-clock as `affected`, but the
+      # report exists. `affected` drops unaffected projects from the task graph
+      # entirely, so there is no task whose output could be restored and their
+      # reports are simply absent: PR #377 touched only apps/CodeCoverage, uploaded
+      # 1 report of 8, and read as 35.1% against an 81.8% base. Master already runs
+      # run-many, so its cache is warm for exactly the projects a PR will not touch,
+      # and both workflows now measure the same thing.
+      # --output-style=stream: nx buffers each task's output until the task
+      # finishes, so a hung task prints NOTHING — the wedged E2E runs were
+      # undiagnosable. Streaming trades tidy grouping for a visible last line.
+      run: npx nx run-many --target=test --output-style=stream
+      env:
+        # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}  # Nx Cloud disabled — using self-hosted cache (see workflow-level env)
+        RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+
+    # Upload the coverage to the self-hosted Coverage server. Since the step above
+    # runs run-many, every test project contributes a report (freshly run or
+    # restored from the Nx cache) and this is a whole-workspace upload in practice.
+    # `partial: true` + the nx base SHA stay as defence in depth for the run where
+    # that is not true -- a suite that crashes before writing its report -- so the
+    # server carries those files forward from the base when the git blob is
+    # unchanged (docs/coverage_carryforward_PRD.md) instead of reading the hole as
+    # a collapse.
+    # `disable-search` because a glob that matches nothing must be a no-op, not
+    # an auto-detected upload of stray unparsable reports. No hashFiles gate:
+    # a run that produced no report at all is exactly the run that must still
+    # upload (its file list is what lets the server carry the whole commit
+    # forward), and the action treats zero reports + partial as legitimate.
+    # `carry-forward` is the test step's outcome: a crashed suite produces no
+    # report, and without this the server would paint over the hole with the
+    # base's numbers.
+    # The Angular reports are new here. Both workflows used to glob only
+    # tests/*/coverage/**, and `disable-search: true` means nothing else is picked
+    # up, so vitest has been writing libs/node_packages/*/coverage/cobertura-coverage.xml
+    # on every run and CI has been throwing it away -- roughly 2,000 measured lines,
+    # and the badge has been .NET-only. apps/*/*/coverage/** is new too: it is where
+    # CodeCoverage.Tests lands.
+    # A report path the server cannot resolve is dropped SILENTLY -- it is simply
+    # absent from the percentage, which reads as a coverage drop rather than as a
+    # bug. This runs the server's own resolution rules over every report before
+    # upload and fails the build instead, so the failure mode that hid five dead
+    # queues cannot also hide a shrinking denominator.
+    - name: Verify coverage report paths
+      if: always()
+      run: node tools/verify-coverage-paths.mjs
+
+    - name: Upload coverage
+      if: always()
+      # The working copy, not a published ref: the action's source lives in this
+      # repository, so a PR that changes the upload API and the action together is
+      # tested with the action it just changed. `coverage-action` below guarantees
+      # dist/index.js matches src/, so this runs the built bundle from this PR.
+      uses: ./apps/CodeCoverage/action
+      with:
+        url: https://coverage.mintplayer.com
+        token: ${{ secrets.COVERAGE_TOKEN }}
+        files: |
+          tests/*/coverage/**/coverage.cobertura.xml
+          apps/CodeCoverage/*/coverage/**/coverage.cobertura.xml
+          libs/node_packages/*/coverage/cobertura-coverage.xml
+          apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml
+          coverage/@spark-apps/code-coverage/cobertura-coverage.xml
+          apps/CodeCoverage/action/coverage/cobertura-coverage.xml
+        disable-search: true
+        partial: true
+        base-sha: ${{ env.NX_BASE }}
+        carry-forward: ${{ steps.test.outcome == 'success' }}
+        finish: true
+        wait-for-finalize: true
+        fail-ci-if-error: false
+
+  # The upload action's source lives in this repository (docs/coverage_action_home_PRD.md).
+  # `dist/index.js` is committed and is what `runs.main` executes, so a PR that
+  # edits src/ without rebuilding would ship nothing -- this job is what makes
+  # that impossible to merge. It also runs the action's own suites, which the
+  # action never had in CI while it lived in MintPlayer/github-actions.
+  coverage-action:
+    name: coverage-upload action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    # Two lines, and the whole TypeScript -> single index.js pipeline comes from
+    # one place shared with the five other actions in MintPlayer/github-actions.
+    # mode: verify rebuilds and fails on drift; the master workflow uses
+    # mode: push to commit the rebuilt bundle.
+    - name: Build and verify the bundle
+      uses: MintPlayer/github-actions/compile-ts-action@main
+      with:
+        working-directory: apps/CodeCoverage/action
+        output-dir: dist
+        node-version: 22.x
+        install-command: npm ci
+        test-command: npm test
+        build-command: npm run build
+        mode: verify
+
+    # Drives the built dist/index.js as a child process against a real HTTP
+    # server speaking the documented contract. The unit tests import src/, so
+    # they all pass against a bundle built from the wrong entry point -- an
+    # action that exits 0 having uploaded nothing. Only this catches that.
+    - name: Smoke-test the built bundle
+      working-directory: apps/CodeCoverage/action
+      run: npm run test:bundle
