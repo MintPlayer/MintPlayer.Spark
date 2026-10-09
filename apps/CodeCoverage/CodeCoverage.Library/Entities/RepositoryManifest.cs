@@ -50,8 +50,12 @@ public class RepositoryManifest
     /// <summary>The parser version that produced <see cref="Produces"/> and <see cref="Consumes"/>.</summary>
     public int ParserVersion { get; set; }
 
-    /// <summary>When the last scan attempt finished, successful or not.</summary>
-    public DateTimeOffset? ScannedAt { get; set; }
+    /// <summary>
+    /// When the last scan attempt finished, successful or not, in UTC. A plain <see cref="DateTime"/>:
+    /// <c>Commit</c> is the only entity allowed a <see cref="DateTimeOffset"/>
+    /// (<c>CommitIndexShapeGuardTests</c>).
+    /// </summary>
+    public DateTime? ScannedAt { get; set; }
 
     /// <summary>Why the last scan could not complete, fit to show the owner. Null when it did.</summary>
     public string? ScanError { get; set; }

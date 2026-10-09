@@ -106,7 +106,7 @@ public partial class RepositoryManifestScanner : IRepositoryManifestScanner
             outcome = EManifestScanOutcome.Failed;
         }
 
-        manifest.ScannedAt = DateTimeOffset.UtcNow;
+        manifest.ScannedAt = DateTime.UtcNow;
         await session.SaveChangesAsync(cancellationToken);
         return outcome;
     }
