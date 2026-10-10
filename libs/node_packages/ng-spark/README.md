@@ -74,6 +74,8 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/history` | `provideSparkHistory()` — `<spark-po-history>`: revision list, read-only view, diff, Revert |
 | `/moderation` | `provideSparkModeration()`, `sparkModerationRoutes()`, `sparkModerationRenderers` — vote widget, flag button, review queue, reputation badge, moderator panel |
 | `/organizations` | `withOrganizationRoutes()` for `sparkAuthRoutes(...)`: the page a mailed organization invitation or join request opens (`organizations/accept/:token`), accepting on an explicit click ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-organizations.md)) |
+| `/pwa` | `provideSparkServiceWorker()` — Angular's service worker with Spark's update policy (`SparkServiceWorkerUpdates`) and in-app navigation for a clicked push notification (`SparkNotificationClicks`) |
+| `/notifications` | `<spark-notification-bell>`, `<spark-push-toggle>`, `SparkNotificationsService` (live unread count, latest notifications, mark read, Web Push opt-in), `provideSparkNotifications()` — the client of MintPlayer.Spark.Notifications |
 
 ### Timezone (`withSparkTimezone`)
 
@@ -242,6 +244,33 @@ two halves of `spark-trend`, each loading only its own chart. CodeCoverage draws
 chart and Δ column through them. See
 [guide-score-renderers.md](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-score-renderers.md)
 for every option.
+
+### Notifications
+
+```ts
+import { SparkNotificationBellComponent, SparkPushToggleComponent } from '@mintplayer/ng-spark/notifications';
+```
+
+```html
+<spark-notification-bell />          <!-- in the top bar -->
+<spark-push-toggle />                <!-- on an account or settings page -->
+```
+
+The client of the server package MintPlayer.Spark.Notifications (`spark.AddNotifications()`):
+
+- The bell shows the unread count and, in its menu, the latest notifications (title, message, relative time).
+  Choosing one marks it read and follows its link, through the router when it is on this origin.
+  "Mark all as read" and a link to the full list (`/query/notifications`; `[allLink]` or
+  `provideSparkNotifications({ listLink, recentCount })` change it) complete the menu.
+- `SparkNotificationsService` holds `unreadCount`, `recent`, `markRead(ids?)` and `open(notification)`. Both
+  lists are live queries on the one `/spark/live` socket: no polling. They resubscribe when the signed-in user changes.
+- Web Push: `enablePush()` (call it from a click: it asks permission first), `disablePush()`, `pushState`
+  (`unsupported` · `denied` · `off` · `on`) and `pushConfigured` (the server has VAPID keys). Push needs
+  `provideSparkServiceWorker()` with the worker enabled. On iPhone and iPad the app must be on the Home Screen
+  first; until then the state is `unsupported` and the toggle says so.
+- A push clicked while the app is open becomes an in-app navigation (`SparkNotificationClicks`, started by
+  `provideSparkServiceWorker()`). When the app is closed, Angular's service worker opens the page itself
+  from the payload's `onActionClick`.
 
 ## More
 
