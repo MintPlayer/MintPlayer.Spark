@@ -1,0 +1,2599 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "id": "seo.title-present",
+      "category": "Seo",
+      "severity": "Critical",
+      "weight": 10,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Page has a title",
+        "nl": "Pagina heeft een titel"
+      },
+      "summary": {
+        "en": "Page {url} has no title. Add a descriptive <title> of 30–60 characters.",
+        "nl": "Pagina {url} heeft geen titel. Voeg een beschrijvende <title> van 30 tot 60 tekens toe."
+      },
+      "howToFix": {
+        "en": "Put exactly one non-empty <title> element inside <head>. For single-page apps, make sure the title is also set in the server-rendered HTML or updated on every route change.",
+        "nl": "Zet precies één niet-lege <title> in de <head>. Bij single-page apps moet de titel ook in de door de server gerenderde HTML staan of bij elke routewijziging worden bijgewerkt."
+      },
+      "snippets": {
+        "html": "<title>Product name – Brand</title>"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/appearance/title-link"
+    },
+    {
+      "id": "seo.title-length",
+      "category": "Seo",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Title length",
+        "nl": "Lengte van de titel"
+      },
+      "summary": {
+        "en": "The title of {url} is {n} characters and Google will likely truncate it. Keep it under about 60 characters.",
+        "nl": "De titel van {url} telt {n} tekens en wordt door Google waarschijnlijk afgekapt. Hou hem onder de 60 tekens."
+      },
+      "howToFix": {
+        "en": "Search results truncate titles at roughly 580–600 pixels. Put the most important words first and keep the title between 30 and 60 characters.",
+        "nl": "Zoekresultaten kappen titels af rond 580 à 600 pixels. Zet de belangrijkste woorden vooraan en hou de titel tussen 30 en 60 tekens."
+      },
+      "snippets": {
+        "html": "<title>Running shoes for trail and road – Example Shop</title>"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/appearance/title-link"
+    },
+    {
+      "id": "seo.duplicate-titles",
+      "category": "Seo",
+      "severity": "High",
+      "weight": 6,
+      "layer": "S",
+      "enabled": true,
+      "title": {
+        "en": "Unique page titles",
+        "nl": "Unieke paginatitels"
+      },
+      "summary": {
+        "en": "{k} pages share the title \"{value}\". Give each page its own title.",
+        "nl": "{k} pagina's hebben dezelfde titel \"{value}\". Geef elke pagina een eigen titel."
+      },
+      "howToFix": {
+        "en": "Titles are grouped across the crawl after normalising whitespace and case. Derive each title from the page's own content (product name, article headline) instead of a site-wide default.",
+        "nl": "Titels worden over de hele crawl gegroepeerd na het normaliseren van spaties en hoofdletters. Leid elke titel af van de inhoud van de pagina zelf (productnaam, kop van het artikel) in plaats van een standaardtitel voor de hele site."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/appearance/title-link"
+    },
+    {
+      "id": "seo.meta-description",
+      "category": "Seo",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Meta description present and sized",
+        "nl": "Meta-beschrijving aanwezig en juiste lengte"
+      },
+      "summary": {
+        "en": "Page {url} has no meta description, or one of {n} characters. Add a description that summarises the page in about 150 characters.",
+        "nl": "Pagina {url} heeft geen meta-beschrijving, of een van {n} tekens. Voeg een beschrijving toe die de pagina in ongeveer 150 tekens samenvat."
+      },
+      "howToFix": {
+        "en": "Add one <meta name=\"description\"> to <head> with 70–160 characters of unique text. Google may show it as the snippet under the title in search results.",
+        "nl": "Voeg één <meta name=\"description\"> toe aan de <head> met 70 tot 160 tekens unieke tekst. Google kan die tonen als fragment onder de titel in de zoekresultaten."
+      },
+      "snippets": {
+        "html": "<meta name=\"description\" content=\"Lightweight trail running shoes with a grippy sole. Free delivery and 30-day returns.\">"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/appearance/snippet"
+    },
+    {
+      "id": "seo.duplicate-descriptions",
+      "category": "Seo",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "S",
+      "enabled": true,
+      "title": {
+        "en": "Unique meta descriptions",
+        "nl": "Unieke meta-beschrijvingen"
+      },
+      "summary": {
+        "en": "{k} pages share the same meta description. Write a description per page.",
+        "nl": "{k} pagina's hebben dezelfde meta-beschrijving. Schrijf per pagina een eigen beschrijving."
+      },
+      "howToFix": {
+        "en": "Descriptions are grouped across the crawl. Generate them from page-specific content, or leave them out on pages where you cannot write a good one rather than repeating a site-wide text.",
+        "nl": "Beschrijvingen worden over de hele crawl gegroepeerd. Genereer ze uit paginaspecifieke inhoud, of laat ze weg op pagina's waar je geen goede kunt schrijven in plaats van overal dezelfde tekst te herhalen."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/appearance/snippet"
+    },
+    {
+      "id": "seo.single-h1",
+      "category": "Seo",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H+R",
+      "enabled": true,
+      "title": {
+        "en": "One main heading",
+        "nl": "Eén hoofdtitel"
+      },
+      "summary": {
+        "en": "Page {url} has {n} <h1> elements. Use exactly one main heading.",
+        "nl": "Pagina {url} heeft {n} <h1>-elementen. Gebruik precies één hoofdtitel."
+      },
+      "howToFix": {
+        "en": "Mark up the page's main heading with a single <h1> and use <h2>–<h6> for sections. Several h1 elements are not a Google penalty, but one clear main heading helps search engines and screen readers.",
+        "nl": "Markeer de hoofdtitel van de pagina met één <h1> en gebruik <h2> tot <h6> voor de secties. Meerdere h1-elementen worden door Google niet afgestraft, maar één duidelijke hoofdtitel helpt zoekmachines en schermlezers."
+      },
+      "snippets": {
+        "html": "<h1>Trail running shoes</h1>\n<h2>Sizes</h2>"
+      },
+      "docsUrl": null
+    },
+    {
+      "id": "seo.canonical",
+      "category": "Seo",
+      "severity": "High",
+      "weight": 6,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Canonical URL is valid",
+        "nl": "Canonieke URL is geldig"
+      },
+      "summary": {
+        "en": "The canonical link of {url} points to {target}, which returns {status}.",
+        "nl": "De canonieke link van {url} verwijst naar {target}, dat {status} teruggeeft."
+      },
+      "howToFix": {
+        "en": "Use one absolute <link rel=\"canonical\"> per page that points to a URL returning 200, not redirecting and not marked noindex. If you also send a Link: header, it must name the same URL.",
+        "nl": "Gebruik per pagina één absolute <link rel=\"canonical\"> naar een URL die 200 teruggeeft, niet doorverwijst en niet op noindex staat. Stuur je ook een Link:-header mee, dan moet die dezelfde URL bevatten."
+      },
+      "snippets": {
+        "html": "<link rel=\"canonical\" href=\"https://www.example.com/shoes/trail\">"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls"
+    },
+    {
+      "id": "seo.hreflang",
+      "category": "Seo",
+      "severity": "High",
+      "weight": 6,
+      "layer": "H+S",
+      "enabled": true,
+      "title": {
+        "en": "hreflang annotations are consistent",
+        "nl": "hreflang-annotaties zijn consistent"
+      },
+      "summary": {
+        "en": "The hreflang link from {url} to {target} has no return link.",
+        "nl": "De hreflang-link van {url} naar {target} heeft geen link terug."
+      },
+      "howToFix": {
+        "en": "Every language version must list all versions, including itself, with valid BCP 47 codes, and each target must link back. Add an x-default entry and make sure all targets return 200 and are indexable.",
+        "nl": "Elke taalversie moet alle versies vermelden, ook zichzelf, met geldige BCP 47-codes, en elke doelpagina moet terugverwijzen. Voeg een x-default toe en zorg dat alle doelpagina's 200 teruggeven en indexeerbaar zijn."
+      },
+      "snippets": {
+        "html": "<link rel=\"alternate\" hreflang=\"en\" href=\"https://www.example.com/en/\">\n<link rel=\"alternate\" hreflang=\"nl\" href=\"https://www.example.com/nl/\">\n<link rel=\"alternate\" hreflang=\"x-default\" href=\"https://www.example.com/\">"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/specialty/international/localized-versions"
+    },
+    {
+      "id": "seo.html-lang",
+      "category": "Seo",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Page language is declared",
+        "nl": "Paginataal is opgegeven"
+      },
+      "summary": {
+        "en": "Page {url} does not declare its language, or uses the invalid code \"{value}\". Set the lang attribute on <html>.",
+        "nl": "Pagina {url} geeft haar taal niet op, of gebruikt de ongeldige code \"{value}\". Zet het lang-attribuut op <html>."
+      },
+      "howToFix": {
+        "en": "Add a valid BCP 47 language tag to the root element. Screen readers use it to pick the right pronunciation and search engines use it as a language hint.",
+        "nl": "Voeg een geldige BCP 47-taalcode toe aan het root-element. Schermlezers kiezen er de juiste uitspraak mee en zoekmachines gebruiken het als hint voor de taal."
+      },
+      "snippets": {
+        "html": "<html lang=\"en\">"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/lang"
+    },
+    {
+      "id": "seo.content-language-header",
+      "category": "Seo",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Content-Language header",
+        "nl": "Content-Language-header"
+      },
+      "summary": {
+        "en": "The site sends Content-Language: {value}. Google mostly ignores this header; Bing uses it.",
+        "nl": "De site stuurt Content-Language: {value} mee. Google negeert deze header grotendeels; Bing gebruikt hem wel."
+      },
+      "howToFix": {
+        "en": "Informational only. The <html lang> attribute and hreflang annotations are the signals that matter; if you send the header, keep it consistent with them.",
+        "nl": "Enkel ter informatie. Het <html lang>-attribuut en de hreflang-annotaties zijn de signalen die tellen; stuur je de header mee, hou hem dan consistent met die twee."
+      },
+      "snippets": {},
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Language"
+    },
+    {
+      "id": "seo.noindex-conflict",
+      "category": "Seo",
+      "severity": "Critical",
+      "weight": 10,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "No accidental noindex",
+        "nl": "Geen onbedoelde noindex"
+      },
+      "summary": {
+        "en": "{url} is set to noindex but is listed in your sitemap or linked from your own pages, so search engines will drop it.",
+        "nl": "{url} staat op noindex, maar staat in je sitemap of wordt vanaf je eigen pagina's gelinkt. Zoekmachines laten de pagina dus weg."
+      },
+      "howToFix": {
+        "en": "Check both the robots meta tag and the X-Robots-Tag response header. Remove noindex from pages that should be found, or take intentionally hidden pages out of the sitemap.",
+        "nl": "Controleer zowel de robots-metatag als de X-Robots-Tag-header. Haal noindex weg bij pagina's die gevonden moeten worden, of haal bewust verborgen pagina's uit de sitemap."
+      },
+      "snippets": {
+        "html": "<!-- remove this from pages that should be indexed -->\n<meta name=\"robots\" content=\"noindex\">"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag"
+    },
+    {
+      "id": "seo.structured-data",
+      "category": "Seo",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H+R",
+      "enabled": true,
+      "title": {
+        "en": "Structured data is valid",
+        "nl": "Gestructureerde gegevens zijn geldig"
+      },
+      "summary": {
+        "en": "A structured-data block on {url} is invalid or incomplete: {value}. It will not be eligible for rich results.",
+        "nl": "Een blok gestructureerde gegevens op {url} is ongeldig of onvolledig: {value}. Het komt daardoor niet in aanmerking voor uitgebreide resultaten."
+      },
+      "howToFix": {
+        "en": "Every script[type=\"application/ld+json\"] must be valid JSON with @context and @type, and contain the properties Google requires for that type (for example offers or review for Product). Validate with Google's Rich Results Test.",
+        "nl": "Elk script[type=\"application/ld+json\"] moet geldige JSON zijn met @context en @type, en de eigenschappen bevatten die Google voor dat type vereist (bijvoorbeeld offers of review bij Product). Valideer met de Rich Results Test van Google."
+      },
+      "snippets": {
+        "html": "<script type=\"application/ld+json\">\n{\"@context\":\"https://schema.org\",\"@type\":\"Organization\",\"name\":\"Example\",\"url\":\"https://www.example.com/\",\"logo\":\"https://www.example.com/logo.png\"}\n</script>"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data"
+    },
+    {
+      "id": "seo.microdata-rdfa",
+      "category": "Seo",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Microdata or RDFa detected",
+        "nl": "Microdata of RDFa gevonden"
+      },
+      "summary": {
+        "en": "Page {url} uses Microdata or RDFa markup.",
+        "nl": "Pagina {url} gebruikt Microdata- of RDFa-markup."
+      },
+      "howToFix": {
+        "en": "Informational. Google still reads Microdata and RDFa, but recommends JSON-LD, which is easier to maintain separately from the visible markup.",
+        "nl": "Ter informatie. Google leest Microdata en RDFa nog steeds, maar raadt JSON-LD aan, dat je los van de zichtbare markup kunt onderhouden."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "seo.link-text",
+      "category": "Seo",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Descriptive link text",
+        "nl": "Beschrijvende linkteksten"
+      },
+      "summary": {
+        "en": "{n} links on {url} have no text or use generic text such as \"click here\". Use descriptive link text.",
+        "nl": "{n} links op {url} hebben geen tekst of gebruiken een algemene tekst zoals \"klik hier\". Gebruik beschrijvende linkteksten."
+      },
+      "howToFix": {
+        "en": "Give every link an accessible name that describes its target: visible text, or aria-label for icon-only links. The title attribute is not a substitute; it has no SEO value and is announced inconsistently.",
+        "nl": "Geef elke link een toegankelijke naam die het doel beschrijft: zichtbare tekst, of aria-label bij links met enkel een icoon. Het title-attribuut is geen vervanging; het heeft geen SEO-waarde en wordt niet consequent voorgelezen."
+      },
+      "snippets": {
+        "html": "<a href=\"/pricing\">See our pricing plans</a>\n<a href=\"/cart\" aria-label=\"Shopping cart\"><svg aria-hidden=\"true\">…</svg></a>"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/links-crawlable"
+    },
+    {
+      "id": "seo.thin-content",
+      "category": "Seo",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H+R",
+      "enabled": true,
+      "title": {
+        "en": "Enough main content",
+        "nl": "Voldoende hoofdinhoud"
+      },
+      "summary": {
+        "en": "Page {url} has only {n} words of main content.",
+        "nl": "Pagina {url} heeft maar {n} woorden hoofdinhoud."
+      },
+      "howToFix": {
+        "en": "The word count excludes navigation and footer. Pages with very little unique text rarely rank; expand them, merge them with related pages, or mark them noindex if they only exist for navigation.",
+        "nl": "Navigatie en footer tellen niet mee. Pagina's met erg weinig unieke tekst scoren zelden goed; breid ze uit, voeg ze samen met verwante pagina's of zet ze op noindex als ze er enkel voor de navigatie zijn."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "seo.url-hygiene",
+      "category": "Seo",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Clean URLs",
+        "nl": "Nette URL's"
+      },
+      "summary": {
+        "en": "{n} URLs are long or contain uppercase letters, underscores, session ids or unencoded characters, for example {target}.",
+        "nl": "{n} URL's zijn lang of bevatten hoofdletters, underscores, sessie-id's of niet-gecodeerde tekens, bijvoorbeeld {target}."
+      },
+      "howToFix": {
+        "en": "Use short, lowercase URLs with hyphens between words, keep session state out of the query string, and percent-encode non-ASCII characters.",
+        "nl": "Gebruik korte URL's in kleine letters met koppeltekens tussen de woorden, hou sessiegegevens uit de querystring en codeer niet-ASCII-tekens met percent-encoding."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/url-structure"
+    },
+    {
+      "id": "seo.meta-keywords",
+      "category": "Seo",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Meta keywords tag",
+        "nl": "Meta-keywords-tag"
+      },
+      "summary": {
+        "en": "Page {url} has a meta keywords tag. Google has ignored it since 2009; it has no effect and is safe to remove.",
+        "nl": "Pagina {url} heeft een meta-keywords-tag. Google negeert die sinds 2009; hij heeft geen effect en mag weg."
+      },
+      "howToFix": {
+        "en": "Remove <meta name=\"keywords\"> or leave it; it does not influence rankings in Google or Bing.",
+        "nl": "Verwijder <meta name=\"keywords\"> of laat hem staan; hij heeft geen invloed op de rangschikking in Google of Bing."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "seo.sitelinks-searchbox",
+      "category": "Seo",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Sitelinks search box markup",
+        "nl": "Markup voor het sitelinks-zoekvak"
+      },
+      "summary": {
+        "en": "Page {url} has WebSite SearchAction markup. Google no longer uses it (since November 2024); it is harmless.",
+        "nl": "Pagina {url} bevat WebSite SearchAction-markup. Google gebruikt die niet meer (sinds november 2024); ze is onschadelijk."
+      },
+      "howToFix": {
+        "en": "You may remove the potentialAction/SearchAction part. Keep the WebSite markup itself, because Google still uses it for the site name.",
+        "nl": "Je mag het potentialAction/SearchAction-gedeelte weghalen. Behoud de WebSite-markup zelf, want Google gebruikt die nog voor de sitenaam."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "seo.deprecated-rich-results",
+      "category": "Seo",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Retired rich-result types",
+        "nl": "Uitgefaseerde types voor uitgebreide resultaten"
+      },
+      "summary": {
+        "en": "Page {url} uses the structured-data type {value}, which no longer produces rich results in Google.",
+        "nl": "Pagina {url} gebruikt het type {value}, dat in Google geen uitgebreide resultaten meer oplevert."
+      },
+      "howToFix": {
+        "en": "The markup does no harm, but it no longer earns a special search appearance. Remove it if you maintain it only for that reason.",
+        "nl": "De markup kan geen kwaad, maar levert geen speciale weergave in de zoekresultaten meer op. Haal ze weg als je ze enkel daarvoor onderhoudt."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "social.open-graph",
+      "category": "Social",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Open Graph tags",
+        "nl": "Open Graph-tags"
+      },
+      "summary": {
+        "en": "{url} is missing Open Graph tags ({value}), so shared links may show no title or picture.",
+        "nl": "Op {url} ontbreken Open Graph-tags ({value}). Gedeelde links tonen daardoor mogelijk geen titel of afbeelding."
+      },
+      "howToFix": {
+        "en": "Add og:title, og:description, og:image, og:url, og:type and og:site_name. og:image must be an absolute https URL that returns an image, ideally 1200×630 pixels and under 8 MB.",
+        "nl": "Voeg og:title, og:description, og:image, og:url, og:type en og:site_name toe. og:image moet een absolute https-URL zijn die een afbeelding teruggeeft, liefst 1200×630 pixels en kleiner dan 8 MB."
+      },
+      "snippets": {
+        "html": "<meta property=\"og:title\" content=\"Trail running shoes\">\n<meta property=\"og:description\" content=\"Lightweight shoes with a grippy sole.\">\n<meta property=\"og:image\" content=\"https://www.example.com/og/trail.jpg\">\n<meta property=\"og:url\" content=\"https://www.example.com/shoes/trail\">\n<meta property=\"og:type\" content=\"website\">\n<meta property=\"og:site_name\" content=\"Example Shop\">"
+      },
+      "docsUrl": "https://ogp.me/"
+    },
+    {
+      "id": "social.twitter-card",
+      "category": "Social",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "X (Twitter) card type",
+        "nl": "Kaarttype voor X (Twitter)"
+      },
+      "summary": {
+        "en": "{url} has no twitter:card tag. Add twitter:card=summary_large_image to get a large preview on X.",
+        "nl": "{url} heeft geen twitter:card-tag. Voeg twitter:card=summary_large_image toe voor een grote preview op X."
+      },
+      "howToFix": {
+        "en": "X falls back to the Open Graph tags for title, description and image, so twitter:card is the only tag you really need.",
+        "nl": "X valt terug op de Open Graph-tags voor titel, beschrijving en afbeelding, dus twitter:card is de enige tag die je echt nodig hebt."
+      },
+      "snippets": {
+        "html": "<meta name=\"twitter:card\" content=\"summary_large_image\">"
+      },
+      "docsUrl": null
+    },
+    {
+      "id": "social.share-buttons",
+      "category": "Social",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H+R",
+      "enabled": true,
+      "title": {
+        "en": "Share buttons",
+        "nl": "Deelknoppen"
+      },
+      "summary": {
+        "en": "Share buttons found on {url}: {value}.",
+        "nl": "Deelknoppen gevonden op {url}: {value}."
+      },
+      "howToFix": {
+        "en": "Informational: share buttons are a marketing choice, not a quality requirement. The Web Share API (navigator.share) avoids loading third-party scripts.",
+        "nl": "Ter informatie: deelknoppen zijn een marketingkeuze, geen kwaliteitseis. Met de Web Share API (navigator.share) hoef je geen scripts van derden te laden."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "performance.core-web-vitals",
+      "category": "Performance",
+      "severity": "High",
+      "weight": 6,
+      "layer": "X",
+      "enabled": true,
+      "title": {
+        "en": "Core Web Vitals (real users)",
+        "nl": "Core Web Vitals (echte gebruikers)"
+      },
+      "summary": {
+        "en": "Real users see a {value} of {n} at the 75th percentile, which is above the \"good\" limit of {limit}.",
+        "nl": "Echte bezoekers zien een {value} van {n} op het 75e percentiel, boven de grens voor \"goed\" van {limit}."
+      },
+      "howToFix": {
+        "en": "Field data comes from the Chrome UX Report: LCP should be at most 2.5 s, INP at most 200 ms and CLS at most 0.1. Small sites often have too little real-user data; then only lab data is available.",
+        "nl": "Veldgegevens komen uit het Chrome UX Report: LCP hoort maximaal 2,5 s te zijn, INP maximaal 200 ms en CLS maximaal 0,1. Kleine sites hebben vaak te weinig gegevens van echte gebruikers; dan zijn er enkel labgegevens."
+      },
+      "snippets": {},
+      "docsUrl": "https://web.dev/articles/vitals"
+    },
+    {
+      "id": "performance.lab-score",
+      "category": "Performance",
+      "severity": "High",
+      "weight": 6,
+      "layer": "X",
+      "enabled": true,
+      "title": {
+        "en": "Lab performance score",
+        "nl": "Prestatiescore in het lab"
+      },
+      "summary": {
+        "en": "The Lighthouse performance score of {url} is {n}. Main opportunities: {value}.",
+        "nl": "De Lighthouse-prestatiescore van {url} is {n}. Belangrijkste verbeterpunten: {value}."
+      },
+      "howToFix": {
+        "en": "The score comes from PageSpeed Insights, which runs Lighthouse on Google's infrastructure. Work through its insights first: render-blocking requests, image delivery, the LCP breakdown and font display.",
+        "nl": "De score komt van PageSpeed Insights, dat Lighthouse op de infrastructuur van Google uitvoert. Werk eerst de inzichten af: blokkerende requests, aanlevering van afbeeldingen, de opbouw van de LCP en de weergave van lettertypen."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/speed/docs/insights/v5/about"
+    },
+    {
+      "id": "performance.compression",
+      "category": "Performance",
+      "severity": "High",
+      "weight": 6,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Text compression",
+        "nl": "Compressie van tekst"
+      },
+      "summary": {
+        "en": "{n} text resources are sent uncompressed. Enable Brotli or gzip.",
+        "nl": "{n} tekstbestanden worden ongecomprimeerd verstuurd. Zet Brotli of gzip aan."
+      },
+      "howToFix": {
+        "en": "Compress HTML, CSS, JavaScript, SVG and JSON responses larger than 1 KB. Brotli or zstd compress best; gzip is acceptable.",
+        "nl": "Comprimeer HTML-, CSS-, JavaScript-, SVG- en JSON-antwoorden groter dan 1 KB. Brotli of zstd comprimeren het best; gzip is aanvaardbaar."
+      },
+      "snippets": {
+        "nginx": "gzip on;\ngzip_min_length 1024;\ngzip_types text/css application/javascript application/json image/svg+xml;",
+        "apache": "AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml",
+        "iis": "// ASP.NET Core Program.cs\nbuilder.Services.AddResponseCompression(o => o.EnableForHttps = true);\napp.UseResponseCompression();"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Compression"
+    },
+    {
+      "id": "performance.cache-control",
+      "category": "Performance",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Caching of static assets",
+        "nl": "Caching van statische bestanden"
+      },
+      "summary": {
+        "en": "{n} static assets have no long-lived Cache-Control header, so returning visitors download them again.",
+        "nl": "{n} statische bestanden hebben geen langdurige Cache-Control-header, waardoor terugkerende bezoekers ze opnieuw downloaden."
+      },
+      "howToFix": {
+        "en": "Serve fingerprinted assets (with a hash in the file name) with \"Cache-Control: max-age=31536000, immutable\". Serve HTML with no-cache or a short max-age plus an ETag.",
+        "nl": "Lever bestanden met een hash in de bestandsnaam met \"Cache-Control: max-age=31536000, immutable\". Lever HTML met no-cache of een korte max-age plus een ETag."
+      },
+      "snippets": {
+        "nginx": "location ~* \\.(js|css|woff2|png|jpg|svg)$ {\n  add_header Cache-Control \"public, max-age=31536000, immutable\";\n}",
+        "apache": "<FilesMatch \"\\.(js|css|woff2|png|jpg|svg)$\">\n  Header set Cache-Control \"public, max-age=31536000, immutable\"\n</FilesMatch>",
+        "iis": "<staticContent>\n  <clientCache cacheControlMode=\"UseMaxAge\" cacheControlMaxAge=\"365.00:00:00\" />\n</staticContent>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control"
+    },
+    {
+      "id": "performance.validators",
+      "category": "Performance",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "ETag or Last-Modified",
+        "nl": "ETag of Last-Modified"
+      },
+      "summary": {
+        "en": "Responses from {url} have no ETag or Last-Modified, so browsers must download unchanged files again.",
+        "nl": "Antwoorden van {url} hebben geen ETag of Last-Modified, waardoor browsers ongewijzigde bestanden opnieuw moeten downloaden."
+      },
+      "howToFix": {
+        "en": "Send an ETag or Last-Modified header and answer conditional requests (If-None-Match / If-Modified-Since) with 304 Not Modified. Most web servers do this for static files by default.",
+        "nl": "Stuur een ETag- of Last-Modified-header mee en beantwoord voorwaardelijke requests (If-None-Match / If-Modified-Since) met 304 Not Modified. De meeste webservers doen dat standaard voor statische bestanden."
+      },
+      "snippets": {
+        "nginx": "etag on;",
+        "apache": "FileETag MTime Size",
+        "iis": "// ASP.NET Core serves ETag and Last-Modified for static files:\napp.UseStaticFiles();"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag"
+    },
+    {
+      "id": "performance.minification",
+      "category": "Performance",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Minified CSS and JavaScript",
+        "nl": "Geminificeerde CSS en JavaScript"
+      },
+      "summary": {
+        "en": "{n} CSS or JavaScript files are not minified; minifying would save about {value}.",
+        "nl": "{n} CSS- of JavaScript-bestanden zijn niet geminificeerd; minificeren bespaart ongeveer {value}."
+      },
+      "howToFix": {
+        "en": "Minify CSS and JavaScript in your build (most bundlers do this in production mode). A file counts as not minified when minifying it saves more than 10%.",
+        "nl": "Minificeer CSS en JavaScript in je build (de meeste bundlers doen dat in productiemodus). Een bestand geldt als niet geminificeerd als minificeren meer dan 10% bespaart."
+      },
+      "snippets": {},
+      "docsUrl": "https://developer.chrome.com/docs/lighthouse/performance/unminified-javascript"
+    },
+    {
+      "id": "performance.page-weight",
+      "category": "Performance",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Request count and page weight",
+        "nl": "Aantal requests en paginagewicht"
+      },
+      "summary": {
+        "en": "The page {url} makes {n} requests ({value} KB). Consider bundling files or deferring third-party scripts.",
+        "nl": "De pagina {url} doet {n} requests ({value} KB). Overweeg bestanden te bundelen of scripts van derden later te laden."
+      },
+      "howToFix": {
+        "en": "Measured from the rendered page's network log, per resource type and with the third-party share. Remove unused third parties, compress images and load non-critical scripts with defer or async.",
+        "nl": "Gemeten in het netwerklog van de gerenderde pagina, per type bestand en met het aandeel van derden. Verwijder ongebruikte diensten van derden, comprimeer afbeeldingen en laad niet-kritieke scripts met defer of async."
+      },
+      "snippets": {},
+      "docsUrl": "https://developer.chrome.com/docs/lighthouse/performance/total-byte-weight"
+    },
+    {
+      "id": "performance.http2",
+      "category": "Performance",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N+T",
+      "enabled": true,
+      "title": {
+        "en": "HTTP/2 support",
+        "nl": "Ondersteuning voor HTTP/2"
+      },
+      "summary": {
+        "en": "The server only speaks HTTP/1.1. Enable HTTP/2 so the browser can load files in parallel over one connection.",
+        "nl": "De server spreekt enkel HTTP/1.1. Zet HTTP/2 aan zodat de browser bestanden parallel over één verbinding kan laden."
+      },
+      "howToFix": {
+        "en": "HTTP/2 is negotiated through ALPN during the TLS handshake. Enable it in the web server or load balancer that terminates TLS.",
+        "nl": "HTTP/2 wordt tijdens de TLS-handshake onderhandeld via ALPN. Zet het aan op de webserver of load balancer die TLS afhandelt."
+      },
+      "snippets": {
+        "nginx": "listen 443 ssl;\nhttp2 on;",
+        "apache": "Protocols h2 http/1.1",
+        "iis": "// Kestrel (appsettings.json)\n\"Kestrel\": { \"EndpointDefaults\": { \"Protocols\": \"Http1AndHttp2\" } }"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Glossary/HTTP_2"
+    },
+    {
+      "id": "performance.http3",
+      "category": "Performance",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "HTTP/3 support",
+        "nl": "Ondersteuning voor HTTP/3"
+      },
+      "summary": {
+        "en": "HTTP/3 is {value} on this site.",
+        "nl": "HTTP/3 is op deze site {value}."
+      },
+      "howToFix": {
+        "en": "Informational. HTTP/3 runs over QUIC (UDP 443) and is advertised with an Alt-Svc: h3=\":443\" header; it mainly helps on unreliable mobile networks.",
+        "nl": "Ter informatie. HTTP/3 werkt over QUIC (UDP 443) en wordt aangekondigd met een Alt-Svc: h3=\":443\"-header; het helpt vooral op onstabiele mobiele netwerken."
+      },
+      "snippets": {
+        "nginx": "listen 443 quic reuseport;\nadd_header Alt-Svc 'h3=\":443\"; ma=86400';",
+        "iis": "// Kestrel (appsettings.json)\n\"Kestrel\": { \"EndpointDefaults\": { \"Protocols\": \"Http1AndHttp2AndHttp3\" } }"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Glossary/HTTP_3"
+    },
+    {
+      "id": "performance.lazy-loading",
+      "category": "Performance",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Image lazy-loading",
+        "nl": "Lazy-loading van afbeeldingen"
+      },
+      "summary": {
+        "en": "The main image on {url} is lazy-loaded, which delays it, or {n} images below the fold load immediately.",
+        "nl": "De hoofdafbeelding op {url} wordt lazy geladen, wat ze vertraagt, of {n} afbeeldingen onder de vouw laden meteen."
+      },
+      "howToFix": {
+        "en": "Add loading=\"lazy\" to images outside the first viewport. Never lazy-load the largest image at the top (the LCP image); give it fetchpriority=\"high\" instead.",
+        "nl": "Zet loading=\"lazy\" op afbeeldingen buiten het eerste scherm. Laad de grootste afbeelding bovenaan (de LCP-afbeelding) nooit lazy; geef ze in de plaats fetchpriority=\"high\"."
+      },
+      "snippets": {
+        "html": "<img src=\"hero.jpg\" fetchpriority=\"high\" width=\"1200\" height=\"600\" alt=\"…\">\n<img src=\"gallery-1.jpg\" loading=\"lazy\" width=\"400\" height=\"300\" alt=\"…\">"
+      },
+      "docsUrl": "https://web.dev/articles/browser-level-image-lazy-loading"
+    },
+    {
+      "id": "performance.media-dimensions",
+      "category": "Performance",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H+X",
+      "enabled": true,
+      "title": {
+        "en": "Images and embeds have dimensions",
+        "nl": "Afbeeldingen en embeds hebben afmetingen"
+      },
+      "summary": {
+        "en": "{n} images, videos or iframes on {url} have no width and height, so the page jumps while it loads.",
+        "nl": "{n} afbeeldingen, video's of iframes op {url} hebben geen breedte en hoogte, waardoor de pagina verspringt tijdens het laden."
+      },
+      "howToFix": {
+        "en": "Set width and height attributes (or a CSS aspect-ratio) on img, video and iframe so the browser can reserve space. This lowers Cumulative Layout Shift.",
+        "nl": "Zet width- en height-attributen (of een CSS aspect-ratio) op img, video en iframe, zodat de browser ruimte kan reserveren. Dat verlaagt de Cumulative Layout Shift."
+      },
+      "snippets": {
+        "html": "<img src=\"photo.jpg\" width=\"800\" height=\"600\" alt=\"…\">"
+      },
+      "docsUrl": "https://web.dev/articles/optimize-cls"
+    },
+    {
+      "id": "performance.font-display",
+      "category": "Performance",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Web fonts use font-display",
+        "nl": "Webfonts gebruiken font-display"
+      },
+      "summary": {
+        "en": "{n} web fonts have no font-display setting, so text can stay invisible while they load.",
+        "nl": "{n} webfonts hebben geen font-display-instelling, waardoor tekst onzichtbaar kan blijven tijdens het laden."
+      },
+      "howToFix": {
+        "en": "Add font-display: swap (or optional) to every @font-face rule. For Google Fonts, add &display=swap to the stylesheet URL.",
+        "nl": "Voeg font-display: swap (of optional) toe aan elke @font-face-regel. Voeg bij Google Fonts &display=swap toe aan de URL van het stylesheet."
+      },
+      "snippets": {
+        "html": "<style>\n@font-face { font-family: \"Brand\"; src: url(/fonts/brand.woff2) format(\"woff2\"); font-display: swap; }\n</style>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display"
+    },
+    {
+      "id": "performance.resource-hints",
+      "category": "Performance",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H+R",
+      "enabled": true,
+      "title": {
+        "en": "Resource hints",
+        "nl": "Resource hints"
+      },
+      "summary": {
+        "en": "{url} has {n} preconnect hints or preloads that are not used. Keep preconnects to at most 4 critical origins.",
+        "nl": "{url} heeft {n} preconnect-hints of preloads die niet gebruikt worden. Beperk preconnects tot maximaal 4 kritieke origins."
+      },
+      "howToFix": {
+        "en": "Use preconnect only for third-party origins needed early in the page load, dns-prefetch for the rest, and remove preloads for resources the page does not use.",
+        "nl": "Gebruik preconnect enkel voor origins van derden die vroeg in het laden nodig zijn, dns-prefetch voor de rest, en verwijder preloads voor bestanden die de pagina niet gebruikt."
+      },
+      "snippets": {
+        "html": "<link rel=\"preconnect\" href=\"https://cdn.example.com\" crossorigin>\n<link rel=\"dns-prefetch\" href=\"https://stats.example.org\">"
+      },
+      "docsUrl": "https://web.dev/articles/preconnect-and-dns-prefetch"
+    },
+    {
+      "id": "performance.code-splitting",
+      "category": "Performance",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "R+X",
+      "enabled": true,
+      "title": {
+        "en": "JavaScript split by route",
+        "nl": "JavaScript opgesplitst per route"
+      },
+      "summary": {
+        "en": "The initial JavaScript of {url} is {value} KB, of which {n}% is unused on this page. Split it by route.",
+        "nl": "De initiële JavaScript van {url} is {value} KB, waarvan {n}% op deze pagina niet gebruikt wordt. Splits hem op per route."
+      },
+      "howToFix": {
+        "en": "Load route-specific code with dynamic import() or your framework's lazy routes, so the first page only downloads what it needs.",
+        "nl": "Laad routespecifieke code met dynamische import() of de lazy routes van je framework, zodat de eerste pagina enkel downloadt wat ze nodig heeft."
+      },
+      "snippets": {},
+      "docsUrl": "https://web.dev/articles/reduce-javascript-payloads-with-code-splitting"
+    },
+    {
+      "id": "performance.inline-styles",
+      "category": "Performance",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Inline style attributes",
+        "nl": "Inline style-attributen"
+      },
+      "summary": {
+        "en": "{url} uses {n} inline style attributes.",
+        "nl": "{url} gebruikt {n} inline style-attributen."
+      },
+      "howToFix": {
+        "en": "A best practice rather than a speed issue: inline styles are harder to maintain and push a Content-Security-Policy towards 'unsafe-inline'. Move them into a stylesheet with classes.",
+        "nl": "Eerder een goede gewoonte dan een snelheidskwestie: inline stijlen zijn moeilijker te onderhouden en dwingen een Content-Security-Policy richting 'unsafe-inline'. Verplaats ze naar een stylesheet met classes."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "security.https",
+      "category": "Security",
+      "severity": "Critical",
+      "weight": 10,
+      "layer": "T",
+      "enabled": true,
+      "title": {
+        "en": "Valid HTTPS certificate",
+        "nl": "Geldig HTTPS-certificaat"
+      },
+      "summary": {
+        "en": "The site does not answer over HTTPS with a valid certificate: {value}.",
+        "nl": "De site antwoordt niet via HTTPS met een geldig certificaat: {value}."
+      },
+      "howToFix": {
+        "en": "Serve the site on port 443 with a certificate whose chain is complete, whose name matches the host and which has not expired. Free automated certificates are available from ACME providers such as Let's Encrypt.",
+        "nl": "Lever de site op poort 443 met een certificaat waarvan de keten volledig is, de naam overeenkomt met de host en dat niet verlopen is. Gratis automatische certificaten zijn beschikbaar via ACME-aanbieders zoals Let's Encrypt."
+      },
+      "snippets": {
+        "nginx": "listen 443 ssl;\nssl_certificate     /etc/ssl/example.com/fullchain.pem;\nssl_certificate_key /etc/ssl/example.com/privkey.pem;",
+        "apache": "SSLEngine on\nSSLCertificateFile    /etc/ssl/example.com/fullchain.pem\nSSLCertificateKeyFile /etc/ssl/example.com/privkey.pem"
+      },
+      "docsUrl": "https://web.dev/articles/why-https-matters"
+    },
+    {
+      "id": "security.certificate-expiry",
+      "category": "Security",
+      "severity": "High",
+      "weight": 6,
+      "layer": "T",
+      "enabled": true,
+      "title": {
+        "en": "Certificate is not about to expire",
+        "nl": "Certificaat verloopt niet binnenkort"
+      },
+      "summary": {
+        "en": "The certificate expires in {days} days. Renew it before visitors get a security warning.",
+        "nl": "Het certificaat verloopt over {days} dagen. Vernieuw het voordat bezoekers een beveiligingswaarschuwing krijgen."
+      },
+      "howToFix": {
+        "en": "Warns when fewer than 14 days remain. Automate renewal (for example with an ACME client) and monitor that the renewed certificate is actually deployed.",
+        "nl": "Waarschuwt wanneer er minder dan 14 dagen overblijven. Automatiseer de vernieuwing (bijvoorbeeld met een ACME-client) en controleer dat het vernieuwde certificaat ook echt in gebruik is."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "security.http-redirect",
+      "category": "Security",
+      "severity": "High",
+      "weight": 6,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "HTTP redirects to HTTPS",
+        "nl": "HTTP verwijst door naar HTTPS"
+      },
+      "summary": {
+        "en": "http://{value}/ does not redirect to HTTPS in one permanent step.",
+        "nl": "http://{value}/ verwijst niet in één permanente stap door naar HTTPS."
+      },
+      "howToFix": {
+        "en": "Answer every plain-HTTP request with a 301 or 308 to the https:// URL on the same host. Doing it in one hop is also a requirement for HSTS preload.",
+        "nl": "Beantwoord elk HTTP-request met een 301 of 308 naar de https://-URL op dezelfde host. Dat in één stap doen is ook een voorwaarde voor HSTS-preload."
+      },
+      "snippets": {
+        "nginx": "server {\n  listen 80;\n  server_name example.com www.example.com;\n  return 301 https://$host$request_uri;\n}",
+        "apache": "RewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]",
+        "iis": "// ASP.NET Core Program.cs\nbuilder.Services.AddHttpsRedirection(o => o.RedirectStatusCode = StatusCodes.Status308PermanentRedirect);\napp.UseHttpsRedirection();"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Redirections"
+    },
+    {
+      "id": "security.hsts",
+      "category": "Security",
+      "severity": "High",
+      "weight": 6,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Strict-Transport-Security",
+        "nl": "Strict-Transport-Security"
+      },
+      "summary": {
+        "en": "The site does not send a Strict-Transport-Security header with a max-age of at least one year.",
+        "nl": "De site stuurt geen Strict-Transport-Security-header met een max-age van minstens één jaar."
+      },
+      "howToFix": {
+        "en": "Send Strict-Transport-Security on HTTPS responses with max-age=31536000 and includeSubDomains, so browsers never fall back to HTTP. Only add preload when every subdomain supports HTTPS.",
+        "nl": "Stuur Strict-Transport-Security mee op HTTPS-antwoorden met max-age=31536000 en includeSubDomains, zodat browsers nooit terugvallen op HTTP. Voeg preload enkel toe als elk subdomein HTTPS ondersteunt."
+      },
+      "snippets": {
+        "nginx": "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always;",
+        "apache": "Header always set Strict-Transport-Security \"max-age=31536000; includeSubDomains\"",
+        "iis": "// ASP.NET Core Program.cs\nbuilder.Services.AddHsts(o => { o.MaxAge = TimeSpan.FromDays(365); o.IncludeSubDomains = true; });\napp.UseHsts();"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+    },
+    {
+      "id": "security.hsts-preload",
+      "category": "Security",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "X",
+      "enabled": true,
+      "title": {
+        "en": "HSTS preload status",
+        "nl": "HSTS-preloadstatus"
+      },
+      "summary": {
+        "en": "The domain is not on the browsers' HSTS preload list (status: {value}).",
+        "nl": "Het domein staat niet op de HSTS-preloadlijst van de browsers (status: {value})."
+      },
+      "howToFix": {
+        "en": "Preloading makes browsers use HTTPS even on the very first visit. It is hard to undo and applies to all subdomains, so only submit the domain when every subdomain serves HTTPS.",
+        "nl": "Met preload gebruiken browsers HTTPS al bij het allereerste bezoek. Dat is moeilijk terug te draaien en geldt voor alle subdomeinen, dus meld het domein pas aan als elk subdomein HTTPS levert."
+      },
+      "snippets": {},
+      "docsUrl": "https://hstspreload.org/"
+    },
+    {
+      "id": "security.tls-legacy",
+      "category": "Security",
+      "severity": "High",
+      "weight": 6,
+      "layer": "T",
+      "enabled": true,
+      "title": {
+        "en": "No outdated TLS versions",
+        "nl": "Geen verouderde TLS-versies"
+      },
+      "summary": {
+        "en": "The server still accepts {value}. Disable it.",
+        "nl": "De server aanvaardt nog {value}. Schakel dat uit."
+      },
+      "howToFix": {
+        "en": "Allow only TLS 1.2 and TLS 1.3, and disable SSLv3, TLS 1.0, TLS 1.1 and weak ciphers.",
+        "nl": "Laat enkel TLS 1.2 en TLS 1.3 toe, en schakel SSLv3, TLS 1.0, TLS 1.1 en zwakke ciphers uit."
+      },
+      "snippets": {
+        "nginx": "ssl_protocols TLSv1.2 TLSv1.3;",
+        "apache": "SSLProtocol -all +TLSv1.2 +TLSv1.3",
+        "iis": "// Kestrel\nbuilder.WebHost.ConfigureKestrel(k => k.ConfigureHttpsDefaults(h =>\n  h.SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13));"
+      },
+      "docsUrl": "https://wiki.mozilla.org/Security/Server_Side_TLS"
+    },
+    {
+      "id": "security.tls13",
+      "category": "Security",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "T",
+      "enabled": true,
+      "title": {
+        "en": "TLS 1.3 support",
+        "nl": "Ondersteuning voor TLS 1.3"
+      },
+      "summary": {
+        "en": "The server does not support TLS 1.3.",
+        "nl": "De server ondersteunt TLS 1.3 niet."
+      },
+      "howToFix": {
+        "en": "TLS 1.3 has a faster handshake and removes weak cipher suites. Enable it next to TLS 1.2; it needs a reasonably recent TLS library on the server.",
+        "nl": "TLS 1.3 heeft een snellere handshake en schrapt zwakke cipher suites. Zet het aan naast TLS 1.2; daarvoor is een redelijk recente TLS-bibliotheek op de server nodig."
+      },
+      "snippets": {
+        "nginx": "ssl_protocols TLSv1.2 TLSv1.3;",
+        "apache": "SSLProtocol -all +TLSv1.2 +TLSv1.3",
+        "iis": "// Kestrel\nbuilder.WebHost.ConfigureKestrel(k => k.ConfigureHttpsDefaults(h =>\n  h.SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13));"
+      },
+      "docsUrl": "https://wiki.mozilla.org/Security/Server_Side_TLS"
+    },
+    {
+      "id": "security.mixed-content",
+      "category": "Security",
+      "severity": "High",
+      "weight": 6,
+      "layer": "H+R",
+      "enabled": true,
+      "title": {
+        "en": "No mixed content",
+        "nl": "Geen gemengde inhoud"
+      },
+      "summary": {
+        "en": "{url} loads {n} resources over plain HTTP, for example {target}.",
+        "nl": "{url} laadt {n} bestanden via onbeveiligd HTTP, bijvoorbeeld {target}."
+      },
+      "howToFix": {
+        "en": "Change every http:// subresource to https://. Browsers block insecure scripts, iframes and stylesheets outright; the upgrade-insecure-requests CSP directive can help during migration.",
+        "nl": "Wijzig elke http://-subresource naar https://. Browsers blokkeren onveilige scripts, iframes en stylesheets meteen; de CSP-richtlijn upgrade-insecure-requests kan helpen tijdens de overstap."
+      },
+      "snippets": {
+        "nginx": "add_header Content-Security-Policy \"upgrade-insecure-requests\" always;",
+        "apache": "Header always set Content-Security-Policy \"upgrade-insecure-requests\"",
+        "iis": "<httpProtocol>\n  <customHeaders>\n    <add name=\"Content-Security-Policy\" value=\"upgrade-insecure-requests\" />\n  </customHeaders>\n</httpProtocol>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content"
+    },
+    {
+      "id": "security.csp",
+      "category": "Security",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N+H",
+      "enabled": true,
+      "title": {
+        "en": "Content-Security-Policy",
+        "nl": "Content-Security-Policy"
+      },
+      "summary": {
+        "en": "The site has no Content-Security-Policy, or its policy allows {value}.",
+        "nl": "De site heeft geen Content-Security-Policy, of het beleid laat {value} toe."
+      },
+      "howToFix": {
+        "en": "A CSP limits which scripts can run and is the main defence against cross-site scripting. Avoid 'unsafe-inline', 'unsafe-eval' and wildcards in script-src; use nonces or hashes instead, and set frame-ancestors.",
+        "nl": "Een CSP beperkt welke scripts mogen draaien en is de belangrijkste verdediging tegen cross-site scripting. Vermijd 'unsafe-inline', 'unsafe-eval' en wildcards in script-src; gebruik nonces of hashes, en stel frame-ancestors in."
+      },
+      "snippets": {
+        "nginx": "add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'\" always;",
+        "apache": "Header always set Content-Security-Policy \"default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'\"",
+        "iis": "<httpProtocol>\n  <customHeaders>\n    <add name=\"Content-Security-Policy\" value=\"default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'\" />\n  </customHeaders>\n</httpProtocol>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+    },
+    {
+      "id": "security.nosniff",
+      "category": "Security",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "X-Content-Type-Options: nosniff",
+        "nl": "X-Content-Type-Options: nosniff"
+      },
+      "summary": {
+        "en": "{n} responses do not send X-Content-Type-Options: nosniff.",
+        "nl": "{n} antwoorden sturen geen X-Content-Type-Options: nosniff mee."
+      },
+      "howToFix": {
+        "en": "Send X-Content-Type-Options: nosniff on all responses so browsers do not guess content types, which can turn an uploaded file into executable script.",
+        "nl": "Stuur X-Content-Type-Options: nosniff mee op alle antwoorden, zodat browsers het type niet gaan raden. Anders kan een geüpload bestand als uitvoerbaar script worden behandeld."
+      },
+      "snippets": {
+        "nginx": "add_header X-Content-Type-Options \"nosniff\" always;",
+        "apache": "Header always set X-Content-Type-Options \"nosniff\"",
+        "iis": "<httpProtocol>\n  <customHeaders>\n    <add name=\"X-Content-Type-Options\" value=\"nosniff\" />\n  </customHeaders>\n</httpProtocol>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    },
+    {
+      "id": "security.clickjacking",
+      "category": "Security",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Protection against framing",
+        "nl": "Bescherming tegen framing"
+      },
+      "summary": {
+        "en": "The site can be embedded in a frame on any other site, which allows clickjacking.",
+        "nl": "De site kan in een frame op elke andere site worden ingesloten, wat clickjacking mogelijk maakt."
+      },
+      "howToFix": {
+        "en": "Set frame-ancestors in the Content-Security-Policy (preferred) or send X-Frame-Options: SAMEORIGIN for older browsers.",
+        "nl": "Stel frame-ancestors in de Content-Security-Policy in (aanbevolen) of stuur X-Frame-Options: SAMEORIGIN mee voor oudere browsers."
+      },
+      "snippets": {
+        "nginx": "add_header Content-Security-Policy \"frame-ancestors 'self'\" always;\nadd_header X-Frame-Options \"SAMEORIGIN\" always;",
+        "apache": "Header always set Content-Security-Policy \"frame-ancestors 'self'\"\nHeader always set X-Frame-Options \"SAMEORIGIN\"",
+        "iis": "<httpProtocol>\n  <customHeaders>\n    <add name=\"X-Frame-Options\" value=\"SAMEORIGIN\" />\n  </customHeaders>\n</httpProtocol>"
+      },
+      "docsUrl": "https://cheatsheetseries.owasp.org/cheatsheets/Clickjacking_Defense_Cheat_Sheet.html"
+    },
+    {
+      "id": "security.referrer-policy",
+      "category": "Security",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Referrer-Policy",
+        "nl": "Referrer-Policy"
+      },
+      "summary": {
+        "en": "The site sends Referrer-Policy: {value}, which leaks full URLs to other sites.",
+        "nl": "De site stuurt Referrer-Policy: {value} mee, waardoor volledige URL's naar andere sites lekken."
+      },
+      "howToFix": {
+        "en": "The browser default strict-origin-when-cross-origin is fine. Flagged only when the policy is unsafe-url or similarly permissive; set it explicitly to be sure.",
+        "nl": "De standaardwaarde van de browser, strict-origin-when-cross-origin, is prima. Dit wordt enkel gemeld bij unsafe-url of een even ruim beleid; stel het expliciet in voor de zekerheid."
+      },
+      "snippets": {
+        "nginx": "add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;",
+        "apache": "Header always set Referrer-Policy \"strict-origin-when-cross-origin\"",
+        "iis": "<httpProtocol>\n  <customHeaders>\n    <add name=\"Referrer-Policy\" value=\"strict-origin-when-cross-origin\" />\n  </customHeaders>\n</httpProtocol>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy"
+    },
+    {
+      "id": "security.permissions-policy",
+      "category": "Security",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Permissions-Policy",
+        "nl": "Permissions-Policy"
+      },
+      "summary": {
+        "en": "The site sends no Permissions-Policy header.",
+        "nl": "De site stuurt geen Permissions-Policy-header mee."
+      },
+      "howToFix": {
+        "en": "Permissions-Policy (which replaced Feature-Policy) switches off browser features such as camera, microphone and geolocation that the site does not use, including for embedded third parties.",
+        "nl": "Permissions-Policy (de opvolger van Feature-Policy) schakelt browserfuncties zoals camera, microfoon en locatie uit die de site niet gebruikt, ook voor ingesloten diensten van derden."
+      },
+      "snippets": {
+        "nginx": "add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;",
+        "apache": "Header always set Permissions-Policy \"camera=(), microphone=(), geolocation=()\"",
+        "iis": "<httpProtocol>\n  <customHeaders>\n    <add name=\"Permissions-Policy\" value=\"camera=(), microphone=(), geolocation=()\" />\n  </customHeaders>\n</httpProtocol>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"
+    },
+    {
+      "id": "security.cross-origin-isolation",
+      "category": "Security",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Cross-origin isolation headers",
+        "nl": "Headers voor cross-origin-isolatie"
+      },
+      "summary": {
+        "en": "COOP/COEP/CORP headers found: {value}.",
+        "nl": "Gevonden COOP/COEP/CORP-headers: {value}."
+      },
+      "howToFix": {
+        "en": "Informational. Cross-Origin-Opener-Policy, Cross-Origin-Embedder-Policy and Cross-Origin-Resource-Policy isolate the page from other origins; they are only needed for features such as SharedArrayBuffer, and COEP can break third-party embeds.",
+        "nl": "Ter informatie. Cross-Origin-Opener-Policy, Cross-Origin-Embedder-Policy en Cross-Origin-Resource-Policy isoleren de pagina van andere origins; ze zijn enkel nodig voor functies zoals SharedArrayBuffer, en COEP kan embeds van derden breken."
+      },
+      "snippets": {},
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy"
+    },
+    {
+      "id": "security.server-signature",
+      "category": "Security",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Server version not disclosed",
+        "nl": "Serverversie niet zichtbaar"
+      },
+      "summary": {
+        "en": "Your server reveals \"{value}\". Remove the version details.",
+        "nl": "Je server verklapt \"{value}\". Verwijder de versiegegevens."
+      },
+      "howToFix": {
+        "en": "Headers such as Server with a version number, X-Powered-By, X-AspNet-Version and X-AspNetMvc-Version help attackers find known vulnerabilities. Hiding them is cheap.",
+        "nl": "Headers zoals Server met een versienummer, X-Powered-By, X-AspNet-Version en X-AspNetMvc-Version helpen aanvallers bekende kwetsbaarheden te vinden. Ze verbergen kost weinig."
+      },
+      "snippets": {
+        "nginx": "server_tokens off;",
+        "apache": "ServerTokens Prod\nServerSignature Off\nHeader unset X-Powered-By",
+        "iis": "<system.webServer>\n  <security><requestFiltering removeServerHeader=\"true\" /></security>\n  <httpProtocol><customHeaders><remove name=\"X-Powered-By\" /></customHeaders></httpProtocol>\n</system.webServer>"
+      },
+      "docsUrl": "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html"
+    },
+    {
+      "id": "security.x-xss-protection",
+      "category": "Security",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "X-XSS-Protection header",
+        "nl": "X-XSS-Protection-header"
+      },
+      "summary": {
+        "en": "The site sends X-XSS-Protection: {value}. This header is obsolete; rely on a Content-Security-Policy instead.",
+        "nl": "De site stuurt X-XSS-Protection: {value} mee. Deze header is verouderd; vertrouw op een Content-Security-Policy."
+      },
+      "howToFix": {
+        "en": "Modern browsers removed the XSS auditor, and \"1; mode=block\" could even introduce leaks. Remove the header or set it to 0. Its absence is never a problem.",
+        "nl": "Moderne browsers hebben de XSS-auditor verwijderd, en \"1; mode=block\" kon zelfs lekken veroorzaken. Verwijder de header of zet hem op 0. Dat hij ontbreekt, is nooit een probleem."
+      },
+      "snippets": {
+        "nginx": "add_header X-XSS-Protection \"0\" always;",
+        "apache": "Header always set X-XSS-Protection \"0\"",
+        "iis": "<httpProtocol>\n  <customHeaders>\n    <remove name=\"X-XSS-Protection\" />\n  </customHeaders>\n</httpProtocol>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection"
+    },
+    {
+      "id": "security.obsolete-headers",
+      "category": "Security",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Obsolete security headers",
+        "nl": "Verouderde beveiligingsheaders"
+      },
+      "summary": {
+        "en": "The site sends the obsolete header {value}. It can be removed.",
+        "nl": "De site stuurt de verouderde header {value} mee. Die mag weg."
+      },
+      "howToFix": {
+        "en": "Expect-CT and Public-Key-Pins (HPKP) are no longer supported by browsers. Remove them from the server configuration.",
+        "nl": "Expect-CT en Public-Key-Pins (HPKP) worden niet meer ondersteund door browsers. Haal ze uit de serverconfiguratie."
+      },
+      "snippets": {
+        "nginx": "# remove any add_header Expect-CT / Public-Key-Pins lines",
+        "apache": "Header unset Expect-CT\nHeader unset Public-Key-Pins",
+        "iis": "<httpProtocol>\n  <customHeaders>\n    <remove name=\"Expect-CT\" />\n    <remove name=\"Public-Key-Pins\" />\n  </customHeaders>\n</httpProtocol>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Expect-CT"
+    },
+    {
+      "id": "security.sri",
+      "category": "Security",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Subresource Integrity on third-party files",
+        "nl": "Subresource Integrity op bestanden van derden"
+      },
+      "summary": {
+        "en": "{n} third-party scripts or stylesheets load without Subresource Integrity.",
+        "nl": "{n} scripts of stylesheets van derden laden zonder Subresource Integrity."
+      },
+      "howToFix": {
+        "en": "Add an integrity hash and crossorigin=\"anonymous\" to cross-origin script and stylesheet tags with fixed content, so a compromised CDN cannot inject code. Scripts whose content changes (tag managers, analytics) cannot use SRI and are skipped.",
+        "nl": "Voeg een integrity-hash en crossorigin=\"anonymous\" toe aan script- en stylesheet-tags van andere origins met vaste inhoud, zodat een gecompromitteerd CDN geen code kan injecteren. Scripts met wisselende inhoud (tagmanagers, analytics) kunnen geen SRI gebruiken en worden overgeslagen."
+      },
+      "snippets": {
+        "html": "<script src=\"https://cdn.example.com/lib@1.2.3/lib.min.js\"\n        integrity=\"sha384-…\" crossorigin=\"anonymous\"></script>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
+    },
+    {
+      "id": "security.target-blank-opener",
+      "category": "Security",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Links that keep window.opener",
+        "nl": "Links die window.opener behouden"
+      },
+      "summary": {
+        "en": "{n} links explicitly set rel=\"opener\", giving the opened page access to this one.",
+        "nl": "{n} links zetten expliciet rel=\"opener\", waardoor de geopende pagina toegang krijgt tot deze pagina."
+      },
+      "howToFix": {
+        "en": "Since 2021 browsers treat target=\"_blank\" as noopener, so the old risk is mostly gone. Only links with rel=\"opener\" are reported; noreferrer is a privacy choice, not a security requirement.",
+        "nl": "Sinds 2021 behandelen browsers target=\"_blank\" als noopener, dus het oude risico is grotendeels weg. Enkel links met rel=\"opener\" worden gemeld; noreferrer is een privacykeuze, geen beveiligingseis."
+      },
+      "snippets": {
+        "html": "<a href=\"https://example.org/\" target=\"_blank\" rel=\"noopener\">Partner site</a>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel/noopener"
+    },
+    {
+      "id": "security.security-txt",
+      "category": "Security",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "security.txt",
+        "nl": "security.txt"
+      },
+      "summary": {
+        "en": "The site has no valid /.well-known/security.txt, or it expired on {value}.",
+        "nl": "De site heeft geen geldige /.well-known/security.txt, of die is verlopen op {value}."
+      },
+      "howToFix": {
+        "en": "Publish /.well-known/security.txt as text/plain with at least a Contact: and an Expires: field (RFC 9116), so researchers know how to report vulnerabilities. Renew Expires before it passes.",
+        "nl": "Publiceer /.well-known/security.txt als text/plain met minstens een Contact:- en een Expires:-veld (RFC 9116), zodat onderzoekers weten waar ze kwetsbaarheden kunnen melden. Vernieuw Expires voordat die datum verstrijkt."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.rfc-editor.org/rfc/rfc9116"
+    },
+    {
+      "id": "security.change-password-url",
+      "category": "Security",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Well-known change-password URL",
+        "nl": "Well-known URL om het wachtwoord te wijzigen"
+      },
+      "summary": {
+        "en": "The site has a login form but /.well-known/change-password does not lead to a password page.",
+        "nl": "De site heeft een aanmeldformulier, maar /.well-known/change-password leidt niet naar een wachtwoordpagina."
+      },
+      "howToFix": {
+        "en": "Redirect /.well-known/change-password to the page where users change their password, so password managers can send users there directly. Only checked when the site has a login form.",
+        "nl": "Verwijs /.well-known/change-password door naar de pagina waar gebruikers hun wachtwoord wijzigen, zodat wachtwoordbeheerders gebruikers er rechtstreeks naartoe kunnen sturen. Wordt enkel gecontroleerd als de site een aanmeldformulier heeft."
+      },
+      "snippets": {
+        "nginx": "location = /.well-known/change-password { return 302 /account/password; }",
+        "apache": "Redirect 302 /.well-known/change-password /account/password",
+        "iis": "// ASP.NET Core Program.cs\napp.MapGet(\"/.well-known/change-password\", () => Results.Redirect(\"/account/password\"));"
+      },
+      "docsUrl": "https://w3c.github.io/webappsec-change-password-url/"
+    },
+    {
+      "id": "security.directory-listing",
+      "category": "Security",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "No directory listings",
+        "nl": "Geen mapweergaven"
+      },
+      "summary": {
+        "en": "The folder {target} shows a list of all its files.",
+        "nl": "De map {target} toont een lijst van al haar bestanden."
+      },
+      "howToFix": {
+        "en": "Turn off automatic directory listings so visitors cannot browse files that were never meant to be linked.",
+        "nl": "Schakel automatische mapweergaven uit, zodat bezoekers niet kunnen bladeren door bestanden die nooit bedoeld waren om gelinkt te worden."
+      },
+      "snippets": {
+        "nginx": "autoindex off;",
+        "apache": "Options -Indexes",
+        "iis": "<system.webServer>\n  <directoryBrowse enabled=\"false\" />\n</system.webServer>"
+      },
+      "docsUrl": null
+    },
+    {
+      "id": "security.exposed-files",
+      "category": "Security",
+      "severity": "Critical",
+      "weight": 10,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "No exposed sensitive files",
+        "nl": "Geen gevoelige bestanden zichtbaar"
+      },
+      "summary": {
+        "en": "The sensitive file {target} is publicly downloadable. Remove it or block access immediately.",
+        "nl": "Het gevoelige bestand {target} is publiek te downloaden. Verwijder het of blokkeer de toegang onmiddellijk."
+      },
+      "howToFix": {
+        "en": "Files such as .git/, .env, .DS_Store, web.config, phpinfo.php and backups can leak source code and credentials. Keep them out of the web root and deny dotfiles; rotate any secret that was exposed. Only probed on verified sites.",
+        "nl": "Bestanden zoals .git/, .env, .DS_Store, web.config, phpinfo.php en back-ups kunnen broncode en wachtwoorden lekken. Hou ze buiten de webroot en weiger toegang tot bestanden die met een punt beginnen; vervang elk geheim dat zichtbaar was. Wordt enkel getest op geverifieerde sites."
+      },
+      "snippets": {
+        "nginx": "location ~ /\\.(?!well-known) { deny all; }",
+        "apache": "<FilesMatch \"^\\.\">\n  Require all denied\n</FilesMatch>",
+        "iis": "<security>\n  <requestFiltering>\n    <hiddenSegments>\n      <add segment=\".git\" />\n      <add segment=\".env\" />\n    </hiddenSegments>\n  </requestFiltering>\n</security>"
+      },
+      "docsUrl": null
+    },
+    {
+      "id": "security.csrf-heuristic",
+      "category": "Security",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Forms without a visible anti-forgery token",
+        "nl": "Formulieren zonder zichtbaar anti-forgery-token"
+      },
+      "summary": {
+        "en": "{n} POST forms have no hidden token-like field. This is a hint only; it cannot be verified from outside.",
+        "nl": "{n} POST-formulieren hebben geen verborgen veld dat op een token lijkt. Dit is enkel een aanwijzing; van buitenaf valt het niet te bevestigen."
+      },
+      "howToFix": {
+        "en": "Protect state-changing requests with an anti-forgery token or an equivalent defence, and set SameSite on session cookies. The tool does not submit forms, so this is reported as information only.",
+        "nl": "Bescherm requests die iets wijzigen met een anti-forgery-token of een gelijkwaardige verdediging, en zet SameSite op sessiecookies. De tool verstuurt geen formulieren, dus dit wordt enkel ter informatie gemeld."
+      },
+      "snippets": {},
+      "docsUrl": "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
+    },
+    {
+      "id": "security.cookie-flags",
+      "category": "Security",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Secure cookie flags",
+        "nl": "Veilige cookie-instellingen"
+      },
+      "summary": {
+        "en": "The cookie {value} is set without Secure, HttpOnly or SameSite.",
+        "nl": "De cookie {value} wordt gezet zonder Secure, HttpOnly of SameSite."
+      },
+      "howToFix": {
+        "en": "Mark session and authentication cookies Secure (HTTPS only), HttpOnly (not readable from JavaScript) and SameSite=Lax or Strict.",
+        "nl": "Markeer sessie- en authenticatiecookies als Secure (enkel via HTTPS), HttpOnly (niet leesbaar vanuit JavaScript) en SameSite=Lax of Strict."
+      },
+      "snippets": {
+        "nginx": "proxy_cookie_flags ~ secure httponly samesite=lax;",
+        "apache": "Header always edit Set-Cookie ^(.*)$ \"$1; Secure; HttpOnly; SameSite=Lax\"",
+        "iis": "// ASP.NET Core Program.cs\napp.UseCookiePolicy(new CookiePolicyOptions {\n  Secure = CookieSecurePolicy.Always,\n  HttpOnly = HttpOnlyPolicy.Always,\n  MinimumSameSitePolicy = SameSiteMode.Lax });"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"
+    },
+    {
+      "id": "security.analytics-consent",
+      "category": "Security",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Analytics before consent",
+        "nl": "Analytics vóór toestemming"
+      },
+      "summary": {
+        "en": "{value} loads before the visitor has given consent.",
+        "nl": "{value} wordt geladen voordat de bezoeker toestemming heeft gegeven."
+      },
+      "howToFix": {
+        "en": "Informational, relevant for GDPR: load analytics and tag-manager scripts only after consent, or use a consent mode that sends no identifiers until then.",
+        "nl": "Ter informatie, relevant voor de AVG: laad analytics- en tagmanagerscripts pas na toestemming, of gebruik een toestemmingsmodus die tot dan geen identificatoren verstuurt."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "accessibility.img-alt",
+      "category": "Accessibility",
+      "severity": "High",
+      "weight": 6,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Images have alternative text",
+        "nl": "Afbeeldingen hebben alternatieve tekst"
+      },
+      "summary": {
+        "en": "{n} images on {url} have no alt attribute.",
+        "nl": "{n} afbeeldingen op {url} hebben geen alt-attribuut."
+      },
+      "howToFix": {
+        "en": "Give every img an alt attribute that describes its content or purpose. Use alt=\"\" for purely decorative images so screen readers skip them.",
+        "nl": "Geef elke img een alt-attribuut dat de inhoud of het doel beschrijft. Gebruik alt=\"\" voor zuiver decoratieve afbeeldingen, zodat schermlezers ze overslaan."
+      },
+      "snippets": {
+        "html": "<img src=\"team.jpg\" alt=\"Our support team at the help desk\">\n<img src=\"divider.svg\" alt=\"\">"
+      },
+      "docsUrl": "https://www.w3.org/WAI/tutorials/images/"
+    },
+    {
+      "id": "accessibility.form-labels",
+      "category": "Accessibility",
+      "severity": "High",
+      "weight": 6,
+      "layer": "H+R",
+      "enabled": true,
+      "title": {
+        "en": "Form fields have labels",
+        "nl": "Formuliervelden hebben labels"
+      },
+      "summary": {
+        "en": "{n} form fields on {url} have no label.",
+        "nl": "{n} formuliervelden op {url} hebben geen label."
+      },
+      "howToFix": {
+        "en": "Connect every input, select and textarea to a <label for>, wrap it in a label, or give it aria-label or aria-labelledby. A placeholder is not a label.",
+        "nl": "Koppel elke input, select en textarea aan een <label for>, zet hem binnen een label, of geef hem aria-label of aria-labelledby. Een placeholder is geen label."
+      },
+      "snippets": {
+        "html": "<label for=\"email\">Email address</label>\n<input id=\"email\" type=\"email\" name=\"email\">"
+      },
+      "docsUrl": "https://www.w3.org/WAI/tutorials/forms/labels/"
+    },
+    {
+      "id": "accessibility.aria",
+      "category": "Accessibility",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Valid ARIA",
+        "nl": "Geldige ARIA"
+      },
+      "summary": {
+        "en": "{n} elements on {url} use invalid ARIA roles or attributes, or hide focusable content with aria-hidden.",
+        "nl": "{n} elementen op {url} gebruiken ongeldige ARIA-rollen of -attributen, of verbergen focusbare inhoud met aria-hidden."
+      },
+      "howToFix": {
+        "en": "Use only valid roles and aria-* attributes allowed for that role, and never put aria-hidden=\"true\" on an element that can receive focus. Prefer native HTML elements over ARIA where possible.",
+        "nl": "Gebruik enkel geldige rollen en de aria-*-attributen die bij die rol horen, en zet nooit aria-hidden=\"true\" op een element dat de focus kan krijgen. Kies waar mogelijk native HTML-elementen boven ARIA."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.w3.org/TR/wai-aria-1.2/"
+    },
+    {
+      "id": "accessibility.color-contrast",
+      "category": "Accessibility",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Colour contrast",
+        "nl": "Kleurcontrast"
+      },
+      "summary": {
+        "en": "{n} text elements on {url} have too little contrast with their background.",
+        "nl": "{n} tekstelementen op {url} hebben te weinig contrast met hun achtergrond."
+      },
+      "howToFix": {
+        "en": "WCAG AA requires a contrast ratio of at least 4.5:1 for normal text and 3:1 for large text. Darken the text or lighten the background.",
+        "nl": "WCAG AA vereist een contrastverhouding van minstens 4,5:1 voor gewone tekst en 3:1 voor grote tekst. Maak de tekst donkerder of de achtergrond lichter."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html"
+    },
+    {
+      "id": "accessibility.touch-targets",
+      "category": "Accessibility",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Touch targets are large enough",
+        "nl": "Aanraakdoelen zijn groot genoeg"
+      },
+      "summary": {
+        "en": "{n} buttons or links on {url} are smaller than 24×24 pixels on a phone.",
+        "nl": "{n} knoppen of links op {url} zijn kleiner dan 24×24 pixels op een smartphone."
+      },
+      "howToFix": {
+        "en": "WCAG 2.2 (SC 2.5.8) requires targets of at least 24×24 CSS pixels or enough spacing around them; 48×48 is recommended. Increase padding on small icons and links.",
+        "nl": "WCAG 2.2 (SC 2.5.8) vereist aanraakdoelen van minstens 24×24 CSS-pixels of voldoende ruimte eromheen; 48×48 wordt aanbevolen. Vergroot de padding van kleine iconen en links."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html"
+    },
+    {
+      "id": "accessibility.heading-order",
+      "category": "Accessibility",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Heading levels in order",
+        "nl": "Kopniveaus in volgorde"
+      },
+      "summary": {
+        "en": "Headings on {url} skip levels, for example from <h2> to <h4>.",
+        "nl": "De koppen op {url} slaan niveaus over, bijvoorbeeld van <h2> naar <h4>."
+      },
+      "howToFix": {
+        "en": "Screen-reader users navigate by headings. Go down one level at a time and style headings with CSS instead of choosing a level for its size.",
+        "nl": "Gebruikers van schermlezers navigeren via koppen. Daal telkens één niveau af en geef koppen hun uiterlijk via CSS in plaats van een niveau te kiezen om de grootte."
+      },
+      "snippets": {
+        "html": "<h1>Shoes</h1>\n<h2>Trail</h2>\n<h3>Waterproof models</h3>"
+      },
+      "docsUrl": "https://www.w3.org/WAI/tutorials/page-structure/headings/"
+    },
+    {
+      "id": "accessibility.landmarks",
+      "category": "Accessibility",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Landmarks and skip link",
+        "nl": "Landmarks en skiplink"
+      },
+      "summary": {
+        "en": "{url} has no main landmark or no way to skip to the main content.",
+        "nl": "{url} heeft geen main-landmark of geen manier om naar de hoofdinhoud te springen."
+      },
+      "howToFix": {
+        "en": "Wrap the page regions in <header>, <nav>, <main> and <footer>, put all content inside a landmark, and add a \"Skip to content\" link as the first focusable element.",
+        "nl": "Verdeel de pagina in <header>, <nav>, <main> en <footer>, zet alle inhoud binnen een landmark, en voeg als eerste focusbare element een link \"Naar de inhoud\" toe."
+      },
+      "snippets": {
+        "html": "<a class=\"skip-link\" href=\"#main\">Skip to content</a>\n<header>…</header>\n<main id=\"main\">…</main>"
+      },
+      "docsUrl": "https://www.w3.org/WAI/tutorials/page-structure/regions/"
+    },
+    {
+      "id": "accessibility.axe-other",
+      "category": "Accessibility",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Other automated accessibility issues",
+        "nl": "Andere automatisch gevonden toegankelijkheidsproblemen"
+      },
+      "summary": {
+        "en": "The automated accessibility scan found {n} other issues on {url}, for example: {value}.",
+        "nl": "De automatische toegankelijkheidsscan vond {n} andere problemen op {url}, bijvoorbeeld: {value}."
+      },
+      "howToFix": {
+        "en": "These are axe-core rule violations not covered by a more specific check. Each finding names the rule and the element; the rule's help page explains the fix. Automated tools find only part of the problems, so also test manually.",
+        "nl": "Dit zijn overtredingen van axe-core-regels die niet onder een specifiekere controle vallen. Elke bevinding vermeldt de regel en het element; de helppagina van de regel legt de oplossing uit. Automatische tools vinden maar een deel van de problemen, dus test ook handmatig."
+      },
+      "snippets": {},
+      "docsUrl": "https://github.com/dequelabs/axe-core"
+    },
+    {
+      "id": "accessibility.dark-mode",
+      "category": "Accessibility",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Dark mode support",
+        "nl": "Ondersteuning voor donkere modus"
+      },
+      "summary": {
+        "en": "Supports dark mode: {value}.",
+        "nl": "Ondersteunt donkere modus: {value}."
+      },
+      "howToFix": {
+        "en": "Informational, not a defect when absent. Detected through a prefers-color-scheme: dark media query or a color-scheme meta tag or CSS property.",
+        "nl": "Ter informatie; geen gebrek als het ontbreekt. Herkend via een prefers-color-scheme: dark-mediaquery of een color-scheme-metatag of CSS-eigenschap."
+      },
+      "snippets": {
+        "html": "<meta name=\"color-scheme\" content=\"light dark\">"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme"
+    },
+    {
+      "id": "accessibility.reduced-motion",
+      "category": "Accessibility",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Reduced motion support",
+        "nl": "Ondersteuning voor minder beweging"
+      },
+      "summary": {
+        "en": "Respects the reduced-motion preference: {value}.",
+        "nl": "Houdt rekening met de voorkeur voor minder beweging: {value}."
+      },
+      "howToFix": {
+        "en": "Informational. A prefers-reduced-motion media query lets visitors who are sensitive to motion turn off animations and parallax effects.",
+        "nl": "Ter informatie. Met een prefers-reduced-motion-mediaquery kunnen bezoekers die gevoelig zijn voor beweging animaties en parallaxeffecten uitschakelen."
+      },
+      "snippets": {
+        "html": "<style>\n@media (prefers-reduced-motion: reduce) {\n  * { animation: none !important; transition: none !important; }\n}\n</style>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion"
+    },
+    {
+      "id": "mobile.viewport",
+      "category": "Mobile",
+      "severity": "Critical",
+      "weight": 10,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Viewport meta tag",
+        "nl": "Viewport-metatag"
+      },
+      "summary": {
+        "en": "Page {url} has no viewport meta tag, so phones show it as a shrunken desktop page.",
+        "nl": "Pagina {url} heeft geen viewport-metatag, waardoor smartphones haar tonen als een verkleinde desktoppagina."
+      },
+      "howToFix": {
+        "en": "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> to <head>.",
+        "nl": "Voeg <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> toe aan de <head>."
+      },
+      "snippets": {
+        "html": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag"
+    },
+    {
+      "id": "mobile.zoom-disabled",
+      "category": "Mobile",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Zooming is allowed",
+        "nl": "Inzoomen is toegestaan"
+      },
+      "summary": {
+        "en": "Page {url} prevents visitors from zooming in ({value}).",
+        "nl": "Pagina {url} verhindert dat bezoekers inzoomen ({value})."
+      },
+      "howToFix": {
+        "en": "Remove user-scalable=no and maximum-scale=1 from the viewport meta tag. Visitors with low vision need to be able to zoom.",
+        "nl": "Haal user-scalable=no en maximum-scale=1 uit de viewport-metatag. Slechtziende bezoekers moeten kunnen inzoomen."
+      },
+      "snippets": {
+        "html": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+      },
+      "docsUrl": "https://www.w3.org/WAI/WCAG22/Understanding/resize-text.html"
+    },
+    {
+      "id": "mobile.responsive",
+      "category": "Mobile",
+      "severity": "High",
+      "weight": 6,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Fits a phone screen",
+        "nl": "Past op een smartphonescherm"
+      },
+      "summary": {
+        "en": "Content on {url} is wider than a phone screen ({value} px), or most text is smaller than 12 px.",
+        "nl": "De inhoud van {url} is breder dan een smartphonescherm ({value} px), of de meeste tekst is kleiner dan 12 px."
+      },
+      "howToFix": {
+        "en": "Rendered at 375 px wide, the page must not scroll horizontally. Use fluid widths, max-width: 100% on images and tables, and a base font size of at least 16 px.",
+        "nl": "Bij een breedte van 375 px mag de pagina niet horizontaal scrollen. Gebruik flexibele breedtes, max-width: 100% op afbeeldingen en tabellen, en een basislettergrootte van minstens 16 px."
+      },
+      "snippets": {
+        "html": "<style>\nimg, video, table { max-width: 100%; height: auto; }\n</style>"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/mobile/mobile-sites-mobile-first-indexing"
+    },
+    {
+      "id": "mobile.charset",
+      "category": "Mobile",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Character encoding declared",
+        "nl": "Tekencodering opgegeven"
+      },
+      "summary": {
+        "en": "Page {url} does not declare UTF-8 early enough, so some characters may display incorrectly.",
+        "nl": "Pagina {url} geeft UTF-8 niet vroeg genoeg op, waardoor sommige tekens verkeerd kunnen verschijnen."
+      },
+      "howToFix": {
+        "en": "Put <meta charset=\"utf-8\"> within the first 1024 bytes of the document, or send Content-Type: text/html; charset=utf-8.",
+        "nl": "Zet <meta charset=\"utf-8\"> binnen de eerste 1024 bytes van het document, of stuur Content-Type: text/html; charset=utf-8 mee."
+      },
+      "snippets": {
+        "html": "<meta charset=\"utf-8\">"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta"
+    },
+    {
+      "id": "mobile.manifest",
+      "category": "Mobile",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Web app manifest",
+        "nl": "Web-app-manifest"
+      },
+      "summary": {
+        "en": "The web app manifest is missing or incomplete: {value}.",
+        "nl": "Het web-app-manifest ontbreekt of is onvolledig: {value}."
+      },
+      "howToFix": {
+        "en": "Only scored when the site opts into the PWA profile. Link a manifest with name or short_name, start_url, display, id, theme_color, background_color and icons of 192 and 512 px, including a maskable one.",
+        "nl": "Telt enkel mee als de site voor het PWA-profiel kiest. Link een manifest met name of short_name, start_url, display, id, theme_color, background_color en iconen van 192 en 512 px, waaronder een maskable icoon."
+      },
+      "snippets": {
+        "html": "<link rel=\"manifest\" href=\"/manifest.webmanifest\">"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/Manifest"
+    },
+    {
+      "id": "mobile.theme-color",
+      "category": "Mobile",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "Theme colour",
+        "nl": "Themakleur"
+      },
+      "summary": {
+        "en": "Page {url} has no theme-color meta tag.",
+        "nl": "Pagina {url} heeft geen theme-color-metatag."
+      },
+      "howToFix": {
+        "en": "The theme colour tints the browser's address bar on mobile. You can give separate values for light and dark mode with a media attribute.",
+        "nl": "De themakleur kleurt de adresbalk van de browser op mobiel. Met een media-attribuut kun je aparte waarden opgeven voor de lichte en de donkere modus."
+      },
+      "snippets": {
+        "html": "<meta name=\"theme-color\" content=\"#ffffff\" media=\"(prefers-color-scheme: light)\">\n<meta name=\"theme-color\" content=\"#111111\" media=\"(prefers-color-scheme: dark)\">"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta/name/theme-color"
+    },
+    {
+      "id": "mobile.service-worker",
+      "category": "Mobile",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Service worker and offline support",
+        "nl": "Service worker en offline werking"
+      },
+      "summary": {
+        "en": "No service worker is registered, or the page does not load offline.",
+        "nl": "Er is geen service worker geregistreerd, of de pagina laadt niet offline."
+      },
+      "howToFix": {
+        "en": "Part of the opt-in PWA profile. Register a service worker that caches the app shell so the site still opens without a connection.",
+        "nl": "Hoort bij het optionele PWA-profiel. Registreer een service worker die de app-shell in de cache bewaart, zodat de site ook zonder verbinding opent."
+      },
+      "snippets": {
+        "html": "<script>\nif ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');\n</script>"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API"
+    },
+    {
+      "id": "mobile.service-worker-caching",
+      "category": "Mobile",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Service worker update delay",
+        "nl": "Vertraging bij updates van de service worker"
+      },
+      "summary": {
+        "en": "sw.js is cached for {value} seconds, so updates can be delayed.",
+        "nl": "sw.js wordt {value} seconden in de cache bewaard, waardoor updates vertraagd kunnen worden."
+      },
+      "howToFix": {
+        "en": "Serve the service worker script with Cache-Control: no-cache (or a short max-age) so browsers pick up new versions quickly.",
+        "nl": "Lever het service-worker-script met Cache-Control: no-cache (of een korte max-age), zodat browsers nieuwe versies snel oppikken."
+      },
+      "snippets": {
+        "nginx": "location = /sw.js { add_header Cache-Control \"no-cache\"; }",
+        "apache": "<Files \"sw.js\">\n  Header set Cache-Control \"no-cache\"\n</Files>",
+        "iis": "<location path=\"sw.js\">\n  <system.webServer>\n    <staticContent><clientCache cacheControlMode=\"DisableCache\" /></staticContent>\n  </system.webServer>\n</location>"
+      },
+      "docsUrl": "https://web.dev/articles/service-worker-lifecycle"
+    },
+    {
+      "id": "mobile.icons",
+      "category": "Mobile",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "Site and touch icons",
+        "nl": "Site- en aanraakiconen"
+      },
+      "summary": {
+        "en": "The site icons are missing or invalid: {value}.",
+        "nl": "De siteiconen ontbreken of zijn ongeldig: {value}."
+      },
+      "howToFix": {
+        "en": "Provide a link rel=\"icon\" (SVG and/or a 32 px PNG), a /favicon.ico fallback and a 180×180 apple-touch-icon. Each must return an image of the declared type and size.",
+        "nl": "Voorzie een link rel=\"icon\" (SVG en/of een PNG van 32 px), /favicon.ico als terugval en een apple-touch-icon van 180×180. Elk moet een afbeelding van het opgegeven type en formaat teruggeven."
+      },
+      "snippets": {
+        "html": "<link rel=\"icon\" href=\"/icon.svg\" type=\"image/svg+xml\">\n<link rel=\"icon\" href=\"/icon-32.png\" sizes=\"32x32\" type=\"image/png\">\n<link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/appearance/favicon-in-search"
+    },
+    {
+      "id": "mobile.apple-web-app",
+      "category": "Mobile",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "apple-mobile-web-app meta tags",
+        "nl": "apple-mobile-web-app-metatags"
+      },
+      "summary": {
+        "en": "Page {url} uses apple-mobile-web-app-* tags. Safari reads the web app manifest since iOS 16.4, so these are largely superseded.",
+        "nl": "Pagina {url} gebruikt apple-mobile-web-app-*-tags. Safari leest sinds iOS 16.4 het web-app-manifest, dus deze zijn grotendeels overbodig."
+      },
+      "howToFix": {
+        "en": "Informational. Prefer the manifest's display member; apple-touch-startup-image is largely irrelevant today.",
+        "nl": "Ter informatie. Gebruik liever het display-veld van het manifest; apple-touch-startup-image is vandaag nauwelijks nog relevant."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "mobile.amp",
+      "category": "Mobile",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "AMP pages",
+        "nl": "AMP-pagina's"
+      },
+      "summary": {
+        "en": "Page {url} uses AMP{value}. AMP no longer gives a ranking benefit.",
+        "nl": "Pagina {url} gebruikt AMP{value}. AMP levert geen voordeel meer in de rangschikking."
+      },
+      "howToFix": {
+        "en": "Google dropped the AMP requirement for Top Stories in 2021. If you keep AMP, the amphtml link and the canonical link back must point at each other and both pages must return 200; a broken pairing is reported.",
+        "nl": "Google schrapte in 2021 de AMP-vereiste voor Top Stories. Hou je AMP aan, dan moeten de amphtml-link en de canonieke link terug naar elkaar verwijzen en moeten beide pagina's 200 teruggeven; een gebroken koppeling wordt gemeld."
+      },
+      "snippets": {
+        "html": "<!-- regular page -->\n<link rel=\"amphtml\" href=\"https://www.example.com/amp/article\">\n<!-- AMP page -->\n<link rel=\"canonical\" href=\"https://www.example.com/article\">"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/amp"
+    },
+    {
+      "id": "technical.robots-blocks-all",
+      "category": "Technical",
+      "severity": "Critical",
+      "weight": 10,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "robots.txt does not block the whole site",
+        "nl": "robots.txt blokkeert niet de hele site"
+      },
+      "summary": {
+        "en": "Your robots.txt blocks search engines from the whole site, or returns {status}, which Google treats as \"block everything\".",
+        "nl": "Je robots.txt blokkeert zoekmachines voor de hele site, of geeft {status} terug, wat Google opvat als \"blokkeer alles\"."
+      },
+      "howToFix": {
+        "en": "Remove \"Disallow: /\" for User-agent: * and Googlebot unless the site must stay hidden. A 5xx answer on /robots.txt makes Google stop crawling while it persists; a 404 is fine.",
+        "nl": "Verwijder \"Disallow: /\" voor User-agent: * en Googlebot, tenzij de site verborgen moet blijven. Een 5xx-antwoord op /robots.txt doet Google stoppen met crawlen zolang het duurt; een 404 is in orde."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/robots/intro"
+    },
+    {
+      "id": "technical.robots-txt",
+      "category": "Technical",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "robots.txt is valid",
+        "nl": "robots.txt is geldig"
+      },
+      "summary": {
+        "en": "Your robots.txt has problems: {value}.",
+        "nl": "Je robots.txt heeft problemen: {value}."
+      },
+      "howToFix": {
+        "en": "Follow RFC 9309, keep the file under 500 KiB, do not block the CSS and JavaScript pages need to render, and list your sitemap with a Sitemap: line.",
+        "nl": "Volg RFC 9309, hou het bestand onder 500 KiB, blokkeer de CSS en JavaScript niet die pagina's nodig hebben om te renderen, en vermeld je sitemap met een Sitemap:-regel."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.rfc-editor.org/rfc/rfc9309"
+    },
+    {
+      "id": "technical.sitemap",
+      "category": "Technical",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N+S",
+      "enabled": true,
+      "title": {
+        "en": "XML sitemap",
+        "nl": "XML-sitemap"
+      },
+      "summary": {
+        "en": "{n} sitemap URLs redirect, return an error or are not indexable.",
+        "nl": "{n} URL's in de sitemap verwijzen door, geven een fout of zijn niet indexeerbaar."
+      },
+      "howToFix": {
+        "en": "Publish a valid XML sitemap (at most 50,000 URLs and 50 MB uncompressed per file; use a sitemap index for more) and reference it from robots.txt. List only canonical URLs that return 200, with a plausible lastmod.",
+        "nl": "Publiceer een geldige XML-sitemap (maximaal 50.000 URL's en 50 MB ongecomprimeerd per bestand; gebruik een sitemapindex voor meer) en verwijs ernaar vanuit robots.txt. Neem enkel canonieke URL's op die 200 teruggeven, met een aannemelijke lastmod."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview"
+    },
+    {
+      "id": "technical.sitemap-stylesheet",
+      "category": "Technical",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "Sitemap stylesheet",
+        "nl": "Stylesheet voor de sitemap"
+      },
+      "summary": {
+        "en": "The sitemap uses an XML stylesheet for display.",
+        "nl": "De sitemap gebruikt een XML-stylesheet voor de weergave."
+      },
+      "howToFix": {
+        "en": "Informational. An <?xml-stylesheet?> instruction is purely cosmetic for human visitors; search engines ignore it.",
+        "nl": "Ter informatie. Een <?xml-stylesheet?>-instructie is louter cosmetisch voor menselijke bezoekers; zoekmachines negeren ze."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "technical.broken-internal-links",
+      "category": "Technical",
+      "severity": "High",
+      "weight": 6,
+      "layer": "N+S",
+      "enabled": true,
+      "title": {
+        "en": "No broken internal links",
+        "nl": "Geen gebroken interne links"
+      },
+      "summary": {
+        "en": "{n} internal links lead to an error page, for example {target} ({status}).",
+        "nl": "{n} interne links leiden naar een foutpagina, bijvoorbeeld {target} ({status})."
+      },
+      "howToFix": {
+        "en": "Fix or remove links to pages that return 4xx or 5xx, or redirect the old URL to its replacement with a 301.",
+        "nl": "Herstel of verwijder links naar pagina's die 4xx of 5xx teruggeven, of verwijs de oude URL met een 301 door naar de vervanger."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "technical.broken-external-links",
+      "category": "Technical",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N+S",
+      "enabled": true,
+      "title": {
+        "en": "No broken external links",
+        "nl": "Geen gebroken externe links"
+      },
+      "summary": {
+        "en": "{n} links to other sites are broken, for example {target} ({status}).",
+        "nl": "{n} links naar andere sites werken niet, bijvoorbeeld {target} ({status})."
+      },
+      "howToFix": {
+        "en": "Update or remove links to external pages that no longer exist. External links are sampled and rate-limited, so this list may be incomplete.",
+        "nl": "Werk links naar externe pagina's die niet meer bestaan bij of verwijder ze. Externe links worden steekproefsgewijs en met beperkte snelheid gecontroleerd, dus deze lijst kan onvolledig zijn."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "technical.redirect-chains",
+      "category": "Technical",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N+S",
+      "enabled": true,
+      "title": {
+        "en": "No redirect chains",
+        "nl": "Geen ketens van doorverwijzingen"
+      },
+      "summary": {
+        "en": "{n} URLs go through more than one redirect or use a temporary redirect for a permanent move, for example {target}.",
+        "nl": "{n} URL's gaan door meer dan één doorverwijzing of gebruiken een tijdelijke doorverwijzing voor een permanente verhuizing, bijvoorbeeld {target}."
+      },
+      "howToFix": {
+        "en": "Point each old URL directly at its final destination with a single 301 or 308, and update internal links to the final URL so they do not redirect at all.",
+        "nl": "Laat elke oude URL met één 301 of 308 rechtstreeks naar de eindbestemming verwijzen, en pas interne links aan naar de uiteindelijke URL zodat ze helemaal niet meer doorverwijzen."
+      },
+      "snippets": {
+        "nginx": "location = /old-page { return 301 https://www.example.com/new-page; }",
+        "apache": "Redirect 301 /old-page https://www.example.com/new-page",
+        "iis": "<rewrite>\n  <rules>\n    <rule name=\"old-page\" stopProcessing=\"true\">\n      <match url=\"^old-page$\" />\n      <action type=\"Redirect\" url=\"https://www.example.com/new-page\" redirectType=\"Permanent\" />\n    </rule>\n  </rules>\n</rewrite>"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/301-redirects"
+    },
+    {
+      "id": "technical.orphan-pages",
+      "category": "Technical",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "S",
+      "enabled": true,
+      "title": {
+        "en": "No orphan pages",
+        "nl": "Geen weespagina's"
+      },
+      "summary": {
+        "en": "{n} pages are in the sitemap but no page on the site links to them.",
+        "nl": "{n} pagina's staan in de sitemap, maar geen enkele pagina op de site linkt ernaar."
+      },
+      "howToFix": {
+        "en": "Link to these pages from relevant navigation or content, or remove them from the sitemap if they are no longer needed.",
+        "nl": "Link naar deze pagina's vanuit relevante navigatie of inhoud, of haal ze uit de sitemap als ze niet meer nodig zijn."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "technical.crawl-depth",
+      "category": "Technical",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "S",
+      "enabled": true,
+      "title": {
+        "en": "Pages are close to the homepage",
+        "nl": "Pagina's liggen dicht bij de homepagina"
+      },
+      "summary": {
+        "en": "{n} pages are more than 3 clicks away from the homepage.",
+        "nl": "{n} pagina's liggen meer dan 3 klikken van de homepagina."
+      },
+      "howToFix": {
+        "en": "Deeply buried pages are crawled less often and seen as less important. Add category pages, related links or breadcrumbs to bring them closer.",
+        "nl": "Diep weggestopte pagina's worden minder vaak gecrawld en als minder belangrijk gezien. Voeg categoriepagina's, gerelateerde links of breadcrumbs toe om ze dichterbij te brengen."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "technical.soft-404",
+      "category": "Technical",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "N+S",
+      "enabled": true,
+      "title": {
+        "en": "Missing pages return 404",
+        "nl": "Ontbrekende pagina's geven 404"
+      },
+      "summary": {
+        "en": "A page that does not exist returns {status} instead of 404, so search engines may index error pages.",
+        "nl": "Een pagina die niet bestaat, geeft {status} terug in plaats van 404. Zoekmachines kunnen daardoor foutpagina's indexeren."
+      },
+      "howToFix": {
+        "en": "Return HTTP 404 (or 410) for unknown URLs, even when you show a friendly error page. In single-page apps, let the server answer unknown routes with 404 or add a noindex to the client-side not-found page.",
+        "nl": "Geef HTTP 404 (of 410) terug voor onbekende URL's, ook als je een vriendelijke foutpagina toont. Laat in single-page apps de server onbekende routes met 404 beantwoorden, of zet een noindex op de not-found-pagina aan de clientkant."
+      },
+      "snippets": {
+        "nginx": "error_page 404 /404.html;",
+        "apache": "ErrorDocument 404 /404.html",
+        "iis": "<httpErrors errorMode=\"Custom\" existingResponse=\"Replace\">\n  <remove statusCode=\"404\" />\n  <error statusCode=\"404\" path=\"/404.html\" responseMode=\"ExecuteURL\" />\n</httpErrors>"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/http-network-errors"
+    },
+    {
+      "id": "technical.duplicate-content",
+      "category": "Technical",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "S",
+      "enabled": true,
+      "title": {
+        "en": "No duplicate content",
+        "nl": "Geen dubbele inhoud"
+      },
+      "summary": {
+        "en": "{k} pages have nearly the same content, for example {target}.",
+        "nl": "{k} pagina's hebben bijna dezelfde inhoud, bijvoorbeeld {target}."
+      },
+      "howToFix": {
+        "en": "Pick one URL per piece of content: redirect www/non-www and trailing-slash variants to it and point duplicates at it with a canonical link.",
+        "nl": "Kies één URL per stuk inhoud: verwijs www/zonder-www- en varianten met of zonder slash erheen door, en laat duplicaten er met een canonieke link naar wijzen."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls"
+    },
+    {
+      "id": "technical.raw-vs-rendered",
+      "category": "Technical",
+      "severity": "High",
+      "weight": 6,
+      "layer": "H+R",
+      "enabled": true,
+      "title": {
+        "en": "Content is in the HTML",
+        "nl": "Inhoud staat in de HTML"
+      },
+      "summary": {
+        "en": "Search engines and social networks that do not run JavaScript see an almost empty page at {url}. Consider server-side rendering or prerendering.",
+        "nl": "Zoekmachines en sociale netwerken die geen JavaScript uitvoeren, zien op {url} een bijna lege pagina. Overweeg server-side rendering of prerendering."
+      },
+      "howToFix": {
+        "en": "The raw HTML is compared with the rendered page: text length, title, h1 and links. If they only appear after JavaScript runs, enable SSR or prerendering in your framework. <noscript> content is reported for information.",
+        "nl": "De ruwe HTML wordt vergeleken met de gerenderde pagina: tekstlengte, titel, h1 en links. Verschijnen die pas nadat JavaScript gelopen heeft, zet dan SSR of prerendering aan in je framework. Inhoud in <noscript> wordt ter informatie gemeld."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics"
+    },
+    {
+      "id": "technical.spa-analytics",
+      "category": "Technical",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Analytics records route changes",
+        "nl": "Analytics registreert routewijzigingen"
+      },
+      "summary": {
+        "en": "Analytics does not record page views when visitors navigate within the app.",
+        "nl": "Analytics registreert geen paginaweergaven wanneer bezoekers binnen de app navigeren."
+      },
+      "howToFix": {
+        "en": "In single-page apps, make sure a page_view is sent on every client-side route change. GA4 enhanced measurement does this for history changes by default; check that it has not been switched off.",
+        "nl": "Zorg er in single-page apps voor dat bij elke routewijziging aan de clientkant een page_view wordt verstuurd. De uitgebreide metingen van GA4 doen dat standaard bij wijzigingen in de geschiedenis; controleer dat die niet uitgeschakeld zijn."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/analytics/devguides/collection/ga4/single-page-applications"
+    },
+    {
+      "id": "technical.opensearch",
+      "category": "Technical",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H+N",
+      "enabled": true,
+      "title": {
+        "en": "OpenSearch description",
+        "nl": "OpenSearch-beschrijving"
+      },
+      "summary": {
+        "en": "OpenSearch description: {value}.",
+        "nl": "OpenSearch-beschrijving: {value}."
+      },
+      "howToFix": {
+        "en": "Informational. An OpenSearch description lets browsers add your site search as a search engine. If you link one, it must be valid XML.",
+        "nl": "Ter informatie. Met een OpenSearch-beschrijving kunnen browsers je sitezoekfunctie als zoekmachine toevoegen. Link je er een, dan moet het geldige XML zijn."
+      },
+      "snippets": {
+        "html": "<link rel=\"search\" type=\"application/opensearchdescription+xml\" title=\"Example\" href=\"/opensearch.xml\">"
+      },
+      "docsUrl": "https://developer.mozilla.org/en-US/docs/Web/OpenSearch"
+    },
+    {
+      "id": "technical.favicon-ico",
+      "category": "Technical",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "N",
+      "enabled": true,
+      "title": {
+        "en": "/favicon.ico is available",
+        "nl": "/favicon.ico is beschikbaar"
+      },
+      "summary": {
+        "en": "/favicon.ico returns {status}.",
+        "nl": "/favicon.ico geeft {status} terug."
+      },
+      "howToFix": {
+        "en": "Many clients request /favicon.ico directly, whatever the HTML declares. Serve an icon at that path to avoid needless 404s in your logs.",
+        "nl": "Veel clients vragen /favicon.ico rechtstreeks op, los van wat de HTML opgeeft. Zet op dat pad een icoon om onnodige 404's in je logs te vermijden."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/appearance/favicon-in-search"
+    },
+    {
+      "id": "technical.html-validity",
+      "category": "Technical",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "H",
+      "enabled": true,
+      "title": {
+        "en": "HTML parse errors",
+        "nl": "Fouten bij het parsen van HTML"
+      },
+      "summary": {
+        "en": "The HTML of {url} has {n} parse errors.",
+        "nl": "De HTML van {url} bevat {n} parse-fouten."
+      },
+      "howToFix": {
+        "en": "Informational. Browsers recover from most errors, but unclosed or misnested elements can change how the page is read. Check the page with the W3C Nu HTML Checker.",
+        "nl": "Ter informatie. Browsers vangen de meeste fouten op, maar niet-afgesloten of verkeerd geneste elementen kunnen veranderen hoe de pagina gelezen wordt. Controleer de pagina met de W3C Nu HTML Checker."
+      },
+      "snippets": {},
+      "docsUrl": "https://validator.w3.org/nu/"
+    },
+    {
+      "id": "technical.mobile-parity",
+      "category": "Technical",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "R",
+      "enabled": true,
+      "title": {
+        "en": "Mobile and desktop show the same content",
+        "nl": "Mobiel en desktop tonen dezelfde inhoud"
+      },
+      "summary": {
+        "en": "The mobile version of {url} is missing {n} links or parts of the content that the desktop version has.",
+        "nl": "De mobiele versie van {url} mist {n} links of delen van de inhoud die de desktopversie wel heeft."
+      },
+      "howToFix": {
+        "en": "Google indexes the mobile version of every page. Make sure the mobile render contains the same main content, headings, structured data and links as the desktop render.",
+        "nl": "Google indexeert de mobiele versie van elke pagina. Zorg dat de mobiele weergave dezelfde hoofdinhoud, koppen, gestructureerde gegevens en links bevat als de desktopweergave."
+      },
+      "snippets": {},
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/mobile/mobile-sites-mobile-first-indexing"
+    },
+    {
+      "id": "domain.expiry",
+      "category": "Domain",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "D+X",
+      "enabled": true,
+      "title": {
+        "en": "Domain registration is not about to expire",
+        "nl": "Domeinregistratie verloopt niet binnenkort"
+      },
+      "summary": {
+        "en": "Your domain expires in {days} days ({value}). Renew it or enable auto-renew.",
+        "nl": "Je domein verloopt over {days} dagen ({value}). Verleng het of zet automatische verlenging aan."
+      },
+      "howToFix": {
+        "en": "Warns when fewer than 30 days remain; further away it is shown for information only. Registration length is not a ranking factor, but an expired domain takes the whole site and its e-mail offline.",
+        "nl": "Waarschuwt wanneer er minder dan 30 dagen overblijven; verder weg wordt het enkel ter informatie getoond. De registratieduur is geen rankingfactor, maar een verlopen domein haalt de hele site en de e-mail offline."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.rfc-editor.org/rfc/rfc9083"
+    },
+    {
+      "id": "domain.caa",
+      "category": "Domain",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "D",
+      "enabled": true,
+      "title": {
+        "en": "CAA record",
+        "nl": "CAA-record"
+      },
+      "summary": {
+        "en": "The domain has no CAA record, or it does not allow the authority that issued the current certificate ({value}).",
+        "nl": "Het domein heeft geen CAA-record, of het laat de instantie die het huidige certificaat uitgaf ({value}) niet toe."
+      },
+      "howToFix": {
+        "en": "A CAA record lists which certificate authorities may issue certificates for the domain. Add one for the authority you use, for example: example.com. CAA 0 issue \"letsencrypt.org\".",
+        "nl": "Een CAA-record bepaalt welke certificaatautoriteiten certificaten voor het domein mogen uitgeven. Voeg er een toe voor de autoriteit die je gebruikt, bijvoorbeeld: example.com. CAA 0 issue \"letsencrypt.org\"."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.rfc-editor.org/rfc/rfc8659"
+    },
+    {
+      "id": "domain.dnssec",
+      "category": "Domain",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "D",
+      "enabled": true,
+      "title": {
+        "en": "DNSSEC",
+        "nl": "DNSSEC"
+      },
+      "summary": {
+        "en": "The domain is not signed with DNSSEC.",
+        "nl": "Het domein is niet ondertekend met DNSSEC."
+      },
+      "howToFix": {
+        "en": "DNSSEC protects visitors against forged DNS answers. Enable signing at your DNS provider and publish the DS record at your registrar.",
+        "nl": "DNSSEC beschermt bezoekers tegen vervalste DNS-antwoorden. Zet ondertekening aan bij je DNS-provider en publiceer het DS-record bij je registrar."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "domain.spf",
+      "category": "Domain",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "D",
+      "enabled": true,
+      "title": {
+        "en": "SPF record",
+        "nl": "SPF-record"
+      },
+      "summary": {
+        "en": "The domain has no valid SPF record, so others can more easily send e-mail in its name.",
+        "nl": "Het domein heeft geen geldig SPF-record, waardoor anderen makkelijker e-mail in zijn naam kunnen versturen."
+      },
+      "howToFix": {
+        "en": "Publish one TXT record on the apex that lists the servers allowed to send mail, for example: example.com. TXT \"v=spf1 include:_spf.example.net -all\". Domains that send no mail can use \"v=spf1 -all\".",
+        "nl": "Publiceer één TXT-record op het hoofddomein met de servers die mail mogen versturen, bijvoorbeeld: example.com. TXT \"v=spf1 include:_spf.example.net -all\". Domeinen die geen mail versturen, kunnen \"v=spf1 -all\" gebruiken."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.rfc-editor.org/rfc/rfc7208"
+    },
+    {
+      "id": "domain.dmarc",
+      "category": "Domain",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "D",
+      "enabled": true,
+      "title": {
+        "en": "DMARC record",
+        "nl": "DMARC-record"
+      },
+      "summary": {
+        "en": "The domain has no DMARC policy, so receivers do not know what to do with forged mail.",
+        "nl": "Het domein heeft geen DMARC-beleid, waardoor ontvangers niet weten wat ze met vervalste mail moeten doen."
+      },
+      "howToFix": {
+        "en": "Publish a TXT record at _dmarc, for example: _dmarc.example.com. TXT \"v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com\". Start with p=none to collect reports before enforcing.",
+        "nl": "Publiceer een TXT-record op _dmarc, bijvoorbeeld: _dmarc.example.com. TXT \"v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com\". Begin met p=none om rapporten te verzamelen voordat je het beleid afdwingt."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.rfc-editor.org/rfc/rfc7489"
+    },
+    {
+      "id": "domain.mta-sts",
+      "category": "Domain",
+      "severity": "Low",
+      "weight": 1,
+      "layer": "D",
+      "enabled": true,
+      "title": {
+        "en": "MTA-STS policy",
+        "nl": "MTA-STS-beleid"
+      },
+      "summary": {
+        "en": "The domain receives e-mail but publishes no MTA-STS policy.",
+        "nl": "Het domein ontvangt e-mail maar publiceert geen MTA-STS-beleid."
+      },
+      "howToFix": {
+        "en": "MTA-STS makes sending servers require TLS when they deliver mail to you. Publish a TXT record at _mta-sts (for example _mta-sts.example.com. TXT \"v=STSv1; id=20260101\") and a policy file at https://mta-sts.example.com/.well-known/mta-sts.txt.",
+        "nl": "Met MTA-STS moeten verzendende servers TLS gebruiken wanneer ze mail bij jou afleveren. Publiceer een TXT-record op _mta-sts (bijvoorbeeld _mta-sts.example.com. TXT \"v=STSv1; id=20260101\") en een beleidsbestand op https://mta-sts.example.com/.well-known/mta-sts.txt."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.rfc-editor.org/rfc/rfc8461"
+    },
+    {
+      "id": "domain.ipv6",
+      "category": "Domain",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "D",
+      "enabled": true,
+      "title": {
+        "en": "IPv6 address",
+        "nl": "IPv6-adres"
+      },
+      "summary": {
+        "en": "The site has an IPv6 address: {value}.",
+        "nl": "De site heeft een IPv6-adres: {value}."
+      },
+      "howToFix": {
+        "en": "Informational. An AAAA record makes the site reachable over IPv6 directly, which some mobile networks prefer.",
+        "nl": "Ter informatie. Met een AAAA-record is de site rechtstreeks bereikbaar via IPv6, wat sommige mobiele netwerken verkiezen."
+      },
+      "snippets": {},
+      "docsUrl": null
+    },
+    {
+      "id": "domain.nameservers",
+      "category": "Domain",
+      "severity": "Info",
+      "weight": 0,
+      "layer": "D",
+      "enabled": true,
+      "title": {
+        "en": "Nameserver redundancy",
+        "nl": "Redundantie van nameservers"
+      },
+      "summary": {
+        "en": "The domain has {n} nameservers in {k} different networks.",
+        "nl": "Het domein heeft {n} nameservers in {k} verschillende netwerken."
+      },
+      "howToFix": {
+        "en": "Informational. Use at least two nameservers in different networks so the domain keeps resolving when one fails.",
+        "nl": "Ter informatie. Gebruik minstens twee nameservers in verschillende netwerken, zodat het domein blijft werken als er een uitvalt."
+      },
+      "snippets": {},
+      "docsUrl": "https://www.rfc-editor.org/rfc/rfc2182"
+    },
+    {
+      "id": "domain.www-apex",
+      "category": "Domain",
+      "severity": "Medium",
+      "weight": 3,
+      "layer": "D+N",
+      "enabled": true,
+      "title": {
+        "en": "www and bare domain both work",
+        "nl": "www en het kale domein werken allebei"
+      },
+      "summary": {
+        "en": "{target} does not resolve or does not redirect to your main address.",
+        "nl": "{target} werkt niet of verwijst niet door naar je hoofdadres."
+      },
+      "howToFix": {
+        "en": "Make both example.com and www.example.com resolve, and permanently redirect one to the other so there is a single canonical host.",
+        "nl": "Zorg dat zowel example.com als www.example.com werken, en verwijs het ene permanent door naar het andere, zodat er één canonieke host is."
+      },
+      "snippets": {
+        "nginx": "server {\n  listen 443 ssl;\n  server_name example.com;\n  return 301 https://www.example.com$request_uri;\n}",
+        "apache": "RewriteEngine On\nRewriteCond %{HTTP_HOST} ^example\\.com$ [NC]\nRewriteRule ^ https://www.example.com%{REQUEST_URI} [R=301,L]",
+        "iis": "<rewrite>\n  <rules>\n    <rule name=\"apex-to-www\" stopProcessing=\"true\">\n      <match url=\".*\" />\n      <conditions><add input=\"{HTTP_HOST}\" pattern=\"^example\\.com$\" /></conditions>\n      <action type=\"Redirect\" url=\"https://www.example.com/{R:0}\" redirectType=\"Permanent\" />\n    </rule>\n  </rules>\n</rewrite>"
+      },
+      "docsUrl": "https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls"
+    }
+  ]
+}

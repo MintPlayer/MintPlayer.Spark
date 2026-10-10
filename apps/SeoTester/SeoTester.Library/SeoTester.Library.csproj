@@ -18,4 +18,10 @@
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- The shipped check catalogue (docs/seo_analyzer_PRD.md §3.1, D32): the seed of the CheckDefinition documents. -->
+		<EmbeddedResource Include="Catalogue\checks.json" LogicalName="SeoTester.Catalogue.checks.json" />
+		<InternalsVisibleTo Include="SeoTester.Tests" />
+	</ItemGroup>
+
 </Project>
