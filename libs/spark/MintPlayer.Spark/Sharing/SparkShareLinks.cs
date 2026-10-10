@@ -23,6 +23,12 @@ public interface ISparkShareLinks
     /// <summary>Whether links to <paramref name="typeName"/> may be made and read now (<c>Spark:Share:Enabled</c> and every <see cref="ISparkShareGate"/>).</summary>
     ValueTask<bool> IsEnabledAsync(string typeName, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// <see cref="IsEnabledAsync(string, CancellationToken)"/> for the type, then every gate's
+    /// <see cref="ISparkShareGate.IsEnabledForAsync"/> for the stored object <paramref name="id"/>; false when it does not exist.
+    /// </summary>
+    ValueTask<bool> IsEnabledAsync(string typeName, string id, CancellationToken cancellationToken = default);
+
     /// <summary>Makes a new link for the object, replacing (revoking) any earlier one. Returns the token; it is never stored.</summary>
     /// <exception cref="InvalidOperationException">The type is not declared with <c>AddShareLinks</c>, or the object does not exist.</exception>
     Task<string> CreateAsync(string typeName, string id, CancellationToken cancellationToken = default);
@@ -62,6 +68,23 @@ internal sealed class SparkShareLinks(
             return false;
         foreach (var gate in gates)
             if (!await gate.IsEnabledAsync(typeName, cancellationToken))
+                return false;
+        return true;
+    }
+
+    public async ValueTask<bool> IsEnabledAsync(string typeName, string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(id) || !await IsEnabledAsync(typeName, cancellationToken) || Definition(typeName) is not { } definition)
+            return false;
+        using var session = store.OpenAsyncSession();
+        return await LoadAsync(session, definition.ClrType, id, cancellationToken) is { } entity
+            && await IsEnabledForAsync(definition.TypeName, entity, cancellationToken);
+    }
+
+    private async ValueTask<bool> IsEnabledForAsync(string typeName, object entity, CancellationToken cancellationToken)
+    {
+        foreach (var gate in gates)
+            if (!await gate.IsEnabledForAsync(typeName, entity, cancellationToken))
                 return false;
         return true;
     }
@@ -145,6 +168,8 @@ internal sealed class SparkShareLinks(
         using var session = store.OpenAsyncSession();
         var loaded = await LoadAsync(session, definition.ClrType, id, cancellationToken);
         if (loaded is not ISparkShareable shareable || shareable.ShareTokenHash is not { Length: > 0 } stored)
+            return null;
+        if (!await IsEnabledForAsync(definition.TypeName, loaded, cancellationToken))
             return null;
         var presented = Encoding.ASCII.GetBytes(Hash(token));
         var expected = Encoding.ASCII.GetBytes(stored);

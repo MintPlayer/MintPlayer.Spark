@@ -33,6 +33,7 @@ public class ShareLinkTests : OrganizationsTestHost
     private static readonly Guid AllCommentsQueryId = Guid.Parse("05ae0000-0000-4000-8000-000000000012");
 
     private bool sharingOn = true;
+    private Func<object, bool> objectGate = _ => true;
 
     public ShareLinkTests()
     {
@@ -46,7 +47,7 @@ public class ShareLinkTests : OrganizationsTestHost
         {
             services.AddScoped<ShNoteActions>();
             services.AddScoped<ShCommentActions>();
-            services.AddSingleton<ISparkShareGate>(new Gate(() => sharingOn));
+            services.AddSingleton<ISparkShareGate>(new Gate(() => sharingOn, entity => objectGate(entity)));
         };
         ExtraSpark = spark => spark.AddShareLinks(o =>
         {
@@ -164,6 +165,28 @@ public class ShareLinkTests : OrganizationsTestHost
 
         sharingOn = true;
         (await LoadSharedAsync(link)).Status.Should().Be(HttpStatusCode.OK, "switching back on restores the same link");
+    }
+
+    /// <summary>
+    /// A gate can refuse one object (SeoTester: "verified sites only", D11): asked with the stored object when a link is
+    /// made and on every read. Refused, the object's link reads like an unknown one and no new link is made; allowed
+    /// again, the same link works. The type's other objects are unaffected.
+    /// </summary>
+    [Fact]
+    public async Task A_gate_can_refuse_one_object_on_making_and_on_reading_its_link()
+    {
+        var (ann, _, _, note, _) = await SeedAsync();
+        var link = await ShareAsync(note.Id!, ann.Id!);
+
+        objectGate = entity => entity is not ShNote { Title: "Launch plan" };
+        (await LoadSharedAsync(link)).Status.Should().Be(HttpStatusCode.NotFound);
+        var refused = await ExecuteAsync("ShareLink", note.Id!, ann.Id!);
+        refused.Raw.Should().Contain("Sharing is switched off");
+        refused.Raw.Should().NotContain("/shared/");
+        (await LoadAsync<ShNote>(note.Id!))!.ShareTokenHash.Should().NotBeNull("the refused attempt left the earlier link in place");
+
+        objectGate = _ => true;
+        (await LoadSharedAsync(link)).Status.Should().Be(HttpStatusCode.OK, "allowed again, the same link works");
     }
 
     [Fact]
@@ -335,9 +358,11 @@ public class ShareLinkTests : OrganizationsTestHost
         ],
     };
 
-    private sealed class Gate(Func<bool> on) : ISparkShareGate
+    private sealed class Gate(Func<bool> on, Func<object, bool> objectOn) : ISparkShareGate
     {
         public ValueTask<bool> IsEnabledAsync(string typeName, CancellationToken cancellationToken) => ValueTask.FromResult(on());
+
+        public ValueTask<bool> IsEnabledForAsync(string typeName, object entity, CancellationToken cancellationToken) => ValueTask.FromResult(objectOn(entity));
     }
 }
 

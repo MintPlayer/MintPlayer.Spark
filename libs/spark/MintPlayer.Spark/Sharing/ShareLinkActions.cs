@@ -22,7 +22,7 @@ internal sealed partial class ShareLinkAction : ICustomAction
     {
         if (args.Parent is not { Id: { Length: > 0 } id, Name: var typeName })
             return;
-        if (!await links.IsEnabledAsync(typeName, cancellationToken))
+        if (!await links.IsEnabledAsync(typeName, id, cancellationToken))
         {
             manager.Client.Notify(manager.GetTranslatedMessage("share.disabled"), NotificationKind.Error);
             return;

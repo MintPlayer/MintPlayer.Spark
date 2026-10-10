@@ -55,4 +55,12 @@ internal sealed record SparkShareDefinition(
 public interface ISparkShareGate
 {
     ValueTask<bool> IsEnabledAsync(string typeName, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether one stored object may be shared now, asked after <see cref="IsEnabledAsync"/> said yes for its type: when
+    /// a link is made and on every read of one. Decide from the stored <paramref name="entity"/> only (e.g. "only
+    /// verified sites", SeoTester D11). Yes by default; a refusal reads like an unknown link (404), and a link the gate
+    /// refuses works again once it says yes.
+    /// </summary>
+    ValueTask<bool> IsEnabledForAsync(string typeName, object entity, CancellationToken cancellationToken) => ValueTask.FromResult(true);
 }
