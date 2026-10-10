@@ -10,6 +10,9 @@ import { ShellComponent } from './shell/shell.component';
 export const routes: Routes = [
   // A share link's page (X6): anonymous, the token is the credential, so outside the signed-in chrome.
   ...withShareRoutes(),
+  // At the top level, not among the shell's children: the shell's own path is '', so an empty-path child redirect
+  // beside it never runs and '/' rendered an empty page (found in M11; CodeCoverage's app.routes.ts has the same note).
+  { path: '', redirectTo: 'home', pathMatch: 'full' },
   {
     path: '',
     component: ShellComponent,
@@ -23,11 +26,11 @@ export const routes: Routes = [
         withAccount(),
         withOrganizationRoutes(),
       ),
-      { path: '', redirectTo: 'home', pathMatch: 'full' },
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },
       // Last: sparkRoutes() has parameterised first segments that would shadow anything after them.
       // /bot is the server's page (Bot/BotPageEndpoint.cs), excluded from the service worker in ngsw-config.json.
-      ...sparkRoutes(),
+      // The detail page is the generic one plus SeoTester's panels (seo/po-detail-page.component.ts).
+      ...sparkRoutes({ poDetail: () => import('./seo/po-detail-page.component') }),
     ]
   }
 ];

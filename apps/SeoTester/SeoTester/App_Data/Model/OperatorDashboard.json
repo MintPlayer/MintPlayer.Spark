@@ -4,7 +4,7 @@
     "HAND-AUTHORED and NOT generated. The operator dashboard (docs/seo_analyzer_PRD.md F16, D28) is virtual: no",
     "clrType, no documents. OperatorDashboardActions.OnLoadAsync scaffolds it and sets the breadcrumb (the page title);",
     "Read/OperatorDashboard is the Administrators' (security.json), which also hides its menu entry from everyone else.",
-    "The page lists the abuse log (the audit-log query); the SPA draws the usage and storage figures from",
+    "The SPA draws the abuse log (the audit-log query, not a sub-query: it has no parent) and the usage and storage figures from",
     "GET /seotester/admin/dashboard, which answers only a caller with the same right."
   ],
   "persistentObject": {
@@ -14,8 +14,6 @@
     "tabs": [],
     "groups": [],
     "attributes": [],
-    "queries": [
-      "audit-log"
-    ]
+    "queries": []
   }
 }

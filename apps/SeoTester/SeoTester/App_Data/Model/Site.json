@@ -7,8 +7,33 @@
     "alias": "site",
     "breadcrumb": "{Origin}",
     "live": true,
-    "tabs": [],
-    "groups": [],
+    "tabs": [
+      {
+        "id": "32f80ac6-ca3c-4dc1-ab11-2a67aa0e9a48",
+        "name": "General",
+        "order": 1
+      }
+    ],
+    "groups": [
+      {
+        "id": "68da459c-dafd-447d-a08f-7d3b89766f71",
+        "name": "Latest",
+        "tab": "32f80ac6-ca3c-4dc1-ab11-2a67aa0e9a48",
+        "order": 1
+      },
+      {
+        "id": "08a9ba74-5b33-4226-a40a-ef939f89d28c",
+        "name": "Site",
+        "tab": "32f80ac6-ca3c-4dc1-ab11-2a67aa0e9a48",
+        "order": 2
+      },
+      {
+        "id": "c288a11f-9925-412e-8ab3-484affbab078",
+        "name": "Ownership",
+        "tab": "32f80ac6-ca3c-4dc1-ab11-2a67aa0e9a48",
+        "order": 3
+      }
+    ],
     "attributes": [
       {
         "id": "dfffaf0e-99f9-419e-8f37-9db01715b1cf",
@@ -16,10 +41,11 @@
         "dataType": "datetime",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 18,
+        "order": 9,
         "isArray": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"
       },
       {
         "id": "b5f3bed1-67d7-4f32-beae-2eb1c391c362",
@@ -29,7 +55,7 @@
         "isReadOnly": true,
         "order": 17,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -40,7 +66,7 @@
         "isReadOnly": true,
         "order": 16,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -49,10 +75,11 @@
         "dataType": "boolean",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 3,
+        "order": 10,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
+        "showedOn": "Query",
+        "rules": [],
+        "group": "c288a11f-9925-412e-8ab3-484affbab078"
       },
       {
         "id": "e0e6cf58-a4d7-4bfd-8e53-df72fb38b75e",
@@ -60,10 +87,11 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 9,
+        "order": 8,
         "isArray": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"
       },
       {
         "id": "4ad57c58-25ab-4718-a323-9b59ec688f7d",
@@ -73,7 +101,7 @@
         "isReadOnly": true,
         "order": 5,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -82,10 +110,11 @@
         "dataType": "datetime",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 6,
+        "order": 2,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "68da459c-dafd-447d-a08f-7d3b89766f71"
       },
       {
         "id": "5ed686bf-9e4a-42c3-9c55-a49439dd6c78",
@@ -93,12 +122,13 @@
         "dataType": "Reference",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 15,
+        "order": 3,
         "query": "GetAuditRuns",
         "referenceType": "SeoTester.Entities.AuditRun",
         "isArray": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "68da459c-dafd-447d-a08f-7d3b89766f71"
       },
       {
         "id": "9b3b0a09-c75c-4293-b5a1-4f1c2d26ea39",
@@ -106,10 +136,17 @@
         "dataType": "number",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 4,
+        "order": 1,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "68da459c-dafd-447d-a08f-7d3b89766f71",
+        "renderer": "seo-score",
+        "rendererOptions": {
+          "bands": "letter-grades",
+          "size": 56,
+          "label": "Score"
+        }
       },
       {
         "id": "5091728f-72af-4996-991e-8dbf28535dcd",
@@ -117,11 +154,12 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 7,
+        "order": 6,
         "isArray": false,
         "lookupReferenceType": "MonitoringSchedule",
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"
       },
       {
         "id": "8f83adda-9adc-4945-86bc-eb90abdc9185",
@@ -129,11 +167,12 @@
         "dataType": "Reference",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 2,
+        "order": 5,
         "referenceType": "MintPlayer.Spark.Organizations.Models.Organization",
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"
       },
       {
         "id": "28171367-a4f6-49a6-be88-687940901813",
@@ -141,10 +180,11 @@
         "dataType": "string",
         "isRequired": true,
         "isReadOnly": false,
-        "order": 1,
+        "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"
       },
       {
         "id": "22621df6-99df-4725-8fc4-c326eb08ddfa",
@@ -152,10 +192,11 @@
         "dataType": "boolean",
         "isRequired": false,
         "isReadOnly": false,
-        "order": 8,
+        "order": 7,
         "isArray": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"
       },
       {
         "id": "f1b48c8f-9226-4309-b45d-c60ee908375f",
@@ -165,7 +206,7 @@
         "isReadOnly": true,
         "order": 13,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -176,7 +217,7 @@
         "isReadOnly": true,
         "order": 14,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -188,7 +229,7 @@
         "order": 11,
         "isArray": false,
         "lookupReferenceType": "VerificationMethod",
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       },
       {
@@ -197,10 +238,12 @@
         "dataType": "string",
         "isRequired": false,
         "isReadOnly": true,
-        "order": 10,
+        "order": 11,
         "isArray": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "c288a11f-9925-412e-8ab3-484affbab078",
+        "renderer": "seo-verification"
       },
       {
         "id": "6ac7eced-e2df-4c3f-a24d-e23f36b6074e",
@@ -210,7 +253,7 @@
         "isReadOnly": true,
         "order": 12,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "None",
         "rules": []
       }
     ],

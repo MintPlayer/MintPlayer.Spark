@@ -29,6 +29,22 @@ public partial class AuditRunActions : DefaultPersistentObjectActions<AuditRun>
 {
     [Inject] private readonly IAsyncDocumentSession session;
 
+    /// <summary>
+    /// M11: a finished run cannot be cancelled, and only a completed one has a report to print, so the page offers
+    /// neither button where it would only answer with an error.
+    /// </summary>
+    public override Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
+    {
+        if (context.Entity is AuditRun run)
+        {
+            if (!LookupReferences.AuditRunStatus.InProgress.Contains(run.Status))
+                target.DisableActions(SeoActionNames.CancelAudit);
+            if (run.Status != LookupReferences.AuditRunStatus.Completed)
+                target.DisableActions(SeoActionNames.ExportReport);
+        }
+        return Task.CompletedTask;
+    }
+
     public IQueryable<AuditRun> SiteRuns(CustomQueryArgs args)
         => args.Parent?.Id is { Length: > 0 } siteId && string.Equals(args.ParentType, nameof(Site), StringComparison.OrdinalIgnoreCase)
             ? session.Query<AuditRun>().Where(r => r.SiteId == siteId)

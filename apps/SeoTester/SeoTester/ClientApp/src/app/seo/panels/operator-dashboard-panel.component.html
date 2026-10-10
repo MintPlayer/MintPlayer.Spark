@@ -1,0 +1,84 @@
+@if (failed()) {
+  <p class="text-danger m-3" data-failed>{{ 'seoUi.dashboard.unavailable' | t }}</p>
+} @else if (data(); as d) {
+  <div class="seo-tiles mx-3 my-2" data-counts>
+    @for (tile of [
+      { key: 'users', value: d.counts.users },
+      { key: 'organizations', value: d.counts.organizations },
+      { key: 'sites', value: d.counts.sites },
+      { key: 'verifiedSites', value: d.counts.verifiedSites },
+      { key: 'audits', value: d.counts.audits },
+      { key: 'auditsLastDay', value: d.audits.lastDay },
+      { key: 'auditsLastWeek', value: d.audits.lastWeek },
+      { key: 'running', value: d.audits.running },
+    ]; track tile.key) {
+      <div class="border rounded p-2" [attr.data-tile]="tile.key">
+        <div class="small text-body-secondary">{{ ('seoUi.dashboard.' + tile.key) | t }}</div>
+        <div class="fs-4 fw-semibold">{{ tile.value }}</div>
+      </div>
+    }
+  </div>
+
+  <div class="seo-pair mx-3">
+    <div>
+      <bs-card class="d-block h-100">
+        <bs-card-header>{{ 'seoUi.dashboard.auditsByStatus' | t }}</bs-card-header>
+        <bs-card-body>
+          @for (e of entries(d.audits.byStatusLastWeek); track e.key) {
+            <div class="d-flex justify-content-between"><span>{{ ('seoUi.runStatus.' + e.key) | t }}</span><span>{{ e.count }}</span></div>
+          } @empty { <span class="text-body-secondary">—</span> }
+          <hr>
+          <div class="small fw-semibold mb-1">{{ 'seoUi.dashboard.refusals' | t }}</div>
+          @for (e of entries(d.refusalsLastWeek); track e.key) {
+            <div class="d-flex justify-content-between" [attr.data-refusal]="e.key"><span>{{ ('seoUi.dashboard.kind.' + e.key) | t }}</span><span>{{ e.count }}</span></div>
+          } @empty { <span class="text-body-secondary">{{ 'seoUi.dashboard.noRefusals' | t }}</span> }
+        </bs-card-body>
+      </bs-card>
+    </div>
+    <div>
+      <bs-card class="d-block h-100">
+        <bs-card-header>{{ 'seoUi.dashboard.database' | t }}: {{ bytes(d.database.sizeOnDiskBytes) }}</bs-card-header>
+        <bs-card-body>
+          <bs-table data-collections>
+            <thead><tr><th>{{ 'seoUi.dashboard.collection' | t }}</th><th class="text-end">{{ 'seoUi.dashboard.documents' | t }}</th><th class="text-end">{{ 'seoUi.dashboard.size' | t }}</th></tr></thead>
+            <tbody>
+              @for (c of d.database.collections; track c.name) {
+                <tr><td>{{ c.name }}</td><td class="text-end">{{ c.documents }}</td><td class="text-end">{{ bytes(c.sizeBytes) }}</td></tr>
+              }
+            </tbody>
+          </bs-table>
+        </bs-card-body>
+      </bs-card>
+    </div>
+  </div>
+
+  <bs-card class="d-block m-3">
+    <bs-card-header>{{ 'seoUi.dashboard.sites' | t }} ({{ d.sites.length }})</bs-card-header>
+    <bs-card-body>
+      <bs-table [isResponsive]="true" data-sites>
+          <thead><tr>
+            <th>{{ 'seoUi.dashboard.website' | t }}</th><th>{{ 'seoUi.dashboard.organization' | t }}</th>
+            <th>{{ 'seoUi.dashboard.verified' | t }}</th><th class="text-end">{{ 'seoUi.dashboard.score' | t }}</th>
+            <th>{{ 'seoUi.dashboard.lastAudit' | t }}</th><th>{{ 'seoUi.dashboard.added' | t }}</th>
+          </tr></thead>
+          <tbody>
+            @for (s of d.sites; track s.id) {
+              <tr>
+                <td class="text-break">{{ s.origin }}</td>
+                <td>{{ s.organization ?? '—' }} @if (s.personal) { <span class="small text-body-secondary">({{ 'seoUi.dashboard.personal' | t }})</span> }</td>
+                <td>@if (s.verified) { <i class="bi bi-patch-check-fill text-success" [attr.aria-label]="'seoUi.dashboard.verified' | t"></i> }</td>
+                <td class="text-end">{{ s.latestScore ?? '—' }} {{ s.latestGrade ?? '' }}</td>
+                <td>{{ date(s.latestRunAtUtc) }}</td>
+                <td>{{ date(s.createdAtUtc) }}</td>
+              </tr>
+            }
+          </tbody>
+      </bs-table>
+    </bs-card-body>
+  </bs-card>
+  <!-- The abuse log (D28): every start, join and refusal; Administrators only (the query's own right). -->
+  <div class="m-3" data-abuse-log><spark-query-card queryId="audit-log" /></div>
+  <p class="small text-body-secondary mx-3">{{ 'seoUi.dashboard.generated' | t }} {{ date(d.generatedAtUtc) }}</p>
+} @else {
+  <p class="text-body-secondary m-3">…</p>
+}

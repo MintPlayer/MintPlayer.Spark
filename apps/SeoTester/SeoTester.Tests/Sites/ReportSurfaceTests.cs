@@ -93,6 +93,30 @@ public class ReportSurfaceTests(SeoTesterHostFixture host)
         (await GetAsync("/seotester/admin/dashboard", null)).Status.Should().Be(HttpStatusCode.NotFound, "anonymous");
     }
 
+    /// <summary>A finished run offers no Cancel; only a completed one offers Download PDF.</summary>
+    [Theory]
+    [InlineData("Running", new[] { "ExportReport" })]
+    [InlineData("Completed", new[] { "CancelAudit" })]
+    [InlineData("Blocked", new[] { "CancelAudit", "ExportReport" })]
+    public async Task A_run_offers_only_the_actions_its_state_allows(string status, string[] disabled)
+    {
+        var site = await SeedSiteAsync(host, Acme);
+        var run = new AuditRun { SiteId = site.Id, OrganizationId = Acme, Origin = site.Origin, Status = status, StartedAtUtc = DateTime.UtcNow };
+        using (var session = host.Database.OpenAsyncSession())
+        {
+            await session.StoreAsync(run);
+            await session.SaveChangesAsync();
+        }
+
+        var (loaded, body, raw) = await LoadAsync(host, AuditRunTypeId, run.Id!, Ann);
+
+        loaded.Should().Be(HttpStatusCode.OK, raw);
+        var actual = body.TryGetProperty("disabledActions", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray().Select(a => a.GetString()!).Where(a => a is "CancelAudit" or "ExportReport").OrderBy(a => a).ToArray()
+            : [];
+        actual.Should().Equal(disabled);
+    }
+
     private async Task<(HttpStatusCode Status, JsonElement Body)> GetAsync(string url, string? user, params string[] roles)
     {
         using var client = host.CreateClient();
