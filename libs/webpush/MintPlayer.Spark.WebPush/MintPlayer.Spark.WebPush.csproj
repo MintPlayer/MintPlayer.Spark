@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.WebPush</PackageId>
+		<Version>11.0.0-preview.104</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Web Push for .NET on built-in crypto only: RFC 8291 aes128gcm message encryption, RFC 8292 VAPID (ES256) authorization and an RFC 8030 sender over any HttpClient. No third-party packages; verified against the RFC 8291 Appendix A test vectors.</Description>
+		<PackageTags>webpush;push;vapid;rfc8291;rfc8292;rfc8030;aes128gcm;pwa</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<!-- Deliberately no package and no project reference (docs/seo_analyzer_PRD.md D38): ECDiffieHellman,
+	     HKDF, AesGcm and ECDsa are all in the BCL. The Spark notifications package hands it the SSRF-safe
+	     HttpClient (X2); any other caller hands it its own. -->
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

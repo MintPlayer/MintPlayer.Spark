@@ -73,6 +73,7 @@
     <ProjectReference Include="..\..\libs\moderation\MintPlayer.Spark.Moderation\MintPlayer.Spark.Moderation.csproj" />
     <ProjectReference Include="..\..\libs\settings\MintPlayer.Spark.Settings\MintPlayer.Spark.Settings.csproj" />
     <ProjectReference Include="..\..\libs\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+    <ProjectReference Include="..\..\libs\webpush\MintPlayer.Spark.WebPush\MintPlayer.Spark.WebPush.csproj" />
     <!-- Contributions M5: the runtime, plus its generator through the targets imported below. -->
     <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions\MintPlayer.Spark.Contributions.csproj" />
     <ProjectReference Include="..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
