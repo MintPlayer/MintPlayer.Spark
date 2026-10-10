@@ -253,6 +253,25 @@ public class MailManagerTests : SparkTestDriver
         rendered.Single(r => r.Subject == "ann nodigt je uit voor Acme").Html.Should().Contain("als beheerder");
     }
 
+    [Fact]
+    public async Task The_render_helper_renders_the_shipped_notification_template_in_English_and_Dutch()
+    {
+        using var sp = Build(services: c => c.AddSparkMailTemplates(typeof(MintPlayer.Spark.Notifications.SparkNotificationsExtensions).Assembly, "SparkMail/"));
+
+        var rendered = await SparkMailTemplateTester.RenderAllAsync(sp, template => new
+        {
+            title = "Score dropped to 74",
+            body = "example.com lost 17 points.",
+            link = "https://app.example/runs/42",
+            user_name = "ann",
+        }, "en", "nl");
+
+        rendered.Should().HaveCount(2);
+        rendered.Select(r => r.Subject).Distinct().Should().Equal("Score dropped to 74");
+        rendered.Should().AllSatisfy(r => r.Html.Should().Contain("https://app.example/runs/42"));
+        rendered.Select(r => r.Html).Should().Contain(h => h.Contains("Openen"));
+    }
+
     // ---- queueing, protection, suppression -----------------------------------------------------------
 
     [Fact]

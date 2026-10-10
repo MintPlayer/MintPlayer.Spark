@@ -54,7 +54,7 @@ internal sealed class LiveAppStreamMethod
     /// <summary>Invokes the method and enumerates what it yields, each yield as a list of rows.</summary>
     public async IAsyncEnumerable<IReadOnlyList<object>> InvokeAsync(object actions, LiveQueryArgs args, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var result = Method.Invoke(actions, SparkHookInvocationFlags, binder: null, parameters: [args, cancellationToken], culture: null);
+        var result = Method.Invoke(actions, Services.SparkHookInvocation.HookInvoke, binder: null, parameters: [args, cancellationToken], culture: null);
         if (result is null)
             yield break;
 
@@ -98,5 +98,4 @@ internal sealed class LiveAppStreamMethod
         }
     }
 
-    private static BindingFlags SparkHookInvocationFlags => Services.SparkHookInvocation.HookInvoke;
 }

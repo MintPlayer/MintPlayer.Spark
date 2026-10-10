@@ -38,6 +38,10 @@ internal sealed partial class LiveSocket : IEndpoint
 
     [Inject] private readonly LiveHub hub;
     [Inject] private readonly IOptions<SparkLiveOptions> options;
+    // The request scope (what HttpContext.RequestServices is), injected rather than located (EndpointConventionsTests R1).
+    [Inject] private readonly IServiceProvider services;
+    // Optional: an app without authentication (DemoApp) registers no scheme provider at all.
+    [Inject] private readonly IAuthenticationSchemeProvider? schemes;
 
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -60,7 +64,7 @@ internal sealed partial class LiveSocket : IEndpoint
 
         try
         {
-            await new LiveConnection(socket, httpContext.RequestServices, deadline).RunAsync(httpContext.RequestAborted);
+            await new LiveConnection(socket, services, deadline).RunAsync(httpContext.RequestAborted);
         }
         finally
         {
@@ -74,7 +78,7 @@ internal sealed partial class LiveSocket : IEndpoint
     {
         // Optional: an app without authentication (DemoApp) registers no scheme provider at all.
         if (httpContext.User.Identity?.IsAuthenticated != true
-            || httpContext.RequestServices.GetService<IAuthenticationSchemeProvider>() is not { } schemes
+            || schemes is null
             || await schemes.GetDefaultAuthenticateSchemeAsync() is null)
             return null;
         var result = await httpContext.AuthenticateAsync();

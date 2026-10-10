@@ -36,11 +36,19 @@ public class SparkLayersGoldenTests
 
     [Fact]
     public void Qna_actions_compose_as_before_the_port()
-        => Describe(SparkActionLayers.Compose(QnaLayers())).Should().Be(Golden("qna-actions.golden.txt"));
+    {
+        var described = Describe(SparkActionLayers.Compose(QnaLayers()));
+        UpdateGoldenIfRequested("qna-actions.golden.txt", described);
+        described.Should().Be(Golden("qna-actions.golden.txt"));
+    }
 
     [Fact]
     public void Layered_actions_compose_as_before_the_port()
-        => Describe(SparkActionLayers.Compose(LayeredLayers())).Should().Be(Golden("layered-actions.golden.txt"));
+    {
+        var described = Describe(SparkActionLayers.Compose(LayeredLayers()));
+        UpdateGoldenIfRequested("layered-actions.golden.txt", described);
+        described.Should().Be(Golden("layered-actions.golden.txt"));
+    }
 
     [Fact]
     public void The_engine_describes_the_qna_layers_as_the_golden()

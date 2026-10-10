@@ -43,19 +43,21 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     // ── The core layer ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Without_an_app_file_the_catalogue_is_the_core_New_Edit_and_Delete()
+    public void Without_an_app_file_the_catalogue_is_the_core_actions()
     {
         using var loader = CreateLoader();
 
         var catalogue = loader.GetCatalogue();
 
-        catalogue.Actions.Select(a => a.Name).Should().Equal("New", "Edit", "Delete");
+        catalogue.Actions.Select(a => a.Name).Should().Equal("New", "Edit", "Delete", "ShareLink", "RevokeShareLink");
         catalogue.Find("edit")!.SelectionRule.Should().Be("=1");
         catalogue.Find("Edit")!.ShowedOn.Should().Be("both");
         catalogue.Find("Delete")!.SelectionRule.Should().Be(">0");
         catalogue.Find("Delete")!.Variant.Should().Be("danger");
         catalogue.Find("New")!.ShowedOn.Should().Be("query");
-        catalogue.Actions.Should().OnlyContain(a => a.IsBuiltIn && a.DeclaredBy == "MintPlayer.Spark");
+        catalogue.Actions.Should().OnlyContain(a => a.DeclaredBy == "MintPlayer.Spark");
+        // The share-link actions (X6) are core's but custom: they run through /spark/actions/execute and need their own rights.
+        catalogue.Actions.Where(a => a.IsBuiltIn).Select(a => a.Name).Should().Equal("New", "Edit", "Delete");
     }
 
     [Fact]
@@ -64,7 +66,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         WriteApp("null");
         using var loader = CreateLoader();
 
-        loader.GetCatalogue().Actions.Select(a => a.Name).Should().Equal("New", "Edit", "Delete");
+        loader.GetCatalogue().Actions.Select(a => a.Name).Should().Equal("New", "Edit", "Delete", "ShareLink", "RevokeShareLink");
     }
 
     // ── Composition ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +90,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
         var catalogue = ActionsCatalogueLoader.Build("""{ "Edit": null }""", Core);
 
         catalogue.Find("Edit").Should().BeNull();
-        catalogue.Actions.Select(a => a.Name).Should().Equal("New", "Delete");
+        catalogue.Actions.Select(a => a.Name).Should().Equal("New", "Delete", "ShareLink", "RevokeShareLink");
     }
 
     [Fact]
@@ -107,7 +109,7 @@ public sealed class ActionsCatalogueLoaderTests : IDisposable
     {
         var catalogue = ActionsCatalogueLoader.Build("""{ "Archive": { "showedOn": "detail" } }""", Core);
 
-        catalogue.Actions.Select(a => a.Name).Should().Equal("New", "Edit", "Delete", "Archive");
+        catalogue.Actions.Select(a => a.Name).Should().Equal("New", "Edit", "Delete", "ShareLink", "RevokeShareLink", "Archive");
         catalogue.Find("Archive")!.IsBuiltIn.Should().BeFalse();
         catalogue.Find("Archive")!.DeclaredBy.Should().Be(SparkActionLayers.AppLayerName);
     }

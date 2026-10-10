@@ -94,6 +94,9 @@ public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(ho
         "POST /spark/queries/distinct-values",
         "POST /spark/queries/execute",
         "POST /spark/queries/get",
+        // X6 share-link reads: anonymous by design (the token in the body is the credential), no side effect.
+        "POST /spark/share/load",
+        "POST /spark/share/query",
     ];
 
     /// <summary>
