@@ -7,6 +7,7 @@ using Raven.Client.Documents.Session;
 using SeoTester.Checks;
 using SeoTester.Crawler;
 using SeoTester.Entities;
+using SeoTester.Fetching;
 using SeoTester.LookupReferences;
 using SeoTester.Messaging;
 using SeoTester.Scoring;
@@ -32,7 +33,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
     [Inject] private readonly PageRenderer renderer;
     [Inject] private readonly RenderGate gate;
     [Inject] private readonly ISparkSettings settings;
-    [Inject] private readonly IHttpClientFactory httpClients;
+    [Inject] private readonly ISeoFetcher fetcher;
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly ILogger<RenderSampleRecipient> logger;
 
@@ -94,7 +95,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
         var origin = new Uri(run.Origin);
         var interval = await pipeline.IntervalAsync(run, frontier.CrawlDelaySeconds, cancellationToken);
         using var pacer = new HostPacer(run.ConnectionsPerHost, interval, frontier.LastRequestAtUtc, time);
-        using var network = new RenderNetwork(httpClients, origin, frontier.Robots(), pacer, logger);
+        using var network = new RenderNetwork(fetcher, origin, frontier.Robots(), pacer, logger);
 
         string? serviceWorker = null;
         (bool RouteChanged, int Hits)? probe = null;

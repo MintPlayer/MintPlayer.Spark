@@ -182,7 +182,7 @@ public sealed class BrowserEscapeTests(ITestOutputHelper output) : IAsyncLifetim
         var browser = await chromium.GetAsync(CancellationToken.None);
         var start = watch.ElapsedMilliseconds;
         using var pacer = new HostPacer(1, TimeSpan.Zero, null, TimeProvider.System);
-        using var network = new RenderNetwork(provider.GetRequiredService<IHttpClientFactory>(), new Uri("https://escape.test/"), RobotsTxt.AllowAll, pacer, NullLogger.Instance);
+        using var network = new RenderNetwork(new SeoTester.Fetching.LocalSeoFetcher(new PageFetcher(provider.GetRequiredService<IHttpClientFactory>(), NullLogger<PageFetcher>.Instance), null!, null!), new Uri("https://escape.test/"), RobotsTxt.AllowAll, pacer, NullLogger.Instance);
         var context = await browser.NewContextAsync(new BrowserNewContextOptions { ServiceWorkers = ServiceWorkerPolicy.Block });
         var router = new BrowserRouter(network, CancellationToken.None);
         await router.AttachAsync(context);

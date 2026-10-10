@@ -1,6 +1,7 @@
 using Raven.Client.Documents;
 using SeoTester.Checks;
 using SeoTester.Entities;
+using SeoTester.Fetching;
 
 namespace SeoTester.Crawler;
 
@@ -10,7 +11,7 @@ namespace SeoTester.Crawler;
 /// Spike S4 decided: RDAP through the bootstrap only, no WHOIS, no hard-coded endpoints; a registry without RDAP or
 /// without an expiry is "not published", never an error.
 /// </summary>
-public sealed class ExternalLookups(IDocumentStore store, PageFetcher fetcher, TimeProvider time, IConfiguration configuration)
+public sealed class ExternalLookups(IDocumentStore store, ISeoFetcher fetcher, TimeProvider time, IConfiguration configuration)
 {
     /// <summary>Most bytes of a lookup answer read and cached.</summary>
     private const int MaxAnswerBytes = 512 * 1024;

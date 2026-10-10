@@ -6,6 +6,7 @@ using Raven.Client.Documents.Session;
 using SeoTester.Checks;
 using SeoTester.Crawling;
 using SeoTester.Entities;
+using SeoTester.Fetching;
 using SeoTester.LookupReferences;
 using SeoTester.Messaging;
 
@@ -35,7 +36,7 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IMessageOutbox outbox;
     [Inject] private readonly IMessageContext context;
-    [Inject] private readonly PageFetcher fetcher;
+    [Inject] private readonly ISeoFetcher fetcher;
     [Inject] private readonly RunPipeline pipeline;
     [Inject] private readonly TimeProvider time;
     [Inject] private readonly ILogger<PageBatchRecipient> logger;

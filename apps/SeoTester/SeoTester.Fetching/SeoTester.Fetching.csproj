@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  Everything SeoTester sends to the internet on a user's behalf (docs/seo_analyzer_PRD.md D54): HTTP fetches with
+	  their redirect trace, the TLS probes, DNS, and the fetcher's wire protocol. Used in two places:
+	  - the fetcher container (SeoTester.Fetcher), which runs the in-process implementation behind its internal API;
+	  - the app, which either runs the same in-process implementation (Development, tests) or calls the fetcher.
+	  ⚠️ No RavenDB client and no Spark runtime here or below (the fetcher's guard test reads the restore graph).
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Using Include="Microsoft.Extensions.Configuration" />
+		<Using Include="Microsoft.Extensions.DependencyInjection" />
+		<Using Include="Microsoft.Extensions.Logging" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- DNS: verification's TXT records and the crawl's domain checks (CAA, SPF, DMARC, NS, DS, MX, SOA). -->
+		<PackageReference Include="DnsClient" Version="1.8.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- TlsFacts, the hand-built TLS 1.0/1.1 hello and the crawler's user agent: plain SDK, no database. -->
+		<ProjectReference Include="..\SeoTester.Library\SeoTester.Library.csproj" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.SafeHttp\MintPlayer.Spark.SafeHttp.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="SeoTester" />
+		<InternalsVisibleTo Include="SeoTester.Fetcher" />
+		<InternalsVisibleTo Include="SeoTester.Tests" />
+	</ItemGroup>
+
+</Project>

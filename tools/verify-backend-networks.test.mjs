@@ -67,6 +67,8 @@ test('each backend network holds exactly the services that need each other', () 
     'seo-raven': ['coverage-raven', 'seotester-app'],
     'seo-mail': ['coverage-smtp', 'seotester-app'],
     'seo-browser': ['seo-chromium', 'seotester-app'],
+    'seo-fetch': ['seo-fetcher', 'seotester-app'],
+    'seo-egress': ['seo-fetcher'],
   };
   for (const [name, want] of Object.entries(expected)) assert.deepEqual(members(name), want.sort(), `${name} members`);
   assert.deepEqual(members('web'), ['coverage-app', 'seotester-app'], 'only the two apps are on Traefik\'s web');
@@ -78,9 +80,10 @@ test('RavenDB and the mail relay share no network, and neither has a way out exc
     assert.ok(!(m.has('coverage-raven') && m.has('coverage-smtp')), `${name} carries both coverage-raven and coverage-smtp`);
   }
   const egress = [...nets].filter(([, n]) => n.decls.every((d) => d.internal !== true && d.external !== true)).map(([name]) => name).sort();
-  // Non-internal networks of a stack: Traefik's (external) aside, only the relay's egress network.
-  assert.deepEqual(egress, ['coverage-smtp-egress'], 'the only compose-created network with a route out is the relay\'s');
-  for (const name of ['coverage-db', 'coverage-mail', 'seo-browser']) {
+  // Non-internal networks of a stack: Traefik's (external) aside, only the relay's egress network and the fetcher's (PRD D54).
+  assert.deepEqual(egress, ['coverage-smtp-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s and the fetcher\'s');
+  assert.deepEqual(members('seo-egress'), ['seo-fetcher'], 'the fetcher\'s egress network carries the fetcher alone (no database, no relay)');
+  for (const name of ['coverage-db', 'coverage-mail', 'seo-browser', 'seo-fetch']) {
     assert.ok(nets.get(name).decls.every((d) => d.internal === true), `${name} is internal: true`);
   }
   const ravenNets = [...nets].filter(([, n]) => n.members.has('coverage-raven')).map(([name]) => name).sort();

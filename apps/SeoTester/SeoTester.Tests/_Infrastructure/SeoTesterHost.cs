@@ -26,7 +26,8 @@ namespace SeoTester.Tests._Infrastructure;
 /// <c>builder.Configuration</c> while it registers services (<c>AddExternalProviders</c>).</item>
 /// </list>
 /// </remarks>
-public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictionary<string, string?>? settings = null, FakeDns? dns = null, FakeWeb? web = null, FakeTls? tls = null) : WebApplicationFactory<Program>
+public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictionary<string, string?>? settings = null, FakeDns? dns = null, FakeWeb? web = null, FakeTls? tls = null,
+    Action<IServiceCollection>? configureServices = null) : WebApplicationFactory<Program>
 {
     public const string EnvironmentName = "IntegrationTest";
 
@@ -65,6 +66,8 @@ public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictio
             foreach (var client in new[] { SeoTester.Verification.SiteVerification.HttpClientName, SeoTester.Crawler.SeoHttp.Crawler, SeoTester.Crawler.SeoHttp.Lookups, SeoTester.Crawler.SeoHttp.Browser, SeoTester.Crawler.SeoHttp.PageSpeed })
                 services.AddHttpClient(client).ConfigurePrimaryHttpMessageHandler(fakeWeb.CreateHandler);
             services.AddSingleton<SeoTester.Crawler.ITlsProber>(tls ?? new FakeTls());
+            // Last: a fixture's own replacements (the remote fetcher's client, D54).
+            configureServices?.Invoke(services);
         });
     }
 }
@@ -201,6 +204,9 @@ public class SeoTesterHostFixture : SparkTestDriver
     /// <summary>Ann owns Acme (Max Member, Vic Viewer); Bob owns Globex; Ann and Max have personal organizations.</summary>
     public Task SeedOrganizationsAsync() => SeedFromJsonAsync("Data/organizations.json");
 
+    /// <summary>The host this fixture runs (a subclass puts the fakes elsewhere: the remote fetcher's, D54).</summary>
+    protected virtual SeoTesterWebAppFactory CreateFactory() => new(Store, HostSettings, dns: Dns, web: Web, tls: Tls);
+
     /// <summary>A client without a cookie jar: each request carries exactly the cookies the test gives it.</summary>
     public HttpClient CreateClient() => Factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false, AllowAutoRedirect = false });
 
@@ -208,7 +214,7 @@ public class SeoTesterHostFixture : SparkTestDriver
     {
         await base.InitializeAsync();
         await SeedOrganizationsAsync();
-        Factory = new SeoTesterWebAppFactory(Store, HostSettings, dns: Dns, web: Web, tls: Tls);
+        Factory = CreateFactory();
         // Boot here, so a startup failure is reported by the fixture and not by whichever test runs first.
         _ = Factory.CreateClient();
     }
@@ -217,7 +223,7 @@ public class SeoTesterHostFixture : SparkTestDriver
     public async Task RestartHostAsync()
     {
         await Factory.DisposeAsync();
-        Factory = new SeoTesterWebAppFactory(Store, HostSettings, dns: Dns, web: Web, tls: Tls);
+        Factory = CreateFactory();
         _ = Factory.CreateClient();
     }
 

@@ -2,8 +2,9 @@ name: seotester-deploy
 
 # Deploys apps/SeoTester to seotester.mintplayer.com, on the VPS beside CodeCoverage (docs/seotester/deploy.md).
 # Modelled on code-coverage-deploy.yml: ghcr → SSH → compose, the same repository secrets (VPS_*), the same
-# readiness loop. Two images: the app (ghcr.io/mintplayer/seotester:master) and the Chromium container
-# (ghcr.io/mintplayer/seotester-chromium:<Playwright version>, the tag docker-compose.yml pins).
+# readiness loop. Three images: the app (ghcr.io/mintplayer/seotester:master), the Chromium container
+# (ghcr.io/mintplayer/seotester-chromium:<Playwright version>, the tag docker-compose.yml pins) and the fetcher
+# (ghcr.io/mintplayer/seotester-fetcher:master, PRD D54).
 
 on:
   push:
@@ -55,6 +56,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: mintplayer/seotester
   CHROMIUM_IMAGE_NAME: mintplayer/seotester-chromium
+  FETCHER_IMAGE_NAME: mintplayer/seotester-fetcher
 
 jobs:
   build-and-push:
@@ -186,13 +188,76 @@ jobs:
           "/orgs/${{ github.repository_owner }}/packages/container/seotester-chromium" \
           -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
 
+  build-fetcher:
+
+    # The fetcher (docs/seo_analyzer_PRD.md D54): every request to an audited site leaves from this image, which has no
+    # database client. Built from the same commit as the app, tagged like it (master), so the two always match.
+    name: Build and push the fetcher image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Authenticate with GHCR
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Extract tags/labels
+      id: meta-fetcher
+      uses: docker/metadata-action@v6
+      with:
+        github-token: ${{ github.token }}
+        images: ${{ env.REGISTRY }}/${{ env.FETCHER_IMAGE_NAME }}
+
+    - name: Build and push the fetcher image
+      id: push-fetcher
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/SeoTester/SeoTester.Fetcher/Dockerfile
+        push: true
+        tags: ${{ steps.meta-fetcher.outputs.tags }}
+        labels: ${{ steps.meta-fetcher.outputs.labels }}
+        cache-from: type=gha,scope=seotester-fetcher
+        cache-to: type=gha,mode=max,scope=seotester-fetcher
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.FETCHER_IMAGE_NAME }}
+        subject-digest: ${{ steps.push-fetcher.outputs.digest }}
+        push-to-registry: true
+
+    - name: Make the package public
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api --method PATCH -H "Accept: application/vnd.github+json" \
+          "/orgs/${{ github.repository_owner }}/packages/container/seotester-fetcher" \
+          -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
+
   deploy:
 
     name: Deploy to VPS
     runs-on: ubuntu-latest
     # Room for pull + restart plus the 360s readiness bound below.
     timeout-minutes: 20
-    needs: [build-and-push, build-chromium]
+    needs: [build-and-push, build-chromium, build-fetcher]
     if: github.ref == 'refs/heads/master'
 
     permissions:
@@ -220,6 +285,8 @@ jobs:
 
           # .env is server-managed; deploys never write it. Only the compose file is refreshed from the repo.
           test -f .env || { echo "::error::/var/www/seotester/.env is missing — create it from apps/SeoTester/.env.example (docs/seotester/deploy.md)"; exit 1; }
+          # The fetcher's shared secret (PRD D54): set, and at least 32 characters. Checked by length only; nothing is printed.
+          grep -Eq '^SEO_FETCHER_KEY=.{32,}$' .env || { echo "::error::SEO_FETCHER_KEY is missing or shorter than 32 characters in /var/www/seotester/.env (openssl rand -hex 32, docs/seotester/deploy.md)"; exit 1; }
           # RavenDB is secured: this app's client certificate and the CA must be on the server (deploy.md §3.0). Presence only.
           for f in raven-certs/seotester.crt raven-certs/seotester.key raven-certs/ca.crt; do
             test -s "$f" || { echo "::error::/var/www/seotester/$f is missing — see docs/seotester/deploy.md §3.0"; exit 1; }

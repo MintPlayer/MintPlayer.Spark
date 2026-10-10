@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using MintPlayer.Spark.Http;
+using SeoTester.Fetching;
 
 namespace SeoTester.Crawler;
 
@@ -23,6 +24,9 @@ public sealed record FetchResult(
     public bool IsHtml => ContentType is { } t && (t.Contains("text/html", StringComparison.OrdinalIgnoreCase) || t.Contains("application/xhtml", StringComparison.OrdinalIgnoreCase));
 
     public bool Ok => StatusCode is >= 200 and < 300;
+
+    /// <summary>The SSRF-safe client refused the request (an address, a port, a redirect, a size): <see cref="Error"/> says <c>refused: …</c>.</summary>
+    public bool Refused => Error?.StartsWith("refused", StringComparison.Ordinal) == true;
 
     /// <summary>The body as text: the charset of <c>Content-Type</c>, else a BOM, else a <c>&lt;meta charset&gt;</c> in the first 1024 bytes, else UTF-8.</summary>
     public string? Text()
@@ -90,27 +94,66 @@ public sealed class PageFetcher(IHttpClientFactory httpClients, ILogger<PageFetc
     /// <summary>Most bytes of an HTML page kept (HtmlPage parses at most 2 Mi characters).</summary>
     public const int MaxPageBytes = 3 * 1024 * 1024;
 
+    /// <summary>Request headers never passed on: hop-by-hop, the ones the client sets itself, and HTTP/2 pseudo-headers.</summary>
+    private static readonly HashSet<string> DroppedRequestHeaders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "host", "connection", "keep-alive", "content-length", "transfer-encoding", "te", "trailer", "upgrade", "accept-encoding",
+        "proxy-authorization", "proxy-connection",
+    };
+
     /// <param name="requestHeaders">Extra request headers (an API key: sent in a header, never in the URL, so no log shows it).</param>
-    public async Task<FetchResult> FetchAsync(Uri url, int maxBodyBytes, CancellationToken cancellationToken, HttpMethod? method = null, string client = SeoHttp.Crawler,
+    public Task<FetchResult> FetchAsync(Uri url, int maxBodyBytes, CancellationToken cancellationToken, HttpMethod? method = null, string client = SeoHttp.Crawler,
         IReadOnlyDictionary<string, string>? requestHeaders = null)
+        => SendAsync(new SeoFetchRequest(url, maxBodyBytes)
+        {
+            Method = (method ?? HttpMethod.Get).Method,
+            Client = client,
+            Headers = requestHeaders?.ToList(),
+        }, cancellationToken);
+
+    /// <summary>
+    /// One request as <paramref name="fetch"/> describes it. The crawler's clients ask as the crawler (its user agent,
+    /// <c>Accept</c>, every compression), then add the extra headers; the browser's client passes the browser's headers
+    /// on and keeps its user agent when it names the crawler (<c>docs/seo_analyzer_PRD.md</c> Q-M10e).
+    /// </summary>
+    public async Task<FetchResult> SendAsync(SeoFetchRequest fetch, CancellationToken cancellationToken)
     {
         var stopwatch = Stopwatch.StartNew();
-        using var request = new HttpRequestMessage(method ?? HttpMethod.Get, url)
+        var url = fetch.Url;
+        var browser = fetch.Client == SeoHttp.Browser;
+        using var request = new HttpRequestMessage(new HttpMethod(fetch.Method), url)
         {
             Version = HttpVersion.Version20,
             VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
         };
-        request.Headers.UserAgent.ParseAdd(SeoTesterBot.UserAgent);
-        request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-        request.Headers.AcceptEncoding.ParseAdd("br");
-        request.Headers.AcceptEncoding.ParseAdd("gzip");
-        request.Headers.AcceptEncoding.ParseAdd("deflate");
-        foreach (var (name, value) in requestHeaders ?? new Dictionary<string, string>())
-            request.Headers.TryAddWithoutValidation(name, value);
+        if (fetch.Body is { Length: > 0 } requestBody)
+            request.Content = new ByteArrayContent(requestBody);
+        if (!browser)
+        {
+            request.Headers.UserAgent.ParseAdd(SeoTesterBot.UserAgent);
+            request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            request.Headers.AcceptEncoding.ParseAdd("br");
+            request.Headers.AcceptEncoding.ParseAdd("gzip");
+            request.Headers.AcceptEncoding.ParseAdd("deflate");
+        }
+        foreach (var (name, value) in fetch.Headers ?? [])
+        {
+            if (name.StartsWith(':') || DroppedRequestHeaders.Contains(name))
+                continue;
+            if (!request.Headers.TryAddWithoutValidation(name, value))
+                request.Content?.Headers.TryAddWithoutValidation(name, value);
+        }
+        // The browser's user agent carries the crawler's identity (PageRenderer); anything else asks as the crawler (D29).
+        if (browser && !request.Headers.UserAgent.ToString().Contains(SeoTesterBot.RobotsToken, StringComparison.Ordinal))
+        {
+            request.Headers.UserAgent.Clear();
+            request.Headers.UserAgent.ParseAdd(SeoTesterBot.UserAgent);
+        }
+        var maxBodyBytes = SeoHttp.ClampBody(fetch.Client, fetch.MaxBodyBytes);
         var trace = SafeHttpTrace.Attach(request);
         try
         {
-            using var response = await httpClients.CreateClient(client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await httpClients.CreateClient(fetch.Client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var cookies = new List<string>();
             foreach (var header in response.Headers.Concat(response.Content.Headers))
@@ -174,7 +217,7 @@ public sealed class PageFetcher(IHttpClientFactory httpClients, ILogger<PageFetc
     }
 }
 
-/// <summary>The named SSRF-safe clients of the crawl pipeline.</summary>
+/// <summary>The named SSRF-safe clients of the crawl pipeline, also the "profiles" a fetch names on the fetcher's API.</summary>
 public static class SeoHttp
 {
     /// <summary>Every request to a site being audited.</summary>
@@ -189,6 +232,26 @@ public static class SeoHttp
     /// <summary>PageSpeed Insights (M10): a slow API with large answers.</summary>
     public const string PageSpeed = "SeoTester.PageSpeed";
 
+    /// <summary>Ownership proofs (F3): the well-known file and the home page's meta tag, never off the site's origin.</summary>
+    public const string Verification = "SeoTester.Verification";
+
     /// <summary>Name used for raw TLS connections (the TLS probes), under the crawler client's rules.</summary>
     public const string Tls = Crawler;
+
+    /// <summary>
+    /// The clients a fetch may name, each with the most body bytes one answer may carry (D54: the fetcher refuses any
+    /// other name, and a larger <see cref="SeoFetchRequest.MaxBodyBytes"/> is cut to this in both modes).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, int> MaxBodyBytes = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        [Crawler] = 10 * 1024 * 1024,
+        [Lookups] = 2 * 1024 * 1024,
+        [Browser] = 16 * 1024 * 1024,
+        [PageSpeed] = 8 * 1024 * 1024,
+        [Verification] = 1024 * 1024,
+    };
+
+    /// <summary><paramref name="requested"/> within 0 and the client's cap.</summary>
+    public static int ClampBody(string client, int requested)
+        => Math.Clamp(requested, 0, MaxBodyBytes.TryGetValue(client, out var max) ? max : 0);
 }

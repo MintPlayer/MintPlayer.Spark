@@ -21,6 +21,7 @@ WORKDIR /src
 # Selective csproj COPY for restore-layer caching. This must be SeoTester's full transitive ProjectReference
 # closure, because `dotnet restore` below runs before `COPY . .`: a missing entry fails the restore inside the image.
 COPY ["apps/SeoTester/SeoTester/SeoTester.csproj", "apps/SeoTester/SeoTester/"]
+COPY ["apps/SeoTester/SeoTester.Fetching/SeoTester.Fetching.csproj", "apps/SeoTester/SeoTester.Fetching/"]
 COPY ["apps/SeoTester/SeoTester.Library/SeoTester.Library.csproj", "apps/SeoTester/SeoTester.Library/"]
 COPY ["libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj", "libs/attributes/MintPlayer.Spark.Attributes/"]
 COPY ["libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj", "libs/authorization/MintPlayer.Spark.Authorization/"]

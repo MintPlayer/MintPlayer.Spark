@@ -6,6 +6,7 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 using SeoTester.Crawler;
 using SeoTester.Entities;
+using SeoTester.Fetching;
 using SeoTester.Html;
 
 namespace SeoTester.Reports;
@@ -15,7 +16,7 @@ namespace SeoTester.Reports;
 /// <c>GET /seotester/og-image?page={pageResultId}</c>. The viewer's browser never loads the audited site's
 /// <c>og:image</c> itself: a site anyone can add would otherwise learn every viewer's address, and the report would
 /// make third-party requests. The server fetches it instead, through the SSRF-safe crawler client
-/// (<see cref="PageFetcher"/>: no private addresses, redirects re-checked, the crawler's user agent), and answers the
+/// (<see cref="ISeoFetcher"/>, the fetcher container in Production, D54: no private addresses, redirects re-checked, the crawler's user agent), and answers the
 /// bytes only when:
 /// <list type="bullet">
 /// <item>the caller may read the page (the <c>Read/PageResult</c> right and the organization row policy; an expired
@@ -41,7 +42,7 @@ internal sealed partial class OgImageEndpoint : IGetEndpoint
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly PageFetcher fetcher;
+    [Inject] private readonly ISeoFetcher fetcher;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -67,13 +68,22 @@ internal sealed partial class OgImageEndpoint : IGetEndpoint
             || OgImageRules.FetchableUrl(attribute.Value as string) is not { } url)
             return Results.NotFound();
 
-        var image = await Cache.GetOrCreateAsync(url.AbsoluteUri, async entry =>
+        OgImage? image;
+        try
         {
-            entry.AbsoluteExpirationRelativeToNow = Keep;
-            var fetched = await FetchAsync(url, ct);
-            entry.Size = Math.Max(1, fetched?.Bytes.Length ?? 1);
-            return fetched;
-        });
+            image = await Cache.GetOrCreateAsync(url.AbsoluteUri, async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = Keep;
+                var fetched = await FetchAsync(url, ct);
+                entry.Size = Math.Max(1, fetched?.Bytes.Length ?? 1);
+                return fetched;
+            });
+        }
+        catch (SeoFetcherUnavailableException)
+        {
+            // Our fetcher is down, not the site's image: nothing cached, the same 404 as any refusal.
+            return Results.NotFound();
+        }
         if (image is null)
             return Results.NotFound();
 

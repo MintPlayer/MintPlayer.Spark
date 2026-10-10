@@ -3,7 +3,10 @@
 # "seotester"), and reuses CodeCoverage's RavenDB server and mail relay instead of running its own.
 #
 # Networks (the point of this file):
-#   web                              Traefik's public network (external). Only seotester-app joins it.
+#   web                              Traefik's public network (external). Only seotester-app joins it. Also the app's only
+#                                    route out, which it still needs for the sign-in providers' token endpoints and Web
+#                                    Push; no request to an audited site uses it (the app registers no client for them in
+#                                    Production, D54).
 #   seo-raven                        internal: true, external (created by either deploy, removed by neither): this
 #                                    app and CodeCoverage's coverage-raven ONLY (HTTPS with client certificates; the
 #                                    app's certificate may use the database "SeoTester" and nothing else, PRD D56).
@@ -111,6 +114,39 @@ services:
       - seo-raven
       - seo-mail
       - seo-browser
+      - seo-fetch
+    restart: unless-stopped
+
+  seo-fetcher:
+    # apps/SeoTester/SeoTester.Fetcher (PRD D54): the SSRF-safe clients, the TLS probes and DNS behind an internal API.
+    # No database client in the image (a test reads its restore graph), no route to RavenDB or the relay on the network.
+    # Pull-only and floating like the app, built from the same commit by the same deploy.
+    image: ghcr.io/mintplayer/seotester-fetcher:master
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # The shared secret the app calls with (constant-time compare; at least 32 characters or the fetcher refuses to start).
+      - SeoFetcher__Key=${SEO_FETCHER_KEY:?SEO_FETCHER_KEY is required, see docs/seotester/deploy.md}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Bodies are capped (16 MB a browser resource, 10 MB a page) and one call ends after 120 s; a first guess, measured
+    # at the first deploy with Chromium's figures (Q-M10b).
+    mem_limit: 512m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # No published port. seo-fetch: only the app reaches it. seo-egress: its way out. Nothing else.
+    networks:
+      - seo-fetch
+      - seo-egress
     restart: unless-stopped
 
   seo-chromium:
@@ -159,3 +195,10 @@ networks:
   seo-browser:
     driver: bridge
     internal: true
+  # The app ↔ fetcher API (D54): no egress, two members.
+  seo-fetch:
+    driver: bridge
+    internal: true
+  # The fetcher's route out (D54): this compose project's own bridge, joined by the fetcher alone.
+  seo-egress:
+    driver: bridge

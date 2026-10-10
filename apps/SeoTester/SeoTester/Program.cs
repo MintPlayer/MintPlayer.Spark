@@ -12,12 +12,11 @@ using MintPlayer.Spark.Notifications;
 using MintPlayer.Spark.Organizations;
 using MintPlayer.Spark.Settings;
 using MintPlayer.Spark.Sharing;
-using MintPlayer.Spark.Http;
 using SeoTester;
 using SeoTester.Audits;
 using SeoTester.Catalogue;
 using SeoTester.Crawler;
-using SeoTester.Dns;
+using SeoTester.Fetching;
 using SeoTester.Legal;
 using SeoTester.Monitoring;
 using SeoTester.Entities;
@@ -78,8 +77,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddRecipients();
     spark.AddHistory();
 
-    // X2: every fetch of a user-chosen URL goes through the SSRF-safe client (Spark:SafeHttp).
-    spark.AddSafeHttp();
+    // X2: every fetch of a user-chosen URL goes through an SSRF-safe client (Spark:SafeHttp), and in Production only in
+    // the seo-fetcher container (D54, AddSeoCrawler below): this process registers no general-purpose client for them.
 
     // X9 + X3: every gate and limit of PRD §6 and the category weights, administrators only
     // (security.json binds settings:administrators to Administrators); the per-user run limits are quotas.
@@ -105,15 +104,10 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 builder.Services.AddScoped<ISparkShareGate, SharingSwitch>();
 
 // M8: verification (F3), the audit start (§4.3), the catalogue (D32), the abuse log (D28) and D26's cascade.
-builder.Services.AddSingleton<ISeoDns, DnsClientSeoDns>();
-builder.Services.AddSeoCrawler(builder.Configuration);
-builder.Services.AddSafeHttpClient(SiteVerification.HttpClientName, builder.Configuration.GetSection("Spark:SafeHttp"), o =>
-{
-    // A proof must come from the site itself: an open redirect elsewhere proves nothing.
-    o.RedirectsWithinOriginOnly = true;
-    o.MaxRedirects = 3;
-    o.Timeout = TimeSpan.FromSeconds(15);
-});
+// D54: every request to a target (crawl, probe, TLS, DNS, registries, PageSpeed, verification proofs, og:image, the
+// browser's routed requests) goes through ISeoFetcher: in this process outside Production, the seo-fetcher container
+// in Production (SeoTester:Fetcher, which refuses InProcess there).
+builder.Services.AddSeoCrawler(builder.Configuration, SeoFetchingServices.ResolveMode(builder.Configuration, builder.Environment));
 builder.Services.AddScoped<SiteVerification>();
 builder.Services.AddScoped<AuditStarter>();
 builder.Services.AddScoped<AuditLog>();

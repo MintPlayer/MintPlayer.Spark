@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Raven.Client.Documents;
 using SeoTester.Crawler;
+using SeoTester.Fetching;
 using SeoTester.Entities;
 
 namespace SeoTester.PageSpeed;
@@ -37,7 +38,7 @@ public sealed class PageSpeedOptions
 /// header (never in the URL, so neither a log line nor a stored URL can hold it), a field mask that keeps the answer
 /// to the parts SeoTester reads, and only the summary kept (cached a day in <c>LookupCaches/psi/…</c>).
 /// </summary>
-public sealed class PageSpeedClient(IDocumentStore store, PageFetcher fetcher, IOptions<PageSpeedOptions> options, TimeProvider time)
+public sealed class PageSpeedClient(IDocumentStore store, ISeoFetcher fetcher, IOptions<PageSpeedOptions> options, TimeProvider time)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 

@@ -10,8 +10,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<!-- TXT lookups for ownership verification (F3); the crawl's DNS checks (CAA, SPF, DMARC, …) in M9. -->
-		<PackageReference Include="DnsClient" Version="1.8.0" />
 		<!-- M10: the headless browser (PRD F12, F14, §6). Production drives the Chromium container over ConnectAsync, whose
 		     run-server must be this exact major.minor (docs/seotester/README.md); Development and the browser tests launch a
 		     local Chromium (pwsh bin/.../playwright.ps1 install chromium). Same version as the E2E tests. -->
@@ -26,6 +24,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\SeoTester.Library\SeoTester.Library.csproj" />
+		<!-- D54: every request to a target goes through ISeoFetcher (in process, or the seo-fetcher container in Production). -->
+		<ProjectReference Include="..\SeoTester.Fetching\SeoTester.Fetching.csproj" />
 		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />

@@ -49,6 +49,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
     <ProjectReference Include="..\SeoTester\SeoTester.csproj" />
+    <!-- D54: the fetcher container's host, booted in-process for the remote-fetcher tests. -->
+    <ProjectReference Include="..\SeoTester.Fetcher\SeoTester.Fetcher.csproj" />
   </ItemGroup>
 
 </Project>

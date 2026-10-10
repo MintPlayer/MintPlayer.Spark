@@ -179,7 +179,7 @@ public class RenderPipelineTests(RenderHostFixture host, ITestOutputHelper outpu
         var services = host.Factory.Services;
         var renderer = services.GetRequiredService<SeoTester.Rendering.PageRenderer>();
         using var pacer = new SeoTester.Crawler.HostPacer(1, TimeSpan.Zero, null, TimeProvider.System);
-        using var network = new SeoTester.Rendering.RenderNetwork(services.GetRequiredService<IHttpClientFactory>(), origin,
+        using var network = new SeoTester.Rendering.RenderNetwork(services.GetRequiredService<SeoTester.Fetching.ISeoFetcher>(), origin,
             SeoTester.Crawling.RobotsTxt.AllowAll, pacer, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
         for (var round = 0; round < 3; round++)

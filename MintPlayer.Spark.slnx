@@ -34,6 +34,8 @@
     <Project Path="apps/QnA/QnA/QnA.csproj" />
   </Folder>
   <Folder Name="/apps/SeoTester/">
+    <Project Path="apps/SeoTester/SeoTester.Fetcher/SeoTester.Fetcher.csproj" />
+    <Project Path="apps/SeoTester/SeoTester.Fetching/SeoTester.Fetching.csproj" />
     <Project Path="apps/SeoTester/SeoTester.Library/SeoTester.Library.csproj" />
     <Project Path="apps/SeoTester/SeoTester.Tests/SeoTester.Tests.csproj" />
     <Project Path="apps/SeoTester/SeoTester/SeoTester.csproj" />
@@ -129,9 +131,9 @@
   <Folder Name="/libs/spark/">
     <Project Path="libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj" />
     <Project Path="libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj" />
+    <Project Path="libs/spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj" />
   </Folder>
   <Folder Name="/libs/subscription_worker/">
-    <Project Path="libs/spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj" />
     <Project Path="libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
     <Project Path="libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj" />
   </Folder>

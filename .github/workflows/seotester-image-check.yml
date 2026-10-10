@@ -90,3 +90,24 @@ jobs:
         file: ./apps/SeoTester/chromium/Dockerfile
         push: false
         cache-from: type=gha,scope=seotester-chromium
+
+  build-fetcher:
+    name: Build the fetcher image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    # The fetcher (docs/seo_analyzer_PRD.md D54): no database client, built from the repository root like the app.
+    - name: Build the image
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/SeoTester/SeoTester.Fetcher/Dockerfile
+        push: false
+        cache-from: type=gha,scope=seotester-fetcher

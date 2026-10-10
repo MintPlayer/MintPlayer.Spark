@@ -5,6 +5,7 @@ using Microsoft.Playwright;
 using MintPlayer.Spark.Http;
 using SeoTester.Crawler;
 using SeoTester.Crawling;
+using SeoTester.Fetching;
 
 namespace SeoTester.Rendering;
 
@@ -13,22 +14,17 @@ namespace SeoTester.Rendering;
 /// contexts makes is fetched here, through the SSRF-safe client <see cref="SeoHttp.Browser"/> (redirects handed back
 /// to Chromium, which asks again, so each hop is checked), politely (the audited host's connections per host; its
 /// documents also wait for the tier's interval), within robots.txt for the audited host, with analytics hits answered
-/// locally and never sent on, and static resources fetched once per run.
+/// locally and never sent on, and static resources fetched once per run. The pacing, robots.txt, the sink and the
+/// cache stay here, in the app; the request itself is made by <see cref="ISeoFetcher"/>: the fetcher container in
+/// Production (D54), so Chromium's traffic leaves from the one process that has no database.
 /// </summary>
-public sealed class RenderNetwork(IHttpClientFactory httpClients, Uri origin, RobotsTxt robots, HostPacer pacer, ILogger logger) : IDisposable
+public sealed class RenderNetwork(ISeoFetcher fetcher, Uri origin, RobotsTxt robots, HostPacer pacer, ILogger logger) : IDisposable
 {
     /// <summary>Largest request body passed on (a form post or an API call of the page's script).</summary>
-    public const int MaxRequestBodyBytes = 1024 * 1024;
+    public const int MaxRequestBodyBytes = SeoFetchLimits.MaxRequestBodyBytes;
 
     /// <summary>Largest response kept in the per-run cache.</summary>
     private const int MaxCachedBytes = 2 * 1024 * 1024;
-
-    /// <summary>Request headers never passed on: hop-by-hop, the ones the client sets itself, and HTTP/2 pseudo-headers.</summary>
-    private static readonly HashSet<string> DroppedRequestHeaders = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "host", "connection", "keep-alive", "content-length", "transfer-encoding", "te", "trailer", "upgrade", "accept-encoding",
-        "proxy-authorization", "proxy-connection",
-    };
 
     /// <summary>Response headers not handed to Chromium: the body is already decompressed and complete.</summary>
     private static readonly HashSet<string> DroppedResponseHeaders = new(StringComparer.OrdinalIgnoreCase)
@@ -101,56 +97,52 @@ public sealed class RenderNetwork(IHttpClientFactory httpClients, Uri origin, Ro
         using (slot)
         {
             Interlocked.Increment(ref fetches);
-            using var request = new HttpRequestMessage(new HttpMethod(method), url)
-            {
-                Version = HttpVersion.Version20,
-                VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
-            };
-            if (body is { Length: > 0 })
-                request.Content = new ByteArrayContent(body);
-            foreach (var (name, value) in headers)
-            {
-                if (name.StartsWith(':') || DroppedRequestHeaders.Contains(name))
-                    continue;
-                if (!request.Headers.TryAddWithoutValidation(name, value))
-                    request.Content?.Headers.TryAddWithoutValidation(name, value);
-            }
-            // The browser's user agent carries the crawler's identity (PageRenderer); anything else asks as the crawler (D29).
-            if (!request.Headers.UserAgent.ToString().Contains(SeoTesterBot.RobotsToken, StringComparison.Ordinal))
-            {
-                request.Headers.UserAgent.Clear();
-                request.Headers.UserAgent.ParseAdd(SeoTesterBot.UserAgent);
-            }
+            FetchResult answer;
             try
             {
-                using var response = await httpClients.CreateClient(SeoHttp.Browser).SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
-                var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-                var responseHeaders = new List<KeyValuePair<string, string>>();
-                foreach (var header in response.Headers.Concat(response.Content.Headers))
+                // The request is passed on as the browser made it (hop-by-hop headers dropped, the crawler's identity kept
+                // in the user agent: PageFetcher.SendAsync), by the fetcher (D54) or in this process.
+                answer = await fetcher.FetchAsync(new SeoFetchRequest(url, SeoHttp.MaxBodyBytes[SeoHttp.Browser])
                 {
-                    if (DroppedResponseHeaders.Contains(header.Key))
-                        continue;
-                    foreach (var value in header.Value)
-                        responseHeaders.Add(new(header.Key.ToLowerInvariant(), value));
+                    Method = method,
+                    Client = SeoHttp.Browser,
+                    Headers = headers,
+                    Body = body,
+                }, cancellationToken);
+            }
+            catch (SeoFetcherUnavailableException ex)
+            {
+                logger.LogWarning("Browser request to {Url} failed: {Reason}", url, ex.Message);
+                return RoutedResponse.Failed("fetcher unavailable");
+            }
+            if (answer.StatusCode == 0)
+            {
+                if (answer.Refused)
+                {
+                    logger.LogDebug("Browser request to {Url} refused: {Reason}", url, answer.Error);
+                    return RoutedResponse.Blocked(answer.Error!["refused: ".Length..]);
                 }
-                var result = new RoutedResponse((int)response.StatusCode, responseHeaders, bytes, "fulfilled", null);
-                if (response.Content.Headers.ContentType?.MediaType is { } type && (type.Contains("javascript") || type.Contains("ecmascript"))
-                    && AnalyticsVendors.ToolForScript(url) is { } scriptTool)
-                    tools.TryAdd(scriptTool, 0);
-                if (cacheable && result.Status == 200 && bytes.Length <= MaxCachedBytes
-                    && !(response.Headers.CacheControl is { NoStore: true }))
-                    cache.TryAdd(url.AbsoluteUri, result);
-                return result;
+                return RoutedResponse.Failed(answer.Error ?? "no answer");
             }
-            catch (SafeHttpBlockedException blocked)
-            {
-                logger.LogDebug("Browser request to {Url} refused: {Reason}", url, blocked.Reason);
-                return RoutedResponse.Blocked(blocked.Reason.ToString());
-            }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or TimeoutException && !cancellationToken.IsCancellationRequested)
-            {
-                return RoutedResponse.Failed(ex is TaskCanceledException or TimeoutException ? "timed out" : "no answer");
-            }
+            // The whole body or nothing: Chromium must not render a cut file as if it were complete.
+            if (answer.Truncated)
+                return RoutedResponse.Blocked(nameof(SafeHttpBlockReason.ResponseTooLarge));
+
+            var bytes = answer.Body ?? [];
+            var responseHeaders = new List<KeyValuePair<string, string>>();
+            foreach (var (name, value) in answer.Headers)
+                if (!DroppedResponseHeaders.Contains(name))
+                    responseHeaders.Add(new(name, value));
+            foreach (var cookie in answer.SetCookies)
+                responseHeaders.Add(new("set-cookie", cookie));
+            var result = new RoutedResponse(answer.StatusCode, responseHeaders, bytes, "fulfilled", null);
+            if (answer.ContentType is { } type && (type.Contains("javascript") || type.Contains("ecmascript"))
+                && AnalyticsVendors.ToolForScript(url) is { } scriptTool)
+                tools.TryAdd(scriptTool, 0);
+            if (cacheable && result.Status == 200 && bytes.Length <= MaxCachedBytes
+                && answer.Header("cache-control")?.Contains("no-store", StringComparison.OrdinalIgnoreCase) != true)
+                cache.TryAdd(url.AbsoluteUri, result);
+            return result;
         }
     }
 

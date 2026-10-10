@@ -4,6 +4,7 @@ using SeoTester.Checks;
 using SeoTester.Crawling;
 using SeoTester.Dns;
 using SeoTester.Entities;
+using SeoTester.Fetching;
 using SeoTester.Html;
 
 namespace SeoTester.Crawler;
@@ -24,7 +25,7 @@ public sealed record ProbeOutcome(RobotsTxt Robots, RobotsFacts RobotsFacts, Sit
 /// probes for exposed files run only when the run was granted them (verified sites by default, D11). A failing
 /// measurement makes its checks "error" (never a fail) and the probe carries on.
 /// </summary>
-public sealed class SiteProber(PageFetcher fetcher, ITlsProber tls, ISeoDns dns, ExternalLookups lookups, TimeProvider time, ILogger<SiteProber> logger)
+public sealed class SiteProber(ISeoFetcher fetcher, ExternalLookups lookups, TimeProvider time, ILogger<SiteProber> logger)
 {
     private const int SmallFile = 64 * 1024;
     private const int MaxSitemapBytes = 10 * 1024 * 1024;
@@ -70,7 +71,7 @@ public sealed class SiteProber(PageFetcher fetcher, ITlsProber tls, ISeoDns dns,
 
         // 5. TLS.
         if (facts.IsHttps)
-            facts.Tls = await Guard(() => tls.ProbeAsync(host, home.Port, cancellationToken), "TLS");
+            facts.Tls = await Guard(() => fetcher.ProbeTlsAsync(host, home.Port, cancellationToken), "TLS");
 
         // 6. Well-known files, the favicon and a page that cannot exist (soft 404).
         facts.SecurityTxt = await FileAsync(pacer, robots, home, "/.well-known/security.txt", SmallFile, cancellationToken);
@@ -96,7 +97,7 @@ public sealed class SiteProber(PageFetcher fetcher, ITlsProber tls, ISeoDns dns,
             await HomeResourcesAsync(pacer, robots, home, homeHtml, facts, cancellationToken);
 
         // 9. DNS, RDAP and the HSTS preload list (third parties and resolvers, not the site).
-        var apex = await Guard(() => dns.ZoneApexAsync(host, cancellationToken), "SOA") ?? Fallback(host);
+        var apex = await Guard(() => fetcher.ZoneApexAsync(host, cancellationToken), "SOA") ?? Fallback(host);
         facts.Dns = await Guard(() => DnsAsync(host, apex, cancellationToken), "DNS");
         facts.Rdap = await Guard(() => lookups.RdapAsync(apex, cancellationToken), "RDAP");
         if (facts.IsHttps)
@@ -140,8 +141,8 @@ public sealed class SiteProber(PageFetcher fetcher, ITlsProber tls, ISeoDns dns,
         if (!other.Contains('.'))
             return null;
         var url = new Uri($"{home.Scheme}://{other}/");
-        var a = await dns.QueryAsync(other, SeoDnsType.A, cancellationToken);
-        var aaaa = await dns.QueryAsync(other, SeoDnsType.Aaaa, cancellationToken);
+        var a = await fetcher.QueryDnsAsync(other, SeoDnsType.A, cancellationToken);
+        var aaaa = await fetcher.QueryDnsAsync(other, SeoDnsType.Aaaa, cancellationToken);
         if (a is null && aaaa is null)
             return null; // could not ask: not measured
         if ((a?.Count ?? 0) + (aaaa?.Count ?? 0) == 0)
@@ -288,25 +289,25 @@ public sealed class SiteProber(PageFetcher fetcher, ITlsProber tls, ISeoDns dns,
         IReadOnlyList<string>? caa = [];
         for (var name = host; ; name = name[(name.IndexOf('.') + 1)..])
         {
-            caa = await dns.QueryAsync(name, SeoDnsType.Caa, cancellationToken);
+            caa = await fetcher.QueryDnsAsync(name, SeoDnsType.Caa, cancellationToken);
             if (caa is null || caa.Count > 0 || name == apex || !name.Contains('.'))
                 break;
         }
-        var ds = await dns.QueryAsync(apex, SeoDnsType.Ds, cancellationToken);
-        var nameservers = await dns.QueryAsync(apex, SeoDnsType.Ns, cancellationToken);
+        var ds = await fetcher.QueryDnsAsync(apex, SeoDnsType.Ds, cancellationToken);
+        var nameservers = await fetcher.QueryDnsAsync(apex, SeoDnsType.Ns, cancellationToken);
         var addresses = new List<string>();
         foreach (var ns in (nameservers ?? []).Take(4))
-            addresses.AddRange(await dns.QueryAsync(ns, SeoDnsType.A, cancellationToken) ?? []);
-        var mx = await dns.QueryAsync(apex, SeoDnsType.Mx, cancellationToken);
+            addresses.AddRange(await fetcher.QueryDnsAsync(ns, SeoDnsType.A, cancellationToken) ?? []);
+        var mx = await fetcher.QueryDnsAsync(apex, SeoDnsType.Mx, cancellationToken);
         return new DnsFacts(
             apex,
             caa,
             ds is null ? null : ds.Count > 0,
-            await dns.QueryAsync(apex, SeoDnsType.Txt, cancellationToken),
-            await dns.QueryAsync("_dmarc." + apex, SeoDnsType.Txt, cancellationToken),
-            await dns.QueryAsync("_mta-sts." + apex, SeoDnsType.Txt, cancellationToken),
+            await fetcher.QueryDnsAsync(apex, SeoDnsType.Txt, cancellationToken),
+            await fetcher.QueryDnsAsync("_dmarc." + apex, SeoDnsType.Txt, cancellationToken),
+            await fetcher.QueryDnsAsync("_mta-sts." + apex, SeoDnsType.Txt, cancellationToken),
             mx is null ? null : mx.Count > 0,
-            await dns.QueryAsync(host, SeoDnsType.Aaaa, cancellationToken),
+            await fetcher.QueryDnsAsync(host, SeoDnsType.Aaaa, cancellationToken),
             nameservers,
             addresses);
     }

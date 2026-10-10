@@ -1,10 +1,10 @@
-using MintPlayer.Spark.Http;
 using MintPlayer.Spark.Organizations;
 using MintPlayer.Spark.Settings;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using SeoTester.Audits;
-using SeoTester.Dns;
+using SeoTester.Crawler;
+using SeoTester.Fetching;
 using SeoTester.Entities;
 using SeoTester.LookupReferences;
 using SeoTester.Settings;
@@ -41,8 +41,7 @@ public sealed record VerifyResult(VerifyOutcome Outcome, string? Method, string?
 /// </summary>
 public sealed partial class SiteVerification(
     IDocumentStore store,
-    ISeoDns dns,
-    IHttpClientFactory httpClients,
+    ISeoFetcher fetcher,
     ISparkOrganizations organizations,
     ISparkSettings settings,
     AuditLog auditLog,
@@ -50,7 +49,7 @@ public sealed partial class SiteVerification(
     ILogger<SiteVerification> logger)
 {
     /// <summary>The SSRF-safe client for the file and meta-tag proofs: redirects only within the site's origin.</summary>
-    public const string HttpClientName = "SeoTester.Verification";
+    public const string HttpClientName = SeoHttp.Verification;
 
     /// <summary>
     /// Looks for the token of <paramref name="siteId"/> and records the outcome. <paramref name="userId"/> asked (an
@@ -161,7 +160,7 @@ public sealed partial class SiteVerification(
         {
             var found = method switch
             {
-                VerificationMethod.Dns => OwnershipProof.MatchesTxt(await dns.GetTxtRecordsAsync(OwnershipProof.RecordName(site.Host), cancellationToken), token),
+                VerificationMethod.Dns => OwnershipProof.MatchesTxt(await fetcher.GetTxtRecordsAsync(OwnershipProof.RecordName(site.Host), cancellationToken), token),
                 VerificationMethod.WellKnownFile => OwnershipProof.MatchesWellKnown(await FetchAsync(site.Origin + OwnershipProof.WellKnownPath, cancellationToken), token),
                 _ => OwnershipProof.MatchesMeta(await FetchAsync(site.Origin + "/", cancellationToken), token),
             };
@@ -171,30 +170,22 @@ public sealed partial class SiteVerification(
         return null;
     }
 
-    /// <summary>A 200's body as text, at most <see cref="OwnershipProof.MaxBytes"/>; null for anything else, refusals included.</summary>
+    /// <summary>
+    /// A 200's body as text, at most <see cref="OwnershipProof.MaxBytes"/>; null for anything else, refusals included.
+    /// A fetcher that cannot be used (<see cref="SeoFetcherUnavailableException"/>) is thrown on, never counted as a
+    /// missing proof: an outage of ours must not withdraw anyone's verification.
+    /// </summary>
     private async Task<string?> FetchAsync(string url, CancellationToken cancellationToken)
     {
-        try
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return null;
+        var result = await fetcher.FetchAsync(uri, OwnershipProof.MaxBytes, cancellationToken, client: HttpClientName);
+        if (result.StatusCode != 200 || result.Body is null)
         {
-            var client = httpClients.CreateClient(HttpClientName);
-            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
-                return null;
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var buffer = new byte[OwnershipProof.MaxBytes];
-            var read = 0;
-            while (read < buffer.Length)
-            {
-                var n = await stream.ReadAsync(buffer.AsMemory(read), cancellationToken);
-                if (n == 0) break;
-                read += n;
-            }
-            return System.Text.Encoding.UTF8.GetString(buffer, 0, read);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or SafeHttpBlockedException or TaskCanceledException or IOException && !cancellationToken.IsCancellationRequested)
-        {
-            logger.LogInformation("Verification fetch of {Url} failed: {Message}", url, ex.Message);
+            if (result.Error is { } error)
+                logger.LogInformation("Verification fetch of {Url} failed: {Message}", url, error);
             return null;
         }
+        return System.Text.Encoding.UTF8.GetString(result.Body);
     }
 }

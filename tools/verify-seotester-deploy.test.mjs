@@ -39,6 +39,9 @@ const compose = yaml(COMPOSE);
 const services = compose.services ?? {};
 const APP = 'seotester-app';
 const CHROMIUM = 'seo-chromium';
+const FETCHER = 'seo-fetcher';
+const FETCHER_CSPROJ = 'apps/SeoTester/SeoTester.Fetcher/SeoTester.Fetcher.csproj';
+const FETCHER_DOCKERFILE = 'apps/SeoTester/SeoTester.Fetcher/Dockerfile';
 
 /** A service's networks as names (compose allows a list or a map). */
 const networksOf = (service) => (Array.isArray(service.networks) ? service.networks : Object.keys(service.networks ?? {}));
@@ -64,8 +67,8 @@ const pathsOf = (workflow, event) => yaml(workflow).on[event].paths;
 /** Path filters for libraries (`libs/<x>/<Project>/**`), as project directories. */
 const libFilters = (paths) => paths.filter((p) => p.startsWith('libs/') && p.endsWith('/**') && !p.startsWith('libs/node_packages/')).map((p) => p.slice(0, -3)).sort();
 
-test('only the app and the Chromium container are in the compose file', () => {
-  assert.deepEqual(Object.keys(services).sort(), [CHROMIUM, APP].sort());
+test('only the app, the Chromium container and the fetcher are in the compose file', () => {
+  assert.deepEqual(Object.keys(services).sort(), [CHROMIUM, APP, FETCHER].sort());
 });
 
 test('the Chromium container is reachable only by SeoTester and reaches nothing', () => {
@@ -108,7 +111,7 @@ test('every image is pinned, and the Chromium tag is the Playwright version on b
 
 test('the app joins Traefik and the backend networks it shares with CodeCoverage', () => {
   const app = services[APP];
-  assert.deepEqual(networksOf(app).sort(), ['seo-browser', 'seo-mail', 'seo-raven', 'web']);
+  assert.deepEqual(networksOf(app).sort(), ['seo-browser', 'seo-fetch', 'seo-mail', 'seo-raven', 'web']);
   assert.equal(compose.networks.web?.external, true);
 
   const labels = app.labels;
@@ -160,4 +163,69 @@ test('every variable of the compose file is documented in .env.example', () => {
   const used = new Set([...read(COMPOSE).matchAll(/\$\{([A-Z0-9_]+)/g)].map((m) => m[1]));
   const example = read('apps/SeoTester/.env.example');
   for (const name of used) assert.match(example, new RegExp(`^#?${name}=`, 'm'), `${name} is in apps/SeoTester/.env.example`);
+});
+
+// ─── The fetcher (PRD D54): the only container that talks to audited sites, with no way to the database ────────────
+
+test('the fetcher is on seo-fetch and its egress network only, never on the RavenDB or mail networks', () => {
+  const fetcher = services[FETCHER];
+  assert.deepEqual(networksOf(fetcher).sort(), ['seo-egress', 'seo-fetch'], 'seo-fetcher joins seo-fetch and seo-egress, nothing else');
+  assert.equal(compose.networks['seo-fetch']?.internal, true, 'seo-fetch is internal: true (the API only, no egress)');
+  assert.notEqual(compose.networks['seo-egress']?.internal, true, 'seo-egress is the fetcher\'s route out');
+  assert.notEqual(compose.networks['seo-egress']?.external, true, 'seo-egress belongs to this project, shared with no other stack');
+  const members = (network) => Object.entries(services).filter(([, s]) => networksOf(s).includes(network)).map(([name]) => name).sort();
+  assert.deepEqual(members('seo-fetch'), [APP, FETCHER].sort(), 'seo-fetch holds exactly the app and the fetcher');
+  assert.deepEqual(members('seo-egress'), [FETCHER], 'only the fetcher has seo-egress');
+  for (const network of ['seo-raven', 'seo-mail', 'seo-browser', 'web']) {
+    assert.ok(!networksOf(fetcher).includes(network), `the fetcher is not on ${network}`);
+  }
+  assert.equal(fetcher.ports, undefined, 'the fetcher publishes no port');
+  assert.equal(fetcher.volumes, undefined, 'the fetcher mounts nothing (no certificates, no keys)');
+});
+
+test('the fetcher runs read-only, without capabilities, with limits and a healthcheck on its /health', () => {
+  const fetcher = services[FETCHER];
+  assert.equal(fetcher.read_only, true, 'read_only: true');
+  assert.deepEqual(fetcher.cap_drop, ['ALL']);
+  assert.ok(fetcher.security_opt?.includes('no-new-privileges:true'));
+  assert.ok(fetcher.mem_limit, 'mem_limit');
+  assert.ok(fetcher.pids_limit, 'pids_limit');
+  assert.match(JSON.stringify(fetcher.healthcheck?.test), /GET \/health /);
+  assert.match(read('apps/SeoTester/SeoTester.Fetching/SeoFetcherProtocol.cs'), /HealthPath = "\/health"/);
+  assert.equal(fetcher.image, 'ghcr.io/mintplayer/seotester-fetcher:master', 'pinned like the app, built from the same commit');
+});
+
+test('app and fetcher share one secret, documented in .env.example, and the app calls the fetcher by its service name', () => {
+  const env = (service) => (service.environment ?? []).map((e) => e.split('=')[0]);
+  assert.ok(env(services[FETCHER]).includes('SeoFetcher__Key'), 'the fetcher reads SeoFetcher__Key');
+  assert.ok(env(services[APP]).includes('SeoTester__Fetcher__Key'), 'the app reads SeoTester__Fetcher__Key');
+  assert.match(read(COMPOSE), /SeoFetcher__Key=\$\{SEO_FETCHER_KEY:\?/);
+  assert.match(read(COMPOSE), /SeoTester__Fetcher__Key=\$\{SEO_FETCHER_KEY:\?/);
+  assert.match(read('apps/SeoTester/.env.example'), /^SEO_FETCHER_KEY=/m);
+  assert.ok(!env(services[FETCHER]).some((name) => /RavenDb|Mail|Smtp/i.test(name)), 'no database or mail setting on the fetcher');
+  const settings = JSON.parse(read('apps/SeoTester/SeoTester/appsettings.Production.json').replace(/^\s*\/\/.*$/gm, ''));
+  assert.equal(settings.SeoTester.Fetcher.Mode, 'Remote');
+  assert.equal(new URL(settings.SeoTester.Fetcher.Url).hostname, FETCHER);
+  assert.equal(settings.SeoTester.Fetcher.Key, undefined, 'the key is never in the repository');
+});
+
+test('the fetcher\'s Dockerfile names exactly its csproj graph, which holds no RavenDB client and no Spark runtime', () => {
+  const closure = projectClosure(FETCHER_CSPROJ);
+  const copied = [...read(FETCHER_DOCKERFILE).matchAll(/^COPY \["([^"]+\.csproj)"/gm)].map((m) => m[1]).sort();
+  assert.deepEqual(copied, closure);
+  assert.ok(!closure.includes('libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj'), 'no MintPlayer.Spark (it carries RavenDB.Client)');
+  for (const project of closure) {
+    assert.doesNotMatch(read(project), /<PackageReference\s+Include="RavenDB/, `${project} references no RavenDB package`);
+  }
+});
+
+test('both workflows build the fetcher image and the deploy waits for it', () => {
+  const deploy = yaml(DEPLOY);
+  const check = yaml(CHECK);
+  const builds = (workflow) => Object.values(workflow.jobs).flatMap((job) => job.steps ?? [])
+    .filter((s) => s.uses?.startsWith('docker/build-push-action')).map((s) => s.with.file);
+  assert.ok(builds(deploy).includes('./apps/SeoTester/SeoTester.Fetcher/Dockerfile'));
+  assert.ok(builds(check).includes('./apps/SeoTester/SeoTester.Fetcher/Dockerfile'));
+  assert.ok(deploy.jobs.deploy.needs.includes('build-fetcher'), 'the deploy waits for the fetcher image');
+  assert.equal(deploy.env.FETCHER_IMAGE_NAME, 'mintplayer/seotester-fetcher');
 });
