@@ -20,24 +20,26 @@ namespace SeoTester.CustomActions;
 public partial class StartAuditAction : SparkCustomAction
 {
     [Inject] private readonly AuditStarter starter;
+    [Inject] private readonly MintPlayer.Spark.Services.IModelLoader models;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly IManager manager;
 
     public override Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
-        => SiteActionSupport.StartAsync(args, starter, session, httpContextAccessor, manager, fullCrawl: false, cancellationToken);
+        => SiteActionSupport.StartAsync(args, starter, session, httpContextAccessor, manager, models, fullCrawl: false, cancellationToken);
 }
 
 /// <summary><c>StartFullCrawl</c> on a verified site: the weekly full-site crawl (D14).</summary>
 public partial class StartFullCrawlAction : SparkCustomAction
 {
     [Inject] private readonly AuditStarter starter;
+    [Inject] private readonly MintPlayer.Spark.Services.IModelLoader models;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly IManager manager;
 
     public override Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
-        => SiteActionSupport.StartAsync(args, starter, session, httpContextAccessor, manager, fullCrawl: true, cancellationToken);
+        => SiteActionSupport.StartAsync(args, starter, session, httpContextAccessor, manager, models, fullCrawl: true, cancellationToken);
 }
 
 /// <summary>
@@ -81,12 +83,15 @@ public partial class VerifySiteAction : SparkCustomAction
 
 internal static class SiteActionSupport
 {
-    public static async Task StartAsync(CustomActionArgs args, AuditStarter starter, IAsyncDocumentSession session, IHttpContextAccessor accessor, IManager manager, bool fullCrawl, CancellationToken cancellationToken)
+    public static async Task StartAsync(CustomActionArgs args, AuditStarter starter, IAsyncDocumentSession session, IHttpContextAccessor accessor, IManager manager, MintPlayer.Spark.Services.IModelLoader models, bool fullCrawl, CancellationToken cancellationToken)
     {
         var site = await SiteAsync(args, session, cancellationToken);
         var result = await starter.StartAsync(site, UserId(accessor), fullCrawl, cancellationToken);
         args.SetResult(new { runId = result.RunId, joined = result.Joined });
         manager.Client.Notify(manager.GetTranslatedMessage(result.Joined ? "seo.auditJoined" : "seo.auditStarted", site.Origin), NotificationKind.Success);
+        // M11: the caller follows the run live on its page (a joined run is the one already in progress).
+        if (models.GetEntityTypeByName(nameof(AuditRun)) is { } runType)
+            manager.Client.Navigate(runType.Id, result.RunId);
     }
 
     /// <summary>The site of the detail page; the parent was re-loaded and row-checked for the action by the framework.</summary>

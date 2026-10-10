@@ -130,6 +130,9 @@ public sealed class RunPipeline(
         }
     }
 
+    /// <summary>The run's page in the SPA: <c>/po/{alias}/{id}</c>, the alias of <c>AuditRun.json</c> (the SPA resolves a type by alias or id).</summary>
+    public static string RunUrl(string runId) => "/po/audit-run/" + Uri.EscapeDataString(runId);
+
     public async Task NotifyAsync(AuditRun run, string title, string? body, string category, CancellationToken cancellationToken)
     {
         try
@@ -139,7 +142,7 @@ public sealed class RunPipeline(
                 UserIds = run.Participants.Count > 0 ? run.Participants : run.StartedBy is { } by ? [by] : [],
                 Title = title.Length > 200 ? title[..200] : title,
                 Body = body,
-                Url = "/po/auditrun/" + Uri.EscapeDataString(run.Id!),
+                Url = RunUrl(run.Id!),
                 OrganizationId = run.OrganizationId,
                 Category = category,
             }, cancellationToken);

@@ -29,5 +29,10 @@
     "icon": "ArrowCounterclockwise",
     "showedOn": "detail",
     "refreshOnCompleted": true
+  },
+  "ShareBadge": {
+    "icon": "Award",
+    "showedOn": "detail",
+    "refreshOnCompleted": false
   }
 }

@@ -37,4 +37,7 @@ public static class SeoActionNames
 
     /// <summary>On a completed audit: the report as PDF in the caller's language (F14, M10).</summary>
     public const string ExportReport = nameof(ExportReport);
+
+    /// <summary>A share link plus the Markdown of its SVG badge (F11, D31; Sites/SiteBadge.cs).</summary>
+    public const string ShareBadge = nameof(ShareBadge);
 }

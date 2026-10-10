@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. The operator dashboard (docs/seo_analyzer_PRD.md F16, D28) is virtual: no",
+    "clrType, no documents. OperatorDashboardActions.OnLoadAsync scaffolds it and sets the breadcrumb (the page title);",
+    "Read/OperatorDashboard is the Administrators' (security.json), which also hides its menu entry from everyone else.",
+    "The page lists the abuse log (the audit-log query); the SPA draws the usage and storage figures from",
+    "GET /seotester/admin/dashboard, which answers only a caller with the same right."
+  ],
+  "persistentObject": {
+    "id": "458035ba-1fc4-4f98-b24c-de1edbf8214c",
+    "name": "OperatorDashboard",
+    "alias": "operator-dashboard",
+    "tabs": [],
+    "groups": [],
+    "attributes": [],
+    "queries": [
+      "audit-log"
+    ]
+  }
+}

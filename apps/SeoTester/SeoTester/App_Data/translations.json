@@ -796,6 +796,12 @@
         "en": "Finding",
         "nl": "Bevinding"
       }
+    },
+    "OperatorDashboard": {
+      "label": {
+        "en": "Operator dashboard",
+        "nl": "Beheerdersdashboard"
+      }
     }
   },
   "queries": {
@@ -898,6 +904,16 @@
         "en": "Replace your edits of this check with the shipped version?",
         "nl": "Je wijzigingen aan deze controle vervangen door de originele versie?"
       }
+    },
+    "ShareBadge": {
+      "label": {
+        "en": "Badge",
+        "nl": "Badge"
+      },
+      "description": {
+        "en": "Makes a share link and shows the Markdown of a badge with the latest score.",
+        "nl": "Maakt een deellink en toont de Markdown van een badge met de laatste score."
+      }
     }
   },
   "programUnits": {
@@ -926,6 +942,10 @@
     "auditLog": {
       "en": "Audit log",
       "nl": "Auditlog"
+    },
+    "dashboard": {
+      "en": "Dashboard",
+      "nl": "Dashboard"
     }
   },
   "seo": {
@@ -980,6 +1000,42 @@
     "checkReset": {
       "en": "{0} is back to the shipped version.",
       "nl": "{0} staat terug op de originele versie."
+    },
+    "fullCrawlOff": {
+      "en": "Full-site crawls are switched off.",
+      "nl": "Volledige crawls staan uit."
+    },
+    "fullCrawlNeedsVerified": {
+      "en": "A full-site crawl needs a verified site. Verify your ownership first.",
+      "nl": "Een volledige crawl kan alleen voor een geverifieerde site. Verifieer eerst dat de site van jou is."
+    },
+    "coolDownRefused": {
+      "en": "{0} was audited recently. An unverified site can be audited again after a pause; verify your ownership to audit it any time.",
+      "nl": "{0} werd onlangs nog geaudit. Een niet-geverifieerde site kan pas na een pauze opnieuw; verifieer dat de site van jou is om ze altijd te kunnen auditen."
+    },
+    "auditQuotaRefused": {
+      "en": "You started as many audits as you may for now.",
+      "nl": "Je hebt zoveel audits gestart als voorlopig mag."
+    },
+    "fullCrawlQuotaRefused": {
+      "en": "You used your full-site crawl for this week.",
+      "nl": "Je hebt je volledige crawl van deze week al gebruikt."
+    },
+    "auditRace": {
+      "en": "{0} is being audited by someone else right now.",
+      "nl": "{0} wordt op dit moment door iemand anders geaudit."
+    },
+    "badgeTitle": {
+      "en": "Your site badge",
+      "nl": "Je sitebadge"
+    },
+    "badgeShownOnce": {
+      "en": "Paste this Markdown in a README or page. The badge shows the latest score and links to the shared report. It is shown only once; it stops working when you stop sharing or make a new link.",
+      "nl": "Plak deze Markdown in een README of pagina. De badge toont de laatste score en linkt naar het gedeelde rapport. Hij wordt maar één keer getoond en werkt niet meer als je stopt met delen of een nieuwe link maakt."
+    },
+    "dashboardTitle": {
+      "en": "Operator dashboard",
+      "nl": "Beheerdersdashboard"
     }
   }
 }

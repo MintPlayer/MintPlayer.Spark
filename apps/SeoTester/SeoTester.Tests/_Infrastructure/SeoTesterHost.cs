@@ -125,11 +125,18 @@ internal sealed class SeoPrincipalStartupFilter : IStartupFilter
 /// <summary>Requests as a given user, with Spark's antiforgery pair minted for that identity.</summary>
 internal static class SeoRequests
 {
-    public static async Task<(System.Net.HttpStatusCode Status, JsonElement Body, string Raw)> PostAsync(
+    public static Task<(System.Net.HttpStatusCode Status, JsonElement Body, string Raw)> PostAsync(
         HttpClient client, string url, object payload, string? user, params string[] roles)
+        => PostAsync(client, url, payload, user, language: null, roles);
+
+    /// <summary>As above, with an <c>Accept-Language</c> (the server's messages follow it).</summary>
+    public static async Task<(System.Net.HttpStatusCode Status, JsonElement Body, string Raw)> PostAsync(
+        HttpClient client, string url, object payload, string? user, string? language, params string[] roles)
     {
         var (cookie, xsrf) = await MintAsync(client, user, roles);
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
+        if (language is not null)
+            request.Headers.Add("Accept-Language", language);
         request.Headers.Add("Cookie", cookie);
         request.Headers.Add("X-XSRF-TOKEN", xsrf);
         AddIdentity(request, user, roles);

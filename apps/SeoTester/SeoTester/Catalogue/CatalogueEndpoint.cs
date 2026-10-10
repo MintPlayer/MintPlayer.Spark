@@ -1,0 +1,85 @@
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.SourceGenerators.Attributes;
+using Raven.Client.Documents;
+using SeoTester.Entities;
+using SeoTester.LookupReferences;
+using SeoTester.Reports;
+
+namespace SeoTester.Catalogue;
+
+/// <summary>
+/// <c>GET /seotester/catalogue?culture=en|nl</c>: the check catalogue's texts in one language, for the report pages
+/// (<c>docs/seo_analyzer_PRD.md</c> F5, §4.5): each check's title, summary, how-to-fix explanation, platform snippets and
+/// docs link, plus the category and severity labels. Anonymous, because the public share page (X6, D31) shows a run's
+/// results to anyone holding its link and needs the same texts; the catalogue is the same public reference text for
+/// everyone (D32, <c>CheckDefinitionActions.RowSecurityRationale</c>) and holds nothing per user or organization.
+/// The texts are the catalogue's current ones (D32), as in the printed report.
+/// </summary>
+internal sealed partial class CatalogueEndpoint : IGetEndpoint
+{
+    public const string Route = "/seotester/catalogue";
+
+    public static string Path => Route;
+
+    [Inject] private readonly IDocumentStore store;
+    [Inject] private readonly MintPlayer.Spark.Services.IRequestCultureResolver cultures;
+
+    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    {
+        var ct = httpContext.RequestAborted;
+        var requested = httpContext.Request.Query["culture"].ToString();
+        var culture = ReportPage.CultureOf(requested.Length > 0 ? requested : cultures.GetCurrentCulture());
+        var nl = culture == "nl";
+
+        using var session = store.OpenAsyncSession();
+        var definitions = await session.Query<CheckDefinition>().Take(2048).ToListAsync(ct);
+
+        static string? Pick(string? preferred, string? fallback) => string.IsNullOrWhiteSpace(preferred) ? fallback : preferred;
+        var checks = definitions
+            .OrderBy(d => d.CheckId, StringComparer.Ordinal)
+            .Select(d => new CatalogueCheck(
+                d.CheckId,
+                d.Category,
+                d.Severity,
+                d.Weight,
+                d.Enabled,
+                (nl ? Pick(d.TitleNl, d.TitleEn) : d.TitleEn) ?? d.CheckId,
+                nl ? Pick(d.SummaryNl, d.SummaryEn) : d.SummaryEn,
+                nl ? Pick(d.HowToFixNl, d.HowToFixEn) : d.HowToFixEn,
+                Snippets(d),
+                d.DocsUrl))
+            .ToList();
+
+        httpContext.Response.Headers.CacheControl = "public, max-age=300";
+        httpContext.Response.Headers.Vary = "Accept-Language";
+        return Results.Json(new
+        {
+            culture,
+            categories = CheckCategoryLookup.Items.Select(i => new { key = i.Key, label = i.Values.GetValue(culture) }),
+            severities = CheckSeverityLookup.Items.Select(i => new { key = i.Key, label = i.Values.GetValue(culture) }),
+            checks,
+        });
+    }
+
+    private static Dictionary<string, string>? Snippets(CheckDefinition d)
+    {
+        var snippets = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(d.SnippetNginx)) snippets["nginx"] = d.SnippetNginx;
+        if (!string.IsNullOrWhiteSpace(d.SnippetApache)) snippets["apache"] = d.SnippetApache;
+        if (!string.IsNullOrWhiteSpace(d.SnippetIis)) snippets["iis"] = d.SnippetIis;
+        if (!string.IsNullOrWhiteSpace(d.SnippetHtml)) snippets["html"] = d.SnippetHtml;
+        return snippets.Count > 0 ? snippets : null;
+    }
+}
+
+internal sealed record CatalogueCheck(
+    string Id,
+    string Category,
+    string Severity,
+    int Weight,
+    bool Enabled,
+    string Title,
+    string? Summary,
+    string? HowToFix,
+    Dictionary<string, string>? Snippets,
+    string? DocsUrl);

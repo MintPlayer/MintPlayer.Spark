@@ -98,7 +98,8 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         stored.LatestRunId.Should().Be(runId);
         stored.LatestScore.Should().Be(run.Score);
         (await session.Query<Notification>().Customize(c => c.WaitForNonStaleResults()).Where(n => n.UserId == Max && n.Url!.EndsWith(Uri.EscapeDataString(runId))).ToListAsync())
-            .Should().ContainSingle("the participant is told");
+            .Should().ContainSingle("the participant is told")
+            .Which.Url.Should().Be("/po/audit-run/" + Uri.EscapeDataString(runId), "the SPA resolves a type by its alias or id (M11): /po/auditrun/… opened nothing");
     }
 
     [Fact]

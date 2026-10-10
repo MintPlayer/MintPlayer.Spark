@@ -41,6 +41,7 @@ public sealed partial class AuditStarter(
     ISparkSettings settings,
     CatalogueSnapshots snapshots,
     AuditLog auditLog,
+    IManager manager,
     TimeProvider time)
 {
     public async Task<AuditStartResult> StartAsync(Site site, string userId, bool fullCrawl, CancellationToken cancellationToken)
@@ -51,9 +52,7 @@ public sealed partial class AuditStarter(
         if (fullCrawl && !(site.IsVerified && deep))
         {
             await auditLog.WriteAsync(AuditLogKinds.GateRefused, userId, site, runId: null, detail: "full crawl", cancellationToken);
-            throw new SparkValidationException(site.IsVerified
-                ? "Full-site crawls are switched off."
-                : "A full-site crawl needs a verified site. Verify your ownership first.");
+            throw new SparkValidationException(manager.GetTranslatedMessage(site.IsVerified ? "seo.fullCrawlOff" : "seo.fullCrawlNeedsVerified"));
         }
 
         if (await JoinAsync(site, userId, fullCrawl, cancellationToken) is { } joined)
@@ -66,7 +65,8 @@ public sealed partial class AuditStarter(
             cooldown = await session.LoadAsync<TargetCooldown>(TargetCooldown.IdFor(site.Host), cancellationToken);
             if (cooldown is { ExpiresAtUtc: { } until } && until > now)
                 await RefuseAsync(AuditLogKinds.CoolDownRefused, site, userId,
-                    $"{site.Host} was audited recently. An unverified site can be audited again after {until:yyyy-MM-dd HH:mm} UTC; verify your ownership to audit it any time.",
+                    $"{site.Host} was audited recently; again after {until:yyyy-MM-dd HH:mm} UTC.",
+                    manager.GetTranslatedMessage("seo.coolDownRefused", site.Host),
                     until - now, cancellationToken);
         }
 
@@ -74,7 +74,8 @@ public sealed partial class AuditStarter(
         var decision = await quotas.TryConsumeAsync(quota, userId, cancellationToken);
         if (!decision.Allowed)
             await RefuseAsync(AuditLogKinds.QuotaRefused, site, userId,
-                fullCrawl ? "You used your full-site crawl for this week." : "You started as many audits as allowed today. Try again later.",
+                $"quota {quota.Name}",
+                manager.GetTranslatedMessage(fullCrawl ? "seo.fullCrawlQuotaRefused" : "seo.auditQuotaRefused"),
                 decision.RetryAfter, cancellationToken);
 
         var run = await NewRunAsync(site, userId, deep, fullCrawl, now, cancellationToken);
@@ -102,7 +103,7 @@ public sealed partial class AuditStarter(
         }
         catch (ConcurrencyException)
         {
-            await RefuseAsync(AuditLogKinds.CoolDownRefused, site, userId, $"{site.Host} is being audited by someone else right now.", null, cancellationToken);
+            await RefuseAsync(AuditLogKinds.CoolDownRefused, site, userId, $"{site.Host}: a simultaneous start", manager.GetTranslatedMessage("seo.auditRace", site.Host), null, cancellationToken);
         }
         return new AuditStartResult(run.Id!, Joined: false);
     }
@@ -166,9 +167,13 @@ public sealed partial class AuditStarter(
         };
     }
 
-    private async Task RefuseAsync(string kind, Site site, string userId, string message, TimeSpan? retryAfter, CancellationToken cancellationToken)
+    /// <summary>
+    /// Logs the refusal (<paramref name="detail"/>, English, for the operator) and answers 429 with the caller's
+    /// <paramref name="message"/> (translated) and <c>Retry-After</c>; the SPA says how long to wait.
+    /// </summary>
+    private async Task RefuseAsync(string kind, Site site, string userId, string detail, string message, TimeSpan? retryAfter, CancellationToken cancellationToken)
     {
-        await auditLog.WriteAsync(kind, userId, site, runId: null, detail: message, cancellationToken);
+        await auditLog.WriteAsync(kind, userId, site, runId: null, detail: detail, cancellationToken);
         throw new SparkThrottledException(message, retryAfter);
     }
 

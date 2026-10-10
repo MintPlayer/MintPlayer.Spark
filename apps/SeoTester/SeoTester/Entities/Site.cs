@@ -26,6 +26,7 @@ namespace SeoTester.Entities;
 [RequiresOrganizationRole(SeoActionNames.VerifySite, OrganizationRole.Admin)]
 [RequiresOrganizationRole("ShareLink", OrganizationRole.Admin)]
 [RequiresOrganizationRole("RevokeShareLink", OrganizationRole.Admin)]
+[RequiresOrganizationRole(SeoActionNames.ShareBadge, OrganizationRole.Admin)]
 public class Site : IOrganizationOwned, ISparkShareable
 {
     public string? Id { get; set; }

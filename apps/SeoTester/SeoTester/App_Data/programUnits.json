@@ -43,6 +43,16 @@
       "order": 80,
       "programUnits": [
         {
+          "id": "5e070000-0000-4000-8000-000000000112",
+          "name": "programUnits.dashboard",
+          "icon": "bi-speedometer2",
+          "type": "persistentObject",
+          "persistentObjectId": "458035ba-1fc4-4f98-b24c-de1edbf8214c",
+          "alias": "dashboard",
+          "objectId": "main",
+          "order": 0
+        },
+        {
           "id": "5e070000-0000-4000-8000-000000000111",
           "name": "programUnits.auditLog",
           "icon": "bi-journal-text",

@@ -17,6 +17,7 @@ settings | MintPlayer.Spark.Settings | 43f5e2626927
 ## Rights
 Administrators | grant | EditNewDelete/CheckDefinition | checks-edit | app
 Administrators | grant | QueryRead/AuditLogEntry | audit-log | app
+Administrators | grant | Read/OperatorDashboard | operator-dashboard | app
 Administrators | grant | ResetCheckDefinition/CheckDefinition | checks-reset | app
 Administrators (settings:administrators) | grant | QueryReadEdit/Setting | settings:administrators | settings
 Signed-in users | grant | CancelAudit/AuditRun | runs-cancel | app
@@ -27,6 +28,7 @@ Signed-in users | grant | QueryRead/PageResult | pages | app
 Signed-in users | grant | QueryReadEditNewDelete/Site | sites | app
 Signed-in users | grant | RevokeShareLink/AuditRun | runs-unshare | app
 Signed-in users | grant | RevokeShareLink/Site | sites-unshare | app
+Signed-in users | grant | ShareBadge/Site | sites-badge | app
 Signed-in users | grant | ShareLink/AuditRun | runs-share | app
 Signed-in users | grant | ShareLink/Site | sites-share | app
 Signed-in users | grant | StartAudit/Site | sites-start-audit | app

@@ -76,6 +76,35 @@ public class StartAuditTests(SeoTesterHostFixture host)
         (await LogAsync(globexSite.Id!)).Should().Contain(e => e.Kind == AuditLogKinds.CoolDownRefused && e.UserId == Bob);
     }
 
+    /// <summary>
+    /// M11: a started (or joined) audit opens its run page (a navigate client operation to the run), and a refusal is
+    /// in the caller's language with <c>retryAfterSeconds</c>, which the SPA turns into "try again in …".
+    /// </summary>
+    [Fact]
+    public async Task A_start_opens_the_run_and_a_refusal_speaks_the_callers_language_with_the_wait()
+    {
+        await SetSettingAsync(host, SeoQuotas.Audits.Limit.Key, "-1");
+        var acmeSite = await SeedSiteAsync(host, Acme);
+        var globexSite = await SeedSiteAsync(host, Globex, hostName: acmeSite.Host);
+
+        var (status, body, raw) = await ActionAsync(host, SiteTypeId, "Site", "StartAudit", acmeSite.Id!, Max);
+        status.Should().Be(HttpStatusCode.OK, raw);
+        var runId = body.GetProperty("result").GetProperty("runId").GetString()!;
+        var navigate = body.GetProperty("operations").EnumerateArray()
+            .Where(o => o.GetProperty("type").GetString() == "navigate").ToList();
+        navigate.Should().ContainSingle(raw);
+        navigate[0].GetProperty("id").GetString().Should().Be(runId);
+        navigate[0].GetProperty("objectTypeId").GetString().Should().Be(AuditRunTypeId);
+
+        using var client = host.CreateClient();
+        var (refused, refusedBody, refusedRaw) = await SeoRequests.PostAsync(client, "/spark/actions/execute",
+            MintPlayer.Spark.Testing.Wire.Action(SiteTypeId, "StartAudit", new { parent = new { id = globexSite.Id, objectTypeId = SiteTypeId, name = "Site" } }),
+            Bob, "nl-BE");
+        refused.Should().Be(HttpStatusCode.TooManyRequests, refusedRaw);
+        refusedBody.GetProperty("result").GetProperty("error").GetString().Should().Contain("onlangs").And.Contain(acmeSite.Host);
+        refusedBody.GetProperty("result").GetProperty("retryAfterSeconds").GetInt32().Should().BeInRange(5 * 3600, 6 * 3600);
+    }
+
     [Fact]
     public async Task A_verified_site_has_no_cool_down_and_gets_the_verified_limits()
     {
