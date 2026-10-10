@@ -1,0 +1,74 @@
+using MintPlayer.Spark.Organizations.Models;
+
+namespace MintPlayer.Spark.Organizations;
+
+/// <summary>
+/// Organizations, memberships, invitations and join requests (<c>docs/seo_analyzer_PRD.md</c> X11). The
+/// generic UI's actions call it, and so does application code (a join request when a user tries to
+/// verify a site another organization holds, D18). Every method takes the acting user explicitly and
+/// checks their role itself, so it is safe to call from background work.
+/// </summary>
+/// <remarks>
+/// Refusals: an organization that does not exist, or that the acting user may not act on, throws
+/// <see cref="MintPlayer.Spark.Abstractions.Authorization.SparkRowLevelAccessDeniedException"/> (the
+/// missing-row 404, #453); a broken rule (the last Owner leaving, a personal organization) throws
+/// <see cref="MintPlayer.Spark.Abstractions.SparkValidationException"/> (400).
+/// </remarks>
+public interface ISparkOrganizations
+{
+    /// <summary><paramref name="userId"/>'s memberships, organization id → role (read once per request).</summary>
+    Task<IReadOnlyDictionary<string, OrganizationRole>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default);
+
+    /// <summary><paramref name="userId"/>'s role in <paramref name="organizationId"/>, or null when they are not a member.</summary>
+    Task<OrganizationRole?> GetRoleAsync(string organizationId, string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <paramref name="userId"/>'s personal organization, created with them as Owner when missing (D21).
+    /// Idempotent and race-free: its id is fixed (<see cref="Organization.PersonalIdFor"/>).
+    /// </summary>
+    Task<Organization> EnsurePersonalOrganizationAsync(string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Creates an organization with <paramref name="ownerUserId"/> as its Owner.</summary>
+    Task<Organization> CreateAsync(string name, string ownerUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Invites <paramref name="email"/> as <paramref name="role"/> (never Owner) and mails the link. Admin
+    /// and up; an invitation to the same address replaces the pending one. Not for a personal organization.
+    /// </summary>
+    Task InviteAsync(string organizationId, string email, OrganizationRole role, string inviterUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asks the Owners of <paramref name="organizationId"/>, by mail, to let <paramref name="requesterUserId"/>
+    /// in as <paramref name="role"/> (D18). A member already, or a personal organization: nothing happens.
+    /// A request from the same user replaces their pending one. Returns whether a request was made.
+    /// </summary>
+    Task<bool> RequestToJoinAsync(string organizationId, string requesterUserId, OrganizationRole role = OrganizationRole.Member, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Redeems a mailed link as <paramref name="userId"/>. An invitation makes the signed-in user a
+    /// member; a join request makes its requester one, and needs an Owner or Admin to open it. The token is
+    /// single-use and expires; every refusal reads the same.
+    /// </summary>
+    Task<OrganizationAcceptance> AcceptAsync(string invitationId, string token, string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Removes <paramref name="userId"/>'s membership (D26: access only). The last Owner must transfer ownership first.</summary>
+    Task LeaveAsync(string organizationId, string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Makes member <paramref name="toUserId"/> an Owner and the Owner <paramref name="fromUserId"/> an Admin.</summary>
+    Task TransferOwnershipAsync(string organizationId, string fromUserId, string toUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the organization (Owners only, never a personal one): every <see cref="IOrganizationDataHandler"/>
+    /// first, then its memberships, invitations and the organization itself (D26).
+    /// </summary>
+    Task DeleteAsync(string organizationId, string actingUserId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>What redeeming a link answers: the organization joined, or why not.</summary>
+public sealed record OrganizationAcceptance(bool Accepted, string? OrganizationId, string? OrganizationName, string? Problem)
+{
+    /// <summary>The one refusal for a link that is unknown, forged, used, expired or not the caller's to accept.</summary>
+    public const string InvalidProblem = "This link is not valid. It may have expired, been used already, or be meant for someone else.";
+
+    internal static OrganizationAcceptance Invalid { get; } = new(false, null, null, InvalidProblem);
+}

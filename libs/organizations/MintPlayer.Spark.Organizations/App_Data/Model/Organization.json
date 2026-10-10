@@ -1,0 +1,73 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "Organization (docs/seo_analyzer_PRD.md X11). Only Name is the user's: the rest is set by the package.",
+    "Who sees, renames and deletes one is the package's row policy (members; Admin; Owner).",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'organizations:Organization[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "87f7591f-42db-5213-821e-e43f8f7115b8",
+    "name": "Organization",
+    "clrType": "MintPlayer.Spark.Organizations.Models.Organization",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "0bd56063-98df-5dde-ad0d-383d9f8f2a39",
+        "name": "Name",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a7ab04e1-edb6-5f9a-8901-429a76e3917b",
+        "name": "IsPersonal",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3f7c6014-6f53-55a2-b88d-8a187d009808",
+        "name": "CreatedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "organization-members",
+      "organization-invitations"
+    ]
+  },
+  "queries": [
+    {
+      "id": "a1f89590-651b-5e70-aedd-0f27ebda695d",
+      "name": "Organizations",
+      "source": "Custom.Organizations",
+      "alias": "organizations",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Organization",
+      "isStreamingQuery": false
+    }
+  ]
+}

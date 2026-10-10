@@ -408,11 +408,44 @@ public class ExpirationTests : SparkTestDriver
     [Fact]
     public async Task Nothing_that_needs_expiration_leaves_the_database_record_alone()
     {
+        // Run over a model of non-expiring types only: every host in this test process also composes the
+        // referenced libraries' model layers, and the organizations library ships an IExpiring type
+        // (OrganizationInvitation), which rightly configures expiration (the next test).
+        using var services = new ServiceCollection()
+            .AddLogging()
+            .AddSingleton<IModelLoader>(new ExOnlyModel([PlainModel().PersistentObject]))
+            .AddSingleton<Raven.Client.Documents.IDocumentStore>(Store)
+            .BuildServiceProvider();
+
+        ExpirationStartup.Run(services, new MintPlayer.Spark.Abstractions.Builder.SparkModuleRegistry());
+
+        var record = await Store.Maintenance.Server.SendAsync(new GetDatabaseRecordOperation(Store.Database));
+        record.Expiration.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_referenced_librarys_expiring_model_type_alone_configures_expiration()
+    {
+        // ExPlain expires nothing; the organizations library's layer (referenced by this test project)
+        // brings OrganizationInvitation, an IExpiring type, into every composed model.
         await using var factory = new SparkEndpointFactory<ExPlainContext>(Store, [PlainModel()]);
 
         var record = await Store.Maintenance.Server.SendAsync(new GetDatabaseRecordOperation(Store.Database));
 
-        record.Expiration.Should().BeNull();
+        factory.GetService<IModelLoader>().GetEntityTypes().Should().Contain(t => t.Name == "OrganizationInvitation");
+        record.Expiration!.DeleteFrequencyInSec.Should().Be(129_600);
+    }
+
+    /// <summary>A model loader holding exactly <paramref name="types"/>.</summary>
+    private sealed class ExOnlyModel(IReadOnlyList<EntityTypeDefinition> types) : IModelLoader
+    {
+        public IEnumerable<EntityTypeDefinition> GetEntityTypes() => types;
+        public EntityTypeDefinition? GetEntityType(Guid id) => types.FirstOrDefault(t => t.Id == id);
+        public EntityTypeDefinition? GetEntityTypeByClrType(string clrType) => types.FirstOrDefault(t => t.ClrType == clrType);
+        public EntityTypeDefinition? GetEntityTypeByName(string name) => types.FirstOrDefault(t => t.Name == name);
+        public EntityTypeDefinition? GetEntityTypeByAlias(string alias) => null;
+        public EntityTypeDefinition? ResolveEntityType(string idOrAlias) => GetEntityTypeByName(idOrAlias);
+        public IEnumerable<SparkQuery> GetQueries() => [];
     }
 
     // ---- startup checks ------------------------------------------------------------------------

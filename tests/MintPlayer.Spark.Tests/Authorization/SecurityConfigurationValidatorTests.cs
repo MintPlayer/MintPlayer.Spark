@@ -196,6 +196,45 @@ public class SecurityConfigurationValidatorTests
             .WithMessage($"*'{resource}'*wildcard*QueryReadEditNewDelete/Person*");
     }
 
+    /// <summary>
+    /// <c>docs/seo_analyzer_PRD.md</c> §12 "Spike S13": a run of core verbs that is not a combined action
+    /// (<c>QueryReadEditDelete</c>) was read as a custom action's name and granted nothing, so the type was
+    /// unreachable while the build and startup accepted the file. Now refused, naming the supported set.
+    /// </summary>
+    [Theory]
+    [InlineData("QueryReadEditDelete/Person")]
+    [InlineData("QueryReadDelete/Person")]
+    [InlineData("readdelete/Person")]
+    public void A_core_verb_combination_that_is_not_a_combined_action_is_rejected(string resource)
+    {
+        var config = Config(
+            groups: MigratedGroups(),
+            wellKnown: Migrated(),
+            new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = resource });
+
+        var act = () => SecurityConfigurationValidator.Validate(config);
+
+        act.Should().Throw<SparkSecurityConfigurationException>()
+            .WithMessage($"*'{resource}'*not a combined action*QueryReadEditNewDelete*two rights*");
+    }
+
+    [Theory]
+    [InlineData("QueryReadEdit/Person")]
+    [InlineData("Delete/Person")]
+    [InlineData("InviteOrganizationMember/Person")]
+    [InlineData("ReadOnlyExport/Person")]
+    public void Combined_actions_single_verbs_and_custom_actions_stay_accepted(string resource)
+    {
+        var config = Config(
+            groups: MigratedGroups(),
+            wellKnown: Migrated(),
+            new Right { Key = Guid.NewGuid().ToString(), GroupId = AdminsId, Resource = resource });
+
+        var act = () => SecurityConfigurationValidator.Validate(config);
+
+        act.Should().NotThrow();
+    }
+
     [Fact]
     public void A_duplicated_right_key_is_rejected()
     {

@@ -1,0 +1,22 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{ requester }} asks to join {{ organization }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ requester }} asks to join {{ organization }}</mj-text>
+        <mj-text>{{ requester }} ({{ requester_email }}) asks to join your organization {{ organization }} as {{ role }}.</mj-text>
+        <mj-button href="{{ link }}">Let them in</mj-button>
+        <mj-text font-size="13px" color="#4b5563">If the button does not work, open this link: <a href="{{ link }}">{{ link }}</a></mj-text>
+        <mj-text font-size="13px" color="#4b5563">Only an Owner or Admin of {{ organization }} can accept. The request can be accepted once and expires after {{ valid_for_days }} days. To refuse it, ignore this mail.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

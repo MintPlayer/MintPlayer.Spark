@@ -493,6 +493,21 @@ through `SendCampaignAsync` (one mail per recipient, never BCC).
 
 See `libs/mail/MintPlayer.Spark.MailManager/README.md` and `docs/guide-outgoing-mail.md`.
 
+## Organizations (`spark.AddOrganizations()`, package `MintPlayer.Spark.Organizations`)
+
+Team or tenant data is never a hand-written `OwnerId` filter: implement `IOrganizationOwned`
+(`string? OrganizationId`) and the package's row policy limits every read and write path to members of
+that organization with the role the action needs (`[RequiresOrganizationRole("Delete", OrganizationRole.Admin)]`;
+defaults Viewer reads, Member creates/edits, Admin deletes). Non-members get the missing-row 404.
+
+- Roles are data (`OrganizationMembership`), not `security.json` groups; the app binds the slot
+  `organizations:users` (by group id or name, not by token) to say who may use organizations at all.
+- Raw session queries are not filtered: ask `ISparkOrganizations.GetMembershipsAsync(userId)` and use
+  `.In(ids)`, never `Contains`.
+- App data per organization goes away and is exported through `IOrganizationDataHandler`.
+
+See `libs/organizations/MintPlayer.Spark.Organizations/README.md` and `docs/guide-organizations.md`.
+
 ## Moderation (`spark.AddModeration<TUser>()`, package `MintPlayer.Spark.Moderation`)
 
 Votes, reputation, privileges, flags, locks and suspensions are a package — never hand-roll a

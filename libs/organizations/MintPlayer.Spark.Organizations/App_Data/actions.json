@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "_comment": [
+    "The organizations package's custom actions (docs/seo_analyzer_PRD.md X11), shipped as a library layer.",
+    "The classes are CustomActions/OrganizationCustomActions.cs; their rights are in this library's",
+    "security.json, and the role each needs inside an organization is the row policy's",
+    "([RequiresOrganizationRole] on the model classes). Labels are actions.<Name>.* in translations.json."
+  ],
+  "InviteOrganizationMember": {
+    "icon": "person-plus",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "primary"
+  },
+  "LeaveOrganization": {
+    "icon": "box-arrow-right",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "danger"
+  },
+  "TransferOrganizationOwnership": {
+    "icon": "key",
+    "showedOn": "query",
+    "selectionRule": "=1"
+  }
+}

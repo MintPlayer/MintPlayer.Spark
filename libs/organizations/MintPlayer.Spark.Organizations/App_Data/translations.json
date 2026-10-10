@@ -1,0 +1,288 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "queries": {
+    "Organizations": {
+      "label": {
+        "en": "Organizations",
+        "fr": "Organisations",
+        "nl": "Organisaties"
+      }
+    },
+    "OrganizationMembers": {
+      "label": {
+        "en": "Members",
+        "fr": "Membres",
+        "nl": "Leden"
+      }
+    },
+    "OrganizationInvitations": {
+      "label": {
+        "en": "Invitations and join requests",
+        "fr": "Invitations et demandes d'adhésion",
+        "nl": "Uitnodigingen en aanvragen"
+      }
+    }
+  },
+  "model": {
+    "Organization": {
+      "label": {
+        "en": "Organization",
+        "fr": "Organisation",
+        "nl": "Organisatie"
+      },
+      "attributes": {
+        "Name": {
+          "label": {
+            "en": "Name",
+            "fr": "Nom",
+            "nl": "Naam"
+          }
+        },
+        "IsPersonal": {
+          "label": {
+            "en": "Personal",
+            "fr": "Personnelle",
+            "nl": "Persoonlijk"
+          },
+          "description": {
+            "en": "Your own organization, created with your account. Nobody else can join it.",
+            "fr": "Votre propre organisation, créée avec votre compte. Personne d'autre ne peut la rejoindre.",
+            "nl": "Je eigen organisatie, aangemaakt met je account. Niemand anders kan er lid van worden."
+          }
+        },
+        "CreatedAtUtc": {
+          "label": {
+            "en": "Created",
+            "fr": "Créée le",
+            "nl": "Aangemaakt op"
+          }
+        }
+      }
+    },
+    "OrganizationMembership": {
+      "label": {
+        "en": "Member",
+        "fr": "Membre",
+        "nl": "Lid"
+      },
+      "attributes": {
+        "UserName": {
+          "label": {
+            "en": "User",
+            "fr": "Utilisateur",
+            "nl": "Gebruiker"
+          }
+        },
+        "Role": {
+          "label": {
+            "en": "Role",
+            "fr": "Rôle",
+            "nl": "Rol"
+          },
+          "description": {
+            "en": "Viewer reads, Member works with the content, Admin also manages members, Owner can do everything.",
+            "fr": "Lecteur lit, Membre travaille sur le contenu, Administrateur gère aussi les membres, Propriétaire peut tout faire.",
+            "nl": "Lezer leest, Lid werkt met de inhoud, Beheerder beheert ook de leden, Eigenaar mag alles."
+          }
+        },
+        "JoinedAtUtc": {
+          "label": {
+            "en": "Joined",
+            "fr": "Membre depuis",
+            "nl": "Lid sinds"
+          }
+        }
+      }
+    },
+    "OrganizationInvitation": {
+      "label": {
+        "en": "Invitation",
+        "fr": "Invitation",
+        "nl": "Uitnodiging"
+      },
+      "attributes": {
+        "Email": {
+          "label": {
+            "en": "Email",
+            "fr": "E-mail",
+            "nl": "E-mail"
+          }
+        },
+        "Kind": {
+          "label": {
+            "en": "Kind",
+            "fr": "Type",
+            "nl": "Soort"
+          }
+        },
+        "UserName": {
+          "label": {
+            "en": "Requested by",
+            "fr": "Demandé par",
+            "nl": "Aangevraagd door"
+          }
+        },
+        "Role": {
+          "label": {
+            "en": "Role",
+            "fr": "Rôle",
+            "nl": "Rol"
+          }
+        },
+        "CreatedAtUtc": {
+          "label": {
+            "en": "Sent",
+            "fr": "Envoyée le",
+            "nl": "Verstuurd op"
+          }
+        },
+        "ExpiresAtUtc": {
+          "label": {
+            "en": "Expires",
+            "fr": "Expire le",
+            "nl": "Vervalt op"
+          }
+        }
+      }
+    },
+    "OrganizationInvite": {
+      "label": {
+        "en": "Invite",
+        "fr": "Inviter",
+        "nl": "Uitnodigen"
+      },
+      "attributes": {
+        "Email": {
+          "label": {
+            "en": "Email",
+            "fr": "E-mail",
+            "nl": "E-mail"
+          },
+          "description": {
+            "en": "The address the invitation link is mailed to.",
+            "fr": "L'adresse à laquelle le lien d'invitation est envoyé.",
+            "nl": "Het adres waarnaar de uitnodigingslink gemaild wordt."
+          }
+        },
+        "Role": {
+          "label": {
+            "en": "Role",
+            "fr": "Rôle",
+            "nl": "Rol"
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "InviteOrganizationMember": {
+      "label": {
+        "en": "Invite",
+        "fr": "Inviter",
+        "nl": "Uitnodigen"
+      }
+    },
+    "LeaveOrganization": {
+      "label": {
+        "en": "Leave",
+        "fr": "Quitter",
+        "nl": "Verlaten"
+      },
+      "confirmation": {
+        "en": "Leave this organization? You lose access to everything it holds.",
+        "fr": "Quitter cette organisation ? Vous perdez l'accès à tout ce qu'elle contient.",
+        "nl": "Deze organisatie verlaten? Je verliest de toegang tot alles wat ze bevat."
+      }
+    },
+    "TransferOrganizationOwnership": {
+      "label": {
+        "en": "Make Owner",
+        "fr": "Nommer propriétaire",
+        "nl": "Eigenaar maken"
+      },
+      "confirmation": {
+        "en": "Make the selected member Owner? You become Admin.",
+        "fr": "Nommer le membre sélectionné propriétaire ? Vous devenez administrateur.",
+        "nl": "Het geselecteerde lid eigenaar maken? Jij wordt beheerder."
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "organizations": {
+        "en": "Organizations",
+        "fr": "Organisations",
+        "nl": "Organisaties"
+      }
+    },
+    "organizations": {
+      "en": "Organizations",
+      "fr": "Organisations",
+      "nl": "Organisaties"
+    }
+  },
+  "organizations": {
+    "invite": {
+      "en": "Send invitation",
+      "fr": "Envoyer l'invitation",
+      "nl": "Uitnodiging versturen"
+    },
+    "inviteTitle": {
+      "en": "Invite someone",
+      "fr": "Inviter quelqu'un",
+      "nl": "Iemand uitnodigen"
+    },
+    "invitationSent": {
+      "en": "Invitation sent.",
+      "fr": "Invitation envoyée.",
+      "nl": "Uitnodiging verstuurd."
+    },
+    "left": {
+      "en": "You left the organization.",
+      "fr": "Vous avez quitté l'organisation.",
+      "nl": "Je hebt de organisatie verlaten."
+    },
+    "ownershipTransferred": {
+      "en": "Ownership transferred.",
+      "fr": "Propriété transférée.",
+      "nl": "Eigenaarschap overgedragen."
+    },
+    "notAllowed": {
+      "en": "This organization was not found, or you may not do that in it.",
+      "fr": "Cette organisation est introuvable, ou vous n'y êtes pas autorisé.",
+      "nl": "Deze organisatie werd niet gevonden, of je mag dat er niet doen."
+    },
+    "spa": {
+      "title": {
+        "en": "Join an organization",
+        "fr": "Rejoindre une organisation",
+        "nl": "Lid worden van een organisatie"
+      },
+      "intro": {
+        "en": "Accept this invitation or join request with the account you are signed in with.",
+        "fr": "Acceptez cette invitation ou demande d'adhésion avec le compte avec lequel vous êtes connecté.",
+        "nl": "Aanvaard deze uitnodiging of aanvraag met het account waarmee je aangemeld bent."
+      },
+      "accept": {
+        "en": "Accept",
+        "fr": "Accepter",
+        "nl": "Aanvaarden"
+      },
+      "accepted": {
+        "en": "Done: {0} has a new member.",
+        "fr": "C'est fait : {0} a un nouveau membre.",
+        "nl": "Klaar: {0} heeft een nieuw lid."
+      },
+      "open": {
+        "en": "Open the organization",
+        "fr": "Ouvrir l'organisation",
+        "nl": "Organisatie openen"
+      },
+      "invalid": {
+        "en": "This link is not valid. It may have expired, been used already, or be meant for someone else.",
+        "fr": "Ce lien n'est pas valide. Il a peut-être expiré, déjà été utilisé, ou est destiné à quelqu'un d'autre.",
+        "nl": "Deze link is niet geldig. Hij is misschien vervallen, al gebruikt, of voor iemand anders bedoeld."
+      }
+    }
+  }
+}

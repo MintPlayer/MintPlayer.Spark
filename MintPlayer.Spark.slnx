@@ -94,6 +94,9 @@
       <Platform Project="AnyCPU" />
     </Project>
   </Folder>
+  <Folder Name="/libs/organizations/">
+    <Project Path="libs/organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj" />
+  </Folder>
   <Folder Name="/libs/replication/">
     <Project Path="libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj" />
     <Project Path="libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj" />

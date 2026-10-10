@@ -123,17 +123,41 @@ public class SparkSignInManager<TUser> : SignInManager<TUser>
     /// sign-in — password, second factor, recovery code, external login, passkey — ends here with
     /// fresh properties; a refresh arrives with the existing ones and keeps its original instant.
     /// </remarks>
-    public override Task SignInWithClaimsAsync(
+    public override async Task SignInWithClaimsAsync(
         TUser user, AuthenticationProperties? authenticationProperties, IEnumerable<Claim> additionalClaims)
     {
         authenticationProperties ??= new AuthenticationProperties();
-        if (!authenticationProperties.Items.ContainsKey(AuthenticatedAtItem))
+        var fresh = !authenticationProperties.Items.ContainsKey(AuthenticatedAtItem);
+        if (fresh)
         {
             authenticationProperties.Items[AuthenticatedAtItem] =
                 timeProvider.GetUtcNow().UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+            await RunSignedInHandlersAsync(user);
         }
 
-        return base.SignInWithClaimsAsync(user, authenticationProperties, additionalClaims);
+        await base.SignInWithClaimsAsync(user, authenticationProperties, additionalClaims);
+    }
+
+    /// <summary>
+    /// Every <see cref="ISparkSignedInHandler{TUser}"/>, for a fresh sign-in only (a refresh arrives with
+    /// <see cref="AuthenticatedAtItem"/> already set). A failure is logged, never refuses the sign-in.
+    /// </summary>
+    private async Task RunSignedInHandlersAsync(TUser user)
+    {
+        if (Context.RequestServices?.GetService(typeof(IEnumerable<ISparkSignedInHandler<TUser>>)) is not IEnumerable<ISparkSignedInHandler<TUser>> handlers)
+            return;
+
+        foreach (var handler in handlers)
+        {
+            try
+            {
+                await handler.OnSignedInAsync(user, Context.RequestAborted);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.LogError(ex, "Sign-in handler {Handler} failed for user {UserId}; the sign-in goes ahead.", handler.GetType().FullName, user.Id);
+            }
+        }
     }
 
     /// <summary>
