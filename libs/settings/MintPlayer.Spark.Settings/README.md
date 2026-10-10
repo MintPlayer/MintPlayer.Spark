@@ -72,3 +72,23 @@ declared type. An empty `Value` is stored as "not overridden". A stored value th
 (the type changed in code) is skipped with a warning, never thrown: configuration or the default applies.
 
 Guide: [docs/guide-settings.md](../../../docs/guide-settings.md).
+
+## Quotas
+
+Per-user limits on custom actions (`docs/seo_analyzer_PRD.md` X3), with their limits as settings:
+
+```csharp
+public static class SeoQuotas
+{
+    public static readonly SparkQuota Audits = new("audits",
+        new SparkSetting<int>("Seo:Quotas:Audits:Limit", 5, "Audits per window."),
+        new SparkSetting<TimeSpan>("Seo:Quotas:Audits:Window", TimeSpan.FromDays(1), "The audits window."));
+}
+spark.AddQuotas(typeof(SeoQuotas));
+
+[SparkQuota("audits")] public sealed partial class StartAuditAction : ICustomAction { … }   // 429 + Retry-After past the limit
+await quotas.TryConsumeAsync(SeoQuotas.Audits, userId);                                 // ISparkQuotas, where code decides
+```
+
+A sliding window per user (else per address), checked after every authorization gate; a limit of 0 refuses,
+a negative limit is unlimited. Guide: [docs/guide-quotas.md](../../../docs/guide-quotas.md).

@@ -517,6 +517,37 @@ defaults Viewer reads, Member creates/edits, Admin deletes). Non-members get the
 
 See `libs/organizations/MintPlayer.Spark.Organizations/README.md` and `docs/guide-organizations.md`.
 
+## Notifications (`spark.AddNotifications()`, package `MintPlayer.Spark.Notifications`)
+
+Telling a user something is one call, never a hand-rolled mail plus a socket message:
+`ISparkNotifier.NotifyAsync(new SparkNotification { UserIds = [...], Title, Body, Url = "/runs/42", OrganizationId, Category })`.
+
+- Channels per user and organization (`NotificationPreference`, else the user's default row, else
+  `Spark:Notifications:Defaults`): in-app (a `Notification` document; the type and its queries are
+  `"live": true`, so an open UI gets it over `/spark/live` with no extra code), mail (MailManager, confirmed
+  addresses only) and Web Push.
+- Web Push needs VAPID keys (`Spark:Notifications:WebPush:{PublicKey,PrivateKey,Subject}`, the private key in
+  secrets) and `AddMessaging()`: each push is an outbox message sent through the SSRF-safe client. Never add a
+  third-party Web Push package: `MintPlayer.Spark.WebPush` is the hand-rolled RFC 8291/8292 library (D38).
+- The app binds the slot `notifications:users`. Rows are their user's alone.
+
+See `docs/guide-notifications.md`.
+
+## Quotas (`spark.AddQuotas(typeof(MyQuotas))`, settings package)
+
+A per-user limit on a custom action is `[SparkQuota("name")]` on the action class plus a declared
+`SparkQuota(name, SparkSetting<int> limit, SparkSetting<TimeSpan> window)`: a sliding window, limits changed by an
+administrator at runtime, 429 with `Retry-After`. Not the ASP.NET rate limiter (per IP, before authentication).
+Where code decides what counts, call `ISparkQuotas.TryConsumeAsync` instead. See `docs/guide-quotas.md`.
+
+## Share links (`spark.AddShareLinks(o => o.Share<T>(attributes, queries))`, core)
+
+An anonymous read-only link to one object is `ISparkShareable` on the type plus a declaration of exactly which
+attributes and which of its sub-queries (and which of their columns) a link shows. The built-in actions
+`ShareLink` / `RevokeShareLink` are granted like any custom action (`ShareLink/T`) and row-checked (organizations:
+`[RequiresOrganizationRole("ShareLink", OrganizationRole.Admin)]`). Never put `ShareTokenHash` in the model. See
+`docs/guide-share-links.md`.
+
 ## Moderation (`spark.AddModeration<TUser>()`, package `MintPlayer.Spark.Moderation`)
 
 Votes, reputation, privileges, flags, locks and suspensions are a package — never hand-roll a

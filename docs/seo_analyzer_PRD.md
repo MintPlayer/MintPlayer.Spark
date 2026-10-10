@@ -1,6 +1,6 @@
 # SeoTester (#268): PRD and plan
 
-Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M4 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
+Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M6 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
 
 §1–§11 are the current spec. §12 is the decision log (D1–D43 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
 
@@ -22,12 +22,13 @@ Research behind this document:
 | Body consolidated with §12 | ✅ 2026-10-10 |
 | Grilling round 9: live-update details | ✅ 2026-10-10, D33–D37 |
 | Round 10: Web Push, SafeHttp ports and redirects, expiry ownership | ✅ 2026-10-10, D38–D41 (D39–D41 built, §12) |
-| Spikes S1–S13 | ⏳ (S1, S6, S8 (L5 open), S11, S13 ✅ 2026-10-10, §12; S4, S5, S10, S12 researched) |
+| Spikes S1–S13 | ⏳ (S1, S6, S8 (L5 open), S11, S12 (Chrome; Q-M6a open), S13 ✅ 2026-10-10, §12; S4, S5, S10 researched) |
 | Milestones M0–M12 | ⏳ |
 | M1 ✅ | 2026-10-10, commit `72c84933`: X2 SSRF-safe client in `libs/spark/MintPlayer.Spark/Http/`, adopted by the IdP (§12 "Spike S1") |
 | M2 ✅ | 2026-10-10, commit `6df64fb3`: X1 document expiration in `libs/spark/MintPlayer.Spark/Expiration/` (`IExpiring`, `"expiresAfter"`, stamper, read filter, one 36 h configurator), adopted by Messaging, Mail, Moderation and the IdP (§12 "Spike S6"). ⚠️ `model.schema.json` gains `expiresAfter`: CI mints the next `schemas/v{n}` tag on merge (no tag created by hand) |
 | M3 ✅ | 2026-10-10: X9 settings package `libs/settings/MintPlayer.Spark.Settings` (alias `settings`, `11.0.0-preview.104`) and X7 per-queue `HandlerTimeout` in Messaging (§12 "Spike S11"). Owner round 10 (D38–D41) committed separately before it |
 | M4 ✅ | 2026-10-10: X11 organizations package `libs/organizations/MintPlayer.Spark.Organizations` (alias `organizations`, `11.0.0-preview.104`), the `ISparkSignedInHandler<TUser>` hook in Authorization (`preview.104`), ng-spark `/organizations` (`withOrganizationRoutes()`, `22.33.0`), and a startup refusal of unsupported verb combinations in `security.json` (§12 "Spike S13"). Guides `docs/guide-organizations.md` and `docs/guide-settings.md` (M3's). ~~Open: Q-M4a, Q-M4b (§11)~~ answered 2026-10-10: D42, D43 (§12 Round 11) |
+| M6 ✅ | 2026-10-10 (§12 "Spike S12 and M6"): X10 notifications `libs/notifications/MintPlayer.Spark.Notifications` (alias `notifications`) with the hand-rolled Web Push library `libs/webpush/MintPlayer.Spark.WebPush` (both `11.0.0-preview.104`), preferences per organization (D44); X3 quotas (`[SparkQuota]`, `ISparkQuotas`, settings package; core `ISparkCustomActionGate`); X5 ng-spark score renderers (`@mintplayer/ng-spark/score-renderers`), CodeCoverage switched over with its DOM pinned; X6 share links in core (`ISparkShareable`, `AddShareLinks`, `ShareLink`/`RevokeShareLink`, `/spark/share`); ng-spark notifications/share UI; M5 follow-ups; S12 measured on Chrome (5/5 delivered). Guides: notifications, quotas, share links, score renderers. Open: Q-M6a–Q-M6d (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -250,13 +251,13 @@ The crawler writes `AuditRun.Progress` (phase, pages done/discovered, current UR
 |---|---|---|---|
 | X1 | **Document expiration** (✅ M2, §12 "Spike S6"): `IExpiring` (`DateTime? ExpiresAtUtc`, the source of truth) plus an optional `"expiresAfter"` in the model JSON for new documents; a store-level `OnBeforeStore` mirrors it into `@expires` (pipeline and raw sessions); a core row policy hides expired documents on every read path (they linger up to 36 h); `UseSpark()` enables expiration once for every library that declares `Registry.RequireDocumentExpiration` (Messaging, Mail, Moderation, IdP) or any `IExpiring` model type, with a **36 h floor refused below on every licence**; `AddExpiration(o => …)` only for options; `ExpiresAtUtc` is **framework-protected** on persistent-object writes (D41: a client can neither extend nor clear it). Fixes the gap where Mail and Moderation wrote `@expires` without enabling expiration | pages, frontier, caches, cool-downs, invitations | no PO hook; `IBeforeSave` can't set metadata on create (`SparkInterceptors.cs:291-295`); store created without events (`SparkMiddleware.cs:158-188`) |
 | X2 | **SSRF-safe HTTP client** (`AddSafeHttp()`): `ConnectCallback` resolves → allow-list of global unicast (unwraps IPv4-mapped/NAT64/6to4) → connects to the checked IP (closes DNS rebinding); manual redirects re-checked per hop; no proxy, no cookies; byte, decompression and time caps; a configured list **replaces** its default, so configuration can remove 80/443 (D39); optional `RedirectsWithinOriginOnly` (D40). **Adopted by the IdP** (`JwksUri`, back-channel: ≤ 3 redirects within the registered origin) | user-chosen URLs fetched from inside the compose network | nothing blocks private addresses; `OidcClientKeys.cs:24-34`, `OidcSessionStore.cs:132` |
-| X3 | **Per-user quotas for custom actions** (e.g. `[SparkQuota("audits", …)]`), evaluated after authentication, with limits read from X9 settings | runs/day, D14 weekly full crawl | `AddRateLimiter` is per-IP and pre-auth (`SparkBuilderRateLimiterExtensions.cs:115,128-130`) |
+| X3 | **Per-user quotas for custom actions** (✅ M6, §12 "Spike S12 and M6": `[SparkQuota]`, `ISparkQuotas`, sliding windows in the settings package) (e.g. `[SparkQuota("audits", …)]`), evaluated after authentication, with limits read from X9 settings | runs/day, D14 weekly full crawl | `AddRateLimiter` is per-IP and pre-auth (`SparkBuilderRateLimiterExtensions.cs:115,128-130`) |
 | X4 | **Unified live updates**: one multiplexed socket at `GET\|CONNECT /spark/live`; subscribe to **persistent objects and queries** (full `ExecuteQueryRequest`: parent, paging, sort, search); change source configurable via **`Spark:Live:Source` = `Actions` \| `Changes` \| `Both`, default `Both`** (D33): `Actions` = every write through a RavenDB session of this process, from the document store's own events (not `IAfterSaveCommitted`, which needs Messaging: §12 "Spike S8"), plus an optional `ISparkLiveNotifier.Changed(id)`; `Changes` = the RavenDB Changes API (measured working on Community; **not** a data subscription, one multiplexed connection per database per process); `Both` merges and de-duplicates by id + change vector inside the throttle window. App `IAsyncEnumerable` streams stay for non-RavenDB data. **Low-code (D34):** `"live": true` in the model JSON is all an app writes for the common case, and under `Both` even writes outside the Spark pipeline (the crawler) are picked up without notifier calls; every push re-runs the HTTP read path (row security, redaction, attribute rights); `gone` = deleted or forbidden alike; **patches**; **opt-in** per type/query; throttling, bounded queues, socket lifetime ≤ login ticket. ng-spark: `SparkLiveService`, `livePersistentObject`/`liveQuery`, `spark-query-grid [live]`, po-detail refresh, po-edit banner + existing three-way merge. **Replaces** streaming queries (`isStreamingQuery`, `StreamingQueryArgs`, `/spark/queries/{id}/stream`) and fixes their defects (below) | run progress, notifications | research: live updates; D4, D5, D24 |
-| X5 | **Score/threshold renderers in ng-spark**: gauge, threshold bar, trend, delta, generalised from CodeCoverage (which then uses them) | score UI | ng-spark has no chart renderers |
-| X6 | **Capability-token read of one PO** (share link): hashed token on the object, anonymous read of exactly that object + declared children, revocable, rate-limited | F11 | only precedent is the badge token |
+| X5 | **Score/threshold renderers in ng-spark** (✅ M6, `@mintplayer/ng-spark/score-renderers`): gauge, threshold bar, trend, delta, generalised from CodeCoverage (which then uses them) | score UI | ng-spark has no chart renderers |
+| X6 | **Capability-token read of one PO** (share link; ✅ M6, core `AddShareLinks`, allow-lists declared in code): hashed token on the object, anonymous read of exactly that object + declared children, revocable, rate-limited | F11 | only precedent is the badge token |
 | X7 | **Per-queue `HandlerTimeout`** (✅ M3, §12 "Spike S11"): `SparkQueueOptions.HandlerTimeout`, configuration over code like every per-queue option, read through `SparkMessagingOptions.HandlerTimeoutFor(queue)` in both subscription modes | long probes | global only (`SparkMessagingOptions.cs:126`) |
 | X9 | **Settings package** (✅ M3, §12 "Spike S11") `libs/settings/MintPlayer.Spark.Settings` (alias `settings`): `SparkSetting<T>(Key, Default, Description)` declared in code; `ISparkSettings` returns the stored value, else `IConfiguration`, else the default; parsing via the `ConfigurationBinder` converter; startup seeder of one `Settings/{Key}` document per key (never touches `Value`); rights `QueryReadEdit/Setting` bound by the app (`settings:administrators`); 30 s TTL cache, cleared on save; no secrets | D11 | no settings feature in `libs/` |
-| X10 | **Notifications package**: in-app `Notification` entity pushed over X4 with an unread count; **Web Push**, hand-rolled in its own library in this solution (D38: RFC 8291 `aes128gcm` + RFC 8292 VAPID on built-in .NET crypto, verified against the RFC 8291 Appendix A vectors; VAPID keys from config, per-device `PushSubscription` on `SparkUser`, opt-in UI, push + click handlers via `provideSparkServiceWorker()`); one `ISparkNotifier` beside the mailer | D20, D30 | none in Spark |
+| X10 | **Notifications package** (✅ M6, preferences per organization D44; push subscriptions as own documents, Q-M6b): in-app `Notification` entity pushed over X4 with an unread count; **Web Push**, hand-rolled in its own library in this solution (D38: RFC 8291 `aes128gcm` + RFC 8292 VAPID on built-in .NET crypto, verified against the RFC 8291 Appendix A vectors; VAPID keys from config, per-device `PushSubscription` on `SparkUser`, opt-in UI, push + click handlers via `provideSparkServiceWorker()`); one `ISparkNotifier` beside the mailer | D20, D30 | none in Spark |
 | X11 | **Organizations package** (✅ M4, §12 "Spike S13") `libs/organizations/MintPlayer.Spark.Organizations` (alias `organizations`, depends on Authorization only, D25): `Organization`, `OrganizationMembership` (ordered roles Owner > Admin > Member > Viewer), `OrganizationInvitation` (`IExpiring`, 14 d); implicit personal org on first sign-in (new Authorization hook `ISparkSignedInHandler<TUser>`); invitations (Admins) and join requests (`ISparkOrganizations.RequestToJoinAsync`) mailed with a single-use, hashed-token link to ng-spark's accept page (`withOrganizationRoutes()`, `POST /spark/organizations/accept`); ownership transfer; `IOrganizationDataHandler` for cascade delete and export (account deletion and personal-data export through Authorization's existing hooks); the row-filter helper is **declarative**: `IOrganizationOwned` + `[RequiresOrganizationRole(action, role)]`, enforced by one row policy (`OrganizationId in (…)` from the caller's memberships, read by id prefix once per request); `security.json` slot `organizations:users` gates the types | D18, D21–D23, D26 | no org concept in Spark |
 
 **Defects in today's streaming queries, fixed by X4** (research: live updates):
@@ -345,7 +346,7 @@ Each spike ends with a measured result recorded in §12 (numbers, file:line, or 
 | S9 | HTML parsing | AngleSharp (+ .Css) time/memory per page; pixel-width title measurement without a browser | numbers; decision |
 | S10 | hstspreload.org API | v2 status/preloadable schema | real fixture |
 | S11 | Settings ✅ | stored-overrides-config and delete-falls-back; TTL propagation; rights via slot binding | red→green tests (§12 "Spike S11") |
-| S12 | Web Push | ~~VAPID library choice for .NET 11~~ decided: hand-rolled RFC 8291/8292 library (D38); remaining: delivery to Chrome/Firefox/Edge/Safari (iOS needs an installed PWA), done in M6 | RFC 8291 Appendix A vectors pass; push delivered on each |
+| S12 ✅ | Web Push | ~~VAPID library choice for .NET 11~~ decided: hand-rolled RFC 8291/8292 library (D38); remaining: delivery to Chrome/Firefox/Edge/Safari (iOS needs an installed PWA), done in M6 | RFC 8291 Appendix A vectors pass; push delivered on each |
 | S13 ✅ | Organizations row filter | membership filter cost in queries (a `Membership` lookup per request vs a claim cached per session), and its interaction with existing `GetRowFilterAsync` composition | query plan + timing; design chosen (§12 "Spike S13") |
 
 ---
@@ -393,6 +394,10 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 - ~~**Q-M4b (from M4): may anyone holding an invitation link accept it, or only the account that owns the invited address?**~~ **Closed by D43** (§12 Round 11): only the account that owns the invited address. The question moved to D43.
 - ~~**Q-S6a (from S6): should the framework own `IExpiring.ExpiresAtUtc` on persistent-object writes?**~~ **Closed by D41** (§12 Round 10): yes, SoftDelete's rule. ~~Today it is an ordinary model attribute, so a user with `Edit/T` can extend or clear a document's expiry unless the app marks it read-only or `[IgnoreProperty]`. The alternative is SoftDelete's rule: an edit or create through the pipeline keeps the stored value (code via `IDatabaseAccess`/raw sessions still sets it). SeoTester's `PageResult` is not user-editable either way.~~
 - **Q-M5a (from M5, spike S8 L5): where is the real-proxy check (nginx/Traefik upgrade and idle timeout for `/spark/live`) run?** It needs a reverse proxy in front of a running Spark host. Not run in M5: Docker Desktop was not running on the build machine and no nginx/Traefik binary is installed, and probing production was not part of this milestone. What is known: production fronts the apps with Traefik (`apps/CodeCoverage/docker-compose.yml:221-233`), which forwards WebSocket upgrades by default; the server sends a `ping` frame after 30 s of silence (measured, `LiveSocketTests.A_quiet_socket_gets_a_ping_at_the_heartbeat`), below nginx's default 60 s `proxy_read_timeout`; the nginx recipe is in `docs/guide-docker-deployment.md`. Options: (a) start Docker locally and run nginx and Traefik in front of a test host; (b) measure on the production VPS with a throwaway container, as L1 was; (c) measure at the M12 deploy of SeoTester, which is the first app with a live type. **Recommendation: (c)**, because it is the real proxy and the real app, and nothing before M11 opens a live socket in production (Fleet and DemoApp are demos).
+- **Q-M6a (from S12): where is delivery to Firefox, Edge and Safari measured?** Chrome 154 was measured (5/5 delivered and decrypted, §12 "Spike S12 and M6"). Edge refused to subscribe under automation (`Registration failed - permission denied`: its WNS channel is not reachable from an automation profile), and no Firefox or Apple device is reachable from the build machine. All three accept `aes128gcm` (RFC 8291) per their documentation, and the library is byte-exact against the RFC vectors. Options: (a) the owner subscribes a desktop Firefox, a desktop Edge and an iPhone with SeoTester installed to the Home Screen and the result is recorded; (b) a scripted run in a non-automation browser profile here; (c) do it at the M12 deploy, on the real origin over HTTPS. **Recommendation: (c)**, with (a)'s devices: iOS needs an installed PWA on a real HTTPS origin anyway, which only exists at M12.
+- **Q-M6b (from M6): push subscriptions are documents of their own, not a list on `SparkUser`.** D30 says "stored per device on the SparkUser". Built as `PushSubscriptions/{userId}/{hash}` (read by id prefix), because a list on the user document would put every subscribe on Identity's concurrency stamp (a sign-in racing a subscribe fails one of them) and make Authorization know about push. Options: (a) keep separate documents; (b) move them onto `SparkUser`. **Recommendation: (a).**
+- **Q-M6c (from M6): what a share link shows is declared in code** (`AddShareLinks(o => o.Share<Site>(attributes, queries))`, allow-lists) rather than in the model JSON. Options: (a) keep it in code; (b) a `"share"` block on the persistent object in the model (low-code, but it moves the model hash and the schema, and a model edit could widen a public link). **Recommendation: (a).**
+- **Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).
 
 
 ---
@@ -958,3 +963,196 @@ process: "test-process CPU" is the Spark host and the test clients only). Tests 
   expiration, schemas, model, query loader, composed queries, custom actions, reflection cache, index wait)
   595/595; route snapshots regenerated (10 files). ng-spark vitest 29 files, 644 tests. Not run: the full sweep,
   E2E (`WebSocketOriginTests` re-pointed at `/spark/live` and extended to read the Fleet app stream's first page).
+
+### Round 12 (owner, relayed with the M6 brief, 2026-10-10)
+
+- **D44: notification preferences are per organization.** A user chooses the channels (in-app, mail, Web Push)
+  for each organization separately. *Evidence: owner answer, relayed in the M6 brief ("preferences per
+  organization (owner answers)").* Built as `NotificationPreference` (below).
+- **D45: Web Push lives in its own library in this solution** (D38 restated by the brief: "Hand-rolled, perhaps in
+  its own library in this solution"): `libs/webpush/MintPlayer.Spark.WebPush`, no package or project dependencies.
+
+### Spike S12 and M6 (2026-10-10): notifications, Web Push, quotas, renderers, share links
+
+Commits `bc74c7d6`, `1cd8c597`, `9a85b1f3` (X5), `9d7db45a` (Web Push), `4cab0b1a` (X10), `fa226b15` (X3),
+`d28946ff` (M5 follow-ups), `9345d422` (X6), `9981b4d0`, `0e64aebf` (ng-spark notifications and share UI), `44f8924e`, `e427bbe7` (snapshots, goldens, app model hashes). Guides `docs/guide-notifications.md`,
+`docs/guide-quotas.md`, `docs/guide-share-links.md`, `docs/guide-score-renderers.md`.
+
+**S12, Web Push delivery** (`scratchpad` spike: a static page on `http://localhost`, a real subscription in the
+Playwright browser, pushes sent by the library through the SSRF-safe client, `MintPlayer.Spark.WebPush` +
+`AddSafeHttpClient`):
+- **Chrome 154 (Windows), FCM endpoint: 5/5 delivered and decrypted** by the page's service worker (each payload
+  read back as JSON with the sent title). `201 Created` each; 382 ms for the first request (TLS to
+  `fcm.googleapis.com`), then 45–66 ms.
+- A forged endpoint path: **410** → `SubscriptionGone`. `https://10.0.0.1/push`: refused by the SSRF guard
+  (`SafeHttpBlockedException`) before sending.
+- Encryption cost: **2.2 ms per message** (2 000 messages after 200 warm-ups, Release, this machine): a fresh P-256
+  key pair and ECDH per message, as RFC 8291 requires. Negligible beside the 45 ms round trip.
+- **Edge under automation:** `pushManager.subscribe` → `AbortError: Registration failed - permission denied` (Edge
+  pushes through WNS, which an automation profile does not reach). **Firefox and Safari were not reachable** from
+  this machine's tooling. Open as Q-M6a (§11).
+- The RFC 8291 §5 example's `Content-Length: 145` is off by one: its body (which the library reproduces byte for
+  byte) decodes to 144 bytes (86 + 41 + 1 + 16).
+
+**X10, notifications** (`libs/notifications/MintPlayer.Spark.Notifications`, alias `notifications`,
+`11.0.0-preview.104`; `MintPlayer.Spark.WebPush` `11.0.0-preview.104`):
+- **Web Push library** (D38, D45): `WebPushEncryption` (one aes128gcm record, fresh salt and ephemeral key per
+  message), `VapidDetails`/`VapidAuthorization` (ES256 JWT, `aud` = push-service origin, `exp` 12 h, one token per
+  origin reused until an hour before expiry: Apple asks for at most one refresh an hour), `WebPushClient` (`TTL`,
+  `Urgency`, `Topic`; every status mapped to `Delivered` / `SubscriptionGone` (404, 410) / `RetryLater` (429, 5xx,
+  `Retry-After`) / `Rejected`). `ECDsa.SignData`'s default IEEE P1363 output is JWS ES256 (DER is the pitfall).
+  *Evidence: `WebPushEncryptionTests` reproduce the RFC 8291 §5 body and every Appendix A intermediate value, the
+  latter from the user agent's side with an independently written receiver, so a symmetric mistake cannot pass.
+  Red with key_info's two keys swapped, DER signatures, no token reuse, 404 not "gone" and the topic check off:
+  9 of 28 failed; green 28/28.*
+- **One call, three channels, no second channel** (D20, D30, D44): `ISparkNotifier.NotifyAsync`. In-app is a
+  `Notification` document; the type and its queries `MyNotifications` / `UnreadNotifications` are `"live": true`,
+  so an open UI gets it over `/spark/live` without any notifier call (the store's own events, X4), and the bell's
+  unread count is `UnreadNotifications`' `totalItems`. *Evidence: `The_unread_count_reaches_an_open_socket_without_any_notifier_code`
+  (0 → 1 after `NotifyAsync`, → 0 after marking read, on one socket); red with `"live": false`.*
+- **Preferences per organization** (D44): `NotificationPreference` `NotificationPreferences/{userId}/{orgId|default}`;
+  the user's row for the organization, else their default row, else `Spark:Notifications:Defaults` (all on): two
+  loads by id. The package does **not** reference Organizations: an app without organizations would otherwise have
+  to bind `organizations:users` (startup refuses an unbound slot) for a package it does not use; the organization
+  is an opaque id the app may turn into a reference in its own model layer. *Evidence:
+  `Preferences_per_organization_choose_the_channels_and_fall_back_to_the_default_row_then_the_options`.*
+- **Push subscriptions are their own documents, not a list on `SparkUser`** (D30 says "on the SparkUser"; see
+  Q-M6b): `PushSubscriptions/{userId}/{sha256(endpoint)[..32]}`, read by id prefix like memberships (S13). A list
+  on the user document would put every browser's subscribe on Identity's concurrency stamp (a sign-in racing a
+  subscribe fails one of them) and couple Authorization to push.
+- **Durable push:** each device is one `WebPushDeliveryMessage` in the notifier's own `SaveChanges` (Messaging
+  outbox), queue `spark-webpush` (8 attempts, backoff 30 s → 6 h, `MaxConcurrency` 4). 404/410 deletes the device;
+  429/5xx throws (retried); anything else is a `NonRetryableException`. Startup refuses bad VAPID keys, a TTL over
+  28 days and Web Push without `AddMessaging()`. *Evidence: `A_push_reaches_every_device_encrypted_and_a_gone_device_is_deleted`
+  (the fake push service behind the package's SSRF-safe client receives two posts; the test decrypts the phone's
+  with its own key: title, body, absolute `data.url`, `onActionClick`, `notificationId`, `Urgency: high`,
+  `Topic: cert-expiry`; the 410 device is deleted).*
+- **A push-service allow-list** (Google, Mozilla, Apple, Microsoft and subdomains; a configured list replaces it,
+  as D39): the endpoint comes from the browser, so without it any signed-in user could make the server POST to any
+  public URL. Private addresses are already refused by X2. Plus 20 devices per user (the oldest goes). *Evidence:
+  `Subscribing_refuses_other_push_services_and_bad_keys_and_keeps_a_bounded_device_list`.*
+- **Mail only to a confirmed address** (the D43 reasoning: an X or Entra sign-in proves no address). *Evidence:
+  `A_mail_goes_only_to_a_confirmed_address_with_an_absolute_link`.*
+- Rows are their user's alone (`UserId == caller` on every action, an anonymous caller none): another user's
+  notification is the 404, an anonymous load the framework's 401. Account deletion and export hooks.
+- **Red→green:** `NotificationTests` red with the row rule, preference lookup, gone-device delete, mark-read owner
+  check, allow-list, device cap, account deletion and the live flag stubbed: **8 of 8 failed**; green **8/8**.
+
+**X3, quotas** (settings package): core gains `ISparkCustomActionGate`, run by `/spark/actions/execute` after
+authentication, the type right, the catalogue, the row gates and the disabled-action gate, right before the
+action; a `SparkThrottledException` there is the existing 429 with `Retry-After`. The settings package adds
+`SparkQuota(Name, SparkSetting<int> Limit, SparkSetting<TimeSpan> Window)`, `AddQuotas`, `[SparkQuota]` and
+`ISparkQuotas`.
+- **Sliding window**, not fixed: "5 a day" and D14's "1 full crawl a week" mean any 24 h / 7 d, and a fixed weekly
+  window would allow two full crawls minutes apart across its boundary. Uses are a short list on
+  `SparkQuotaUsages/{quota}/{key}` (`IExpiring`: gone with its last use), written under optimistic concurrency.
+  *Evidence: `Concurrent_uses_never_overspend_the_limit` (20 parallel uses, limit 5: exactly 5 admitted),
+  `The_window_slides_…`, `The_sixth_run_in_a_day_is_a_429_with_Retry_After_and_does_not_run` (Retry-After 19 h when
+  the first of 5 hourly uses is 5 h old).*
+- **An admitted run counts even if the action fails** (Moderation's daily counters do the same, "never
+  refunded"), so a failing action cannot be retried for free; where code decides what counts ("joining a running
+  audit does not") the app calls `ISparkQuotas` instead of the attribute.
+- Limit 0 refuses, a negative limit is unlimited; key = user id, else `ip:{address}`; startup refuses a
+  `[SparkQuota]` naming an undeclared quota.
+- **Red→green:** `SparkQuotaTests` red with the gate not called, concurrency off, no pruning, no unlimited and the
+  startup check off: **6 of 6 failed**; green **6/6**.
+- **Not deduped with Moderation's counters:** they are written on the request's own session, in the same
+  transaction as the post or vote they count (`ModerationInterceptor.ThrottleNewAccountAsync`,
+  `SparkModeration` lazy batch), which a separate quota write cannot reproduce.
+
+**X5, score renderers** (`@mintplayer/ng-spark/score-renderers`, `libs/node_packages/ng-spark/score-renderers/`):
+`spark-gauge` (SVG ring, score inside, grade beside, ARIA meter), `spark-threshold-bar`, `spark-trend` (sparkline, or
+a chart with `display: 'chart'`; also the standalone `<spark-trend-sparkline>` / `<spark-trend-chart>`) and
+`spark-delta`; bands `{ min?, color, label? }` with the presets `'traffic-light'` (default: green ≥ 80, amber ≥ 60)
+and `'letter-grades'` (D15: A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 50, F); no value is never zero (a muted "—");
+`provideSparkScoreRenderers(appRenderers?)`.
+- **CodeCoverage switched over, behaviour pinned first:** `score-renderers.characterisation.spec.ts` (46 cases:
+  null/missing, 0, 59.95 % (shows "60.0%" but stays red: the band is decided on the unrounded value), 60, 79.99, 80,
+  100, the flat /api shape, ±0.04 deltas, numeric strings, empty and single-point series) compares the visible DOM
+  (classes, inline styles, aria). Written and committed against the old components (`bc74c7d6`, 46/46), then passes
+  unchanged against the new path (`9a85b1f3`). Red: dropping the bar's `label: 'Coverage'` 9/46, swapping to
+  `'letter-grades'` 1/46 (the 59.95 edge). Model renderer names unchanged; no model JSON changed.
+  Mapping: `coverage-bar` and the per-file bar → `spark-threshold-bar` (0–100, traffic-light, 1 decimal, `%`);
+  `coverage-sparkline` → `spark-trend-sparkline` (yMin 0, yMax 100, 90×24); `coverage-delta` → `SparkDeltaComponent`
+  (its defaults are CodeCoverage's); the coverage-over-time card → `spark-trend-chart` (goal 80 %).
+- **Bundle:** the sparkline and the chart are separate modules so the chart stays in CodeCoverage's lazy
+  po-detail chunk; `main` 440.05 kB vs 436.43 kB before (+0.9 kB transferred), initial total unchanged.
+- ng-spark `score-renderers.spec.ts` 30/30; CodeCoverage's 8 affected spec files 136/136.
+- **Dedupe:** CodeCoverage's `formatDelta` (and its spec) moved into ng-spark as `formatSparkDelta`; three chart-stub
+  overrides in CodeCoverage specs are one helper (`stubSparkTrendCharts()`). Owner review of the look: Q-M6d.
+
+**ng-spark client** (`9981b4d0`, `0e64aebf`): `@mintplayer/ng-spark/notifications` (`SparkNotificationsService`:
+`unreadCount` from the live `UnreadNotifications` total, `recent`, `markRead`, `open`, push state and
+`enablePush()` asking permission inside the click before any await; `<spark-notification-bell>`,
+`<spark-push-toggle>`), `pwa` `SparkNotificationClicks` (an open app navigates in-app to a same-origin `data.url`;
+hence the payload's `focusLastFocusedOrOpen`, `e427bbe7`), `@mintplayer/ng-spark/share` `withShareRoutes()` and
+`share/page` `SparkSharedObjectComponent` (attributes through `<spark-grid-cell>`, so renderers apply; child tables
+paged through `/spark/share/query`). Specs 64/64 (service 16 on a real `SparkLiveService` over a fake socket, bell
+and toggle 11, clicks 9, shared page 9, plus the existing pwa spec); red with five mechanisms broken at once
+(count from `items.length`, permission after an await, no same-origin check, 404 not treated as not-found, bell not
+opening): 6 of 64 failed. Not done (small, noted): a push click does not mark the notification read (`pwa` does not
+depend on `notifications`); the share response carries no type or query labels, so the page heads each table
+with the query name.
+
+**X6, share links** (core): `ISparkShareable` (`ShareTokenHash`, framework-protected like `ExpiresAtUtc`, D41),
+`spark.AddShareLinks(o => o.Share<T>(attributes, queries))`, the built-in actions `ShareLink` / `RevokeShareLink`
+(core `actions.json`), `ISparkShareLinks`, `ISparkShareGate`, anonymous `POST /spark/share/load|query`.
+- **Declared in code as allow-lists, not in the model JSON:** what an anonymous reader sees is a security decision;
+  an allow-list of attribute and column names keeps a later model change (a new attribute) out of every link, and
+  adding it to `EntityTypeDefinition` would have moved the model hash and the schema for a code-level concern.
+  A child query must also be one of the type's own sub-queries and always runs with the shared object as parent.
+- **Who may share is ordinary authorization:** the rights `ShareLink/T` / `RevokeShareLink/T` and the row rules for
+  that action name; D31's "Owners and Admins" is `[RequiresOrganizationRole("ShareLink", OrganizationRole.Admin)]`.
+  *Evidence: `A_Member_may_not_share_and_a_stranger_cannot_even_see_the_action_target` (404 for both).*
+- **The read** runs the normal read paths (so renderers, redaction hooks and references behave as on a page) in a
+  fresh scope under a system principal with a **share grant**: `PermissionService` answers only `Read/T` and
+  `Query/{child entity}`, row policies that bypass the system context (organizations) are skipped for that one
+  object and its children, the expiration filter is not. *Evidence: `An_Admin_shares_and_anyone_…` (only `Title`,
+  only the `Text` column, only that note's comments, none of `Secret`, `Author`, the other note or the hash;
+  paging), `An_expired_object_is_gone_from_its_link_too`.*
+- 256-bit token, SHA-256 stored, compared in fixed time; a new link replaces the old one; one 404 for every refusal
+  (#453); the global switch (`Spark:Share:Enabled`) and `ISparkShareGate` (D11/D31: the app's settings switch);
+  60 reads per minute per address. *Evidence: `Every_refusal_is_the_same_404` (5 refusals, one body),
+  `Revoking_or_replacing_a_link_ends_it_at_once`, `Switching_sharing_off_…`, `Share_reads_are_rate_limited_per_address`,
+  `A_client_can_neither_set_nor_clear_the_token_hash_through_an_edit`.*
+- **Red→green:** `ShareLinkTests` red with the token check, both allow-lists, the sub-query check, the gates,
+  revocation, the interceptor and the limiter stubbed: **6 of 8 failed**; green **8/8** (the two green in both are
+  the organizations role check and the expiration filter, existing policies).
+
+**M5 follow-ups:**
+- `spark-query-grid` emits `(error)` for a live error too, as an `HttpErrorResponse` with the status `/execute`
+  gives (unavailable 404, invalid 400, limit 429, failed 500). Red before: no emit.
+- The nested `spark` translations group **was** resolved by the server: `CoreActionTextsTests.The_nested_spark_group_is_served_under_dotted_keys`
+  is green without a change. The client was wrong: `spark-query-grid` and `spark-query-list` wrote
+  `lang.t(key) || 'fallback'`, and `t()` returns the key when the text is missing, so before the translations
+  arrived a user saw `spark.query.unavailable`. `SparkLanguageService.t(key, fallback)` fixes it. Red before: the
+  language spec's fallback case.
+
+**Dedupes (behaviour kept identical, with tests):**
+- **The public-base-URL rule** was copied in `SparkAuthLinkBuilder`, `OidcPortalLinks` and `OrganizationMail`; it is
+  `SparkPublicBaseUrl.Resolve` in Abstractions now, used by those three, notifications and share links. Each
+  caller keeps its own failure (throw with its own words / warn and skip). `SparkPublicBaseUrlTests` pins the rule
+  (options over configuration, trailing slash, blank = unset, Development-only request origin with path base,
+  never outside Development); the callers' existing tests are green in the runs below (Authorization, IdentityProvider, Organizations).
+- **X5:** CodeCoverage's `formatDelta` moved into ng-spark (`formatSparkDelta`) and three chart-stub overrides in its
+  specs became one helper (see X5).
+- Also fixed: the `Organization.IsPersonal` description still said "Nobody else can join it", stale since D42.
+
+**Production check, CodeCoverage:** core's two new actions changed every app's model hash
+(`config actions.json … layer library 'spark' changed`), so the first `CodeCoverage.Tests` run was **46 red**
+(every host refused to start). Hashes regenerated with `--spark-synchronize-model` for all six apps (no model file
+changed), CodeCoverage's route snapshot gains the anonymous `/spark/share/*` routes (nothing is shareable there:
+both answer 404): **1213/1213 green**. Its UI behaviour is pinned by the X5 characterisation spec.
+
+**Two M5 leftovers the conventions caught:** `LiveSocket` located services through `RequestServices` (now
+`[Inject]`ed, the same request-scope instances) and `LiveAppStreamMethod` passed `HookInvoke` through an alias the
+`HookInvocationTests` scan cannot see (now literal).
+
+**Runs** (Developer licence; no full sweep, no E2E): the affected areas of `MintPlayer.Spark.Tests` (Layering,
+Architecture, Schemas, Model, Extensions, Endpoints, Organizations, Settings, Notifications, Sharing, WebPush,
+Expiration, IdentityProvider, Authorization, Mail, Live, Services, Messaging) **3489/3513**, the 24 being route
+snapshots (10), the action and translation goldens (6), the catalogue tests (4: core now ships five actions), the
+XSRF surface (the share reads, exempt) and the three convention findings above; after those, their classes plus
+Live and Mail **156/156**, and the notification, share and translation classes again after the last changes
+**38/38**. `CodeCoverage.Tests` 1213/1213. ng-spark: grid, language, query-list 138/138; notifications/pwa/share
+64/64; score renderers 46/46.
