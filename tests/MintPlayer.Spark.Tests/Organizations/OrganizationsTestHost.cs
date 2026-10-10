@@ -267,7 +267,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
     }
 
     /// <summary>An antiforgery pair minted for this identity: the token is bound to the user.</summary>
-    private static async Task<(string Cookie, string Xsrf)> MintAsync(HttpClient client, string? userId)
+    internal static async Task<(string Cookie, string Xsrf)> MintAsync(HttpClient client, string? userId)
     {
         var warmup = new HttpRequestMessage(HttpMethod.Get, "/spark");
         if (userId is not null)

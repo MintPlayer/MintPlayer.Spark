@@ -53,6 +53,8 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint<CustomActionRe
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     // Optional so the dispatch tests that construct this endpoint by hand keep compiling; DI always
     // supplies it.
+    // X3: the last gates before an action runs (per-user quotas). Optional for the same reason.
+    [Inject] private readonly IEnumerable<ISparkCustomActionGate>? gates;
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
@@ -335,6 +337,22 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint<CustomActionRe
                 SubmittedParent = request?.Parent,
                 SubmittedSelectedItemIds = [.. submittedIds],
             };
+
+            // Last gates (X3, per-user quotas): after every check above, so only a request that would
+            // otherwise run is counted, and a 429 discloses nothing a 404 would hide.
+            if (gates is not null)
+            {
+                var gateContext = new SparkCustomActionGateContext
+                {
+                    ActionName = actionName,
+                    ActionType = action.GetType(),
+                    EntityTypeName = typeName,
+                    User = httpContext.User,
+                    HttpContext = httpContext,
+                };
+                foreach (var gate in gates)
+                    await gate.BeforeExecuteAsync(gateContext, httpContext.RequestAborted);
+            }
 
             await action.ExecuteAsync(args, httpContext.RequestAborted);
 

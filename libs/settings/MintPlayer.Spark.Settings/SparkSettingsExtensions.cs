@@ -55,6 +55,43 @@ public static class SparkSettingsExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Declares the per-user quotas held as public static <see cref="Quotas.SparkQuota"/> fields or properties of
+    /// <paramref name="declaringTypes"/> (X3), with their limit and window settings, and registers
+    /// <see cref="Quotas.ISparkQuotas"/> and the gate that applies <c>[SparkQuota]</c> to custom actions. Startup
+    /// refuses a <c>[SparkQuota]</c> naming a quota nobody declared.
+    /// </summary>
+    public static ISparkBuilder AddQuotas(this ISparkBuilder builder, params Type[] declaringTypes)
+    {
+        var services = builder.Services;
+        builder.AddSettings([]);
+        var settingsCatalog = (SparkSettingsCatalog)services.First(d => d.ServiceType == typeof(SparkSettingsCatalog)).ImplementationInstance!;
+        var quotaCatalog = services.FirstOrDefault(d => d.ServiceType == typeof(Quotas.SparkQuotaCatalog))?.ImplementationInstance as Quotas.SparkQuotaCatalog;
+        if (quotaCatalog is null)
+        {
+            quotaCatalog = new Quotas.SparkQuotaCatalog();
+            services.AddSingleton(quotaCatalog);
+            services.TryAddSingleton(TimeProvider.System);
+            services.TryAddSingleton<Quotas.ISparkQuotas, Quotas.SparkQuotas>();
+            services.TryAddEnumerable(ServiceDescriptor.Scoped<MintPlayer.Spark.Abstractions.Actions.ISparkCustomActionGate, Quotas.SparkQuotaGate>());
+            // Usage documents carry @expires (their last use + the window), so the database must expire documents.
+            builder.Registry.RequireDocumentExpiration("Settings quotas");
+            builder.Registry.AddMiddleware(_ => Quotas.SparkQuotaStartup.VerifyAttributes(quotaCatalog));
+        }
+
+        foreach (var type in declaringTypes)
+        {
+            var before = quotaCatalog.All.ToList();
+            quotaCatalog.AddFrom(type);
+            foreach (var quota in quotaCatalog.All.Except(before))
+            {
+                settingsCatalog.Add(quota.Limit);
+                settingsCatalog.Add(quota.Window);
+            }
+        }
+        return builder;
+    }
+
     /// <summary>As <see cref="AddSettings(ISparkBuilder, Type[])"/>, with options in code (applied after <c>Spark:Settings</c>).</summary>
     public static ISparkBuilder AddSettings(this ISparkBuilder builder, Action<SparkSettingsOptions> configure, params Type[] declaringTypes)
     {
