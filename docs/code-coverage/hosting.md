@@ -28,22 +28,31 @@ Contents:
 
 Source: [`apps/CodeCoverage/docker-compose.yml`](../../apps/CodeCoverage/docker-compose.yml). No
 service publishes a host port. Traefik reaches the app over the external `web` network; everything
-else is on the project's own `coverage-internal` bridge network. Traefik itself is a separate stack;
+else is on the project's own `coverage-internal` bridge network, and `coverage-raven` and `coverage-smtp` also join
+the external **`mintplayer-backend`** network they share with SeoTester (below). Traefik itself is a separate stack;
 what it must provide (Docker provider on `web`, `exposedbydefault=false`, entrypoints `web` →
 `websecure`, resolver `letsencrypt`) is sketched in the README's
 [§3](../../apps/CodeCoverage/README.md#3-the-server-docker-and-traefik).
 
 | Service | Image (pinned tag) | Networks | Volumes | Healthcheck | Restart | Role |
 |---|---|---|---|---|---|---|
-| `coverage-raven` | `docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64` | `coverage-internal` | `raven-data` → `/var/lib/ravendb/data` | TCP connect to `127.0.0.1:8080`; interval 10 s, timeout 5 s, retries 12, start period 30 s | `unless-stopped` | The database, unsecured, reachable only from the internal network. |
+| `coverage-raven` | `docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64` | `coverage-internal`, `mintplayer-backend` | `raven-data` → `/var/lib/ravendb/data` | TCP connect to `127.0.0.1:8080`; interval 10 s, timeout 5 s, retries 12, start period 30 s | `unless-stopped` | The database, unsecured, reachable only from the internal network. |
 | `coverage-raven-license` | `curlimages/curl:8.11.1` | `coverage-internal` | `./raven-license.json` → `/raven-license.json` (ro) | — | `"no"` (one-shot) | POSTs the licence to `http://coverage-raven:8080/admin/license/activate` once Raven is healthy, with 10 retries 3 s apart, then exits. Runs on every `up`. Nothing depends on it. |
-| `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-internal` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587` (under `bash`: `/dev/tcp` does not exist in the image's `sh`, which is dash); interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
+| `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-internal`, `mintplayer-backend` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587` (under `bash`: `/dev/tcp` does not exist in the image's `sh`, which is dash); interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
 | `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-internal` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` to be *started*. |
 
 Named volumes: `raven-data`, `smtp-queue`, `dataprotection-keys`. Docker prefixes them with the
 compose project name, which is the directory name (`code-coverage` for `/var/www/code-coverage`), so
 the internal network is `code-coverage_coverage-internal`. The backup commands in the README rely on
 that name.
+
+**`mintplayer-backend`** (since SeoTester, PRD `docs/seo_analyzer_PRD.md` Q-M12b): an external bridge network that no
+compose project owns, so neither CodeCoverage's nor SeoTester's `down` removes it. `coverage-raven` and `coverage-smtp`
+join it; SeoTester's app reaches them there by the same names (database `SeoTester` on the same server, mail through the
+same relay). `coverage-app` does not join it. Both deploy workflows create it when it is missing
+(`docker network inspect mintplayer-backend || docker network create mintplayer-backend`, idempotent) before `down`/`up`,
+so whichever deploys first finds it. It publishes nothing: as with `coverage-internal`, only attached containers reach
+the unsecured RavenDB. One-time migration and the order with SeoTester: `docs/seotester/deploy.md` §3.0.
 
 Traefik labels on `coverage-app`:
 
@@ -334,10 +343,12 @@ and a model mismatch refuses to start in Production anyway.
 2. Fail if `.env` or `github-app.pem` is missing.
 3. Replace `docker-compose.yml` with the one on `master`, from `raw.githubusercontent.com`.
 4. `docker login ghcr.io` with the job's `GITHUB_TOKEN`.
-5. `docker compose --env-file .env pull`, then `down --remove-orphans`, then `up -d --remove-orphans`.
+5. Create the shared network `mintplayer-backend` if it is missing (idempotent; `seotester-deploy.yml` has the same
+   line), because the compose file declares it `external` and `up` refuses without it.
+6. `docker compose --env-file .env pull`, then `down --remove-orphans`, then `up -d --remove-orphans`.
    There is a short outage between `down` and `up`.
-6. `docker image prune -f`, `docker compose ps`.
-7. Poll `GET /health/ready` from inside `coverage-app` every 10 s, up to 66 times: 200 passes, 503
+7. `docker image prune -f`, `docker compose ps`.
+8. Poll `GET /health/ready` from inside `coverage-app` every 10 s, up to 66 times: 200 passes, 503
    fails the deploy immediately (the App key is unusable), anything else keeps polling; 660 s
    without a 200 fails the deploy. The bound is `coverage-app`'s 600 s healthcheck `start_period`
    plus a minute, so a slow startup migration does not fail a deploy that would have succeeded;

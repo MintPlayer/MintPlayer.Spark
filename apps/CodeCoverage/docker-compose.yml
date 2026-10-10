@@ -24,6 +24,9 @@ services:
       - raven-data:/var/lib/ravendb/data
     networks:
       - coverage-internal
+      # Shared with SeoTester (apps/SeoTester/docker-compose.yml), which reaches this service by the same name.
+      # External: created once by either deploy, never removed by this stack's up/down (SeoTester PRD Q-M12b).
+      - mintplayer-backend
     # No curl/wget assumptions: bash's /dev/tcp is enough for "is it listening".
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
@@ -133,6 +136,9 @@ services:
       - smtp-queue:/var/spool/postfix
     networks:
       - coverage-internal
+      # Shared with SeoTester (apps/SeoTester/docker-compose.yml), which reaches this service by the same name.
+      # External: created once by either deploy, never removed by this stack's up/down (SeoTester PRD Q-M12b).
+      - mintplayer-backend
     # bash, not sh: /dev/tcp is a bash feature, and this image's sh is dash, so the sh form
     # failed on every probe and marked a working relay "unhealthy" in production. The image is
     # Debian-based and ships /usr/bin/bash, as the other two healthchecks here assume.
@@ -264,3 +270,10 @@ networks:
   # network only; the public Traefik network never reaches port 8080.
   coverage-internal:
     driver: bridge
+  # The backend network shared with the other MintPlayer apps on this host (SeoTester): coverage-raven and
+  # coverage-smtp join it, coverage-app does not need to. It belongs to no compose project, so neither stack's
+  # `down` removes it; both deploy workflows create it when it is missing (`docker network create mintplayer-backend`).
+  # Like coverage-internal it publishes nothing: only containers attached to it reach the unsecured RavenDB.
+  mintplayer-backend:
+    external: true
+    name: mintplayer-backend

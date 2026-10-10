@@ -4,8 +4,9 @@
 #
 # Networks (the point of this file):
 #   web                              Traefik's public network (external). Only seotester-app joins it.
-#   code-coverage_coverage-internal  CodeCoverage's internal network (external): coverage-raven (unsecured, the
-#                                    database "SeoTester" lives there) and coverage-smtp. Only seotester-app joins it.
+#   mintplayer-backend               the backend network shared with CodeCoverage (external, created by either deploy,
+#                                    removed by neither): coverage-raven (unsecured, the database "SeoTester" lives
+#                                    there) and coverage-smtp join it from CodeCoverage's stack. Only seotester-app here.
 #   seo-browser                      internal: true, no egress at all. seotester-app and seo-chromium ONLY. Chromium
 #                                    never fetches anything itself (SeoTester routes and fulfils every request through
 #                                    its SSRF-safe client, PRD §6), so it needs no route anywhere: not to the internet,
@@ -24,7 +25,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       # CodeCoverage's RavenDB server, database SeoTester (created on first start). Unsecured, reachable only on
-      # code-coverage_coverage-internal: no certificate (Spark:RavenDb has none to set).
+      # mintplayer-backend: no certificate (Spark:RavenDb has none to set).
       - Spark__RavenDb__Urls__0=http://coverage-raven:8080
       - Spark__RavenDb__Database=SeoTester
       - Spark__RavenDb__EnsureDatabaseCreated=true
@@ -80,7 +81,7 @@ services:
     mem_limit: 1g
     networks:
       - web
-      - coverage-internal
+      - mintplayer-backend
       - seo-browser
     restart: unless-stopped
 
@@ -118,11 +119,12 @@ volumes:
 networks:
   web:
     external: true
-  # CodeCoverage's internal network (apps/CodeCoverage/docker-compose.yml, project "code-coverage" in
-  # /var/www/code-coverage): coverage-raven and coverage-smtp. CodeCoverage must be up before this stack starts.
-  coverage-internal:
+  # Shared with CodeCoverage (apps/CodeCoverage/docker-compose.yml declares it the same way): coverage-raven and
+  # coverage-smtp are reachable here by those names. No compose project owns it, so neither stack's up/down touches
+  # it; both deploys create it when missing (PRD Q-M12b, docs/seotester/deploy.md §3.0).
+  mintplayer-backend:
     external: true
-    name: code-coverage_coverage-internal
+    name: mintplayer-backend
   seo-browser:
     driver: bridge
     internal: true

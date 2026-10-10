@@ -219,8 +219,12 @@ jobs:
 
           # .env is server-managed; deploys never write it. Only the compose file is refreshed from the repo.
           test -f .env || { echo "::error::/var/www/seotester/.env is missing — create it from apps/SeoTester/.env.example (docs/seotester/deploy.md)"; exit 1; }
-          # The database and the mail relay are CodeCoverage's: its stack must be up, or this one cannot start.
-          docker network inspect code-coverage_coverage-internal > /dev/null 2>&1 || { echo "::error::network code-coverage_coverage-internal is missing — start the CodeCoverage stack first (docs/seotester/deploy.md)"; exit 1; }
+          # The backend network shared with CodeCoverage. External to every compose project, so it is created here when
+          # missing; idempotent, and a concurrent create by the other deploy is fine. Same line in code-coverage-deploy.yml.
+          docker network inspect mintplayer-backend > /dev/null 2>&1 || docker network create mintplayer-backend > /dev/null 2>&1 || docker network inspect mintplayer-backend > /dev/null
+          # The database and the mail relay are CodeCoverage's: refuse (before touching the running stack) until its
+          # coverage-raven is on the shared network, i.e. until CodeCoverage was deployed with the compose file that joins it.
+          docker network inspect mintplayer-backend --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q 'coverage-raven' || { echo "::error::coverage-raven is not on the network mintplayer-backend — deploy CodeCoverage first (docs/seotester/deploy.md §3.0)"; exit 1; }
 
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \

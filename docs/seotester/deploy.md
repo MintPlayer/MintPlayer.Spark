@@ -24,23 +24,29 @@ Status (2026-10-10): the files are written and checked (`tools/verify-seotester-
   │                   DB SeoTester) │  │                  │ seo-browser     │
   │  coverage-smtp   (relay)        │◄─┤                  │ (internal: no   │
   │  coverage-app                   │  │  seo-chromium ◄──┘  egress at all) │
-  └── network code-coverage_coverage-internal ──┘  └────────────────────────────────────┘
+  │  (network coverage-internal:    │  │                                    │
+  │   CodeCoverage's own services)  │  │                                    │
+  └─────────────────────────────────┘  └────────────────────────────────────┘
+     coverage-raven, coverage-smtp and seotester-app also share the external network
+     "mintplayer-backend" (owned by no project; created by either deploy, removed by neither)
 ```
 
 | Service | Image | Networks | Notes |
 |---|---|---|---|
-| `seotester-app` | `ghcr.io/mintplayer/seotester:master` (pull-only, built by `seotester-deploy.yml`) | `web`, `code-coverage_coverage-internal`, `seo-browser` | `mem_limit 1g`; `GET /health` healthcheck, start period 300 s; volume `dataprotection-keys`; Traefik labels for `seotester.mintplayer.com` |
+| `seotester-app` | `ghcr.io/mintplayer/seotester:master` (pull-only, built by `seotester-deploy.yml`) | `web`, `mintplayer-backend`, `seo-browser` | `mem_limit 1g`; `GET /health` healthcheck, start period 300 s; volume `dataprotection-keys`; Traefik labels for `seotester.mintplayer.com` |
 | `seo-chromium` | `ghcr.io/mintplayer/seotester-chromium:1.63.0` (= Microsoft.Playwright's version) | `seo-browser` **only** | `shm_size 512m`, `mem_limit 1g`, `pids_limit 512`, `init`, no capabilities, no port published; TCP healthcheck on 3000 |
 
 - **Database:** CodeCoverage's RavenDB server (`coverage-raven`, Community licence), database **`SeoTester`**, created on
-  the first start (`Spark__RavenDb__EnsureDatabaseCreated=true`). Unsecured, reachable only on
-  `code-coverage_coverage-internal`, so **no certificate**: Spark's `Spark:RavenDb` has `Urls`, `Database` and
+  the first start (`Spark__RavenDb__EnsureDatabaseCreated=true`). Unsecured, reachable only on CodeCoverage's own
+  network and `mintplayer-backend` (no published port), so **no certificate**: Spark's `Spark:RavenDb` has `Urls`, `Database` and
   `EnsureDatabaseCreated`, and the compose file sets them (`http://coverage-raven:8080`).
 - **Mail:** CodeCoverage's relay `coverage-smtp:587` (no credentials; `Security=None` as CodeCoverage). It must accept
   the sender domain `seotester.mintplayer.com` (§3.2).
 - **Why the shared server and relay:** one RavenDB process and one mail reputation on a small VPS, both already
-  operated (licence activation, DKIM, PTR). The cost: SeoTester starts only when the CodeCoverage stack is up (the deploy
-  checks the network), and CodeCoverage's maintenance windows are SeoTester's too.
+  operated (licence activation, DKIM, PTR). They meet on **`mintplayer-backend`**, an external network both compose files
+  declare (owner decision D48): neither stack's `up`/`down` touches it, and both deploys create it when it is missing.
+  The cost: SeoTester needs CodeCoverage's database running (its deploy refuses until `coverage-raven` is on the
+  network), and CodeCoverage's maintenance windows are SeoTester's too.
 - **The Chromium container** can reach nothing: `seo-browser` is `internal: true`, and Chromium itself never resolves a
   name or opens a connection (`--host-resolver-rules=MAP * ~NOTFOUND`, a dead proxy; SeoTester fulfils every request
   through its SSRF-safe client, PRD §6). It can reach `seotester-app:8080` on that network, which only matters if both
@@ -61,8 +67,9 @@ Dockerfile's COPY lines and the csproj graph; the tools test keeps the three equ
    (read from the Dockerfile's `FROM`).
 3. **deploy** (master only): SSH with the **same repository secrets as CodeCoverage's deploy** (`VPS_HOST`,
    `VPS_USERNAME`, `VPS_SSH_KEY`, `VPS_PORT`, `VPS_SSH_KEY_PASSPHRASE`; `GITHUB_TOKEN` is automatic): no new secret.
-   On the VPS: refuses without `/var/www/seotester/.env` or without the network `code-coverage_coverage-internal`;
-   downloads `docker-compose.yml` from master; `docker compose pull`, `down --remove-orphans`, `up -d`; prunes images;
+   On the VPS: refuses without `/var/www/seotester/.env`; creates `mintplayer-backend` if it is missing (the same
+   idempotent line as CodeCoverage's deploy); refuses, before touching the running stack, while `coverage-raven` is not
+   on that network (CodeCoverage not yet deployed with the compose file that joins it, §3.0); downloads `docker-compose.yml` from master; `docker compose pull`, `down --remove-orphans`, `up -d`; prunes images;
    then waits for `GET /health` = 200 inside the container (36 × 10 s, the healthcheck's start period + 1 min).
 
 Bumping Playwright: change `Microsoft.Playwright` in `SeoTester.csproj`, the chromium Dockerfile's `FROM` and
@@ -71,6 +78,29 @@ Bumping Playwright: change `Microsoft.Playwright` in `SeoTester.csproj`, the chr
 ## 3. First-time setup on the VPS (owner)
 
 Run on the VPS as the deploy user unless noted. None of these print a secret.
+
+### 3.0 The shared network, and the order with the live CodeCoverage stack (once)
+
+SeoTester reaches `coverage-raven` and `coverage-smtp` over `mintplayer-backend`, which CodeCoverage's compose file now
+joins too (PRD D48). The migration of the running CodeCoverage stack is its ordinary deploy, in this order:
+
+1. **Merge.** The push to `master` changes `apps/CodeCoverage/docker-compose.yml`, so `code-coverage-deploy.yml` runs: it
+   creates `mintplayer-backend` (missing), then `down`/`up` recreate `coverage-raven` and `coverage-smtp` on both
+   networks. That is CodeCoverage's usual short deploy outage; nothing else changes for it (its own `coverage-internal`
+   stays, the app does not join the new network). The same push may start `seotester-deploy.yml` at the same time:
+   while `coverage-raven` is not yet on the network it **refuses** with "deploy CodeCoverage first" and changes nothing;
+   re-run it (*Run workflow*) once CodeCoverage's deploy is green.
+2. **Check** that the database and the relay are on it:
+
+   ```bash
+   docker network inspect mintplayer-backend --format '{{range .Containers}}{{.Name}} {{end}}'
+   # expect code-coverage-coverage-raven-1 and code-coverage-coverage-smtp-1 (and later seotester-seotester-app-1)
+   ```
+3. **Deploy SeoTester** (§3.6).
+
+Either deploy can run first from then on: each creates the network when it is missing, and neither `down` removes it
+(it belongs to no project). By hand, the same one-liner both workflows run:
+`docker network inspect mintplayer-backend > /dev/null 2>&1 || docker network create mintplayer-backend`.
 
 ### 3.1 DNS and TLS
 
@@ -146,7 +176,7 @@ refuses anything shorter). Page details (7 d), frontiers (2 d), cool-downs, noti
 (1 y) expire through it; every read hides expired documents, so the 36 h lag is invisible. Check after the first start:
 
 ```bash
-NET=code-coverage_coverage-internal
+NET=mintplayer-backend
 docker run --rm --network $NET curlimages/curl:8.11.1 -sS "http://coverage-raven:8080/databases?namesOnly=true"
 docker run --rm --network $NET curlimages/curl:8.11.1 -sS "http://coverage-raven:8080/admin/databases?name=SeoTester" \
   | grep -o '"Expiration":{[^}]*}'
@@ -174,7 +204,7 @@ Then make yourself the administrator (settings, catalogue, dashboard): sign in o
 user's `Roles`. The address goes in as a **query parameter**, never spliced into the RQL:
 
 ```bash
-docker run --rm --network code-coverage_coverage-internal curlimages/curl:8.11.1 -sS -X PATCH \
+docker run --rm --network mintplayer-backend curlimages/curl:8.11.1 -sS -X PATCH \
   "http://coverage-raven:8080/databases/SeoTester/queries" -H "Content-Type: application/json" \
   --data '{"Query":{"Query":"from SparkUsers where NormalizedEmail = $email update { if (this.Roles.indexOf(\"Administrators\") < 0) this.Roles.push(\"Administrators\"); }","QueryParameters":{"email":"YOU@EXAMPLE.COM"}}}'
 ```
@@ -251,7 +281,7 @@ With `VAPID_*` set: on each of **desktop Firefox**, **desktop Edge** and an **iP
 Screen** (iOS 16.4+; push works only from the installed app): sign in, allow notifications (account page or the bell),
 then start an audit and close the tab/app. Expect the "Audit of … finished" push within a minute of the run ending, and
 a click opening the run. Delivery failures show in the logs: `docker compose --env-file .env logs seotester-app | grep -i webpush`.
-Per device, record delivered / not, and the push service (`docker run --rm --network code-coverage_coverage-internal
+Per device, record delivered / not, and the push service (`docker run --rm --network mintplayer-backend
 curlimages/curl:8.11.1 -sS -X POST "http://coverage-raven:8080/databases/SeoTester/queries" -H "Content-Type: application/json"
 --data '{"Query":"from PushSubscriptions select Service, Device"}'`; the endpoints themselves are capability URLs: never print them).
 
@@ -291,11 +321,10 @@ not configured" or errors, and *Download PDF* produces a PDF. If Chromium's peak
 
 ### Also check once
 
-- **CodeCoverage's deploy with SeoTester running.** Its `docker compose down` cannot remove
-  `code-coverage_coverage-internal` while `seotester-app` is attached; Compose reports the network "still in use" and
-  `up` reuses it. Confirm on the next CodeCoverage deploy that its job stays green and SeoTester reconnects to RavenDB
-  without a restart (`docker compose logs --since 10m seotester-app | grep -i raven`). If the job fails on that line, the
-  fix is a network both stacks declare as external (a compose change to CodeCoverage).
+- **The shared network after the migration (§3.0).** CodeCoverage still sends mail (sign in there once with a provider
+  that mails, or check `docker logs code-coverage-coverage-smtp-1 --since 1h | grep status=sent`), and on the next
+  CodeCoverage deploy SeoTester reconnects to RavenDB without a restart
+  (`docker compose --env-file .env logs --since 10m seotester-app | grep -i raven`).
 - **Monitoring:** set a verified site to *Weekly*; within 15 minutes a run starts (abuse log: *AuditStarted*, detail
   "scheduled") and the site shows the next scheduled audit a week on.
 

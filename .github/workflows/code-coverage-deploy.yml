@@ -189,6 +189,11 @@ jobs:
 
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+          # The backend network shared with SeoTester (coverage-raven and coverage-smtp join it). External to every
+          # compose project, so it is created here when missing; idempotent, and a concurrent create by the other
+          # stack's deploy is fine (the second inspect then finds it). Same line in seotester-deploy.yml.
+          docker network inspect mintplayer-backend > /dev/null 2>&1 || docker network create mintplayer-backend > /dev/null 2>&1 || docker network inspect mintplayer-backend > /dev/null
+
           docker compose --env-file .env pull
           docker compose --env-file .env down --remove-orphans
           docker compose --env-file .env up -d --remove-orphans
