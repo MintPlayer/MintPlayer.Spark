@@ -21,9 +21,10 @@ Research behind this document:
 | Changes API on the production Community licence | ✅ measured 2026-10-10 (§12) |
 | Body consolidated with §12 | ✅ 2026-10-10 |
 | Grilling round 9: live-update details | ✅ 2026-10-10, D33–D37 |
-| Spikes S1–S11 | ⏳ (S1 ✅ 2026-10-10, §12) |
+| Spikes S1–S11 | ⏳ (S1, S6 ✅ 2026-10-10, §12) |
 | Milestones M0–M12 | ⏳ |
 | M1 ✅ | 2026-10-10, commit `72c84933`: X2 SSRF-safe client in `libs/spark/MintPlayer.Spark/Http/`, adopted by the IdP (§12 "Spike S1") |
+| M2 ✅ | 2026-10-10, commit `6df64fb3`: X1 document expiration in `libs/spark/MintPlayer.Spark/Expiration/` (`IExpiring`, `"expiresAfter"`, stamper, read filter, one 36 h configurator), adopted by Messaging, Mail, Moderation and the IdP (§12 "Spike S6"). ⚠️ `model.schema.json` gains `expiresAfter`: CI mints the next `schemas/v{n}` tag on merge (no tag created by hand) |
 
 ---
 
@@ -243,7 +244,7 @@ The crawler writes `AuditRun.Progress` (phase, pages done/discovered, current UR
 
 | # | Addition | Why | Evidence of the gap |
 |---|---|---|---|
-| X1 | **Document expiration**: `AddExpiration()`; `"expiresAfter"` in the model JSON / an `IExpiring` marker; store-level `OnBeforeStore` stamps `@expires`; one shared configurator with a **36 h floor on Community**; reads hide documents whose `@expires` has passed (they linger up to 36 h); fix the existing gap where Mail and Moderation write `@expires` without enabling expiration | pages, frontier, caches, cool-downs, invitations | no PO hook; `IBeforeSave` can't set metadata on create (`SparkInterceptors.cs:291-295`); store created without events (`SparkMiddleware.cs:158-188`) |
+| X1 | **Document expiration** (✅ M2, §12 "Spike S6"): `IExpiring` (`DateTime? ExpiresAtUtc`, the source of truth) plus an optional `"expiresAfter"` in the model JSON for new documents; a store-level `OnBeforeStore` mirrors it into `@expires` (pipeline and raw sessions); a core row policy hides expired documents on every read path (they linger up to 36 h); `UseSpark()` enables expiration once for every library that declares `Registry.RequireDocumentExpiration` (Messaging, Mail, Moderation, IdP) or any `IExpiring` model type, with a **36 h floor refused below on every licence**; `AddExpiration(o => …)` only for options. Fixes the gap where Mail and Moderation wrote `@expires` without enabling expiration | pages, frontier, caches, cool-downs, invitations | no PO hook; `IBeforeSave` can't set metadata on create (`SparkInterceptors.cs:291-295`); store created without events (`SparkMiddleware.cs:158-188`) |
 | X2 | **SSRF-safe HTTP client** (`AddSafeHttp()`): `ConnectCallback` resolves → allow-list of global unicast (unwraps IPv4-mapped/NAT64/6to4) → connects to the checked IP (closes DNS rebinding); manual redirects re-checked per hop; no proxy, no cookies; byte, decompression and time caps. **Adopted by the IdP** (`JwksUri`, back-channel) | user-chosen URLs fetched from inside the compose network | nothing blocks private addresses; `OidcClientKeys.cs:24-34`, `OidcSessionStore.cs:132` |
 | X3 | **Per-user quotas for custom actions** (e.g. `[SparkQuota("audits", …)]`), evaluated after authentication, with limits read from X9 settings | runs/day, D14 weekly full crawl | `AddRateLimiter` is per-IP and pre-auth (`SparkBuilderRateLimiterExtensions.cs:115,128-130`) |
 | X4 | **Unified live updates**: one multiplexed socket at `GET\|CONNECT /spark/live`; subscribe to **persistent objects and queries** (full `ExecuteQueryRequest`: parent, paging, sort, search); change source configurable via **`Spark:Live:Source` = `Actions` \| `Changes` \| `Both`, default `Both`** (D33): `Actions` = Spark's own save pipeline (`IAfterSaveCommitted`) plus an optional `ISparkLiveNotifier.Changed(id)`; `Changes` = the RavenDB Changes API (measured working on Community; **not** a data subscription, one multiplexed connection per database per process); `Both` merges and de-duplicates by id + change vector inside the throttle window. App `IAsyncEnumerable` streams stay for non-RavenDB data. **Low-code (D34):** `"live": true` in the model JSON is all an app writes for the common case, and under `Both` even writes outside the Spark pipeline (the crawler) are picked up without notifier calls; every push re-runs the HTTP read path (row security, redaction, attribute rights); `gone` = deleted or forbidden alike; **patches**; **opt-in** per type/query; throttling, bounded queues, socket lifetime ≤ login ticket. ng-spark: `SparkLiveService`, `livePersistentObject`/`liveQuery`, `spark-query-grid [live]`, po-detail refresh, po-edit banner + existing three-way merge. **Replaces** streaming queries (`isStreamingQuery`, `StreamingQueryArgs`, `/spark/queries/{id}/stream`) and fixes their defects (below) | run progress, notifications | research: live updates; D4, D5, D24 |
@@ -382,7 +383,9 @@ Tests run once at the end (batched), per the repo rules.
 
 ## 11. Open decisions
 
-None open. Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D37 in §12. New questions found during spikes go here first.
+Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D37 in §12. New questions found during spikes go here first.
+
+- **Q-S6a (from S6): should the framework own `IExpiring.ExpiresAtUtc` on persistent-object writes?** Today it is an ordinary model attribute, so a user with `Edit/T` can extend or clear a document's expiry unless the app marks it read-only or `[IgnoreProperty]`. The alternative is SoftDelete's rule: an edit or create through the pipeline keeps the stored value (code via `IDatabaseAccess`/raw sessions still sets it). SeoTester's `PageResult` is not user-editable either way.
 
 
 ---
@@ -728,3 +731,35 @@ Full report: `docs/seo_analyzer_spikes_S4_S5_S10_S12.md`. Real responses are in 
   - The IdP's `SectorIdentifierUri` is never fetched (host only, `OidcSubjects.cs:42`), `request_uri` by reference is unsupported (`Discovery.cs:78-80`), and front-channel logout URIs are loaded by the browser.
   - These all use config-set or fixed hosts: Authorization's introspection (`SparkIntrospectionHandler.cs:95`) and the external-login backchannels, Replication (`ReplicationHttpClientProvider.cs:69`), GitHub webhooks (`GitHubInstallationService.cs:151`) and the Smee/dev-tunnel clients, CodeCoverage's GitHub calls (fixed `api.github.com`/`raw.githubusercontent.com`/`github.com` hosts, the repository name only in the path), and HR's Fleet proxy (`FleetCarsProxyEndpoint.cs:39`).
   - `MintPlayer.Spark.Client` is a client library whose base URL is its caller's.
+
+### Spike S6 (2026-10-10)
+
+**Answer: yes, with the read filter as the guarantee.** Per-document `@expires` works on the Community frequency; an expired document lingers in storage up to 36 h but is invisible to every Spark read from the instant it expires. Built as X1 in M2, commit `6df64fb3`. Guide: `docs/guide-expiration.md`.
+
+- **Where:**
+  - `libs/spark/MintPlayer.Spark.Abstractions/IExpiring.cs` (`DateTime? ExpiresAtUtc`), `EntityTypeDefinition.ExpiresAfter` (model JSON `"expiresAfter"`), `SparkModuleRegistry.RequireDocumentExpiration(name)`.
+  - `libs/spark/MintPlayer.Spark/Expiration/`: `ExpirationStamper` (store-level `OnBeforeStore`), `ExpirationRowPolicy`, `ExpirationStartup` (checks + the one configurator), `SparkExpiration` (`MinimumDeleteFrequency`, `ValidateDeleteFrequency`), `SparkExpirationOptions` (`Spark:Expiration`); `Extensions/SparkBuilderExpirationExtensions.cs` (`AddExpiration`).
+  - Core, not a package: Messaging, Mail, Moderation and the IdP all need the configurator, and Messaging references only the abstractions, which is why the requirement is declared on the registry and executed by `UseSpark()`.
+- **Design decisions** (each with its evidence):
+  - **Always on, no opt-in needed.** The row policy and the stamper are registered by `AddSpark` and act only on `IExpiring` types. An opt-in that could be forgotten would leave expired rows readable, the failure mode X1 exists to prevent. `AddExpiration()` remains for options. *Evidence: `ExpirationTests` run without any `AddExpiration()` call.*
+  - **The property is the source of truth, `@expires` mirrors it.** A row filter is a LINQ predicate rebound by member name (`RowFilterExpressions.cs`), so it cannot read metadata; a field it can read must exist on the document. The model default applies to a new document only (no `@change-vector` in its metadata), so code can clear it later to keep a document. *Evidence: `Clearing_the_expiry_of_a_stored_document_makes_it_permanent`, `An_edit_through_the_pipeline_keeps_the_expiry`.*
+  - **Store-level `OnBeforeStore`**, installed by `UseSpark()` on the DI store (the test host's store included). It stamps creates through the pipeline and raw-session writes alike. Patches, bulk inserts and ETL raise no event and are documented as not covered.
+  - **`!(x.ExpiresAtUtc <= now)`, not `x.ExpiresAtUtc == null || x.ExpiresAtUtc > now`.** With the naive filter swapped in, `Documents_with_no_expiry_or_no_field_at_all_stay_visible` fails: the document without the field disappears from the list (expected 2 ids, found 1). An absent field matches no `== null` (`AbsentVersusNullFieldTests`). The negated range matches null, absent and future alike on Corax.
+  - **System context included** (`BypassInSystemContext = false`): background work through `IDatabaseAccess` must not act on a document that is gone in every sense but storage.
+  - **The 36 h floor is refused below on every licence**, not only when `/license/status` says Community. With the check stubbed, `AddExpiration(o => o.DeleteFrequency = 1 h)` was **accepted by the Developer licence** the tests run on, which is exactly how CI would miss it; production Community would reject it and lose the server (Messaging's measured note of 2026-09-07, now on `SparkExpiration.MinimumDeleteFrequency`).
+  - **One configurator.** Messaging and the IdP each sent `ConfigureExpirationOperation` with their own pinned 36 h ("they must agree or whichever starts last wins"). Both now declare `RequireDocumentExpiration`, and so do MailManager (`SparkMailDeliveries` retention) and Moderation (daily counters, IP observations), which wrote `@expires` but relied on Messaging happening to enable expiration. The database is not touched when nothing needs it (`Nothing_that_needs_expiration_leaves_the_database_record_alone`).
+- **Visibility window:** 0 for Spark reads (the filter compares with the request's `TimeProvider` time). Storage lingers until the next sweep, at most `DeleteFrequency` (36 h) after `@expires`. Raw session queries are not filtered (documented on `IExpiring` and in the guide).
+- **Tests, red→green** (`tests/MintPlayer.Spark.Tests/Expiration/`):
+  - Red: stamper not installed, filter returning null, clamp and startup checks off. **14 of 20 `ExpirationTests` failing.** Green: **20/20**, plus `ExpiresAfterModelTests` (sync keeps a hand-written `expiresAfter`) and the storage spike: 21/21.
+  - Stamping: pipeline create (7 d from the model), raw session store, explicit 2 d and 14 d overriding the model's 7 d, a `Local` time stored as UTC, a type without `expiresAfter` stamped only when code sets it, clearing, an edit keeping the expiry.
+  - Read filter: an expired-but-stored document is **404 on `/spark/po/load`**, missing from the list query, from a custom sub-query on its parent and from that sub-query's distinct values. Each test asserts the document is **still stored**, so the filter, not a sweep, hid it.
+  - Database: 129 600 s after startup; 48 h from options is used; 1 h refuses startup and nothing is written; a library's `RequireDocumentExpiration` alone configures it; nothing configures nothing.
+  - Startup refusals: `expiresAfter` on a non-`IExpiring` type, an explicitly implemented `ExpiresAtUtc`.
+  - Still green: SoftDeleteTests, RevisionsModelTests, SparkSchemaGeneratorTests, SparkModuleRegistryTests, MailEndpointQueryTests, ModerationToolsTests, OidcSessionLogoutTests (88/88 in the combined run).
+- **Storage** (`ExpirationStorageSpikeTests`, Developer licence, RavenDB 7.2 test server). A `PageResult`-shaped document: run id, URL, status, depth, timings, bytes, title/description/h1/canonical snapshot, `@expires` and **20 findings** (`checkId`, `status`, `params` on half of them):
+  - one document: **1 999 B** actual (`/docs/size`);
+  - 2 000 documents: **4 169 728 B** of documents, **2 085 B/doc** including storage overhead (`GetDetailedCollectionStatisticsOperation`);
+  - **100-page run ≈ 204 KiB; 2 000-page run ≈ 4.0 MiB.** Indexes over the collection come on top.
+  - With a 7-day expiry and a sweep at most every 36 h, a page result is stored at most **8.5 days**. One 2 000-page run per site per day therefore holds at most ~8.5 × 4.0 ≈ **34 MiB** per site at steady state; a weekly 100-page run, at most two runs ≈ 0.4 MiB. This fits the "storage stays modest" budget of §4.2 (1–3 KB per page confirmed).
+- **Schemas:** `model.schema.json` gains `expiresAfter` (generated from `EntityTypeDefinition`). The set is untracked and versioned by tag; CI mints the next `schemas/v{n}` on merge to master (`docs/guide-json-schemas.md`). No tag is created by hand.
+- **Open:** `ExpiresAtUtc` is an ordinary model attribute after synchronization; an app that must keep users from editing it marks it read-only or `[IgnoreProperty]` (guide). Whether the framework should own it on pipeline writes is Q-S6a (§11).
