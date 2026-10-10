@@ -5,16 +5,45 @@ X or Google, register websites in an organization, and get an SEO / performance 
 The spec, decisions and milestones are in [seo_analyzer_PRD.md](../seo_analyzer_PRD.md); this folder is the
 operator's documentation. Treat changes to `apps/SeoTester` as production changes.
 
-Status: **M7 skeleton** (projects, composition, sign-in, organizations, settings, notifications, `/bot`). Sites,
-audits and the crawler arrive with M8–M11; compose, deploy and monitoring with M12.
+Status: **M8** (M7's skeleton plus sites, ownership verification, the check catalogue and its editor, the scoring
+engine, starting and joining audits, share links, the abuse log, passkeys). The crawler arrives with M9–M10, the
+pages with M11, compose, deploy and monitoring with M12. Until M9 a started audit stays `Queued`: its first message
+waits in the `seo-probe` queue for a recipient.
 
 ## Layout
 
 | Project | What |
 |---|---|
-| `apps/SeoTester/SeoTester` | the host (`Program.cs`) and the Angular SPA (`ClientApp`, nx project `@spark-apps/seo-tester`); `Settings/` (every gate and limit), `Bot/` (the `/bot` page), `Dockerfile` |
-| `apps/SeoTester/SeoTester.Library` | the entity library (plain SDK): the crawler's identity (`SeoTesterBot`), the pipeline's queues and messages (`Messaging/SeoQueues.cs`); entities and checks from M8 |
-| `apps/SeoTester/SeoTester.Tests` | boots the real `Program` against an embedded RavenDB: composition, administrator-only settings, `/bot`, the route table |
+| `apps/SeoTester/SeoTester` | the host (`Program.cs`) and the Angular SPA (`ClientApp`, nx project `@spark-apps/seo-tester`); `Entities/` (Site, AuditRun, PageResult, CheckDefinition, AuditLogEntry, TargetCooldown: here, not in the Library, because their marker interfaces are web types, PRD Q-M8a), `Actions/`, `CustomActions/` (StartAudit, StartFullCrawl, VerifySite, ResetCheckDefinition), `Interceptors/`, `Verification/` (proofs, re-check cron), `Audits/` (start, abuse log, organization cascade), `Catalogue/` (seeder, scoring snapshot), `Settings/` (every gate and limit), `Bot/` (the `/bot` page), `Dockerfile` |
+| `apps/SeoTester/SeoTester.Library` | plain SDK, nothing web: the shipped check catalogue (`Catalogue/checks.json`, 110 checks) and its parser, the scoring engine (`Scoring/`), origin normalization and ownership-proof matching (`Sites/`), the crawler's identity (`SeoTesterBot`), the pipeline's queues and messages (`Messaging/SeoQueues.cs`); the check implementations from M9 |
+| `apps/SeoTester/SeoTester.Tests` | boots the real `Program` against an embedded RavenDB (users and organizations from `Data/organizations.json`; DNS and the web faked): composition, settings, `/bot`, the route table, sites, verification, audit start, catalogue, sharing, passkeys; and the pure scoring and catalogue tests |
+
+## What a user does (M8)
+
+1. **Add a site** (menu SEO → Sites → New; organization Admins). The address is reduced to its origin
+   (`https://example.com`); without an organization the site goes to the user's personal one. A site is unique per
+   organization; several organizations may each add the same site.
+2. **Verify ownership** (action *Verify ownership*, Admins). Publish the site's verification token one of three ways,
+   then run the action:
+   - DNS: a TXT record at `_seotester.<host>` with the value `seotester-site-verification=<token>`;
+   - a file `https://<host>/.well-known/seotester-verification.txt` containing that line;
+   - `<meta name="seotester-site-verification" content="<token>">` in the home page's `<head>`.
+
+   If another organization already holds the site verified, its Owners get a mail asking to let the user in, and this
+   organization's site stays unverified. Verified sites are re-checked daily; three failed re-checks in a row withdraw
+   the verification (`SeoTester:Verification:*`).
+3. **Run an audit** (action *Run audit*, Members). It joins an audit of the same site already running in one of the
+   user's organizations; otherwise it counts against the user's quota (`audits` 5/day unverified, `verified-audits`
+   24/day) and, for an unverified site, starts a 6 h cool-down for everyone. *Full-site crawl* (verified sites) uses the
+   weekly `full-crawls` allowance and the 20 000-page ceiling. Refusals answer 429 with `Retry-After`.
+4. **Share** (Owners and Admins): a read-only link to a site or a run, governed by `SeoTester:Features:Sharing`
+   (`VerifiedOnly` hides unverified sites' links until they verify).
+5. **Passkeys** (account page): after the first external sign-in a user can add a passkey and sign in with it.
+
+**Administrators** also get the check catalogue editor (SEO → Check catalogue: edit texts, weights, severities, enable
+or disable a check, add one, *Reset to shipped*) and the abuse log (SEO administration → Audit log). The catalogue is
+seeded at startup: new shipped checks are added and unedited entries follow the shipped text; an edit is never
+overwritten.
 
 ## Running it locally
 
@@ -54,7 +83,7 @@ empty is simply not offered; with **no** provider at all the app refuses to star
 
 | What | Keys | Notes |
 |---|---|---|
-| Public origin | `Spark:Auth:PublicBaseUrl` | `https://seotester.mintplayer.com`, already in `appsettings.Production.json`; mailed and share links are built from it |
+| Public origin | `Spark:Auth:PublicBaseUrl` | `https://seotester.mintplayer.com`, already in `appsettings.Production.json`; mailed and share links are built from it. ⚠️ Its host is also the **passkey relying-party id** (D46): a passkey binds to it for life, so never change it once users enrolled passkeys. Development uses `localhost` |
 | Mail (SMTP relay) | `Spark:Mail:Smtp:Host` (+ `Port`, `UserName`, `Password` if the relay needs them), `Spark:Mail:From:Address` | The sender defaults to `noreply@seotester.mintplayer.com`. **Required in production:** without a transport the app refuses to start (account-link confirmations need mail). Same relay as CodeCoverage (`docs/code-coverage/hosting.md`) |
 | Web Push (VAPID) | `Spark:Notifications:WebPush:PublicKey`, `…:PrivateKey`, `…:Subject` | Generate once with `MintPlayer.Spark.WebPush.VapidDetails.Generate("mailto:…")`; the private key is a secret. Empty = push off, in-app and mail still work. Changing the pair later invalidates every browser subscription |
 | PageSpeed Insights / CrUX | `SeoTester:PageSpeed:ApiKey` | A Google Cloud API key with the PageSpeed Insights API enabled (restrict it to that API). Empty = "not measured" (from M10) |

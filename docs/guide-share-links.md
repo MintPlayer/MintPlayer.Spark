@@ -20,8 +20,12 @@ public class Site : IOrganizationOwned, ISparkShareable          // MintPlayer.S
 
 spark.AddShareLinks(o => o.Share<Site>(
     attributes: ["Origin", "LatestScore", "LatestGrade"],
-    queries: new Dictionary<string, string[]> { ["SiteRuns"] = ["StartedAtUtc", "Score", "Grade"] }));
+    queries: new Dictionary<string, string[]> { ["site-runs"] = ["StartedAtUtc", "Score", "Grade"] }));
 ```
+
+A child query is named by its **alias** (or id), as `IQueryLoader.ResolveQuery` resolves it, and the same key names it
+on `/spark/share/query` and in the `queries` of `/spark/share/load`. A query without an alias goes by its name; one
+with an alias (SeoTester's `"alias": "site-runs"`) must be declared as `["site-runs"]`, or the link shows no table.
 
 Both lists are **allow-lists**: a link shows the named attributes of the object, and for each named query the named
 columns, nothing else, whatever the type gains later. A query is run only when it is also one of the type's own
@@ -70,6 +74,18 @@ builder.Services.AddScoped<ISparkShareGate, SharingSwitch>();
 
 Off means no new link is made (the action says so) and every existing link answers as unknown; switched back on,
 the same links work again.
+
+A gate can also decide **per object**: `IsEnabledForAsync(typeName, entity)` (yes by default) is asked with the stored
+object after `IsEnabledAsync` said yes for its type, when `ShareLink` makes a link and on every read. SeoTester uses it
+for "verified sites only" (D11):
+
+```csharp
+public async ValueTask<bool> IsEnabledForAsync(string typeName, object entity, CancellationToken ct)
+    => await settings.GetAsync(SeoSettings.Sharing, ct) != SeoFeatureScope.VerifiedOnly || entity is Site { IsVerified: true };
+```
+
+A refused object's link reads like an unknown one, and works again once the gate says yes. Decide from the stored
+object only (and other stored state), so making and reading a link agree.
 
 ## The page (ng-spark)
 

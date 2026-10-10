@@ -1,8 +1,8 @@
 # SeoTester (#268): PRD and plan
 
-Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M6 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
+Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M8 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
 
-§1–§11 are the current spec. §12 is the decision log (D1–D43 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
+§1–§11 are the current spec. §12 is the decision log (D1–D46 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
 
 Research behind this document:
 - `docs/seo_analyzer_research.md`: domain research, the full check catalogue (~90 checks), .NET options, crawler safety, scoring. Facts marked **[verify]** are unconfirmed and become spike work.
@@ -29,7 +29,8 @@ Research behind this document:
 | M3 ✅ | 2026-10-10: X9 settings package `libs/settings/MintPlayer.Spark.Settings` (alias `settings`, `11.0.0-preview.104`) and X7 per-queue `HandlerTimeout` in Messaging (§12 "Spike S11"). Owner round 10 (D38–D41) committed separately before it |
 | M4 ✅ | 2026-10-10: X11 organizations package `libs/organizations/MintPlayer.Spark.Organizations` (alias `organizations`, `11.0.0-preview.104`), the `ISparkSignedInHandler<TUser>` hook in Authorization (`preview.104`), ng-spark `/organizations` (`withOrganizationRoutes()`, `22.33.0`), and a startup refusal of unsupported verb combinations in `security.json` (§12 "Spike S13"). Guides `docs/guide-organizations.md` and `docs/guide-settings.md` (M3's). ~~Open: Q-M4a, Q-M4b (§11)~~ answered 2026-10-10: D42, D43 (§12 Round 11) |
 | M6 ✅ | 2026-10-10 (§12 "Spike S12 and M6"): X10 notifications `libs/notifications/MintPlayer.Spark.Notifications` (alias `notifications`) with the hand-rolled Web Push library `libs/webpush/MintPlayer.Spark.WebPush` (both `11.0.0-preview.104`), preferences per organization (D44); X3 quotas (`[SparkQuota]`, `ISparkQuotas`, settings package; core `ISparkCustomActionGate`); X5 ng-spark score renderers (`@mintplayer/ng-spark/score-renderers`), CodeCoverage switched over with its DOM pinned; X6 share links in core (`ISparkShareable`, `AddShareLinks`, `ShareLink`/`RevokeShareLink`, `/spark/share`); ng-spark notifications/share UI; M5 follow-ups; S12 measured on Chrome (5/5 delivered). Guides: notifications, quotas, share links, score renderers. Open: Q-M6a–Q-M6d (§11) |
-| M7 ✅ | 2026-10-10 (§12 "M7"): the SeoTester skeleton `apps/SeoTester` (host + SPA, `.Library`, `.Tests`; https 5013 / http 5014; database `SeoTester`), composed per §4.1 (external sign-in only with `ConfirmByEmail`, the four provider presets from configuration, MailManager, Messaging with the six crawl queues declared, SafeHttp, settings with every §6 gate and limit and the §7 weights, three quotas, notifications, organizations, the sharing switch); server-rendered `/bot`; Dockerfile; nx, solution and CI lists; `docs/seotester/README.md` (credentials to register). SparkId registers a Development `seotester` client. M6 leftovers: share-page headings, a clicked push is read. Open: Q-M7a, Q-M7b (§11) |
+| M7 ✅ | 2026-10-10 (§12 "M7"): the SeoTester skeleton `apps/SeoTester` (host + SPA, `.Library`, `.Tests`; https 5013 / http 5014; database `SeoTester`), composed per §4.1 (external sign-in only with `ConfirmByEmail`, the four provider presets from configuration, MailManager, Messaging with the six crawl queues declared, SafeHttp, settings with every §6 gate and limit and the §7 weights, three quotas, notifications, organizations, the sharing switch); server-rendered `/bot`; Dockerfile; nx, solution and CI lists; `docs/seotester/README.md` (credentials to register). SparkId registers a Development `seotester` client. M6 leftovers: share-page headings, a clicked push is read. Open: Q-M7a, ~~Q-M7b~~ (§11; Q-M7b answered by D46) |
+| M8 ✅ | 2026-10-10 (§12 "M8"): `Site` (organization rows, live), ownership verification by DNS TXT / well-known file / meta tag with the claim flow (D18, D42) and an hourly re-check; the check catalogue (110 checks, 8 categories) seeded into editable `CheckDefinition`s with "Reset to shipped"; the pure scoring engine (snapshot + `ScoringVersion`, headline and category scores); `AuditRun` / `PageResult` shapes; `StartAudit` / `StartFullCrawl` (join, 6 h cool-down, three quotas, gates, first message enqueued); share links for `Site` and `AuditRun` (core: per-object share gates); `AuditLogEntry`; D26 cascade; passkeys (D46). Open: Q-M8a–Q-M8e (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -399,7 +400,12 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 - **Q-M6b (from M6): push subscriptions are documents of their own, not a list on `SparkUser`.** D30 says "stored per device on the SparkUser". Built as `PushSubscriptions/{userId}/{hash}` (read by id prefix), because a list on the user document would put every subscribe on Identity's concurrency stamp (a sign-in racing a subscribe fails one of them) and make Authorization know about push. Options: (a) keep separate documents; (b) move them onto `SparkUser`. **Recommendation: (a).**
 - **Q-M6c (from M6): what a share link shows is declared in code** (`AddShareLinks(o => o.Share<Site>(attributes, queries))`, allow-lists) rather than in the model JSON. Options: (a) keep it in code; (b) a `"share"` block on the persistent object in the model (low-code, but it moves the model hash and the schema, and a model edit could widen a public link). **Recommendation: (a).**
 - **Q-M7a (from M7): a feature gate has three values, not two.** D11 says the owner wants to "enable or disable" monitoring, intrusive probes, deep-crawl limits and sharing, with defaults "verified-only" for the first three and "allowed for unverified sites" for sharing. An on/off switch cannot express both, so each gate is built as `SeoFeatureScope` = `Off` / `VerifiedOnly` / `AllSites` (`SeoTester:Features:*`, defaults as D11). Options: (a) the three-valued gate; (b) a boolean per gate with "verified-only" fixed in code (then "intrusive probes on unverified sites" can never be switched on, which D11's legal note argues for); (c) two booleans per gate (enabled, unverified allowed). **Recommendation: (a)**: one setting per gate, every D11 default expressible, and `AllSites` for probes remains an explicit administrator choice.
-- **Q-M7b (from M7): passkeys on SeoTester?** D2 says external sign-in only. CodeCoverage, also external-only, enables passkeys as a second, forge-independent way in. Built without them (the account page excludes them; the Authorization package ships its passkey rights to signed-in users regardless, as in every app; with passkeys off no passkey can be enrolled). Options: (a) keep them off (D2 as written); (b) enable them (`auth.Passkeys = SparkPasskeys.Enabled` and `PasskeyServerDomain = seotester.mintplayer.com`, pinned for life). **Recommendation: (a)** until the owner asks: a passkey's relying-party id cannot be moved later, so turning them on is a decision to make once, deliberately.
+- ~~**Q-M7b (from M7): passkeys on SeoTester?**~~ **Closed by D46** (§12 "M8", owner answer 2026-10-10): option (b), passkeys on. ~~D2 says external sign-in only. CodeCoverage, also external-only, enables passkeys as a second, forge-independent way in. Built without them (the account page excludes them; the Authorization package ships its passkey rights to signed-in users regardless, as in every app; with passkeys off no passkey can be enrolled). Options: (a) keep them off (D2 as written); (b) enable them (`auth.Passkeys = SparkPasskeys.Enabled` and `PasskeyServerDomain = seotester.mintplayer.com`, pinned for life). **Recommendation: (a)** until the owner asks: a passkey's relying-party id cannot be moved later, so turning them on is a decision to make once, deliberately.~~
+- **Q-M8a (from M8): SeoTester's entities live in the host, not in `SeoTester.Library`.** §4.1 puts "entities" in the Library, but `IOrganizationOwned` (Organizations), `ISparkShareable` and `IExpiring` (core Abstractions) are in web assemblies, and an entity library refuses ASP.NET (SPARKLIB001, the build fails). Options: (a) entities in the host, the Library keeps what is pure (catalogue JSON, scoring, origin and proof parsing; the check implementations in M9); (b) move the three marker interfaces and `RequiresOrganizationRoleAttribute` into plain-SDK assemblies (a framework move touching every package that declares them). **Recommendation: (a)**: nothing outside SeoTester needs its entities, and (b) moves public types of three packages for a placement preference.
+- **Q-M8b (from M8): the critical cap's exact rule.** §7 says "critical failures cap their category (Lighthouse-style)" without numbers. Built: a Critical check whose ratio is below 0.5 (it fails on at least half its pages, or a site-level check fails) holds its category at 49 (an F). Options: (a) as built; (b) cap on any failing page; (c) a cap per severity. **Recommendation: (a)**: one page without a title must not make a 2 000-page site's SEO an F, but a site where most pages lack one cannot score above F. Rules are versioned (`ScoringSnapshot.Algorithm`), so a change marks the trend.
+- **Q-M8c (from M8): "a site already held in another organization" = verified there.** Several organizations may add the same site unverified (each tests it). The claim flow (D18) starts only when the proof is found and another organization holds the same **host** verified: that organization's Owners get a join request, and the second organization's site stays unverified. A holder that lost the domain loses its verification at the re-check (3 failed checks in a row, a setting), after which the other can verify. Options: (a) as built; (b) "held" = registered anywhere, verified or not. **Recommendation: (a)**: (b) would let anyone who registers a site first block its real owner.
+- **Q-M8d (from M8): how-to-fix texts.** §3.1 asks for "en/nl `howToFix` per platform". Built: a translated explanation (`HowToFixEn`/`HowToFixNl`) plus one code snippet per platform (nginx, Apache, IIS/ASP.NET Core, HTML) that is not translated, since code is the same in both languages. Options: (a) as built; (b) eight translated fields per check. **Recommendation: (a).**
+- **Q-M8e (from M8): robots.txt opt-out at StartAudit.** §4.3 lists the robots.txt opt-out among StartAudit's checks; the robots.txt fetch and RFC 9309 matcher belong to the M9 probe (`SiteProbeMessage`). Built: StartAudit does not fetch robots.txt; the probe will stop the run before any page is fetched. Options: (a) as built (the run is created and then ends "opted out"); (b) a synchronous robots.txt fetch inside the action as well. **Recommendation: (a)**: one fetch per run, in the background, through the same SSRF-safe client, and the abuse log still records the attempt.
 - **Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).
 
 
@@ -411,7 +417,7 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 ### Round 1 (owner, 2026-10-10)
 
 - **D1 (G1): production app.** `apps/SeoTester`, deployed on the same Debian VPS as CodeCoverage with its own compose service and deploy workflow. Treat changes as production changes from the first deploy. *Evidence: owner preference.*
-- **D2 (G2): signed-in only.** External logins only (Microsoft, GitHub, X, Google); no local passwords, no anonymous audits. *Evidence: owner preference; abuse control, §6.*
+- **D2 (G2): signed-in only.** ~~External logins only~~ External logins (Microsoft, GitHub, X, Google), plus passkeys added after the first external sign-in (**superseded in part by D46**, §12 "M8"); no local passwords, no anonymous audits. *Evidence: owner preference; abuse control, §6.*
 - **D3 (G6): one Chromium container in `docker-compose.yml`, beside the app.** It runs on the app's network, with a limited number of renders at a time (queue `MaxConcurrency`). This supersedes ~~separate worker on a locked-down network~~ in §3.2 F11, §4.3 and §6. *Evidence: owner preference.*
   - **Consequence to resolve (round 2):** the app's network today also holds unsecured RavenDB and the postfix relay. Proposal: the app joins **two** networks, `internal` (RavenDB, postfix) and `browser` (Chromium only). Chromium joins only `browser`, which is "the same network as the app" without seeing RavenDB.
   - **Second layer, also to prove in S3:** the app drives Chromium remotely (Playwright `ConnectAsync`) and intercepts **every** request with `RouteAsync`. It fetches each one through the X2 safe client and fulfils it, with service workers blocked and Chromium started with `--host-resolver-rules="MAP * ~NOTFOUND"`. Chromium then never resolves or connects anywhere itself, so the SSRF guard covers browser traffic too. S3 must check what escapes routing: WebSockets, WebRTC, prefetch.
@@ -1266,3 +1272,109 @@ stored hashed and verifiable) and that an administrator's edit survives a re-run
 **Found along the way:** the committed route snapshots of SparkId, DemoApp, Fleet, HR and QnA predated M5 and M6 (they still listed
 `/spark/queries/{id}/stream` and lacked `/spark/live` and `/spark/share/*`), so those five test projects were red on this
 branch (M6 regenerated only CodeCoverage's); regenerated, the same four-line diff in each.
+
+### M8 (2026-10-10): sites, verification, the catalogue, scoring, audit start
+
+Commits: `494cb92f` (core: per-object share gates), `2a7539a7` (SeoTester.Library: catalogue, scoring, origins and
+proofs), `69b4ba4b` (SeoTester host and tests), then this record. Operator documentation: `docs/seotester/README.md`.
+
+- **D46: passkeys on SeoTester (owner answer 2026-10-10, closes Q-M7b, supersedes D2's "external logins only").** A
+  user adds a passkey on the account page after the first external sign-in, through Spark's existing support
+  (`auth.Passkeys = SparkPasskeys.Enabled`). The relying-party id is pinned, never taken from the request: the host of
+  `Spark:Auth:PublicBaseUrl` (production `seotester.mintplayer.com`), `localhost` in Development. `LocalCredentials`
+  stays `Disabled` (no passwords). The SPA's `withAccount()` no longer excludes the passkeys page. *Evidence: owner
+  answer 2026-10-10. Test `SharingAndPasskeyTests.Passkeys_are_on_and_a_signed_in_user_reaches_their_passkeys_page`
+  (`/spark/auth/capabilities` says `passkeys: true`, `request-options` answers with `rpId: localhost`, the passkeys
+  page `me` loads for a signed-in user, not anonymously); red with `SparkPasskeys.Disabled`. The route snapshot gains
+  `POST /spark/auth/passkeys/request-options` and `…/sign-in`.*
+
+**Where things live.** Entities in the host (`apps/SeoTester/SeoTester/Entities`), because `IOrganizationOwned`,
+`ISparkShareable` and `IExpiring` are web types and the entity library refuses ASP.NET (SPARKLIB001): Q-M8a. The
+Library holds what is pure: `Catalogue/checks.json` and its parser, the scoring engine, `SiteOrigin` and
+`OwnershipProof`. Indexes: none; every query is a dynamic one (application-side by construction).
+
+**Domain model (§4.2).**
+
+| Document | Rows | Notes |
+|---|---|---|
+| `Site` | `IOrganizationOwned`: Viewer reads; Member edits the profile and starts audits; Admin adds, deletes, verifies, shares (D23, D31) | `live`; origin normalized and unique per organization, fixed after creation; personal organization when the form leaves it empty (D21); server-owned verification and latest-run fields (`SiteSaveInterceptor`) |
+| `AuditRun` | `IOrganizationOwned`, read + share only (never a form) | `live`; status, progress, participants, limits fixed at start, `ScoringSnapshot` + `ScoringVersion`, `CategoryScores` and `CheckResults` value objects; sub-query `site-runs` of `Site` |
+| `PageResult` | `IOrganizationOwned`, read only | `expiresAfter` 7 d (D8), id `{runId}/pages/{hash}`, findings value objects; sub-query `run-pages` of `AuditRun` |
+| `CheckDefinition` | everyone signed in reads (`ISparkOwnsRowSecurity`, stated rationale); Administrators edit, create, reset | id `CheckDefinitions/{checkId}`; `SeededHash` (not a model attribute) |
+| `AuditLogEntry` | Administrators | `ExpiresAtUtc` = now + `SeoTester:AuditLog:Retention` (1 y, D37) |
+| `TargetCooldown` | not a persistent object | `TargetCooldowns/{host}`, `IExpiring` = the cool-down |
+
+**Verification (F3, D18, D29, D42).** Three methods, as F3 lists, and no others: a TXT record at `_seotester.{host}`
+with `seotester-site-verification={token}`, the same line in `/.well-known/seotester-verification.txt`, or a meta tag
+`seotester-site-verification` in the home page's `<head>`. The token is 128 random bits per site. DNS goes through
+`IDnsTxtResolver` (DnsClient 1.8.0, 5 s timeout, no cache); the two HTTP proofs through a named SSRF-safe client with
+`RedirectsWithinOriginOnly` (an open redirect elsewhere proves nothing), 15 s, ≤ 3 redirects, at most 256 KB read.
+Everything read is untrusted: exact comparison, bounded input, comments and the body ignored for the meta tag,
+regexes with a timeout. **Claim flow (D18/D42):** with the proof found, a site of the same host verified by another
+organization makes `VerifySite` call `ISparkOrganizations.RequestToJoinAsync` for that organization (its Owners get
+the acceptance mail, personal organizations included) instead of verifying; a caller already in that organization is
+told so. "Held" means verified there (Q-M8c). **Re-check:** `ReverifySitesCronJob` hourly re-checks verified sites last
+checked more than `SeoTester:Verification:RecheckInterval` (1 day) ago, up to 200 a pass; `FailuresBeforeWithdrawal`
+(3) failed checks in a row withdraw the verification (logged).
+
+**Catalogue (§3.1, D16, D32).** 110 checks: Seo 19, Social 3, Performance 15, Security 26, Accessibility 10, Mobile 11,
+Technical 17, Domain 9; Critical 6, High 16, Medium 38, Low 27, Info 23. Built from research §1 (features such as the
+previewers left out; "count once" rows counted once; rel=prev/next dropped; meta keywords and the sitelinks search box
+kept as Info "no effect"); severities the research leaves open were chosen as: certificate expiry High, zoom disabled
+Medium. Each entry: id `{category}.{kebab}`, category, severity, weight (Critical 10, High 6, Medium 3, Low 1, Info 0),
+layer, enabled, en/nl title, summary (placeholders `{url}`, `{n}`, …, the same in both languages) and how-to-fix, code
+snippets per platform (Q-M8d), docs link. `CatalogueSeeder` (the settings seeder's pattern, optimistic writes) adds
+new checks, refreshes an entry whose content still hashes to its `SeededHash`, and never touches an edit or an
+administrator's own entry; `ResetCheckDefinition` restores one entry. An edit keeps the check id (implementations
+are keyed by it). The editor is the generic persistent-object UI (menu "Check catalogue").
+
+**Scoring (§7).** `ScoringSnapshot.Create(categoryWeights, checks)`: enabled checks only, ordered by id; `Version` = the
+first 16 hex digits of a SHA-256 over a canonical form (algorithm number, category weights, each check's id, category,
+severity and weight), independent of input order and culture. `ScoreCalculator.Score(snapshot, outcomes)` is pure: a
+check's ratio is (pass + ½ warn) / (pass + warn + fail), N/A and errors excluded; a category is the weight-weighted
+mean of its measured, weighted checks; a Critical check below 0.5 caps its category at 49 (Q-M8b); the headline is the
+category-weight-weighted mean of measured categories (Domain weighs 0: shown, not counted); rounding half away from
+zero at the end; grades per D15. `StartAudit` stores the snapshot on the run (the M9 aggregate scores with it).
+
+**StartAudit / StartFullCrawl (§4.3, §6, D11, D14, D17).** In order: a full crawl needs a verified site and the
+DeepCrawl gate (the action is also withheld from unverified sites); an in-progress run of the same origin in an
+organization where the caller is Member or more is **joined** (participant added, no quota); an unverified target in
+its cool-down (`TargetCooldowns/{host}`, 6 h, all users) is refused with 429 and `Retry-After`; the quota
+(`audits`, `verified-audits` or `full-crawls`) is consumed or 429; then the run (limits from the gates and settings,
+snapshot), the cool-down (conditional write: of two simultaneous starts one is refused), the log entry and
+`SiteProbeMessage` are saved in one commit. No recipient exists yet (M9); the declared queue holds the message.
+Robots.txt is the probe's (Q-M8e). Every start, join and refusal is an `AuditLogEntry`.
+
+**Share links (X6, D11, D31).** `Share<Site>` (origin, verified, latest score, grade, date; child query `site-runs`
+with date, status, score, grade, version) and `Share<AuditRun>` (status, dates, scores, category scores, check
+results). A query is named by its **alias or id** in the declaration (`IQueryLoader.ResolveQuery`), not its name; the
+guide now says so. `SharingSwitch` answers per object under `VerifiedOnly` (an unverified site's link stops, and comes
+back once verified), through a new core seam:
+- **Core change (dedupe-neutral, behaviour kept):** `ISparkShareGate.IsEnabledForAsync(typeName, entity)`, a default
+  interface method answering yes, asked with the stored object after the type gate when a link is made
+  (`ISparkShareLinks.IsEnabledAsync(type, id)`, used by `ShareLink`) and on every read. Without such a gate nothing
+  changes: the 12 existing sharing tests pass unchanged. *Evidence: `ShareLinkTests.A_gate_can_refuse_one_object_on_making_and_on_reading_its_link`,
+  red (1/13 failed) with the two calls removed, green 13/13.*
+
+**D26.** `SeoOrganizationData` (`IOrganizationDataHandler`): deleting an organization deletes its page results, runs
+and sites by query (parameters for values, `RqlIdentifier.Collection` for the constant collection names); the export
+lists sites and runs. The abuse log and the per-host cool-downs stay.
+
+**Tests** (`SeoTester.Tests`, the shared host now seeded from `Data/organizations.json` with `SeedFromJsonAsync`: Ann
+Owner of Acme with Max Member and Vic Viewer, Bob Owner of Globex, personal organizations; DNS and the site answered
+by `FakeDns` / `FakeWeb`, the latter replacing only the verification client's primary handler so the SSRF-safe
+redirect rules still run): `ScoreCalculatorTests` 17, `ShippedCatalogueTests` 3, `SiteOriginAndProofTests` 16,
+`SiteTests` 5, `VerificationTests` 6, `StartAuditTests` 8, `CatalogueTests` 5, `SharingAndPasskeyTests` 3, plus M7's 12.
+**Red→green** (Developer licence; 25 mechanisms removed at once: the interceptor's kept fields, the personal-org
+default, the check-id keep and id-from-check-id, the per-site sharing answer, the claim branch, the withdrawal, the DNS
+proof, `RedirectsWithinOriginOnly`, passkeys, the seeder's hosted service and its edit guard, the reset, join,
+cool-down, quota, the deep gate, the full-crawl guard (both), the critical cap, warn = ½, the head cut, the user-info
+refusal): **24 of 75 failed**; green **75/75**. Confirmed rather than red: the row rules (framework: a Member cannot
+add, a Viewer cannot edit or start, Bob reaches nothing, a Member cannot share or verify), the headline ignoring
+Domain (a weight of 0 contributes nothing, so no mutation can turn it red), read-only server fields on create (the
+pipeline already does not write read-only attributes; the interceptor resets them as a second line), the full-crawl
+limits, the shipped catalogue's shape.
+
+**Also:** two settings `SeoTester:Verification:{RecheckInterval, FailuresBeforeWithdrawal}`; menu groups "SEO" (sites,
+audits, check catalogue) and "SEO administration" (audit log); `securityPosture.txt` gains the new grants (none
+anonymous); translations en/nl for every label, action and message. Not run here: the browser (M11 builds the pages).
