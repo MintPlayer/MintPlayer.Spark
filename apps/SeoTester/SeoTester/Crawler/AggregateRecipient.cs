@@ -19,7 +19,8 @@ namespace SeoTester.Crawler;
 /// coverage, depth, near-duplicates, hreflang return links), scores them with the snapshot the run started with
 /// (D32), compares each check with the site's previous completed run (New / Fixed / Unchanged), and in one commit
 /// finishes the run, updates the site's latest score and deletes the frontier. Then the participants are notified
-/// (X10). Pages are read by id prefix, not through an index: complete and never stale.
+/// (X10), and a monitored site's members alerted (F10, <c>SiteAlerter</c>). Pages are read by id prefix, not through an
+/// index: complete and never stale.
 /// </summary>
 public partial class AggregateRecipient : IRecipient<AggregateMessage>
 {
@@ -27,6 +28,7 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
     [Inject] private readonly IMessageContext context;
     [Inject] private readonly RunPipeline pipeline;
     [Inject] private readonly Catalogue.CatalogueSnapshots snapshots;
+    [Inject] private readonly Monitoring.SiteAlerter alerter;
 
     public async Task HandleAsync(AggregateMessage message, CancellationToken cancellationToken = default)
     {
@@ -61,7 +63,8 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
         var tallies = tally.Tallies();
         var snapshot = run.ScoringSnapshot ?? await snapshots.CreateAsync(session, cancellationToken);
         var card = ScoreCalculator.Score(snapshot, tallies.Values.Select(t => t.Outcome));
-        var previous = await PreviousResultsAsync(run, cancellationToken);
+        var previousRun = await PreviousRunAsync(run, cancellationToken);
+        var previous = previousRun?.CheckResults.GroupBy(r => r.CheckId).ToDictionary(g => g.Key, g => g.First().Status, StringComparer.Ordinal);
 
         var checkResults = card.Checks.Select(c => new RunCheckResult
         {
@@ -104,20 +107,22 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
         await pipeline.NotifyAsync(run,
             card.Overall is { } score ? $"Audit of {run.Origin} finished: {score} ({card.Grade})" : $"Audit of {run.Origin} finished",
             $"{pages.Count} pages checked; {checkResults.Count(r => r.Status == nameof(CheckStatus.Fail))} checks failed.", "audit-completed", cancellationToken);
+
+        // F10: a monitored site's members hear about a score drop, a new critical issue or an expiry (M12).
+        await alerter.AlertAsync(run, previousRun, snapshot, card.Overall, checkResults, cancellationToken);
     }
 
-    /// <summary>The check statuses of the site's latest completed run before this one, or null when there is none.</summary>
-    private async Task<Dictionary<string, string>?> PreviousResultsAsync(AuditRun run, CancellationToken cancellationToken)
+    /// <summary>The site's latest completed run before this one, or null when there is none.</summary>
+    private async Task<AuditRun?> PreviousRunAsync(AuditRun run, CancellationToken cancellationToken)
     {
         if (run.SiteId is not { } siteId)
             return null;
         var id = run.Id;
-        var previous = await session.Query<AuditRun>()
+        return await session.Query<AuditRun>()
             .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(5)))
             .Where(r => r.SiteId == siteId && r.Status == AuditRunStatus.Completed && r.Id != id)
             .OrderByDescending(r => r.CompletedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
-        return previous?.CheckResults.GroupBy(r => r.CheckId).ToDictionary(g => g.Key, g => g.First().Status, StringComparer.Ordinal);
     }
 
     /// <summary>New: flagged now but not before; Fixed: flagged before, passing now; Unchanged otherwise.</summary>

@@ -15,3 +15,14 @@ public enum SeoFeatureScope
     /// <summary>Every site, verified or not.</summary>
     AllSites,
 }
+
+public static class SeoFeatureScopeExtensions
+{
+    /// <summary>Whether the gate admits a site (D11, Q-M7a): the audit start, the monitoring sweep, its alerts and the site form ask the same question.</summary>
+    public static bool Admits(this SeoFeatureScope gate, bool verified) => gate switch
+    {
+        SeoFeatureScope.AllSites => true,
+        SeoFeatureScope.VerifiedOnly => verified,
+        _ => false,
+    };
+}

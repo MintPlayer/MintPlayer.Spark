@@ -68,6 +68,11 @@ public static class SeoSettings
     public static readonly SparkSetting<int> VerificationFailuresBeforeWithdrawal = new("SeoTester:Verification:FailuresBeforeWithdrawal", 3,
         "Failed re-checks in a row after which a site's verification is withdrawn.");
 
+    // ---- Monitoring alerts (F10). ------------------------------------------------------------------------------------
+
+    public static readonly SparkSetting<int> AlertScoreDrop = new("SeoTester:Alerts:ScoreDrop", 5,
+        "Points the score of a monitored site must fall between two runs to alert its members, unless the site sets its own (0 = no score-drop alerts).");
+
     // ---- Category weights (§7, D15). A category with no measurements drops out of the weighted mean. -------------
 
     public static readonly SparkSetting<int> WeightSeo = new("SeoTester:Weights:Seo", 25, "Weight of the SEO category in the headline score.");

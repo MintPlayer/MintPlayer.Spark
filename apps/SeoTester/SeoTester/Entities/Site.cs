@@ -11,7 +11,7 @@ namespace SeoTester.Entities;
 /// (D18, D21, D23): Viewers read, Members edit the profile and start audits, Admins add, verify, delete and share.
 /// </summary>
 /// <remarks>
-/// Only the profile (<see cref="PwaProfile"/>, <see cref="Language"/>, <see cref="Monitoring"/>) is the user's. The
+/// Only the profile (<see cref="PwaProfile"/>, <see cref="Language"/>, <see cref="Monitoring"/>, <see cref="AlertScoreDrop"/>) is the user's. The
 /// origin and the organization are fixed at creation, and the verification and latest-run fields are the server's:
 /// <c>SiteSaveInterceptor</c> keeps them on every persistent-object write, so only server code (a raw session)
 /// changes them. Entities live in the host, not in <c>SeoTester.Library</c>: <see cref="IOrganizationOwned"/>,
@@ -49,6 +49,24 @@ public class Site : IOrganizationOwned, ISparkShareable
 
     [LookupReference(typeof(MonitoringSchedule))]
     public string? Monitoring { get; set; } = MonitoringSchedule.Off;
+
+    /// <summary>
+    /// Alert when the score falls by at least this many points between two runs (F10); empty = the administrator's
+    /// default (<c>SeoTester:Alerts:ScoreDrop</c>), 0 = no score-drop alerts. The other alerts (a new critical issue,
+    /// the certificate or the domain about to expire) are always sent while monitoring is on.
+    /// </summary>
+    public int? AlertScoreDrop { get; set; }
+
+    // ---- Scheduled monitoring (F9, D12). Server-owned: set when the schedule changes. -----------------------------
+
+    /// <summary>When the monitoring sweep starts the next scheduled run; empty while monitoring is off.</summary>
+    public DateTime? NextMonitoringRunAtUtc { get; set; }
+
+    /// <summary>
+    /// The member who set the schedule: scheduled runs are started on their behalf and count against their
+    /// <c>verified-audits</c> quota (§6). Leaving the organization stops the runs until another member sets the schedule.
+    /// </summary>
+    public string? MonitoringBy { get; set; }
 
     // ---- Ownership verification (F3). Server-owned. ----------------------------------------------------------------
 

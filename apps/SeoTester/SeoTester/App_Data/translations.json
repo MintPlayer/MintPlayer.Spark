@@ -165,6 +165,36 @@
             "nl": "Opvolging"
           }
         },
+        "AlertScoreDrop": {
+          "label": {
+            "en": "Alert when the score drops by",
+            "nl": "Waarschuw als de score daalt met"
+          },
+          "description": {
+            "en": "Points between two runs of a monitored site. Empty: the default; 0: no score alerts.",
+            "nl": "Punten tussen twee runs van een opgevolgde site. Leeg: de standaard; 0: geen scorewaarschuwingen."
+          }
+        },
+        "NextMonitoringRunAtUtc": {
+          "label": {
+            "en": "Next scheduled audit",
+            "nl": "Volgende geplande audit"
+          },
+          "description": {
+            "en": "When the next scheduled audit starts; empty while monitoring is off.",
+            "nl": "Wanneer de volgende geplande audit start; leeg zolang opvolging uit staat."
+          }
+        },
+        "MonitoringBy": {
+          "label": {
+            "en": "Scheduled by",
+            "nl": "Gepland door"
+          },
+          "description": {
+            "en": "The member who set the schedule: scheduled audits are started on their behalf and count against their quota.",
+            "nl": "Het lid dat de planning instelde: geplande audits starten in zijn naam en tellen mee voor zijn quotum."
+          }
+        },
         "VerificationMethod": {
           "label": {
             "en": "Verified by",
@@ -1144,6 +1174,18 @@
     "fullCrawlQuotaRefused": {
       "en": "You used your full-site crawl for this week.",
       "nl": "Je hebt je volledige crawl van deze week al gebruikt."
+    },
+    "monitoringOff": {
+      "en": "Scheduled monitoring is switched off.",
+      "nl": "Geplande opvolging staat uit."
+    },
+    "monitoringNeedsVerified": {
+      "en": "Scheduled monitoring needs a verified site. Verify your ownership first.",
+      "nl": "Geplande opvolging kan alleen voor een geverifieerde site. Verifieer eerst dat de site van jou is."
+    },
+    "alertScoreDropRange": {
+      "en": "The score drop to alert on is between 0 and 100 points.",
+      "nl": "De scoredaling voor een waarschuwing ligt tussen 0 en 100 punten."
     },
     "auditRace": {
       "en": "{0} is being audited by someone else right now.",

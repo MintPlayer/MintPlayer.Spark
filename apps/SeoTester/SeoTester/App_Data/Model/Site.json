@@ -36,6 +36,18 @@
     ],
     "attributes": [
       {
+        "id": "991ae9da-dead-45ad-9470-1f5b74122766",
+        "name": "AlertScoreDrop",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"
+      },
+      {
         "id": "dfffaf0e-99f9-419e-8f37-9db01715b1cf",
         "name": "CreatedAtUtc",
         "dataType": "datetime",
@@ -157,6 +169,29 @@
         "order": 6,
         "isArray": false,
         "lookupReferenceType": "MonitoringSchedule",
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"
+      },
+      {
+        "id": "c6e2d496-fcec-425d-9cf5-f127584e37b4",
+        "name": "MonitoringBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 18,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "bf8b9a84-0cea-477c-8fff-9ea72192a64f",
+        "name": "NextMonitoringRunAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
         "showedOn": "PersistentObject",
         "rules": [],
         "group": "08a9ba74-5b33-4226-a40a-ef939f89d28c"

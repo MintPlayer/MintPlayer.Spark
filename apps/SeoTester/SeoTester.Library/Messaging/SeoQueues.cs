@@ -27,9 +27,19 @@ public static class SeoQueues
     /// <summary>The report as PDF, printed by the Chromium container.</summary>
     public const string Pdf = "seo-pdf";
 
+    /// <summary>Scheduled monitoring (F9): one message per due slot of a site, which starts its audit.</summary>
+    public const string Monitor = "seo-monitor";
+
     /// <summary>Every queue above, in pipeline order.</summary>
-    public static IReadOnlyList<string> All { get; } = [Probe, Crawl, Render, Psi, Aggregate, Pdf];
+    public static IReadOnlyList<string> All { get; } = [Monitor, Probe, Crawl, Render, Psi, Aggregate, Pdf];
 }
+
+/// <summary>
+/// Starts the scheduled audit of a monitored site for the slot <paramref name="SlotUtc"/> (F9, D12). Broadcast once per
+/// slot (<c>MonitoringPlan.SlotKey</c>), so a sweep that runs twice never starts two runs.
+/// </summary>
+[MessageQueue(SeoQueues.Monitor)]
+public sealed record MonitoredAuditMessage(string SiteId, DateTime SlotUtc);
 
 /// <summary>Starts a run: the site-level probes (§4.3).</summary>
 [MessageQueue(SeoQueues.Probe)]

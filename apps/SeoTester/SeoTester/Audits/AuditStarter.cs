@@ -44,10 +44,17 @@ public sealed partial class AuditStarter(
     IManager manager,
     TimeProvider time)
 {
-    public async Task<AuditStartResult> StartAsync(Site site, string userId, bool fullCrawl, CancellationToken cancellationToken)
+    public Task<AuditStartResult> StartAsync(Site site, string userId, bool fullCrawl, CancellationToken cancellationToken)
+        => StartAsync(site, userId, fullCrawl, scheduled: false, cancellationToken);
+
+    /// <param name="scheduled">
+    /// A monitoring slot (F9) started it on behalf of <paramref name="userId"/>, the member who scheduled it: the same
+    /// gates, quota (<c>verified-audits</c> counts scheduled runs, §6) and cool-down; the log entry says "scheduled".
+    /// </param>
+    public async Task<AuditStartResult> StartAsync(Site site, string userId, bool fullCrawl, bool scheduled, CancellationToken cancellationToken)
     {
         var deepGate = await settings.GetAsync(SeoSettings.DeepCrawl, cancellationToken);
-        var deep = Allows(deepGate, site.IsVerified);
+        var deep = deepGate.Admits(site.IsVerified);
 
         if (fullCrawl && !(site.IsVerified && deep))
         {
@@ -95,7 +102,7 @@ public sealed partial class AuditStarter(
             await session.StoreAsync(new TargetCooldown { Host = site.Host, RunId = run.Id, ExpiresAtUtc = until }, changeVector, TargetCooldown.IdFor(site.Host), cancellationToken);
         }
 
-        await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditStarted, userId, site, run.Id, fullCrawl ? "full crawl" : null, cancellationToken), cancellationToken);
+        await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditStarted, userId, site, run.Id, fullCrawl ? "full crawl" : scheduled ? "scheduled" : null, cancellationToken), cancellationToken);
         await outbox.EnqueueAsync(session, new SiteProbeMessage(run.Id!), cancellationToken: cancellationToken);
         try
         {
@@ -154,7 +161,7 @@ public sealed partial class AuditStarter(
             IsVerified = site.IsVerified,
             DeepCrawl = deep,
             IsFullCrawl = fullCrawl,
-            IntrusiveProbes = Allows(probes, site.IsVerified),
+            IntrusiveProbes = probes.Admits(site.IsVerified),
             MaxPages = fullCrawl ? await settings.GetAsync(SeoSettings.FullCrawlMaxPages, cancellationToken)
                 : await settings.GetAsync(deep ? SeoSettings.VerifiedPagesPerRun : SeoSettings.UnverifiedPagesPerRun, cancellationToken),
             WallTimeMinutes = (int)Math.Ceiling((fullCrawl ? await settings.GetAsync(SeoSettings.FullCrawlWallTime, cancellationToken)
@@ -176,12 +183,4 @@ public sealed partial class AuditStarter(
         await auditLog.WriteAsync(kind, userId, site, runId: null, detail: detail, cancellationToken);
         throw new SparkThrottledException(message, retryAfter);
     }
-
-    /// <summary>Whether a gate admits a site (D11, Q-M7a).</summary>
-    public static bool Allows(SeoFeatureScope gate, bool verified) => gate switch
-    {
-        SeoFeatureScope.AllSites => true,
-        SeoFeatureScope.VerifiedOnly => verified,
-        _ => false,
-    };
 }

@@ -18,6 +18,7 @@ using SeoTester.Audits;
 using SeoTester.Catalogue;
 using SeoTester.Crawler;
 using SeoTester.Dns;
+using SeoTester.Monitoring;
 using SeoTester.Entities;
 using SeoTester.Settings;
 using SeoTester.Verification;
@@ -117,6 +118,9 @@ builder.Services.AddScoped<AuditStarter>();
 builder.Services.AddScoped<AuditLog>();
 builder.Services.AddScoped<CatalogueSnapshots>();
 builder.Services.AddScoped<IOrganizationDataHandler, SeoOrganizationData>();
+// M12: scheduled monitoring (F9: the 15-minute sweep, Monitoring/) and its alerts (F10).
+builder.Services.AddScoped<MonitoringScheduler>();
+builder.Services.AddScoped<SiteAlerter>();
 builder.Services.AddHostedService<CatalogueSeeder>();
 
 builder.Services.ConfigureApplicationCookie(options =>
