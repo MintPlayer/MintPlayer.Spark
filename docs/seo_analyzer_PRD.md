@@ -33,7 +33,7 @@ Research behind this document:
 | M8 ✅ | 2026-10-10 (§12 "M8"): `Site` (organization rows, live), ownership verification by DNS TXT / well-known file / meta tag with the claim flow (D18, D42) and an hourly re-check; the check catalogue (110 checks, 8 categories) seeded into editable `CheckDefinition`s with "Reset to shipped"; the pure scoring engine (snapshot + `ScoringVersion`, headline and category scores); `AuditRun` / `PageResult` shapes; `StartAudit` / `StartFullCrawl` (join, 6 h cool-down, three quotas, gates, first message enqueued); share links for `Site` and `AuditRun` (core: per-object share gates); `AuditLogEntry`; D26 cascade; passkeys (D46). Open: Q-M8a–Q-M8e (§11) |
 | M9 ✅ | 2026-10-10 (§12 "M9"): the crawl pipeline: `seo-probe` (robots.txt first and the opt-out, Q-M8e; sitemaps, redirects, TLS incl. the raw TLS 1.0/1.1 hello, well-known files, DNS, RDAP and hstspreload through `LookupCache`), `seo-crawl` (`CrawlFrontier`, page batches, per-host politeness, tier limits, full-crawl ceiling), `seo-aggregate` (scores with the run's snapshot, New/Fixed/Unchanged, notifications), `CancelAudit`; 92 of 110 checks (18 wait for Chromium/PSI, M10); core `SafeHttpTrace` and `ISafeHttpSockets`; spikes S2, S7, S9 measured. Open: Q-M9a, Q-M9b (§11) |
 | M10 ✅ | 2026-10-10 (§12 "M10"): `seo-render` (a sample per tier, one URL template each, in Chromium over Playwright: launched locally or `ConnectAsync` to the container's `server.mjs`; every browser request fetched by the app through the SSRF-safe client, one redirect hop at a time (core `SafeHttpOptions.FollowRedirects`), robots.txt and the tier's connections, analytics hits answered locally; axe-core 4.13.0 bundled; phone and desktop renders), `seo-psi` (PageSpeed Insights with the key in a header, recorded real answers, 429 deferred then "not measured"), `seo-pdf` (the report printed per language, kept 7 days, members-only download), the aggregate waiting for crawl, render and PSI; **110 of 110 checks**; `RunCheckResult.Note` says why a check was not measured; the Chromium container's image and server script for M12; spikes S3 and S5 measured. Open: Q-M10a–Q-M10f (§11) |
-| M11 ✅ | 2026-10-10 (§12 "M11"): the pages, on ng-spark's generic detail page with SeoTester's renderers and panels: landing page, site (gauge, verification with copy buttons, trend), run report (live progress over `/spark/live`, gauge and category bars, every check with New/Fixed/Unchanged, why not measured, how to fix in en/nl with platform snippets; PDF download), page previews and findings, share page, badge (`ShareBadge`, `/seotester/badge.svg`), operator dashboard (`OperatorDashboard`, `/seotester/admin/dashboard`), public catalogue texts; the notification link fixed to `/po/audit-run/{id}`; refusals say when to try again; ng-spark fixes found in the browser (gauge badge, share page, action errors, language header, notification links). Q-M6d reviewed. Open: Q-M11a–Q-M11d (§11) |
+| M11 ✅ | 2026-10-10 (§12 "M11"): the pages, on ng-spark's generic detail page with SeoTester's renderers and panels: landing page, site (gauge, verification with copy buttons, trend), run report (live progress over `/spark/live`, gauge and category bars, every check with New/Fixed/Unchanged, why not measured, how to fix in en/nl with platform snippets; PDF download), page previews and findings, share page, badge (`ShareBadge`, `/seotester/badge.svg`), operator dashboard (`OperatorDashboard`, `/seotester/admin/dashboard`), public catalogue texts; the notification link fixed to `/po/audit-run/{id}`; refusals say when to try again; ng-spark fixes found in the browser (gauge badge, share page, action errors, language header, notification links). Q-M6d reviewed. Open: Q-M11b, Q-M11c (§11). Q-M11a, Q-M11d answered (D50, D51, §12 Round 14) and built with the phone and light-mode review (§12 "M11 follow-up") |
 | M12 ✅ code-complete, deploy pending the owner | 2026-10-10 (§12 "M12"): scheduled monitoring (`Site.Monitoring` Off/Weekly/Monthly, the 15-minute sweep `MonitoringSweepCronJob`, queue `seo-monitor`, one run per slot started for the member who set the schedule through `AuditStarter`) and alerts (score drop per site or `SeoTester:Alerts:ScoreDrop`, new critical issue, certificate < 14 d, domain < 30 d; every member, through `ISparkNotifier`); `apps/SeoTester/docker-compose.yml` (app + `seo-chromium` on `seo-browser`, `internal: true`; the app on Traefik's `web` and CodeCoverage's `code-coverage_coverage-internal`), `.env.example`, `GET /health`, workflows `seotester-deploy.yml` / `seotester-image-check.yml`, `tools/verify-seotester-deploy.test.mjs`; runbook `docs/seotester/deploy.md` (VPS setup, credentials, post-deploy checklist for Q-M5a, Q-M6a, Q-M9b, Q-M10b). **The owner deploys** (deploy.md §3, §4). Q-M12a–c answered (D47–D49, §12 Round 13): `/privacy` and `/terms`, the shared network `mintplayer-backend` (CodeCoverage's compose and deploy changed), alerts to all members |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
@@ -458,14 +458,15 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   category PERFORMANCE only; accessibility comes from our own axe-core run on the rendered page, SEO and best practices
   from our checks. Options: (a) as built; (b) also desktop (a second call per page, twice the quota); (c) all four
   Lighthouse categories (the answer grows ~40 %, the scores duplicate our checks). **Recommendation: (a).**
-- **Q-M11a (from M11): an organization switcher.** M11's brief lists one; ng-spark's organizations UI has none. Built:
+- ~~**Q-M11a (from M11): an organization switcher.**~~ **Closed by D50** (§12 Round 14): option (b), a generic switcher,
+  built (§12 "M11 follow-up"). ~~M11's brief lists one; ng-spark's organizations UI has none. Built:
   no switcher. Every list (sites, audits) shows the rows of all the caller's organizations through the row policy, with
   an *Organization* column to sort and filter by; a new site picks its organization on the form (empty = personal,
   D21); organizations are managed on the generic Organizations pages (members, roles, invitations, leave, delete).
   Options: (a) as built; (b) a switcher in the topbar that scopes every list to one organization (a generic ng-spark
   feature: a "current organization" the row policy reads, carried per request). **Recommendation: (a)**: a user in two
   organizations sees both sites' state at once, which a switcher would hide, and (b) adds per-request state to every
-  query for a filter the grids already have.
+  query for a filter the grids already have.~~
 - **Q-M11b (from M11): the catalogue texts are public.** `GET /seotester/catalogue` answers anonymously: the share page
   (anonymous by design, X6) shows a run's results and needs the check titles and how-to-fix. The catalogue holds no user
   or organization data (D32; `CheckDefinitionActions.RowSecurityRationale`). Options: (a) public, as built; (b) only
@@ -475,12 +476,23 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   shows the Markdown `[![SEO score](…/seotester/badge.svg?site=…&token=…)](share link)`, *Stop sharing* ends both,
   the sharing switch hides both. Options: (a) as built; (b) a separate badge token per site (a second secret to
   store, show and revoke). **Recommendation: (a)**: a badge is a public pointer to the shared report anyway.
-- **Q-M11d (from M11): the social card has no image or own title.** F7's previewers draw the Google results from the
+- ~~**Q-M11d (from M11): the social card has no image or own title.**~~ **Closed by D51** (§12 Round 14): option (b),
+  with the image served through the server, never hot-loaded by the viewer's browser (§12 "M11 follow-up"). ~~F7's
+  previewers draw the Google results from the
   page's title and description; the Open Graph / X card uses them too, because the crawl keeps neither `og:title`,
   `og:description`, `og:image` nor `twitter:card` on `PageResult` (the checks judge them, the values are not stored).
   Options: (a) as built; (b) store those four values on `PageResult` (expires with it, 7 days) and draw the real card
   with its image (fetched by the viewer's browser from the audited site). **Recommendation: (b)** if the owner wants the
-  card to be exact; (a) keeps the page free of third-party requests. Proceeding with (a) until answered.
+  card to be exact; (a) keeps the page free of third-party requests. Proceeding with (a) until answered.~~
+- **Q-M11e (from the M11 follow-up): `CrawlResumeTests` failed once in a full SeoTester.Tests run.** Its host restart
+  (`SeoTesterHostFixture.RestartHostAsync` → `WebApplicationFactory.DisposeAsync`) stops Messaging, whose `DrainAsync`
+  logs its expected "did not drain" warning (the test leaves a page hanging on purpose); the Windows EventLog logger
+  provider threw `ObjectDisposedException` on that write, failing the test and its collection cleanup. Passed alone and
+  in the next full run (190/190); nothing changed in the follow-up is on that path. Not a load flake by assumption: the
+  disposed `EventLog` is a real ordering defect somewhere in host disposal. Options: (a) locate it now (time the
+  disposal order, see who disposes the provider first); (b) remove the EventLog provider from the test hosts' logging
+  (`ConfigureLogging(l => l.ClearProviders())` or keep console only), which test hosts do not need; (c) both.
+  **Recommendation: (c)**: (b) takes the Windows-only provider out of every test host, (a) still says why it was disposed.
 - ~~**Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).~~ **Reviewed in M11** (§12 "M11"): the colours and the gauge are kept; the grade badge was unstyled and is fixed (ng-bootstrap's `bs-badge`).
 - ~~**Q-M12a (from M12): SeoTester has no privacy policy or terms of service.**~~ **Closed by D47** (§12 Round 13): option (a), and the owner asked for the texts to be written: `/privacy` and `/terms` are built. ~~X's OAuth 2.0 app settings require a  privacy policy URL and a terms URL before "Request email from users" can be switched on, and Google's consent screen  asks for a privacy policy link to leave testing mode; the app also processes personal data (accounts, addresses,  audit logs for a year, D37). Nothing in the PRD names these pages. Options: (a) the owner writes the texts (en + nl)  and the app serves them server-rendered at `/privacy` and `/terms`, like `/bot`; (b) link to a MintPlayer-wide policy  elsewhere; (c) leave X without "request email" (its users then confirm an address by mail). **Recommendation: (a)**:  the texts are the owner's (legal), the pages are an hour's work once they exist. Proceeding without them: the runbook  says where the URLs go.~~
 - ~~**Q-M12b (from M12): SeoTester shares CodeCoverage's RavenDB server and mail relay.**~~ **Closed by D48** (§12 Round 13): option (b), a separate shared network `mintplayer-backend`. ~~§1 says "joins the existing  RavenDB network". Built: the app joins `code-coverage_coverage-internal` as an external network (database `SeoTester` on  `coverage-raven`, mail through `coverage-smtp`, which then needs `seotester.mintplayer.com` in its allowed sender  domains and a DKIM key, deploy.md §3.2). Consequences: SeoTester starts only when CodeCoverage's stack is up (the deploy  checks), and CodeCoverage's `docker compose down` meets a network still in use (Compose reports it and reuses it on  `up`; to confirm at the first CodeCoverage deploy after SeoTester's, deploy.md §5). Options: (a) as built; (b) a  network both stacks declare `external` (created once by hand), which changes CodeCoverage's compose file; (c) a  RavenDB server and relay of SeoTester's own (a second licence activation, DKIM, PTR and memory on the same VPS).  **Recommendation: (a)**, and (b) if the CodeCoverage deploy check shows a failure.~~
@@ -2013,3 +2025,90 @@ audience). The deferred measurements Q-M5a, Q-M6a, Q-M9b and Q-M10b stay open un
     accepts both compose files.*
 - **D49 (Q-M12c): a monitored site's alerts go to every member of its organization, as built.** *Evidence: owner answer
   2026-10-10.* `A_run_of_a_monitored_site_alerts_every_member_about_a_new_critical_issue_and_a_score_drop` pins it.
+
+### Round 14 (owner, 2026-10-10): Q-M11a, Q-M11d
+
+- **D50 (Q-M11a): an organization switcher, generic in ng-spark's organizations entry point.** *Evidence: owner answer
+  2026-10-10* ("add an organization switcher … lists, and the default organization for new sites, follow it; build it
+  generically … low-code for app developers"). Decided here, built in commits `28a64b75` (core, Organizations),
+  `85276329` (ng-spark), `09ca241d` (SeoTester):
+  - **Where the choice lives: a cookie**, `spark-organization` (per browser, like the theme cookie of #462; HttpOnly,
+    SameSite=Lax, a year), set by `POST /spark/organizations/current` and read by `GET /spark/organizations/current`.
+    Not a server document: switching then writes nothing and costs no load per request (the row policy already reads
+    the caller's memberships once per request, S13), and nothing on `SparkUser` (Q-M6b's reason).
+  - **It is never trusted:** every request checks it against those memberships. A cookie naming an organization the
+    caller is not (or no longer) a member of counts as no choice, so it can only narrow what the row policy allows;
+    posting one answers the missing-row 404 (#453).
+  - **"All organizations" stays, and is the default.** Q-M11a's own argument for (a) still holds for a user who wants
+    every site at once; the switcher adds the narrowing without taking that away.
+  - **How lists filter: the existing organization row policy**, no new mechanism. `OrganizationRowPolicy` intersects
+    the allowed organizations with the choice for the `Query` action of `IOrganizationOwned` types (grids, query cards,
+    reference pickers, distinct values, live lists). Not narrowed: a detail page, an edit, custom actions, the
+    organization list (the switcher picks from it) and **sub-queries**: core's `RowPolicyContext.IsSubQuery` (set by the
+    query read path, distinct values and live app streams when the request names a parent), so a site opened from a
+    notification of another organization still shows its own audits.
+  - **New rows:** `OrganizationOwnedDefaults` gives a create whose form leaves `OrganizationId` empty the chosen
+    organization when the caller holds the type's `New` role there, else the personal one (D21). SeoTester's own
+    personal default is gone; its site interceptor runs at the Finalize stage so its duplicate check sees the default.
+  - **Losing membership:** the next request shows all of the caller's organizations; `GET /current` deletes the stale
+    cookie, so the switcher reads "All organizations".
+  - **Low code:** `AddOrganizations()` maps it; the SPA adds `<spark-organization-switcher />` to its topbar (renders
+    nothing for a user in one organization). A choice reloads the page so grids and live sockets read the new scope.
+    Guide: `docs/guide-organizations.md` "The organization switcher".
+  - *Tests: `OrganizationSwitcherTests` (4); red with the mechanisms removed 4/4, and the sub-query assertion with
+    `IsSubQuery` forced false; ng-spark switcher spec (4, 3 red with its guards removed).*
+- **D51 (Q-M11d): store the Open Graph values; the card's image only through the server.** *Evidence: owner answer
+  2026-10-10* ("store og:title, og:description, og:image and og:url on PageResult … the og:image is shown only as a
+  URL/preview through a safe path"). Built (commit `09ca241d`):
+  - `PageResult.OgTitle`, `OgDescription`, `OgImage`, `OgUrl` (as written, trimmed, capped at 300/500/2000/2000; model
+    attributes; they expire with the page). The card uses them and falls back to the title, description and address,
+    as networks do, saying which it shows.
+  - **The CSP check:** SeoTester sends no Content-Security-Policy (nor does any Spark app: the Authorization package
+    notes there is none), so nothing *blocked* hot-loading. The PRD's own reason decided it: Q-M11d (a) "keeps the page
+    free of third-party requests", and anyone can add a site, so a hot-loaded image would tell that site every viewer's
+    address. **Chosen: the proxy**, `GET /seotester/og-image?page={pageResultId}`: the caller must be able to read the
+    page (the `Read/PageResult` right and the organization row policy; an expired page is gone), else one 404; the
+    server fetches the tag's URL over the SSRF-safe crawler client (no private addresses, every redirect re-checked,
+    the crawler's user agent); only absolute http(s) without user info; at most 5 MB (refused, never cut); only PNG,
+    JPEG, GIF or WebP by their bytes, never SVG and never by the site's `Content-Type`; answered with `nosniff`,
+    `Content-Security-Policy: default-src 'none'; sandbox` and `Cache-Control: private`; results (images and
+    refusals) kept 10 minutes in a 32 MB memory cache. The card shows the image, its pixel size and its address as
+    text. Measured: `https://mintplayer.com/` stored its four values and the card drew its 512 × 512 PNG through the
+    proxy.
+  - *Tests: `OpenGraphCardTests` (9) and the SPA's card specs (3); red as recorded in "M11 follow-up".*
+
+### M11 follow-up (2026-10-10): the switcher, the Open Graph card, depth 0, phone and light mode
+
+Commits `28a64b75`, `85276329`, `09ca241d`, then this record. D50 and D51 above.
+
+**Depth 0 showed as "-".** A generic ng-spark bug: the detail page printed `value || '-'`, so every falsy value (the
+number 0, `false` outside the boolean branch) read "-". The new `orDash` pipe shows "-" for null, undefined and a blank
+string only, in all four value branches. Spec: 0 shows "0", null and "" show "-" (failed with the old template).
+
+**Phone (375 px) and light mode, seen with the playwright MCP** (`dotnet run --launch-profile https`, SparkId, my dev
+user with a second organization made for the switcher; landing, site, run report, page result, share page, operator
+dashboard, an organization, notifications and the bell; 1400 px and 375 px, dark and light; screenshots in the session
+scratchpad). Found and fixed:
+- The topbar pushed every page sideways and cut off *Logout*: the auth bar shows icons below 576 px (names kept as
+  `aria-label`/`title`; ng-spark gains the built-in icons `person`, `box-arrow-right`) and is never squeezed; the
+  shell's trailing group may shrink with a tighter gap on phones; the language selector keeps 4.25rem (it collapsed to
+  its caret); the switcher takes 4.25–6rem.
+- The landing page's query-card grid (`minmax(22rem, 1fr)`) and the dashboard's (`20rem`) were wider than the screen:
+  `minmax(min(…, 100%), 1fr)`; the dashboard's collections table scrolls inside its card.
+- The run report's category bars (fixed 160 px plus a third note column) overflowed: two columns, the bar shrinks
+  (`min(160px, 100%)`), notes wrap under it.
+- The share page's label column took 40 % of the width: labels stack over values on a phone; a wide query table scrolls.
+- Light mode: the gauge, letter-grade badges, category bars, the result previews (Google blue on white) and the card
+  read correctly; nothing to fix.
+
+Not changed (seen): on a phone the detail page's action bar collapses every action, *Back* included, into *More*
+(ng-bootstrap's priority nav); the bell's menu opens flush with the left edge.
+
+**Tests.** Red then green as each commit records. Green at the end: MintPlayer.Spark.Tests (Organizations, row-policy,
+live, distinct, sub-query, sharing, soft-delete classes) 316/316; SeoTester.Tests 190/190; ng-spark 1553/1553;
+SeoTester SPA 28/28. In the first full SeoTester run `CrawlResumeTests` failed once inside its own host restart
+(`WebApplicationFactory.DisposeAsync` → Messaging's `DrainAsync` logged its expected "did not drain" warning to the
+Windows EventLog provider, which threw `ObjectDisposedException`); it passed alone and in the second full run, and no
+changed file is on that path. Recorded as found, cause not yet located (Q-M11e).
+
+**Open (§11):** Q-M11e.

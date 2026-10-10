@@ -135,6 +135,45 @@ policy. New creates one; its creator becomes the Owner in the same commit. An or
 - **Leave** (`LeaveOrganization`, any member but the last Owner).
 - **Delete** (Owners): the cascade below.
 
+## The organization switcher (PRD D50)
+
+A user in several organizations picks the one they work in, in the top bar:
+
+```ts
+import { SparkOrganizationSwitcherComponent } from '@mintplayer/ng-spark/organizations';
+```
+
+```html
+@if (auth.isAuthenticated()) { <spark-organization-switcher /> }
+```
+
+That is the whole setup: `AddOrganizations()` already maps the endpoints and applies the choice. The
+switcher offers **All organizations** (the default) and each of the caller's organizations (the personal
+one marked), and renders nothing for a user in one organization.
+
+- **Where the choice lives:** a cookie, `spark-organization` (per browser, like the theme; HttpOnly,
+  SameSite=Lax, a year), set by `POST /spark/organizations/current` (`{ organizationId }`, `null` for all;
+  antiforgery like every POST) and read by `GET /spark/organizations/current` (the choice and the caller's
+  organizations). Nothing is stored server-side.
+- **It is never trusted:** every request checks it against the caller's memberships, which the row policy
+  reads once per request anyway. An organization the caller is not (or no longer) a member of counts as
+  no choice, so it can only narrow what the row policy allows. Posting one answers the missing-row 404.
+- **Losing membership:** the lists fall back to all of the caller's organizations on the very next request,
+  and `GET /current` deletes the stale cookie, so the switcher shows *All organizations*.
+- **What follows it:** lists of `IOrganizationOwned` rows (the row policy narrows the `Query` action:
+  grids, query cards, reference pickers, distinct values, live lists). **What does not:** a detail page or
+  an edit (a link to another organization's row still opens), custom actions, a sub-query (a site opened
+  from elsewhere still shows its own audits: core marks parent-scoped queries with
+  `RowPolicyContext.IsSubQuery`), and the organization list itself.
+- **New rows:** a create through the generic pipeline whose form leaves `OrganizationId` empty lands in the
+  chosen organization when the caller holds the type's `New` role there, else in the caller's personal
+  one. An application interceptor that reads `OrganizationId` on create and is registered before
+  `AddOrganizations()` states `InterceptorStage.Finalize` to see that default.
+- **Code:** `ISparkOrganizations.GetCurrentOrganizationIdAsync()` answers the request's valid choice (null =
+  all).
+- After a choice the component reloads the page (`[reloadOnChange]="false"` to opt out), so every grid and
+  live list reads the new scope.
+
 ## Invitations and join requests (D18)
 
 ```csharp

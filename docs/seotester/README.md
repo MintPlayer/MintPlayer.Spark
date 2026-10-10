@@ -25,7 +25,7 @@ runbook.
 ## What a user does (M9)
 
 1. **Add a site** (menu SEO → Sites → New; organization Admins). The address is reduced to its origin
-   (`https://example.com`); without an organization the site goes to the user's personal one. A site is unique per
+   (`https://example.com`); without an organization the site goes to the organization chosen in the topbar switcher (D50; lists follow it too), else the user's personal one. A site is unique per
    organization; several organizations may each add the same site.
 2. **Verify ownership** (action *Verify ownership*, Admins). Publish the site's verification token one of three ways,
    then run the action:
@@ -58,7 +58,7 @@ model JSON in `App_Data/Model`.
 | Landing | `/` → `/home` | what is checked and how; signed in: my sites and the (live) audits |
 | Site | `/po/site/{id}` | latest score (gauge), settings, ownership: verified state or the three proofs with copy buttons; the audits; the score trend (scoring changes marked) |
 | Audit | `/po/audit-run/{id}` | *Report*: live progress while it runs, then the score, category bars and every check (issues first; New/Fixed/Unchanged; why not measured; sample pages; how to fix with nginx/Apache/IIS/HTML snippets); the pages (7 days, then a note). *Details*: what the run was allowed |
-| Page | `/po/page-result/{id}` | Google desktop/phone previews, a link card, the page's findings |
+| Page | `/po/page-result/{id}` | Google desktop/phone previews, the shared-link card from the page's Open Graph tags (its image through `/seotester/og-image`, never loaded from the site by the browser, D51), the page's findings |
 | Shared report | `/shared/{Type}/{token}?id=…` | anonymous, read-only (a site or an audit) |
 | Operator dashboard | `/po/operator-dashboard/main` | Administrators: usage, refusals, database size per collection, every site, the abuse log |
 
