@@ -22,12 +22,13 @@ Research behind this document:
 | Body consolidated with §12 | ✅ 2026-10-10 |
 | Grilling round 9: live-update details | ✅ 2026-10-10, D33–D37 |
 | Round 10: Web Push, SafeHttp ports and redirects, expiry ownership | ✅ 2026-10-10, D38–D41 (D39–D41 built, §12) |
-| Spikes S1–S13 | ⏳ (S1, S6, S11, S13 ✅ 2026-10-10, §12; S4, S5, S10, S12 researched) |
+| Spikes S1–S13 | ⏳ (S1, S6, S8 (L5 open), S11, S13 ✅ 2026-10-10, §12; S4, S5, S10, S12 researched) |
 | Milestones M0–M12 | ⏳ |
 | M1 ✅ | 2026-10-10, commit `72c84933`: X2 SSRF-safe client in `libs/spark/MintPlayer.Spark/Http/`, adopted by the IdP (§12 "Spike S1") |
 | M2 ✅ | 2026-10-10, commit `6df64fb3`: X1 document expiration in `libs/spark/MintPlayer.Spark/Expiration/` (`IExpiring`, `"expiresAfter"`, stamper, read filter, one 36 h configurator), adopted by Messaging, Mail, Moderation and the IdP (§12 "Spike S6"). ⚠️ `model.schema.json` gains `expiresAfter`: CI mints the next `schemas/v{n}` tag on merge (no tag created by hand) |
 | M3 ✅ | 2026-10-10: X9 settings package `libs/settings/MintPlayer.Spark.Settings` (alias `settings`, `11.0.0-preview.104`) and X7 per-queue `HandlerTimeout` in Messaging (§12 "Spike S11"). Owner round 10 (D38–D41) committed separately before it |
 | M4 ✅ | 2026-10-10: X11 organizations package `libs/organizations/MintPlayer.Spark.Organizations` (alias `organizations`, `11.0.0-preview.104`), the `ISparkSignedInHandler<TUser>` hook in Authorization (`preview.104`), ng-spark `/organizations` (`withOrganizationRoutes()`, `22.33.0`), and a startup refusal of unsupported verb combinations in `security.json` (§12 "Spike S13"). Guides `docs/guide-organizations.md` and `docs/guide-settings.md` (M3's). ~~Open: Q-M4a, Q-M4b (§11)~~ answered 2026-10-10: D42, D43 (§12 Round 11) |
+| M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
 
@@ -250,7 +251,7 @@ The crawler writes `AuditRun.Progress` (phase, pages done/discovered, current UR
 | X1 | **Document expiration** (✅ M2, §12 "Spike S6"): `IExpiring` (`DateTime? ExpiresAtUtc`, the source of truth) plus an optional `"expiresAfter"` in the model JSON for new documents; a store-level `OnBeforeStore` mirrors it into `@expires` (pipeline and raw sessions); a core row policy hides expired documents on every read path (they linger up to 36 h); `UseSpark()` enables expiration once for every library that declares `Registry.RequireDocumentExpiration` (Messaging, Mail, Moderation, IdP) or any `IExpiring` model type, with a **36 h floor refused below on every licence**; `AddExpiration(o => …)` only for options; `ExpiresAtUtc` is **framework-protected** on persistent-object writes (D41: a client can neither extend nor clear it). Fixes the gap where Mail and Moderation wrote `@expires` without enabling expiration | pages, frontier, caches, cool-downs, invitations | no PO hook; `IBeforeSave` can't set metadata on create (`SparkInterceptors.cs:291-295`); store created without events (`SparkMiddleware.cs:158-188`) |
 | X2 | **SSRF-safe HTTP client** (`AddSafeHttp()`): `ConnectCallback` resolves → allow-list of global unicast (unwraps IPv4-mapped/NAT64/6to4) → connects to the checked IP (closes DNS rebinding); manual redirects re-checked per hop; no proxy, no cookies; byte, decompression and time caps; a configured list **replaces** its default, so configuration can remove 80/443 (D39); optional `RedirectsWithinOriginOnly` (D40). **Adopted by the IdP** (`JwksUri`, back-channel: ≤ 3 redirects within the registered origin) | user-chosen URLs fetched from inside the compose network | nothing blocks private addresses; `OidcClientKeys.cs:24-34`, `OidcSessionStore.cs:132` |
 | X3 | **Per-user quotas for custom actions** (e.g. `[SparkQuota("audits", …)]`), evaluated after authentication, with limits read from X9 settings | runs/day, D14 weekly full crawl | `AddRateLimiter` is per-IP and pre-auth (`SparkBuilderRateLimiterExtensions.cs:115,128-130`) |
-| X4 | **Unified live updates**: one multiplexed socket at `GET\|CONNECT /spark/live`; subscribe to **persistent objects and queries** (full `ExecuteQueryRequest`: parent, paging, sort, search); change source configurable via **`Spark:Live:Source` = `Actions` \| `Changes` \| `Both`, default `Both`** (D33): `Actions` = Spark's own save pipeline (`IAfterSaveCommitted`) plus an optional `ISparkLiveNotifier.Changed(id)`; `Changes` = the RavenDB Changes API (measured working on Community; **not** a data subscription, one multiplexed connection per database per process); `Both` merges and de-duplicates by id + change vector inside the throttle window. App `IAsyncEnumerable` streams stay for non-RavenDB data. **Low-code (D34):** `"live": true` in the model JSON is all an app writes for the common case, and under `Both` even writes outside the Spark pipeline (the crawler) are picked up without notifier calls; every push re-runs the HTTP read path (row security, redaction, attribute rights); `gone` = deleted or forbidden alike; **patches**; **opt-in** per type/query; throttling, bounded queues, socket lifetime ≤ login ticket. ng-spark: `SparkLiveService`, `livePersistentObject`/`liveQuery`, `spark-query-grid [live]`, po-detail refresh, po-edit banner + existing three-way merge. **Replaces** streaming queries (`isStreamingQuery`, `StreamingQueryArgs`, `/spark/queries/{id}/stream`) and fixes their defects (below) | run progress, notifications | research: live updates; D4, D5, D24 |
+| X4 | **Unified live updates**: one multiplexed socket at `GET\|CONNECT /spark/live`; subscribe to **persistent objects and queries** (full `ExecuteQueryRequest`: parent, paging, sort, search); change source configurable via **`Spark:Live:Source` = `Actions` \| `Changes` \| `Both`, default `Both`** (D33): `Actions` = every write through a RavenDB session of this process, from the document store's own events (not `IAfterSaveCommitted`, which needs Messaging: §12 "Spike S8"), plus an optional `ISparkLiveNotifier.Changed(id)`; `Changes` = the RavenDB Changes API (measured working on Community; **not** a data subscription, one multiplexed connection per database per process); `Both` merges and de-duplicates by id + change vector inside the throttle window. App `IAsyncEnumerable` streams stay for non-RavenDB data. **Low-code (D34):** `"live": true` in the model JSON is all an app writes for the common case, and under `Both` even writes outside the Spark pipeline (the crawler) are picked up without notifier calls; every push re-runs the HTTP read path (row security, redaction, attribute rights); `gone` = deleted or forbidden alike; **patches**; **opt-in** per type/query; throttling, bounded queues, socket lifetime ≤ login ticket. ng-spark: `SparkLiveService`, `livePersistentObject`/`liveQuery`, `spark-query-grid [live]`, po-detail refresh, po-edit banner + existing three-way merge. **Replaces** streaming queries (`isStreamingQuery`, `StreamingQueryArgs`, `/spark/queries/{id}/stream`) and fixes their defects (below) | run progress, notifications | research: live updates; D4, D5, D24 |
 | X5 | **Score/threshold renderers in ng-spark**: gauge, threshold bar, trend, delta, generalised from CodeCoverage (which then uses them) | score UI | ng-spark has no chart renderers |
 | X6 | **Capability-token read of one PO** (share link): hashed token on the object, anonymous read of exactly that object + declared children, revocable, rate-limited | F11 | only precedent is the badge token |
 | X7 | **Per-queue `HandlerTimeout`** (✅ M3, §12 "Spike S11"): `SparkQueueOptions.HandlerTimeout`, configuration over code like every per-queue option, read through `SparkMessagingOptions.HandlerTimeoutFor(queue)` in both subscription modes | long probes | global only (`SparkMessagingOptions.cs:126`) |
@@ -340,7 +341,7 @@ Each spike ends with a measured result recorded in §12 (numbers, file:line, or 
 | S5 | PSI + CrUX | real quota, latency, Lighthouse 13 insight ids, CrUX availability for small sites | real responses stored as fixtures |
 | S6 | Expiration on Community | per-document `@expires` (7 d, 2 d, 14 d) with the 36 h frequency; visibility window; the read filter hiding expired docs; storage of a 100- and a 2 000-page run | sizes + window recorded; filter test red→green |
 | S7 | Crawl chaining | batch size B well under `HandlerTimeout` at 1 req/s; resume after killing the host mid-batch | kill test passes; B with evidence |
-| S8 | Live updates | ✅ L1 done (Changes API works on Community, 4–22 ms). Remaining L2–L8: patch vs full size, cost per push with 1/10/50 viewers, slow clients, nginx/Traefik upgrade + idle timeout, index freshness after BatchCompleted, login expiry on long sockets, po-edit merge under pushes | numbers per L-item |
+| S8 ✅ | Live updates | L1–L4, L6–L8 measured (§12 "Spike S8"); L5 (real proxy) open as Q-M5a. Questions were: patch vs full size, cost per push with 1/10/50 viewers, slow clients, nginx/Traefik upgrade + idle timeout, index freshness after BatchCompleted, login expiry on long sockets, po-edit merge under pushes | numbers per L-item |
 | S9 | HTML parsing | AngleSharp (+ .Css) time/memory per page; pixel-width title measurement without a browser | numbers; decision |
 | S10 | hstspreload.org API | v2 status/preloadable schema | real fixture |
 | S11 | Settings ✅ | stored-overrides-config and delete-falls-back; TTL propagation; rights via slot binding | red→green tests (§12 "Spike S11") |
@@ -391,6 +392,7 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 - ~~**Q-M4a (from M4): what happens when a user verifies a site that sits in someone's *personal* organization?**~~ **Closed by D42** (§12 Round 11): option (b), personal organizations take members. The question and its options moved to D42.
 - ~~**Q-M4b (from M4): may anyone holding an invitation link accept it, or only the account that owns the invited address?**~~ **Closed by D43** (§12 Round 11): only the account that owns the invited address. The question moved to D43.
 - ~~**Q-S6a (from S6): should the framework own `IExpiring.ExpiresAtUtc` on persistent-object writes?**~~ **Closed by D41** (§12 Round 10): yes, SoftDelete's rule. ~~Today it is an ordinary model attribute, so a user with `Edit/T` can extend or clear a document's expiry unless the app marks it read-only or `[IgnoreProperty]`. The alternative is SoftDelete's rule: an edit or create through the pipeline keeps the stored value (code via `IDatabaseAccess`/raw sessions still sets it). SeoTester's `PageResult` is not user-editable either way.~~
+- **Q-M5a (from M5, spike S8 L5): where is the real-proxy check (nginx/Traefik upgrade and idle timeout for `/spark/live`) run?** It needs a reverse proxy in front of a running Spark host. Not run in M5: Docker Desktop was not running on the build machine and no nginx/Traefik binary is installed, and probing production was not part of this milestone. What is known: production fronts the apps with Traefik (`apps/CodeCoverage/docker-compose.yml:221-233`), which forwards WebSocket upgrades by default; the server sends a `ping` frame after 30 s of silence (measured, `LiveSocketTests.A_quiet_socket_gets_a_ping_at_the_heartbeat`), below nginx's default 60 s `proxy_read_timeout`; the nginx recipe is in `docs/guide-docker-deployment.md`. Options: (a) start Docker locally and run nginx and Traefik in front of a test host; (b) measure on the production VPS with a throwaway container, as L1 was; (c) measure at the M12 deploy of SeoTester, which is the first app with a live type. **Recommendation: (c)**, because it is the real proxy and the real app, and nothing before M11 opens a live socket in production (Fleet and DemoApp are demos).
 
 
 ---
@@ -843,3 +845,116 @@ Both answers go against the recommendation that M4 shipped with.
 - ~~**D43: an invitation is accepted only by the account that owns the invited address (Q-M4b, "the stricter rule").**~~ **SUPERSEDED by "D43, corrected" below (owner correction 2026-10-10): the confirmation requirement moved from the invitee to the inviter, and `SparkEmailOwnership` and the IdP change were reverted.** Original text: M4 made the token the only credential. Now `AcceptAsync` also requires the signed-in account to own the invitation's address, by the identity provider's rule (`OidcInvitations.AcceptAsync`: the account's `NormalizedEmail` equals the address normalized the Identity way). That rule moved to Authorization as `SparkEmailOwnership` and both packages call it: `IsAddressOf` (the IdP's check, behaviour unchanged) and `Owns` (the same plus `EmailConfirmed`, which Organizations uses so that an address no provider vouched for, such as an X or Entra sign-in without a verified email or a never-confirmed registration, proves nothing; those users confirm an address first). The refusal is distinct from the generic one: `reason: "otherAddress"` with its own words, and the ng-spark accept page shows it (`organizations.spa.otherAddress`, en/fr/nl). It needs a valid token, so it discloses nothing the holder does not already know (#453), and it does not spend the link. **Join requests keep no address rule**: the requester signed in to ask and an Owner or Admin approves (`AcceptAsync`'s join-request branch checks only the approver's role). The IdP's own acceptance still does not require a confirmed address; aligning it is a separate decision. *Evidence: owner answer 2026-10-10. Tests (red with the check removed, green after): `OrganizationServiceTests.An_invitation_opened_by_another_account_is_refused_with_its_reason_and_stays_live`, `…An_invitation_needs_the_invited_address_confirmed_on_the_account`, `OrganizationRowFilterTests.The_accept_endpoint_redeems_a_link_for_the_signed_in_user_only` (`reason` on the wire); ng-spark `spark-accept-organization-invitation.component.spec.ts` "says why when the invitation was sent to another address" (red: the page showed `invalid`). Confirmed rather than red: `OrganizationServiceTests.A_join_request_is_approved_whatever_the_approvers_or_requesters_address` (unconfirmed Admin and requester).*
 - **Runs** (Developer licence, in a clean worktree of 422c167b plus these changes, because the shared working tree held another agent's half-finished M5 edits): red **7 failed / 42 passed** of 49 (`Organizations` 37 + `OidcInvitationTests` 12); green **49/49**; ng-spark accept spec red 1/5, green 5/5.
 - **D43, corrected: the SENDER's address must be confirmed, not the invitee's; the IdP stays out of it.** Person A invites person B: `InviteAsync` refuses with a `SparkValidationException` ("Confirm your email address before you invite anyone: an invitation is sent on your behalf.", nothing stored or mailed) when A's account has no confirmed email (`EmailConfirmed` and an `Email`). The *Invite* action (`InviteOrganizationMember`) checks the same before its prompt and notifies the translated reason `organizations.confirmEmailToInvite` (en/fr/nl). B may not be registered yet, so on accept only the address must match (signed-in account's `NormalizedEmail` equals the invited address normalized the Identity way); B's need not be confirmed, and any other account still gets `reason: "otherAddress"` (wording changed to "the account that uses that address"). Join-request mails also go out on a user's behalf (they carry the requester's address to the Owners), so `RequestToJoinAsync` applies the same rule to the requester; the approver's address plays no part. The rule lives in an internal `OrganizationEmail` helper inside the Organizations package: `SparkEmailOwnership` and its Authorization README section are removed, and `OidcInvitations.cs` is back to its pre-ae66691a code (`git diff ae66691a~1 -- libs/identity_provider libs/authorization` is empty). Organizations does not reference the IdP. *Evidence: owner correction 2026-10-10. Tests (Developer licence, clean worktree of ae66691a plus these changes, the shared tree holding M5 edits): red with the new rules removed and the confirmed-invitee rule restored, **4 failed / 48 passed** of 52 (`Organizations` 40 + `OidcInvitationTests` 12): `OrganizationServiceTests.An_inviter_without_a_confirmed_email_is_refused_and_nothing_is_stored_or_sent`, `…An_invitee_whose_matching_address_is_unconfirmed_accepts` (replaces `…An_invitation_needs_the_invited_address_confirmed_on_the_account`), `…A_join_request_needs_the_requesters_address_confirmed_but_not_the_approvers` (replaces `…A_join_request_is_approved_whatever_the_approvers_or_requesters_address`), `…The_invite_action_tells_an_inviter_without_a_confirmed_email_why` (red: the prompt opened); green **52/52**. Confirmed rather than red: `…An_inviter_with_a_confirmed_email_invites`, `…An_invitation_opened_by_another_account_is_refused_with_its_reason_and_stays_live` (`otherAddress`).*
+
+### Spike S8 and M5 (2026-10-10): live updates (X4)
+
+Built in core (`libs/spark/MintPlayer.Spark/Live/`, `Endpoints/Live/LiveSocket.cs`) and ng-spark; guide
+`docs/guide-live-updates.md`. Measured on this machine with the Developer licence (Raven.Server is a separate
+process: "test-process CPU" is the Spark host and the test clients only). Tests in
+`tests/MintPlayer.Spark.Tests/Live/`.
+
+- **L1** (earlier, above): the Changes API works on the production Community licence, 4–22 ms.
+- **L2 — full page vs patch** (`LiveSpikeTests.L2_…`, 50 rows × 8 columns of a run-list shape, through the real
+  projection): full `result` **54 731 B**; patch for 1 changed row **1 096 B** (2 %); 5 rows **5 262 B**; one row
+  moving first→last **3 392 B**. A persistent object of 8 attributes: full `po` **3 051 B**; a one-attribute
+  `poPatch` plus the page patch of the same write **1 531 B**. **Decision: patches (D24), computed on the wire
+  form** (`LiveDiff`, `JsonNode.DeepEquals`), with a guard: a patch never larger than the full result is sent
+  as the full result (`A_page_that_turned_over_…`).
+- **L3 — cost per push** (`LiveSpikeTests.L3_…`, one document written 30× at ~6.6 Hz (4.5–4.8 s), every viewer
+  subscribed to it; class run alone):
+
+  | Throttle | Viewers | Evaluations (per viewer) | ms / evaluation | Frames | RavenDB requests / evaluation | CPU / evaluation |
+  |---|---|---|---|---|---|---|
+  | 500 ms | 1 | 7 (7.0) | 5.17 | 7 | 5.3 (first host: JIT, index stats) | 214 ms (JIT) |
+  | 500 ms | 10 | 60 (6.0) | 2.22 | 60 | 1.5 | 8.1 ms |
+  | 500 ms | 50 | 300 (6.0) | 3.33 | 300 | 1.1 | 2.5 ms |
+  | 250 ms | 1 | 12 (12.0) | 3.31 | 12 | 3.5 | 9.1 ms |
+  | 250 ms | 10 | 120 (12.0) | 1.66 | 120 | 1.3 | 3.1 ms |
+  | 250 ms | 50 | 600 (12.0) | 2.40 | 600 | 1.1 | 0.44 ms |
+
+  30 writes cost each viewer 6 evaluations at 500 ms and 12 at 250 ms: the throttle, not the write rate, sets
+  the cost, linearly in viewers, about one RavenDB request (the load) and 2–3 ms each. **Decision: keep 500 ms
+  (D36); no shared raw load per change** — at 50 viewers a push costs ~2.5 ms CPU, well inside budget, and a
+  shared load would have to be re-secured per viewer anyway. Rate limiting: the upgrade is one HTTP request and
+  passes the app's limiter like any other; frames inside the socket do not, and are bounded instead by the
+  throttle, 50 subscriptions per socket and 5 sockets per user (`A_subscription_over_the_limit…`,
+  `A_socket_over_the_per_user_limit_is_closed_with_4429`).
+- **L4 — slow clients** (`LiveSpikeTests.L4_…`, a socket whose peer never reads): with a 100 ms heartbeat and a 1 s
+  send timeout the socket was aborted after **1 116 ms**, with **1** send started and none completed. Nothing
+  queues meanwhile by construction: a subscription is a dirty bit, the single worker sends inline, so a stuck
+  frame stops evaluation of that socket and memory stays at the last state per subscription. **N = 10 s**
+  (`SendTimeout` default). Not measured: TCP back-pressure through Kestrel (the test host is in-memory), part of
+  L5.
+- **L5 — real proxy: not run, open as Q-M5a (§11).** Known: the 30 s heartbeat is sent
+  (`A_quiet_socket_gets_a_ping_at_the_heartbeat`, ≥ 2 pings in 1.2 s at 300 ms), below nginx's default 60 s;
+  production uses Traefik; nginx recipe in `docs/guide-docker-deployment.md`.
+- **L6 — index freshness** (`LiveSpikeTests.L6_…`, a page sorted by an auto-indexed field, 20 writes each moving
+  a row to the top, `Source = Actions` so no Changes echo re-runs a stale page): with the wait for the indexes
+  over the changed collection (`SparkIndexWait`, shared with `DatabaseAccess`'s post-write wait) **20/20** pushes
+  fresh; with the wait removed **19/20 fresh, 1 stale** — and a stale evaluation that diffs as unchanged sends
+  nothing, leaving the viewer stale until the next change or `Revalidate`. **Decision: watch collections, not
+  `ForIndex`**; each query evaluation after a collection change waits (bounded, `IndexWait` 5 s) for that
+  collection's indexes; one write costs one evaluation instead of two (write + index batch). Not covered: a
+  change reached only through `LoadDocument`, a reference's breadcrumb or a multi-map index — `Revalidate` (1 min)
+  or `ISparkLiveNotifier.CollectionChanged` (guide).
+- **L7 — login expiry** (`LiveSessionTests.L7_…`, a real Identity cookie with a 3 s ticket, no sliding): the
+  socket closed with **4401 after 2 693 ms** (connected just after sign-in); reconnecting with the expired cookie
+  is anonymous and the note is `gone`; after a fresh sign-in the reconnect is authenticated and gets the `po`.
+  The deadline is read before the upgrade (`AuthenticateAsync` cannot run after it: the cookie handler registers
+  `Response.OnStarting`). **Decision:** lifetime = min(ticket expiry, `MaxSocketLifetime` 30 min = Identity's
+  default security-stamp interval); the client reconnects at once on 4401.
+- **L8 — po-edit under pushes:** server half `LiveSessionTests.L8_…`: a save carrying the etag from before a push
+  is still **409** and the stored value stays the other user's. Client half (ng-spark `po-edit/src/spark-po-edit.live.spec.ts`,
+  10 tests): a clean form adopts the push; a dirty form keeps the edits and shows the banner; Review merges
+  (`mergeThreeWay`) or opens `SparkPoConflictDialogComponent`; pushes during an in-flight save or an open dialog
+  are set aside and re-checked afterwards; `gone` shows the 409 `deleted` message.
+
+**Decisions taken while building** (evidence in the tests named; red = the mechanism removed, test failed):
+
+- **`Actions` source = the document store's events, not `IAfterSaveCommitted`.** That interceptor is durable
+  and a startup error without Messaging (`SparkCommittedInterceptorsStartupCheck`), and sees only the pipeline.
+  `OnAfterSaveChanges` reports a stored document with its new change vector; a delete is remembered from
+  `OnBeforeDelete` and reported at the session's next store or its disposal. A handler never throws into the
+  writer, and is removed when the host goes: test hosts share a store, and a disposed host's handler failed every
+  later save (`ObjectDisposedException` in `RouteTableSnapshotTests`, fixed). Red: install removed →
+  `A_write_in_this_process_…_Source_Actions…` failed.
+- **Changes API per document and per collection, ref-counted on one connection; confirmed before the first
+  evaluation.** Red: watches removed → the `Both` and `Changes` rows of
+  `A_write_from_another_process_reaches_the_viewer_only_through_the_Changes_API` failed; the `Actions` row proves
+  the opposite (another process's write is invisible without the Changes API).
+- **`Both` de-duplicates by id + change vector** (5 s window): one write is one evaluation. Red: dedupe removed →
+  `LiveHubTests.Under_Both_the_echo…` and `LiveSocketTests.Under_Both_one_write_costs_one_evaluation…` failed.
+- **One read path.** `/spark/po/load` and `/spark/queries/execute` bodies moved into `PersistentObjectReadPath` and
+  `QueryReadPath`; each evaluation runs them in a fresh DI scope under the socket's principal.
+  `The_pushed_object_and_page_are_exactly_what_load_and_execute_return` asserts deep equality.
+- **No frame when nothing visible changed** (change-timing oracle). Red: unchanged diff sent as a result →
+  `A_write_to_a_row_the_viewer_cannot_see_sends_nothing` and two `LiveDiffTests` failed.
+- **#453 parity:** deleted, expired and forbidden objects are one `gone`; unknown, forbidden and not-live queries or
+  types are one `error unavailable` (`An_expired_note_is_gone_like_a_deleted_one`,
+  `Unknown_forbidden_and_not_live_answer_alike`).
+- **Revalidation every minute** without a write, so a lost membership or right applies. Red: revalidation removed
+  → `A_member_removed_from_the_organization_gets_gone_without_any_write_to_the_note` failed (green 6 s, red 12 s
+  timeout).
+- **Throttle 500 ms, latest wins.** Red: throttle removed → `A_burst_of_writes_costs_at_most_one_push_per_throttle_window…`
+  failed (more frames than leading + one per window + trailing).
+- **Streaming defects** (§5): (1) removed rows: red without `remove` → `LiveDiffTests.A_row_that_left_the_set…`,
+  `LiveAppStreamTests.A_row_missing_from_the_next_whole_set…`, `LiveSocketTests.A_new_row_is_added_and_a_deleted_row_removed…`
+  failed; (2) added rows dropped client-side: ng-spark red (patch applied to held rows only); (3) 1011 + ten retries:
+  now a per-subscription `error`, ng-spark red (error turned into a socket retry); (4) revoked right closing
+  silently: red without the per-evaluation `Query` check → `LiveAppStreamTests.A_revoked_right_ends_the_subscription…`
+  failed, and ng-spark red (rows kept on error); (5) the false "watches RavenDB" comment is gone with the file.
+- **App streams keep D24's `IAsyncEnumerable`** with `LiveQueryArgs` (parent, search, paging, sort, uncapped
+  session); whole-set yields; search, sort and paging in memory with a real total; started only for a viewer with
+  the `Query` right (`The_method_is_not_started_for_a_viewer_without_the_Query_right`); startup refuses the
+  signature on a non-live query. The app-stream decision is by actions *type*, never instance, at startup: a
+  library's actions class may need services only its own registration adds (found:
+  `OidcAuditEventActions` failed to construct in every host without the IdP).
+- **`"live"` is not structural in the model hash** (`Turning_a_query_live_does_not_move_the_hash`): it opens no read
+  `/execute` does not. Removing `"isStreamingQuery": false` from 36 model files did move every app's hash;
+  regenerated with `--spark-synchronize-model` (no database).
+- **An `update` is always answered with a full `result`**, so a grid knows its page, sort or search took effect
+  (asked by the client implementation).
+- **Runs:** `Live/` 48/48 green (6 classes incl. spikes and sessions); the touched areas (endpoints, organizations,
+  expiration, schemas, model, query loader, composed queries, custom actions, reflection cache, index wait)
+  595/595; route snapshots regenerated (10 files). ng-spark vitest 29 files, 644 tests. Not run: the full sweep,
+  E2E (`WebSocketOriginTests` re-pointed at `/spark/live` and extended to read the Fleet app stream's first page).

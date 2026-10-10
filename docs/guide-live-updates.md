@@ -138,7 +138,8 @@ Every operation names its subscription in `sub` (1–64 characters, chosen by th
 { "op": "unsubscribe", "sub": "s1" }
 ```
 
-`po` is exactly the body of `POST /spark/po/load`; `query` is exactly the body of `POST /spark/queries/execute`
+An `update` is always answered with a full `result` (even when the rows did not change), so a grid knows its
+new page, sort or search took effect. `po` is exactly the body of `POST /spark/po/load`; `query` is exactly the body of `POST /spark/queries/execute`
 (`retryResults` is ignored: a push cannot prompt).
 
 ### Server → client

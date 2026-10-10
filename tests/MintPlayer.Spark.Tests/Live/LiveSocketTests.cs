@@ -176,7 +176,7 @@ public class LiveSocketTests : OrganizationsTestHost
     [Fact]
     public async Task A_member_removed_from_the_organization_gets_gone_without_any_write_to_the_note()
     {
-        LiveOptions = o => o.Revalidate = TimeSpan.FromSeconds(1);
+        LiveOptions = o => o.Revalidate = TimeSpan.FromSeconds(2);
         var (ann, org, note) = await SeedAsync();
         var bob = await SeedUserAsync("bob");
         using (var session = Store.OpenAsyncSession())
@@ -196,6 +196,9 @@ public class LiveSocketTests : OrganizationsTestHost
         await using var client = await ConnectAsync(bob.Id);
         await client.SubscribePoAsync("n", NoteTypeId.ToString(), note.Id!);
         await client.NextAsync("po", "n");
+        // Let the subscription settle (the evaluation that follows the Changes connection coming up), so
+        // nothing but Revalidate is left to notice the membership going.
+        (await client.TryNextAsync(TimeSpan.FromSeconds(1.5))).Should().BeNull();
 
         using (var session = Store.OpenAsyncSession())
         {
