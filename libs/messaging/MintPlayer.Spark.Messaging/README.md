@@ -381,7 +381,7 @@ spark.AddMessaging(options =>
         TimeSpan.FromMinutes(10),
         TimeSpan.FromHours(1),
     };
-    options.HandlerTimeout = TimeSpan.FromMinutes(10);        // Cancels a hung handler (both subscription modes)
+    options.HandlerTimeout = TimeSpan.FromMinutes(10);        // Cancels a hung handler (both subscription modes); a queue may set its own
 });
 ```
 
@@ -397,6 +397,7 @@ spark.AddMessaging(options =>
 | `MaxConcurrency` | Messages of this queue handled at once (default 1 = FIFO). `SingleSubscription` mode only; warned about and ignored in `SubscriptionPerQueue` mode. |
 | `MaxAttempts` | Attempts per handler for messages published to this queue. |
 | `Backoff` | Retry schedule for this queue (empty = the global `BackoffDelays`). |
+| `HandlerTimeout` | How long one message of this queue may run its handlers before it is cancelled and parked (empty = the global `HandlerTimeout`, 10 min). Raise it for a queue whose handlers are legitimately long (a crawl batch) instead of raising it for every queue. Both subscription modes. |
 | `Priority` | `Low`, `Normal` (default) or `High` (or `-1`/`0`/`1`): the order in which the single feeder serves queues, strictly, across the whole backlog — see *Priority lanes* below. Stamped on each message at publish. `SingleSubscription` mode only. |
 
 `SparkMessagingOptions.FeederBatchSize` (default 256, `Spark:Messaging:FeederBatchSize`) is the

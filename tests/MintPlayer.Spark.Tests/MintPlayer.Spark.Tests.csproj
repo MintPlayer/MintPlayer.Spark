@@ -71,6 +71,7 @@
     <ProjectReference Include="..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete\MintPlayer.Spark.SoftDelete.csproj" />
     <ProjectReference Include="..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
     <ProjectReference Include="..\..\libs\moderation\MintPlayer.Spark.Moderation\MintPlayer.Spark.Moderation.csproj" />
+    <ProjectReference Include="..\..\libs\settings\MintPlayer.Spark.Settings\MintPlayer.Spark.Settings.csproj" />
     <!-- Contributions M5: the runtime, plus its generator through the targets imported below. -->
     <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions\MintPlayer.Spark.Contributions.csproj" />
     <ProjectReference Include="..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />

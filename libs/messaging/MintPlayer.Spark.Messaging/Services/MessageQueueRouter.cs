@@ -118,7 +118,7 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
             {
                 // Claim renewal + HandlerTimeout, shared with the per-queue worker.
                 await ClaimedExecution.RunAsync(
-                    documentStore, Options, logger, messageId,
+                    documentStore, Options, logger, messageId, Options.HandlerTimeoutFor(queueName),
                     token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token),
                     cancellationToken);
             }

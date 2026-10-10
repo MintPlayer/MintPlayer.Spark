@@ -1,0 +1,97 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "queries": {
+    "Settings": {
+      "label": {
+        "en": "Settings",
+        "fr": "Paramètres",
+        "nl": "Instellingen"
+      }
+    }
+  },
+  "model": {
+    "Setting": {
+      "label": {
+        "en": "Setting",
+        "fr": "Paramètre",
+        "nl": "Instelling"
+      },
+      "attributes": {
+        "Key": {
+          "label": {
+            "en": "Key",
+            "fr": "Clé",
+            "nl": "Sleutel"
+          },
+          "description": {
+            "en": "The configuration key this setting overrides.",
+            "fr": "La clé de configuration que ce paramètre remplace.",
+            "nl": "De configuratiesleutel die deze instelling overschrijft."
+          }
+        },
+        "Value": {
+          "label": {
+            "en": "Value",
+            "fr": "Valeur",
+            "nl": "Waarde"
+          },
+          "description": {
+            "en": "Leave empty to use the configured value, or else the default.",
+            "fr": "Laissez vide pour utiliser la valeur configurée, ou sinon la valeur par défaut.",
+            "nl": "Laat leeg om de geconfigureerde waarde te gebruiken, of anders de standaardwaarde."
+          }
+        },
+        "Default": {
+          "label": {
+            "en": "Default",
+            "fr": "Par défaut",
+            "nl": "Standaard"
+          },
+          "description": {
+            "en": "The value declared in code, used when neither a value nor configuration is set.",
+            "fr": "La valeur déclarée dans le code, utilisée quand ni une valeur ni la configuration n'est définie.",
+            "nl": "De waarde uit de code, gebruikt wanneer er geen waarde en geen configuratie is."
+          }
+        },
+        "Type": {
+          "label": {
+            "en": "Type",
+            "fr": "Type",
+            "nl": "Type"
+          },
+          "description": {
+            "en": "The kind of value the setting takes.",
+            "fr": "Le type de valeur du paramètre.",
+            "nl": "Het soort waarde dat de instelling aanneemt."
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "fr": "Description",
+            "nl": "Omschrijving"
+          },
+          "description": {
+            "en": "What the setting does.",
+            "fr": "Ce que fait le paramètre.",
+            "nl": "Wat de instelling doet."
+          }
+        }
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "settings": {
+        "en": "Settings",
+        "fr": "Paramètres",
+        "nl": "Instellingen"
+      }
+    },
+    "settings": {
+      "en": "Settings",
+      "fr": "Paramètres",
+      "nl": "Instellingen"
+    }
+  }
+}

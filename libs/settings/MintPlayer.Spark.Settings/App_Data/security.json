@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The settings package's rights, shipped as a library layer (docs/seo_analyzer_PRD.md X9). One slot the",
+    "application binds in its own security.json, or startup is refused:",
+    "  \"bindings\": { \"settings:administrators\": [ \"Administrators\" ] }",
+    "QueryReadEdit only: settings are declared in code and seeded, so nobody creates or deletes one through",
+    "the UI; clearing Value is how an administrator falls back to configuration.",
+    "Drop the grant with { \"key\": \"settings:administrators\", \"$remove\": true }, or every grant of the",
+    "package with \"libraries\": { \"settings\": false }."
+  ],
+  "rights": [
+    {
+      "key": "administrators",
+      "resource": "QueryReadEdit/Setting",
+      "groupId": "settings:administrators"
+    }
+  ]
+}

@@ -122,6 +122,11 @@ public class SparkMessagingOptions
     /// ignores its <see cref="CancellationToken"/> cannot be interrupted, which is worth knowing
     /// before assuming this makes lanes unblockable.
     /// </para>
+    /// <para>
+    /// A queue overrides it with <see cref="SparkQueueOptions.HandlerTimeout"/>
+    /// (<c>Spark:Messaging:Queues:{name}:HandlerTimeout</c>), so one slow lane does not raise the bound
+    /// for every other.
+    /// </para>
     /// </summary>
     public TimeSpan HandlerTimeout { get; set; } = TimeSpan.FromMinutes(10);
 
@@ -154,6 +159,10 @@ public class SparkMessagingOptions
     /// <summary>The settings for <paramref name="queueName"/>, or null when the queue has none.</summary>
     public SparkQueueOptions? QueueOptionsFor(string queueName)
         => Queues.TryGetValue(queueName, out var queue) ? queue : null;
+
+    /// <summary>The handler timeout of <paramref name="queueName"/>: its <see cref="SparkQueueOptions.HandlerTimeout"/>, or <see cref="HandlerTimeout"/>.</summary>
+    public TimeSpan HandlerTimeoutFor(string queueName)
+        => QueueOptionsFor(queueName)?.HandlerTimeout ?? HandlerTimeout;
 
     /// <summary>The priority of <paramref name="queueName"/>: its setting, or <see cref="SparkQueuePriority.Normal"/>.</summary>
     public SparkQueuePriority PriorityFor(string queueName)

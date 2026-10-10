@@ -68,6 +68,15 @@ public class SparkQueueOptions
     /// </summary>
     public TimeSpan[] Backoff { get; set; } = [];
 
+    /// <summary>
+    /// How long one message of this queue may run its handlers before it is cancelled and parked. Null =
+    /// the global <see cref="SparkMessagingOptions.HandlerTimeout"/> (10 minutes). Set it on a queue whose
+    /// handlers are legitimately longer (a crawl batch, a report) rather than raising the global bound for
+    /// every queue, or shorter on a queue that must never hold its lane long. Read it through
+    /// <see cref="SparkMessagingOptions.HandlerTimeoutFor"/>.
+    /// </summary>
+    public TimeSpan? HandlerTimeout { get; set; }
+
     /// <summary>This queue's schedule, or <paramref name="global"/> when none is set.</summary>
     public TimeSpan[] ResolveBackoff(TimeSpan[] global) => Backoff.Length > 0 ? Backoff : global;
 

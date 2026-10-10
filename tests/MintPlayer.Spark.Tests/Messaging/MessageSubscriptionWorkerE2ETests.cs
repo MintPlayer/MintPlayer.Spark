@@ -679,6 +679,37 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         }
     }
 
+    /// <summary>
+    /// X7 (<c>docs/seo_analyzer_PRD.md</c>): the queue's own <see cref="SparkQueueOptions.HandlerTimeout"/>
+    /// bounds its handlers, not the global one. Before, only the global bound existed, so this hung
+    /// handler ran for the global 10 minutes.
+    /// </summary>
+    [Fact]
+    public async Task A_queue_HandlerTimeout_cancels_a_hung_handler_although_the_global_bound_is_long()
+    {
+        var queue = typeof(HangMessage).FullName!;
+        var recipient = new HangingRecipient();
+        var options = new SparkMessagingOptions { HandlerTimeout = TimeSpan.FromMinutes(10) };
+        options.Queues[queue] = new SparkQueueOptions { HandlerTimeout = TimeSpan.FromMilliseconds(500) };
+        var sp = ProviderFor<HangMessage, HangingRecipient>(recipient, options);
+
+        var id = await SeedAsync(new HangMessage("orders/hang-queue"));
+        var worker = NewWorker(queue, sp);
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await recipient.Cancelled.Task.WaitAsync(PollTimeout);
+            var final = await WaitForMessageAsync(id, m => m.Status != EMessageStatus.Processing);
+
+            final.Status.Should().Be(EMessageStatus.Failed, "the queue's timeout parked the hung handler for a retry");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task Per_queue_mode_renews_the_claim_while_a_handler_runs()
     {

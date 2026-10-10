@@ -98,6 +98,9 @@
     <Project Path="libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj" />
     <Project Path="libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj" />
   </Folder>
+  <Folder Name="/libs/settings/">
+    <Project Path="libs/settings/MintPlayer.Spark.Settings/MintPlayer.Spark.Settings.csproj" />
+  </Folder>
   <Folder Name="/libs/soft_delete/">
     <Project Path="libs/soft_delete/MintPlayer.Spark.SoftDelete.Abstractions/MintPlayer.Spark.SoftDelete.Abstractions.csproj" />
     <Project Path="libs/soft_delete/MintPlayer.Spark.SoftDelete/MintPlayer.Spark.SoftDelete.csproj" />
