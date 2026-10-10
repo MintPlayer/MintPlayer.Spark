@@ -343,6 +343,37 @@ describe('SparkPoDetailComponent', () => {
     expect(last.querySelector('spark-attribute-description button')).toBeNull();
   });
 
+  it('shows a number 0 as 0 and only a missing value as - (#268 M11: a page at depth 0 read "-")', async () => {
+    const numbersType: EntityType = {
+      ...personType,
+      attributes: [
+        personType.attributes[0],
+        { id: 'a-depth', name: 'Depth', dataType: 'number', isRequired: false, isReadOnly: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-load', name: 'LoadMs', dataType: 'number', isRequired: false, isReadOnly: true, order: 3, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-note', name: 'Note', dataType: 'string', isRequired: false, isReadOnly: true, order: 4, showedOn: ShowedOn.PersistentObject } as any,
+      ],
+    } as any;
+    const item = {
+      ...existingItem,
+      attributes: [
+        ...existingItem.attributes,
+        { id: 'a-depth', name: 'Depth', value: 0 },
+        { id: 'a-load', name: 'LoadMs', value: null },
+        { id: 'a-note', name: 'Note', value: '' },
+      ],
+    } as any;
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([numbersType]), get: vi.fn().mockResolvedValue(item) });
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    const terms: HTMLElement[] = Array.from(harness.routeNativeElement!.querySelectorAll('dt'));
+    const valueOf = (name: string) => (terms.find(t => t.textContent?.includes(name))!.nextElementSibling as HTMLElement).textContent?.trim();
+    expect(valueOf('Depth')).toBe('0');
+    expect(valueOf('LoadMs')).toBe('-');
+    expect(valueOf('Note')).toBe('-');
+  });
+
   it('onEdit emits edited and navigates to the edit route', async () => {
     const { harness } = await setup();
     const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);

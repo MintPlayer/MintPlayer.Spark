@@ -1,12 +1,19 @@
 @if (authService.isAuthenticated()) {
   <!-- No user name here: an email address does not fit a topbar. The account page shows it, and
-       the account page is also where passkeys, two-factor and the rest live when they are mounted. -->
+       the account page is also where passkeys, two-factor and the rest live when they are mounted.
+       On a phone the two buttons are icons (their names stay as aria-label and title), so the
+       topbar fits 375 px next to a language selector, an organization switcher and the bell. -->
   <bs-button-group>
     @if (accountUrl) {
-      <a class="btn btn-sm spark-auth-bar-btn text-nowrap" [routerLink]="accountUrl"
-         [attr.title]="authService.user()?.userName">{{ 'auth.account' | t }}</a>
+      <a class="btn btn-sm spark-auth-bar-btn text-nowrap spark-auth-bar-account" [routerLink]="accountUrl"
+         [attr.title]="authService.user()?.userName" [attr.aria-label]="'auth.account' | t">
+        <spark-icon name="person" class="spark-auth-bar-icon" aria-hidden="true" /><span class="spark-auth-bar-label">{{ 'auth.account' | t }}</span>
+      </a>
     }
-    <button type="button" class="btn btn-sm spark-auth-bar-btn text-nowrap" (click)="onLogout()">{{ 'auth.logout' | t }}</button>
+    <button type="button" class="btn btn-sm spark-auth-bar-btn text-nowrap spark-auth-bar-logout" (click)="onLogout()"
+            [attr.title]="'auth.logout' | t" [attr.aria-label]="'auth.logout' | t">
+      <spark-icon name="box-arrow-right" class="spark-auth-bar-icon" aria-hidden="true" /><span class="spark-auth-bar-label">{{ 'auth.logout' | t }}</span>
+    </button>
   </bs-button-group>
 } @else {
   <a class="btn btn-sm spark-auth-bar-btn text-nowrap" [routerLink]="signInUrl">{{ 'auth.login' | t }}</a>

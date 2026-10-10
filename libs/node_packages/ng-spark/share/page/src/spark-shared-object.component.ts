@@ -52,6 +52,12 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
     .spark-shared-attributes { display: grid; grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr); gap: .5rem 1.5rem; margin: 0; }
     .spark-shared-attributes dt { font-weight: 600; }
     .spark-shared-attributes dd { margin: 0; min-width: 0; }
+    /* A phone stacks each label over its value: beside it, the label column took 40 % of 375 px. */
+    @media (max-width: 575.98px) {
+      .spark-shared-attributes { grid-template-columns: minmax(0, 1fr); gap: .15rem; }
+      .spark-shared-attributes dd { margin-bottom: .6rem; }
+    }
+    .spark-shared-query { overflow-x: auto; }
     .spark-shared-query table { width: 100%; border-collapse: collapse; }
     .spark-shared-query th, .spark-shared-query td { padding: .35rem .5rem; border-bottom: 1px solid var(--bs-border-color); text-align: start; }
   `],

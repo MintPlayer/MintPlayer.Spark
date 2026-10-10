@@ -46,6 +46,11 @@ bs-shell {
   background-color: var(--spark-shell-topbar-bg, var(--bs-tertiary-bg));
   color: var(--spark-shell-topbar-color, var(--bs-body-color));
   border-bottom: var(--bs-border-width) solid var(--spark-shell-border-color);
+  // The trailing group may shrink (a select truncates) rather than push the page sideways on a phone.
+  > .ms-auto {
+    min-width: 0;
+    @media (max-width: 575.98px) { gap: .25rem !important; margin-right: .5rem !important; }
+  }
 }
 
 // We project our own <bs-navbar-toggler> into the topbar, so hide the web component's built-in

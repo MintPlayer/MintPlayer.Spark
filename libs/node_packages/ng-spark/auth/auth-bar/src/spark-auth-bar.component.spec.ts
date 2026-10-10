@@ -96,6 +96,16 @@ describe('SparkAuthBarComponent', () => {
     expect(buttons(harness)).toEqual([{ text: 'auth.logout', href: null }]);
   });
 
+  it('names both buttons for assistive tech and carries the icons a phone shows instead of the labels', async () => {
+    const { harness } = await setup(sparkAuthRoutes(withLocalLogin(), withAccount()));
+    await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
+    harness.detectChanges();
+
+    const controls = Array.from((harness.routeNativeElement as HTMLElement).querySelectorAll('.spark-auth-bar-btn'));
+    expect(controls.map(c => c.getAttribute('aria-label'))).toEqual(['auth.account', 'auth.logout']);
+    expect(controls.map(c => c.querySelector('spark-icon')?.getAttribute('name'))).toEqual(['person', 'box-arrow-right']);
+  });
+
   it('no longer renders the user name in the bar', async () => {
     const { harness } = await setup(sparkAuthRoutes(withAccount()));
     await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);

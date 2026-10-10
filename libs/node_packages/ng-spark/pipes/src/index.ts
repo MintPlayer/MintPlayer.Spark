@@ -3,6 +3,7 @@ export * from './resolve-translation.pipe';
 export * from './input-type.pipe';
 export * from './parsed-date.pipe';
 export * from './attribute-value.pipe';
+export * from './or-dash.pipe';
 export * from './raw-attribute-value.pipe';
 export * from './reference-display-value.pipe';
 export * from './reference-attr-value.pipe';

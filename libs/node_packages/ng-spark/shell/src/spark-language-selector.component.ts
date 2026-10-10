@@ -26,6 +26,12 @@ import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
       }
     }
   `,
+  // Narrow on a phone, never unreadable: the topbar also holds the theme toggle, an organization switcher,
+  // the bell and the account buttons in 375 px. Below 4.25rem the select showed only its caret.
+  styles: [`
+    :host { display: inline-block; min-width: 0; }
+    @media (max-width: 575.98px) { :host { flex: 0 0 4.25rem; } }
+  `],
 })
 export class SparkLanguageSelectorComponent {
   protected readonly lang = inject(SparkLanguageService);
