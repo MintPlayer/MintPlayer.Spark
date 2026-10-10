@@ -5,7 +5,7 @@ namespace SeoTester.Messaging;
 /// <summary>
 /// The crawl pipeline's queues (<c>docs/seo_analyzer_PRD.md</c> §4.3). Their concurrency and handler timeouts are
 /// configuration (<c>Spark:Messaging:Queues:{name}</c> in <c>appsettings.json</c>), so an operator can change them
-/// without a build. The recipients arrive with M9 (probe, crawl, aggregate) and M10 (render, PSI, PDF).
+/// without a build. The recipients are M9's (probe, crawl, aggregate) and M10's (render, PSI, PDF).
 /// </summary>
 public static class SeoQueues
 {
@@ -43,14 +43,14 @@ public sealed record PageBatchMessage(string RunId, int BatchNo);
 [MessageQueue(SeoQueues.Render)]
 public sealed record RenderSampleMessage(string RunId);
 
-/// <summary>Measures the run's sample with PageSpeed Insights / CrUX.</summary>
+/// <summary>Measures the run's sample with PageSpeed Insights / CrUX; <paramref name="Attempt"/> counts the waits after a 429 (quota).</summary>
 [MessageQueue(SeoQueues.Psi)]
-public sealed record PsiMessage(string RunId);
+public sealed record PsiMessage(string RunId, int Attempt = 0);
 
 /// <summary>Scores the run once every stage finished.</summary>
 [MessageQueue(SeoQueues.Aggregate)]
 public sealed record AggregateMessage(string RunId);
 
-/// <summary>Prints the run's report as PDF in <paramref name="Culture"/>.</summary>
+/// <summary>Prints the run's report as PDF in <paramref name="Culture"/> (en or nl) for <paramref name="RequestedBy"/>, who is notified.</summary>
 [MessageQueue(SeoQueues.Pdf)]
-public sealed record PdfMessage(string RunId, string Culture);
+public sealed record PdfMessage(string RunId, string Culture, string? RequestedBy = null);

@@ -6,22 +6,14 @@ namespace SeoTester.Checks;
 /// <summary>
 /// Which catalogue entries have an implementation (<c>docs/seo_analyzer_PRD.md</c> §3.1: "an entry without an
 /// implementation shows as unavailable, and an implementation without an entry is not run"). M9 implements every
-/// check of the raw HTML, the headers, TLS, DNS, the registries and the crawl; the ones that need the rendered page
-/// (Chromium) or PageSpeed Insights are M10's.
+/// check of the raw HTML, the headers, TLS, DNS, the registries and the crawl; M10 the ones that need the rendered
+/// page (Chromium, <see cref="RenderChecks"/>) or PageSpeed Insights (<see cref="PageSpeed.PsiChecks"/>).
 /// </summary>
 public static class CheckImplementations
 {
-    /// <summary>Checks the crawl pipeline measures (page, site and crawl level).</summary>
-    public static IReadOnlySet<string> Implemented { get; } = new HashSet<string>(PageChecks.Ids.Concat(SiteChecks.Ids).Concat(CrawlChecks.Ids), StringComparer.Ordinal);
-
-    /// <summary>Checks that need the headless browser or PageSpeed Insights (M10).</summary>
-    public static IReadOnlySet<string> AwaitingRenderOrPsi { get; } = new HashSet<string>(StringComparer.Ordinal)
-    {
-        "performance.core-web-vitals", "performance.lab-score", "performance.page-weight", "performance.lazy-loading", "performance.code-splitting",
-        "accessibility.aria", "accessibility.color-contrast", "accessibility.touch-targets", "accessibility.heading-order", "accessibility.landmarks",
-        "accessibility.axe-other", "mobile.responsive", "mobile.service-worker", "mobile.service-worker-caching",
-        "technical.raw-vs-rendered", "technical.spa-analytics", "technical.mobile-parity", "security.analytics-consent",
-    };
+    /// <summary>Checks the pipeline measures (page, site and crawl level; rendered; PageSpeed Insights).</summary>
+    public static IReadOnlySet<string> Implemented { get; } = new HashSet<string>(
+        PageChecks.Ids.Concat(SiteChecks.Ids).Concat(CrawlChecks.Ids).Concat(RenderChecks.Ids).Concat(PageSpeed.PsiChecks.Ids), StringComparer.Ordinal);
 
     public static bool IsImplemented(string checkId) => Implemented.Contains(checkId);
 }
@@ -67,7 +59,10 @@ public sealed class RunTally
             var flagged = check.Where(v => v.Value.Status is CheckStatus.Fail or CheckStatus.Warn)
                 .OrderByDescending(v => Rank(v.Value.Status)).ThenBy(v => v.Key.Url, StringComparer.Ordinal).ToList();
             var samples = flagged.Select(v => v.Key.Url).Where(u => u.Length > 0).Distinct().Take(5).ToList();
-            result[check.Key] = new CheckTally(new CheckOutcome(check.Key, pass, warn, fail, na, error), samples, flagged.FirstOrDefault().Value?.Detail);
+            // Nothing flagged: a "why not measured" (a reason of a not-applicable or error finding) is kept instead.
+            var detail = flagged.FirstOrDefault().Value?.Detail
+                ?? check.Select(v => v.Value).FirstOrDefault(f => (f.Status == CheckStatus.NotApplicable && f.Detail?.ContainsKey("reason") == true) || (f.Status == CheckStatus.Error && f.Detail is not null))?.Detail;
+            result[check.Key] = new CheckTally(new CheckOutcome(check.Key, pass, warn, fail, na, error), samples, detail);
         }
         return result;
     }

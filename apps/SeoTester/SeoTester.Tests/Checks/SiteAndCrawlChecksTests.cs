@@ -169,15 +169,12 @@ public class SiteAndCrawlChecksTests
     }
 
     [Fact]
-    public void Every_catalogue_check_is_implemented_now_or_waits_for_the_renderer_and_psi()
+    public void Every_catalogue_check_is_implemented()
     {
         var catalogue = ShippedCatalogue.All.Select(c => c.Id).ToHashSet();
 
-        CheckImplementations.Implemented.Should().BeSubsetOf(catalogue);
-        CheckImplementations.AwaitingRenderOrPsi.Should().BeSubsetOf(catalogue);
-        CheckImplementations.Implemented.Intersect(CheckImplementations.AwaitingRenderOrPsi).Should().BeEmpty();
-        catalogue.Except(CheckImplementations.Implemented).Except(CheckImplementations.AwaitingRenderOrPsi).Should().BeEmpty();
-        CheckImplementations.Implemented.Count.Should().Be(92);
-        CheckImplementations.AwaitingRenderOrPsi.Count.Should().Be(18);
+        catalogue.Except(CheckImplementations.Implemented).Should().BeEmpty("M10 implemented the 18 rendered and PageSpeed checks");
+        CheckImplementations.Implemented.Except(catalogue).Should().BeEmpty();
+        CheckImplementations.Implemented.Count.Should().Be(110);
     }
 }

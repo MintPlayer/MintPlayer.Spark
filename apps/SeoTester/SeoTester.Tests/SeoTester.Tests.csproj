@@ -42,6 +42,8 @@
   <ItemGroup>
     <!-- JSON fixtures (users, organizations, memberships), imported with SparkTestDriver.SeedFromJsonAsync. -->
     <Content Include="Data\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Recorded non-JSON answers (PageSpeed Insights' HTML 429, spike S5). -->
+    <Content Include="Data\**\*.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
