@@ -11,7 +11,7 @@ namespace MintPlayer.Spark.Organizations;
 /// <remarks>
 /// Refusals: an organization that does not exist, or that the acting user may not act on, throws
 /// <see cref="MintPlayer.Spark.Abstractions.Authorization.SparkRowLevelAccessDeniedException"/> (the
-/// missing-row 404, #453); a broken rule (the last Owner leaving, a personal organization) throws
+/// missing-row 404, #453); a broken rule (the last Owner leaving, a personal organization's user leaving) throws
 /// <see cref="MintPlayer.Spark.Abstractions.SparkValidationException"/> (400).
 /// </remarks>
 public interface ISparkOrganizations
@@ -33,21 +33,22 @@ public interface ISparkOrganizations
 
     /// <summary>
     /// Invites <paramref name="email"/> as <paramref name="role"/> (never Owner) and mails the link. Admin
-    /// and up; an invitation to the same address replaces the pending one. Not for a personal organization.
+    /// and up; an invitation to the same address replaces the pending one. A personal organization too (D42).
     /// </summary>
     Task InviteAsync(string organizationId, string email, OrganizationRole role, string inviterUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Asks the Owners of <paramref name="organizationId"/>, by mail, to let <paramref name="requesterUserId"/>
-    /// in as <paramref name="role"/> (D18). A member already, or a personal organization: nothing happens.
+    /// in as <paramref name="role"/> (D18), a personal organization's too (D42). A member already: nothing happens.
     /// A request from the same user replaces their pending one. Returns whether a request was made.
     /// </summary>
     Task<bool> RequestToJoinAsync(string organizationId, string requesterUserId, OrganizationRole role = OrganizationRole.Member, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Redeems a mailed link as <paramref name="userId"/>. An invitation makes the signed-in user a
-    /// member; a join request makes its requester one, and needs an Owner or Admin to open it. The token is
-    /// single-use and expires; every refusal reads the same.
+    /// member, and only when that account owns the invited address (confirmed, D43); a join request makes
+    /// its requester one, and needs an Owner or Admin to open it, whatever their address. The token is
+    /// single-use and expires; every refusal reads the same, except the wrong account for a valid invitation.
     /// </summary>
     Task<OrganizationAcceptance> AcceptAsync(string invitationId, string token, string userId, CancellationToken cancellationToken = default);
 
@@ -65,10 +66,28 @@ public interface ISparkOrganizations
 }
 
 /// <summary>What redeeming a link answers: the organization joined, or why not.</summary>
-public sealed record OrganizationAcceptance(bool Accepted, string? OrganizationId, string? OrganizationName, string? Problem)
+/// <remarks>
+/// <see cref="Reason"/> names the refusal for a client to translate: <see cref="InvalidReason"/> or
+/// <see cref="OtherAddressReason"/>; null when accepted.
+/// </remarks>
+public sealed record OrganizationAcceptance(bool Accepted, string? OrganizationId, string? OrganizationName, string? Problem, string? Reason = null)
 {
     /// <summary>The one refusal for a link that is unknown, forged, used, expired or not the caller's to accept.</summary>
     public const string InvalidProblem = "This link is not valid. It may have expired, been used already, or be meant for someone else.";
 
-    internal static OrganizationAcceptance Invalid { get; } = new(false, null, null, InvalidProblem);
+    /// <summary>
+    /// A valid invitation opened by an account that does not own the invited address (D43). The link
+    /// stays live for the right account.
+    /// </summary>
+    public const string OtherAddressProblem = "This invitation was sent to another email address. Sign in with the account that has confirmed that address, then open the link again.";
+
+    /// <summary><see cref="Reason"/> of <see cref="InvalidProblem"/>.</summary>
+    public const string InvalidReason = "invalid";
+
+    /// <summary><see cref="Reason"/> of <see cref="OtherAddressProblem"/>.</summary>
+    public const string OtherAddressReason = "otherAddress";
+
+    internal static OrganizationAcceptance Invalid { get; } = new(false, null, null, InvalidProblem, InvalidReason);
+
+    internal static OrganizationAcceptance OtherAddress { get; } = new(false, null, null, OtherAddressProblem, OtherAddressReason);
 }

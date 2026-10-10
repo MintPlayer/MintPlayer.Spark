@@ -4,7 +4,7 @@ namespace MintPlayer.Spark.Organizations.Models;
 /// An organization (<c>docs/seo_analyzer_PRD.md</c> X11, D18, D21): a named group of users with roles
 /// (<see cref="OrganizationMembership"/>) that owns documents carrying its id
 /// (<see cref="IOrganizationOwned"/>). Every user also has a <see cref="IsPersonal">personal</see> one,
-/// created on first sign-in, that only they belong to.
+/// created on first sign-in, that they own for good and others can join (D42).
 /// </summary>
 /// <remarks>
 /// Who sees an organization: its members (Viewer and up). Who renames it: Admin and up. Who deletes it:
@@ -23,10 +23,10 @@ public class Organization
     /// <summary>The name members see.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>A user's own organization: one member (its Owner), no invitations, deleted with the account.</summary>
+    /// <summary>A user's own organization: they are its only Owner, others join it like any other (D42), deleted with the account.</summary>
     public bool IsPersonal { get; set; }
 
-    /// <summary>The user who created it (for a personal organization, its only member).</summary>
+    /// <summary>The user who created it (for a personal organization, its user and only Owner).</summary>
     public string? CreatedBy { get; set; }
 
     /// <summary>When it was created.</summary>

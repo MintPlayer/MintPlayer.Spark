@@ -17,14 +17,19 @@ internal class OrganizationsGroup : IEndpointGroup
 /// <summary>The body of <c>POST /spark/organizations/accept</c>: the two values the mailed link carries.</summary>
 public sealed record AcceptOrganizationInvitationBody(string InvitationId, string Token);
 
-/// <summary>What accepting answers: the organization joined, or why not (one wording for every refusal).</summary>
-public sealed record AcceptOrganizationInvitationResponse(bool Accepted, string? OrganizationId, string? Organization, string? Problem);
+/// <summary>
+/// What accepting answers: the organization joined, or why not. <c>Reason</c> is <c>invalid</c> (one wording
+/// for every unknown, forged, used or expired link) or <c>otherAddress</c> (a valid invitation opened by an
+/// account that does not own the invited address, D43).
+/// </summary>
+public sealed record AcceptOrganizationInvitationResponse(bool Accepted, string? OrganizationId, string? Organization, string? Problem, string? Reason);
 
 /// <summary>
 /// Redeems an invitation or a join request (<c>docs/seo_analyzer_PRD.md</c> D18), from the SPA page the
 /// mailed link opens (<c>/organizations/accept/{token}?id=…</c>). Accepting is this explicit POST, never
 /// the GET of the link, which mail scanners open. Every refusal answers 200 with the same words, so the
-/// endpoint tells nothing about which invitations exist.
+/// endpoint tells nothing about which invitations exist. The one other refusal, the wrong account for a
+/// valid invitation, needs the link's token, so it tells its holder only what they already know.
 /// </summary>
 [MemberOf<OrganizationsGroup>]
 internal sealed partial class AcceptOrganizationInvitation : IPostEndpoint<AcceptOrganizationInvitationBody>
@@ -44,6 +49,6 @@ internal sealed partial class AcceptOrganizationInvitation : IPostEndpoint<Accep
             return TypedResults.Unauthorized();
 
         var outcome = await organizations.AcceptAsync(request.InvitationId ?? "", request.Token ?? "", userId, cancellationToken);
-        return TypedResults.Ok(new AcceptOrganizationInvitationResponse(outcome.Accepted, outcome.OrganizationId, outcome.OrganizationName, outcome.Problem));
+        return TypedResults.Ok(new AcceptOrganizationInvitationResponse(outcome.Accepted, outcome.OrganizationId, outcome.OrganizationName, outcome.Problem, outcome.Reason));
     }
 }

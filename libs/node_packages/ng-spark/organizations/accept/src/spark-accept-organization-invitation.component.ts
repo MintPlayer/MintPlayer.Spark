@@ -14,6 +14,8 @@ export interface SparkOrganizationAcceptance {
   organizationId: string | null;
   organization: string | null;
   problem: string | null;
+  /** Which refusal: `invalid` (any unknown, used or expired link) or `otherAddress` (D43). */
+  reason?: 'invalid' | 'otherAddress' | null;
 }
 
 /**
@@ -21,7 +23,8 @@ export interface SparkOrganizationAcceptance {
  * (`/organizations/accept/:token?id=<invitationId>`, `docs/seo_analyzer_PRD.md` D18). Accepting is an
  * explicit click, never a side effect of opening the link (mail scanners open links). An invitation
  * makes the signed-in account a member; a join request lets its requester in and needs an Owner or
- * Admin. Every failure reads the same, as the server answers it.
+ * Admin. Every failure reads the same, except a valid invitation opened by an account that does not own
+ * the invited address (D43): the page says so, so the user can sign in with the right account.
  */
 @Component({
   selector: 'spark-accept-organization-invitation',
@@ -37,7 +40,7 @@ export interface SparkOrganizationAcceptance {
             <bs-alert [type]="colors.success" class="mb-3 d-block spark-organization-accepted">{{ t('accepted').replace('{0}', joined.organization ?? '') }}</bs-alert>
             <a class="btn btn-outline-primary spark-organization-open" [routerLink]="['/po', 'organization', joined.organizationId]">{{ t('open') }}</a>
           } @else if (!valid || failed()) {
-            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-organization-invalid">{{ t('invalid') }}</bs-alert>
+            <bs-alert [type]="colors.danger" class="mb-3 d-block spark-organization-invalid">{{ t(reason()) }}</bs-alert>
           } @else {
             <p>{{ t('intro') }}</p>
             <button type="button" class="btn btn-primary spark-organization-accept" [disabled]="busy()" (click)="accept()">
@@ -63,6 +66,8 @@ export class SparkAcceptOrganizationInvitationComponent {
 
   readonly busy = signal(false);
   readonly failed = signal(false);
+  /** The refusal to show: a translation key under `organizations.spa`. */
+  readonly reason = signal<'invalid' | 'otherAddress'>('invalid');
   /** The organization joined, once accepted. */
   readonly joined = signal<SparkOrganizationAcceptance | null>(null);
 
@@ -80,7 +85,10 @@ export class SparkAcceptOrganizationInvitationComponent {
         token: this.token,
       }));
       if (result.accepted) this.joined.set(result);
-      else this.failed.set(true);
+      else {
+        this.reason.set(result.reason === 'otherAddress' ? 'otherAddress' : 'invalid');
+        this.failed.set(true);
+      }
     } catch {
       this.failed.set(true);
     } finally {

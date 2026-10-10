@@ -79,6 +79,36 @@ public class OrganizationAccountTests : OrganizationsTestHost
     }
 
     [Fact]
+    public async Task Deleting_a_members_account_leaves_the_personal_organization_they_joined()
+    {
+        // D42: a personal organization takes members. Only its own user's deletion takes it away.
+        var sites = new OgDataHandler("sites");
+        DataHandlers.Add(sites);
+        var ann = await SeedUserAsync("ann");
+        var bob = await SeedUserAsync("bob");
+        var annsPersonal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
+        using (var session = Store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new OrganizationMembership
+            {
+                Id = OrganizationMembership.IdFor(bob.Id!, annsPersonal.Id!),
+                OrganizationId = annsPersonal.Id,
+                UserId = bob.Id,
+                UserName = bob.UserName,
+                Role = OrganizationRole.Member,
+                JoinedAtUtc = DateTime.UtcNow,
+            });
+            await session.SaveChangesAsync();
+        }
+
+        await DeleteAccountAsync(bob);
+
+        (await LoadAsync<Organization>(annsPersonal.Id!)).Should().NotBeNull("it is ann's, not bob's");
+        sites.Deleted.Should().BeEmpty();
+        (await MembersAsync(annsPersonal.Id!)).Select(m => m.UserId).Should().Equal(ann.Id);
+    }
+
+    [Fact]
     public async Task The_only_Owner_of_an_organization_with_other_members_cannot_delete_the_account_until_ownership_moves()
     {
         var ann = await SeedUserAsync("ann");

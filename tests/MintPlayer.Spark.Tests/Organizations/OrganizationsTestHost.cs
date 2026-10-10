@@ -134,7 +134,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
     // ---- seeding -----------------------------------------------------------------------------------
 
     /// <summary>A user document, as Identity would store it.</summary>
-    internal async Task<SparkUser> SeedUserAsync(string name)
+    internal async Task<SparkUser> SeedUserAsync(string name, bool emailConfirmed = true)
     {
         _ = Factory;
         var user = new SparkUser
@@ -144,7 +144,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
             NormalizedUserName = name.ToUpperInvariant(),
             Email = name + "@test.local",
             NormalizedEmail = (name + "@test.local").ToUpperInvariant(),
-            EmailConfirmed = true,
+            EmailConfirmed = emailConfirmed,
             SecurityStamp = Guid.NewGuid().ToString("N"),
         };
         using var session = Store.OpenAsyncSession();

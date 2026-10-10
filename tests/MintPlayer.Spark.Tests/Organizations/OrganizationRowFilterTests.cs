@@ -274,6 +274,46 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
     }
 
     [Fact]
+    public async Task In_a_personal_organization_members_are_edited_and_removed_but_the_Owner_role_never_moves()
+    {
+        // D42: a personal organization's other members behave as anywhere; its user stays its only Owner.
+        var ann = await SeedUserAsync("ann");
+        var vic = await SeedUserAsync("vic");
+        var max = await SeedUserAsync("max");
+        var personal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
+        using (var session = Store.OpenAsyncSession())
+        {
+            foreach (var user in new[] { vic, max })
+                await session.StoreAsync(new OrganizationMembership
+                {
+                    Id = OrganizationMembership.IdFor(user.Id!, personal.Id!),
+                    OrganizationId = personal.Id,
+                    UserId = user.Id,
+                    UserName = user.UserName,
+                    Role = OrganizationRole.Viewer,
+                    JoinedAtUtc = DateTime.UtcNow,
+                });
+            await session.SaveChangesAsync();
+        }
+        var vicMembership = OrganizationMembership.IdFor(vic.Id!, personal.Id!);
+        var maxMembership = OrganizationMembership.IdFor(max.Id!, personal.Id!);
+        var annMembership = OrganizationMembership.IdFor(ann.Id!, personal.Id!);
+
+        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership, OrganizationRole.Member), ann.Id)).Status
+            .Should().Be(HttpStatusCode.OK, "the Owner changes a member's role");
+        (await SendAsync("/spark/po/update", await EditRoleAsync(vicMembership, OrganizationRole.Owner), ann.Id)).Status
+            .Should().Be(HttpStatusCode.BadRequest, "nobody else becomes Owner of a personal organization");
+        (await SendAsync("/spark/po/update", await EditRoleAsync(annMembership, OrganizationRole.Admin), ann.Id)).Status
+            .Should().Be(HttpStatusCode.BadRequest, "its user stays Owner");
+        (await SendAsync("/spark/po/delete", Wire.Typed(MembershipTypeId, id: maxMembership, etag: await StoredEtag.OfAsync(Store, maxMembership)), ann.Id)).Status
+            .Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent);
+
+        (await LoadAsync<OrganizationMembership>(vicMembership))!.Role.Should().Be(OrganizationRole.Member);
+        (await LoadAsync<OrganizationMembership>(maxMembership)).Should().BeNull();
+        (await LoadAsync<OrganizationMembership>(annMembership))!.Role.Should().Be(OrganizationRole.Owner);
+    }
+
+    [Fact]
     public async Task Deleting_an_organization_in_the_generic_UI_is_the_Owners_and_cascades()
     {
         var sites = new OgDataHandler("sites");
@@ -355,14 +395,22 @@ public class OrganizationRowFilterTests : OrganizationsTestHost
         await Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
         var (invitationId, token, _) = LastLink("bob@test.local");
 
+        var eve = await SeedUserAsync("eve");
+
         var (anonymous, _) = await SendAsync("/spark/organizations/accept", new { invitationId, token }, null);
         var (forged, forgedBody) = await SendAsync("/spark/organizations/accept", new { invitationId, token = token + "x" }, bob.Id);
+        var (otherAccount, otherBody) = await SendAsync("/spark/organizations/accept", new { invitationId, token }, eve.Id);
         var (accepted, body) = await SendAsync("/spark/organizations/accept", new { invitationId, token }, bob.Id);
 
         anonymous.Should().Be(HttpStatusCode.Unauthorized);
         forged.Should().Be(HttpStatusCode.OK);
         forgedBody.GetProperty("accepted").GetBoolean().Should().BeFalse();
         forgedBody.GetProperty("problem").GetString().Should().Be(OrganizationAcceptance.InvalidProblem);
+        forgedBody.GetProperty("reason").GetString().Should().Be(OrganizationAcceptance.InvalidReason);
+        otherAccount.Should().Be(HttpStatusCode.OK);
+        otherBody.GetProperty("accepted").GetBoolean().Should().BeFalse("D43: the account must own the invited address");
+        otherBody.GetProperty("problem").GetString().Should().Be(OrganizationAcceptance.OtherAddressProblem);
+        otherBody.GetProperty("reason").GetString().Should().Be(OrganizationAcceptance.OtherAddressReason);
         accepted.Should().Be(HttpStatusCode.OK);
         body.GetProperty("accepted").GetBoolean().Should().BeTrue();
         body.GetProperty("organizationId").GetString().Should().Be(acme.Id);

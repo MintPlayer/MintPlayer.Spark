@@ -127,25 +127,22 @@ public class OrganizationServiceTests : OrganizationsTestHost
     }
 
     [Fact]
-    public async Task Only_Admins_and_Owners_invite_never_as_Owner_and_never_into_a_personal_organization()
+    public async Task Only_Admins_and_Owners_invite_and_never_as_Owner()
     {
         var ann = await SeedUserAsync("ann");
         var vic = await SeedUserAsync("vic");
         var max = await SeedUserAsync("max");
         var ada = await SeedUserAsync("ada");
         var acme = await SeedOrganizationAsync("Acme", ann, (vic, OrganizationRole.Viewer), (max, OrganizationRole.Member), (ada, OrganizationRole.Admin));
-        var personal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
 
         var byViewer = () => Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Viewer, vic.Id!);
         var byMember = () => Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Viewer, max.Id!);
         var asOwner = () => Organizations().InviteAsync(acme.Id!, "x@test.local", OrganizationRole.Owner, ann.Id!);
-        var intoPersonal = () => Organizations().InviteAsync(personal.Id!, "x@test.local", OrganizationRole.Viewer, ann.Id!);
         var badAddress = () => Organizations().InviteAsync(acme.Id!, "not an address", OrganizationRole.Viewer, ann.Id!);
 
         await byViewer.Should().ThrowAsync<SparkRowLevelAccessDeniedException>();
         await byMember.Should().ThrowAsync<SparkRowLevelAccessDeniedException>();
         await asOwner.Should().ThrowAsync<SparkValidationException>();
-        await intoPersonal.Should().ThrowAsync<SparkValidationException>();
         await badAddress.Should().ThrowAsync<SparkValidationException>();
         Mailer.Sent.Should().BeEmpty();
 
@@ -187,16 +184,73 @@ public class OrganizationServiceTests : OrganizationsTestHost
     }
 
     [Fact]
-    public async Task A_member_or_a_personal_organization_raises_no_join_request()
+    public async Task A_member_raises_no_join_request()
     {
         var ann = await SeedUserAsync("ann");
         var max = await SeedUserAsync("max");
         var acme = await SeedOrganizationAsync("Acme", ann, (max, OrganizationRole.Member));
-        var personal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
 
         (await Organizations().RequestToJoinAsync(acme.Id!, max.Id!)).Should().BeFalse();
-        (await Organizations().RequestToJoinAsync(personal.Id!, max.Id!)).Should().BeFalse();
         Mailer.Sent.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_join_request_is_approved_whatever_the_approvers_or_requesters_address()
+    {
+        // D43 binds an invitation to its address; a join request has none to bind: the requester signed
+        // in to ask, and an Owner or Admin decides. Neither account needs a confirmed address.
+        var ann = await SeedUserAsync("ann");
+        var ada = await SeedUserAsync("ada", emailConfirmed: false);
+        var rex = await SeedUserAsync("rex", emailConfirmed: false);
+        var acme = await SeedOrganizationAsync("Acme", ann, (ada, OrganizationRole.Admin));
+
+        (await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!)).Should().BeTrue();
+        var (requestId, token, _) = LastLink("ann@test.local");
+
+        (await Organizations().AcceptAsync(requestId, token, ada.Id!)).Accepted.Should().BeTrue();
+        (await Organizations().GetRoleAsync(acme.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);
+    }
+
+    // ---- invitations bind to their address (D43) -----------------------------------------------------
+
+    [Fact]
+    public async Task An_invitation_opened_by_another_account_is_refused_with_its_reason_and_stays_live()
+    {
+        var ann = await SeedUserAsync("ann");
+        var bob = await SeedUserAsync("bob");
+        var eve = await SeedUserAsync("eve");
+        var acme = await SeedOrganizationAsync("Acme", ann);
+        await Organizations().InviteAsync(acme.Id!, "Bob@Test.local ", OrganizationRole.Member, ann.Id!);
+        var (invitationId, token, _) = LastLink("Bob@Test.local");
+
+        var byEve = await Organizations().AcceptAsync(invitationId, token, eve.Id!);
+
+        byEve.Should().Be(OrganizationAcceptance.OtherAddress);
+        byEve.Reason.Should().Be(OrganizationAcceptance.OtherAddressReason);
+        (await Organizations().GetRoleAsync(acme.Id!, eve.Id!)).HasValue.Should().BeFalse();
+        (await LoadAsync<OrganizationInvitation>(invitationId)).Should().NotBeNull("a refusal does not spend the link");
+
+        (await Organizations().AcceptAsync(invitationId, token, bob.Id!)).Accepted.Should().BeTrue("the address matches the way Identity normalizes it");
+        (await Organizations().GetRoleAsync(acme.Id!, bob.Id!)).Should().Be(OrganizationRole.Member);
+    }
+
+    [Fact]
+    public async Task An_invitation_needs_the_invited_address_confirmed_on_the_account()
+    {
+        var ann = await SeedUserAsync("ann");
+        var uma = await SeedUserAsync("uma", emailConfirmed: false);
+        var acme = await SeedOrganizationAsync("Acme", ann);
+        await Organizations().InviteAsync(acme.Id!, "uma@test.local", OrganizationRole.Viewer, ann.Id!);
+        var (invitationId, token, _) = LastLink("uma@test.local");
+
+        (await Organizations().AcceptAsync(invitationId, token, uma.Id!)).Should().Be(OrganizationAcceptance.OtherAddress, "an unconfirmed address proves nothing");
+
+        using (var session = Store.OpenAsyncSession())
+        {
+            (await session.LoadAsync<MintPlayer.Spark.Authorization.Identity.SparkUser>(uma.Id!)).EmailConfirmed = true;
+            await session.SaveChangesAsync();
+        }
+        (await Organizations().AcceptAsync(invitationId, token, uma.Id!)).Accepted.Should().BeTrue();
     }
 
     // ---- roles: leaving, transferring, deleting ------------------------------------------------------
@@ -276,13 +330,48 @@ public class OrganizationServiceTests : OrganizationsTestHost
     }
 
     [Fact]
-    public async Task A_personal_organization_can_be_neither_left_nor_deleted_nor_transferred()
+    public async Task A_personal_organization_can_be_neither_left_by_its_user_nor_deleted_nor_transferred()
     {
         var ann = await SeedUserAsync("ann");
+        var max = await SeedUserAsync("max");
         var personal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
+        await Organizations().InviteAsync(personal.Id!, "max@test.local", OrganizationRole.Admin, ann.Id!);
+        var (invitationId, token, _) = LastLink("max@test.local");
+        (await Organizations().AcceptAsync(invitationId, token, max.Id!)).Accepted.Should().BeTrue();
 
         await ((Func<Task>)(() => Organizations().LeaveAsync(personal.Id!, ann.Id!))).Should().ThrowAsync<SparkValidationException>();
         await ((Func<Task>)(() => Organizations().DeleteAsync(personal.Id!, ann.Id!))).Should().ThrowAsync<SparkValidationException>();
+        await ((Func<Task>)(() => Organizations().TransferOwnershipAsync(personal.Id!, ann.Id!, max.Id!))).Should().ThrowAsync<SparkValidationException>();
         (await LoadAsync<Organization>(personal.Id!)).Should().NotBeNull();
+        (await Organizations().GetRoleAsync(personal.Id!, ann.Id!)).Should().Be(OrganizationRole.Owner);
+
+        await Organizations().LeaveAsync(personal.Id!, max.Id!);
+        (await Organizations().GetRoleAsync(personal.Id!, max.Id!)).HasValue.Should().BeFalse("its members leave like any other (D42)");
+    }
+
+    // ---- personal organizations take members (D42) ---------------------------------------------------
+
+    [Fact]
+    public async Task A_personal_organization_takes_members_by_invitation_and_by_join_request()
+    {
+        var ann = await SeedUserAsync("ann");
+        var bob = await SeedUserAsync("bob");
+        var rex = await SeedUserAsync("rex");
+        var personal = await Organizations().EnsurePersonalOrganizationAsync(ann.Id!);
+
+        await Organizations().InviteAsync(personal.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
+        var (invitationId, invitationToken, _) = LastLink("bob@test.local");
+        (await Organizations().AcceptAsync(invitationId, invitationToken, bob.Id!)).Accepted.Should().BeTrue();
+
+        // F3: a second user verifying a site held in someone's personal organization asks to join it, and
+        // its owner gets the acceptance-link mail.
+        (await Organizations().RequestToJoinAsync(personal.Id!, rex.Id!)).Should().BeTrue();
+        var (requestId, requestToken, mail) = LastLink("ann@test.local");
+        mail.Template.Should().Be(OrganizationMailTemplates.JoinRequest);
+        (await Organizations().AcceptAsync(requestId, requestToken, ann.Id!)).Accepted.Should().BeTrue();
+
+        (await Organizations().GetRoleAsync(personal.Id!, bob.Id!)).Should().Be(OrganizationRole.Member);
+        (await Organizations().GetRoleAsync(personal.Id!, rex.Id!)).Should().Be(OrganizationRole.Member);
+        (await Organizations().GetRoleAsync(personal.Id!, ann.Id!)).Should().Be(OrganizationRole.Owner);
     }
 }

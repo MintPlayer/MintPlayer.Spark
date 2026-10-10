@@ -43,7 +43,8 @@ internal sealed class OrganizationAccountDeletion<TUser>(IDocumentStore store, S
             var organization = membership.OrganizationId is { } id ? await session.LoadAsync<Organization>(id, cancellationToken) : null;
             if (organization is null)
                 continue;
-            if (organization.IsPersonal)
+            // The user's own personal organization goes. Someone else's (D42) is left like any other.
+            if (organization.IsPersonal && string.Equals(organization.Id, Organization.PersonalIdFor(userId), StringComparison.OrdinalIgnoreCase))
             {
                 toDelete.Add(organization);
                 continue;

@@ -26,7 +26,11 @@ internal sealed class SparkOrganizations(
     /// <summary>The invitation lifetime when the model states no <c>expiresAfter</c> (D18: 14 days).</summary>
     internal static readonly TimeSpan DefaultInvitationLifetime = TimeSpan.FromDays(14);
 
-    internal const string PersonalProblem = "A personal organization has no other members.";
+    /// <summary>
+    /// A personal organization takes members like any other (D42), but its user owns it for good: nobody
+    /// else becomes Owner, and its user is neither demoted, removed, nor able to leave.
+    /// </summary>
+    internal const string PersonalOwnerProblem = "A personal organization belongs to its user: its Owner role cannot change hands.";
     internal const string LastOwnerProblem = "An organization needs an Owner. Make another member Owner first.";
 
     private DateTime Now => timeProvider.GetUtcNow().UtcDateTime;
@@ -105,8 +109,6 @@ internal sealed class SparkOrganizations(
 
         using var session = store.OpenAsyncSession();
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
-        if (organization.IsPersonal)
-            throw new SparkValidationException(PersonalProblem);
         var inviter = await RequireRoleAsync(session, organization.Id!, inviterUserId, OrganizationRole.Admin, cancellationToken);
 
         // One live link per address: a new invitation replaces the pending one.
@@ -148,8 +150,6 @@ internal sealed class SparkOrganizations(
         using var session = store.OpenAsyncSession();
         var organization = await session.LoadAsync<Organization>(Require(organizationId, nameof(organizationId)), cancellationToken)
             ?? throw new SparkRowLevelAccessDeniedException("Organization");
-        if (organization.IsPersonal)
-            return false;
         if (await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(requesterUserId, organization.Id!), cancellationToken) is not null)
             return false;
 
@@ -212,13 +212,14 @@ internal sealed class SparkOrganizations(
             return OrganizationAcceptance.Invalid;
 
         var organization = await session.LoadAsync<Organization>(invitation.OrganizationId, cancellationToken);
-        if (organization is null || organization.IsPersonal)
+        if (organization is null)
             return OrganizationAcceptance.Invalid;
 
         string memberUserId;
         if (invitation.Kind == OrganizationInvitationKind.JoinRequest)
         {
             // Read from storage, not the request's cache: the decision is about who may let people in now.
+            // No address rule here (D43): an Owner or Admin decides, and the requester signed in to ask.
             var approver = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, organization.Id!), cancellationToken);
             if (approver is null || approver.Role < OrganizationRole.Admin || invitation.UserId is null)
                 return OrganizationAcceptance.Invalid;
@@ -226,6 +227,13 @@ internal sealed class SparkOrganizations(
         }
         else
         {
+            // D43: an invitation is for the mailbox it was sent to. The signed-in account must own that
+            // address (confirmed), by the rule the identity provider's invitations use. Refused before
+            // anything is written, so the link stays live for the right account. The token was valid, so
+            // the holder already knows the invitation exists: saying why discloses nothing (#453).
+            if (await session.LoadAsync<SparkUser>(userId, cancellationToken) is not { } account
+                || !SparkEmailOwnership.Owns(account, invitation.Email))
+                return OrganizationAcceptance.OtherAddress;
             memberUserId = userId;
         }
 
@@ -261,8 +269,9 @@ internal sealed class SparkOrganizations(
         var membership = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(userId, Require(organizationId, nameof(organizationId))), cancellationToken)
             ?? throw new SparkRowLevelAccessDeniedException("Organization");
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
-        if (organization.IsPersonal)
-            throw new SparkValidationException("A personal organization cannot be left. It goes with the account.");
+        // Its members may leave a personal organization (D42); its user cannot: it goes with the account.
+        if (organization.IsPersonal && membership.Role == OrganizationRole.Owner)
+            throw new SparkValidationException("A personal organization cannot be left by its user. It goes with the account.");
         if (membership.Role == OrganizationRole.Owner && !await HasOtherOwnerAsync(session, organization.Id!, userId, cancellationToken))
             throw new SparkValidationException(LastOwnerProblem);
 
@@ -283,7 +292,7 @@ internal sealed class SparkOrganizations(
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
         var from = await RequireRoleAsync(session, organization.Id!, fromUserId, OrganizationRole.Owner, cancellationToken);
         if (organization.IsPersonal)
-            throw new SparkValidationException(PersonalProblem);
+            throw new SparkValidationException(PersonalOwnerProblem);
         var to = await session.LoadAsync<OrganizationMembership>(OrganizationMembership.IdFor(toUserId, organization.Id!), cancellationToken)
             ?? throw new SparkValidationException("Only a member can be made Owner. Invite them first.");
 

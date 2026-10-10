@@ -282,6 +282,11 @@
         "en": "This link is not valid. It may have expired, been used already, or be meant for someone else.",
         "fr": "Ce lien n'est pas valide. Il a peut-être expiré, déjà été utilisé, ou est destiné à quelqu'un d'autre.",
         "nl": "Deze link is niet geldig. Hij is misschien vervallen, al gebruikt, of voor iemand anders bedoeld."
+      },
+      "otherAddress": {
+        "en": "This invitation was sent to another email address. Sign in with the account that has confirmed that address, then open the link again.",
+        "fr": "Cette invitation a été envoyée à une autre adresse e-mail. Connectez-vous avec le compte qui a confirmé cette adresse, puis rouvrez le lien.",
+        "nl": "Deze uitnodiging is naar een ander e-mailadres gestuurd. Meld je aan met het account dat dat adres bevestigd heeft en open de link opnieuw."
       }
     }
   }

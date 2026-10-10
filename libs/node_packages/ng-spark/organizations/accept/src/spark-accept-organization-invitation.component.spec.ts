@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -12,6 +13,7 @@ function configure(post: ReturnType<typeof vi.fn>, token = 'tok', id = 'Organiza
     imports: [SparkAcceptOrganizationInvitationComponent],
     providers: [
       provideRouter([]),
+      provideNoopAnimations(),
       { provide: HttpClient, useValue: { post } },
       { provide: SparkAuthTranslationService, useValue: { t: (k: string) => k } },
       {
@@ -53,6 +55,20 @@ describe('SparkAcceptOrganizationInvitationComponent', () => {
     await broken.componentInstance.accept();
     expect(broken.componentInstance.failed()).toBe(true);
     expect(broken.componentInstance.busy()).toBe(false);
+  });
+
+  it('says why when the invitation was sent to another address (D43), and the one refusal otherwise', async () => {
+    const otherAddress = configure(vi.fn().mockReturnValue(of({ accepted: false, organizationId: null, organization: null, problem: 'x', reason: 'otherAddress' })));
+    await otherAddress.componentInstance.accept();
+    otherAddress.detectChanges();
+    const shown = (otherAddress.nativeElement as HTMLElement).querySelector('.spark-organization-invalid')?.textContent?.trim();
+    expect(shown).toBe('organizations.spa.otherAddress');
+
+    TestBed.resetTestingModule();
+    const invalid = configure(vi.fn().mockReturnValue(of({ accepted: false, organizationId: null, organization: null, problem: 'x', reason: 'invalid' })));
+    await invalid.componentInstance.accept();
+    invalid.detectChanges();
+    expect((invalid.nativeElement as HTMLElement).querySelector('.spark-organization-invalid')?.textContent?.trim()).toBe('organizations.spa.invalid');
   });
 
   it('does not post a link without a token', async () => {

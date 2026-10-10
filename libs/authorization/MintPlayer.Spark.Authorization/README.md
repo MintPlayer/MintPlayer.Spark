@@ -325,6 +325,14 @@ throws is logged and the sign-in still succeeds, so make it idempotent and cheap
 Organizations package uses it to create a user's personal organization on first sign-in
 (`docs/guide-organizations.md`).
 
+#### Does this account own that address? (`SparkEmailOwnership`)
+
+An invitation addressed to a mailbox should be accepted only by the account behind that mailbox.
+`SparkEmailOwnership.IsAddressOf(user.NormalizedEmail, email)` compares an address the way ASP.NET
+Identity normalizes it; `SparkEmailOwnership.Owns(user, email)` also requires the account to have
+confirmed it (`EmailConfirmed`), so an address an external provider did not vouch for proves nothing.
+The identity provider's team invitations and the Organizations package's invitations both use it.
+
 #### Custom Group Membership Provider
 
 By default, Spark resolves user groups from ASP.NET Core Identity roles. To integrate with a different authentication system, implement `IGroupMembershipProvider`:

@@ -5,7 +5,7 @@ together. A user belongs to organizations with a role, and any document that car
 is reached only by the members of that organization with the role the action needs. It depends on
 `MintPlayer.Spark.Authorization` only: no OpenID Connect, no claims, no identity-provider change.
 
-Decisions and evidence: [seo_analyzer_PRD.md](seo_analyzer_PRD.md) X11, D18, D21–D23, D25, D26 and §12
+Decisions and evidence: [seo_analyzer_PRD.md](seo_analyzer_PRD.md) X11, D18, D21–D23, D25, D26, D42, D43 and §12
 "Spike S13". Package reference: [README](../libs/organizations/MintPlayer.Spark.Organizations/README.md).
 
 ## Setup
@@ -108,8 +108,16 @@ the user its only Owner. Its fixed id makes the creation idempotent and race-fre
 sign-in costs one load by id. Turn it off with `Spark:Organizations:CreatePersonalOrganizationOnSignIn =
 false` and call `ISparkOrganizations.EnsurePersonalOrganizationAsync` yourself.
 
-A personal organization takes no invitations and no join requests, cannot be left, transferred or
-deleted, and goes with the account.
+It is the user's default organization: an application puts what a user makes on their own there unless
+they pick another (`Organization.PersonalIdFor(userId)` names it without a lookup).
+
+A personal organization takes members like any other (PRD D42): invitations and join requests work, so a
+second user who verifies a site held there asks to join and its user gets the usual acceptance-link mail.
+What stays personal is the Owner role: its user is its only Owner for good. Ownership cannot be
+transferred, nobody else is made Owner, its user cannot step down, be removed or leave, and the
+organization cannot be deleted on its own. It goes with its user's account, members and all. Its other
+members are edited, removed and leave as in any organization, and deleting one of their accounts leaves
+it alone.
 
 ## The generic UI
 
@@ -140,16 +148,26 @@ await organizations.RequestToJoinAsync(organizationId, requesterId);   // e.g. a
   expires with the invitation.
 - The page posts both values to `POST /spark/organizations/accept` on an explicit click: mail scanners
   open links, so a GET never acts. The caller must be signed in.
-- **An invitation** makes the signed-in account a member with the invited role. The token is the
-  credential (a user signed in with GitHub or X may have another address than the one invited).
+- **An invitation** makes the signed-in account a member with the invited role, **only when that
+  account owns the invited address** (PRD D43): the account's address is the invited one, compared the
+  way ASP.NET Identity normalizes it, and the account has confirmed it. It is the rule the identity
+  provider's team invitations use, shared as `SparkEmailOwnership` in the Authorization package
+  (`IsAddressOf` for the address, `Owns` adding the confirmation). Any other account, or one that has not
+  confirmed that address (an X or Entra sign-in that brought no verified address, a registration that
+  was never confirmed), gets `reason: "otherAddress"`, and the accept page says the invitation was sent to
+  another address and to sign in with the account that confirmed it. That refusal does not spend the
+  link, so the right account can still use it.
 - **A join request** is mailed to every Owner. It makes its requester a member, and needs an Owner or
-  Admin to accept it; the requester cannot accept their own.
+  Admin to accept it; the requester cannot accept their own. No address rule applies: the requester
+  signed in to ask, and an Owner or Admin decides, whatever either account's address.
 - **Single use**: accepting deletes the invitation, with optimistic concurrency, so of two concurrent
   accepts one fails. A second invitation to the same address replaces the first.
 - **Expiry**: `OrganizationInvitation` is `IExpiring` with `expiresAfter` 14 days in the library's
   model. Change it in your own model layer. An expired one is hidden everywhere and refused on accept
   (X1: RavenDB deletes it at its next sweep, up to 36 h later).
-- Every refusal (unknown, forged, used, expired, someone else's join request) answers the same words.
+- Every refusal (unknown, forged, used, expired, someone else's join request) answers the same words,
+  `reason: "invalid"`. The one exception is the wrong account for a valid invitation (above): it needs
+  the link's token, so it tells its holder nothing they did not know.
 
 ## Deleting and exporting (D26)
 
@@ -169,7 +187,9 @@ builder.Services.AddScoped<IOrganizationDataHandler, SiteData>();
   handler's `DeleteAsync` first, then deletes the memberships, the invitations and the organization in
   one commit. A handler that throws stops it with everything intact, so handlers must be idempotent.
 - **Leaving** removes access only. The last Owner must make someone else Owner first.
-- **Deleting an account** (`ISparkAccountDeletionHandler<TUser>`) deletes the personal organization and
+- **Deleting an account** (`ISparkAccountDeletionHandler<TUser>`) deletes the user's own personal
+  organization, with its other members' access (D42; someone else's personal organization they joined is
+  left like any other), and
   any organization the user alone was in (handlers included), and every other membership. If the user is
   the only Owner of an organization others are in, the deletion stops with the account intact until
   ownership moves.
