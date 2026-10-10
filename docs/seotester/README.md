@@ -16,9 +16,11 @@ runbook.
 
 | Project | What |
 |---|---|
-| `apps/SeoTester/SeoTester` | the host (`Program.cs`) and the Angular SPA (`ClientApp`, nx project `@spark-apps/seo-tester`); `Entities/` (Site, AuditRun, PageResult, CheckDefinition, AuditLogEntry, TargetCooldown: here, not in the Library, because their marker interfaces are web types, PRD Q-M8a), `Actions/`, `CustomActions/` (StartAudit, StartFullCrawl, VerifySite, ResetCheckDefinition), `Interceptors/`, `Verification/` (proofs, re-check cron), `Audits/` (start, abuse log, organization cascade), `Catalogue/` (seeder, scoring snapshot), `Crawler/` (the pipeline's recipients, fetcher, prober, politeness, TLS probe, registry lookups), `Rendering/` (the Chromium connection, the request router, the page renderer, the bundled axe-core 4.13.0, `seo-render`), `PageSpeed/` (the PageSpeed Insights client, `seo-psi`), `Reports/` (the printable report, `seo-pdf`, the PDF download), `Dns/` (`ISeoDns`), `Settings/` (every gate and limit), `Bot/` (the `/bot` page), `Dockerfile` |
+| `apps/SeoTester/SeoTester` | the host (`Program.cs`) and the Angular SPA (`ClientApp`, nx project `@spark-apps/seo-tester`); `Entities/` (Site, AuditRun, PageResult, CheckDefinition, AuditLogEntry, TargetCooldown: here, not in the Library, because their marker interfaces are web types, PRD Q-M8a), `Actions/`, `CustomActions/` (StartAudit, StartFullCrawl, VerifySite, ResetCheckDefinition), `Interceptors/`, `Verification/` (proofs, re-check cron), `Audits/` (start, abuse log, organization cascade), `Catalogue/` (seeder, scoring snapshot), `Crawler/` (the pipeline's recipients, prober, politeness, registry lookups), `Rendering/` (the Chromium connection, the request router, the page renderer, the bundled axe-core 4.13.0, `seo-render`), `PageSpeed/` (the PageSpeed Insights client, `seo-psi`), `Reports/` (the printable report, `seo-pdf`, the PDF download), `Settings/` (every gate and limit), `Bot/` (the `/bot` page), `Dockerfile` |
 | `apps/SeoTester/SeoTester.Library` | plain SDK, nothing web: the shipped check catalogue (`Catalogue/checks.json`, 110 checks) and its parser, the scoring engine (`Scoring/`), origin normalization and ownership-proof matching (`Sites/`), the crawler's identity (`SeoTesterBot`), the pipeline's queues and messages (`Messaging/SeoQueues.cs`); robots.txt (RFC 9309), sitemaps, HTML parsing (AngleSharp, no scripts), the TLS 1.0/1.1 hello probe, and the check implementations (`Checks/`: page, site and crawl level, and `RenderChecks` for the rendered page; `PageSpeed/` for PageSpeed Insights), judged from facts the host collects |
 | `apps/SeoTester/chromium` | the Chromium container's `Dockerfile` and `server.mjs` ("The Chromium container" below) |
+| `apps/SeoTester/SeoTester.Fetching` | `ISeoFetcher` (PRD D54): the SSRF-safe clients (`PageFetcher`), the TLS probe, DNS (`ISeoDns`), in process (`LocalSeoFetcher`) or through the fetcher (`RemoteSeoFetcher`), and the fetcher's wire protocol. No database client |
+| `apps/SeoTester/SeoTester.Fetcher` | the `seo-fetcher` container: `LocalSeoFetcher` behind an internal API with a shared secret, and its `Dockerfile` ("The fetcher container" below) |
 | `apps/SeoTester/docker-compose.yml`, `.env.example` | production: the app and the Chromium container, beside CodeCoverage on the VPS ([deploy.md](deploy.md)) |
 | `apps/SeoTester/SeoTester.Tests` | boots the real `Program` against an embedded RavenDB (users and organizations from `Data/organizations.json`; DNS and the web faked): composition, settings, `/bot`, the route table, sites, verification, audit start, catalogue, sharing, passkeys, the crawl pipeline end to end and a host restart in the middle of a batch; the render, PageSpeed and PDF stages end to end and the browser escape test (`Rendering/`: own collections, a local Chromium, see "Running it locally"); and the pure scoring, catalogue, robots.txt, sitemap, check, PageSpeed-parser and TLS-probe tests. Nothing leaves the machine: DNS, TLS, the crawled sites, the registries and PageSpeed Insights are fakes (recorded RDAP/IANA/hstspreload/PageSpeed answers in `Data/Fixtures`) |
 
@@ -122,6 +124,7 @@ empty is simply not offered; with **no** provider at all the app refuses to star
 | Web Push (VAPID) | `Spark:Notifications:WebPush:PublicKey`, `…:PrivateKey`, `…:Subject` | Generate once with `MintPlayer.Spark.WebPush.VapidDetails.Generate("mailto:…")`; the private key is a secret. Empty = push off, in-app and mail still work. Changing the pair later invalidates every browser subscription |
 | PageSpeed Insights / CrUX | `SeoTester:PageSpeed:ApiKey` | A Google Cloud API key with the PageSpeed Insights API enabled (restrict it to that API). Empty = both PageSpeed checks "not measured: PageSpeed Insights is not configured" (never a failure; no keyless call: its quota is 0). Sent as the `X-Goog-Api-Key` header, never in a URL, so no log line holds it |
 | Headless browser | `SeoTester:Browser:Mode`, `…:Endpoint` | `Off` (the rendered checks "not measured", no PDF), `Launch` (Development: a local Chromium), `Connect` (production: `ws://seo-chromium:3000/`, already in `appsettings.Production.json`). Not a secret |
+| The fetcher (PRD D54) | `SeoTester:Fetcher:Mode`, `…:Url`, `…:Key`; the fetcher's `SeoFetcher:Key` | `InProcess` (the default outside Production: this process fetches) or `Remote` (the default in Production, which refuses `InProcess`: every request to a target goes to `http://seo-fetcher:8080/`, already in `appsettings.Production.json`). The key is a shared secret of ≥ 32 characters (`SEO_FETCHER_KEY` in the server's `.env`, read by both containers) |
 | Data Protection keys | `Spark:DataProtection:KeysPath` | A mounted volume (`/var/lib/seotester/dataprotection-keys` in the image), set by the compose file |
 | RavenDB | `Spark:RavenDb:Urls:0`, `Spark:RavenDb:Database` | Database `SeoTester` on the VPS's RavenDB (Community licence: Changes API yes, ≤ 3 subscriptions, expiration every 36 h) |
 
@@ -186,7 +189,8 @@ the link when it is ready.
 
 Probes for exposed files (`/.git/HEAD`, `/.env`, …) and folder listings run only when the run was granted them
 (`SeoTester:Features:IntrusiveProbes`, verified sites by default). Every request to a site goes through the SSRF-safe
-client (`Spark:SafeHttp`: public addresses only, ports 80/443, each redirect re-checked, 10 MiB / 50 MiB caps, 30 s).
+client (`Spark:SafeHttp`: public addresses only, ports 80/443, each redirect re-checked, 10 MiB / 50 MiB caps, 30 s), made
+in Production by the fetcher container (PRD D54, below).
 Progress (`Phase`, `PagesDone`, `PagesDiscovered`, `CurrentUrl`) is written at most every 2 s and reaches open pages
 live. Page details (`PageResult`) expire after 7 days, the frontier after 2.
 
@@ -260,6 +264,31 @@ the same server script run with Microsoft.Playwright's own node).
 - **The app's own image** needs no browser, only Microsoft.Playwright's driver (its `node` and `playwright-core`, copied
   by `dotnet publish` into `.playwright/`, ~100 MB on Windows): its size in the published image is measured at the
   first deploy (deploy.md §5, Q-M10b).
+
+## The fetcher container
+
+PRD D54: in Production every request to a target (the probe, the crawl, external links, RDAP/IANA/hstspreload,
+PageSpeed Insights, the verification file, meta tag and TXT record, the domain checks' DNS, the TLS probes, the
+og-image proxy and every request Chromium sends) is made by `seo-fetcher`, a container with internet egress and no
+database client, no network to RavenDB or the relay. The app keeps the politeness (`HostPacer`), robots.txt, the
+analytics sink and the caches, and calls the fetcher through `ISeoFetcher`.
+
+- **API** (`SeoTester.Fetcher/FetcherHost.cs`, protocol in `SeoTester.Fetching/SeoFetcherProtocol.cs`): `POST /fetch`,
+  `/tls`, `/dns`, `/dns/zone`, each with the shared secret in `X-Seo-Fetcher-Key` (constant-time compare; otherwise
+  401 and nothing is read); `GET /health` open. Requests ≤ 2 MiB, five client profiles with their own body caps
+  (browser 16 MiB, crawler 10 MiB, PageSpeed 8 MiB, lookups 2 MiB, verification 1 MiB), GET/HEAD except the browser's,
+  one call ≤ 120 s. A fetch answers as a frame (metadata JSON + the body as bytes); the app bounds and checks every
+  field, since the fetcher is as untrusted as the sites behind it.
+- **SafeHttp stays on** inside the fetcher (`MintPlayer.Spark.SafeHttp`), so a caller with the key still cannot point it
+  at a private address or follow a redirect to one.
+- **The PageSpeed key** is sent per request in its header and never logged; it stays configured on the app only.
+- **Outage:** a fetcher that cannot be reached fails the crawl stage (Messaging retries it), never a page or a proof.
+- **Locally** nothing changes: Development runs everything in one process (`InProcess`). To try the remote path, run
+  `dotnet run --project apps/SeoTester/SeoTester.Fetcher` with `SeoFetcher__Key` set and start the app with
+  `SeoTester__Fetcher__Mode=Remote`, `…__Url` and `…__Key`.
+- **Tests:** `SeoTester.Tests/Fetcher/` boots the real fetcher in memory (or on Kestrel for the latency figures):
+  the key, caps, deadlines, redirect and address rules over real sockets, the no-RavenDB guard on its restore graph, and
+  an audit and verification end to end through it.
 
 ## The crawler's identity
 

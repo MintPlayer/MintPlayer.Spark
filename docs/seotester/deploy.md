@@ -29,12 +29,16 @@ Status (2026-10-10): the files are written and checked (`tools/verify-seotester-
   └─────────────────────────────────┘  └────────────────────────────────────┘
      seotester-app meets coverage-raven on "seo-raven" and coverage-smtp on "seo-mail": external, internal: true,
      owned by no project, created by either deploy, removed by neither (PRD D55)
+
+  seotester-app ──seo-fetch (internal)──► seo-fetcher ──seo-egress──► Internet (the audited sites, RDAP, PageSpeed)
+     seo-fetcher has no database client and no other network: every request to a target leaves from it (PRD D54)
 ```
 
 | Service | Image | Networks | Notes |
 |---|---|---|---|
-| `seotester-app` | `ghcr.io/mintplayer/seotester:master` (pull-only, built by `seotester-deploy.yml`) | `web`, `seo-raven`, `seo-mail`, `seo-browser` | `mem_limit 1g`; `GET /health` healthcheck, start period 300 s; volume `dataprotection-keys`; Traefik labels for `seotester.mintplayer.com` |
+| `seotester-app` | `ghcr.io/mintplayer/seotester:master` (pull-only, built by `seotester-deploy.yml`) | `web`, `seo-raven`, `seo-mail`, `seo-browser`, `seo-fetch` | `mem_limit 1g`; `GET /health` healthcheck, start period 300 s; volume `dataprotection-keys`; Traefik labels for `seotester.mintplayer.com` |
 | `seo-chromium` | `ghcr.io/mintplayer/seotester-chromium:1.63.0` (= Microsoft.Playwright's version) | `seo-browser` **only** | `shm_size 512m`, `mem_limit 1g`, `pids_limit 512`, `init`, no capabilities, no port published; TCP healthcheck on 3000 |
+| `seo-fetcher` | `ghcr.io/mintplayer/seotester-fetcher:master` (built by the same deploy) | `seo-fetch`, `seo-egress` **only** | PRD D54: the SSRF-safe clients, TLS probes and DNS behind an internal API; `read_only` (tmpfs `/tmp`), no capabilities, `mem_limit 512m`, `pids_limit 256`, no port, no volume; `GET /health` healthcheck; key `SEO_FETCHER_KEY` |
 
 - **Database:** CodeCoverage's RavenDB server (`coverage-raven`, Community licence), database **`SeoTester`**, created
   by the operator (§3.0). **Secured** (PRD D56): `https://coverage-raven:8080` on `seo-raven`, with SeoTester's own
@@ -53,9 +57,17 @@ Status (2026-10-10): the files are written and checked (`tools/verify-seotester-
   name or opens a connection (`--host-resolver-rules=MAP * ~NOTFOUND`, a dead proxy; SeoTester fulfils every request
   through its SSRF-safe client, PRD §6). It can reach `seotester-app:8080` on that network, which only matters if both
   layers fail.
+- **The fetcher** (PRD D54) is the only container that talks to audited sites, the registries (RDAP, IANA,
+  hstspreload) and PageSpeed Insights, and it serves Chromium's routed requests too. It has a route out
+  (`seo-egress`, its own) and `seo-fetch` (internal, the app's API calls, authenticated with `SEO_FETCHER_KEY`), and no
+  network to RavenDB, the relay or Chromium; its image has no database client. The app keeps politeness, robots.txt and
+  the caches. If the fetcher is down, crawl stages fail and are retried by Messaging; the site itself stays up.
+- **The app's own route out** is Traefik's `web`: it still needs it for the sign-in providers' token endpoints and Web
+  Push. It sends no request to an audited site (in Production it has no client for one, and it refuses to start with
+  `SeoTester:Fetcher:Mode=InProcess`). Narrowing that egress is PRD Q-D54a.
 
 The files: `apps/SeoTester/docker-compose.yml`, `apps/SeoTester/.env.example`, `.github/workflows/seotester-deploy.yml`
-(push to master or *Run workflow*), `.github/workflows/seotester-image-check.yml` (pull requests: builds both images, no
+(push to master or *Run workflow*), `.github/workflows/seotester-image-check.yml` (pull requests: builds the three images, no
 push). `tools/verify-seotester-deploy.test.mjs` and `tools/verify-backend-networks.test.mjs` (`npm run test:tools`) check
 them against each other and the code.
 
@@ -68,7 +80,9 @@ Dockerfile's COPY lines and the csproj graph; the tools test keeps the three equ
    provenance attestation, makes the package public (best effort).
 2. **build-chromium:** `apps/SeoTester/chromium/Dockerfile` → `ghcr.io/mintplayer/seotester-chromium:<Playwright version>`
    (read from the Dockerfile's `FROM`).
-3. **deploy** (master only): SSH with the **same repository secrets as CodeCoverage's deploy** (`VPS_HOST`,
+3. **build-fetcher:** `apps/SeoTester/SeoTester.Fetcher/Dockerfile` → `ghcr.io/mintplayer/seotester-fetcher:master` (+ the
+   sha tag), from the same commit as the app (PRD D54).
+4. **deploy** (master only, after all three; also refuses without a `SEO_FETCHER_KEY` of ≥ 32 characters in `.env`): SSH with the **same repository secrets as CodeCoverage's deploy** (`VPS_HOST`,
    `VPS_USERNAME`, `VPS_SSH_KEY`, `VPS_PORT`, `VPS_SSH_KEY_PASSPHRASE`; `GITHUB_TOKEN` is automatic): no new secret.
    On the VPS: refuses without `/var/www/seotester/.env` or without one of `raven-certs/seotester.crt`, `.key`, `ca.crt`;
    creates `seo-raven` and `seo-mail` `--internal` if they are missing (the same block as CodeCoverage's deploy) and
@@ -170,7 +184,14 @@ cp .env.example .env && chmod 600 .env
 ${EDITOR:-nano} .env      # fill in §4's values
 ```
 
-Deploys never write `.env`; the workflow refuses to deploy without it.
+Deploys never write `.env`; the workflow refuses to deploy without it, and without a `SEO_FETCHER_KEY` of at least 32
+characters (PRD D54). Generate that key once, straight into the file, so it is never shown:
+
+```bash
+sed -i "s/^SEO_FETCHER_KEY=.*/SEO_FETCHER_KEY=$(openssl rand -hex 32)/" .env
+```
+
+Both `seotester-app` and `seo-fetcher` read it; changing it later needs both recreated (any deploy does).
 
 ### 3.4 The database and its expiration
 
@@ -343,6 +364,12 @@ not configured" or errors, and *Download PDF* produces a PDF. If Chromium's peak
 `/dev/shm` fills, adjust `mem_limit` / `shm_size` in `apps/SeoTester/docker-compose.yml` and record the numbers.
 
 ### Also check once
+
+- **The fetcher (PRD D54):** `docker compose --env-file .env ps` shows `seo-fetcher` healthy; an audit of a site
+  completes; `docker inspect seotester-seo-fetcher-1 -f '{{json .NetworkSettings.Networks}}'` names only `seo-fetch` and
+  `seo-egress`; from inside it RavenDB does not resolve
+  (`docker compose --env-file .env exec seo-fetcher bash -c "exec 3<>/dev/tcp/coverage-raven/8080" ; echo $?` fails).
+  Record the per-request latency of a render (Q-M10b's run) beside D54's loopback figures.
 
 - **The legal pages:** `https://seotester.mintplayer.com/privacy` and `/terms` (and `?lang=nl`) show no
   "[to be completed]", and `docker compose --env-file .env logs seotester-app | grep -i "to be completed"` is empty.

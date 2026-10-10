@@ -36,6 +36,7 @@ Research behind this document:
 | M11 ✅ | 2026-10-10 (§12 "M11"): the pages, on ng-spark's generic detail page with SeoTester's renderers and panels: landing page, site (gauge, verification with copy buttons, trend), run report (live progress over `/spark/live`, gauge and category bars, every check with New/Fixed/Unchanged, why not measured, how to fix in en/nl with platform snippets; PDF download), page previews and findings, share page, badge (`ShareBadge`, `/seotester/badge.svg`), operator dashboard (`OperatorDashboard`, `/seotester/admin/dashboard`), public catalogue texts; the notification link fixed to `/po/audit-run/{id}`; refusals say when to try again; ng-spark fixes found in the browser (gauge badge, share page, action errors, language header, notification links). Q-M6d reviewed. Open: Q-M11b, Q-M11c (§11). Q-M11a, Q-M11d answered (D50, D51, §12 Round 14) and built with the phone and light-mode review (§12 "M11 follow-up") |
 | M12 ✅ code-complete, deploy pending the owner | 2026-10-10 (§12 "M12"): scheduled monitoring (`Site.Monitoring` Off/Weekly/Monthly, the 15-minute sweep `MonitoringSweepCronJob`, queue `seo-monitor`, one run per slot started for the member who set the schedule through `AuditStarter`) and alerts (score drop per site or `SeoTester:Alerts:ScoreDrop`, new critical issue, certificate < 14 d, domain < 30 d; every member, through `ISparkNotifier`); `apps/SeoTester/docker-compose.yml` (app + `seo-chromium` on `seo-browser`, `internal: true`; the app on Traefik's `web` and CodeCoverage's `code-coverage_coverage-internal`), `.env.example`, `GET /health`, workflows `seotester-deploy.yml` / `seotester-image-check.yml`, `tools/verify-seotester-deploy.test.mjs`; runbook `docs/seotester/deploy.md` (VPS setup, credentials, post-deploy checklist for Q-M5a, Q-M6a, Q-M9b, Q-M10b). **The owner deploys** (deploy.md §3, §4). Q-M12a–c answered (D47–D49, §12 Round 13): `/privacy` and `/terms`, the shared network `mintplayer-backend` (CodeCoverage's compose and deploy changed), alerts to all members |
 | Shared RavenDB hardening (D55, D56) | ⏳ 2026-10-10 (§12 Round 15): pairwise internal networks in both compose files, RavenDB over TLS with a client certificate per app (Spark's `Spark:RavenDb:CertificateFile` and friends), the deploys' pre-checks, runbook `docs/code-coverage/raven-tls-migration.md`. Code, compose, tests ✅; **the live migration waits for the Docker spike (Q-D56a, §11) and then the owner** |
+| Fetcher container (D54) | ✅ code-complete 2026-10-10 (§12 "D54"): `seo-fetcher` with egress and no database makes every request to a target (`ISeoFetcher`, `SeoTester.Fetching`, `SeoTester.Fetcher`, core `MintPlayer.Spark.SafeHttp`); `seo-fetch` (internal) + `seo-egress`; shared secret `SEO_FETCHER_KEY`; third image in both workflows. Deployed with the rest by the owner. Open: Q-D54a (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -153,7 +154,7 @@ Additions beyond the issue: broken links, redirect chains, duplicate titles and 
 
 ### 4.1 App
 
-- **Projects:** `apps/SeoTester/SeoTester` (host + ClientApp), `SeoTester.Library` (entities, check implementations, catalogue seed JSON), `SeoTester.Tests`. Ports 5013/5014 (the next free pair).
+- **Projects:** `apps/SeoTester/SeoTester` (host + ClientApp), `SeoTester.Library` (entities, check implementations, catalogue seed JSON), `SeoTester.Tests`, plus (D54) `SeoTester.Fetching` (`ISeoFetcher`: the SSRF-safe clients, TLS probes, DNS and the fetcher protocol; no database) and `SeoTester.Fetcher` (the `seo-fetcher` container: that code behind an internal API with a shared secret). Every request to a target goes through `ISeoFetcher`: in process outside Production, the fetcher container in Production. Ports 5013/5014 (the next free pair).
 - **Hand-maintained lists to update:** root `package.json` workspaces, `MintPlayer.Spark.slnx`, `.github/workflows/pull-request.yml` (137, 148, 173), `tools/verify-ngsw-config.test.mjs:64`, `tools/test-local.mjs:33` (if E2E), Dockerfile, and a deploy workflow modelled on `code-coverage-deploy.yml:20-40`.
 - **Composition:**
 
@@ -284,8 +285,11 @@ Not built: X8 (dead-letter viewer, resilience policies, dynamic per-entity sched
 
 The full reasoning is in research §4.
 
-- **SSRF, two layers:**
-  1. Every server-side fetch goes through X2.
+- **SSRF, three layers:**
+  0. **Network (D54):** every request to a target is made by the `seo-fetcher` container, which has internet egress and
+     no database client, no route to RavenDB or the relay, and talks to the app only on `seo-fetch` with a shared secret.
+     The app keeps pacing, robots.txt and the caches and calls it through `ISeoFetcher` (in process outside Production).
+  1. Every server-side fetch goes through X2 (inside the fetcher too).
   2. Chromium sits on a network shared only with SeoTester (D6). SeoTester drives it remotely (Playwright `ConnectAsync`) and intercepts **every** request with `RouteAsync`, fetches it through X2 and fulfils it. Service workers are blocked, and Chromium starts with `--host-resolver-rules="MAP * ~NOTFOUND"`, so it never resolves or connects anywhere itself.
   
   S3 proves both layers and lists what escapes routing (WebSockets, WebRTC, prefetch). Those are blocked by flags or the `internal: true` network.
@@ -513,6 +517,17 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   printed); (b) run §8 on the VPS against a throwaway container and volume; (c) migrate on the 7.1.3 evidence.
   **Recommendation: (a)**, then remove the runbook's DRAFT banner. Until then `docs/code-coverage/raven-tls-migration.md` is a draft and the PR must not be
   merged before the migration (the CodeCoverage deploy refuses without the certificate files anyway).
+- **Q-D54a (from D54): the app container still has a general route out.** With the fetcher, the app makes no request to
+  a target, but it still needs the internet for the sign-in providers' token and user-info endpoints and for Web Push
+  (the browsers' push services, URLs a browser hands us), and its only route is Traefik's `web`, which compose cannot
+  narrow to those hosts. So the guarantee "the app never talks to an audited site" is the code's (no client for targets
+  in Production, which refuses `InProcess`), not the network's. Options: (a) as built; (b) put the app on an internal
+  network only and give it an egress proxy (e.g. Squid with an allow-list of the four providers and the push services:
+  `*.googleapis.com`, `*.push.apple.com`, `*.notify.windows.com`, `updates.push.services.mozilla.com`), which needs
+  Traefik to reach the app on that internal network too; (c) send Web Push through the fetcher as well (push endpoints
+  are URLs a user's browser supplies, already behind the SSRF-safe client) and keep (a) for OAuth. **Recommendation:
+  (c)** first (it moves the last user-supplied URL out of the app at the cost of one more profile), then (b) if the owner
+  wants the network to enforce it.
 
 
 ---
@@ -2264,3 +2279,103 @@ commands (OpenSSL 3.2.3; CA RSA 4096, server and clients RSA 2048, SAN `coverage
   refused (500, "The server certificate total duration is greater than 4 months. This is not allowed when using
   Developer license"); with a 90-day server certificate it activated (Type None → 5, Expired false).
 The server, its data, logs and every certificate were deleted afterwards; no key or licence was printed.
+
+
+### D54 (owner, 2026-10-10): the fetcher container
+
+- **D54: every request to a target leaves from `seo-fetcher`, a container with internet egress and no database.**
+  *Evidence: owner answer 2026-10-10* ("move SeoTester's internet-facing fetching out of the web app into its own
+  container … internet egress and NO database access … even if the SSRF guard had a bug, the code that talks to
+  untrusted websites cannot reach RavenDB, the mail relay, or anything else internal"). Built in commits `9d00fcd5`
+  (core: `MintPlayer.Spark.SafeHttp`) and `9632fcf1` (fetcher, app, compose, workflows, tests). Decisions taken here,
+  each with its evidence:
+  - **One interface, two implementations.** `ISeoFetcher` (`apps/SeoTester/SeoTester.Fetching`): `FetchAsync`,
+    `ProbeTlsAsync`, `QueryDnsAsync`, `ZoneApexAsync`. `LocalSeoFetcher` is the code the app ran before (the
+    SSRF-safe clients through `PageFetcher`, `TlsProber`, DnsClient), moved, not rewritten; `RemoteSeoFetcher` calls the
+    fetcher. The fetcher container runs `LocalSeoFetcher` behind its API, so the same code fetches in both modes and the
+    test host's fakes (`FakeDns`, `FakeTls`, `FakeWeb` on the named clients' primary handlers) keep working unchanged.
+    *Evidence: the 190 existing SeoTester tests pass in process unchanged (two construct `RenderNetwork` with an
+    `ISeoFetcher` now); the same crawl passes through the remote client (below).*
+  - **What moved out of the app:** the probe's and the crawl's fetches, the external-link check, RDAP / IANA bootstrap /
+    hstspreload, PageSpeed Insights, the verification file and meta-tag fetches and DNS TXT, the domain checks' DNS, the
+    TLS hello probes and handshake, the og-image proxy's fetch, and every request Chromium sends (`RenderNetwork`
+    fulfils `RouteAsync` with `ISeoFetcher`). **What stays in the app:** `HostPacer` (connections and interval per
+    host), robots.txt, the analytics sink, the per-run cache of static resources, the caches in RavenDB
+    (`LookupCache`), all parsing and scoring. A thin fetcher, so the per-host limits are still one process's.
+  - **Mode:** `SeoTester:Fetcher:Mode` = `InProcess` | `Remote`; unset = `Remote` in Production, `InProcess` elsewhere
+    (Development and tests stay one process). **Production refuses `InProcess` at startup**, and in `Remote` the app
+    registers no client that can reach a target (not even `spark.AddSafeHttp()`'s, which SeoTester never used).
+  - **The trust boundary (the API).** `POST /fetch`, `/tls`, `/dns`, `/dns/zone`; `GET /health` (no key, 200, for the
+    healthcheck). Every other call needs the shared secret in `X-Seo-Fetcher-Key`: both sides hash to SHA-256 and
+    compare with `CryptographicOperations.FixedTimeEquals`; a missing or wrong key is 401 before anything is read
+    (an unknown path too, so it does not reveal the routes); both refuse a key under 32 characters at startup. The
+    fetcher reads at most 2 MiB of request, and checks every field (`SeoFetchLimits.Problem`): absolute http(s) only,
+    no user info, ≤ 8 192 characters; one of five **client profiles** (crawler, lookups, browser, PageSpeed,
+    verification: the SSRF-safe clients with their old limits); GET/HEAD only, other methods and a request body only
+    for the browser's profile (≤ 1 MiB); ≤ 100 headers, RFC 9110 token names, no CR/LF/NUL; DNS names ≤ 253 of
+    `[A-Za-z0-9_.-]`. **Each profile caps the body it returns** (browser 16 MiB, crawler 10 MiB, PageSpeed 8 MiB,
+    lookups 2 MiB, verification 1 MiB; the same cut in process). One call ends after 120 s on the fetcher (PageSpeed's
+    100 s client timeout plus room), the app's deadline is that plus 15 s.
+  - **The answer is untrusted.** A fetch comes back framed (4 bytes of length, ≤ 256 KiB of metadata JSON, then the
+    body as bytes, not base64); the app refuses a frame larger than it asked for, and bounds or drops every field
+    (status 0 or 100–599, ≤ 200 headers, ≤ 50 cookies, ≤ 20 hops, http(s) URLs only, the HTTP version 1–3, Retry-After
+    ≤ 1 day, strings cut). A compromised fetcher can hand the app no more than a website could.
+  - **A fetcher outage is ours, not the site's:** `RemoteSeoFetcher` throws `SeoFetcherUnavailableException`, so a probe
+    or crawl batch fails and Messaging retries it (never "the page did not answer"); the browser's request fails; the
+    og-image proxy answers its usual 404 and caches nothing; verification throws instead of counting a missing proof (an
+    outage of ours must not withdraw anyone's verification after three re-checks).
+  - **The PageSpeed key travels per request** in its header (as before), never configured on the fetcher: one place to
+    set it (`SeoTester:PageSpeed:ApiKey`), the app still decides "not configured", and the fetcher logs no header.
+  - **SafeHttp stays on inside the fetcher** (defense in depth): to run it without RavenDB it moved into the package
+    `MintPlayer.Spark.SafeHttp` (`libs/spark/`, `11.0.0-preview.104`, namespace `MintPlayer.Spark.Http` kept,
+    `MintPlayer.Spark` references it, `spark.AddSafeHttp()` unchanged). *Evidence: `SafeHttp*` 121/121, the same 121 as
+    before the move; IdP, WebPush and notification classes 635/635.*
+  - **The no-RavenDB guard:** `FetcherIsolationTests` reads the fetcher's `project.assets.json` (every package and
+    project, transitive, used or not) and refuses `RavenDB*`, `Raven.*`, `Sparrow*`, `MintPlayer.Spark` and any Spark
+    package but SafeHttp, Attributes, Messaging.Abstractions and the two generators; a second test walks the compiled
+    references. `tools/verify-seotester-deploy.test.mjs` checks the csproj graph the same way.
+  - **Compose:** `seo-fetcher` (`ghcr.io/mintplayer/seotester-fetcher:master`, pull-only and floating like the app,
+    built by the same deploy), `read_only` with a tmpfs `/tmp`, `cap_drop: ALL`, `no-new-privileges`, 512 MB, 256 pids,
+    `/health` healthcheck, no port, no volume, on **`seo-fetch`** (internal: app + fetcher) and **`seo-egress`** (this
+    project's own bridge: the fetcher alone) and nothing else. `SEO_FETCHER_KEY` in `.env.example`, read by both
+    containers (`SeoFetcher__Key`, `SeoTester__Fetcher__Key`, compose fails without it); the deploy checks its presence
+    and length without printing it. Workflows build and push the third image; the deploy waits for it; the image check
+    builds it on pull requests.
+  - **The app's own egress (checked):** it still needs a route out, for the sign-in providers' token and user-info
+    endpoints and for Web Push to the browsers' push services; mail goes to the relay on `seo-mail`. It has one: Traefik's
+    `web` (a plain bridge). Compose cannot narrow that to those hosts, so the guarantee is the code's: in Production the
+    app holds no client for a target. Narrowing the app's egress (an egress proxy with an allow-list) is Q-D54a (§11).
+  - **Latency per routed request, measured** (`FetcherLatencyTests`, build machine, Windows 11; the fetcher on Kestrel
+    over real loopback sockets, both sides against the same fake web, 200 requests after 20 warm-ups, browser profile):
+
+    | Response | In process p50 / p95 | Through the fetcher p50 / p95 | Added p50 |
+    |---|---|---|---|
+    | 20 KB HTML | 0.02 / 0.15 ms | 0.41 / 0.79 ms | 0.39 ms |
+    | 150 KB script | 0.14 / 0.32 ms | 0.75 / 2.75 ms | 0.62 ms |
+    | 1 MB image | 0.64 / 1.97 ms | 3.75 / 23.80 ms | 3.11 ms |
+
+    Against S3's per-viewport load (12–100 ms on fixture pages, a real site's network far more) and the ≥ 500 ms settle
+    window, under a millisecond for a typical resource is noise; a 1 MB image costs ~3 ms (one copy through the frame).
+    A Docker bridge adds a few tens of microseconds per exchange on top; to be measured at the deploy with Q-M10b.
+  - *Tests (red → green), `SeoTester.Tests/Fetcher/`, 12 new:* `FetcherApiTests` (no key, an empty key, one character
+    off, one too many, the wrong key on `/tls` and `/dns`: 401, nothing fetched; an unknown path 401 without the key and
+    404 with it; `/health` open; the app's client throws on a wrong key · a body cut at the size asked for and at the
+    profile's cap · a 2 MiB+1 request, a 1 MiB+1 browser body, non-JSON, `file:`, `gopher:`, an unknown client, POST on
+    the crawler, a body outside the browser, user info, a CR/LF header, a bad DNS name, port 70 000: 400 · a 20 s target
+    ends at the fetcher's bound (1 s in the test) and a hanging fetcher at the app's deadline · redirects re-checked in
+    the fetcher: port, scheme, 7 hops, cross-origin for verification; the browser gets the 302 itself · real sockets,
+    `127.0.0.2` allowed as the "public" site: `127.0.0.1`, `localhost`, `[::ffff:127.0.0.1]`, `169.254.169.254`,
+    `10.0.0.1`, a redirect from the public site to loopback and the TLS probe all "refused: Address", **the private
+    listener accepted 0 connections** · TLS facts and DNS records cross the API intact), `FetcherIsolationTests` (2),
+    `RemoteFetcherPipelineTests` (an audit in Remote mode against an in-test fetcher: completed, 4 pages, duplicates,
+    the redirect chain, a certificate failing from the fetcher's TLS, RDAP; the app's own web, DNS and TLS fakes received
+    **nothing** · verification by DNS and by file through the fetcher, a cross-origin redirect refused),
+    `FetcherLatencyTests` (above). **Red:** the key check, the frame's size check, the clamp, both deadlines, the SSRF
+    rules (all networks and ports allowed, 50 redirects, cross-origin allowed), a RavenDB reference on the fetcher and
+    the Remote mode removed at once: 8 of 12 failed. The compiled-reference guard stayed green with an unused
+    `MintPlayer.Spark` reference (the compiler trims it), which is why the restore-graph guard exists; it failed
+    ("found RavenDB.Client"). Green 12/12; **the full SeoTester.Tests 202/202** (3 min 10 s). `test:tools` 86/86 (5 new
+    fetcher rules in `verify-seotester-deploy`, `verify-backend-networks` gains `seo-fetch`/`seo-egress`); red with the
+    fetcher on `seo-raven`, writable, and the key missing from `.env.example`: 6 failed.
+  - *Not run:* the images were not built (no Docker run here; the workflows build them on the next push), and nothing
+    was deployed.
