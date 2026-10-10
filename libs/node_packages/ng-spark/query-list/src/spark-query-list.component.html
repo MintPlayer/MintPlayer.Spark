@@ -35,7 +35,7 @@
 
   <h2 class="mb-4 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
     {{ (query()?.label | resolveTranslation) || query()?.name || ('common.loading' | t) }}
-    @if (isStreaming()) {
+    @if (isLive()) {
       <bs-badge [type]="colors.success" class="ms-2 align-middle spark-live-badge">LIVE</bs-badge>
     }
     @if (deletedMode() === 'only') {
@@ -72,9 +72,9 @@
     </div>
 
     <!--
-      One grid, both transports. `data` is null for a normal query, so the grid fetches and pages
-      server-side; for a streaming query this page owns the socket and hands the filtered snapshot
-      in. This used to be two near-identical <bs-datatable> blocks with a shared row template.
+      One grid. It fetches and pages server-side, over HTTP or, for a live query, over /spark/live
+      (the grid owns that, so embedded grids follow live queries too). This used to be two
+      near-identical <bs-datatable> blocks with a shared row template.
     -->
     <!-- The URL's scope (#contributions M5b): a parent and column filters from the query string, as
          the History link sends them. Shown so the narrowing is visible, and clearable. -->
@@ -101,8 +101,6 @@
         [parentId]="urlParentId()"
         [parentType]="urlParentType()"
         [presetFilters]="urlFilters()"
-        [data]="gridData()"
-        [columns]="gridData() ? streamColumns() : null"
         [search]="searchTerm()"
         [deleted]="deletedMode()"
         [reloadToken]="gridReloadToken()"

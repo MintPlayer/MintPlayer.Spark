@@ -9,7 +9,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { BsDatatableComponent, DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { By } from '@angular/platform-browser';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
-import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, SparkLiveService } from '@mintplayer/ng-spark/services';
+import { Observable, Subject } from 'rxjs';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { SparkQueryRowAction, provideSparkQueryRowActions } from '@mintplayer/ng-spark/panels';
@@ -54,7 +55,6 @@ const allPeopleQuery: SparkQuery = {
   entityType: 'Person',
   sortColumns: [],
   renderMode: 'Standard',
-  isStreamingQuery: false,
 } as any;
 
 // The shape the server sends: columns once, then id + values per row (#327 M4).
@@ -280,16 +280,6 @@ describe('SparkQueryGridComponent', () => {
       expect(service.executeQuery).not.toHaveBeenCalled();
     });
 
-    /**
-     * The race this closes: the grid resolves the query before the host can see it, so waiting to
-     * be handed `data` would still have fired one pointless /execute on mount.
-     */
-    it('does not fetch for a streaming query, even with no data bound', async () => {
-      const streaming = { ...allPeopleQuery, isStreamingQuery: true } as any;
-      const { service } = await setup({ getQuery: vi.fn().mockResolvedValue(streaming) });
-
-      expect(service.executeQuery).not.toHaveBeenCalled();
-    });
 
     it('an empty array is "no rows", not "fetch for yourself"', async () => {
       const { c, service } = await setup({}, { data: [] });
@@ -1325,5 +1315,163 @@ describe('SparkQueryGridComponent preset filters and add-on row actions', () => 
     const { c } = await setupWith([failing]);
     await c.runRowAction(c.rowActions()[0], { id: 'people/1' } as any);
     expect(c.errorMessage()).toBe('Restore it first.');
+  });
+});
+
+/**
+ * Live grids (X4): the grid's own request is the subscription, so paging, sort, search and filters stay
+ * server-side. SparkLiveService is stubbed: it hands the session every request it is given and lets the
+ * test push fully applied pages (patch application is the service's, in spark-live.service.spec.ts).
+ */
+describe('SparkQueryGridComponent live', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  const liveQuery = { ...allPeopleQuery, live: true } as any;
+  const rowOf = (id: string, name: string) => ({ id, breadcrumb: name, values: [{ key: 'FirstName', value: name }] } as any);
+  const pageOf = (...rows: any[]) => ({ columns: sampleColumns, items: rows, totalItems: rows.length, skip: 0, take: 10 });
+
+  async function setupLive(query: any, inputs: Record<string, unknown> = {}) {
+    const events = new Subject<any>();
+    const requests: any[] = [];
+    const live = {
+      watchQuery: vi.fn((requests$: Observable<any>) => new Observable<any>(subscriber => {
+        const a = requests$.subscribe(r => { if (r) requests.push(r); });
+        const b = events.subscribe(subscriber);
+        return () => { a.unsubscribe(); b.unsubscribe(); };
+      })),
+    };
+    const service = makeService({ getQuery: vi.fn().mockResolvedValue(query) });
+    TestBed.configureTestingModule({
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SparkService, useValue: service },
+        { provide: SparkLiveService, useValue: live },
+        { provide: SparkLanguageService, useValue: langStub },
+        { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
+      ],
+    });
+    const fixture: ComponentFixture<SparkQueryGridComponent> = TestBed.createComponent(SparkQueryGridComponent);
+    fixture.componentRef.setInput('queryId', 'q-all');
+    for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
+    fixture.detectChanges();
+    await settle(fixture);
+    const c = fixture.componentInstance;
+    const perPage = c.settings().perPage.selected;
+    const fetch = (page = 1, sortColumns: any[] = []) => c.fetchFn()!({ page, perPage, sortColumns } as any);
+    return { fixture, c, service, live, events, requests, perPage, fetch };
+  }
+
+  it('follows a live query over /spark/live, sending the /execute body, and never fetches over http', async () => {
+    const { c, service, live, events, requests, perPage, fetch } = await setupLive(liveQuery);
+    const page = fetch();
+
+    expect(c.isLive()).toBe(true);
+    expect(live.watchQuery).toHaveBeenCalledTimes(1);
+    expect(requests[0]).toEqual({ queryId: 'q-all', skip: 0, take: perPage });
+
+    events.next({ type: 'result', result: pageOf(rowOf('people/1', 'Alice')) });
+    expect((await page).data.map(r => r.id)).toEqual(['people/1']);
+    expect(c.resultCount()).toBe(1);
+    expect(service.executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('sends a page or sort change as a new request on the same subscription', async () => {
+    const { live, events, requests, perPage, fetch } = await setupLive(liveQuery);
+    events.next({ type: 'result', result: pageOf(rowOf('people/1', 'Alice')) });
+
+    const second = fetch(2, [{ property: 'FirstName', direction: 'descending' }]);
+    expect(requests.at(-1)).toEqual({
+      queryId: 'q-all', skip: perPage, take: perPage, sortColumns: [{ property: 'FirstName', direction: 'desc' }],
+    });
+    events.next({ type: 'result', result: { ...pageOf(rowOf('people/9', 'Zed')), skip: perPage } });
+
+    expect((await second).data.map(r => r.id)).toEqual(['people/9']);
+    expect(live.watchQuery).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Defect 2, at the grid: a push nobody waited for re-fetches through the datatable (page and sort kept),
+   * and the fetch is served the pushed page — with the added row. The streaming page patched only rows it
+   * already held, so this row never appeared.
+   */
+  it('renders a pushed page, added rows included, through the datatable\'s reload', async () => {
+    const { c, events, fetch } = await setupLive(liveQuery);
+    events.next({ type: 'result', result: pageOf(rowOf('people/1', 'Alice')) });
+    await fetch();
+    const reload = vi.spyOn((c as any).datatable(), 'reload');
+
+    events.next({ type: 'result', result: pageOf(rowOf('people/1', 'Alice'), rowOf('people/2', 'Bob')) });
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect((await fetch()).data.map(r => r.id)).toEqual(['people/1', 'people/2']);
+    expect(c.resultCount()).toBe(2);
+  });
+
+  /**
+   * Defect 4: an error must not leave the last page up looking current. Red before: the streaming page's
+   * `error` branch only set the message (`this.errorMessage.set(message.message)`) and kept `allItems`, and a
+   * server-side end (close 1000 after a failed re-authorization) completed the stream silently with every
+   * stale row still bound to the grid.
+   */
+  it('clears the rows and shows the message on a subscription error, and does not resubscribe', async () => {
+    const { c, service, live, events, fetch } = await setupLive(liveQuery);
+    events.next({ type: 'result', result: pageOf(rowOf('people/1', 'Alice')) });
+    expect((await fetch()).data).toHaveLength(1);
+    const reload = vi.spyOn((c as any).datatable(), 'reload');
+
+    events.next({ type: 'error', code: 'unavailable', message: 'This list is not available.' });
+
+    expect(c.errorMessage()).toBe('spark.query.unavailable');
+    expect(c.isLive()).toBe(false);
+    expect(reload).toHaveBeenCalled();
+    expect((await fetch()).data).toEqual([]);
+    expect((await fetch(2)).data).toEqual([]);
+    expect(c.resultCount()).toBe(0);
+    expect(live.watchQuery).toHaveBeenCalledTimes(1);
+    expect(service.executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('shows the server\'s message for an error other than `unavailable`', async () => {
+    const { c, events } = await setupLive(liveQuery);
+    events.next({ type: 'error', code: 'invalid', message: 'Unknown sort column' });
+    expect(c.errorMessage()).toBe('Unknown sort column');
+  });
+
+  it('[live]="false" keeps a live query on http', async () => {
+    const { c, service, live } = await setupLive(liveQuery, { live: false });
+    expect(c.isLive()).toBe(false);
+    expect(live.watchQuery).not.toHaveBeenCalled();
+    expect(service.executeQuery).toHaveBeenCalled();
+  });
+
+  it('[live]="true" follows a query that is not live by itself', async () => {
+    const { c, service, live } = await setupLive(allPeopleQuery, { live: true });
+    expect(c.isLive()).toBe(true);
+    expect(live.watchQuery).toHaveBeenCalledTimes(1);
+    expect(service.executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('a server refresh (#319) re-renders the held page without an http fetch', async () => {
+    const { fixture, c, service, events, fetch } = await setupLive(liveQuery);
+    events.next({ type: 'result', result: pageOf(rowOf('people/1', 'Alice')) });
+    await fetch();
+    const reload = vi.spyOn(c, 'reload');
+
+    TestBed.inject(SparkQueryRefreshService).request('q-all');
+    fixture.detectChanges();
+    await settle(fixture);
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(service.executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('leaves the subscription when it is destroyed', async () => {
+    const { fixture, events } = await setupLive(liveQuery);
+    expect(events.observed).toBe(true);
+    fixture.destroy();
+    expect(events.observed).toBe(false);
   });
 });

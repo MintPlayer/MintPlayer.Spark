@@ -54,7 +54,7 @@ Import from the entry point, not from the package root; each one is a separate c
 |---|---|
 | `@mintplayer/ng-spark` | `provideSpark(config?)`, `SPARK_CONFIG` (`baseUrl`), `SPARK_AUTH_STATE` (the bridge `ng-spark/auth` fills) |
 | `/routes` | `sparkRoutes()` — the routed persistent-object and query pages |
-| `/services` | `SparkService`, `SparkStreamingService`, `SparkLanguageService`, `SparkQueryActionsService`, `RetryActionService`; the timezone feature `withSparkTimezone()` |
+| `/services` | `SparkService`, `SparkLiveService`, `SparkLanguageService`, `SparkQueryActionsService`, `RetryActionService`; the timezone feature `withSparkTimezone()` |
 | `/models` | The wire types (persistent objects, attributes, queries, envelopes) |
 | `/shell` | `<spark-shell>` with its slot directives, `<spark-program-units>`, `<spark-language-selector>` ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-program-units.md)) |
 | `/query-list` | `<spark-query-list>` — the routed query page |
@@ -153,6 +153,27 @@ The grid also renders:
 
 See [guide-custom-actions.md](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-custom-actions.md)
 for the server side of this.
+
+### Live updates
+
+A type or query marked `"live": true` in its model is followed over one WebSocket (`/spark/live`) with
+nothing to write: `spark-po-detail` replaces the object when it changes and shows the unavailable state when
+it is deleted; every `spark-query-grid` (the query page, sub-queries, cards) re-renders its page as rows
+change, appear or leave, with server-side paging, sort, search and filters intact (`[live]` overrides the
+query's flag); `spark-po-edit` adopts a newer version while the form is untouched and otherwise shows a
+banner that runs the three-way merge. For a custom page:
+
+```ts
+import { SparkLiveService } from '@mintplayer/ng-spark/services';
+
+const live = inject(SparkLiveService);
+readonly run = live.livePersistentObject(signal('AuditRun'), this.runId);  // Signal<PersistentObject | null | 'gone'>
+readonly running = live.liveQuery(computed(() => ({ queryId: 'runningaudits', skip: 0, take: 20 })));  // Signal<QueryResult | null>
+// or the observables: live.watchPersistentObject(type, id), live.watchQuery(request | request$)
+```
+
+This replaces streaming queries (`isStreamingQuery`, `SparkStreamingService`); there is no shim. See
+[guide-live-updates.md](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-live-updates.md).
 
 ### Soft delete, history and moderation
 

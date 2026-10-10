@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, viewChild, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -22,7 +22,7 @@ import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer
 import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { QueryCellValuePipe, QueryReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkService, sparkDatatableLabels } from '@mintplayer/ng-spark/services';
+import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkLiveService, SparkService, sparkDatatableLabels } from '@mintplayer/ng-spark/services';
 import { SparkColumnFilterPanelComponent } from '@mintplayer/ng-spark/column-filter';
 import {
   CustomActionDefinition,
@@ -31,7 +31,10 @@ import {
   LookupReference,
   QueryColumn,
   QueryColumnFilter,
+  QueryResult,
   QueryResultItem,
+  LiveErrorEvent,
+  LiveQueryRequest,
   SparkQuery,
   EntityPermissions,
   SparkDeletedFilter,
@@ -49,28 +52,29 @@ import { SparkGridRenderers } from './spark-grid-renderers';
 import { SparkGridCellComponent } from './spark-grid-cell.component';
 import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
 import { SPARK_QUERY_ROW_ACTIONS, SparkQueryRowAction, orderSparkExtensions } from '@mintplayer/ng-spark/panels';
+import { LiveGridSession } from './live-grid-session';
+import type { BsDatatableFetchRequest } from '@mintplayer/ng-bootstrap/datatable';
 
 /**
  * The one Spark grid: a `<bs-datatable>` rendering a query or a sub-query.
  *
  * This replaces two components that were the same grid written twice — and, counting
- * `spark-query-list`'s streaming and paged branches, the `<bs-datatable>` element itself written
- * three times. The duplication had already produced four user-visible bugs, each fixed on one
- * side and not the other: `[indeterminate]` on null booleans, permission state surviving a failed
+ * `spark-query-list`'s former streaming and paged branches, the `<bs-datatable>` element itself
+ * written three times. The duplication had already produced four user-visible bugs, each fixed on
+ * one side and not the other: `[indeterminate]` on null booleans, permission state surviving a failed
  * reload, a swallowed fetch failure, and virtual-scroll sizing. `SparkGridRenderers` was
  * extracted to stop that and could only take the stateless helpers with it; this takes the rest.
  *
- * ## What it deliberately does NOT own: streaming
+ * ## Where the rows come from
  *
- * `spark-grid-renderers.ts` records why — a websocket dependency graph must not reach the bundle
- * of every PO detail page, none of which stream. So rows can come from **either** side:
- *
- *  - unbound `data` — the grid fetches for itself, paging and sorting server-side;
+ *  - unbound `data` — the grid fetches for itself, paging and sorting server-side: over HTTP, or over
+ *    `/spark/live` when the grid is live (see {@link live});
  *  - bound `data` — the grid renders what it is given and never fetches.
  *
- * `spark-query-list` keeps the socket and feeds its snapshot in. This is the line `bs-datatable`
- * itself draws: `[data]` and `[fetch]` are mutually exclusive, and binding both makes `[fetch]`
- * win silently.
+ * This is the line `bs-datatable` itself draws: `[data]` and `[fetch]` are mutually exclusive, and
+ * binding both makes `[fetch]` win silently. Live rides on `[fetch]`, so server-side paging, sort,
+ * search and filters work the same live or not; every embedded grid, sub-query and card follows a live
+ * query, not only the query page.
  *
  * ## Reading its state
  *
@@ -88,6 +92,7 @@ import { SPARK_QUERY_ROW_ACTIONS, SparkQueryRowAction, orderSparkExtensions } fr
 })
 export class SparkQueryGridComponent {
   private readonly sparkService = inject(SparkService);
+  private readonly liveService = inject(SparkLiveService);
   private readonly gridRenderers = inject(SparkGridRenderers);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
   private readonly injector = inject(Injector);
@@ -129,11 +134,38 @@ export class SparkQueryGridComponent {
   /**
    * Rows supplied from outside. When bound, the grid renders these and runs no fetch.
    *
-   * This is how streaming stays out of this component (see the class comment). `null` — the
-   * default — means "fetch for yourself"; an empty array means "you have been given no rows",
-   * which is a different statement and renders an empty grid rather than triggering a load.
+   * `null` — the default — means "fetch for yourself"; an empty array means "you have been given no
+   * rows", which is a different statement and renders an empty grid rather than triggering a load.
+   * Bound rows are never live.
    */
   data = input<QueryResultItem[] | null>(null);
+
+  /**
+   * Whether this grid follows its query over `/spark/live` (X4): `undefined` — the default — follows the
+   * query's own `live` flag; `true`/`false` overrides it (`[live]="false"` on a dashboard tile).
+   *
+   * Live, the grid's current request (page, sort, search, column filters, parent, deleted modes — exactly
+   * the `/execute` body) is ONE server subscription, sent again as an `update` on every page, sort, search
+   * or filter change, and every pushed page is rendered as it arrives: rows that change, appear or leave.
+   * A subscription `error` clears the rows and shows the message; it is not retried (see {@link isLive}).
+   * A virtual-scrolling query is never live: its blocks are separate pages fetched as the user scrolls, and
+   * one subscription follows one page.
+   */
+  live = input<boolean | undefined>(undefined);
+
+  /**
+   * The live subscription ended with an error for the query loaded now. Reset by a new load; a live grid
+   * does not resubscribe by itself after an error (the answer would not change).
+   */
+  private readonly liveFailed = signal(false);
+
+  /** Whether rows arrive over `/spark/live` right now: the query page shows its LIVE badge from this. */
+  readonly isLive = computed(() => this.data() === null && this.liveWanted(this.query()) && !this.liveFailed());
+
+  private liveWanted(query: SparkQuery | null): boolean {
+    if (!query || isVirtualScrollingQuery(query)) return false;
+    return this.live() ?? query.live === true;
+  }
 
   /**
    * Server-side search term, passed through to the query.
@@ -653,10 +685,9 @@ export class SparkQueryGridComponent {
   isVirtualScrolling = computed(() => isVirtualScrollingQuery(this.query()));
 
   /**
-   * Columns as sent with the most recent fetched page.
+   * Columns as sent with the most recent fetched (or pushed) page.
    *
-   * A host binding `data` (streaming) supplies its own via the `columns` input instead — the
-   * snapshot carries them once, exactly as a paged result does.
+   * A host binding `data` supplies its own via the `columns` input instead.
    */
   private readonly fetchedColumns = signal<QueryColumn[]>([]);
 
@@ -675,17 +706,8 @@ export class SparkQueryGridComponent {
    */
   datatableLabels = computed(() => sparkDatatableLabels(this.lang));
 
-  /**
-   * True when rows do not come from this component's own fetch.
-   *
-   * Either because the host bound `data`, or because the query streams — a streaming query's rows
-   * arrive over a socket and `/execute` is not a way to get them. The grid recognises the second
-   * case itself rather than waiting to be told, because it resolves the query before the host can
-   * see it: left to `data` alone, every streaming grid would fire one pointless fetch on mount,
-   * before the host had anything to bind.
-   */
-  hasExternalData = computed(() =>
-    this.data() !== null || this.query()?.isStreamingQuery === true);
+  /** True when rows do not come from this component's own fetch: the host bound `data`. */
+  hasExternalData = computed(() => this.data() !== null);
 
   /**
    * Whether an action can run right now: its selection rule is satisfied, and the client method it
@@ -809,6 +831,57 @@ export class SparkQueryGridComponent {
         this.onFilterChanged();
       });
     });
+
+    // `[live]` flipped on a loaded grid: swap the transport, keeping page and sort. Skips the first run —
+    // loadData picks the transport for the initial value.
+    let firstLive = true;
+    effect(() => {
+      this.live();
+      if (firstLive) { firstLive = false; return; }
+      untracked(() => {
+        const query = this.query();
+        if (!query || this.hasExternalData()) return;
+        this.disposeLive();
+        this.fetchFn.set(this.makeFetch(query, this.parentId(), this.parentType()));
+      });
+    });
+
+    inject(DestroyRef).onDestroy(() => this.disposeLive());
+  }
+
+  /** The live subscription of the query loaded now, while the grid is live. */
+  private liveSession: LiveGridSession | null = null;
+
+  private disposeLive(): void {
+    this.liveSession?.dispose();
+    this.liveSession = null;
+    this.liveFailed.set(false);
+  }
+
+  /**
+   * A pushed page: re-fetch through the datatable, which lands in the live fetch and is served from
+   * memory. Through `reload()` rather than a new `[fetch]` identity, so page, sort and scroll stay.
+   */
+  private onLivePush(): void {
+    const datatable = this.datatable();
+    if (datatable && this.fetchFn()) datatable.reload();
+  }
+
+  /**
+   * A live subscription error (defect 4): clear the rows — a stale page must never stay up looking current
+   * — and say why. Not retried: `unavailable` (unknown, forbidden, not live, missing parent — one answer),
+   * `invalid`, `limit` and `failed` would answer the same again, and a socket-level failure (4429, a
+   * repeated 4401) is the socket's to surface. No HTTP fallback either: `unavailable` is the same answer
+   * `/execute` gives as a 404, and an app stream's rows exist only on the socket.
+   */
+  private onLiveError(error: LiveErrorEvent): void {
+    this.liveFailed.set(true);
+    this.errorMessage.set(error.code === 'unavailable'
+      ? (this.lang.t('spark.query.unavailable') || 'This list is not available.')
+      : (error.message || this.lang.t('common.unexpectedError') || 'An unexpected error occurred'));
+    this.resultCount.set(0);
+    this.loadedIds.set(new Set());
+    this.onLivePush();
   }
 
   /**
@@ -1064,6 +1137,8 @@ export class SparkQueryGridComponent {
     this.loading.set(true);
     this.errorMessage.set(null);
     this.fetchFn.set(null);
+    // The previous query's subscription: its pushes must not land on the next query's rows.
+    this.disposeLive();
     // Reset everything derived from the previous query, not just the fetch. Leaving
     // `entityType`/`canRead` behind let a failed reload build a row link out of the PREVIOUS type
     // and the previous permission.
@@ -1123,10 +1198,9 @@ export class SparkQueryGridComponent {
       this.settings.set(initialGridSettings(resolvedQuery));
       // The datatable drives paging/sorting via [(settings)] and calls fetchFn per page. Virtual
       // scrolling is just the [virtualScroll] template flag.
-      // `resolvedQuery`, not `hasExternalData()`: the query signal is set above, but reading the
-      // computed here would depend on signal-read ordering inside an async method. Ask the value
-      // directly.
-      if (this.data() === null && !resolvedQuery?.isStreamingQuery) {
+      // `resolvedQuery`, not the computeds: the query signal is set above, but reading a computed here
+      // would depend on signal-read ordering inside an async method. `makeFetch` picks HTTP or live.
+      if (this.data() === null) {
         this.fetchFn.set(this.makeFetch(resolvedQuery, parentId, parentType));
       }
 
@@ -1163,41 +1237,97 @@ export class SparkQueryGridComponent {
       t.name === sourceName || t.name === singular || t.name + 's' === sourceName || t.clrType?.endsWith(singular)) ?? null;
   }
 
+  /** The datatable's `[fetch]`: over `/spark/live` when the grid is live (see {@link live}), else HTTP. */
   private makeFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<QueryResultItem> {
-    return (req) => this.sparkService.executeQuery(query.id, {
+    return this.liveWanted(query) && this.data() === null
+      ? this.makeLiveFetch(query, parentId, parentType)
+      : this.makeHttpFetch(query, parentId, parentType);
+  }
+
+  /**
+   * The `/execute` body for one datatable request — the same for HTTP and live. Read at call time, so
+   * what forces a refetch is the fetch identity `reload()` creates, not the value captured when the
+   * closure was built.
+   */
+  private requestFor(req: BsDatatableFetchRequest, parentId: string, parentType: string) {
+    return {
       sortColumns: req.sortColumns,
       skip: (req.page - 1) * req.perPage,
       take: req.perPage,
       search: this.search() || undefined,
-      // Read inside the closure, exactly as `search` is: what forces a refetch is the fetch
-      // identity `reload()` creates, not the value captured when this closure was built.
       columns: this.filters(),
       parentId, parentType,
       // Only when set, so a plain grid's request body is exactly what it was before #460.
       ...(this.effectiveDeleted() ? { deleted: this.effectiveDeleted() } : {}),
       // A deleted parent (#460) is resolved including deleted rows; its children keep `deleted`.
       ...(this.parentDeleted() && parentId && parentType ? { parentDeleted: 'include' as const } : {}),
-    }).then(r => {
-      this.errorMessage.set(null);
-      this.resultCount.set(r.totalItems);
-      // Columns come from the result now, not from the entity type: the server decides the query
-      // surface (ShowedOn.Query) and is the same place the sort-column allow-list is checked.
-      // ?? [] because a malformed or older response must render an empty grid, not throw inside a
-      // computed — where the stack points at the column filter and not at the response that lacked them.
-      this.setFetchedColumns(r.columns ?? []);
-      // Per-result, so it is re-read on every page rather than latched from the first.
-      this.disabledActions.set(r.disabledActions ?? []);
-      // Paged: the page shown. Virtual scroll keeps every block it fetched reachable by scrolling.
-      const ids = r.items.map(item => item.id);
-      this.loadedIds.set(this.isVirtualScrolling() ? new Set([...this.loadedIds(), ...ids]) : new Set(ids));
-      return {
-        data: r.items,
-        totalRecords: r.totalItems,
-        totalPages: Math.ceil(r.totalItems / req.perPage) || 1,
-        perPage: req.perPage,
-        page: req.page,
+    };
+  }
+
+  /**
+   * One page as the datatable takes it, recording what the chrome reads off a result: count, columns,
+   * the result's withheld actions, the ids on screen.
+   */
+  private toPage(r: QueryResult, req: BsDatatableFetchRequest) {
+    this.errorMessage.set(null);
+    this.resultCount.set(r.totalItems);
+    // Columns come from the result now, not from the entity type: the server decides the query
+    // surface (ShowedOn.Query) and is the same place the sort-column allow-list is checked.
+    // ?? [] because a malformed or older response must render an empty grid, not throw inside a
+    // computed — where the stack points at the column filter and not at the response that lacked them.
+    this.setFetchedColumns(r.columns ?? []);
+    // Per-result, so it is re-read on every page rather than latched from the first.
+    this.disabledActions.set(r.disabledActions ?? []);
+    // Paged: the page shown. Virtual scroll keeps every block it fetched reachable by scrolling.
+    const ids = (r.items ?? []).map(item => item.id);
+    this.loadedIds.set(this.isVirtualScrolling() ? new Set([...this.loadedIds(), ...ids]) : new Set(ids));
+    return {
+      data: r.items ?? [],
+      totalRecords: r.totalItems,
+      totalPages: Math.ceil(r.totalItems / req.perPage) || 1,
+      perPage: req.perPage,
+      page: req.page,
+    };
+  }
+
+  /**
+   * Live: the request goes to this grid's {@link LiveGridSession} — subscribed on the first fetch, sent as
+   * an `update` when it changes, answered from the latest push when it does not. After an error every fetch
+   * is an empty page and the error stays shown.
+   */
+  private makeLiveFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<QueryResultItem> {
+    const session = this.liveSession ??= new LiveGridSession(this.liveService, () => this.onLivePush(), e => this.onLiveError(e));
+    return async (req) => {
+      const options = this.requestFor(req, parentId, parentType);
+      const request: LiveQueryRequest = {
+        queryId: query.id,
+        // The wire shape `SparkService.executeQuery` sends.
+        sortColumns: options.sortColumns?.length
+          ? options.sortColumns.map(c => ({ property: c.property, direction: c.direction === 'descending' ? 'desc' : 'asc' }))
+          : undefined,
+        skip: options.skip,
+        take: options.take,
+        search: options.search,
+        columns: options.columns.length ? options.columns : undefined,
+        parentId: options.parentId || undefined,
+        parentType: options.parentType || undefined,
+        deleted: options.deleted,
+        parentDeleted: options.parentDeleted,
       };
-    }).catch((e: HttpErrorResponse) => {
+      const result = await session.fetch(request);
+      if (!result) {
+        this.resultCount.set(0);
+        this.loadedIds.set(new Set());
+        return { data: [], totalRecords: 0, totalPages: 1, perPage: req.perPage, page: req.page };
+      }
+      return this.toPage(result, req);
+    };
+  }
+
+  private makeHttpFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<QueryResultItem> {
+    return (req) => this.sparkService.executeQuery(query.id, this.requestFor(req, parentId, parentType))
+      .then(r => this.toPage(r, req))
+      .catch((e: HttpErrorResponse) => {
       // Report before returning the empty page, or a failed fetch is indistinguishable from a
       // query that legitimately has no rows.
       this.reportError(e);

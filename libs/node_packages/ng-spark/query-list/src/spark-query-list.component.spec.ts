@@ -1,6 +1,5 @@
-import { TestBed, ComponentFixture } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
-import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
@@ -9,13 +8,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { Subject } from 'rxjs';
 
 import { SparkQueryListComponent } from './spark-query-list.component';
-import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLiveService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 import { StubComponent, nextNavigationEnd, settle } from '../../src/test-utils';
 
 /**
- * What remains page-shaped after the grid moved out: route resolution, and streaming.
+ * What remains page-shaped after the grid moved out: route resolution and the chrome (LIVE badge included).
  *
  * Columns, cells, paging, permissions and the row link are the grid's, and are asserted in
  * `spark-query-grid.component.spec.ts`. Duplicating them here would recreate exactly the
@@ -44,7 +43,6 @@ const allPeopleQuery: SparkQuery = {
   entityType: 'Person',
   sortColumns: [],
   renderMode: 'Standard',
-  isStreamingQuery: false,
 } as any;
 
 const routes: Routes = [
@@ -67,8 +65,8 @@ async function setup(serviceOverrides: Record<string, unknown> = {}) {
     getLookupReference: vi.fn().mockResolvedValue({ values: [] }),
     ...serviceOverrides,
   };
-  const streamSubject = new Subject<any>();
-  const streaming: any = { connectToStreamingQuery: vi.fn(() => streamSubject.asObservable()) };
+  const liveEvents = new Subject<any>();
+  const live: any = { watchQuery: vi.fn(() => liveEvents.asObservable()) };
   TestBed.configureTestingModule({
     providers: [
       provideNoopAnimations(),
@@ -76,13 +74,13 @@ async function setup(serviceOverrides: Record<string, unknown> = {}) {
       provideHttpClient(),
       provideHttpClientTesting(),
       { provide: SparkService, useValue: service },
-      { provide: SparkStreamingService, useValue: streaming },
+      { provide: SparkLiveService, useValue: live },
       { provide: SparkLanguageService, useValue: langStub },
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
     ],
   });
   const harness = await RouterTestingHarness.create();
-  return { harness, service, streaming, streamSubject };
+  return { harness, service, live, liveEvents };
 }
 
 async function navigate(harness: RouterTestingHarness, url: string) {
@@ -175,238 +173,44 @@ describe('SparkQueryListComponent', () => {
     });
   });
 
-  describe('streaming', () => {
-    const streamingQuery = { ...allPeopleQuery, id: 'q-live', isStreamingQuery: true } as any;
+  /**
+   * Live is the grid's now (X4): the page neither opens a socket nor filters or sorts rows itself. The
+   * streaming branch it replaces held the whole set client-side and patched only the ids it already had,
+   * so a row added on the server never appeared (defect 2) — the grid's own specs cover adding, removing
+   * and reordering through server-side paging.
+   */
+  describe('live', () => {
+    const liveQuery = { ...allPeopleQuery, id: 'q-live', live: true } as any;
 
-    async function live() {
-      const s = await setup({ getQuery: vi.fn().mockResolvedValue(streamingQuery) });
-      const c = await navigate(s.harness, '/query/q-live');
-      return { ...s, c };
-    }
+    it('shows LIVE while the grid follows a live query, and never executes it over http', async () => {
+      const { harness, service, live } = await setup({ getQuery: vi.fn().mockResolvedValue(liveQuery) });
+      const c = await navigate(harness, '/query/q-live');
 
-    it('connects when the grid resolves a streaming query', async () => {
-      const { c, streaming } = await live();
-
-      expect(streaming.connectToStreamingQuery).toHaveBeenCalledWith('q-live');
-      expect(c.isStreaming()).toBe(true);
-    });
-
-    /**
-     * The grid must not also fetch. It recognises a streaming query itself for this reason —
-     * waiting to be handed `data` would still have fired one /execute before the socket connected.
-     */
-    it('does not also execute the query over http', async () => {
-      const { service } = await live();
-
+      expect(c.isLive()).toBe(true);
+      expect(harness.fixture.nativeElement.querySelector('.spark-live-badge')).not.toBeNull();
+      expect(live.watchQuery).toHaveBeenCalled();
       expect(service.executeQuery).not.toHaveBeenCalled();
     });
 
-    it('feeds the snapshot to the grid and applies a patch in place', async () => {
-      const { c, harness, streamSubject } = await live();
-
-      streamSubject.next({
-        type: 'snapshot',
-        columns: [{ name: 'FirstName', dataType: 'string', order: 1 }],
-        data: [
-          { id: 'people/1', breadcrumb: 'Alice', values: [{ key: 'FirstName', value: 'Alice' }] },
-          { id: 'people/2', breadcrumb: 'Bob', values: [{ key: 'FirstName', value: 'Bob' }] },
-        ],
-      });
-      await settle(harness.fixture, { rounds: 6 });
-      expect(c.gridData()).toHaveLength(2);
-
-      streamSubject.next({ type: 'patch', updated: [{ id: 'people/1', values: { FirstName: 'Alicia' } }] });
-      await settle(harness.fixture, { rounds: 6 });
-
-      const alice = c.gridData()!.find((i: any) => i.id === 'people/1')!;
-      expect(alice.values.find((v: any) => v.key === 'FirstName')?.value).toBe('Alicia');
-    });
-
-    it('filters the snapshot client-side — there is no request to attach a search to', async () => {
-      const { c, harness, streamSubject } = await live();
-      streamSubject.next({
-        type: 'snapshot',
-        columns: [{ name: 'FirstName', dataType: 'string', order: 1 }],
-        data: [
-          { id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] },
-          { id: 'people/2', values: [{ key: 'FirstName', value: 'Bob' }] },
-        ],
-      });
-      await settle(harness.fixture, { rounds: 6 });
-
-      c.searchTerm.set('bob');
-      await settle(harness.fixture, { rounds: 6 });
-
-      expect(c.gridData()).toHaveLength(1);
-      expect(c.gridData()![0].id).toBe('people/2');
-    });
-
-    it('surfaces a stream error', async () => {
-      const { c, harness, streamSubject } = await live();
-
-      streamSubject.error(new Error('socket died'));
-      await settle(harness.fixture, { rounds: 6 });
-
-      expect(c.isStreaming()).toBe(false);
-      expect(c.errorMessage()).toContain('socket died');
-    });
-
-    it('renders an error message sent over the stream as the page error, and stops being live', async () => {
-      // The server sends `error` only on its way to closing the socket (StreamExecuteQuery's
-      // SendErrorAndCloseAsync), so it is terminal: the alert replaces the grid, and with the grid
-      // gone the stream is disconnected rather than left showing LIVE over nothing.
-      const { c, harness, streamSubject } = await live();
-
-      streamSubject.next({ type: 'error', message: 'Access denied' });
-      await settle(harness.fixture, { rounds: 6 });
-
-      expect(c.errorMessage()).toBe('Access denied');
-      expect(harness.fixture.nativeElement.querySelector('bs-alert')?.textContent).toContain('Access denied');
-      expect(harness.fixture.nativeElement.querySelector('spark-query-grid')).toBeNull();
-      expect(c.isStreaming()).toBe(false);
-    });
-
-    it('stops being live when the server completes the stream', async () => {
-      const { c, harness, streamSubject } = await live();
-
-      streamSubject.complete();
-      await settle(harness.fixture, { rounds: 6 });
-
-      expect(c.isStreaming()).toBe(false);
-    });
-
-    it('ignores a patch that updates nothing and leaves rows it does not name untouched', async () => {
-      const { c, harness, streamSubject } = await live();
-      streamSubject.next({
-        type: 'snapshot',
-        columns: [{ name: 'FirstName', dataType: 'string', order: 1 }],
-        data: [
-          { id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] },
-          { id: 'people/2', values: [{ key: 'FirstName', value: 'Bob' }, { key: 'Age', value: 30 }] },
-        ],
-      });
-      await settle(harness.fixture, { rounds: 6 });
-      const bob = c.gridData()!.find((i: any) => i.id === 'people/2');
-
-      streamSubject.next({ type: 'patch', updated: [] });
-      streamSubject.next({ type: 'patch', updated: [{ id: 'people/1', values: { Age: 41 } }] });
-      await settle(harness.fixture, { rounds: 6 });
-
-      // A key the patch does not carry keeps its value; the row the patch does not name keeps its identity.
-      const alice = c.gridData()!.find((i: any) => i.id === 'people/1')!;
-      expect(alice.values).toEqual([{ key: 'FirstName', value: 'Alice' }]);
-      expect(c.gridData()!.find((i: any) => i.id === 'people/2')).toBe(bob);
-    });
-
-    it('re-applies the grid sort to the snapshot, descending and with a tie-breaker', async () => {
-      // The sort must survive every patch: re-deriving from the snapshot without it would reorder the
-      // grid under the user on each update.
-      const { c, harness, streamSubject } = await live();
-      streamSubject.next({
-        type: 'snapshot',
-        columns: [{ name: 'Last', dataType: 'string', order: 1 }, { name: 'First', dataType: 'string', order: 2 }],
-        data: [
-          { id: 'p/1', values: [{ key: 'Last', value: 'Smith' }, { key: 'First', value: 'Anna' }] },
-          { id: 'p/2', values: [{ key: 'Last', value: 'Jones' }, { key: 'First', value: 'Carl' }] },
-          { id: 'p/3', values: [{ key: 'Last', value: 'Smith' }, { key: 'First', value: 'Bea' }] },
-          // No Last at all: sorts as the empty string, not as "undefined".
-          { id: 'p/4', values: [{ key: 'First', value: 'Dan' }] },
-        ],
-      });
-      await settle(harness.fixture, { rounds: 6 });
-
-      const grid = c.grid();
-      grid.settings.set(new DatatableSettings({
-        perPage: { values: [50], selected: 50 },
-        page: { values: [1], selected: 1 },
-        sortColumns: [
-          { property: 'Last', direction: 'descending' },
-          { property: 'First', direction: 'ascending' },
-        ],
-      }));
-      await settle(harness.fixture, { rounds: 6 });
-
-      expect(c.gridData()!.map((i: any) => i.id)).toEqual(['p/1', 'p/3', 'p/2', 'p/4']);
-
-      streamSubject.next({ type: 'patch', updated: [{ id: 'p/2', values: { Last: 'Zed' } }] });
-      await settle(harness.fixture, { rounds: 6 });
-
-      expect(c.gridData()!.map((i: any) => i.id)).toEqual(['p/2', 'p/1', 'p/3', 'p/4']);
-    });
-
-    async function sortedIds(
-      columns: { name: string; dataType: string }[],
-      data: { id: string; values: { key: string; value: unknown }[] }[],
-      sortColumns: { property: string; direction: 'ascending' | 'descending' }[],
-    ): Promise<string[]> {
-      const { c, harness, streamSubject } = await live();
-      streamSubject.next({ type: 'snapshot', columns: columns.map((col, i) => ({ ...col, order: i + 1 })), data });
-      await settle(harness.fixture, { rounds: 6 });
-
-      c.grid().settings.set(new DatatableSettings({
-        perPage: { values: [50], selected: 50 },
-        page: { values: [1], selected: 1 },
-        sortColumns,
-      }));
-      await settle(harness.fixture, { rounds: 6 });
-
-      return c.gridData()!.map((i: any) => i.id);
-    }
-
-    /**
-     * Streamed dates are the server's raw ISO strings, each in its own offset and with trailing
-     * fraction zeros trimmed. As text, 09:00-05:00 (14:00Z) sorts before 15:00+00:00, and the ".5"
-     * variant after both — neither is the instant order (PRD F4).
-     */
-    it('sorts a datetime column by instant, not by its text', async () => {
-      const rows = [
-        { id: 'c/late', values: [{ key: 'At', value: '2027-03-01T15:00:00+00:00' }] },       // 15:00Z
-        { id: 'c/mid', values: [{ key: 'At', value: '2027-03-01T09:00:00.5-05:00' }] },      // 14:00:00.5Z
-        { id: 'c/early', values: [{ key: 'At', value: '2027-03-02T01:00:00+12:00' }] },      // 13:00Z
-        { id: 'c/none', values: [] },
-      ];
-
-      const ascending = await sortedIds([{ name: 'At', dataType: 'datetime' }], rows, [{ property: 'At', direction: 'ascending' }]);
-      expect(ascending).toEqual(['c/none', 'c/early', 'c/mid', 'c/late']);
-
-      TestBed.resetTestingModule();
-      const descending = await sortedIds([{ name: 'At', dataType: 'datetime' }], rows, [{ property: 'At', direction: 'descending' }]);
-      expect(descending).toEqual(['c/late', 'c/mid', 'c/early', 'c/none']);
-    });
-
-    it('sorts a number column numerically', async () => {
-      const ids = await sortedIds(
-        [{ name: 'Km', dataType: 'number' }],
-        [
-          { id: 'c/10', values: [{ key: 'Km', value: 10 }] },
-          { id: 'c/9', values: [{ key: 'Km', value: 9 }] },
-          { id: 'c/100', values: [{ key: 'Km', value: 100 }] },
-        ],
-        [{ property: 'Km', direction: 'ascending' }]);
-
-      expect(ids).toEqual(['c/9', 'c/10', 'c/100']);
-    });
-
-    it('breaks a tie on the first column by the instant of a date in the second', async () => {
-      const ids = await sortedIds(
-        [{ name: 'Model', dataType: 'string' }, { name: 'At', dataType: 'datetime' }],
-        [
-          // Text order is the reverse of instant order here: "…03-02T01:00" is the larger string.
-          { id: 'x/13z', values: [{ key: 'Model', value: 'X' }, { key: 'At', value: '2027-03-02T01:00:00+12:00' }] },
-          { id: 'y/only', values: [{ key: 'Model', value: 'Y' }, { key: 'At', value: '2026-12-31T23:59:00-08:00' }] },
-          { id: 'x/14z', values: [{ key: 'Model', value: 'X' }, { key: 'At', value: '2027-03-01T09:00:00-05:00' }] },
-        ],
-        [{ property: 'Model', direction: 'ascending' }, { property: 'At', direction: 'descending' }]);
-
-      expect(ids).toEqual(['x/14z', 'x/13z', 'y/only']);
-    });
-
-    it('hands the grid null for a non-streaming query, so it fetches for itself', async () => {
-      const { harness, service } = await setup();
+    it('a query that is not live is fetched over http and shows no LIVE badge', async () => {
+      const { harness, service, live } = await setup();
       const c = await navigate(harness, '/query/q-all');
 
-      expect(c.gridData()).toBeNull();
+      expect(c.isLive()).toBe(false);
+      expect(harness.fixture.nativeElement.querySelector('.spark-live-badge')).toBeNull();
       expect(service.executeQuery).toHaveBeenCalled();
+      expect(live.watchQuery).not.toHaveBeenCalled();
+    });
+
+    it('drops LIVE when the subscription ends with an error, and shows the grid\'s message', async () => {
+      const { harness, liveEvents } = await setup({ getQuery: vi.fn().mockResolvedValue(liveQuery) });
+      const c = await navigate(harness, '/query/q-live');
+
+      liveEvents.next({ type: 'error', code: 'unavailable', message: 'gone' });
+      await settle(harness.fixture, { rounds: 6 });
+
+      expect(c.isLive()).toBe(false);
+      expect(c.gridError()).toBe('spark.query.unavailable');
     });
   });
 

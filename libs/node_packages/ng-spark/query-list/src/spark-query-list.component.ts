@@ -1,6 +1,5 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal, viewChild, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, viewChild, TemplateRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subscription } from 'rxjs';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -10,19 +9,15 @@ import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@min
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
-import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkQueryGridComponent, SparkQueryToolbarAction, SparkSearchBoxComponent, sparkActionClass } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
-  StreamingMessage,
-  QueryColumn,
   QueryColumnFilter,
   QueryResultItem,
   SparkDeletedFilter,
-  isDateDataType,
-  parseWireDate,
   type SparkSelectionModeSetting,
 } from '@mintplayer/ng-spark/models';
 import { NgComponentOutlet } from '@angular/common';
@@ -42,9 +37,11 @@ import {
  *    routes — `query/:queryId`, and `po/:type`, which resolves an entity type to a query. That
  *    second one is type-to-query resolution, not query rendering, and is why this component still
  *    exists rather than the router pointing at the grid.
- *  - **Streaming.** The websocket lives here so it stays out of every PO detail page's bundle;
- *    the snapshot is filtered and sorted client-side and handed to the grid as `[data]`.
- *  - The action bar, the caption, the LIVE badge, the search box and the New button.
+ *  - The action bar, the caption, the LIVE badge (the grid's `isLive()`), the search box and the
+ *    New button.
+ *
+ * Live updates are the grid's (X4): a live query is followed by `spark-query-grid` itself, with
+ * server-side paging, sort and search, so every embedded grid follows it too — not only this page.
  *
  * The grid itself — columns, cells, paging, the row link, selection, custom-action execution —
  * is the shared component. This page previously wrote out `<bs-datatable>` twice, once per
@@ -64,8 +61,6 @@ export class SparkQueryListComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
-  private readonly streamingService = inject(SparkStreamingService);
-  private readonly destroyRef = inject(DestroyRef);
   protected readonly lang = inject(SparkLanguageService);
 
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -109,6 +104,8 @@ export class SparkQueryListComponent {
   protected readonly resultCount = computed(() => this.grid()?.resultCount() ?? null);
   protected readonly isVirtualScrolling = computed(() => this.grid()?.isVirtualScrolling() ?? false);
   protected readonly gridError = computed(() => this.grid()?.errorMessage() ?? null);
+  /** Whether the grid follows the query over `/spark/live` right now: the LIVE badge. */
+  protected readonly isLive = computed(() => this.grid()?.isLive() ?? false);
   protected readonly permissions = computed(() => this.grid()?.permissions() ?? null);
 
   /** Add-on buttons for the action bar (#460, `SPARK_QUERY_LIST_ACTIONS`), e.g. the Deleted toggle. */
@@ -193,24 +190,6 @@ export class SparkQueryListComponent {
     return this.grid()?.isActionEnabled(action) ?? false;
   }
 
-  // --- streaming ---------------------------------------------------------------
-
-  isStreaming = signal(false);
-  private streamingSub: Subscription | null = null;
-  /** Columns as sent with the stream's snapshot; empty until it arrives. */
-  protected readonly streamColumns = signal<QueryColumn[]>([]);
-  private readonly allItems = signal<QueryResultItem[]>([]);
-  private readonly streamItems = signal<QueryResultItem[]>([]);
-
-  /**
-   * Rows handed to the grid, or `null` to let it fetch for itself.
-   *
-   * Null for a normal query — an empty array would read as "here are no rows" and suppress the
-   * fetch entirely.
-   */
-  protected readonly gridData = computed(() =>
-    this.query()?.isStreamingQuery ? this.streamItems() : null);
-
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
       // The handler is async and this is a subscribe, so a rejection lands nowhere: the metadata
@@ -225,29 +204,6 @@ export class SparkQueryListComponent {
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe(query => {
       this.deletedMode.set(parseSparkDeletedParam(query.get('deleted')) ?? 'exclude');
       this.applyUrlScope(query);
-    });
-
-    this.destroyRef.onDestroy(() => this.disconnectStreaming());
-
-    // Connect the socket once the grid has resolved a streaming query, and disconnect whenever it
-    // resolves anything else. The grid knows not to fetch for a streaming query, so there is no
-    // window in which both transports are live.
-    effect(() => {
-      const q = this.query();
-      if (q?.isStreamingQuery) {
-        this.connectStreaming(q.id);
-      } else {
-        this.disconnectStreaming();
-      }
-    });
-
-    // Client-side filter and sort for the streaming snapshot. The server never sees these: there
-    // is no request to attach them to.
-    effect(() => {
-      this.searchTerm();
-      this.grid()?.settings();
-      this.allItems();
-      if (this.isStreaming()) this.applyFilter();
     });
   }
 
@@ -315,10 +271,6 @@ export class SparkQueryListComponent {
   private async onParamsChange(params: ParamMap): Promise<void> {
     this.errorMessage.set(null);
     this.queryId.set(null);
-    this.allItems.set([]);
-    this.streamItems.set([]);
-    this.streamColumns.set([]);
-    this.disconnectStreaming();
 
     const queryId = params.get('queryId');
     const typeParam = params.get('type');
@@ -378,114 +330,4 @@ export class SparkQueryListComponent {
   protected clearSearch(): void {
     this.searchTerm.set('');
   }
-
-  private connectStreaming(queryId: string): void {
-    if (this.streamingSub) return;
-    this.isStreaming.set(true);
-
-    this.streamingSub = this.streamingService.connectToStreamingQuery(queryId).subscribe({
-      next: (message) => this.handleStreamingMessage(message),
-      error: (err) => {
-        this.errorMessage.set(err?.message || 'Streaming connection failed');
-        this.isStreaming.set(false);
-      },
-      complete: () => this.isStreaming.set(false),
-    });
-  }
-
-  private disconnectStreaming(): void {
-    if (this.streamingSub) {
-      this.streamingSub.unsubscribe();
-      this.streamingSub = null;
-    }
-    this.isStreaming.set(false);
-  }
-
-  private handleStreamingMessage(message: StreamingMessage): void {
-    switch (message.type) {
-      case 'snapshot':
-        this.errorMessage.set(null);
-        // Columns come with the snapshot and never change for the life of the stream, so they are
-        // stored once and handed to the grid alongside the rows — a projection cannot describe
-        // itself, and the grid has no entity-type metadata to fall back on any more.
-        this.streamColumns.set(message.columns);
-        this.allItems.set(message.data);
-        break;
-
-      case 'patch':
-        if (message.updated.length > 0) {
-          this.allItems.update(items => items.map(item => {
-            const patch = message.updated.find(u => u.id === item.id);
-            if (!patch) return item;
-            return {
-              ...item,
-              values: item.values.map(v =>
-                v.key in patch.values ? { ...v, value: patch.values[v.key] } : v),
-            };
-          }));
-        }
-        break;
-
-      case 'error':
-        this.errorMessage.set(message.message);
-        break;
-    }
-  }
-
-  private applyFilter(): void {
-    let items = this.allItems();
-
-    const term = this.searchTerm().toLowerCase();
-    if (term) {
-      items = items.filter(item =>
-        item.values.some(v => String(v.value ?? '').toLowerCase().includes(term)));
-    }
-
-    // The datatable in `[data]` mode also sorts on header clicks, but the sort must survive a
-    // patch: re-deriving from `allItems` without re-applying it would silently reorder the grid
-    // under the user on every update.
-    const sortCols = this.grid()?.settings().sortColumns ?? [];
-    if (sortCols.length > 0) {
-      const dataTypes = new Map(this.streamColumns().map(c => [c.name, c.dataType]));
-      items = [...items].sort((a, b) => {
-        for (const col of sortCols) {
-          const aVal = a.values.find(v => v.key === col.property)?.value;
-          const bVal = b.values.find(v => v.key === col.property)?.value;
-          const cmp = compareStreamValues(aVal, bVal, dataTypes.get(col.property));
-          if (cmp !== 0) return col.direction === 'descending' ? -cmp : cmp;
-        }
-        return 0;
-      });
-    }
-
-    this.streamItems.set(items);
-  }
-}
-
-/**
- * Orders two streamed cell values the way the server orders the same column.
- *
- * The values are what the wire carries: a date is the raw ISO string WITH its own offset and with
- * trailing fraction zeros trimmed (`…T09:00:00-05:00`, `…T09:00:00.5-05:00`), a number is a number.
- * Comparing them as text sorted dates by wall clock and `10` before `9`; a date compares by instant
- * and a number numerically (docs/datetimeoffset_query_sort_filter_PRD.md, F4).
- *
- * A missing value sorts first ascending, as the empty string always did.
- */
-function compareStreamValues(a: unknown, b: unknown, dataType: string | undefined): number {
-  const aMissing = a === null || a === undefined || a === '';
-  const bMissing = b === null || b === undefined || b === '';
-  if (aMissing || bMissing) return aMissing === bMissing ? 0 : aMissing ? -1 : 1;
-
-  if (isDateDataType(dataType)) {
-    const aDate = parseWireDate(a);
-    const bDate = parseWireDate(b);
-    if (aDate && bDate) return aDate.getTime() - bDate.getTime();
-  } else if (dataType === 'number' || dataType === 'decimal') {
-    const aNumber = Number(a);
-    const bNumber = Number(b);
-    if (!isNaN(aNumber) && !isNaN(bNumber)) return aNumber - bNumber;
-  }
-
-  return String(a).localeCompare(String(b));
 }
