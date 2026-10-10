@@ -26,6 +26,9 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
     /// <summary>A server that answers more than half of at least this many requests with 5xx or nothing is left alone.</summary>
     private const int ErrorRateMinimum = 10;
 
+    /// <summary>How often one URL is asked again after a 429/503 with <c>Retry-After</c>; then its answer is recorded as it is.</summary>
+    private const int MaxRetriesPerUrl = 2;
+
     /// <summary>A <c>Retry-After</c> longer than this ends the crawl instead of waiting.</summary>
     private static readonly TimeSpan LongestBackOff = TimeSpan.FromMinutes(5);
 
@@ -105,12 +108,14 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
                 using (await pacer.WaitAsync(cancellationToken))
                     fetch = await fetcher.FetchAsync(new Uri(entry.Url), PageFetcher.MaxPageBytes, cancellationToken);
 
-                if (fetch.StatusCode is 429 or 503 && fetch.RetryAfter is { } wait)
+                // Back off and ask again later, but not for ever: a URL that keeps answering 429 would otherwise hold
+                // the crawl until its wall time.
+                if (fetch.StatusCode is 429 or 503 && fetch.RetryAfter is { } wait && entry.Retries < MaxRetriesPerUrl)
                 {
                     lock (gate)
                     {
                         backOff = wait;
-                        requeue.Insert(0, entry);
+                        requeue.Insert(0, entry with { Retries = entry.Retries + 1 });
                     }
                     pacer.Defer(wait);
                     continue;

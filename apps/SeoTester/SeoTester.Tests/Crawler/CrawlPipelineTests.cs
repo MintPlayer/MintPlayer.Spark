@@ -196,6 +196,26 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
     }
 
     [Fact]
+    public async Task A_retry_after_is_waited_for_but_a_url_that_keeps_refusing_does_not_hold_the_crawl()
+    {
+        var hostName = FakeSite.NewHost();
+        var origin = "https://" + hostName;
+        host.Web.Html(origin + "/", FakeSite.Page("Busy home", "/busy", "/fine"));
+        host.Web.Pages[origin + "/busy"] = new FakeResponse(HttpStatusCode.TooManyRequests, "slow down", Headers: new Dictionary<string, string> { ["Retry-After"] = "1" });
+        host.Web.Html(origin + "/fine", FakeSite.Page("Fine page"));
+        var site = await SeedSiteAsync(host, Acme, hostName: hostName);
+
+        var run = await FakeSite.FinishedAsync(host.Database, await StartAsync(site));
+
+        run.Status.Should().Be(AuditRunStatus.Completed, run.Error);
+        var busy = host.Web.RequestsTo(hostName).Where(r => r.Url == origin + "/busy").Select(r => r.StartedUtc).Order().ToList();
+        busy.Should().HaveCount(3, "asked once and retried twice, then recorded as it is");
+        busy.Zip(busy.Skip(1), (a, b) => (b - a).TotalMilliseconds).Should().OnlyContain(gap => gap >= 950, "Retry-After: 1 is waited for");
+        using var session = host.Database.OpenAsyncSession();
+        (await session.LoadAsync<PageResult>(PageResult.IdFor(run.Id!, origin + "/busy"))).StatusCode.Should().Be(429);
+    }
+
+    [Fact]
     public async Task A_verified_site_gets_the_intrusive_probes_the_external_link_check_and_a_delta_on_its_next_run()
     {
         var hostName = BuildSite();

@@ -64,7 +64,8 @@ public class CrawlFrontier : IExpiring
 }
 
 /// <param name="Depth">Clicks from the home page; -1 when the URL came from the sitemap only.</param>
-public sealed record FrontierEntry(string Url, int Depth, string? Referrer, bool FromSitemap);
+/// <param name="Retries">How often the server already answered this URL with 429/503 and a Retry-After.</param>
+public sealed record FrontierEntry(string Url, int Depth, string? Referrer, bool FromSitemap, int Retries = 0);
 
 /// <summary>A <see cref="CheckFinding"/> as stored on the frontier.</summary>
 public sealed record StoredFinding(string CheckId, string Status, string? Detail, string? Url = null)
