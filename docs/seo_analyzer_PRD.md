@@ -484,7 +484,10 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   Options: (a) as built; (b) store those four values on `PageResult` (expires with it, 7 days) and draw the real card
   with its image (fetched by the viewer's browser from the audited site). **Recommendation: (b)** if the owner wants the
   card to be exact; (a) keeps the page free of third-party requests. Proceeding with (a) until answered.~~
-- **Q-M11e (from the M11 follow-up): `CrawlResumeTests` failed once in a full SeoTester.Tests run.** Its host restart
+- ~~**Q-M11e (from the M11 follow-up): `CrawlResumeTests` failed once in a full SeoTester.Tests run.**~~ **Closed by
+  D52** (§12 "Q-M11e"): option (c). Cause: every test host is stopped twice at once (the factory and the app's own
+  `app.Run()`), and Messaging ran a teardown per call, so one call's drain logged into the host the other had already
+  disposed. Fixed in Messaging; the EventLog provider is also filtered out of every test host. ~~Its host restart
   (`SeoTesterHostFixture.RestartHostAsync` → `WebApplicationFactory.DisposeAsync`) stops Messaging, whose `DrainAsync`
   logs its expected "did not drain" warning (the test leaves a page hanging on purpose); the Windows EventLog logger
   provider threw `ObjectDisposedException` on that write, failing the test and its collection cleanup. Passed alone and
@@ -492,7 +495,7 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   disposed `EventLog` is a real ordering defect somewhere in host disposal. Options: (a) locate it now (time the
   disposal order, see who disposes the provider first); (b) remove the EventLog provider from the test hosts' logging
   (`ConfigureLogging(l => l.ClearProviders())` or keep console only), which test hosts do not need; (c) both.
-  **Recommendation: (c)**: (b) takes the Windows-only provider out of every test host, (a) still says why it was disposed.
+  **Recommendation: (c)**: (b) takes the Windows-only provider out of every test host, (a) still says why it was disposed.~~
 - ~~**Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).~~ **Reviewed in M11** (§12 "M11"): the colours and the gauge are kept; the grade badge was unstyled and is fixed (ng-bootstrap's `bs-badge`).
 - ~~**Q-M12a (from M12): SeoTester has no privacy policy or terms of service.**~~ **Closed by D47** (§12 Round 13): option (a), and the owner asked for the texts to be written: `/privacy` and `/terms` are built. ~~X's OAuth 2.0 app settings require a  privacy policy URL and a terms URL before "Request email from users" can be switched on, and Google's consent screen  asks for a privacy policy link to leave testing mode; the app also processes personal data (accounts, addresses,  audit logs for a year, D37). Nothing in the PRD names these pages. Options: (a) the owner writes the texts (en + nl)  and the app serves them server-rendered at `/privacy` and `/terms`, like `/bot`; (b) link to a MintPlayer-wide policy  elsewhere; (c) leave X without "request email" (its users then confirm an address by mail). **Recommendation: (a)**:  the texts are the owner's (legal), the pages are an hour's work once they exist. Proceeding without them: the runbook  says where the URLs go.~~
 - ~~**Q-M12b (from M12): SeoTester shares CodeCoverage's RavenDB server and mail relay.**~~ **Closed by D48** (§12 Round 13): option (b), a separate shared network `mintplayer-backend`. ~~§1 says "joins the existing  RavenDB network". Built: the app joins `code-coverage_coverage-internal` as an external network (database `SeoTester` on  `coverage-raven`, mail through `coverage-smtp`, which then needs `seotester.mintplayer.com` in its allowed sender  domains and a DKIM key, deploy.md §3.2). Consequences: SeoTester starts only when CodeCoverage's stack is up (the deploy  checks), and CodeCoverage's `docker compose down` meets a network still in use (Compose reports it and reuses it on  `up`; to confirm at the first CodeCoverage deploy after SeoTester's, deploy.md §5). Options: (a) as built; (b) a  network both stacks declare `external` (created once by hand), which changes CodeCoverage's compose file; (c) a  RavenDB server and relay of SeoTester's own (a second licence activation, DKIM, PTR and memory on the same VPS).  **Recommendation: (a)**, and (b) if the CodeCoverage deploy check shows a failure.~~
@@ -2111,4 +2114,59 @@ SeoTester SPA 28/28. In the first full SeoTester run `CrawlResumeTests` failed o
 Windows EventLog provider, which threw `ObjectDisposedException`); it passed alone and in the second full run, and no
 changed file is on that path. Recorded as found, cause not yet located (Q-M11e).
 
-**Open (§11):** Q-M11e.
+~~**Open (§11):** Q-M11e.~~ Located and fixed: §12 "Q-M11e" below (D52).
+
+### Q-M11e (2026-10-10): two stops of one host, and a drain per stop
+
+- **D52 (Q-M11e): `MessageSubscriptionManager.StopAsync` runs one teardown however often it is called, and no
+  pump outlives it; test hosts never call the EventLog provider.** *Evidence below.* Option (c) of Q-M11e.
+
+**Cause, with evidence.** A `WebApplicationFactory` host is stopped **twice, concurrently**: the factory's
+`DisposeAsync` calls `Host.StopAsync`, which raises ApplicationStopping; the app's own `app.Run()` (Program.cs line
+181; the factory starts the host through the real entry point) wakes on it in `WaitForShutdownAsync` and calls
+`Host.StopAsync` too. `RunAsync`'s `finally` then disposes the host, logger providers included, as soon as **its**
+stop returns (decompiled `HostingAbstractionsHostExtensions.RunAsync`, .NET 11 rc.1; `Host.StopAsync` awaits every
+service and has no guard against a second call). Shown with temporary ordering logs in one `CrawlResumeTests` run: the
+same `MessageSubscriptionManager` instance entered `StopAsync` twice, 0.18 ms apart (20:29:54.84258 and .84276), one
+stack from `WaitForShutdownAsync`, the other from the factory's `Host.StopAsync`; each ran its own
+`router.DrainAsync(ClaimTtl)` on its own 4 s timer, and both logged "did not drain" (20:29:58.885302 and .885324).
+Whichever chain finished first let `RunAsync` dispose the host; when it was the app's, the factory's drain wrote its
+warning into the disposed EventLog (Warning is the EventLog provider's default level, so it is the one provider such
+a warning reaches) and `ObjectDisposedException` came out of the factory's stop: two timers firing microseconds apart,
+so it failed only sometimes. Every log of the unpatched run shows the doubled "MessageSubscriptionManager stopping".
+A second, smaller leak on the same path: `MessageQueueRouter.DisposeAsync` cancelled the pumps and did not wait for
+them, so a cancelled handler's errors ("Error in handler PageBatchRecipient", "Pump for queue … failed") were logged
+after the stop had returned.
+
+**Fix** (`libs/messaging`):
+- `MessageSubscriptionManager.StopAsync` is single-flight: the first call runs the teardown, every other call awaits
+  that same task, and none gives up on its own token. The teardown is bounded: the drain by `ClaimTtl`, the pumps
+  below, the lease release by `MessagingLease.ReleaseTimeout`. `StopMessagingAsync` is single-flight the same way, so
+  a lease-lost teardown in `ExecuteAsync` and a host stop join rather than drain twice.
+- `MessageQueueRouter.DisposeAsync` waits for the pumps it cancels, bounded by `PumpStopTimeout` (5 s), and warns
+  if a handler ignores its token past that.
+
+**Defense in depth.** `tests/Shared/NoEventLog.cs`, compiled into every `*.Tests` project by
+`Directory.Build.targets` beside `NoSystemProxy.cs`, sets `Logging__EventLog__LogLevel__Default=None` (unless set)
+in a module initializer. Every default host reads environment variables into its configuration, so no test host,
+nor an app an E2E test starts, calls the EventLog provider. No test-host helper is shared by all apps, so this is the
+central place.
+
+**Tests.** Red then green:
+- `MessageSubscriptionManagerLifecycleTests.A_second_concurrent_stop_does_no_work_after_the_first_one_returns`: a
+  held handler that takes 0.5 s to unwind when cancelled, `ClaimTtl` 1 s, two `StopAsync` calls 300 ms apart, and a log
+  sink that throws `ObjectDisposedException` once the first stop returns (as `RunAsync` disposes the host). Red before
+  the fix with the production error: the second stop threw "Cannot access a disposed object. Object name: 'EventLog'"
+  out of its drain. A first draft without the unwind delay was red on the other half: the cancelled pump's three
+  errors were logged after the stop returned. Green after.
+- `NoEventLogInTestHostsTests`: a default `WebApplication` whose EventLog provider is disposed logs a warning without
+  throwing. Red without `NoEventLog.cs` ("Object name: 'EventLogInternal'"), green with it.
+
+Green at the end, built from HEAD plus only these changes in a separate worktree (the shared working tree held
+another, unfinished change that did not compile): `CrawlResumeTests` 10/10, each restart now logging "stopping" once
+per host and "did not drain" once; MintPlayer.Spark.Tests' Messaging namespace and the new EventLog test 178/178;
+SeoTester.Tests 190/190 (2 m 54 s).
+
+**Found, not fixed here:** after a lease-lost teardown the router keeps its lanes, whose channels `DrainAsync`
+completed. If the host takes the lease back, `RouteAsync` finds the old lane and writes to a completed channel
+(`ChannelClosedException`). This comes from reading the code, not from a run.

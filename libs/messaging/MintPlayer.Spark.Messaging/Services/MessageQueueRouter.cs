@@ -171,8 +171,18 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The failure bound on waiting for cancelled pumps to unwind in <see cref="DisposeAsync"/>. A cancelled
+    /// handler normally ends in milliseconds (its HTTP request or database call is cancelled, the processor records
+    /// the outcome); one that ignores its token is abandoned after this, with a warning.
+    /// </summary>
+    internal static readonly TimeSpan PumpStopTimeout = TimeSpan.FromSeconds(5);
+
     public async ValueTask DisposeAsync()
     {
+        // The pumps, taken before ownership: a concurrent disposer clears the lanes.
+        var pumps = lanes.Values.Where(l => l.IsValueCreated).Select(l => l.Value.PumpTask).OfType<Task>().ToArray();
+
         // ⚠️ Take ownership atomically. Disposal happens twice by design (MessageSubscriptionManager.
         // StopAsync and the container that owns this singleton), and a check-then-act across the
         // await let both callers through, so the second dereferenced a field the first had cleared.
@@ -180,6 +190,21 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         if (owned is not null)
         {
             await owned.CancelAsync();
+
+            // Wait for the cancelled pumps to unwind. Without this they ran on after StopAsync returned and
+            // logged their handlers' cancellations into a host that had been disposed meanwhile (Q-M11e,
+            // docs/seo_analyzer_PRD.md §12): no pump may outlive the stop that cancelled it.
+            if (pumps.Length > 0)
+            {
+                await Task.WhenAny(Task.WhenAll(pumps), Task.Delay(PumpStopTimeout));
+                if (!pumps.All(p => p.IsCompleted))
+                {
+                    logger.LogWarning(
+                        "Message pumps did not stop within {Timeout} of being cancelled; a handler is ignoring its "
+                        + "cancellation token, and its message is reclaimed after SparkMessagingOptions.ClaimTtl", PumpStopTimeout);
+                }
+            }
+
             owned.Dispose();
         }
 

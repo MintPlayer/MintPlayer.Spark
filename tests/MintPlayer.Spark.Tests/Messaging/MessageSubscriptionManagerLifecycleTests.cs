@@ -288,6 +288,57 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         lease!.NodeId.Should().Be(MessageClaims.NodeId);
     }
 
+    /// <summary>
+    /// Q-M11e (docs/seo_analyzer_PRD.md §12). A <c>WebApplicationFactory</c> host is stopped twice at once: the
+    /// factory's <c>DisposeAsync</c> calls <c>Host.StopAsync</c>, which raises ApplicationStopping, and the app's own
+    /// <c>app.Run()</c> wakes on it and calls <c>Host.StopAsync</c> too; <c>RunAsync</c>'s <c>finally</c> then
+    /// disposes the host (its logger providers, the Windows EventLog among them) as soon as its own stop returns. Each
+    /// call ran its own drain on its own <c>ClaimTtl</c> timer, so whichever finished second logged "did not drain"
+    /// into a disposed EventLog and threw <c>ObjectDisposedException</c> out of the other stop. The pumps cancelled at
+    /// the end of a stop also logged after it had returned. Here the second stop starts a little later, so the order
+    /// is fixed, and the sink is "disposed" the moment the first stop returns, exactly as <c>RunAsync</c> does.
+    /// </summary>
+    [Fact]
+    public async Task A_second_concurrent_stop_does_no_work_after_the_first_one_returns()
+    {
+        var gate = new HoldGate();
+        var sink = new DisposableLogSink();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(sink));
+        services.AddSingleton(Store);
+        services.AddSingleton(gate);
+        services.AddSparkMessaging(o =>
+        {
+            // The drain waits ClaimTtl; renewals keep the held message's claim alive meanwhile.
+            o.ClaimTtl = TimeSpan.FromSeconds(1);
+            o.ClaimRenewInterval = TimeSpan.FromMilliseconds(200);
+        });
+        services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestHold>, TestCancellableHoldRecipient>();
+        var provider = services.BuildServiceProvider();
+        await using var _ = provider;
+        var hosted = provider.GetServices<IHostedService>().OfType<MessageSubscriptionManager>().Single();
+
+        await hosted.StartAsync(CancellationToken.None);
+        await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
+        using (var scope = provider.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>().BroadcastAsync(new TestHold());
+        // A failure bound, not a wait (see A_renewal_falling_due_during_the_drain_does_not_restart_messaging).
+        await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(90));
+
+        var factoryStop = hosted.StopAsync(CancellationToken.None);
+        await Task.Delay(300);
+        var runStop = hosted.StopAsync(CancellationToken.None);
+
+        var first = await Task.WhenAny(factoryStop, runStop);
+        sink.Dispose(); // RunAsync's finally: the host and its logger providers go the moment its own stop returns.
+        await first;
+
+        var second = first == factoryStop ? runStop : factoryStop;
+        var act = () => second.WaitAsync(TimeSpan.FromSeconds(30));
+        await act.Should().NotThrowAsync("the second stop must not log into a host its twin already disposed");
+        sink.LateWrites.Should().BeEmpty("no messaging work may outlive a StopAsync call");
+    }
+
     private async Task<MessagingLease?> ReadLeaseAsync()
         => (await Store.Operations.SendAsync(
             new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader")))?.Value;
@@ -350,6 +401,57 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         {
             gate.Started.TrySetResult();
             await gate.Release.Task;
+        }
+    }
+
+    /// <summary>
+    /// Holds the handler until the stop cancels it, so the drain times out; then takes half a second to unwind, as a
+    /// cancelled HTTP request or database write does. The second stop's drain falls inside that half second.
+    /// </summary>
+    private sealed class TestCancellableHoldRecipient(HoldGate gate) : MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestHold>
+    {
+        public async Task HandleAsync(TestHold message, CancellationToken cancellationToken)
+        {
+            gate.Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), CancellationToken.None);
+                throw;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Behaves like the Windows EventLog provider after its host is disposed: a write throws
+    /// <see cref="ObjectDisposedException"/>. Late writes are also recorded, because a pump that logs after the
+    /// stop throws on a thread nobody observes.
+    /// </summary>
+    private sealed class DisposableLogSink : Microsoft.Extensions.Logging.ILoggerProvider
+    {
+        private volatile bool disposed;
+
+        public System.Collections.Concurrent.ConcurrentQueue<string> LateWrites { get; } = new();
+
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
+
+        /// <summary>Not the container's disposal: the test calls it when the first stop returns.</summary>
+        public void Dispose() => disposed = true;
+
+        private sealed class Logger(DisposableLogSink sink, string category) : Microsoft.Extensions.Logging.ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (!sink.disposed)
+                    return;
+                sink.LateWrites.Enqueue($"{logLevel} {category}: {formatter(state, exception)}");
+                throw new ObjectDisposedException("EventLog");
+            }
         }
     }
 

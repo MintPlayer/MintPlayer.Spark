@@ -226,6 +226,11 @@
 	-->
 	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
 		<Compile Include="$(MSBuildThisFileDirectory)tests\Shared\NoSystemProxy.cs" Link="_Shared\NoSystemProxy.cs" />
+		<!--
+		  No test host writes to the Windows EventLog: it throws ObjectDisposedException on a write after its
+		  host is disposed (Q-M11e, docs/seo_analyzer_PRD.md §12). Defense in depth; details in the file.
+		-->
+		<Compile Include="$(MSBuildThisFileDirectory)tests\Shared\NoEventLog.cs" Link="_Shared\NoEventLog.cs" />
 	</ItemGroup>
 	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
 		<PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0">
