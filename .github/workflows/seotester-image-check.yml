@@ -30,6 +30,7 @@ on:
       - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
       - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
       - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
       - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
       - 'libs/webpush/MintPlayer.Spark.WebPush/**'

@@ -17,6 +17,7 @@ on:
       - 'apps/CodeCoverage/**'
       - '!apps/CodeCoverage/action/**'
       - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'

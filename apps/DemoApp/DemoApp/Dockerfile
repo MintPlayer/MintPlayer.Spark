@@ -28,6 +28,7 @@ WORKDIR /src
 COPY ["apps/DemoApp/DemoApp/DemoApp.csproj", "apps/DemoApp/DemoApp/"]
 COPY ["apps/DemoApp/DemoApp.Library/DemoApp.Library.csproj", "apps/DemoApp/DemoApp.Library/"]
 COPY ["libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj", "libs/spark/MintPlayer.Spark/"]
+COPY ["libs/spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj", "libs/spark/MintPlayer.Spark.SafeHttp/"]
 COPY ["libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj", "libs/spark/MintPlayer.Spark.Abstractions/"]
 COPY ["libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.csproj", "libs/attributes/MintPlayer.Spark.Attributes/"]
 COPY ["libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj", "libs/controllers/MintPlayer.Spark.Controllers/"]

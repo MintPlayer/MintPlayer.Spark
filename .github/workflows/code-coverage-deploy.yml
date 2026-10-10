@@ -25,6 +25,7 @@ on:
       # Spark dependency, add it here or a change to that library will not trigger a deploy. Add it
       # to code-coverage-image-check.yml's filter and the Dockerfile's COPY list as well.
       - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'

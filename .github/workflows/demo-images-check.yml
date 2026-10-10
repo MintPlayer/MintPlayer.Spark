@@ -22,6 +22,7 @@ on:
     paths:
       - 'apps/DemoApp/**'
       - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/controllers/MintPlayer.Spark.Controllers/**'

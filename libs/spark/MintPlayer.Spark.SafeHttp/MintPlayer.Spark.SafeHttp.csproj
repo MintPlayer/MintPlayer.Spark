@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.SafeHttp</PackageId>
+		<Version>11.0.0-preview.104</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>SSRF-safe named HttpClients for URLs users supply: an address allow-list checked at connect time (no DNS rebinding), redirects re-checked per hop, no proxy, no cookies, byte, decompression and time caps; plus raw sockets under the same rules. No RavenDB, no Spark runtime: usable from any ASP.NET Core or generic host.</Description>
+		<PackageTags>ssrf;httpclient;security;redirects;dns-rebinding</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<!--
+	  Split out of MintPlayer.Spark (docs/seo_analyzer_PRD.md D54): SeoTester's fetcher container runs this client with
+	  no database client at all, so the code that talks to untrusted websites cannot reach RavenDB. MintPlayer.Spark
+	  references this package, keeps the namespace MintPlayer.Spark.Http and spark.AddSafeHttp(): nothing changes for
+	  its callers. Only IHttpClientFactory, options and configuration are needed, which the shared framework carries.
+	-->
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Using Include="Microsoft.Extensions.Configuration" />
+		<Using Include="Microsoft.Extensions.DependencyInjection" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<!-- Allows NSubstitute (Castle DynamicProxy) to mock internal interfaces -->
+		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+	</ItemGroup>
+
+</Project>

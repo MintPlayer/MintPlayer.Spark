@@ -131,6 +131,7 @@
     <Project Path="libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj" />
   </Folder>
   <Folder Name="/libs/subscription_worker/">
+    <Project Path="libs/spark/MintPlayer.Spark.SafeHttp/MintPlayer.Spark.SafeHttp.csproj" />
     <Project Path="libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/MintPlayer.Spark.SubscriptionWorker.Abstractions.csproj" />
     <Project Path="libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/MintPlayer.Spark.SubscriptionWorker.csproj" />
   </Folder>
