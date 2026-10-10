@@ -19,6 +19,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- HTML5 parsing for the raw-HTML checks (M9, spike S9): the tree a browser builds, CSS selectors, no script
+		     execution (AngleSharp runs no JavaScript without AngleSharp.Js, which is not referenced). -->
+		<PackageReference Include="AngleSharp" Version="1.7.2" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<!-- The shipped check catalogue (docs/seo_analyzer_PRD.md §3.1, D32): the seed of the CheckDefinition documents. -->
 		<EmbeddedResource Include="Catalogue\checks.json" LogicalName="SeoTester.Catalogue.checks.json" />
 		<InternalsVisibleTo Include="SeoTester.Tests" />
