@@ -1,6 +1,6 @@
 # SeoTester (#268): PRD and plan
 
-Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M10 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
+Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M12 built (M12's deploy pending the owner). Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
 
 §1–§11 are the current spec. §12 is the decision log (D1–D46 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
 
@@ -34,6 +34,7 @@ Research behind this document:
 | M9 ✅ | 2026-10-10 (§12 "M9"): the crawl pipeline: `seo-probe` (robots.txt first and the opt-out, Q-M8e; sitemaps, redirects, TLS incl. the raw TLS 1.0/1.1 hello, well-known files, DNS, RDAP and hstspreload through `LookupCache`), `seo-crawl` (`CrawlFrontier`, page batches, per-host politeness, tier limits, full-crawl ceiling), `seo-aggregate` (scores with the run's snapshot, New/Fixed/Unchanged, notifications), `CancelAudit`; 92 of 110 checks (18 wait for Chromium/PSI, M10); core `SafeHttpTrace` and `ISafeHttpSockets`; spikes S2, S7, S9 measured. Open: Q-M9a, Q-M9b (§11) |
 | M10 ✅ | 2026-10-10 (§12 "M10"): `seo-render` (a sample per tier, one URL template each, in Chromium over Playwright: launched locally or `ConnectAsync` to the container's `server.mjs`; every browser request fetched by the app through the SSRF-safe client, one redirect hop at a time (core `SafeHttpOptions.FollowRedirects`), robots.txt and the tier's connections, analytics hits answered locally; axe-core 4.13.0 bundled; phone and desktop renders), `seo-psi` (PageSpeed Insights with the key in a header, recorded real answers, 429 deferred then "not measured"), `seo-pdf` (the report printed per language, kept 7 days, members-only download), the aggregate waiting for crawl, render and PSI; **110 of 110 checks**; `RunCheckResult.Note` says why a check was not measured; the Chromium container's image and server script for M12; spikes S3 and S5 measured. Open: Q-M10a–Q-M10f (§11) |
 | M11 ✅ | 2026-10-10 (§12 "M11"): the pages, on ng-spark's generic detail page with SeoTester's renderers and panels: landing page, site (gauge, verification with copy buttons, trend), run report (live progress over `/spark/live`, gauge and category bars, every check with New/Fixed/Unchanged, why not measured, how to fix in en/nl with platform snippets; PDF download), page previews and findings, share page, badge (`ShareBadge`, `/seotester/badge.svg`), operator dashboard (`OperatorDashboard`, `/seotester/admin/dashboard`), public catalogue texts; the notification link fixed to `/po/audit-run/{id}`; refusals say when to try again; ng-spark fixes found in the browser (gauge badge, share page, action errors, language header, notification links). Q-M6d reviewed. Open: Q-M11a–Q-M11d (§11) |
+| M12 ✅ code-complete, deploy pending the owner | 2026-10-10 (§12 "M12"): scheduled monitoring (`Site.Monitoring` Off/Weekly/Monthly, the 15-minute sweep `MonitoringSweepCronJob`, queue `seo-monitor`, one run per slot started for the member who set the schedule through `AuditStarter`) and alerts (score drop per site or `SeoTester:Alerts:ScoreDrop`, new critical issue, certificate < 14 d, domain < 30 d; every member, through `ISparkNotifier`); `apps/SeoTester/docker-compose.yml` (app + `seo-chromium` on `seo-browser`, `internal: true`; the app on Traefik's `web` and CodeCoverage's `code-coverage_coverage-internal`), `.env.example`, `GET /health`, workflows `seotester-deploy.yml` / `seotester-image-check.yml`, `tools/verify-seotester-deploy.test.mjs`; runbook `docs/seotester/deploy.md` (VPS setup, credentials, post-deploy checklist for Q-M5a, Q-M6a, Q-M9b, Q-M10b). **The owner deploys** (deploy.md §3, §4). Open: Q-M12a–Q-M12c (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -56,10 +57,10 @@ The app also proves Spark out. Where Spark lacks something, we build it in the f
 SeoTester is a Docker container on Debian on the VPS shared with CodeCoverage. It follows the same model: `apps/CodeCoverage/CodeCoverage/Dockerfile`, `docker-compose.yml`, `docs/code-coverage/hosting.md`, and a deploy workflow like `.github/workflows/code-coverage-deploy.yml` (ghcr → SSH → compose).
 
 - **Compose topology (D3, D6):**
-  - SeoTester joins the existing RavenDB network and a new **`seo-browser`** network.
+  - SeoTester joins the existing RavenDB network and a new **`seo-browser`** network. The RavenDB network is CodeCoverage's `code-coverage_coverage-internal` (its RavenDB server, database `SeoTester`, and its mail relay), joined as an external network (§12 "M12", Q-M12b).
   - A **Chromium container** joins **only** `seo-browser`, so it has no route to RavenDB (unsecured, internal) or postfix.
   - The goal is `internal: true` on `seo-browser` (no egress at all), which works if every browser request is fulfilled by SeoTester (§6); S3 proves it.
-  - Memory limits and `shm_size` are set on Chromium. The compose file sets no resource limits today.
+  - Memory limits and `shm_size` are set on Chromium, and a memory limit on the app (CodeCoverage's compose file sets none). The values are measured at the first deploy (Q-M10b).
 - **TLS probing:** the `aspnet:11.0` images are Debian with OpenSSL 3, which refuses TLS 1.0/1.1, and `SslProtocols.Tls/Tls11` are obsolete. A failed `SslStream` handshake proves nothing, so we use a raw ClientHello probe (S2).
 - **HTTP/3:** needs `libmsquic` (packages.microsoft.com, Debian repo) in the image; otherwise we report h3 from `Alt-Svc` only (S2).
 - **RavenDB on the Community licence** (measured, §12):
@@ -220,10 +221,11 @@ Queues (`[MessageQueue]`; per-queue `HandlerTimeout`, X7):
 | `seo-psi` | `PsiMessage(runId)` | PSI/CrUX on the sample | 1, `MaxPerInterval` within quota |
 | `seo-aggregate` | `AggregateMessage(runId)` | site-level checks (duplicates, orphans, broken links, redirect chains, hreflang return links), scoring with the snapshot, delta vs the previous run, `Site.Latest*`, alerts | 1 |
 | `seo-pdf` | `PdfMessage(runId, culture)` | Chromium prints the report page | 1 |
+| `seo-monitor` (M12) | `MonitoredAuditMessage(siteId, slotUtc)` | starts a monitored site's scheduled audit through `AuditStarter` | 1 |
 
 ~~The stages run independently. Each one sets its flag on the run when it finishes, and the last one enqueues the aggregate with `BroadcastOnceAsync(runId)`.~~ The crawl's last batch starts `seo-render` and `seo-psi` side by side (their sample is taken from the crawled pages, Q-M10c). Each stage adds its flag to `StagesDone` and enqueues the aggregate in the same commit; the aggregate runs only when `crawl`, `render` and `psi` are all there (§12 "M10"). Page work is idempotent: a `PageResult` id is `{runId}/pages/{urlHash}`.
 
-**Monitoring:** a cron sweep every 15 min selects verified sites with `NextRunAt <= now` (when the monitoring setting is on) and calls `BroadcastOnceAsync($"{siteId}:{slot}")`. This is the `ManifestScanScheduler` pattern.
+**Monitoring:** a cron sweep every 15 min selects the sites with `NextMonitoringRunAtUtc <= now` that the monitoring gate admits (verified by default) and calls `BroadcastOnceAsync(MonitoredAuditMessage, $"{siteId}:{slot}")`, then moves the site to its next slot. This is the `ManifestScanScheduler` pattern. The recipient starts the run for the member who set the schedule (`Site.MonitoringBy`); the aggregate alerts the organization's members (F10). Built in M12 (§12 "M12").
 
 ### 4.4 Live updates (X4)
 
@@ -399,8 +401,8 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 - ~~**Q-M4a (from M4): what happens when a user verifies a site that sits in someone's *personal* organization?**~~ **Closed by D42** (§12 Round 11): option (b), personal organizations take members. The question and its options moved to D42.
 - ~~**Q-M4b (from M4): may anyone holding an invitation link accept it, or only the account that owns the invited address?**~~ **Closed by D43** (§12 Round 11): only the account that owns the invited address. The question moved to D43.
 - ~~**Q-S6a (from S6): should the framework own `IExpiring.ExpiresAtUtc` on persistent-object writes?**~~ **Closed by D41** (§12 Round 10): yes, SoftDelete's rule. ~~Today it is an ordinary model attribute, so a user with `Edit/T` can extend or clear a document's expiry unless the app marks it read-only or `[IgnoreProperty]`. The alternative is SoftDelete's rule: an edit or create through the pipeline keeps the stored value (code via `IDatabaseAccess`/raw sessions still sets it). SeoTester's `PageResult` is not user-editable either way.~~
-- **Q-M5a (from M5, spike S8 L5): where is the real-proxy check (nginx/Traefik upgrade and idle timeout for `/spark/live`) run?** It needs a reverse proxy in front of a running Spark host. Not run in M5: Docker Desktop was not running on the build machine and no nginx/Traefik binary is installed, and probing production was not part of this milestone. What is known: production fronts the apps with Traefik (`apps/CodeCoverage/docker-compose.yml:221-233`), which forwards WebSocket upgrades by default; the server sends a `ping` frame after 30 s of silence (measured, `LiveSocketTests.A_quiet_socket_gets_a_ping_at_the_heartbeat`), below nginx's default 60 s `proxy_read_timeout`; the nginx recipe is in `docs/guide-docker-deployment.md`. Options: (a) start Docker locally and run nginx and Traefik in front of a test host; (b) measure on the production VPS with a throwaway container, as L1 was; (c) measure at the M12 deploy of SeoTester, which is the first app with a live type. **Recommendation: (c)**, because it is the real proxy and the real app, and nothing before M11 opens a live socket in production (Fleet and DemoApp are demos).
-- **Q-M6a (from S12): where is delivery to Firefox, Edge and Safari measured?** Chrome 154 was measured (5/5 delivered and decrypted, §12 "Spike S12 and M6"). Edge refused to subscribe under automation (`Registration failed - permission denied`: its WNS channel is not reachable from an automation profile), and no Firefox or Apple device is reachable from the build machine. All three accept `aes128gcm` (RFC 8291) per their documentation, and the library is byte-exact against the RFC vectors. Options: (a) the owner subscribes a desktop Firefox, a desktop Edge and an iPhone with SeoTester installed to the Home Screen and the result is recorded; (b) a scripted run in a non-automation browser profile here; (c) do it at the M12 deploy, on the real origin over HTTPS. **Recommendation: (c)**, with (a)'s devices: iOS needs an installed PWA on a real HTTPS origin anyway, which only exists at M12.
+- **Q-M5a (from M5, spike S8 L5): where is the real-proxy check (nginx/Traefik upgrade and idle timeout for `/spark/live`) run?** It needs a reverse proxy in front of a running Spark host. Not run in M5: Docker Desktop was not running on the build machine and no nginx/Traefik binary is installed, and probing production was not part of this milestone. What is known: production fronts the apps with Traefik (`apps/CodeCoverage/docker-compose.yml:221-233`), which forwards WebSocket upgrades by default; the server sends a `ping` frame after 30 s of silence (measured, `LiveSocketTests.A_quiet_socket_gets_a_ping_at_the_heartbeat`), below nginx's default 60 s `proxy_read_timeout`; the nginx recipe is in `docs/guide-docker-deployment.md`. Options: (a) start Docker locally and run nginx and Traefik in front of a test host; (b) measure on the production VPS with a throwaway container, as L1 was; (c) measure at the M12 deploy of SeoTester, which is the first app with a live type. **Recommendation: (c)**, because it is the real proxy and the real app, and nothing before M11 opens a live socket in production (Fleet and DemoApp are demos). **M12:** the exact commands are in `docs/seotester/deploy.md` §5; the owner runs them at the first deploy and records the result in §12.
+- **Q-M6a (from S12): where is delivery to Firefox, Edge and Safari measured?** Chrome 154 was measured (5/5 delivered and decrypted, §12 "Spike S12 and M6"). Edge refused to subscribe under automation (`Registration failed - permission denied`: its WNS channel is not reachable from an automation profile), and no Firefox or Apple device is reachable from the build machine. All three accept `aes128gcm` (RFC 8291) per their documentation, and the library is byte-exact against the RFC vectors. Options: (a) the owner subscribes a desktop Firefox, a desktop Edge and an iPhone with SeoTester installed to the Home Screen and the result is recorded; (b) a scripted run in a non-automation browser profile here; (c) do it at the M12 deploy, on the real origin over HTTPS. **Recommendation: (c)**, with (a)'s devices: iOS needs an installed PWA on a real HTTPS origin anyway, which only exists at M12. **M12:** the exact commands are in `docs/seotester/deploy.md` §5; the owner runs them at the first deploy and records the result in §12.
 - **Q-M6b (from M6): push subscriptions are documents of their own, not a list on `SparkUser`.** D30 says "stored per device on the SparkUser". Built as `PushSubscriptions/{userId}/{hash}` (read by id prefix), because a list on the user document would put every subscribe on Identity's concurrency stamp (a sign-in racing a subscribe fails one of them) and make Authorization know about push. Options: (a) keep separate documents; (b) move them onto `SparkUser`. **Recommendation: (a).**
 - **Q-M6c (from M6): what a share link shows is declared in code** (`AddShareLinks(o => o.Share<Site>(attributes, queries))`, allow-lists) rather than in the model JSON. Options: (a) keep it in code; (b) a `"share"` block on the persistent object in the model (low-code, but it moves the model hash and the schema, and a model edit could widen a public link). **Recommendation: (a).**
 - **Q-M7a (from M7): a feature gate has three values, not two.** D11 says the owner wants to "enable or disable" monitoring, intrusive probes, deep-crawl limits and sharing, with defaults "verified-only" for the first three and "allowed for unverified sites" for sharing. An on/off switch cannot express both, so each gate is built as `SeoFeatureScope` = `Off` / `VerifiedOnly` / `AllSites` (`SeoTester:Features:*`, defaults as D11). Options: (a) the three-valued gate; (b) a boolean per gate with "verified-only" fixed in code (then "intrusive probes on unverified sites" can never be switched on, which D11's legal note argues for); (c) two booleans per gate (enabled, unverified allowed). **Recommendation: (a)**: one setting per gate, every D11 default expressible, and `AllSites` for probes remains an explicit administrator choice.
@@ -423,7 +425,7 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   "M9"). The platform handshake (certificate, version, ALPN) on the `aspnet:11.0` image's OpenSSL 3 was not run: Docker
   Desktop was not running on the build machine. Options: (a) measure at the M12 deploy, from the real container on the
   VPS; (b) start Docker locally and run the spike in the image now. **Recommendation: (a)**, as Q-M5a: it is the real
-  image on the real network, and nothing before M12 runs the crawler in production.
+  image on the real network, and nothing before M12 runs the crawler in production. **M12:** the exact commands are in `docs/seotester/deploy.md` §5; the owner runs them at the first deploy and records the result in §12.
 - **Q-M10a (from M10): how politely the browser loads a page.** A rendered page asks for its CSS, scripts, fonts and
   images, often 30–100 requests. Built: on the audited host, every browser request holds one of the tier's connections
   (unverified: 1), its **documents** also wait for the tier's interval (1 s), sub-resources do not; other hosts 4 at a
@@ -436,7 +438,7 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   not running on the build machine and was not started. Everything else of S3 was measured here (escape test over a
   launched browser, over `ConnectAsync` to a run-server and to the container's own `server.mjs`; timings). Options:
   (a) measure at the M12 deploy, as Q-M5a and Q-M9b; (b) start Docker locally and measure the image now.
-  **Recommendation: (a)**: the real VPS, network and limits, and nothing renders in production before M12.
+  **Recommendation: (a)**: the real VPS, network and limits, and nothing renders in production before M12. **M12:** the exact commands are in `docs/seotester/deploy.md` §5; the owner runs them at the first deploy and records the result in §12.
 - **Q-M10c (from M10): render and PageSpeed run after the crawl, not beside it.** §4.3 says the stages run
   independently. Built: crawl → (render ∥ PageSpeed) → aggregate. Options: (a) as built; (b) start render and PageSpeed
   after the probe, on a sample taken from the home page's links. **Recommendation: (a)**: the sample is one page per URL
@@ -480,6 +482,29 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   with its image (fetched by the viewer's browser from the audited site). **Recommendation: (b)** if the owner wants the
   card to be exact; (a) keeps the page free of third-party requests. Proceeding with (a) until answered.
 - ~~**Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).~~ **Reviewed in M11** (§12 "M11"): the colours and the gauge are kept; the grade badge was unstyled and is fixed (ng-bootstrap's `bs-badge`).
+- **Q-M12a (from M12): SeoTester has no privacy policy or terms of service.** X's OAuth 2.0 app settings require a
+  privacy policy URL and a terms URL before "Request email from users" can be switched on, and Google's consent screen
+  asks for a privacy policy link to leave testing mode; the app also processes personal data (accounts, addresses,
+  audit logs for a year, D37). Nothing in the PRD names these pages. Options: (a) the owner writes the texts (en + nl)
+  and the app serves them server-rendered at `/privacy` and `/terms`, like `/bot`; (b) link to a MintPlayer-wide policy
+  elsewhere; (c) leave X without "request email" (its users then confirm an address by mail). **Recommendation: (a)**:
+  the texts are the owner's (legal), the pages are an hour's work once they exist. Proceeding without them: the runbook
+  says where the URLs go.
+- **Q-M12b (from M12): SeoTester shares CodeCoverage's RavenDB server and mail relay.** §1 says "joins the existing
+  RavenDB network". Built: the app joins `code-coverage_coverage-internal` as an external network (database `SeoTester` on
+  `coverage-raven`, mail through `coverage-smtp`, which then needs `seotester.mintplayer.com` in its allowed sender
+  domains and a DKIM key, deploy.md §3.2). Consequences: SeoTester starts only when CodeCoverage's stack is up (the deploy
+  checks), and CodeCoverage's `docker compose down` meets a network still in use (Compose reports it and reuses it on
+  `up`; to confirm at the first CodeCoverage deploy after SeoTester's, deploy.md §5). Options: (a) as built; (b) a
+  network both stacks declare `external` (created once by hand), which changes CodeCoverage's compose file; (c) a
+  RavenDB server and relay of SeoTester's own (a second licence activation, DKIM, PTR and memory on the same VPS).
+  **Recommendation: (a)**, and (b) if the CodeCoverage deploy check shows a failure.
+- **Q-M12c (from M12): who receives a monitored site's alerts.** F10 says alerts reach "the user". Built: every member of
+  the site's organization, Viewers included, each through their per-organization preferences (D44: in-app, mail, push
+  per organization); a skipped scheduled run is told to the member who set the schedule (or the Admins when that
+  member left). Options: (a) as built; (b) Admins and Owners only; (c) an opt-in per member and site. **Recommendation:
+  (a)**: a member who reads the site wants to know it broke, and D44's preferences already let anyone turn a channel off
+  for that organization.
 
 
 ---
@@ -1859,3 +1884,101 @@ notification URL): 8 of 23 failed. Green: the full SeoTester.Tests 167/167, ng-s
 pwa, then the keep-the-page change 2), green: services, grid, po-detail, share, score renderers, notifications, pwa.
 
 **Open (§11):** Q-M11a–Q-M11d.
+
+### M12 (2026-10-10): monitoring, alerts, the deploy files and the runbook
+
+Code-complete; **nothing is deployed** (the owner's step: `docs/seotester/deploy.md` §3, §4). Commits `9c2b7782`
+(monitoring and alerts), `9a44e885` (compose, workflows, runbook).
+
+**Scheduled monitoring (F9, D11, D12).**
+- A site's `Monitoring` (Off / Weekly / Monthly) gets two server-owned fields: `NextMonitoringRunAtUtc` (shown on the
+  site) and `MonitoringBy`, the member who set the schedule. `SiteScheduleInterceptor` (beside `SiteSaveInterceptor`,
+  in a file of its own) sets them: switching on, or changing the period, needs the `SeoTester:Features:Monitoring` gate
+  to admit the **stored** verification (a Member cannot post `IsVerified`), makes the writer `MonitoringBy` and puts the
+  first slot one period after the latest run (now if there is none or it has passed; `MonitoringPlan.FirstSlot`); an
+  unchanged schedule keeps both whatever is posted; Off clears them. *Evidence:
+  `Switching_monitoring_on_needs_a_verified_site_and_schedules_the_writer` (refused on an unverified site, 400 with the
+  translated message; posted `MonitoringBy`/`NextMonitoringRunAtUtc` ignored; another member's change takes it over;
+  Off clears; a threshold of -1 refused); red with the gate check removed.*
+- **Scheduled runs are started for `MonitoringBy`, through `AuditStarter`.** §6 counts scheduled runs in the user's
+  `verified-audits` quota ("24 (incl. schedule)"), so a run needs a user; the one who switched the schedule on is the one
+  who asked for it. The same gates, quota, cool-down and join as *Run audit*; the abuse log's `AuditStarted` says
+  "scheduled". A refusal (quota, gate) is logged by the starter and told to that member (`seo-monitoring-skipped`); not
+  retried, the next slot comes on schedule. A scheduler who is no longer a Member or more of the organization stops the
+  runs, and its Admins are told; another member setting the schedule takes it over. *Evidence:
+  `The_sweep_starts_each_due_slot_of_a_verified_site_once_for_the_member_who_scheduled_it` (`StartedBy` = Max, the
+  log detail "scheduled").*
+- **The sweep** (`MonitoringSweepCronJob`, `*/15 * * * *`, up to 200 slots a pass, Spark cron's cluster claim):
+  `MonitoringScheduler` queries the due sites the gate admits (non-stale, untracked), broadcasts one
+  `MonitoredAuditMessage(siteId, slot)` per site with `BroadcastOnceAsync` keyed `{siteId}:{slot}` on the new queue
+  `seo-monitor` (concurrency 1, 1 min), and patches only `NextMonitoringRunAtUtc` (a whole number of periods on, past
+  now: slots missed while the app was down are skipped, `MonitoringPlan.NextAfter`). The recipient reads the site and the
+  gate again (switched off, or verification withdrawn since: nothing). *Evidence: the sweep test above (two sweeps, one
+  slot, one run; an unverified monitored site and a site not due get none; the next slot is the slot + 7 days), red
+  with the patch removed; `The_next_slot_skips_the_slots_missed_while_the_app_was_down`, red with the catch-up loop removed.*
+
+**Alerts (F10, D20, D44).**
+- After the aggregate commits a completed run (and the participants' completion notice), `SiteAlerter` alerts **only a
+  monitored site** that the monitoring gate admits (D11 pairs "scheduled monitoring + alerts"), manual runs included.
+  `AlertRules` (pure, Library) decides:
+  - **score drop:** the score fell by at least the site's `AlertScoreDrop` (new profile field, 0–100; empty = the
+    setting `SeoTester:Alerts:ScoreDrop`, default 5; 0 = off) since the previous completed run, **only when both runs have
+    the same `ScoringVersion`**: an administrator's weight or severity edit is not the site getting worse (the trend marks
+    such changes, F8);
+  - **new critical issue:** a Critical check fails with delta New (it neither failed nor warned on the previous run):
+    once, not on every run;
+  - **certificate / domain:** `security.certificate-expiry` fails (< 14 days, the check's own Fail threshold) or
+    `domain.expiry` fails (< 30 days): on every run while it fails.
+- Each alert is one `ISparkNotifier.NotifyAsync` to **every member** of the organization (Q-M12c), with the organization
+  id (their D44 preferences pick in-app / mail / push), the run's page as the link, category `seo-alert-score-drop` /
+  `-critical` / `-certificate` / `-domain` (also the push topic), `Urgent` for all but the score drop. Texts are English,
+  as the pipeline's other notices. Never throws: the run is over either way.
+- *Evidence: `MonitoringRulesTests` (7: first slot, catch-up, a month after the 31st, slot key, drop threshold /
+  same scoring / 0 = off, new-critical-only, expiry repeats; red with the Delta filter loosened and the catch-up loop
+  removed); `A_run_of_a_monitored_site_alerts_every_member_about_a_new_critical_issue_and_a_score_drop` (the site loses
+  its titles: Ann, Max and Vic get `seo-alert-critical` and `seo-alert-score-drop`, Bob nothing; the same change on an
+  unmonitored verified site sends no alert), red with the aggregate's alert call removed.*
+- The previous run is loaded once (`PreviousRunAsync`); the deltas are computed from it as before.
+
+**Dedupe.** The three-valued gate test moved from `AuditStarter.Allows` (removed) to `SeoFeatureScope.Admits` in the
+Library, used by the start, the sweep, the recipient, the alerter and the interceptor. Same switch, same results
+(`A_gate_admits_sites_by_its_scope`; `StartAuditTests` unchanged and green). No other package was touched.
+
+**Deploy files.**
+- `apps/SeoTester/docker-compose.yml` (project `seotester` in `/var/www/seotester`): `seotester-app`
+  (`ghcr.io/mintplayer/seotester:master`, pull-only and floating like CodeCoverage's) on `web`,
+  `code-coverage_coverage-internal` (external) and `seo-browser`; `seo-chromium`
+  (`ghcr.io/mintplayer/seotester-chromium:1.63.0`, the Playwright version) on `seo-browser` only, `internal: true`.
+  Chromium: `shm_size: 512m`, `mem_limit: 1g`, `pids_limit: 512`, `init: true`, `cap_drop: ALL`, `no-new-privileges`,
+  no port; the app `mem_limit: 1g`, `stop_grace_period: 120s`, and `depends_on` Chromium *started* (a broken browser
+  errors the rendered checks, it does not take the site down). Healthchecks: the app `GET /health` (new
+  `Health/HealthEndpoint.cs`, CodeCoverage's contract: always 200, depends on nothing), Chromium a TCP connect to 3000.
+  Traefik labels as CodeCoverage's (hard-coded Host, `traefik.docker.network=web`); `/spark/live` needs nothing
+  (Traefik upgrades WebSockets by default; the 30 s heartbeat is under its idle timeout). Database `SeoTester` on
+  `coverage-raven` (`EnsureDatabaseCreated`), no certificate (unsecured on the internal network; `Spark:RavenDb` has no
+  certificate option); mail through `coverage-smtp` (Q-M12b). `docker compose config` accepts the file (Docker 29.8.1,
+  client only; no container started).
+- **Memory limits are a first guess** (1 GB each): S3 measured 160–210 MB of Chromium on small pages on Windows; the
+  Debian figures are Q-M10b's, at the deploy.
+- `.github/workflows/seotester-deploy.yml`: push to master on SeoTester or its libraries (the path list = the Dockerfile's
+  COPY lines = the csproj graph), or *Run workflow*. Builds and pushes the app image and the Chromium image (tag read
+  from the Dockerfile's `FROM`), attestations, packages made public (best effort), then SSH with CodeCoverage's secrets
+  (`VPS_HOST`, `VPS_USERNAME`, `VPS_SSH_KEY`, `VPS_PORT`, `VPS_SSH_KEY_PASSPHRASE`): no new secret. It refuses without
+  `.env` or without CodeCoverage's network, then pull / down / up and waits for `/health` (36 × 10 s ≥ the 300 s start
+  period). `seotester-image-check.yml` builds both images on pull requests, no push; separate gha cache scopes.
+  **No workflow ran:** nothing was pushed.
+- `tools/verify-seotester-deploy.test.mjs` (`npm run test:tools`, which `pull-request.yml` runs; `yaml` comes with nx):
+  10 tests over the compose file, both workflows, the Dockerfiles, the csproj graph, `appsettings.Production.json`,
+  `server.mjs` and `.env.example`. *Evidence: red with six rules broken in the real files (internal false, tag 1.62.0,
+  no `traefik.docker.network`, a library missing from the deploy filter, a readiness bound of 200 s, `MAIL_HOST`
+  undocumented): 6 of 10 failed; green 10/10.*
+- `docs/seotester/deploy.md`: topology, the workflow, first-time setup (DNS and TLS checks, mail domain and DKIM on the
+  shared relay, the directory and `.env`, the database and the 36 h expiration check, packages, first deploy, the
+  administrator role by a **parameterized** patch), the credential list with exact redirect URIs and where each value
+  goes, VAPID generation with openssl in Spark's format, and the post-deploy checklist for Q-M5a, Q-M6a, Q-M9b, Q-M10b
+  plus CodeCoverage's next deploy and a first scheduled run.
+
+**Tests.** Red first, then green (above). The affected suite at the end, with the other agent's uncommitted M11 follow-up in the tree: the full `SeoTester.Tests` **186/186** (2 m 31 s; `StartAuditTests`, `CompositionTests` with the seventh queue, `RouteTableSnapshotTests` with `GET /health` included), `npm run test:tools` **74/74**. No full sweep.
+
+**Open (§11):** Q-M12a (privacy policy and terms pages), Q-M12b (shared RavenDB server and relay), Q-M12c (alert
+audience). The deferred measurements Q-M5a, Q-M6a, Q-M9b and Q-M10b stay open until the owner runs deploy.md §5.
