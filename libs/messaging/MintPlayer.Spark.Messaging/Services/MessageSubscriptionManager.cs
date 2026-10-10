@@ -241,6 +241,11 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
             await lifetime.CancelAsync();
             lifetime.Dispose();
         }
+
+        // 4. Empty the router. The drain completed every lane's channel; a lane kept past this teardown would take
+        //    the first message after a re-acquired lease and throw ChannelClosedException (Q-M11e follow-up). The
+        //    pumps were cancelled with leaseLifetime above; this waits for them, bounded by PumpStopTimeout.
+        await router.StopAsync();
     }
 
     /// <summary>The one teardown every <see cref="StopAsync"/> call awaits (see there).</summary>

@@ -2197,9 +2197,19 @@ another, unfinished change that did not compile): `CrawlResumeTests` 10/10, each
 per host and "did not drain" once; MintPlayer.Spark.Tests' Messaging namespace and the new EventLog test 178/178;
 SeoTester.Tests 190/190 (2 m 54 s).
 
-**Found, not fixed here:** after a lease-lost teardown the router keeps its lanes, whose channels `DrainAsync`
+~~**Found, not fixed here:** after a lease-lost teardown the router keeps its lanes, whose channels `DrainAsync`
 completed. If the host takes the lease back, `RouteAsync` finds the old lane and writes to a completed channel
-(`ChannelClosedException`). This comes from reading the code, not from a run.
+(`ChannelClosedException`). This comes from reading the code, not from a run.~~ **Fixed (2026-10-10), reproduced
+first.** `MessageSubscriptionManagerLifecycleTests.A_host_that_regains_the_lease_after_losing_it_routes_and_handles_messages_again`:
+one message creates the queue's lane; the lease's compare-exchange value is deleted, so the next renewal fails and
+`ExecuteAsync` tears down (what an eviction looks like to the holder); the loop finds the lease free and restarts
+messaging; a second message on the same queue must be handled. Red before the fix: the second message was never
+handled (60 s bound), and the feeder logged "subscriber error, retrying in 00:00:30" with
+`SubscriberErrorException <- ChannelClosedException` on every retry. **Fix:** `MessageQueueRouter.StopAsync`
+(the body `DisposeAsync` had, which now calls it) cancels the pumps, waits for them bounded by `PumpStopTimeout`, and
+drops every lane; the messaging teardown calls it last, after cancelling the lease lifetime, so a re-acquired lease
+builds fresh lanes on first use. `Start` cancels a lifetime left over (defensive; it does not occur). The order of
+drain, then release, then cancel is unchanged. Green: the new test (10 s), and the Messaging namespace 178/178.
 
 ### Round 15 (owner, 2026-10-10): minimal network exposure, a secured RavenDB
 

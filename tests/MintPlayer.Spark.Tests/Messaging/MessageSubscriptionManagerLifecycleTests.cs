@@ -339,6 +339,88 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         sink.LateWrites.Should().BeEmpty("no messaging work may outlive a StopAsync call");
     }
 
+    /// <summary>
+    /// Q-M11e follow-up (docs/seo_analyzer_PRD.md §12). A lease-lost teardown drains the router, which completes
+    /// every lane's channel, but the router kept those lanes. When the host took the lease back, the feeder routed
+    /// the next message of an already-seen queue into the old, completed channel: <c>ChannelClosedException</c>, the
+    /// claim released, the batch retried, the message never handled. The lease is deleted to make the renewal fail,
+    /// which is what an eviction looks like to the holder; the loop then finds it free and takes it straight back.
+    /// </summary>
+    [Fact]
+    public async Task A_host_that_regains_the_lease_after_losing_it_routes_and_handles_messages_again()
+    {
+        var counter = new PingCounter();
+        var log = new System.Collections.Concurrent.ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(new RecordingLoggerProvider(log)));
+        services.AddSingleton(Store);
+        services.AddSingleton(counter);
+        services.AddSparkMessaging(o => o.SubscriptionMode = ESubscriptionMode.SingleSubscription);
+        services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>, CountingPingRecipient>();
+        var provider = services.BuildServiceProvider();
+        await using var _ = provider;
+        var hosted = provider.GetServices<IHostedService>().OfType<MessageSubscriptionManager>().Single();
+        string Warnings() => string.Join(" | ", log.Where(e => e.Level >= LogLevel.Warning).Select(e => $"{e.Category}: {e.Message}"));
+
+        await hosted.StartAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
+
+            // 1. A message on the queue creates its lane. A failure bound, not a wait (see
+            //    A_renewal_falling_due_during_the_drain_does_not_restart_messaging).
+            using (var scope = provider.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>().BroadcastAsync(new TestPing { Hello = "before" });
+            await AsyncWait.UntilAsync(() => counter.Count >= 1, "the first message to be handled", TimeSpan.FromSeconds(90));
+
+            // 2. Lose the lease: the next renewal fails and ExecuteAsync tears down (drain included).
+            var lease = await Store.Operations.SendAsync(
+                new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader"));
+            await Store.Operations.SendAsync(
+                new Raven.Client.Documents.Operations.CompareExchange.DeleteCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader", lease.Index));
+            await AsyncWait.UntilAsync(
+                () => log.Any(e => e.Message.StartsWith("Lost the messaging lease", StringComparison.Ordinal)),
+                "the renewal to fail and the teardown to start", MessagingLeaseManager.RenewInterval * 3);
+
+            // 3. Regain it: the loop finds the lease free and starts messaging a second time.
+            await AsyncWait.UntilAsync(
+                () => log.Count(e => e.Message.StartsWith("Messaging started", StringComparison.Ordinal)) >= 2,
+                "the manager to take the lease back and restart messaging", MessagingLeaseManager.RenewInterval * 3);
+
+            // 4. The same queue again: it must reach the handler, not a completed channel.
+            using (var scope = provider.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>().BroadcastAsync(new TestPing { Hello = "after" });
+            try { await AsyncWait.UntilAsync(() => counter.Count >= 2, "the message after the re-acquire to be handled", TimeSpan.FromSeconds(60)); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                throw new Xunit.Sdk.XunitException($"{ex.Message} Warnings: {Warnings()}");
+            }
+
+            log.Should().NotContain(e => e.Message.Contains("ChannelClosedException", StringComparison.Ordinal),
+                "a regained lease must route into fresh lanes");
+        }
+        finally
+        {
+            await hosted.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private sealed class PingCounter
+    {
+        private int count;
+        public int Count => Volatile.Read(ref count);
+        public void Increment() => Interlocked.Increment(ref count);
+    }
+
+    private sealed class CountingPingRecipient(PingCounter counter) : MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>
+    {
+        public Task HandleAsync(TestPing message, CancellationToken cancellationToken)
+        {
+            counter.Increment();
+            return Task.CompletedTask;
+        }
+    }
+
     private async Task<MessagingLease?> ReadLeaseAsync()
         => (await Store.Operations.SendAsync(
             new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader")))?.Value;
@@ -469,7 +551,16 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
             public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-                => entries.Enqueue((logLevel, category, formatter(state, exception)));
+                => entries.Enqueue((logLevel, category, formatter(state, exception) + ExceptionTypes(exception)));
+
+            // The exception's type chain, so a test can tell what a logged failure was (the formatter drops it).
+            private static string ExceptionTypes(Exception? exception)
+            {
+                var types = new List<string>();
+                for (var e = exception; e is not null; e = e.InnerException)
+                    types.Add(e.GetType().Name);
+                return types.Count == 0 ? "" : $" [{string.Join(" <- ", types)}]";
+            }
         }
     }
 }

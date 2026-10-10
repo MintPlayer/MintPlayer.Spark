@@ -54,8 +54,19 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     /// <summary>Number of live lanes. For tests and diagnostics.</summary>
     internal int LaneCount => lanes.Count;
 
+    /// <summary>
+    /// Starts a lease's worth of routing. Called once per lease held: a host that loses the lease and takes it back
+    /// calls it again, after <see cref="StopAsync"/> has emptied the lanes of the previous lease.
+    /// </summary>
     public void Start(CancellationToken stoppingToken)
-        => lifetime = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+    {
+        // A lifetime left over means StopAsync did not run; cancel it rather than leak its pumps.
+        if (Interlocked.Exchange(ref lifetime, CancellationTokenSource.CreateLinkedTokenSource(stoppingToken)) is { } stale)
+        {
+            stale.Cancel();
+            stale.Dispose();
+        }
+    }
 
     /// <summary>
     /// Routes a claimed message to its queue's lane, creating the lane on first use. Completes when
@@ -178,7 +189,16 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     /// </summary>
     internal static readonly TimeSpan PumpStopTimeout = TimeSpan.FromSeconds(5);
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => new(StopAsync());
+
+    /// <summary>
+    /// Cancels the pumps, waits for them (bounded by <see cref="PumpStopTimeout"/>) and drops every lane, so the
+    /// router is empty again. Runs at the end of every messaging teardown, not only at disposal: the lanes'
+    /// channels were completed by <see cref="DrainAsync"/>, and a host that takes the lease back after losing it
+    /// would otherwise route into a completed channel (<c>ChannelClosedException</c>; Q-M11e follow-up,
+    /// docs/seo_analyzer_PRD.md §12). The next <see cref="Start"/> then builds fresh lanes on first use.
+    /// </summary>
+    public async Task StopAsync()
     {
         // The pumps, taken before ownership: a concurrent disposer clears the lanes.
         var pumps = lanes.Values.Where(l => l.IsValueCreated).Select(l => l.Value.PumpTask).OfType<Task>().ToArray();
