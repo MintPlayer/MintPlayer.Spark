@@ -51,6 +51,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // spark.AddAuthentication<SparkUser>();  spark.AddControllers();  spark.UseControllers();
     // spark.AddMessaging();  spark.AddCron();  spark.AddMigrations();  spark.AddReplication();
     // spark.AddIdentityProvider();  spark.AddRateLimiter();  spark.AddGithubWebhooks();
+    // spark.AddSafeHttp();   // SSRF-safe named HttpClient for user-supplied URLs (SparkBuilderSafeHttpExtensions.ClientName)
 });
 
 // Build-time commands. Each returns true when it handled the invocation and the host should stop.

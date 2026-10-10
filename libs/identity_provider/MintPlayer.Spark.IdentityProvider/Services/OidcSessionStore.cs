@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
+using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -129,8 +130,9 @@ internal sealed class OidcSessionStore(IDocumentStore store, OidcKeyRing keys, I
 
         try
         {
-            using var client = httpClientFactory.CreateClient("Spark.IdentityProvider.BackChannelLogout");
-            client.Timeout = TimeSpan.FromSeconds(5);
+            // The client chose this URI, so the POST goes through the SSRF-safe client (seo_analyzer_PRD X2):
+            // no loopback, private or metadata address, no redirects, limits in SparkIdentityProviderExtensions.
+            using var client = httpClientFactory.CreateClient(SparkIdentityProviderExtensions.BackChannelLogoutHttpClient);
             using var response = await client.PostAsync(app.BackChannelLogoutUri,
                 new FormUrlEncodedContent([KeyValuePair.Create("logout_token", logoutToken)]), ct);
             if (!response.IsSuccessStatusCode)
