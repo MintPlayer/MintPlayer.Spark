@@ -1,0 +1,91 @@
+name: seotester-image-check
+
+# Builds the SeoTester production images on a pull request, without pushing them (as code-coverage-image-check.yml):
+# a missing COPY for a new ProjectReference, or a Chromium image that no longer builds, fails here instead of in
+# the production deploy. Never logs in to a registry, never pushes, never deploys.
+#
+# The paths MIRROR seotester-deploy.yml's push filter (plus both workflow files);
+# tools/verify-seotester-deploy.test.mjs keeps them equal.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/SeoTester/**'
+      - '!apps/SeoTester/SeoTester.Tests/**'
+      - 'libs/attributes/MintPlayer.Spark.Attributes/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
+      - 'libs/cron/MintPlayer.Spark.Cron/**'
+      - 'libs/history/MintPlayer.Spark.History/**'
+      - 'libs/history/MintPlayer.Spark.History.Abstractions/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager.Abstractions/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
+      - 'libs/migrations/MintPlayer.Spark.Migrations/**'
+      - 'libs/model/MintPlayer.Spark.Model/**'
+      - 'libs/notifications/MintPlayer.Spark.Notifications/**'
+      - 'libs/organizations/MintPlayer.Spark.Organizations/**'
+      - 'libs/settings/MintPlayer.Spark.Settings/**'
+      - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
+      - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
+      - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
+      - 'libs/webpush/MintPlayer.Spark.WebPush/**'
+      - 'libs/node_packages/ng-spark/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
+      - '.github/workflows/seotester-image-check.yml'
+      - '.github/workflows/seotester-deploy.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-image:
+    name: Build the SeoTester image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    # cache-from only: a pull request may READ the layers the master deploy cached, never write them.
+    - name: Build the image
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/SeoTester/SeoTester/Dockerfile
+        push: false
+        cache-from: type=gha,scope=seotester
+
+  build-chromium:
+    name: Build the Chromium image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Build the image
+      uses: docker/build-push-action@v7
+      with:
+        context: ./apps/SeoTester/chromium
+        file: ./apps/SeoTester/chromium/Dockerfile
+        push: false
+        cache-from: type=gha,scope=seotester-chromium

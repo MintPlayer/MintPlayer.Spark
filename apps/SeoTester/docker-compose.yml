@@ -1,0 +1,128 @@
+# SeoTester at seotester.mintplayer.com (docs/seo_analyzer_PRD.md §1 "Hosting constraints", D3, D6; runbook:
+# docs/seotester/deploy.md). Runs on the VPS beside CodeCoverage, from /var/www/seotester (compose project
+# "seotester"), and reuses CodeCoverage's RavenDB server and mail relay instead of running its own.
+#
+# Networks (the point of this file):
+#   web                              Traefik's public network (external). Only seotester-app joins it.
+#   code-coverage_coverage-internal  CodeCoverage's internal network (external): coverage-raven (unsecured, the
+#                                    database "SeoTester" lives there) and coverage-smtp. Only seotester-app joins it.
+#   seo-browser                      internal: true, no egress at all. seotester-app and seo-chromium ONLY. Chromium
+#                                    never fetches anything itself (SeoTester routes and fulfils every request through
+#                                    its SSRF-safe client, PRD §6), so it needs no route anywhere: not to the internet,
+#                                    not to RavenDB, not to the mail relay.
+#
+# The deploy (.github/workflows/seotester-deploy.yml) refreshes this file and runs pull / down / up. .env and the
+# volumes are server-managed; deploys never write them. tools/verify-seotester-deploy.test.mjs keeps the rules above.
+
+services:
+
+  seotester-app:
+    # Pull-only (no build block), floating like CodeCoverage's: every push to master that changes the image deploys it.
+    image: ghcr.io/mintplayer/seotester:master
+    # Below Messaging's ClaimTtl (5 min), long enough for a crawl batch (90 s budget) to finish on SIGTERM.
+    stop_grace_period: 120s
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # CodeCoverage's RavenDB server, database SeoTester (created on first start). Unsecured, reachable only on
+      # code-coverage_coverage-internal: no certificate (Spark:RavenDb has none to set).
+      - Spark__RavenDb__Urls__0=http://coverage-raven:8080
+      - Spark__RavenDb__Database=SeoTester
+      - Spark__RavenDb__EnsureDatabaseCreated=true
+      # Data Protection key ring on a volume: a redeploy does not sign everyone out.
+      - Spark__DataProtection__KeysPath=/var/lib/seotester/dataprotection-keys
+      # Sign-in providers (PRD §4.1, D2). A provider without a ClientId is not offered; with none the app refuses to start.
+      - Spark__Auth__Providers__MicrosoftAccount__ClientId=${MICROSOFT_CLIENT_ID:-}
+      - Spark__Auth__Providers__MicrosoftAccount__ClientSecret=${MICROSOFT_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__GitHub__ClientId=${GITHUB_CLIENT_ID:-}
+      - Spark__Auth__Providers__GitHub__ClientSecret=${GITHUB_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__Twitter__ClientId=${X_CLIENT_ID:-}
+      - Spark__Auth__Providers__Twitter__ClientSecret=${X_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__Google__ClientId=${GOOGLE_CLIENT_ID:-}
+      - Spark__Auth__Providers__Google__ClientSecret=${GOOGLE_CLIENT_SECRET:-}
+      # Mail through CodeCoverage's relay (required: ConfirmByEmail needs a sender). Security=None: the relay is only
+      # on the internal network and advertises STARTTLS without a certificate (as CodeCoverage).
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
+      - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
+      - Spark__Mail__Smtp__Security=None
+      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-noreply@seotester.mintplayer.com}
+      - Spark__Mail__From__Name=${MAIL_FROM_NAME:-SeoTester}
+      # Web Push (VAPID). Empty = push off; in-app and mail still work.
+      - Spark__Notifications__WebPush__PublicKey=${VAPID_PUBLIC_KEY:-}
+      - Spark__Notifications__WebPush__PrivateKey=${VAPID_PRIVATE_KEY:-}
+      - Spark__Notifications__WebPush__Subject=${VAPID_SUBJECT:-}
+      # PageSpeed Insights / CrUX. Empty = those checks "not measured".
+      - SeoTester__PageSpeed__ApiKey=${PAGESPEED_API_KEY:-}
+      # The browser: appsettings.Production.json already says Connect to ws://seo-chromium:3000/.
+    volumes:
+      - dataprotection-keys:/var/lib/seotester/dataprotection-keys
+    depends_on:
+      seo-chromium:
+        # Started, not waited on: a browser that is slow or broken makes the rendered checks errors, never the site down.
+        condition: service_started
+    labels:
+      - "traefik.enable=true"
+      # Hard-coded, never interpolated (see apps/CodeCoverage/docker-compose.yml: an empty or CRLF value broke SNI).
+      - "traefik.http.routers.seotester.rule=Host(`seotester.mintplayer.com`)"
+      - "traefik.http.routers.seotester.entrypoints=websecure"
+      - "traefik.http.routers.seotester.tls.certresolver=letsencrypt"
+      - "traefik.http.services.seotester.loadbalancer.server.port=8080"
+      # Three networks: without this Traefik may pick an address it cannot reach (random 504s).
+      - "traefik.docker.network=web"
+      # /spark/live is a WebSocket: Traefik forwards the upgrade by default, no middleware needed. The server pings
+      # after 30 s of silence, under any idle timeout Traefik applies (post-deploy check Q-M5a in the runbook).
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      # Startup runs the migrations and seeds the catalogue before the app listens.
+      start_period: 300s
+    mem_limit: 1g
+    networks:
+      - web
+      - coverage-internal
+      - seo-browser
+    restart: unless-stopped
+
+  seo-chromium:
+    # apps/SeoTester/chromium: Playwright 1.63.0's image + server.mjs. Pinned to EXACTLY the app's Microsoft.Playwright
+    # version (ConnectAsync needs the same major.minor); bump both together, and this tag with them.
+    image: ghcr.io/mintplayer/seotester-chromium:1.63.0
+    # Reaps Chromium's zombie processes.
+    init: true
+    # Chromium's renderers share memory through /dev/shm; Docker's 64 MB default crashes tabs on large pages.
+    shm_size: 512m
+    # One render at a time (SeoTester:Limits:ConcurrentRenders), two viewports a page. Spike S3 measured 160–210 MB of
+    # Chromium processes on small pages (Windows); the Debian figure is measured at the first deploy (Q-M10b).
+    mem_limit: 1g
+    pids_limit: 512
+    # Chromium runs without its own sandbox here (Playwright's default in a container): no capability is needed.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # No published port, no other network: only seotester-app can reach it, and it can reach nothing.
+    networks:
+      - seo-browser
+    restart: unless-stopped
+
+volumes:
+  dataprotection-keys:
+
+networks:
+  web:
+    external: true
+  # CodeCoverage's internal network (apps/CodeCoverage/docker-compose.yml, project "code-coverage" in
+  # /var/www/code-coverage): coverage-raven and coverage-smtp. CodeCoverage must be up before this stack starts.
+  coverage-internal:
+    external: true
+    name: code-coverage_coverage-internal
+  seo-browser:
+    driver: bridge
+    internal: true

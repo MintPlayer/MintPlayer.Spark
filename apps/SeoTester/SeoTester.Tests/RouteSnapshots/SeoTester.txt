@@ -1,4 +1,5 @@
 GET /bot
+GET /health
 GET /seotester/admin/dashboard
 GET /seotester/badge.svg
 GET /seotester/catalogue

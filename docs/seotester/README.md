@@ -5,11 +5,12 @@ X or Google, register websites in an organization, and get an SEO / performance 
 The spec, decisions and milestones are in [seo_analyzer_PRD.md](../seo_analyzer_PRD.md); this folder is the
 operator's documentation. Treat changes to `apps/SeoTester` as production changes.
 
-Status: **M11** (M8's sites, verification, catalogue, scoring, audit start, share links, abuse log and passkeys; M9's
+Status: **M12, code-complete; the deploy is the owner's** ([deploy.md](deploy.md)) (M8's sites, verification, catalogue, scoring, audit start, share links, abuse log and passkeys; M9's
 crawl pipeline: robots.txt, the site-level probe, page batches, the aggregate that scores the run, cancel; M10's
 headless-browser render of a sample, PageSpeed Insights and the PDF report; M11's pages: landing page, site, live run
 report with how to fix in English and Dutch, page previews, trend, share page and badge, operator dashboard). All 110
-catalogue checks are measured. Compose, deploy and monitoring arrive with M12.
+catalogue checks are measured. M12: scheduled monitoring with alerts, the compose file, the deploy workflow and the
+runbook.
 
 ## Layout
 
@@ -17,7 +18,8 @@ catalogue checks are measured. Compose, deploy and monitoring arrive with M12.
 |---|---|
 | `apps/SeoTester/SeoTester` | the host (`Program.cs`) and the Angular SPA (`ClientApp`, nx project `@spark-apps/seo-tester`); `Entities/` (Site, AuditRun, PageResult, CheckDefinition, AuditLogEntry, TargetCooldown: here, not in the Library, because their marker interfaces are web types, PRD Q-M8a), `Actions/`, `CustomActions/` (StartAudit, StartFullCrawl, VerifySite, ResetCheckDefinition), `Interceptors/`, `Verification/` (proofs, re-check cron), `Audits/` (start, abuse log, organization cascade), `Catalogue/` (seeder, scoring snapshot), `Crawler/` (the pipeline's recipients, fetcher, prober, politeness, TLS probe, registry lookups), `Rendering/` (the Chromium connection, the request router, the page renderer, the bundled axe-core 4.13.0, `seo-render`), `PageSpeed/` (the PageSpeed Insights client, `seo-psi`), `Reports/` (the printable report, `seo-pdf`, the PDF download), `Dns/` (`ISeoDns`), `Settings/` (every gate and limit), `Bot/` (the `/bot` page), `Dockerfile` |
 | `apps/SeoTester/SeoTester.Library` | plain SDK, nothing web: the shipped check catalogue (`Catalogue/checks.json`, 110 checks) and its parser, the scoring engine (`Scoring/`), origin normalization and ownership-proof matching (`Sites/`), the crawler's identity (`SeoTesterBot`), the pipeline's queues and messages (`Messaging/SeoQueues.cs`); robots.txt (RFC 9309), sitemaps, HTML parsing (AngleSharp, no scripts), the TLS 1.0/1.1 hello probe, and the check implementations (`Checks/`: page, site and crawl level, and `RenderChecks` for the rendered page; `PageSpeed/` for PageSpeed Insights), judged from facts the host collects |
-| `apps/SeoTester/chromium` | the Chromium container's `Dockerfile` and `server.mjs` (M12 adds it to compose: "The Chromium container" below) |
+| `apps/SeoTester/chromium` | the Chromium container's `Dockerfile` and `server.mjs` ("The Chromium container" below) |
+| `apps/SeoTester/docker-compose.yml`, `.env.example` | production: the app and the Chromium container, beside CodeCoverage on the VPS ([deploy.md](deploy.md)) |
 | `apps/SeoTester/SeoTester.Tests` | boots the real `Program` against an embedded RavenDB (users and organizations from `Data/organizations.json`; DNS and the web faked): composition, settings, `/bot`, the route table, sites, verification, audit start, catalogue, sharing, passkeys, the crawl pipeline end to end and a host restart in the middle of a batch; the render, PageSpeed and PDF stages end to end and the browser escape test (`Rendering/`: own collections, a local Chromium, see "Running it locally"); and the pure scoring, catalogue, robots.txt, sitemap, check, PageSpeed-parser and TLS-probe tests. Nothing leaves the machine: DNS, TLS, the crawled sites, the registries and PageSpeed Insights are fakes (recorded RDAP/IANA/hstspreload/PageSpeed answers in `Data/Fixtures`) |
 
 ## What a user does (M9)
@@ -120,7 +122,7 @@ empty is simply not offered; with **no** provider at all the app refuses to star
 | Web Push (VAPID) | `Spark:Notifications:WebPush:PublicKey`, `…:PrivateKey`, `…:Subject` | Generate once with `MintPlayer.Spark.WebPush.VapidDetails.Generate("mailto:…")`; the private key is a secret. Empty = push off, in-app and mail still work. Changing the pair later invalidates every browser subscription |
 | PageSpeed Insights / CrUX | `SeoTester:PageSpeed:ApiKey` | A Google Cloud API key with the PageSpeed Insights API enabled (restrict it to that API). Empty = both PageSpeed checks "not measured: PageSpeed Insights is not configured" (never a failure; no keyless call: its quota is 0). Sent as the `X-Goog-Api-Key` header, never in a URL, so no log line holds it |
 | Headless browser | `SeoTester:Browser:Mode`, `…:Endpoint` | `Off` (the rendered checks "not measured", no PDF), `Launch` (Development: a local Chromium), `Connect` (production: `ws://seo-chromium:3000/`, already in `appsettings.Production.json`). Not a secret |
-| Data Protection keys | `Spark:DataProtection:KeysPath` | A mounted volume (`/var/lib/seotester/dataprotection-keys` in the image), set by the compose file (M12) |
+| Data Protection keys | `Spark:DataProtection:KeysPath` | A mounted volume (`/var/lib/seotester/dataprotection-keys` in the image), set by the compose file |
 | RavenDB | `Spark:RavenDb:Urls:0`, `Spark:RavenDb:Database` | Database `SeoTester` on the VPS's RavenDB (Community licence: Changes API yes, ≤ 3 subscriptions, expiration every 36 h) |
 
 ### Administrator settings (not configuration)
@@ -210,10 +212,34 @@ connections, no pause).
 | `SeoTester:PageSpeed:CacheFor` | `1.00:00:00` | a measured page is reused this long |
 | `SeoTester:PageSpeed:QuotaRetries`, `…:QuotaRetryDelay` | 3, `00:02:00` (× attempt) | after a 429 |
 
-## The Chromium container (for M12)
+## Scheduled monitoring and alerts (M12)
 
-Production renders in a container of its own, reached only by SeoTester (D3, D6). M10 ships its image and was tested
-without Docker (spike S3: the same server script run with Microsoft.Playwright's own node); M12 wires it into compose.
+A site's **Monitoring** (Off / Weekly / Monthly, on the site form) schedules audits. Switching it on needs the
+`SeoTester:Features:Monitoring` gate to admit the site (verified sites by default, D11); the member who sets it becomes
+*Scheduled by*: the runs are started for them, through the same start as *Run audit* (joins a running audit; their
+`verified-audits` quota; refusals logged and told to them). The first run is one period after the latest one (now if
+there is none); *Next scheduled audit* shows when. Every 15 minutes `MonitoringSweepCronJob` dispatches the due slots,
+each once (`seo-monitor` queue, deduplicated per site and slot); slots missed while the app was down are skipped, not
+run as a backlog. A scheduler who left the organization stops the runs, and its Admins are told.
+
+When a run of a monitored site completes, **every member** of its organization is alerted (in-app, mail and Web Push,
+as each chose for that organization) about:
+
+| Alert | When | Category |
+|---|---|---|
+| Score drop | the score fell by at least the site's *Alert when the score drops by* (empty: `SeoTester:Alerts:ScoreDrop`, 5; 0: off) since the previous completed run, both scored with the same weights (`ScoringVersion`) | `seo-alert-score-drop` |
+| New critical issue | a Critical check fails that did not fail or warn on the previous run | `seo-alert-critical` |
+| Certificate | `security.certificate-expiry` fails: under 14 days | `seo-alert-certificate` |
+| Domain | `domain.expiry` fails: under 30 days | `seo-alert-domain` |
+
+The expiry alerts repeat on every run while they fail; a critical issue alerts once. Code: `Monitoring/` (host) and
+`SeoTester.Library/Monitoring/` (the rules, pure).
+
+## The Chromium container
+
+Production renders in a container of its own, reached only by SeoTester (D3, D6): `seo-chromium` in
+`apps/SeoTester/docker-compose.yml` ([deploy.md](deploy.md) §1). Its image was tested without Docker in M10 (spike S3:
+the same server script run with Microsoft.Playwright's own node).
 
 - **Image:** `apps/SeoTester/chromium/Dockerfile`: `mcr.microsoft.com/playwright:v1.63.0-noble` plus
   `playwright-core@1.63.0`, running `node server.mjs` as `pwuser` on port 3000. The version must equal the app's
@@ -225,13 +251,15 @@ without Docker (spike S3: the same server script run with Microsoft.Playwright's
   `http://127.0.0.1:9` with bypass `<-loopback>` (a proxy that does not exist: whatever SeoTester does not fulfil is
   refused). A test keeps the script's flags equal to the app's `ChromiumBrowser.HardeningArgs`. Do **not** use a plain
   `playwright run-server`: it ignores client launch arguments (spike S3 measured what then escapes).
-- **Compose (M12):** service `seo-chromium` on the network `seo-browser` only, which SeoTester also joins and which can
-  be `internal: true` (no egress: every request is fulfilled by SeoTester); `init: true`; `shm_size` and a memory limit
-  (S3 measured ~160–210 MB of Chromium processes on small pages on Windows; the Debian numbers are measured at the
-  deploy, PRD Q-M10b); no published port. SeoTester's `SeoTester__Browser__Endpoint=ws://seo-chromium:3000/` is
-  already the Production default.
+- **Compose:** service `seo-chromium` (image `ghcr.io/mintplayer/seotester-chromium:1.63.0`, built by
+  `seotester-deploy.yml`) on the network `seo-browser` only, which SeoTester also joins and which is `internal: true`
+  (no egress: every request is fulfilled by SeoTester); `init: true`; `shm_size: 512m`, `mem_limit: 1g` (S3 measured
+  ~160–210 MB of Chromium processes on small pages on Windows; the Debian numbers are measured at the deploy, PRD
+  Q-M10b, deploy.md §5); no capabilities, no published port. SeoTester's `SeoTester__Browser__Endpoint=ws://seo-chromium:3000/`
+  is the Production default.
 - **The app's own image** needs no browser, only Microsoft.Playwright's driver (its `node` and `playwright-core`, copied
-  by `dotnet publish` into `.playwright/`, ~100 MB on Windows): check its size in the published image at M12.
+  by `dotnet publish` into `.playwright/`, ~100 MB on Windows): its size in the published image is measured at the
+  first deploy (deploy.md §5, Q-M10b).
 
 ## The crawler's identity
 
