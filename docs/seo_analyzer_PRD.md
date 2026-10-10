@@ -632,6 +632,38 @@ The X4 design depends on the RavenDB Changes API, so this was measured on the **
   - **Cache:** a 30 s TTL, cleared on the saving instance. Changes-API invalidation can be added later behind the same API.
   - **No secrets in settings.**
 
+### Spikes S4, S5, S10, S12 (2026-10-10, research only)
+
+Full report: `docs/seo_analyzer_spikes_S4_S5_S10_S12.md`. Real responses are in `docs/seo_analyzer_spike_fixtures/`; M8–M10 move the ones they use into `SeoTester.Tests`.
+
+- **S4 RDAP:**
+  - Expiry available through the IANA bootstrap: com, net, org, dev, app, brussels, vlaanderen.
+  - **.nl:** RDAP exists but publishes no expiry.
+  - **.be and .eu:** no RDAP; WHOIS publishes no expiry either.
+  - **.io:** works at `rdap.identitydigital.services`, which is **not** in the bootstrap.
+
+  **Decision:** RDAP through the bootstrap only. Show "expiry not published by the registry" when it is missing, and let the org enter a renewal date manually; the domain-expiry alert then uses that date. No WHOIS scraping: it adds nothing, and the DNS Belgium terms forbid automated extraction. No hard-coded `.io` endpoint.
+- **S5 PSI:**
+  - Unauthenticated calls return **429 with `quota_limit_value: "0"`**, so an API key is mandatory and no real fixture exists yet.
+  - Lighthouse is 13.5.0. Its 17 `*-insight` audits have weight 0.
+  - Score paths are `lighthouseResult.categories.{performance,accessibility,best-practices,seo}.score`. CrUX field data is `loadingExperience` / `originLoadingExperience`, both optional.
+  - CrUX API quota: 150 queries/min per project.
+
+  **Decision:** no key gives "not configured". PSI runs as a background job with a 120 s timeout, 429 means retry later, and we store only scores, metrics and insights. **Blocked until the owner's key exists:** a real fixture for the parser tests in M10.
+- **S10 hstspreload.org:**
+  - `status` returns `{name, status: unknown|pending|preloaded|rejected, bulk, preloadedDomain}`. `preloadedDomain` can be a parent domain or a TLD.
+  - `preloadable` / `removable` return `{errors[], warnings[]}` of `{code, summary, message}`.
+
+  **Decision:** key on `code`; cache for 1 day.
+- **S12 Web Push:**
+  - The `WebPush` NuGet package is **rejected**: it uses the legacy `aesgcm` encoding, not RFC 8291 `aes128gcm`, pulls in BouncyCastle, and is MPL-2.0.
+  - `Lib.Net.Http.WebPush` 3.3.1 is acceptable: MIT and aes128gcm, but it targets net6.0 at most and was last released in March 2025.
+  - A hand-rolled implementation is about 300 lines on built-in `ECDiffieHellman`/`HKDF`/`AesGcm`/`ECDsa`, verifiable against the RFC 8291 Appendix A test vectors.
+  - Apple: iOS 16.4+ and an installed web app only; subscribe from a user gesture; no silent pushes.
+  - Responses: 404/410 deletes the subscription; 429/5xx means back off.
+
+  **Recommendation: hand-rolled**, pending the owner's confirmation (asked with the milestone questions).
+
 ### Spike S1 (2026-10-10)
 
 **Answer: yes.** A `SocketsHttpHandler.ConnectCallback` guard blocks every listed case, closes DNS rebinding and survives redirects. Its overhead is a few µs per pooled request. Built as X2 and adopted by the IdP in M1, commit `72c84933`.

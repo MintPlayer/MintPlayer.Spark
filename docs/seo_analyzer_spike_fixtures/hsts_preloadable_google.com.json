@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "response.no_header",
+      "summary": "No HSTS header",
+      "message": "Response error: No HSTS header is present on the response."
+    },
+    {
+      "code": "redirects.http.www_first",
+      "summary": "HTTP redirects to www first",
+      "message": "`http://google.com` (HTTP) should immediately redirect to `https://google.com` (HTTPS) before adding the www subdomain. Right now, the first redirect is to `http://www.google.com/`. The extra redirect is required to ensure that any browser which supports HSTS will record the HSTS entry for the top level domain, not just the subdomain."
+    }
+  ],
+  "warnings": []
+}

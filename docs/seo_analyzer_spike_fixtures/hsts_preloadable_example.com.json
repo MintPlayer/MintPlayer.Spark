@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "response.no_header",
+      "summary": "No HSTS header",
+      "message": "Response error: No HSTS header is present on the response."
+    },
+    {
+      "code": "redirects.http.no_redirect",
+      "summary": "No redirect from HTTP",
+      "message": "`http://example.com` does not redirect to `https://example.com`."
+    }
+  ],
+  "warnings": []
+}

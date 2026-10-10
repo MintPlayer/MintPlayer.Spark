@@ -1,0 +1,28 @@
+Domain name: sidn.nl
+Status:      active
+
+Registrar:
+   Stichting Internet Domeinregistratie Nederland
+   Meander 501
+   6825MD Arnhem
+   Netherlands
+
+Abuse Contact:
+   +31.263525555
+   abuse@sidn.nl
+
+DNSSEC:      yes
+
+Domain nameservers:
+   ns2.sidn.nl          176.97.158.144
+   ns2.sidn.nl          2001:67c:10b8:0:0:0:0:144
+   ns1.sidn.nl          192.174.68.144
+   ns1.sidn.nl          2001:67c:1bc:0:0:0:0:144
+   ns3.sidn.nl          194.0.28.10
+   ns3.sidn.nl          2001:678:2c:0:194:0:28:10
+
+Creation Date: 1999-11-18
+
+Updated Date: 2026-05-12
+
+Record maintained by: SIDN BV
