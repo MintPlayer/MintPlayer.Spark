@@ -16,6 +16,8 @@ using MintPlayer.Spark.Http;
 using SeoTester;
 using SeoTester.Audits;
 using SeoTester.Catalogue;
+using SeoTester.Crawler;
+using SeoTester.Dns;
 using SeoTester.Entities;
 using SeoTester.Settings;
 using SeoTester.Verification;
@@ -31,7 +33,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.UseContext<SeoContext>();
     // Generated over this assembly: the Actions classes (Actions/), the custom actions (CustomActions/), the
     // interceptors that keep a site's server-owned fields (Interceptors/) and the re-verification sweep (cron).
-    // AddRecipients() arrives with the pipeline's recipients (M9).
     spark.AddActions();
     spark.AddCustomActions();
     spark.AddInterceptors();
@@ -68,9 +69,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // Spark:Mail (SMTP in production, the pickup folder in Development).
     spark.AddMailManager();
 
-    // The crawl pipeline's queues (SeoTester.Messaging.SeoQueues) are declared in Spark:Messaging:Queues; their
-    // recipients arrive with M9/M10. Web Push deliveries ride the same outbox.
+    // The crawl pipeline's queues (SeoTester.Messaging.SeoQueues) are declared in Spark:Messaging:Queues; the
+    // recipients of probe, crawl and aggregate are Crawler/ (M9), render, PSI and PDF arrive with M10. Web Push
+    // deliveries ride the same outbox.
     spark.AddMessaging();
+    spark.AddRecipients();
     spark.AddHistory();
 
     // X2: every fetch of a user-chosen URL goes through the SSRF-safe client (Spark:SafeHttp).
@@ -100,7 +103,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 builder.Services.AddScoped<ISparkShareGate, SharingSwitch>();
 
 // M8: verification (F3), the audit start (§4.3), the catalogue (D32), the abuse log (D28) and D26's cascade.
-builder.Services.AddSingleton<IDnsTxtResolver, DnsClientTxtResolver>();
+builder.Services.AddSingleton<ISeoDns, DnsClientSeoDns>();
+builder.Services.AddSeoCrawler(builder.Configuration);
 builder.Services.AddSafeHttpClient(SiteVerification.HttpClientName, builder.Configuration.GetSection("Spark:SafeHttp"), o =>
 {
     // A proof must come from the site itself: an open redirect elsewhere proves nothing.

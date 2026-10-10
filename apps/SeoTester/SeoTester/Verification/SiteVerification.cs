@@ -4,6 +4,7 @@ using MintPlayer.Spark.Settings;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using SeoTester.Audits;
+using SeoTester.Dns;
 using SeoTester.Entities;
 using SeoTester.LookupReferences;
 using SeoTester.Settings;
@@ -40,7 +41,7 @@ public sealed record VerifyResult(VerifyOutcome Outcome, string? Method, string?
 /// </summary>
 public sealed partial class SiteVerification(
     IDocumentStore store,
-    IDnsTxtResolver dns,
+    ISeoDns dns,
     IHttpClientFactory httpClients,
     ISparkOrganizations organizations,
     ISparkSettings settings,

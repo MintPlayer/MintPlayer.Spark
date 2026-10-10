@@ -13,6 +13,7 @@ namespace SeoTester.Entities;
 /// </summary>
 [RequiresOrganizationRole("ShareLink", OrganizationRole.Admin)]
 [RequiresOrganizationRole("RevokeShareLink", OrganizationRole.Admin)]
+[RequiresOrganizationRole(SeoActionNames.CancelAudit, OrganizationRole.Member)]
 public class AuditRun : IOrganizationOwned, ISparkShareable
 {
     public string? Id { get; set; }
@@ -85,6 +86,17 @@ public class AuditRun : IOrganizationOwned, ISparkShareable
     public List<RunCheckResult> CheckResults { get; set; } = [];
 
     public string? Error { get; set; }
+
+    /// <summary>
+    /// The pipeline stages that finished (<c>crawl</c>; <c>render</c> and <c>psi</c> join in M10). The last one to finish
+    /// enqueues the aggregate (§4.3). Server-only.
+    /// </summary>
+    [IgnoreProperty]
+    public List<string> StagesDone { get; set; } = [];
+
+    /// <summary>The user who asked to cancel. Server-only.</summary>
+    [IgnoreProperty]
+    public string? CancelledBy { get; set; }
 
     /// <summary>X6: the share link's hash, the framework's.</summary>
     [IgnoreProperty]

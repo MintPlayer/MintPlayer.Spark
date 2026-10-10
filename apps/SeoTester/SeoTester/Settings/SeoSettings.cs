@@ -37,6 +37,8 @@ public static class SeoSettings
     public static readonly SparkSetting<int> VerifiedConnectionsPerHost = new("SeoTester:Limits:Verified:ConnectionsPerHost", 4, "Parallel connections to a verified host.");
 
     public static readonly SparkSetting<TimeSpan> UnverifiedRequestInterval = new("SeoTester:Limits:Unverified:RequestInterval", TimeSpan.FromSeconds(1), "Least time between two requests to an unverified host.");
+    public static readonly SparkSetting<TimeSpan> VerifiedRequestInterval = new("SeoTester:Limits:Verified:RequestInterval", TimeSpan.Zero,
+        "Least time between two requests to a verified host (its connections per host still apply). A robots.txt Crawl-delay is honoured when larger.");
 
     public static readonly SparkSetting<int> UnverifiedRenderedSample = new("SeoTester:Limits:Unverified:RenderedSample", 3, "Pages rendered in the headless browser for an unverified site.");
     public static readonly SparkSetting<int> VerifiedRenderedSample = new("SeoTester:Limits:Verified:RenderedSample", 10, "Pages rendered in the headless browser for a verified site.");

@@ -19,6 +19,7 @@ Administrators | grant | EditNewDelete/CheckDefinition | checks-edit | app
 Administrators | grant | QueryRead/AuditLogEntry | audit-log | app
 Administrators | grant | ResetCheckDefinition/CheckDefinition | checks-reset | app
 Administrators (settings:administrators) | grant | QueryReadEdit/Setting | settings:administrators | settings
+Signed-in users | grant | CancelAudit/AuditRun | runs-cancel | app
 Signed-in users | grant | QueryRead/AuditRun | runs | app
 Signed-in users | grant | QueryRead/CheckDefinition | checks | app
 Signed-in users | grant | QueryRead/PageResult | pages | app

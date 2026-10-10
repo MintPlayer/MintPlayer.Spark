@@ -47,6 +47,10 @@ public static class AuditLogKinds
     public const string SiteVerified = nameof(SiteVerified);
     public const string SiteClaimRequested = nameof(SiteClaimRequested);
     public const string VerificationWithdrawn = nameof(VerificationWithdrawn);
+    public const string AuditCancelled = nameof(AuditCancelled);
+
+    /// <summary>robots.txt opted out of, or disallowed, the crawl: nothing was fetched (D19, Q-M8e).</summary>
+    public const string RobotsBlocked = nameof(RobotsBlocked);
 }
 
 /// <summary>

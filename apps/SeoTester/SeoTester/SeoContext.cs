@@ -31,4 +31,7 @@ public static class SeoActionNames
 
     /// <summary>On a catalogue entry: restore the shipped version (D32).</summary>
     public const string ResetCheckDefinition = nameof(ResetCheckDefinition);
+
+    /// <summary>On a running audit: stop it at the crawler's next batch (F4).</summary>
+    public const string CancelAudit = nameof(CancelAudit);
 }

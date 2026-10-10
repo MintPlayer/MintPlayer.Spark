@@ -126,8 +126,11 @@ public sealed partial class AuditStarter(
         if (run is null)
             return null;
 
+        // A patch, not a store of the loaded run: the crawler writes the run concurrently (progress, status), and a
+        // whole-document write would put back what this request read.
+        session.Advanced.Evict(run);
         if (!run.Participants.Contains(userId))
-            run.Participants.Add(userId);
+            session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.Participants, participants => participants.Add(userId));
         await session.StoreAsync(await auditLog.EntryAsync(AuditLogKinds.AuditJoined, userId, site, run.Id, null, cancellationToken), cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         return new AuditStartResult(run.Id!, Joined: true);

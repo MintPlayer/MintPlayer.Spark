@@ -29,7 +29,7 @@ public class StartAuditTests(SeoTesterHostFixture host)
         var runId = body.GetProperty("result").GetProperty("runId").GetString()!;
         body.GetProperty("result").GetProperty("joined").GetBoolean().Should().BeFalse();
         var run = (await LoadDocumentAsync<AuditRun>(host, runId))!;
-        run.ShouldSatisfy(r => r.SiteId == site.Id && r.OrganizationId == Acme && r.Origin == site.Origin && r.Status == "Queued"
+        run.ShouldSatisfy(r => r.SiteId == site.Id && r.OrganizationId == Acme && r.Origin == site.Origin && r.Status is "Queued" or "Running"
             && r.StartedBy == Max && !r.IsVerified && !r.DeepCrawl && r.MaxPages == 100 && r.WallTimeMinutes == 10 && r.ConnectionsPerHost == 1
             && !r.IntrusiveProbes);
         run.Participants.Should().Equal(Max);

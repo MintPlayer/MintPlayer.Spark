@@ -51,6 +51,12 @@ public sealed class AuditRunStatus : TransientLookupReference<string>
     public const string Cancelled = nameof(Cancelled);
     public const string Failed = nameof(Failed);
 
+    /// <summary>robots.txt refused the crawler (the site opted out, disallows everyone, or robots.txt was unreachable): nothing was crawled (D19).</summary>
+    public const string Blocked = nameof(Blocked);
+
+    /// <summary>A run in one of these is over.</summary>
+    public static readonly IReadOnlyList<string> Finished = [Completed, Cancelled, Failed, Blocked];
+
     /// <summary>A run in one of these can still be joined (D17).</summary>
     public static readonly IReadOnlyList<string> InProgress = [Queued, Running];
 
@@ -63,6 +69,7 @@ public sealed class AuditRunStatus : TransientLookupReference<string>
         new AuditRunStatus { Key = Completed, Description = "Finished and scored", Values = _TS("Completed", "Terminé", "Klaar") },
         new AuditRunStatus { Key = Cancelled, Description = "Stopped on request", Values = _TS("Cancelled", "Annulé", "Geannuleerd") },
         new AuditRunStatus { Key = Failed, Description = "Stopped by an error", Values = _TS("Failed", "Échoué", "Mislukt") },
+        new AuditRunStatus { Key = Blocked, Description = "robots.txt does not allow the crawler", Values = _TS("Blocked by robots.txt", "Bloqué par robots.txt", "Geblokkeerd door robots.txt") },
     ];
 }
 

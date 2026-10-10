@@ -26,7 +26,7 @@ namespace SeoTester.Tests._Infrastructure;
 /// <c>builder.Configuration</c> while it registers services (<c>AddExternalProviders</c>).</item>
 /// </list>
 /// </remarks>
-public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictionary<string, string?>? settings = null, FakeDns? dns = null, FakeWeb? web = null) : WebApplicationFactory<Program>
+public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictionary<string, string?>? settings = null, FakeDns? dns = null, FakeWeb? web = null, FakeTls? tls = null) : WebApplicationFactory<Program>
 {
     public const string EnvironmentName = "IntegrationTest";
 
@@ -52,14 +52,19 @@ public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictio
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
             builder.UseSetting(key, value);
 
+        // The pipeline's redeliveries and delayed batches are woken by the sweeper: every second, not every 30.
+        builder.UseSetting("Spark:Messaging:FallbackPollInterval", "00:00:01");
+
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IStartupFilter, SeoPrincipalStartupFilter>();
-            // Ownership verification reads DNS and the site: both answer from tables (FakeDns, FakeWeb).
-            if (dns is not null)
-                services.AddSingleton<SeoTester.Verification.IDnsTxtResolver>(dns);
-            if (web is not null)
-                services.AddHttpClient(SeoTester.Verification.SiteVerification.HttpClientName).ConfigurePrimaryHttpMessageHandler(web.CreateHandler);
+            // Nothing a test runs leaves the machine: DNS, the web (verification, the crawler, the registries) and TLS
+            // answer from tables. FakeWeb replaces only the primary handlers, so the SSRF-safe handlers still run.
+            services.AddSingleton<SeoTester.Dns.ISeoDns>(dns ?? new FakeDns());
+            var fakeWeb = web ?? new FakeWeb();
+            foreach (var client in new[] { SeoTester.Verification.SiteVerification.HttpClientName, SeoTester.Crawler.SeoHttp.Crawler, SeoTester.Crawler.SeoHttp.Lookups })
+                services.AddHttpClient(client).ConfigurePrimaryHttpMessageHandler(fakeWeb.CreateHandler);
+            services.AddSingleton<SeoTester.Crawler.ITlsProber>(tls ?? new FakeTls());
         });
     }
 }
@@ -165,8 +170,11 @@ internal static class SeoRequests
 }
 
 /// <summary>The one SeoTester host the tests share (see <see cref="SeoTesterWebAppFactory"/>'s remarks).</summary>
-public sealed class SeoTesterHostFixture : SparkTestDriver
+public class SeoTesterHostFixture : SparkTestDriver
 {
+    /// <summary>Host settings of this fixture (a subclass tunes the crawl for its collection).</summary>
+    protected virtual IReadOnlyDictionary<string, string?>? HostSettings => null;
+
     public IDocumentStore Database => Store;
 
     public SeoTesterWebAppFactory Factory { get; private set; } = null!;
@@ -174,8 +182,11 @@ public sealed class SeoTesterHostFixture : SparkTestDriver
     /// <summary>The DNS the host's verification sees.</summary>
     public FakeDns Dns { get; } = new();
 
-    /// <summary>The web the host's verification client sees.</summary>
+    /// <summary>The web the host's verification client, crawler and lookups see.</summary>
     public FakeWeb Web { get; } = new();
+
+    /// <summary>The TLS the host's probe sees.</summary>
+    public FakeTls Tls { get; } = new();
 
     /// <summary>Ann owns Acme (Max Member, Vic Viewer); Bob owns Globex; Ann and Max have personal organizations.</summary>
     public Task SeedOrganizationsAsync() => SeedFromJsonAsync("Data/organizations.json");
@@ -187,8 +198,16 @@ public sealed class SeoTesterHostFixture : SparkTestDriver
     {
         await base.InitializeAsync();
         await SeedOrganizationsAsync();
-        Factory = new SeoTesterWebAppFactory(Store, dns: Dns, web: Web);
+        Factory = new SeoTesterWebAppFactory(Store, HostSettings, dns: Dns, web: Web, tls: Tls);
         // Boot here, so a startup failure is reported by the fixture and not by whichever test runs first.
+        _ = Factory.CreateClient();
+    }
+
+    /// <summary>Stops the host and starts a new one on the same database: a deploy or a crash in the middle of a run.</summary>
+    public async Task RestartHostAsync()
+    {
+        await Factory.DisposeAsync();
+        Factory = new SeoTesterWebAppFactory(Store, HostSettings, dns: Dns, web: Web, tls: Tls);
         _ = Factory.CreateClient();
     }
 

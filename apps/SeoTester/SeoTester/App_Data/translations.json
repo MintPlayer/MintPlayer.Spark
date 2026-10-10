@@ -855,6 +855,19 @@
         "en": "Looks for your verification token in DNS, in /.well-known/ or in a meta tag."
       }
     },
+    "CancelAudit": {
+      "label": {
+        "en": "Cancel audit",
+        "nl": "Audit annuleren"
+      },
+      "description": {
+        "en": "Stops the crawl at its next batch; the run ends without a score."
+      },
+      "confirmation": {
+        "en": "Stop this audit? It ends without a score.",
+        "nl": "Deze audit stoppen? Hij eindigt zonder score."
+      }
+    },
     "ResetCheckDefinition": {
       "label": {
         "en": "Reset to shipped",
@@ -905,6 +918,14 @@
     "auditJoined": {
       "en": "An audit of {0} was already running: you joined it.",
       "nl": "Er liep al een audit van {0}: je bent erbij gekomen."
+    },
+    "auditCancelling": {
+      "en": "The audit of {0} stops at the crawler's next step.",
+      "nl": "De audit van {0} stopt bij de volgende stap van de crawler."
+    },
+    "auditAlreadyFinished": {
+      "en": "The audit of {0} has already finished.",
+      "nl": "De audit van {0} is al afgelopen."
     },
     "verified": {
       "en": "{0} is verified.",
