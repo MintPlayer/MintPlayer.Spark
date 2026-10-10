@@ -71,8 +71,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "PasskeyRow",
-      "isStreamingQuery": false
+      "entityType": "PasskeyRow"
     }
   ]
 }

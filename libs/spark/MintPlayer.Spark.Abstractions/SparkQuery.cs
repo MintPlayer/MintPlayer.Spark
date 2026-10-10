@@ -84,11 +84,25 @@ public sealed class SparkQuery
     public SparkQueryColumn[]? Columns { get; set; }
 
     /// <summary>
-    /// When true, this query supports WebSocket streaming.
-    /// The frontend opens a WebSocket to /spark/queries/{id}/stream
-    /// and receives snapshot + patch messages instead of a single HTTP response.
+    /// Live updates (<c>docs/guide-live-updates.md</c>): grids showing this query subscribe over the one
+    /// <c>/spark/live</c> socket and receive patches when the rows change, through the same read path,
+    /// row security and attribute rights as <c>/spark/queries/execute</c>. Opt-in, because every change
+    /// to the query's collection costs a re-evaluation per viewer.
     /// </summary>
-    public bool IsStreamingQuery { get; set; }
+    /// <remarks>
+    /// A <c>Custom.*</c> source whose method takes <c>(LiveQueryArgs, CancellationToken)</c> and returns an
+    /// <c>IAsyncEnumerable</c> is an <b>app stream</b> (<see cref="IsAppStream"/>): its rows come from the
+    /// method, not from RavenDB. Every other live query is re-run when its collection changes.
+    /// </remarks>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Live { get; set; }
+
+    /// <summary>
+    /// Whether this live query's rows come from an app stream method rather than RavenDB. Decided at
+    /// startup from the method's signature; never read from a model file nor sent to a client.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsAppStream { get; internal set; }
 
     /// <summary>
     /// Whether the grid offers row selection (#460, D17). Null — the default, and what an omitted

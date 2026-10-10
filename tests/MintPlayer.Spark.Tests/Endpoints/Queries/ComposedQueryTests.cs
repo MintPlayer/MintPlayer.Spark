@@ -43,7 +43,7 @@ public sealed class ComposedQueryHost : SharedSparkHost<TestSparkContext>
 /// (<c>VirtualObjectEndpointTests</c> is the sibling).
 /// <para>
 /// What these pin down is mostly the <em>consequences</em>: row security cannot run (nothing to
-/// judge), streaming is refused (no collection to watch), and the type-level right still applies
+/// judge), a live query is refused (no collection to watch), and the type-level right still applies
 /// (that check was never row-shaped).
 /// </para>
 /// </summary>
@@ -95,7 +95,7 @@ public class ComposedQueryTests(ComposedQueryHost host)
                     Name = $"{name}Rows",
                     Source = source,
                     EntityType = name,
-                    IsStreamingQuery = streaming,
+                    Live = streaming,
                 },
             ],
         };
@@ -209,7 +209,7 @@ public class ComposedQueryTests(ComposedQueryHost host)
     }
 
     [Fact]
-    public void Streaming_over_a_composed_type_is_refused_by_the_shared_rule()
+    public void A_live_query_over_a_composed_type_is_refused_by_the_shared_rule()
     {
         // F16: this used to die at the first MoveNext inside an open websocket, as
         // `CLR type '' not found` wrapped in `{"message":"Stream failed"}` — no query name, no
@@ -224,7 +224,7 @@ public class ComposedQueryTests(ComposedQueryHost host)
         var problems = SparkComposedQueries.Validate([streamer.PersistentObject], streamer.Queries);
 
         problems.Should().ContainSingle()
-            .Which.Should().Contain("no collection to watch").And.Contain("StreamBoard");
+            .Which.Should().Contain("is live over").And.Contain("StreamBoard");
     }
 
     [Fact]

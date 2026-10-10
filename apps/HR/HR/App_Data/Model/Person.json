@@ -199,8 +199,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Person",
-      "isStreamingQuery": false
+      "entityType": "Person"
     },
     {
       "id": "b20e8400-e29b-41d4-a716-446655440001",
@@ -214,8 +213,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "People_Overview",
-      "entityType": "Person",
-      "isStreamingQuery": false
+      "entityType": "Person"
     }
   ]
 }

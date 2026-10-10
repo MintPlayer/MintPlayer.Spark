@@ -16,7 +16,7 @@ internal sealed record RowSecurityContext
     /// redaction's document reload.
     /// </summary>
     /// <remarks>
-    /// Per invocation, deliberately NOT taken from DI. Streaming opens a fresh session per batch so
+    /// Per invocation, deliberately NOT taken from DI. The live engine opens a fresh session per evaluation so
     /// its request count starts from zero each time; taking the request session here would silently
     /// undo that and reintroduce the failure where a long stream over a referenced type died partway
     /// through.

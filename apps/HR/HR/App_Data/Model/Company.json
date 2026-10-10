@@ -113,8 +113,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Company",
-      "isStreamingQuery": false
+      "entityType": "Company"
     }
   ]
 }

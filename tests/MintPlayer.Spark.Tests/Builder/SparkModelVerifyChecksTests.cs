@@ -404,11 +404,11 @@ public class SparkModelVerifyChecksTests
     // --- composed queries --------------------------------------------------
 
     [Fact]
-    public void A_composed_query_that_streams_or_shows_no_columns_exits_3()
+    public void A_composed_query_that_is_live_or_shows_no_columns_exits_3()
     {
         using var scratch = new ScratchContentRoot();
         var streaming = Query("StreamVerifyComposed", "Custom." + nameof(VerifyComposedProbeActions.Rows));
-        streaming["isStreamingQuery"] = true;
+        streaming["live"] = true;
 
         var (exitCode, reported) = VerifyWith(scratch, () =>
         {
@@ -418,7 +418,7 @@ public class SparkModelVerifyChecksTests
         });
 
         exitCode.Should().Be(3);
-        reported.Should().Contain("Query 'StreamVerifyComposed' streams over 'VerifyComposedProbe', which declares no clrType");
+        reported.Should().Contain("Query 'StreamVerifyComposed' is live over 'VerifyComposedProbe', which declares no clrType");
         reported.Should().Contain("Query 'GetVerifyColumnless' returns rows of 'VerifyColumnlessProbe'");
     }
 

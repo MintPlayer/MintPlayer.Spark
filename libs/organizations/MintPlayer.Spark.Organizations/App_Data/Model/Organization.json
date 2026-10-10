@@ -66,8 +66,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Organization",
-      "isStreamingQuery": false
+      "entityType": "Organization"
     }
   ]
 }

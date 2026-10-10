@@ -279,8 +279,7 @@
       ],
       "renderMode": "VirtualScrolling",
       "indexName": "Cars_Overview",
-      "entityType": "Car",
-      "isStreamingQuery": false
+      "entityType": "Car"
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440011",
@@ -295,7 +294,6 @@
       ],
       "renderMode": "Pagination",
       "entityType": "Car",
-      "isStreamingQuery": false,
       "selectionMode": "none"
     },
     {
@@ -311,8 +309,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "Cars_Overview",
-      "entityType": "Car",
-      "isStreamingQuery": false
+      "entityType": "Car"
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440010",
@@ -326,8 +323,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Car",
-      "isStreamingQuery": false
+      "entityType": "Car"
     }
   ]
 }

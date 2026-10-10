@@ -76,8 +76,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Company",
-      "isStreamingQuery": false
+      "entityType": "Company"
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440004",
@@ -91,7 +90,7 @@
       ],
       "renderMode": "Pagination",
       "entityType": "Company",
-      "isStreamingQuery": true
+      "live": true
     }
   ]
 }

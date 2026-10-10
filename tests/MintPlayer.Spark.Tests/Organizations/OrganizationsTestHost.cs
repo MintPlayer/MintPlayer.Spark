@@ -10,6 +10,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Organizations;
 using MintPlayer.Spark.Organizations.Models;
@@ -60,6 +61,12 @@ public abstract class OrganizationsTestHost : SparkTestDriver
     /// <summary>Additional data handlers a test registers before the host boots.</summary>
     internal List<IOrganizationDataHandler> DataHandlers { get; } = [];
 
+    /// <summary>Live-update options a test sets before the host boots (<c>spark.AddLive</c>).</summary>
+    internal Action<MintPlayer.Spark.Live.SparkLiveOptions>? LiveOptions { get; set; }
+
+    /// <summary>More registrations a test adds before the host boots.</summary>
+    internal Action<IServiceCollection>? ExtraServices { get; set; }
+
     private SparkEndpointFactory<OgContext> CreateFactory()
     {
         var created = new SparkEndpointFactory<OgContext>(
@@ -70,6 +77,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
                 services.AddSingleton<IStartupFilter, OgPrincipalStartupFilter>();
                 services.AddSingleton<OgRecordingMailer>();
                 services.AddSingleton<ISparkMailer>(sp => sp.GetRequiredService<OgRecordingMailer>());
+                ExtraServices?.Invoke(services);
                 foreach (var handler in DataHandlers)
                     services.AddSingleton<IOrganizationDataHandler>(handler);
             },
@@ -80,6 +88,8 @@ public abstract class OrganizationsTestHost : SparkTestDriver
                     auth.LocalCredentials = MintPlayer.Spark.Authorization.Configuration.SparkLocalCredentials.SignInOnly;
                     auth.Links.PublicBaseUrl = PublicBaseUrl;
                 });
+                if (LiveOptions is not null)
+                    spark.AddLive(LiveOptions);
                 if (WithPackage)
                     spark.AddOrganizations();
             },
@@ -122,13 +132,15 @@ public abstract class OrganizationsTestHost : SparkTestDriver
             Name = "OgNote",
             ClrType = typeof(OgNote).FullName!,
             Breadcrumb = "{Title}",
+            // X4: the live-update tests (Live/LiveSocketTests) watch notes; nothing else here notices.
+            Live = true,
             Attributes =
             [
                 new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
                 new() { Id = Guid.NewGuid(), Name = "OrganizationId", DataType = "string" },
             ],
         },
-        Queries = [new SparkQuery { Id = NotesQueryId, Name = "OgNotes", Source = "Database.Notes", EntityType = "OgNote" }],
+        Queries = [new SparkQuery { Id = NotesQueryId, Name = "OgNotes", Source = "Database.Notes", EntityType = "OgNote", Live = true }],
     };
 
     // ---- seeding -----------------------------------------------------------------------------------

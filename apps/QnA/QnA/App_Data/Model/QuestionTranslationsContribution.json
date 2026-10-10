@@ -175,8 +175,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "QuestionTranslationsContribution",
-      "isStreamingQuery": false
+      "entityType": "QuestionTranslationsContribution"
     }
   ]
 }

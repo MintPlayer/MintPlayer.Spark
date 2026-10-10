@@ -39,7 +39,7 @@ public sealed record SparkQueryInfo
     public string? EntityType { get; init; }
     public string? IndexName { get; init; }
     public SparkQueryRenderMode RenderMode { get; init; }
-    public bool IsStreamingQuery { get; init; }
+    public bool Live { get; init; }
 
     /// <summary>The sort in effect: the caller's override when there was one, else the declared order.</summary>
     public required IReadOnlyList<SortColumn> SortColumns { get; init; }
@@ -53,7 +53,7 @@ public sealed record SparkQueryInfo
         EntityType = query.EntityType,
         IndexName = query.IndexName,
         RenderMode = query.RenderMode,
-        IsStreamingQuery = query.IsStreamingQuery,
+        Live = query.Live,
         // Copied, not aliased — see the remarks.
         SortColumns = query.SortColumns.ToArray(),
     };

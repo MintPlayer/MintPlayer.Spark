@@ -1,6 +1,6 @@
 # Row-level security
 
-Spark enforces authorization at two levels. **Entity-type** authorization — "may this principal query/read/edit/delete this *type* at all" — is configured declaratively in `security.json` (see the Authorization package). **Row-level** authorization — "may this principal act on *this specific row*" — is expressed in code, on the entity's Actions class, and enforced by the framework on every path that can return or write a row: detail get, list, query, streaming, breadcrumb reference loads, create, edit, and delete.
+Spark enforces authorization at two levels. **Entity-type** authorization — "may this principal query/read/edit/delete this *type* at all" — is configured declaratively in `security.json` (see the Authorization package). **Row-level** authorization — "may this principal act on *this specific row*" — is expressed in code, on the entity's Actions class, and enforced by the framework on every path that can return or write a row: detail get, list, query, live updates, breadcrumb reference loads, create, edit, and delete.
 
 This guide covers the row-level layer end to end. It is auth-package-agnostic: it hooks the Actions classes and reads the principal from the request, needing nothing from `MintPlayer.Spark.Authorization`.
 
@@ -56,7 +56,7 @@ project => project.Connection != RepositoryConnection.Disconnected
   equality hides every document written before the field existed. Negation matches the absent
   field, which is what makes the rule correct for old documents without a migration.
 
-> **Cost contract (why awaiting I/O here is safe).** The framework invokes the hook **at most once per (entity type, action) per request** and caches the result — bounded by the model, never by row count, page size, or streaming batch count. On a stream the cache refreshes on the periodic re-authorization tick (~every 10 batches), so a filter is at most that stale. Because the result is cached per request, the filter must be a **pure function of request-scoped state**. `IsAllowedAsync`, by contrast, is genuinely per-row and is **not** memoized — express I/O-backed rules as a `GetRowFilterAsync` expression, not in `IsAllowedAsync`.
+> **Cost contract (why awaiting I/O here is safe).** The framework invokes the hook **at most once per (entity type, action) per request** and caches the result — bounded by the model, never by row count or page size. A live subscription re-evaluates in a fresh DI scope on every push and at least once per `Spark:Live:Revalidate` (1 minute), so a filter is at most that stale there ([live updates](guide-live-updates.md)). Because the result is cached per request, the filter must be a **pure function of request-scoped state**. `IsAllowedAsync`, by contrast, is genuinely per-row and is **not** memoized — express I/O-backed rules as a `GetRowFilterAsync` expression, not in `IsAllowedAsync`.
 
 - **Return `null`** to mean *no restriction for this caller* — an administrator, say. The type still has a rule; this caller just isn't scoped by it.
 - **Return a constant predicate** (`r => false`) for a caller who may see nothing. Constant predicates are evaluated in memory rather than pushed into RQL (RavenDB's provider need not translate them).
@@ -103,7 +103,7 @@ builder.Services.AddSpark(builder.Configuration, spark => spark.AddSparkRowPolic
 - **`RowPolicyContext`** carries the entity type, the action (including custom action names), the request's `Deleted` mode (the `deleted: exclude|include|only` field of a query request — core only carries it), `IsSystemContext` and the `User`.
 - **System context.** Policies are skipped for the system by default (`BypassInSystemContext => true`), like Actions-class rules. A policy that returns `false` still applies to module sync and background work.
 - **Which rules count as "declaring a row policy".** The anonymous-readable startup validator counts the Actions class's rule and policies with `IsVisibilityDecision => true` — a soft-delete filter on every type does not satisfy it. The `SparkQueryPage<T>` refusal counts the Actions rule, check policies and visibility policies, not a non-visibility filter policy. The per-row `can` block is computed whenever any rule or policy applies.
-- **Everywhere `IRowSecurity` is asked**: list, detail, custom queries, sub-queries, distinct values, streams, breadcrumbs, the edit/delete gates, custom-action selections and `WITH CHECK`.
+- **Everywhere `IRowSecurity` is asked**: list, detail, custom queries, sub-queries, distinct values, live pushes and app streams ([live updates](guide-live-updates.md)), breadcrumbs, the edit/delete gates, custom-action selections and `WITH CHECK`.
 
 ⚠️ **Known gap (D1, documented, not fixed):** an Actions class that overrides `OnLoadAsync` without calling the base takes over the read gate for its type — policies included. The write side has no such gap since #482: the framework owns every write, and `WITH CHECK` cannot be skipped. References are not row-checked on save.
 
@@ -231,7 +231,7 @@ public override IReadOnlyCollection<string>? GetDefaultIncludes() => ["Company",
 
 - Paths are **dotted JSON paths into the document**: `"Company"` for a top-level reference id, `"Address.City"` for an id nested inside an **embedded** object.
 - They do **not cross a document boundary** — RavenDB has no recursive include, so a chain through a referenced *document* (`Car → Owner → Owner.Company`) can't be expressed here. Use an index that projects the deeper id, or let the breadcrumb resolver's batched load handle it.
-- Applied on detail, list, and query. On a **stream** the framework can't apply them (your `StreamItems` builds its own query) — include what you need in that query yourself.
+- Applied on detail, list, and query, and so on every live push of a RavenDB-backed live query (a push re-runs that read). On an **app stream** the framework can't apply them (your live `Custom.*` method, e.g. `StreamItems(LiveQueryArgs, CancellationToken)`, builds its own query) — include what you need in that query yourself.
 - A path whose first segment isn't a property of the type logs a one-time warning and includes nothing.
 - Overriding `OnLoadAsync` without calling the base takes over the whole detail read pipeline — the includes, but also the collection guard, the row-level Read gate, redaction, the per-row `can` block and the etag all live in the default `OnLoadAsync` (#324). The typical override calls `await base.OnLoadAsync(id, parent)` and decorates the result.
 

@@ -291,8 +291,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Build",
-      "isStreamingQuery": false
+      "entityType": "Build"
     },
     {
       "id": "45cfc0b2-0e55-4ab5-889a-7faa91c7431a",
@@ -306,8 +305,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "Builds_Overview",
-      "entityType": "Build",
-      "isStreamingQuery": false
+      "entityType": "Build"
     }
   ]
 }

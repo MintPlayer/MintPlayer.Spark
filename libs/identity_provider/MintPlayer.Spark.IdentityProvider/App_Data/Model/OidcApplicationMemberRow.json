@@ -87,8 +87,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "OidcApplicationMemberRow",
-      "isStreamingQuery": false
+      "entityType": "OidcApplicationMemberRow"
     }
   ]
 }

@@ -148,16 +148,16 @@ public class QueryLoaderTests
     }
 
     /// <summary>
-    /// A streaming and a non-streaming query do NOT get to share one. It was considered — the
-    /// transport would pick, since /execute and /stream are already separate paths — and rejected
+    /// A live and a non-live query do NOT get to share one. It was considered — the
+    /// transport would pick, since /execute and the live socket are separate paths — and rejected
     /// as too complicated for what it buys: it needs the metadata endpoint to answer two queries
     /// at once, or a capability-flags negotiation in the model file. One query per URL instead.
     /// </summary>
     [Fact]
-    public void A_streaming_and_a_non_streaming_query_may_not_share_an_alias()
+    public void A_live_and_a_non_live_query_may_not_share_an_alias()
     {
         var streaming = Q(PeopleId, "StreamStocks", alias: "stocks");
-        streaming.IsStreamingQuery = true;
+        streaming.Live = true;
 
         var loader = CreateLoader(Q(CarsId, "GetStocks"), streaming);
 

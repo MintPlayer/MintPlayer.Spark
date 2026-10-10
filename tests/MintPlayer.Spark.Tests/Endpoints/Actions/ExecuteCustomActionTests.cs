@@ -56,7 +56,7 @@ public class ExecuteCustomActionTests
         _permissions.IsAllowedAsync("Read", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // D12 (#467): a selection always names its query. Tests about dispatch rather than the query
-        // name LoadedCarsQuery (NewContext fills it in), which cannot be re-run (streaming), so the
+        // name LoadedCarsQuery (NewContext fills it in), which cannot be re-run (an app stream), so the
         // selection takes the row-gated batched load these tests stub.
         _queryLoader.ResolveQuery(LoadedCarsQuery.Id.ToString()).Returns(LoadedCarsQuery);
     }
@@ -67,7 +67,8 @@ public class ExecuteCustomActionTests
         Name = "StreamedCars",
         Source = "Database.Cars",
         EntityType = "Car",
-        IsStreamingQuery = true,
+        Live = true,
+        IsAppStream = true,
     };
 
     /// <summary>Stand-ins for the Fleet types the model definitions name; only their identity matters.</summary>

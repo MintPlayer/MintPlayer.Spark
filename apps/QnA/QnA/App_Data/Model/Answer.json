@@ -183,8 +183,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Answer",
-      "isStreamingQuery": false
+      "entityType": "Answer"
     },
     {
       "id": "4e13a000-0000-4000-8000-000000000001",
@@ -198,8 +197,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Answer",
-      "isStreamingQuery": false
+      "entityType": "Answer"
     }
   ]
 }

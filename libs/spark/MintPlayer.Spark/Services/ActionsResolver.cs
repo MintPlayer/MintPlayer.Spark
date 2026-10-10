@@ -112,6 +112,12 @@ internal partial class ActionsResolver : IActionsResolver
         return genericMethod.Invoke(this, null)!;
     }
 
+    /// <summary>
+    /// The actions class named for <paramref name="entityType"/> (<c>{Entity}Actions</c>), without creating
+    /// one: null when the type has none and is served by a registered or the default actions class.
+    /// </summary>
+    internal static Type? FindActionsTypeFor(Type entityType) => FindActionsType($"{entityType.Name}Actions");
+
     private static Type? FindActionsType(string typeName)
     {
         // Negative caching matters here: when no Actions class exists for an entity, the

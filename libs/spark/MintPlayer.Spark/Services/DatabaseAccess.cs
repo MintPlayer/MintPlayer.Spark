@@ -910,13 +910,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
     internal static readonly TimeSpan RequestWriteIndexWait = TimeSpan.FromSeconds(15);
 
     /// <summary>
-    /// The longest single waiting query inside <see cref="RequestWriteIndexWait"/>. A query waiting for
-    /// non-stale results keeps its index instance from being disposed, so one 15 s query would hold up an
-    /// index delete, reset, auto-index merge or side-by-side swap for 15 s; slices hold it for at most this.
-    /// </summary>
-    private static readonly TimeSpan RequestWriteIndexWaitSlice = TimeSpan.FromMilliseconds(500);
-
-    /// <summary>
     /// Every write of this class commits here: <c>SaveChangesAsync</c> on the request session, then — only
     /// while serving an HTTP request — a separate, bounded wait for the indexes over the collections that
     /// commit wrote, so the caller's next query sees its own write.
@@ -991,7 +984,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// request's previous query would be missing from a cached map.
     /// </para>
     /// <para>
-    /// ⚠️ Waiting queries are sliced (<see cref="RequestWriteIndexWaitSlice"/>), not one 15 s query:
+    /// ⚠️ Waiting queries are sliced (<see cref="SparkIndexWait.Slice"/>), not one 15 s query:
     /// RavenDB does not dispose an index while a query waits on it, so a single long query held an index
     /// delete for the whole bound and failed it (measured: the delete's own 15 s raft wait timed out).
     /// Each slice starts a fresh cutoff, so a collection written faster than its index keeps up can run
@@ -1003,85 +996,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// side-by-side replacement (the original keeps answering queries), are not waited on.
     /// </para>
     /// </remarks>
-    private async Task WaitForIndexesAsync(HashSet<string> collections, CancellationToken requestAborted)
-    {
-        if (collections.Count == 0)
-            return;
-
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        using var bound = CancellationTokenSource.CreateLinkedTokenSource(requestAborted);
-        bound.CancelAfter(RequestWriteIndexWait);
-        var database = (session as InMemoryDocumentSessionOperations)?.DatabaseName ?? documentStore.Database;
-        string? waitingOn = null;
-        try
-        {
-            using var waitSession = documentStore.OpenAsyncSession(new Raven.Client.Documents.Session.SessionOptions { Database = database, NoTracking = true, NoCaching = true });
-            waitSession.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue;
-            var waited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            bool reread;
-            do
-            {
-                reread = false;
-                waitingOn = null;
-                var indexes = await documentStore.Maintenance.ForDatabase(database)
-                    .SendAsync(new Raven.Client.Documents.Operations.Indexes.GetIndexesStatisticsOperation(), bound.Token);
-                var stale = indexes
-                    .Where(index => index.IsStale
-                        && !waited.Contains(index.Name)
-                        && index.State is not Raven.Client.Documents.Indexes.IndexState.Disabled
-                            and not Raven.Client.Documents.Indexes.IndexState.Error
-                        && !index.Name.StartsWith(Raven.Client.Constants.Documents.Indexing.SideBySideIndexNamePrefix, StringComparison.OrdinalIgnoreCase)
-                        && index.Collections?.Keys.Any(collections.Contains) == true)
-                    .Select(index => index.Name)
-                    .ToList();
-
-                foreach (var name in stale)
-                {
-                    waitingOn = name;
-                    waited.Add(name);
-                    try
-                    {
-                        while (true)
-                        {
-                            var remaining = RequestWriteIndexWait - elapsed.Elapsed;
-                            if (remaining <= TimeSpan.Zero)
-                                throw new TimeoutException($"The {RequestWriteIndexWait.TotalSeconds:0} s bound ran out.");
-                            try
-                            {
-                                await waitSession.Advanced.AsyncDocumentQuery<object>(name)
-                                    .WaitForNonStaleResults(remaining < RequestWriteIndexWaitSlice ? remaining : RequestWriteIndexWaitSlice)
-                                    .CountAsync(bound.Token);
-                                break;
-                            }
-                            catch (TimeoutException) when (elapsed.Elapsed < RequestWriteIndexWait)
-                            {
-                                // Still behind after one slice: ask again, until the bound.
-                            }
-                        }
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException && ex is not TimeoutException)
-                    {
-                        // This index went away under the wait (deleted, reset, or merged into a new auto
-                        // index — seen under load in QnA). What replaced it covers the same collections and
-                        // is waited on with the remaining budget, after a fresh read of the statistics.
-                        LogUnfinishedWait(ex, name, collections, elapsed.Elapsed);
-                        reread = true;
-                        break;
-                    }
-                }
-            }
-            while (reread);
-        }
-        catch (OperationCanceledException) when (requestAborted.IsCancellationRequested)
-        {
-            // The caller went away: nobody is left to read the index.
-        }
-        catch (Exception ex)
-        {
-            // The bound ran out, or the index statistics could not be read.
-            LogUnfinishedWait(ex, waitingOn ?? "(index statistics)", collections, elapsed.Elapsed);
-        }
-    }
+    private Task WaitForIndexesAsync(HashSet<string> collections, CancellationToken requestAborted)
+        => SparkIndexWait.WaitAsync(
+            documentStore,
+            (session as InMemoryDocumentSessionOperations)?.DatabaseName ?? documentStore.Database,
+            collections,
+            RequestWriteIndexWait,
+            (ex, index, elapsed) => LogUnfinishedWait(ex, index, collections, elapsed),
+            requestAborted);
 
     private void LogUnfinishedWait(Exception ex, string index, HashSet<string> collections, TimeSpan elapsed)
         => logger?.LogWarning(ex,

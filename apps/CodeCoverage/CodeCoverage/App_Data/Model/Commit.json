@@ -256,8 +256,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "Commits_ByRepository",
-      "entityType": "Commit",
-      "isStreamingQuery": false
+      "entityType": "Commit"
     },
     {
       "id": "6c1f8a52-9d3e-4b70-8e21-5a7d4c9b0e63",
@@ -271,8 +270,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Commit",
-      "isStreamingQuery": false
+      "entityType": "Commit"
     }
   ]
 }

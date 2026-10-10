@@ -134,16 +134,16 @@ internal partial class QueryExecutor : IQueryExecutor
         CancellationToken cancellationToken = default,
         string? querySearch = null)
     {
-        // Refused before anything loads. A streaming query's rows arrive over a socket from an
+        // Refused before anything loads. An app stream's rows arrive over the live socket from an
         // IAsyncEnumerable method, and resolving it the ordinary way throws — ResolveCustomQueryMethod
-        // accepts zero parameters or one CustomQueryArgs, never a streaming method's
-        // (StreamingQueryArgs, CancellationToken) — which escaped this endpoint as a 500 for any
+        // accepts zero parameters or one CustomQueryArgs, never an app stream's
+        // (LiveQueryArgs, CancellationToken) — which escaped this endpoint as a 500 for any
         // caller who got past authorization. The CanListDistincts check below cannot save it: it
         // happens after the rows load, which is where the throw was.
         //
         // Empty rather than an error, matching every other refusal here: indistinguishable from a
         // column that simply has nothing to list.
-        if (query.IsStreamingQuery) return DistinctValuesResult.Empty;
+        if (query.IsAppStream) return DistinctValuesResult.Empty;
 
         // The whole result set, not a page: a distinct list describes the query, not the page the
         // grid happens to be on. Paging is applied to rows, never to this.
@@ -306,17 +306,16 @@ internal partial class QueryExecutor : IQueryExecutor
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default)
     {
-        // ⚠️ A streaming query has no shape this endpoint can execute, and saying so here is the
-        // difference between an empty grid and a 500 with a stack trace in Development.
-        // `ExecuteStreamingQueryAsync` takes `(StreamingQueryArgs, CancellationToken)`, which
-        // `ResolveCustomQueryMethod` accepts neither of — it takes zero parameters or one
-        // `CustomQueryArgs` — so resolution returns null and the executor throws. Measured on
-        // DemoApp's `StreamStocks` through `/spark/queries/execute`.
+        // ⚠️ An app-stream query has no shape this endpoint can execute, and saying so here is the
+        // difference between an empty grid and a 500 with a stack trace in Development. Its method
+        // takes `(LiveQueryArgs, CancellationToken)`, which `ResolveCustomQueryMethod` accepts neither
+        // of — it takes zero parameters or one `CustomQueryArgs` — so resolution returns null and the
+        // executor throws. Measured on DemoApp's `StreamStocks` through `/spark/queries/execute`.
         //
         // Empty rather than an error, matching `GetDistinctValuesAsync` above and every other refusal
-        // here: a caller who reached this endpoint for a streaming query has the wrong transport, not
-        // the wrong rights, and the rows arrive over the socket instead.
-        if (query.IsStreamingQuery)
+        // here: a caller who reached this endpoint for an app stream has the wrong transport, not the
+        // wrong rights, and the rows arrive over the live socket instead.
+        if (query.IsAppStream)
             return new QueryResult { Columns = [], Items = [], TotalItems = 0, Skip = skip, Take = take };
 
         var (isCustom, name) = ResolveSource(query);

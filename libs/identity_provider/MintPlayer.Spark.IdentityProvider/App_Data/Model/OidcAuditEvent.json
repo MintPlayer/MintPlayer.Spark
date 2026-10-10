@@ -101,8 +101,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "OidcAuditEvent",
-      "isStreamingQuery": false
+      "entityType": "OidcAuditEvent"
     }
   ]
 }

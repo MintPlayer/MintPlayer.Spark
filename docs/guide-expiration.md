@@ -56,7 +56,7 @@ most every 36 hours**. A document can therefore linger up to 36 h past its time.
 filter, not the sweep:
 
 - A row policy (`ExpirationRowPolicy`) adds `!(ExpiresAtUtc <= now)` to every path that asks row security:
-  lists, custom queries and sub-queries, distinct values, streams, breadcrumbs, reference pickers, the
+  lists, custom queries and sub-queries, distinct values, live pushes, breadcrumbs, reference pickers, the
   edit/delete gates, custom-action selections. A load of an expired document is the missing-row **404**
   (#453: missing ≡ no access).
 - It applies in the system context too: background work through `IDatabaseAccess` does not see them.

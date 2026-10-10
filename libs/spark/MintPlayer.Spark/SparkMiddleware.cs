@@ -133,6 +133,13 @@ public static class SparkExtensions
         // rows stayed visible until someone remembered to opt in would be a silent leak. The policy
         // applies only to IExpiring types; the database is configured by UseSpark() when needed.
         services.AddSparkConfigurationSection<Expiration.SparkExpirationOptions>(Expiration.SparkExpirationOptions.SectionName);
+
+        // Live updates (seo_analyzer_PRD X4): always available, opt-in per type and query in the model
+        // ("live": true). The hub is the notifier, so an app's explicit calls and the change sources meet in
+        // one place.
+        services.AddSparkConfigurationSection<Live.SparkLiveOptions>(Live.SparkLiveOptions.SectionName);
+        services.AddSingleton<Live.LiveHub>();
+        services.AddSingleton<Abstractions.Live.ISparkLiveNotifier>(sp => sp.GetRequiredService<Live.LiveHub>());
         services.AddSparkRowPolicy<Expiration.ExpirationRowPolicy>();
         // ExpiresAtUtc is the framework's on pipeline writes (D41): a client can neither extend nor clear it.
         Abstractions.Interceptors.SparkBuilderInterceptorExtensions.AddSparkInterceptor<Expiration.ExpirationInterceptor>(services);
@@ -391,7 +398,7 @@ public static class SparkExtensions
 
         // R2-H5: enforce same-origin on WebSocket upgrades. ASP.NET Core's default
         // is no origin check at all, which means an attacker page can open a WS to
-        // /spark/queries/{id}/stream and ride the victim's ambient cookies (CSWSH).
+        // /spark/live and ride the victim's ambient cookies (CSWSH).
         // We accept requests with no Origin header (non-browser clients) and
         // requests whose Origin host matches the request's Host. Cross-origin WS
         // remains an explicit opt-in via SparkWebSocketAllowedOrigins (config or
@@ -473,6 +480,10 @@ public static class SparkExtensions
         // the store and enables expiration on the database once, for every library that needs it.
         // Before the module tasks, so their startup writes are stamped too.
         Expiration.ExpirationStartup.Run(app.ApplicationServices, registry);
+
+        // Live updates (seo_analyzer_PRD X4): checks the options, marks the app-stream queries and installs
+        // the in-process change source on the store, before the module tasks so their writes are seen too.
+        Live.LiveStartup.Run(app.ApplicationServices);
 
         // Run module-specific middleware/startup tasks
         registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);

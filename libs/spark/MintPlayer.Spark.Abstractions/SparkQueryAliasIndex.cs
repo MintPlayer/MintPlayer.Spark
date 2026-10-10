@@ -17,7 +17,7 @@ public static class SparkQueryAliasIndex
     /// <exception cref="InvalidOperationException">
     /// Two queries resolve to the same alias. This is refused rather than warned about, because a
     /// URL cannot mean two things: <c>/query/{alias}</c>, <c>/spark/queries/{alias}</c>, its
-    /// <c>/execute</c> and its <c>/stream</c> all take the same alias, so the losing query would
+    /// <c>/execute</c> and its live subscription all take the same alias, so the losing query would
     /// be unreachable by name with nothing to say so at the point of use.
     /// <para>
     /// It used to be a <c>Console.WriteLine</c>, and a test pinned first-wins as though intended.

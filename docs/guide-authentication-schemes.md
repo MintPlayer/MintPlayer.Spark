@@ -484,7 +484,7 @@ Each demo's `App_Data/securityPosture.txt` states its anonymous surface in one c
 | A refused credential is indistinguishable from anonymity | **unit** | `AuthenticationOutcomeTests` (3 tests) |
 | Composite is the default authenticate scheme; sign-in/challenge are not | **unit** | `SparkBuilderExtensionsTests` (3 tests) |
 | Row-level filtering on get-by-id, list and child query | **E2E** | `RowLevelAuthzTests` (3 tests) |
-| Row-level filtering on a **stream** | **unit only** | `RowLevelQueryAuthorizationTests` — no E2E |
+| Row-level filtering on a **live push** | **integration** | `Live/LiveSocketTests`, `Live/LiveAppStreamTests` — no E2E |
 | `DenyAllAccessControl` denies an unconfigured app | **unit only** | `PermissionServiceDefaultsTests` |
 | Replication endpoints refuse an unauthenticated caller | **E2E** | `ReplicationEndpointAuthTests` (3 tests) |
 | Development-mode mTLS still verifies module registration | **unit** | `ModuleCertificateValidatorTests` |

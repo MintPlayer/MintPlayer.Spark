@@ -145,8 +145,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "OidcGrant",
-      "isStreamingQuery": false
+      "entityType": "OidcGrant"
     }
   ]
 }

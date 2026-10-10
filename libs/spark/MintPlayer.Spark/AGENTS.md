@@ -173,7 +173,7 @@ The hooks worth knowing:
 | `GetProtectedAttributesAsync` | per-row attribute redaction |
 | `OnRefreshAsync` | reshape the form when a `triggersRefresh` attribute changes |
 | `OnDisableActionsAsync(target, context)` | **the only place** an action is disabled — asked at load and enforced at submit (403) |
-| `StreamItems` / `StreamItem` | streaming queries over WebSocket |
+| a `Custom.*` method `(LiveQueryArgs, CancellationToken) → IAsyncEnumerable<IReadOnlyList<T>>` or `IAsyncEnumerable<T>` | an **app stream**: rows for a `"live": true` query that are not in RavenDB; see `docs/guide-live-updates.md` |
 
 ⚠️ **Disabling an action is one hook (#460, D13).** `OnDisableActionsAsync(IDisablable target,
 DisableActionsContext context)` — call `target.DisableActions("Edit", "MyAction")`. The framework asks
@@ -431,7 +431,16 @@ Declared on the entity's model file. `source` is the convention that decides how
 binding on the types. An unregistered projection silently returns null computed fields, with no
 error — if an index-computed field is null in a test but right in the app, suspect that first.
 
-`isStreamingQuery` sends the client to a WebSocket instead of paging over HTTP.
+**Live updates** (`docs/guide-live-updates.md`): `"live": true` on a query, or on an entity type,
+makes grids and detail pages follow the data over one multiplexed WebSocket, `/spark/live`. Every
+push re-runs the HTTP read path (row security, redaction, attribute rights) under the viewer's
+principal, and a change to a row the viewer cannot see sends nothing. A RavenDB-backed live query
+keeps server-side paging, sort, search and filters and is re-run when its collection changes; writes
+the sources cannot see (patches, collections reached only through `LoadDocument`) go through
+`ISparkLiveNotifier`. A live `Custom.*` method taking `LiveQueryArgs` is an app stream: the server
+searches, sorts and pages its yields in memory, offers no filters or distincts, and `/execute`
+answers it with an empty page. Configuration is `Spark:Live`. There is no `isStreamingQuery`,
+`StreamingQueryArgs` or `/spark/queries/{id}/stream` any more.
 
 **Sorting on a searchable text field needs a companion.** A field that is tokenized for search
 cannot be sorted; the pattern is a `{Name}Sort` companion with no `Index()` call. Adding `Exact` to

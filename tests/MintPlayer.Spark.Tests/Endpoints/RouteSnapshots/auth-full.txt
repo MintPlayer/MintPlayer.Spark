@@ -29,6 +29,7 @@ POST /spark/auth/register | antiforgery=required
 POST /spark/auth/resendConfirmationEmail | antiforgery=required
 POST /spark/auth/resetPassword | antiforgery=required
 GET /spark/culture
+CONNECT,GET /spark/live
 GET /spark/lookupref
 GET /spark/lookupref/{name}
 POST /spark/lookupref/{name} | antiforgery=required
@@ -50,7 +51,6 @@ GET /spark/queries
 POST /spark/queries/distinct-values | antiforgery=not-required
 POST /spark/queries/execute | antiforgery=not-required
 POST /spark/queries/get | antiforgery=not-required
-CONNECT,GET /spark/queries/{id}/stream
 GET /spark/translations
 GET /spark/types
 GET /spark/types/{id}

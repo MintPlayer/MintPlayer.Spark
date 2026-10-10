@@ -21,6 +21,7 @@ GET /spark/auth/manage/profile | authorize(policy=;roles=;schemes=)
 POST /spark/auth/manage/profile | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/me
 GET /spark/culture
+CONNECT,GET /spark/live
 GET /spark/lookupref
 GET /spark/lookupref/{name}
 POST /spark/lookupref/{name} | antiforgery=required
@@ -42,7 +43,6 @@ GET /spark/queries
 POST /spark/queries/distinct-values | antiforgery=not-required
 POST /spark/queries/execute | antiforgery=not-required
 POST /spark/queries/get | antiforgery=not-required
-CONNECT,GET /spark/queries/{id}/stream
 GET /spark/translations
 GET /spark/types
 GET /spark/types/{id}

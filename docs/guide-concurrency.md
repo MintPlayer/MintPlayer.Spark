@@ -225,10 +225,24 @@ rule changes:
 `metadata.contribution.own`, a boolean that is never the contributor's id. When they removed a row, it
 is judged by who wrote the version they removed.
 
-## 8. Limitations
+## 8. Live push while editing
 
-- **No auto-save, and no live notice.** The conflict is found when the second user saves, not while
-  they type.
+On a type marked `"live": true` ([live updates](guide-live-updates.md)), the edit page hears about
+another user's save while the form is still open:
+
+- **The form is untouched**: the pushed version is adopted as is. The form shows their values and the
+  next save sends their etag.
+- **The user has edited**: their edits are kept, a banner says a newer version was saved meanwhile, and
+  it offers the same three-way merge as a 409 (`mergeThreeWay`, the dialog of section 4).
+
+The push is a courtesy, not the check. A push can arrive late or not at all (a dropped socket, a write
+the sources did not see), so the **409 on save stays the guarantee**: everything in sections 1–7 holds
+unchanged.
+
+## 9. Limitations
+
+- **No auto-save.** The conflict is found when the second user saves, not while they type, unless the
+  type is live (section 8), and even then nothing is merged or saved without the user.
 - **Hard deletes are not checked.** The RavenDB client ignores the expected change vector on
   `Delete(entity)`, so a hard delete racing an edit still wins. Soft deletes are saves and are checked.
 - **A save that changes nothing writes nothing**, so it gets no write-time check. With a stale etag it
@@ -239,5 +253,6 @@ is judged by who wrote the version they removed.
 ## See also
 
 - [Contributions](guide-contributions.md) — the latest-wins model behind section 7
+- [Live updates](guide-live-updates.md) — the push behind section 8
 - [AsDetail attributes](guide-asdetail-attributes.md) — `[ValueKey]`, which the row merge keys on
 - [Authorization](guide-authorization.md) — the read rights the re-fetch is subject to

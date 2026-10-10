@@ -173,10 +173,12 @@ count as literal edits and silently consume the edit-distance budget.
 
 Results are ordered by the query's sort columns, never by match quality.
 
-### Streaming queries filter client-side
+### Live queries search like any other query
 
-The WebSocket streaming path takes no search term; the client filters streamed rows locally. The asymmetry with
-the paged path is known.
+A live query's subscription carries the same `search` as `/spark/queries/execute`, and every push re-runs that
+read. A RavenDB-backed live query is therefore searched in the database exactly as described above. An app stream
+(a live `Custom.*` method yielding rows) is searched in memory by the server over each yield, before sorting and
+paging. See [live updates](guide-live-updates.md#rows-that-are-not-in-ravendb-app-streams).
 
 ### `Exact`-indexed string fields match case-sensitively
 

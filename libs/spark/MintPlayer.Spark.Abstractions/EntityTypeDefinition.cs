@@ -170,6 +170,14 @@ public sealed class EntityTypeDefinition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public TimeSpan? ExpiresAfter { get; set; }
 
+    /// <summary>
+    /// Live updates (<c>docs/guide-live-updates.md</c>): a detail page of this type subscribes over the one
+    /// <c>/spark/live</c> socket and refreshes when the document changes, through the same read path, row
+    /// security and attribute rights as <c>/spark/po/load</c>. Opt-in per type.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Live { get; set; }
+
     /// <summary>The tabs of the detail page, matched across layers by <c>name</c>.</summary>
     public AttributeTab[] Tabs { get; set; } = [];
 

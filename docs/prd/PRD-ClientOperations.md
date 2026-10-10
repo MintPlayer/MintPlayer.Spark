@@ -51,6 +51,7 @@ The retry-deep-dive agent's conclusion: **subsume retry into the unified envelop
 ## Non-goals
 
 - WebSocket / SignalR / real-time push. Operations ride on the synchronous HTTP response to the triggering action, not a persistent channel.
+  *(Note, 2026-10: real-time push of data now exists as live updates, #268 X4, on its own socket `/spark/live` — see [guide-live-updates.md](../guide-live-updates.md). Client operations are unaffected and still ride the HTTP response.)*
 - Cross-session broadcasts. An operation affects *the caller's session only*. "Tell every open browser to refresh" is a different problem.
 - Pre-action client state queries. The backend does not inspect or probe client state before emitting an operation.
 - Replacing existing retry semantics. The user-visible behavior (HTTP 449 pauses, modal appears, user answers, request re-submitted with `retryResults[]`) stays identical. Only the internal envelope shape changes.

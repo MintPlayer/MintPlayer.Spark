@@ -34,8 +34,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "ProjectColumn",
-      "isStreamingQuery": false
+      "entityType": "ProjectColumn"
     }
   ]
 }

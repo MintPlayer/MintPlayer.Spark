@@ -280,6 +280,12 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     public HttpClient CreateClient() => _host.GetTestClient();
 
     /// <summary>
+    /// A WebSocket client against the in-memory server, for the live socket (<c>/spark/live</c>). Set
+    /// <see cref="WebSocketClient.ConfigureRequest"/> to add a cookie or another header to the handshake.
+    /// </summary>
+    public WebSocketClient CreateWebSocketClient() => _host.GetTestServer().CreateWebSocketClient();
+
+    /// <summary>
     /// Resolves from the <b>root</b> provider, so a scoped service resolved here lives as long as
     /// the factory does.
     /// </summary>
