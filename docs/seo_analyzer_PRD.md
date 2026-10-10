@@ -1,0 +1,632 @@
+# SeoTester (#268): PRD and plan
+
+Status: **spec consolidated after 8 grilling rounds** (2026-10-10). Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
+
+§1–§11 are the current spec. §12 is the decision log (D1–D32 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
+
+Research behind this document:
+- `docs/seo_analyzer_research.md`: domain research, the full check catalogue (~90 checks), .NET options, crawler safety, scoring. Facts marked **[verify]** are unconfirmed and become spike work.
+- `docs/seo_analyzer_research_live_updates.md`: current streaming queries and the unified live-update design (X4).
+- `docs/seo_analyzer_research_settings.md`: the settings package (X9).
+- Three codebase inventories (Spark app/data features, background work, external logins), produced by a research team on 2026-10-10 and summarised in §2.
+
+---
+
+## 0. Status
+
+| Item | State |
+|---|---|
+| Research (4 agents + 2 follow-ups) | ✅ 2026-10-10 |
+| Grilling rounds 1–8 | ✅ 2026-10-10, D1–D32 (§12) |
+| Changes API on the production Community licence | ✅ measured 2026-10-10 (§12) |
+| Body consolidated with §12 | ✅ 2026-10-10 |
+| Grilling round 9: live-update details | ✅ 2026-10-10, D33–D37 |
+| Spikes S1–S11 | ⏳ |
+| Milestones M0–M12 | ⏳ |
+
+---
+
+## 1. Goal
+
+SeoTester is a production app at **seotester.mintplayer.com** (D1, D27, D29). Users sign in with Microsoft, GitHub, X or Google (D2) and register websites in an **organization** (D18, D21). The app crawls each site in the background, runs a catalogue of SEO, performance, security, accessibility, social and PWA checks, and shows:
+- a 0–100 headline score with an A–F grade, plus a score per category (D15);
+- a **prioritised fix list**: each suggestion has a plain-language summary and an expandable technical "how to fix" with per-platform snippets, in English and Dutch (D16, D9);
+- previewers: Google SERP snippet, Open Graph card, X card;
+- history: a score trend and "new / fixed since last run";
+- live progress while a run is going, over a WebSocket (D4).
+
+Organizations that have **verified** ownership of a site get deeper crawls, intrusive probes and scheduled monitoring, with alerts by email, in-app notification and Web Push (D11, D20). Sites can be shared through a public read-only link and an SVG badge (D31). The admin gets an operator dashboard (D28) and edits the check catalogue at runtime (D32). Every feature gate and limit is an admin setting (D11).
+
+The app also proves Spark out. Where Spark lacks something, we build it in the framework (§5, X1–X11) in the same PR (one-PR rule). The libraries are in preview, so **no backward compatibility** is kept (D5).
+
+### Hosting constraints
+
+SeoTester is a Docker container on Debian on the VPS shared with CodeCoverage. It follows the same model: `apps/CodeCoverage/CodeCoverage/Dockerfile`, `docker-compose.yml`, `docs/code-coverage/hosting.md`, and a deploy workflow like `.github/workflows/code-coverage-deploy.yml` (ghcr → SSH → compose).
+
+- **Compose topology (D3, D6):**
+  - SeoTester joins the existing RavenDB network and a new **`seo-browser`** network.
+  - A **Chromium container** joins **only** `seo-browser`, so it has no route to RavenDB (unsecured, internal) or postfix.
+  - The goal is `internal: true` on `seo-browser` (no egress at all), which works if every browser request is fulfilled by SeoTester (§6); S3 proves it.
+  - Memory limits and `shm_size` are set on Chromium. The compose file sets no resource limits today.
+- **TLS probing:** the `aspnet:11.0` images are Debian with OpenSSL 3, which refuses TLS 1.0/1.1, and `SslProtocols.Tls/Tls11` are obsolete. A failed `SslStream` handshake proves nothing, so we use a raw ClientHello probe (S2).
+- **HTTP/3:** needs `libmsquic` (packages.microsoft.com, Debian repo) in the image; otherwise we report h3 from `Alt-Svc` only (S2).
+- **RavenDB on the Community licence** (measured, §12):
+  - The Changes API works.
+  - At most 3 subscriptions per database.
+  - Revisions: at most 2 kept, maximum age 45 days.
+  - Expiration runs **at most every 36 h**, so expired documents can linger up to 36 h and every read must hide them (X1).
+
+---
+
+## 2. What Spark already gives us (evidence)
+
+| Need | Spark feature | Evidence |
+|---|---|---|
+| App shape | host + `.Library` + `.Tests`, `AddSpark(...)`, App_Data model/security JSON | `apps/QnA/QnA/Program.cs:29-81,101-116` |
+| Sign-in with Microsoft, GitHub, X, Google | `spark.AddExternalProviders(config)`; presets in `SparkExternalProviderExtensions.cs` / `GitHubAuthenticationExtensions.cs`; config `Spark:Auth:Providers:{GitHub,Google,MicrosoftAccount,Twitter}`; X is OAuth 2.0 + PKCE. No new packages needed | research: external logins |
+| PWA-safe popup login | `withExternalLogin()`, `loginWithProvider` (#464/#490) | PR #499 |
+| Account linking | `ExternalLoginLinking.ConfirmByEmail` (D7); unlink guard | research: external logins |
+| Durable background work | `AddMessaging()`, `IMessageOutbox.EnqueueAsync(session,msg)` (atomic with the save), `IRecipient<T>`, `IMessageCheckpoint`, `NonRetryableException`, per-queue `MaxConcurrency`/`MaxPerInterval` | `libs/messaging/.../SparkBuilderExtensions.cs:136`, `IMessageOutbox.cs:187`, `SparkQueueOptions.cs:38,58`, `MessageProcessor.cs:174,260,279-293` |
+| Restart survival | the retry sweeper reclaims abandoned claims every 30 s | `Services/MessageRetrySweeper.cs:10-60` |
+| Scheduled sweeps | `ISparkCronJob` + sweep → `BroadcastOnceAsync({siteId}:{slot})` | `SparkCronScheduler.cs:228`, `ManifestScanScheduler.cs:38-72` |
+| Mail | `AddMailManager()`, `ISparkMailer.SendAsync` (MJML) | `ISparkMailer.cs:13-60`, `docs/guide-outgoing-mail.md` |
+| Save-time logic | `IBeforeSave<T>`, `IAfterSave<T>`, `IAfterSaveCommitted<T>` | `docs/guide-interceptors.md:94-175` |
+| Row security | `GetRowFilterAsync` (the X11 helper builds on it) | `apps/Fleet/Fleet/Actions/CarActions.cs:41-55` |
+| Custom actions | `SparkCustomAction` + actions.json + `Verb/Type` rights | `docs/guide-custom-actions.md` |
+| Library-owned model/security | `[assembly: SparkLayer]`, slot bindings, UUIDv5 model ids (SPARK045) | `docs/spark_composition_PRD.md:113,333,361`, `SparkSecurityLayers.cs:298` |
+| Live data | streaming queries over WebSocket. **Replaced** by X4; existing defects listed in §5 | `Endpoints/Queries/StreamExecuteQuery.cs` |
+| Score UI precedents | CodeCoverage coverage-bar, `BsTrendChart`, sparkline, delta renderers; anonymous SVG badge | `apps/CodeCoverage` (`app.config.ts:34-102`, `BadgeController.cs`) |
+| Dark mode, PWA | preboot + toggle; `provideSparkServiceWorker()` | `docs/guide-theming.md`, `docs/guide-pwa.md` |
+
+---
+
+## 3. Product scope
+
+### 3.1 Check catalogue
+
+The starting catalogue is research §1: about 90 checks in 8 categories, each with an id, layer, severity and suggestion pattern.
+
+**The catalogue is admin-editable at runtime (D32).**
+- Each check is a `CheckDefinition` document: id, category, severity, weight, enabled, en/nl title, en/nl `summary` template, en/nl `howToFix` per platform (nginx, Apache, IIS/ASP.NET Core, HTML), docs link.
+- **Seeding:** an embedded JSON ships with the app. The seeder adds new checks and **never overwrites admin edits**; a "Reset to shipped" action restores one entry.
+- The check **implementation** is a C# class keyed by check id. An entry without an implementation shows as unavailable, and an implementation without an entry is not run.
+- Each run **snapshots the weights and severities it used**. `ScoringVersion` is a hash of that snapshot, so history stays interpretable after an edit.
+
+How the owner's issue list is treated:
+
+| Owner item | Treatment | Why |
+|---|---|---|
+| Sitelinks searchbox | **drop** (detect, info: "no longer used") | Google retired it on 2024-11-21 |
+| AMP | **info**; validate the amphtml pairing if present | no ranking benefit since 2021 |
+| `<a title>` | **replaced** by "links without accessible name / generic anchor text" | no SEO value |
+| Outbound noopener | **info** | implied for `target=_blank` since 2021 |
+| apple-mobile-web-app-* | **info** | superseded by the manifest (iOS 16.4+) |
+| Long-term domain | **reframed**: RDAP expiry alert (< 30 d), info otherwise | not a ranking factor; business-continuity risk |
+| Counter XSRF | **info heuristic only** | not measurable safely from outside |
+| PWA | **opt-in profile** per site | Lighthouse dropped its PWA category in v12 |
+| Backlinks | **out of scope** (§9) | needs paid web-scale data |
+| Everything else | in the catalogue with a severity | research §1 |
+
+Additions beyond the issue: broken links, redirect chains, duplicate titles and descriptions, orphan pages, soft 404s, a raw-vs-rendered diff (CSR-only SPAs), mixed content, CSP evaluation, cookie flags, certificate expiry, SPF/DMARC, Core Web Vitals via PSI/CrUX (D9), structured-data validation, and axe-core accessibility.
+
+### 3.2 Features
+
+| # | Feature | Decisions |
+|---|---|---|
+| F1 | **Organizations**: an implicit personal org per user; create orgs; roles Owner/Admin/Member/Viewer; invite; join request by email with an acceptance link | D18, D21–D23, X11 |
+| F2 | **Sites** in an org, with a profile (PWA on/off, language, schedule) | D12 |
+| F3 | **Ownership verification per org**: DNS TXT `_seotester.<host>`, meta tag, or `/.well-known/` file; re-checked periodically. Verifying a site another org already holds mails that org's owner an acceptance link | D18 |
+| F4 | **Audit run**: background crawl, live progress, cancel; **join a running audit** if a member of the owning org | D4, D17, D18 |
+| F5 | **Report**: headline + category scores, issues grouped per check (affected count, sample URLs), prioritised fix list (weight × pages × gap + effort tag), summary + how-to-fix toggle (a user preference remembers the default) | D15, D16 |
+| F6 | **Page drill-down**: per-page findings for 7 days, then "page details expired" | D8 |
+| F7 | **Previewers**: SERP (desktop/mobile pixel widths), OG card, X card | — |
+| F8 | **History**: score trend (marks `ScoringVersion` changes), "new / fixed since last run" | D9, D32 |
+| F9 | **Monitoring** (verified, setting-gated): off/weekly/monthly per site | D11, D12 |
+| F10 | **Alerts** (score drop ≥ N, new critical issue, certificate < 14 d, domain < 30 d) by **email, in-app notification and Web Push** | D20, X10 |
+| F11 | **Share link + SVG badge**: created/revoked by org Owner/Admin, viewable by anyone with the link; allowed for unverified sites; global setting can disable it | D11, D31, X6 |
+| F12 | **Headless checks** on a sample via the Chromium container: rendered DOM, axe-core, 375 px responsiveness, request count/weight, LCP/lazy-load, SPA analytics route change | D3, D6 |
+| F13 | **PageSpeed Insights / CrUX** on a sample (the owner provides the key; no key gives "not measured") | D9, D13 |
+| F14 | **PDF export** of the report, rendered by the Chromium container (`page.PdfAsync`, print CSS) | D9 |
+| F15 | **Data export** (JSON) and **cascade delete** (org → sites → runs → pages → invites; account → personal org + memberships) | D26 |
+| F16 | **Operator dashboard** (admin): usage stats, abuse log, all websites/orgs, database size per collection and total | D28 |
+| F17 | **Admin settings**: every gate and limit (§6), category weights, sharing switch | D11, X9 |
+| F18 | **Catalogue editor** (admin) | D32 |
+| F19 | **`/bot` page**: who we are, the limits, robots.txt opt-out | D17, D19 |
+
+---
+
+## 4. Architecture
+
+### 4.1 App
+
+- **Projects:** `apps/SeoTester/SeoTester` (host + ClientApp), `SeoTester.Library` (entities, check implementations, catalogue seed JSON), `SeoTester.Tests`. Ports 5013/5014 (the next free pair).
+- **Hand-maintained lists to update:** root `package.json` workspaces, `MintPlayer.Spark.slnx`, `.github/workflows/pull-request.yml` (137, 148, 173), `tools/verify-ngsw-config.test.mjs:64`, `tools/test-local.mjs:33` (if E2E), Dockerfile, and a deploy workflow modelled on `code-coverage-deploy.yml:20-40`.
+- **Composition:**
+
+  ```
+  AddSpark(config, spark => {
+      UseContext<SeoContext>(); AddActions(); AddCustomActions(); AddMigrations();
+      AddAuthentication<SparkUser>(o => { o.LocalCredentials = SparkLocalCredentials.Disabled;
+                                          o.ExternalLoginLinking = ExternalLoginLinking.ConfirmByEmail; });
+      AddExternalProviders(config);   // Microsoft, GitHub, X, Google
+      AddMailManager();               // X and Entra work accounts give no verified email
+      AddMessaging(); AddRecipients(); AddCronJobs(); AddHistory();
+      AddExpiration();                // X1
+      AddSafeHttp();                  // X2
+      AddLive();                      // X4
+      AddSettings(typeof(SeoSettings));   // X9
+      AddNotifications();             // X10 (in-app + Web Push)
+      AddOrganizations();             // X11
+  })
+  ```
+
+- **Login:** external only (D2); `Spark:Auth:PublicBaseUrl` set in production. The owner registers the providers (D13):
+
+  | Provider | Config key | Callback | Notes |
+  |---|---|---|---|
+  | Microsoft (Entra, personal + work/school) | `Spark:Auth:Providers:MicrosoftAccount` | `https://seotester.mintplayer.com/signin-microsoft` | `common` endpoint; email trusted for personal accounts only |
+  | GitHub | `Spark:Auth:Providers:GitHub` | `/signin-github` | scope `user:email` |
+  | X | `Spark:Auth:Providers:Twitter` | `/signin-twitter` | **OAuth 2.0** client id/secret (not 1.0a keys); enable "Request email from users" |
+  | Google | `Spark:Auth:Providers:Google` | `/signin-google` | `openid profile email` |
+  | PSI / CrUX | `SeoTester:PageSpeed:ApiKey` | — | Google Cloud API key |
+  | Web Push | `Spark:Notifications:WebPush:{PublicKey,PrivateKey,Subject}` | — | VAPID keys |
+
+### 4.2 Data model (storage stays modest)
+
+Org-owned documents carry `OrganizationId`. Row security for every SeoTester type is "the current user is a member of the owning org, with role ≥ R", using the X11 helper (D18, D21). Composed custom-query rows bypass row security (research), so report queries are Actions-method queries **with** the membership filter, each covered by a test.
+
+| Document | Lifetime | Size target | Notes |
+|---|---|---|---|
+| `Organization`, `Membership`, `Invitation` (X11) | permanent; invitations `@expires` 14 d | tiny | the personal org is created on first sign-in |
+| `Site` | permanent until deleted | < 2 KB | org, origin, profile, verification (method, token, verifiedAt, lastCheckedAt), schedule, alert thresholds, `LatestRunId/Score/Grade`, share-token hash |
+| `AuditRun` | **permanent** (D8) | 5–20 KB | site + org, participants (who started or joined), status/phase/progress, `CancelRequested`, limits used, **weights snapshot + `ScoringVersion`**, category scores, overall + grade, `CheckResults` [ValueObject] list (checkId, status, affected count, ≤ 5 sample URLs, delta New/Fixed/Unchanged), timing, error |
+| `PageResult` | **`@expires` 7 d** (D8) | ~1–3 KB | run, URL, status, depth, timings, title/description/h1 snapshot (previewers), findings `(checkId, status, params)`. Shown as a sub-query of `AuditRun`, not AsDetail |
+| `CrawlFrontier` | `@expires` 2 d, deleted on completion | grows with the crawl | pending URLs + visited-set hashes, the checkpoint for page batches |
+| `LookupCache` (RDAP, hstspreload, robots, PSI) | `@expires` 1–7 d | small | natural ids (`rdap/example.com`) |
+| `TargetCooldown` | `@expires` = cool-down | tiny | per-target throttle across **all** users for unverified targets (D17) |
+| `CheckDefinition` | permanent | small | admin-editable catalogue (D32) |
+| `AuditLogEntry` | permanent (`@expires` 1 y, D37) | tiny | who audited what, when, from which org (D28) |
+| `Setting` (X9), `Notification` + `PushSubscription` (X10) | per package | tiny | — |
+
+We never store raw HTML, full PSI JSON or screenshots. Texts, grades and previews are recomputed from stored parameters, so wording edits need no data migration.
+
+### 4.3 Crawl pipeline (Messaging)
+
+**`StartAudit`** is a custom action on `Site`. It:
+1. checks the role (Member+), the quotas (X3: runs/day, D14's weekly full crawl), the cool-down, and the robots.txt opt-out;
+2. if a run of the same origin is in progress **and** the user is a member of that run's org, **joins** it by adding a participant (D17, D18);
+3. otherwise creates the `AuditRun` and calls `IMessageOutbox.EnqueueAsync(session, new SiteProbeMessage(runId))` in **one** `SaveChanges`.
+
+Queues (`[MessageQueue]`; per-queue `HandlerTimeout`, X7):
+
+| Queue | Message | Work | MaxConcurrency |
+|---|---|---|---|
+| `seo-probe` | `SiteProbeMessage` | robots.txt, sitemap(s), TLS probe, HTTP→HTTPS, HSTS (+ preload API), DNS (CAA, DNSSEC, SPF/DMARC, AAAA, NS), RDAP, security.txt, change-password, favicon, soft-404; seeds the frontier | 2 |
+| `seo-crawl` | `PageBatchMessage(runId, batchNo)` | fetches up to B pages (S7) through X2, runs raw-HTML + header checks, writes `PageResult`s, extends the frontier, writes throttled progress, honours `CancelRequested`, then chains the next batch or finishes | 2 (per-host politeness inside the handler) |
+| `seo-render` | `RenderSampleMessage(runId)` | Chromium on the sample (§6): rendered DOM, axe-core, 375 px, network log, raw-vs-rendered diff | setting, default 1 |
+| `seo-psi` | `PsiMessage(runId)` | PSI/CrUX on the sample | 1, `MaxPerInterval` within quota |
+| `seo-aggregate` | `AggregateMessage(runId)` | site-level checks (duplicates, orphans, broken links, redirect chains, hreflang return links), scoring with the snapshot, delta vs the previous run, `Site.Latest*`, alerts | 1 |
+| `seo-pdf` | `PdfMessage(runId, culture)` | Chromium prints the report page | 1 |
+
+The stages run independently. Each one sets its flag on the run when it finishes, and the last one enqueues the aggregate with `BroadcastOnceAsync(runId)`. Page work is idempotent: a `PageResult` id is `{runId}/pages/{urlHash}`.
+
+**Monitoring:** a cron sweep every 15 min selects verified sites with `NextRunAt <= now` (when the monitoring setting is on) and calls `BroadcastOnceAsync($"{siteId}:{slot}")`. This is the `ManifestScanScheduler` pattern.
+
+### 4.4 Live updates (X4)
+
+The crawler writes `AuditRun.Progress` (phase, pages done/discovered, current URL) at most every 2 s. The Changes API notices the write. Every open run page, and the "running audits" grid, subscribe over the single `/spark/live` socket and receive **patches** (D24). Notifications (X10) arrive over the same socket.
+
+### 4.5 UI (ng-spark + ng-bootstrap)
+
+- **Dashboard:** `spark-query-card` tiles (my sites, latest grades, running audits live, notifications).
+- **Org pages:** members, roles, invitations, join requests (X11 UI).
+- **Site page:**
+  - score gauge and category bars (X5), trend chart;
+  - latest fix list;
+  - Run now / Join running audit;
+  - Verify ownership wizard;
+  - share and badge links (Owner/Admin);
+  - monitoring schedule.
+- **Run page:**
+  - live progress while running (X4);
+  - then categories → issues per check (summary, expandable how-to-fix per platform, affected pages, sample URLs, docs link) → page sub-query → page detail with the SERP/OG/X previewers;
+  - PDF download.
+- **Public share page:** an anonymous read-only latest report (X6).
+- **Admin:** settings (X9), catalogue editor (D32), operator dashboard (D28).
+- **`/bot`.**
+- Dark mode and PWA as usual; Web Push opt-in prompt (X10). Languages en + nl.
+
+---
+
+## 5. Framework additions (Spark libs, same PR)
+
+| # | Addition | Why | Evidence of the gap |
+|---|---|---|---|
+| X1 | **Document expiration**: `AddExpiration()`; `"expiresAfter"` in the model JSON / an `IExpiring` marker; store-level `OnBeforeStore` stamps `@expires`; one shared configurator with a **36 h floor on Community**; reads hide documents whose `@expires` has passed (they linger up to 36 h); fix the existing gap where Mail and Moderation write `@expires` without enabling expiration | pages, frontier, caches, cool-downs, invitations | no PO hook; `IBeforeSave` can't set metadata on create (`SparkInterceptors.cs:291-295`); store created without events (`SparkMiddleware.cs:158-188`) |
+| X2 | **SSRF-safe HTTP client** (`AddSafeHttp()`): `ConnectCallback` resolves → allow-list of global unicast (unwraps IPv4-mapped/NAT64/6to4) → connects to the checked IP (closes DNS rebinding); manual redirects re-checked per hop; no proxy, no cookies; byte, decompression and time caps. **Adopted by the IdP** (`JwksUri`, back-channel) | user-chosen URLs fetched from inside the compose network | nothing blocks private addresses; `OidcClientKeys.cs:24-34`, `OidcSessionStore.cs:132` |
+| X3 | **Per-user quotas for custom actions** (e.g. `[SparkQuota("audits", …)]`), evaluated after authentication, with limits read from X9 settings | runs/day, D14 weekly full crawl | `AddRateLimiter` is per-IP and pre-auth (`SparkBuilderRateLimiterExtensions.cs:115,128-130`) |
+| X4 | **Unified live updates**: one multiplexed socket at `GET\|CONNECT /spark/live`; subscribe to **persistent objects and queries** (full `ExecuteQueryRequest`: parent, paging, sort, search); change source configurable via **`Spark:Live:Source` = `Actions` \| `Changes` \| `Both`, default `Both`** (D33): `Actions` = Spark's own save pipeline (`IAfterSaveCommitted`) plus an optional `ISparkLiveNotifier.Changed(id)`; `Changes` = the RavenDB Changes API (measured working on Community; **not** a data subscription, one multiplexed connection per database per process); `Both` merges and de-duplicates by id + change vector inside the throttle window. App `IAsyncEnumerable` streams stay for non-RavenDB data. **Low-code (D34):** `"live": true` in the model JSON is all an app writes for the common case, and under `Both` even writes outside the Spark pipeline (the crawler) are picked up without notifier calls; every push re-runs the HTTP read path (row security, redaction, attribute rights); `gone` = deleted or forbidden alike; **patches**; **opt-in** per type/query; throttling, bounded queues, socket lifetime ≤ login ticket. ng-spark: `SparkLiveService`, `livePersistentObject`/`liveQuery`, `spark-query-grid [live]`, po-detail refresh, po-edit banner + existing three-way merge. **Replaces** streaming queries (`isStreamingQuery`, `StreamingQueryArgs`, `/spark/queries/{id}/stream`) and fixes their defects (below) | run progress, notifications | research: live updates; D4, D5, D24 |
+| X5 | **Score/threshold renderers in ng-spark**: gauge, threshold bar, trend, delta, generalised from CodeCoverage (which then uses them) | score UI | ng-spark has no chart renderers |
+| X6 | **Capability-token read of one PO** (share link): hashed token on the object, anonymous read of exactly that object + declared children, revocable, rate-limited | F11 | only precedent is the badge token |
+| X7 | **Per-queue `HandlerTimeout`** | long probes | global only (`SparkMessagingOptions.cs:126`) |
+| X9 | **Settings package** `libs/settings/MintPlayer.Spark.Settings` (alias `settings`): `SparkSetting<T>(Key, Default, Description)` declared in code; `ISparkSettings` returns the stored value, else `IConfiguration`, else the default; parsing via the `ConfigurationBinder` converter; startup seeder of one `Settings/{Key}` document per key (never touches `Value`); rights `QueryReadEdit/Setting` bound by the app (`settings:administrators`); 30 s TTL cache, cleared on save; no secrets | D11 | no settings feature in `libs/` |
+| X10 | **Notifications package**: in-app `Notification` entity pushed over X4 with an unread count; **Web Push** (VAPID from config, per-device `PushSubscription` on `SparkUser`, opt-in UI, push + click handlers via `provideSparkServiceWorker()`); one `ISparkNotifier` beside the mailer | D20, D30 | none in Spark |
+| X11 | **Organizations package** (depends on Authorization only, D25): `Organization`, `Membership` (Owner/Admin/Member/Viewer), implicit personal org, invitations and join requests by email with acceptance link, ownership transfer, cascade-delete hooks, export hook, row-filter helper "member with role ≥ R" | D18, D21–D23, D26 | no org concept in Spark |
+
+**Defects in today's streaming queries, fixed by X4** (research: live updates):
+1. Removed rows are never signalled (`StreamingDiffEngine.cs:399`).
+2. Added rows never appear client-side (`spark-query-list.component.ts:419-430`).
+3. Access denied closes with 1011, so the client retries 10× for nothing.
+4. A revoked right closes with 1000, so the grid silently keeps stale rows.
+5. The comment at `StreamingQueryExecutor.cs:81-83` claims RavenDB is watched; it isn't.
+
+Not built: X8 (dead-letter viewer, resilience policies, dynamic per-entity schedules), see §9.
+
+---
+
+## 6. Crawler safety and ethics
+
+The full reasoning is in research §4.
+
+- **SSRF, two layers:**
+  1. Every server-side fetch goes through X2.
+  2. Chromium sits on a network shared only with SeoTester (D6). SeoTester drives it remotely (Playwright `ConnectAsync`) and intercepts **every** request with `RouteAsync`, fetches it through X2 and fulfils it. Service workers are blocked, and Chromium starts with `--host-resolver-rules="MAP * ~NOTFOUND"`, so it never resolves or connects anywhere itself.
+  
+  S3 proves both layers and lists what escapes routing (WebSockets, WebRTC, prefetch). Those are blocked by flags or the `internal: true` network.
+- **Politeness:**
+  - robots.txt (RFC 9309) for the token `MintPlayerSeoTester`, which is also the **only opt-out** (D19);
+  - UA `MintPlayerSeoTester/1.0 (+https://seotester.mintplayer.com/bot)`;
+  - unverified: per host 1 connection and ≥ 1 s between requests;
+  - `Retry-After` honoured on 429/503;
+  - hard caps on pages, bytes and time.
+- **Abuse (D17):**
+  - sign-in required;
+  - per-user quotas (X3);
+  - a **per-target cool-down across all users** for unverified targets;
+  - **joining** a running audit instead of starting a duplicate (members of the owning org only);
+  - the `/bot` page;
+  - an abuse log (D28).
+  
+  No CAPTCHA.
+- **Verified-only by default, each a setting (D11):**
+  - deep-crawl limits;
+  - scheduled monitoring + alerts;
+  - intrusive probes (`.git/HEAD`, `.env`, backups, directory listing beyond seen asset dirs). Probing sites you don't own can fall under computer-misuse law (e.g. Belgian Criminal Code art. 550bis).
+  
+  Share link + badge are allowed for unverified sites.
+
+**Limits.** All of these are X9 settings; the values are defaults.
+
+| Limit | Unverified | Verified |
+|---|---|---|
+| Pages per run | 100 | 2 000 |
+| Wall time | 10 min | 60 min |
+| Connections per host | 1 | 4 |
+| Rendered sample | 3 pages | 10 pages |
+| PSI sample | 1 (home) | 5 |
+| Runs per user per day | 5 | 24 (incl. schedule) |
+| **Full-site crawl** | — | **1 per user per week, across all their verified sites** (D14), safety ceiling 20 000 pages / 6 h |
+| Target cool-down (all users) | 6 h (D37) | none |
+| Concurrent renders (Chromium) | 1 (global) | |
+
+---
+
+## 7. Scoring
+
+- **Check results:** pass / warn / fail / not-applicable / error. N/A and error are **excluded** from the denominator.
+- **Page-level checks** aggregate to a pass ratio across pages.
+- **Critical failures cap** their category (Lighthouse-style).
+- **Category weights (defaults, admin-editable as settings):** SEO 25, Technical 20, Performance 20, Security 15, Accessibility 10, Social 5, Mobile/PWA 5. Domain/DNS is an info panel plus alerts. A category with no measurements is dropped from the weighted mean and shown as "not measured".
+- **Headline score:** the weighted mean. **Grades:** A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 50, else F (D15).
+- Each run stores its **weights snapshot** and `ScoringVersion` = hash of the snapshot (D32). The trend chart marks snapshot changes.
+
+---
+
+## 8. Spikes
+
+Each spike ends with a measured result recorded in §12 (numbers, file:line, or a red→green test).
+
+| # | Spike | Question | Done when |
+|---|---|---|---|
+| S1 | SSRF-safe handler | Does a `ConnectCallback` guard block loopback, private, link-local, `169.254.169.254`, IPv4-mapped IPv6, NAT64, DNS rebinding, and survive redirects? Overhead? | red→green tests per case; overhead measured |
+| S2 | TLS/protocol probing on Debian | raw ClientHello for TLS 1.0–1.3 from the `aspnet:11.0` Debian image vs badssl.com (`tls-v1-0.badssl.com:1010`, …); h2 via ALPN; h3 with `libmsquic` vs `Alt-Svc` only | matches badssl; msquic decision |
+| S3 | Chromium container | image/RAM per page on Debian; `shm_size`; axe-core time; `ConnectAsync` + `RouteAsync` + host-resolver rules: **does any request escape?** Can `seo-browser` be `internal: true`? PDF render time | escape test red→green; numbers |
+| S4 | RDAP coverage | expiry for .com/.net/.org/.eu/.nl/.be/.io; confirm .be has no RDAP or WHOIS expiry | TLD table |
+| S5 | PSI + CrUX | real quota, latency, Lighthouse 13 insight ids, CrUX availability for small sites | real responses stored as fixtures |
+| S6 | Expiration on Community | per-document `@expires` (7 d, 2 d, 14 d) with the 36 h frequency; visibility window; the read filter hiding expired docs; storage of a 100- and a 2 000-page run | sizes + window recorded; filter test red→green |
+| S7 | Crawl chaining | batch size B well under `HandlerTimeout` at 1 req/s; resume after killing the host mid-batch | kill test passes; B with evidence |
+| S8 | Live updates | ✅ L1 done (Changes API works on Community, 4–22 ms). Remaining L2–L8: patch vs full size, cost per push with 1/10/50 viewers, slow clients, nginx/Traefik upgrade + idle timeout, index freshness after BatchCompleted, login expiry on long sockets, po-edit merge under pushes | numbers per L-item |
+| S9 | HTML parsing | AngleSharp (+ .Css) time/memory per page; pixel-width title measurement without a browser | numbers; decision |
+| S10 | hstspreload.org API | v2 status/preloadable schema | real fixture |
+| S11 | Settings | stored-overrides-config and delete-falls-back; TTL propagation; rights via slot binding | red→green tests |
+| S12 | Web Push | VAPID library choice for .NET 11 (or hand-rolled RFC 8291 encryption), delivery to Chrome/Firefox/Edge/Safari (iOS needs an installed PWA) | push delivered on each; library chosen |
+| S13 | Organizations row filter | membership filter cost in queries (a `Membership` lookup per request vs a claim cached per session), and its interaction with existing `GetRowFilterAsync` composition | query plan + timing; design chosen |
+
+---
+
+## 9. Out of scope (not being done)
+
+- **Backlinks and keyword volumes:** require paid web-scale data. Search Console integration was not chosen.
+- **Running the Lighthouse CLI ourselves:** PSI runs Lighthouse 13 on Google's hardware.
+- **Paid plans and billing.**
+- **CAPTCHA/Turnstile** (D17).
+- **Opt-out form or block list:** robots.txt only (D19).
+- **Comparing two runs side by side / competitor comparison** (D9).
+- **X8:** dead-letter viewer/replay, resilience policies, dynamic per-entity schedules (D28).
+- **Org claims through OpenID Connect / SparkId** (D25).
+
+---
+
+## 10. Milestones (one PR)
+
+Tests run once at the end (batched), per the repo rules.
+
+| # | Milestone | Depends on |
+|---|---|---|
+| M0 | Spikes S1–S13, results in §12 | — |
+| M1 | X2 safe HTTP client + IdP adoption | S1 |
+| M2 | X1 expiration (+ Mail/Moderation gap, expired-doc read filter) | S6 |
+| M3 | X9 settings package; X7 per-queue timeout | S11 |
+| M4 | X11 organizations package | S13 |
+| M5 | X4 unified live updates, replacing streaming queries (Fleet, DemoApp, schema tag, tests, guides) | S8 |
+| M6 | X10 notifications + Web Push; X3 quotas; X5 renderers (CodeCoverage switched over); X6 share links | M4, M5, S12 |
+| M7 | SeoTester skeleton: projects, ports, workspace lists, logins, mail, security.json, org row filters, Dockerfile | M3, M4 |
+| M8 | Sites, verification, catalogue (seed + editor), scoring engine (unit-tested on fixtures) | M7 |
+| M9 | Crawl pipeline: probe, crawl batches, aggregate, cancel, join, cool-down, quotas, audit log | M1, M2, M8, S2, S4, S7, S9 |
+| M10 | Chromium container: render sample, axe-core, PDF; PSI/CrUX | M9, S3, S5 |
+| M11 | UI: dashboard, org, site, run, page, previewers, trend, live progress, share page, `/bot`, admin dashboard, export/delete | M5, M6, M9 |
+| M12 | Monitoring cron, alerts (mail + in-app + push), deploy (compose networks, Chromium limits, workflow), docs `docs/seotester/` incl. the credential registration list | M10, M11 |
+
+---
+
+## 11. Open decisions
+
+None open. Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D37 in §12. New questions found during spikes go here first.
+
+
+---
+
+## 12. Decision log
+
+
+### Round 1 (owner, 2026-10-10)
+
+- **D1 (G1): production app.** `apps/SeoTester`, deployed on the same Debian VPS as CodeCoverage with its own compose service and deploy workflow. Treat changes as production changes from the first deploy. *Evidence: owner preference.*
+- **D2 (G2): signed-in only.** External logins only (Microsoft, GitHub, X, Google); no local passwords, no anonymous audits. *Evidence: owner preference; abuse control, §6.*
+- **D3 (G6): one Chromium container in `docker-compose.yml`, beside the app.** It runs on the app's network, with a limited number of renders at a time (queue `MaxConcurrency`). This supersedes ~~separate worker on a locked-down network~~ in §3.2 F11, §4.3 and §6. *Evidence: owner preference.*
+  - **Consequence to resolve (round 2):** the app's network today also holds unsecured RavenDB and the postfix relay. Proposal: the app joins **two** networks, `internal` (RavenDB, postfix) and `browser` (Chromium only). Chromium joins only `browser`, which is "the same network as the app" without seeing RavenDB.
+  - **Second layer, also to prove in S3:** the app drives Chromium remotely (Playwright `ConnectAsync`) and intercepts **every** request with `RouteAsync`. It fetches each one through the X2 safe client and fulfils it, with service workers blocked and Chromium started with `--host-resolver-rules="MAP * ~NOTFOUND"`. Chromium then never resolves or connects anywhere itself, so the SSRF guard covers browser traffic too. S3 must check what escapes routing: WebSockets, WebRTC, prefetch.
+- **D4: the front-end is kept up to date over a WebSocket.** The user sees run progress and completion live. This makes X4 mandatory, not optional. *Evidence: owner preference.*
+- **D5 (G10): all of X1–X7 land in Spark libs in this PR.**
+  - **X4 is a unification:** streaming queries already exist over WebSocket (`StreamExecuteQuery.cs`), but there is nothing for a single PersistentObject. Design one live-update mechanism that serves both queries and persistent objects, rather than a second channel beside streaming queries.
+  - **No backward compatibility:** the libraries are still in preview, so the existing streaming-query API may change shape.
+  - X8 stays a suggestion.
+  
+  *Evidence: owner preference.*
+
+### Round 2 (owner, 2026-10-10)
+
+- **D6: three compose networks.** This resolves D3's open consequence; it is the owner's suggestion and the best option.
+  - `ravendb` holds RavenDB and the existing apps; postfix stays where it is today.
+  - The SEO app joins `ravendb` and a new `seo-browser` network.
+  - **Chromium joins only `seo-browser`**, so it shares a network with the SEO app alone and has no route to RavenDB or postfix.
+
+  The second layer from D3 is **kept**: every Chromium request goes through `RouteAsync` and the X2 safe client, and Chromium's own DNS is disabled. With both layers, a hole in one still doesn't reach the internal services. S3 proves both. Chromium still needs internet egress only if interception is incomplete; S3 decides whether `seo-browser` can be `internal: true` (no egress at all), which is the goal.
+- **D7 (G3): `ExternalLoginLinking = ConfirmByEmail`.** *Evidence: owner preference.*
+- **D8 (G4): retention.**
+  - **Run summaries are kept forever.**
+  - **Per-page results expire after 7 days** (`@expires`), superseding ~~30 d~~ in §4.2.
+  - Seven days is above the 36 h Community floor. Once pages expire, the report still shows the per-check aggregates and the ≤ 5 sample URLs stored on the summary; the page drill-down says "page details expired".
+  
+  *Evidence: owner preference.*
+- **D9 (G7–G9): extras in scope.**
+  - **PageSpeed Insights / CrUX** (the owner provides the API key; an absent key gives "not measured").
+  - **PDF export**, rendered server-side by the Chromium container (`page.PdfAsync` of the report page, print CSS).
+  - **Suggestions in English and Dutch.**
+  - **Not chosen: compare runs / competitor.** Moved to §9. The trend chart and "new / fixed since last run" stay, as part of F7.
+  
+  *Evidence: owner preference.*
+
+### Round 3 (owner, 2026-10-10)
+
+- **D10 (G5): limits.**
+  - **Unverified:** as proposed in §6.
+  - **Verified:** the proposed limits, plus "**one entire website per week per signed-in user**". The exact meaning is clarified in round 4 (D14).
+  - Every limit is a setting (D11), not a constant.
+- **D11: every feature gate and limit is an admin-changeable setting.** The owner wants to enable or disable each of these:
+  - scheduled monitoring;
+  - intrusive probes;
+  - deep-crawl limits;
+  - share links and badges.
+  
+  Only the admin may change them. Defaults:
+  - verified-only: scheduled monitoring + alerts, intrusive probes, deep-crawl limits;
+  - allowed for unverified sites: share link + badge.
+  
+  This needs X9 (§5). *Evidence: owner preference.*
+- **D12: monitoring schedule is off / weekly / monthly, per site.** A cron sweep every 15 min dispatches due runs. *Evidence: owner preference.*
+- **D13: the owner creates the credentials** (Google Cloud API key for PSI/CrUX; OAuth apps for Entra personal + work, GitHub, X OAuth 2.0 with "request email", Google). The plan lists exactly what to register: callback URLs, scopes and config keys (M9 docs). *Evidence: owner preference.*
+- **X9 (new framework addition, owner direction): Spark Settings, lean.**
+  - **Not** a new authorization design: "who can configure settings" is already covered by the Authorization package (security.json groups and rights on the `Setting` type).
+  - **Shape:** a `Setting` entity (key, value, plus description/type for the UI) with its persistent object for the frontend, and a new service + interface that **coalesces the `Setting` value with the `IConfiguration` value of the same key**. A stored setting wins; otherwise the configuration value (appsettings / env / user-secrets) applies; otherwise the code default.
+  - **Open for the spike (S11):** implement the coalescing as a plain service (`ISparkSettings.Get<T>(key)`), or as a RavenDB-backed `IConfigurationProvider` added to `IConfiguration`, which would give `IOptionsMonitor` reload for free; and how a change reaches every instance (RavenDB Changes API vs short TTL).
+  
+  *Evidence: owner, 2026-10-10: "we already have the .net IConfiguration — we could add a new Setting entity with its corresponding PersistentObject … coalesce the Setting-key value with the configuration-key value … the 'who can configure settings' is already supported by the Authorization library".*
+
+### Round 4 (owner, 2026-10-10)
+
+- **D14 (clarifies D10): each user gets one full-site crawl per week, in total.** It applies across all of that user's verified sites, with no page cap except a hard safety ceiling (proposal: 20 000 pages / 6 h, as a setting). All other runs use the normal verified limits from §6. The weekly allowance is a per-user quota (X3), and its window is a setting. *Evidence: owner preference.*
+- **D15: a headline score plus category scores.** One 0–100 overall score with an A–F grade, and a score per category. Category weights are data, and overridable as settings (X9). *Evidence: owner preference.*
+- **D16: suggestions serve both audiences.**
+  - Each suggestion has a plain-language summary for site owners, and an expandable "how to fix" with technical detail and per-platform snippets (nginx, Apache, IIS / ASP.NET Core, and an HTML snippet).
+  - The catalogue JSON (§3.1) therefore carries `summary` and `howToFix` (per platform) templates, both in en and nl.
+  - A user-level toggle remembers whether "how to fix" opens by default.
+  
+  *Evidence: owner preference.*
+- **D17: abuse protection beyond sign-in and quotas** (§6):
+  - a **per-target cool-down** across all users for unverified targets;
+  - a public **`/bot` info page with domain opt-out**;
+  - **joining a running audit**: a second request for an origin that is already being audited joins that run, and the user is told it is shared.
+  - **Not chosen: CAPTCHA/Turnstile.**
+  
+  *Evidence: owner preference.*
+
+### Round 5 (owner, 2026-10-10)
+
+- **D18: organizations.** This supersedes ~~per-user verification~~ and ~~a per-user `Site` owner~~ in §4.2.
+  - A user can create an **Organization** holding several verified websites. **Ownership verification is per organization.**
+  - If another user tries to verify a site that already belongs to an organization, the **organization owner gets an email with an acceptance link**. Accepting makes that user a member.
+  - **Joining a running audit is allowed for members of the organization** that owns the site.
+  - Row security for `Site`, `AuditRun` and `PageResult` is by organization membership. Unverified sites live in the user's personal space; round 6 settles whether that is an implicit personal org (D21).
+  
+  *Evidence: owner preference.*
+- **D19: opt-out is robots.txt only** (`User-agent: MintPlayerSeoTester` / `Disallow: /`), documented on `/bot`. It is already honoured by the crawler, so no form and no block list. *Evidence: owner preference.*
+- **D20: alerts reach the user three ways.**
+  - **Email** through MailManager, en + nl MJML templates.
+  - **In-app notifications** pushed live over the X4 socket.
+  - **Web Push** for the PWA.
+  
+  In-app notifications and Web Push are new Spark framework features (X10). *Evidence: owner preference.*
+
+### Round 6 (owner, 2026-10-10)
+
+- **D21: every user gets an implicit personal organization.** Unverified sites and their runs live there, so one row-security rule (membership) covers everything. *Evidence: owner preference.*
+- **D22: Organizations are a Spark framework feature (X11),** not app code.
+  - It is a reusable package with: an organization entity; membership with roles; the invite/join-request mail with an acceptance link; a row-filter helper ("current user is a member of the owning org, with role ≥ R").
+  - The SEO app is the first consumer; CodeCoverage could adopt it later.
+  - Who manages organizations at the framework level still comes from the Authorization package. Org roles are data-level, not security.json groups.
+  
+  *Evidence: owner preference.*
+- **D23: organization roles are Owner, Admin, Member and Viewer.**
+  - **Owner:** everything, including deleting the org and transferring ownership.
+  - **Admin:** manages sites, members and join requests.
+  - **Member:** runs audits, joins running audits, edits site settings.
+  - **Viewer:** reads reports only.
+  
+  *Evidence: owner preference.*
+- **D24: live-update defaults (X4).**
+  - **Opt-in** per type and query in the model JSON, not live by default.
+  - **Patches** instead of full pages/objects.
+  - **App data streams (`IAsyncEnumerable`) are kept** next to the Changes-API-driven updates, for non-RavenDB data such as the Fleet and DemoApp demos.
+  - Both **PersistentObject updates and query updates** go over the one socket.
+  
+  *Evidence: owner preference.*
+
+### Round 7 (owner, 2026-10-10)
+
+- **D25: the Organizations package (X11) depends on MintPlayer.Spark.Authorization only,** where `SparkUser` lives. There is no OpenID Connect involvement, no org claims and no SparkId change. *Evidence: owner: "The SparkUser lives in the Authorization package, so I think that should be the dependency".*
+- **D26: deletion is cascade plus export.**
+  - Deleting an org deletes its sites, runs, pages and pending invites.
+  - Leaving an org removes access only. The last Owner cannot leave without transferring ownership.
+  - Deleting an account deletes the user's personal org and memberships.
+  - Users can export their data as JSON.
+  
+  *Evidence: owner preference.*
+- **D27: hostname `seotester.mintplayer.com`,** superseding ~~seo.mintplayer.com~~. The bot page is `https://seotester.mintplayer.com/bot`. The app/folder name and the bot User-Agent token are settled in round 8 (D29). *Evidence: owner preference.*
+- **D28: an operator dashboard for the admin** with:
+  - usage stats: audits per day, quota and cool-down hits, Chromium and PSI usage;
+  - an **abuse log**: who audited what and when, searchable;
+  - **websites**: all registered sites/orgs;
+  - **database size**: per collection and total, from RavenDB stats.
+  
+  It is admin-only through security.json. **Not chosen: a queue/dead-letter view** (X8 stays out, moved to §9). *Evidence: owner preference.*
+
+### Round 8 (owner, 2026-10-10)
+
+- **D29: the app is named SeoTester.**
+  - Projects: `apps/SeoTester` with `SeoTester`, `SeoTester.Library` and `SeoTester.Tests`. Earlier "SeoAnalyzer" text in this document has been renamed.
+  - User-Agent: `MintPlayerSeoTester/1.0 (+https://seotester.mintplayer.com/bot)`; robots.txt token `MintPlayerSeoTester`.
+  - Verification TXT record: `_seotester.<host>`.
+  
+  *Evidence: owner preference.*
+- **D30: Web Push and in-app notifications (X10) are generic Spark features.**
+  - VAPID keys come from configuration.
+  - Push subscriptions are stored per device on the `SparkUser`, with an opt-in prompt UI.
+  - Push and notification-click handlers are added through `provideSparkServiceWorker()`.
+  - An in-app notification list with an unread count updates over the live socket.
+  
+  *Evidence: owner preference.*
+- **D31: org Owners and Admins create and revoke share links and badges; anyone with the link views** the read-only latest report. A setting can disable sharing globally. *Evidence: owner preference.*
+- **D32: the check catalogue is fully editable at runtime.** This supersedes ~~"catalogue = embedded JSON, only weights overridable"~~ in §3.1.
+  - Catalogue entries are RavenDB documents edited as persistent objects by the admin: texts and how-to-fix in en/nl, weight, severity, category, enabled.
+  - They are **seeded** from the embedded JSON shipped with the app: new checks are added and **admin edits are never overwritten**. A "reset to shipped" action restores one entry.
+  - The check *implementations* stay C# classes keyed by check id; a catalogue entry without an implementation is shown as unavailable.
+  - To keep history interpretable, each `AuditRun` **snapshots the weights and severities it used** (they are small), and `ScoringVersion` becomes a hash of that snapshot. The trend chart marks runs whose snapshot differs from the previous run's.
+  
+  *Evidence: owner preference.*
+
+### Round 9 (owner, 2026-10-10)
+
+- **D33: the live-update change source is configurable, `Spark:Live:Source` = `Actions` | `Changes` | `Both`, default `Both`.**
+  - **The owner's concern:** the Changes API might be another database subscription, and Community allows only 3.
+  - **Clarified with evidence:** Changes API connections are **not** data subscriptions. The licence-verification probe below watched a document, a collection and all documents with **no** subscription created. The RavenDB client multiplexes every watch for a database over **one** Changes connection per process. Per-document watches are cheap; nothing in the design watches every document.
+  - **The owner's principle stands:** a library must not lock downstream developers into our choice, hence the configuration key.
+  - **Both:** the source merges in-process actions events (instant) with Changes notifications (writes from other instances or tools), de-duplicated by document id + change vector inside the throttle window.
+  
+  *Evidence: owner: "these are libraries, and they should not restrict what other developers can do … make this configurable through the .NET configuration"; "Both by default".*
+- **D34: low-code for downstream developers.** The common case needs only `"live": true` in the model JSON:
+  - no notifier calls;
+  - no socket code;
+  - ng-spark's generic pages and grids subscribe by themselves.
+  
+  `ISparkLiveNotifier` and `livePersistentObject()` / `liveQuery()` exist for custom pages and non-Spark writers under `Source = Actions`. *Evidence: owner: "make it low-code for app-developers/downstream consumers".*
+- **D35: `spark-po-detail` auto-refreshes when the type is live.**
+  - An untouched edit form adopts the new version.
+  - An edited form shows a banner and the existing three-way merge (`po-edit/src/conflict-merge.ts`, `SparkPoConflictDialogComponent`).
+  - 409 stays the server-side guarantee.
+  
+  *Evidence: owner: "I tend to say yes", subject to D33.*
+- **D36: one model-JSON flag, `"live": true`, on both queries and types.** It replaces `isStreamingQuery` and needs a new `schemas/v*` tag. Default limits, all configurable: ≤ 1 push per subscription per 500 ms (latest wins), ≤ 50 subscriptions per socket, ≤ 5 sockets per user. *Evidence: owner preference.*
+- **D37: the abuse log (`AuditLogEntry`) expires after 1 year; the unverified-target cool-down is 6 h across all users.** Both are settings. *Evidence: owner preference.*
+
+### Licence verification (2026-10-10): ✅ the Changes API works on the production Community licence
+
+The X4 design depends on the RavenDB Changes API, so this was measured on the **production server** (coverage.mintplayer.com VPS, `ravendb/ravendb:7.1.10-ubuntu.22.04-x64`, `/license/status` → `Type = Community`, not expired).
+
+**Method:**
+1. A throwaway database `ChangesProbe` was created.
+2. A temporary `node:24-alpine` container on `code-coverage_coverage-internal` opened `ws://coverage-raven:8080/databases/ChangesProbe/changes` with `watch-doc probes/1`, `watch-collection Probes` and `watch-docs`, then wrote documents over HTTP.
+
+**Result:**
+- All three subscriptions were confirmed.
+- Every write produced a `DocumentChange` notification, **4–22 ms** after the PUT, with `Type = Put`, `Id`, `CollectionName` and `ChangeVector`. A write to another collection arrived through `watch-docs`.
+- The connection delivered **one** notification per change even with three overlapping watches.
+
+**Revert, verified:**
+- The database was hard-deleted (`GET /databases?name=ChangesProbe` → 404).
+- The script, log and `node:24-alpine` image were removed from the host.
+- All three compose services were still healthy afterwards.
+
+**Licence limits that do apply to this PRD** (ravendb.net/buy, Community footnotes, read 2026-10-10):
+- **Subscriptions:** 3 per database and 15 per cluster; no revision subscriptions. This is why X4 uses the Changes API, not subscriptions.
+- **Revisions:** at most 2 kept, maximum age 45 days, and no default policy. Run history must therefore be documents, not revisions; the D8 summaries already are.
+- **Expiration/refresh frequency:** cannot be set shorter than every 36 hours. So `@expires` documents linger up to 36 h past their time, and the row policy must hide expired-but-not-yet-deleted documents (S6).
+- **Custom sorters and analyzers:** 1 of each per database.
+- The Changes API is not listed among the Community limits, and the measurement above confirms it.
+
+### Findings from the second investigation (2026-10-10)
+
+- **X4 live updates.** Full report: `docs/seo_analyzer_research_live_updates.md`.
+  - **Proposal:**
+    - One multiplexed socket at `GET|CONNECT /spark/live`, with `subscribe` / `update` / `unsubscribe` for query results (carrying the full `ExecuteQueryRequest`, including parent, paging, sort and search) and for single persistent objects.
+    - Updates are driven by the **RavenDB Changes API** (`ForDocument`, `ForIndex`, `ForDocumentsInCollection`). The app's `IAsyncEnumerable` remains for data that isn't in RavenDB.
+    - Every push re-runs the normal HTTP read path, so row security, redaction and attribute rights apply per push. An object that becomes unreadable is reported as `gone`, the same as a delete (#453 parity).
+    - No frame is sent when the visible result didn't change.
+    - Load control: throttle to 250–500 ms with the latest state winning, a bounded per-socket queue, and the socket lifetime capped at the login ticket.
+    - ng-spark gets a shared `SparkLiveService` with `livePersistentObject` / `liveQuery` signals. `spark-po-edit` reuses the existing three-way merge and conflict dialog when the user is editing.
+    - `isStreamingQuery` and `StreamingQueryArgs` are replaced (no backward compatibility).
+  - **Existing defects found in today's streaming queries, to fix in this PR:**
+    1. Removed rows are never signalled (`StreamingDiffEngine.cs:399`).
+    2. Added rows never appear client-side (`spark-query-list.component.ts:419-430`).
+    3. Access denied closes with 1011, so the client retries 10× for nothing.
+    4. A revoked right closes with 1000, so the grid silently keeps stale rows.
+    5. The comment at `StreamingQueryExecutor.cs:81-83` claims RavenDB is watched; it isn't.
+  - **Measurements:** L1–L8 in the report. L1, whether the Changes API works on the **Community** licence, gates the design and becomes part of S8.
+- **X9 settings.** Full report: `docs/seo_analyzer_research_settings.md`. Recommendation:
+  - **Package:** a new opt-in package `libs/settings/MintPlayer.Spark.Settings` (alias `settings`), built like the IdentityProvider library. It is not core, because core ships no model and a `Setting` type would land in every app.
+  - **Service, not a provider:** a plain `ISparkSettings` service rather than an `IConfigurationProvider`. A RavenDB provider would let anyone with Edit on `Setting` override connection strings and OAuth secrets, and it has a startup-order gap.
+  - **Declared in code:** settings are `SparkSetting<T>(Key, Default, Description)`, so keys are never typed by the admin. Values are stored as strings and parsed with the `ConfigurationBinder` converter, so stored and configured values parse identically.
+  - **Seeding:** a startup seeder upserts one `Settings/{Key}` document per declared key without touching `Value`.
+  - **Rights:** only `QueryReadEdit/Setting`, so there is no New or Delete. The app binds `settings:administrators`.
+  - **Cache:** a 30 s TTL, cleared on the saving instance. Changes-API invalidation can be added later behind the same API.
+  - **No secrets in settings.**
