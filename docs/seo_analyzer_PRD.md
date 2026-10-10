@@ -34,7 +34,7 @@ Research behind this document:
 | M9 ✅ | 2026-10-10 (§12 "M9"): the crawl pipeline: `seo-probe` (robots.txt first and the opt-out, Q-M8e; sitemaps, redirects, TLS incl. the raw TLS 1.0/1.1 hello, well-known files, DNS, RDAP and hstspreload through `LookupCache`), `seo-crawl` (`CrawlFrontier`, page batches, per-host politeness, tier limits, full-crawl ceiling), `seo-aggregate` (scores with the run's snapshot, New/Fixed/Unchanged, notifications), `CancelAudit`; 92 of 110 checks (18 wait for Chromium/PSI, M10); core `SafeHttpTrace` and `ISafeHttpSockets`; spikes S2, S7, S9 measured. Open: Q-M9a, Q-M9b (§11) |
 | M10 ✅ | 2026-10-10 (§12 "M10"): `seo-render` (a sample per tier, one URL template each, in Chromium over Playwright: launched locally or `ConnectAsync` to the container's `server.mjs`; every browser request fetched by the app through the SSRF-safe client, one redirect hop at a time (core `SafeHttpOptions.FollowRedirects`), robots.txt and the tier's connections, analytics hits answered locally; axe-core 4.13.0 bundled; phone and desktop renders), `seo-psi` (PageSpeed Insights with the key in a header, recorded real answers, 429 deferred then "not measured"), `seo-pdf` (the report printed per language, kept 7 days, members-only download), the aggregate waiting for crawl, render and PSI; **110 of 110 checks**; `RunCheckResult.Note` says why a check was not measured; the Chromium container's image and server script for M12; spikes S3 and S5 measured. Open: Q-M10a–Q-M10f (§11) |
 | M11 ✅ | 2026-10-10 (§12 "M11"): the pages, on ng-spark's generic detail page with SeoTester's renderers and panels: landing page, site (gauge, verification with copy buttons, trend), run report (live progress over `/spark/live`, gauge and category bars, every check with New/Fixed/Unchanged, why not measured, how to fix in en/nl with platform snippets; PDF download), page previews and findings, share page, badge (`ShareBadge`, `/seotester/badge.svg`), operator dashboard (`OperatorDashboard`, `/seotester/admin/dashboard`), public catalogue texts; the notification link fixed to `/po/audit-run/{id}`; refusals say when to try again; ng-spark fixes found in the browser (gauge badge, share page, action errors, language header, notification links). Q-M6d reviewed. Open: Q-M11a–Q-M11d (§11) |
-| M12 ✅ code-complete, deploy pending the owner | 2026-10-10 (§12 "M12"): scheduled monitoring (`Site.Monitoring` Off/Weekly/Monthly, the 15-minute sweep `MonitoringSweepCronJob`, queue `seo-monitor`, one run per slot started for the member who set the schedule through `AuditStarter`) and alerts (score drop per site or `SeoTester:Alerts:ScoreDrop`, new critical issue, certificate < 14 d, domain < 30 d; every member, through `ISparkNotifier`); `apps/SeoTester/docker-compose.yml` (app + `seo-chromium` on `seo-browser`, `internal: true`; the app on Traefik's `web` and CodeCoverage's `code-coverage_coverage-internal`), `.env.example`, `GET /health`, workflows `seotester-deploy.yml` / `seotester-image-check.yml`, `tools/verify-seotester-deploy.test.mjs`; runbook `docs/seotester/deploy.md` (VPS setup, credentials, post-deploy checklist for Q-M5a, Q-M6a, Q-M9b, Q-M10b). **The owner deploys** (deploy.md §3, §4). Open: Q-M12a–Q-M12c (§11) |
+| M12 ✅ code-complete, deploy pending the owner | 2026-10-10 (§12 "M12"): scheduled monitoring (`Site.Monitoring` Off/Weekly/Monthly, the 15-minute sweep `MonitoringSweepCronJob`, queue `seo-monitor`, one run per slot started for the member who set the schedule through `AuditStarter`) and alerts (score drop per site or `SeoTester:Alerts:ScoreDrop`, new critical issue, certificate < 14 d, domain < 30 d; every member, through `ISparkNotifier`); `apps/SeoTester/docker-compose.yml` (app + `seo-chromium` on `seo-browser`, `internal: true`; the app on Traefik's `web` and CodeCoverage's `code-coverage_coverage-internal`), `.env.example`, `GET /health`, workflows `seotester-deploy.yml` / `seotester-image-check.yml`, `tools/verify-seotester-deploy.test.mjs`; runbook `docs/seotester/deploy.md` (VPS setup, credentials, post-deploy checklist for Q-M5a, Q-M6a, Q-M9b, Q-M10b). **The owner deploys** (deploy.md §3, §4). Q-M12a–c answered (D47–D49, §12 Round 13): `/privacy` and `/terms`, the shared network `mintplayer-backend` (CodeCoverage's compose and deploy changed), alerts to all members |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -57,7 +57,7 @@ The app also proves Spark out. Where Spark lacks something, we build it in the f
 SeoTester is a Docker container on Debian on the VPS shared with CodeCoverage. It follows the same model: `apps/CodeCoverage/CodeCoverage/Dockerfile`, `docker-compose.yml`, `docs/code-coverage/hosting.md`, and a deploy workflow like `.github/workflows/code-coverage-deploy.yml` (ghcr → SSH → compose).
 
 - **Compose topology (D3, D6):**
-  - SeoTester joins the existing RavenDB network and a new **`seo-browser`** network. The RavenDB network is CodeCoverage's `code-coverage_coverage-internal` (its RavenDB server, database `SeoTester`, and its mail relay), joined as an external network (§12 "M12", Q-M12b).
+  - SeoTester joins the existing RavenDB network and a new **`seo-browser`** network. The RavenDB network is ~~CodeCoverage's `code-coverage_coverage-internal`~~ the external network **`mintplayer-backend`** that CodeCoverage's `coverage-raven` (database `SeoTester`) and `coverage-smtp` also join; no compose project owns it, both deploys create it when missing (D48).
   - A **Chromium container** joins **only** `seo-browser`, so it has no route to RavenDB (unsecured, internal) or postfix.
   - The goal is `internal: true` on `seo-browser` (no egress at all), which works if every browser request is fulfilled by SeoTester (§6); S3 proves it.
   - Memory limits and `shm_size` are set on Chromium, and a memory limit on the app (CodeCoverage's compose file sets none). The values are measured at the first deploy (Q-M10b).
@@ -482,29 +482,9 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   with its image (fetched by the viewer's browser from the audited site). **Recommendation: (b)** if the owner wants the
   card to be exact; (a) keeps the page free of third-party requests. Proceeding with (a) until answered.
 - ~~**Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).~~ **Reviewed in M11** (§12 "M11"): the colours and the gauge are kept; the grade badge was unstyled and is fixed (ng-bootstrap's `bs-badge`).
-- **Q-M12a (from M12): SeoTester has no privacy policy or terms of service.** X's OAuth 2.0 app settings require a
-  privacy policy URL and a terms URL before "Request email from users" can be switched on, and Google's consent screen
-  asks for a privacy policy link to leave testing mode; the app also processes personal data (accounts, addresses,
-  audit logs for a year, D37). Nothing in the PRD names these pages. Options: (a) the owner writes the texts (en + nl)
-  and the app serves them server-rendered at `/privacy` and `/terms`, like `/bot`; (b) link to a MintPlayer-wide policy
-  elsewhere; (c) leave X without "request email" (its users then confirm an address by mail). **Recommendation: (a)**:
-  the texts are the owner's (legal), the pages are an hour's work once they exist. Proceeding without them: the runbook
-  says where the URLs go.
-- **Q-M12b (from M12): SeoTester shares CodeCoverage's RavenDB server and mail relay.** §1 says "joins the existing
-  RavenDB network". Built: the app joins `code-coverage_coverage-internal` as an external network (database `SeoTester` on
-  `coverage-raven`, mail through `coverage-smtp`, which then needs `seotester.mintplayer.com` in its allowed sender
-  domains and a DKIM key, deploy.md §3.2). Consequences: SeoTester starts only when CodeCoverage's stack is up (the deploy
-  checks), and CodeCoverage's `docker compose down` meets a network still in use (Compose reports it and reuses it on
-  `up`; to confirm at the first CodeCoverage deploy after SeoTester's, deploy.md §5). Options: (a) as built; (b) a
-  network both stacks declare `external` (created once by hand), which changes CodeCoverage's compose file; (c) a
-  RavenDB server and relay of SeoTester's own (a second licence activation, DKIM, PTR and memory on the same VPS).
-  **Recommendation: (a)**, and (b) if the CodeCoverage deploy check shows a failure.
-- **Q-M12c (from M12): who receives a monitored site's alerts.** F10 says alerts reach "the user". Built: every member of
-  the site's organization, Viewers included, each through their per-organization preferences (D44: in-app, mail, push
-  per organization); a skipped scheduled run is told to the member who set the schedule (or the Admins when that
-  member left). Options: (a) as built; (b) Admins and Owners only; (c) an opt-in per member and site. **Recommendation:
-  (a)**: a member who reads the site wants to know it broke, and D44's preferences already let anyone turn a channel off
-  for that organization.
+- ~~**Q-M12a (from M12): SeoTester has no privacy policy or terms of service.**~~ **Closed by D47** (§12 Round 13): option (a), and the owner asked for the texts to be written: `/privacy` and `/terms` are built. ~~X's OAuth 2.0 app settings require a  privacy policy URL and a terms URL before "Request email from users" can be switched on, and Google's consent screen  asks for a privacy policy link to leave testing mode; the app also processes personal data (accounts, addresses,  audit logs for a year, D37). Nothing in the PRD names these pages. Options: (a) the owner writes the texts (en + nl)  and the app serves them server-rendered at `/privacy` and `/terms`, like `/bot`; (b) link to a MintPlayer-wide policy  elsewhere; (c) leave X without "request email" (its users then confirm an address by mail). **Recommendation: (a)**:  the texts are the owner's (legal), the pages are an hour's work once they exist. Proceeding without them: the runbook  says where the URLs go.~~
+- ~~**Q-M12b (from M12): SeoTester shares CodeCoverage's RavenDB server and mail relay.**~~ **Closed by D48** (§12 Round 13): option (b), a separate shared network `mintplayer-backend`. ~~§1 says "joins the existing  RavenDB network". Built: the app joins `code-coverage_coverage-internal` as an external network (database `SeoTester` on  `coverage-raven`, mail through `coverage-smtp`, which then needs `seotester.mintplayer.com` in its allowed sender  domains and a DKIM key, deploy.md §3.2). Consequences: SeoTester starts only when CodeCoverage's stack is up (the deploy  checks), and CodeCoverage's `docker compose down` meets a network still in use (Compose reports it and reuses it on  `up`; to confirm at the first CodeCoverage deploy after SeoTester's, deploy.md §5). Options: (a) as built; (b) a  network both stacks declare `external` (created once by hand), which changes CodeCoverage's compose file; (c) a  RavenDB server and relay of SeoTester's own (a second licence activation, DKIM, PTR and memory on the same VPS).  **Recommendation: (a)**, and (b) if the CodeCoverage deploy check shows a failure.~~
+- ~~**Q-M12c (from M12): who receives a monitored site's alerts.**~~ **Closed by D49** (§12 Round 13): option (a), as built. ~~F10 says alerts reach "the user". Built: every member of  the site's organization, Viewers included, each through their per-organization preferences (D44: in-app, mail, push  per organization); a skipped scheduled run is told to the member who set the schedule (or the Admins when that  member left). Options: (a) as built; (b) Admins and Owners only; (c) an opt-in per member and site. **Recommendation:  (a)**: a member who reads the site wants to know it broke, and D44's preferences already let anyone turn a channel off  for that organization.~~
 
 
 ---
@@ -1982,3 +1962,54 @@ Library, used by the start, the sweep, the recipient, the alerter and the interc
 
 **Open (§11):** Q-M12a (privacy policy and terms pages), Q-M12b (shared RavenDB server and relay), Q-M12c (alert
 audience). The deferred measurements Q-M5a, Q-M6a, Q-M9b and Q-M10b stay open until the owner runs deploy.md §5.
+
+### Round 13 (owner, 2026-10-10): Q-M12a, Q-M12b, Q-M12c
+
+- **D47 (Q-M12a): SeoTester has a privacy policy and terms of use, and the texts were written here.** *Evidence: owner
+  answer 2026-10-10* ("write the privacy policy and terms of service texts", factual, from the code and the PRD; GDPR,
+  the owner is in Belgium). Built (commit `dde13371`):
+  - `GET /privacy` and `GET /terms`, server-rendered like `/bot` (`Legal/LegalPages.cs`; the shared head and language
+    choice moved to `Pages/ServerPage.cs`, `/bot` unchanged), English or Dutch (`Accept-Language`, `?lang=`), no script,
+    **version 1, effective 2026-10-10** (`LegalPages.Version` / `EffectiveDate`, to raise on a change in substance);
+    anonymous; in the route snapshot; excluded from the service worker (`ngsw-config.json`, `verify-ngsw-config`).
+  - Linked from a footer in the SPA shell, under every page; the sign-in page is a shell child, so it shows it too.
+  - The privacy policy states what the code keeps and for how long: account data from the providers (name or user name,
+    e-mail, provider ids; passkeys as public keys), organizations and invitations (14 d), sites and verification, audit
+    summaries until deleted, page details and PDFs 7 d, notifications 90 d, push subscriptions until switched off or gone,
+    the abuse log and cool-downs (their periods read from the settings), mail records 30 d; legal bases (art. 6(1)(b),
+    (f), (a)); recipients (the sign-in provider, PageSpeed Insights with page URLs only, the browser's push service with
+    encrypted content, RDAP/IANA, hstspreload.org and DNS with domain names only, the hosting provider); cookies
+    (sign-in, antiforgery, external sign-in, language/colour mode/time zone; no analytics or tracking, no third-party
+    scripts); the GDPR rights through the account page's export and deletion, and the Belgian DPA. The terms: acceptable
+    use (only sites you may test), verification, the crawler and `/bot`, quotas and availability, results and sharing,
+    as is, liability (not for intent or gross negligence, nor where the law forbids), ending, Belgian law.
+  - **The controller's identity is configuration, never the repository:** `SeoTester:Legal:{OperatorName, Address,
+    ContactEmail, EnterpriseNumber, Court, HostingProvider}` (empty in `appsettings.json`; `LEGAL_*` in the server's
+    `.env`, `.env.example` and deploy.md §4.3). An empty value shows **"[to be completed]"** ("[nog in te vullen]");
+    production logs a startup warning naming the keys (`LegalConfigurationCheck`), never a failure.
+  - ⚠️ **The texts are a draft written from the code for the owner to review, not legal advice.**
+  - *Tests: `LegalPagesTests` (both pages anonymous in English with the retention figures and the marker; Dutch by
+    header and by `?lang`; configured values replace the marker, HTML-encoded, mailto link). Red: the three HTTP tests
+    failed (the SPA's `index.html` answered); the service-worker guard failed with the old `ngsw-config.json`. Green: with
+    `BotPageTests`, the route snapshot and `CompositionTests` 13/13; `test:tools` 76/76.*
+- **D48 (Q-M12b): a separate shared network, `mintplayer-backend`.** *Evidence: owner answer 2026-10-10* ("a separate
+  external network that coverage-raven, coverage-smtp and seotester-app join, so neither stack's up/down touches it").
+  Supersedes the M12 entry's ~~`code-coverage_coverage-internal` as an external network~~. Built (commit `53dcbb3e`):
+  - `apps/CodeCoverage/docker-compose.yml` (production): `coverage-raven` and `coverage-smtp` also join
+    `mintplayer-backend` (external, that name); `coverage-internal` stays for CodeCoverage's own services, and
+    `coverage-app` does not join the new network. `apps/SeoTester/docker-compose.yml`: `seotester-app` joins it instead.
+    The host names (`coverage-raven`, `coverage-smtp`) are the same.
+  - Both deploy workflows run, before `down`/`up`, `docker network inspect mintplayer-backend || docker network create
+    mintplayer-backend` (a concurrent create by the other deploy is tolerated by a second inspect), so whichever stack
+    deploys first finds the network. SeoTester's deploy then refuses, before touching its own stack, while `coverage-raven`
+    is not on the network ("deploy CodeCoverage first").
+  - A plain bridge, not `internal: true`: `coverage-smtp` delivers mail to the internet, and the network publishes no
+    port, as `coverage-internal` does not.
+  - Migration of the live CodeCoverage stack: its ordinary deploy on merge (creates the network, recreates raven and smtp
+    on both networks); then SeoTester (deploy.md §3.0). `docs/code-coverage/hosting.md` §1 and §7 updated.
+  - *Tests: `tools/verify-seotester-deploy.test.mjs` +2 (both compose files declare the network external with the same
+    name; raven and smtp join it, coverage-app does not; both deploys create it before `down`/`up`; SeoTester's
+    pre-check). Red with the four deploy files as committed before: 3 of 12 failed; green 12/12. `docker compose config`
+    accepts both compose files.*
+- **D49 (Q-M12c): a monitored site's alerts go to every member of its organization, as built.** *Evidence: owner answer
+  2026-10-10.* `A_run_of_a_monitored_site_alerts_every_member_about_a_new_critical_issue_and_a_score_drop` pins it.
