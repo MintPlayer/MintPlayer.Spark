@@ -4,13 +4,14 @@ import { SparkShellComponent, SparkShellTopbarEndDirective, SparkLanguageSelecto
 import { SparkAuthBarComponent } from '@mintplayer/ng-spark/auth/auth-bar';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import { SparkNotificationBellComponent } from '@mintplayer/ng-spark/notifications';
+import { SparkOrganizationSwitcherComponent } from '@mintplayer/ng-spark/organizations';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 
 @Component({
   selector: 'app-shell',
   imports: [
     RouterOutlet, SparkShellComponent, SparkShellTopbarEndDirective, SparkLanguageSelectorComponent,
-    SparkAuthBarComponent, SparkNotificationBellComponent, TranslateKeyPipe,
+    SparkAuthBarComponent, SparkNotificationBellComponent, SparkOrganizationSwitcherComponent, TranslateKeyPipe,
   ],
   templateUrl: './shell.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush

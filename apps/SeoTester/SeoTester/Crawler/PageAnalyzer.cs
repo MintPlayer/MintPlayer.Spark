@@ -59,6 +59,10 @@ public static class PageAnalyzer
             Title = Cut(html?.Title, 300),
             Description = Cut(html?.Description, 500),
             H1 = Cut(html?.H1s.FirstOrDefault(), 300),
+            OgTitle = Cut(html?.MetaProperty("og:title")?.Trim(), 300),
+            OgDescription = Cut(html?.MetaProperty("og:description")?.Trim(), 500),
+            OgImage = Cut(html?.MetaProperty("og:image")?.Trim(), 2000),
+            OgUrl = Cut(html?.MetaProperty("og:url")?.Trim(), 2000),
             Findings = findings.Where(f => f.Status != Scoring.CheckStatus.NotApplicable)
                 .Select(f => new PageFinding { CheckId = f.CheckId, Status = f.Status.ToString(), Detail = f.DetailJson }).ToList(),
             ExpiresAtUtc = nowUtc + Retention,

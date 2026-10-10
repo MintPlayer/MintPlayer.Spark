@@ -50,7 +50,7 @@ public sealed class FakeDns : ISeoDns
 
 /// <summary>One answer of <see cref="FakeWeb"/>.</summary>
 public sealed record FakeResponse(HttpStatusCode Status, string Body, string? Location = null, string ContentType = "text/plain; charset=utf-8",
-    IReadOnlyDictionary<string, string>? Headers = null, TimeSpan Delay = default);
+    IReadOnlyDictionary<string, string>? Headers = null, TimeSpan Delay = default, byte[]? Bytes = null);
 
 /// <summary>A request <see cref="FakeWeb"/> received.</summary>
 /// <param name="HeaderNames">The request's header names (never their values: one may be an API key).</param>
@@ -99,7 +99,7 @@ public sealed class FakeWeb
                 if (page.Delay > TimeSpan.Zero)
                     await Task.Delay(page.Delay, cancellationToken);
                 var response = new HttpResponseMessage(page.Status) { RequestMessage = request };
-                var body = request.Method == HttpMethod.Head ? [] : Encoding.UTF8.GetBytes(page.Body);
+                var body = request.Method == HttpMethod.Head ? [] : page.Bytes ?? Encoding.UTF8.GetBytes(page.Body);
                 response.Content = new ByteArrayContent(body);
                 response.Content.Headers.TryAddWithoutValidation("Content-Type", page.ContentType);
                 if (page.Location is not null)

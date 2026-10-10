@@ -6,7 +6,7 @@ import { asRows, num, str } from '../rows';
 
 /** The bar of one category: the score renderers' letter grades, a whole number, no unit. Spelled out (score-renderers guide). */
 export const SEO_CATEGORY_BAR: SparkThresholdBarOptions = {
-  min: 0, max: 100, bands: sparkLetterGrades, decimals: 0, suffix: '', label: 'Category score', width: '160px', height: '8px', showValue: true,
+  min: 0, max: 100, bands: sparkLetterGrades, decimals: 0, suffix: '', label: 'Category score', width: 'min(160px, 100%)', height: '8px', showValue: true,
 };
 
 /**
@@ -25,16 +25,14 @@ export const SEO_CATEGORY_BAR: SparkThresholdBarOptions = {
           @for (c of categories(); track c.category) {
             <div class="seo-cat" [attr.data-category]="c.category">
               <span>{{ catalogue.categoryLabel(c.category) }}</span>
-              <span>
+              <span class="seo-cat-value">
                 @if (c.score === null) {
                   <span class="text-body-secondary">{{ 'seoUi.notMeasured' | t }}</span>
                 } @else {
-                  <spark-threshold-bar [value]="c.score" [options]="barFor(c.category)" />
+                  <spark-threshold-bar class="seo-cat-bar" [value]="c.score" [options]="barFor(c.category)" />
                 }
-              </span>
-              <span class="small text-body-secondary">
-                @if (c.capped) { <span data-capped>{{ 'seoUi.capped' | t }}</span> }
-                @if (c.category === 'Domain') { <span>{{ 'seoUi.notScored' | t }}</span> }
+                @if (c.capped) { <span class="small text-body-secondary" data-capped>{{ 'seoUi.capped' | t }}</span> }
+                @if (c.category === 'Domain') { <span class="small text-body-secondary">{{ 'seoUi.notScored' | t }}</span> }
               </span>
             </div>
           }
@@ -42,8 +40,11 @@ export const SEO_CATEGORY_BAR: SparkThresholdBarOptions = {
     }
   `,
   styles: [`
-    .seo-cats { display: grid; grid-template-columns: max-content max-content auto; gap: .35rem 1rem; align-items: center; }
+    /* Two columns: the label, then the bar with its notes, which wrap under the bar on a phone (375 px). */
+    .seo-cats { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem 1rem; align-items: center; }
     .seo-cat { display: contents; }
+    .seo-cat-value { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1rem; min-width: 0; }
+    .seo-cat-bar { flex: 0 1 13rem; min-width: 0; }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

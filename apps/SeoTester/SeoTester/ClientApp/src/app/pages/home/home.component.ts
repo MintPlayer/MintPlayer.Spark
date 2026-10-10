@@ -14,9 +14,11 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
   templateUrl: './home.component.html',
   styles: [`
     .seo-hero { max-width: 52rem; margin: 0 auto; }
-    .seo-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 1rem; }
-    .seo-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; max-width: 64rem; margin: 0 auto; }
-    .seo-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; max-width: 64rem; margin: 0 auto; padding: 0; list-style-position: inside; }
+    /* min(…, 100%): a phone (375 px) is narrower than a 22rem column, which pushed the page sideways. */
+    .seo-cards > * { min-width: 0; }
+    .seo-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); gap: 1rem; }
+    .seo-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); gap: 1rem; max-width: 64rem; margin: 0 auto; }
+    .seo-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); gap: 1rem; max-width: 64rem; margin: 0 auto; padding: 0; list-style-position: inside; }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

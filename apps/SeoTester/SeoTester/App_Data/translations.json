@@ -61,8 +61,8 @@
       "attributes": {
         "OrganizationId": {
           "description": {
-            "en": "Who the site belongs to. Leave it empty for your own (personal) space.",
-            "nl": "Van wie de site is. Laat leeg voor je eigen (persoonlijke) ruimte."
+            "en": "Who the site belongs to. Leave it empty for the organization chosen at the top, or your own (personal) space when all organizations are shown.",
+            "nl": "Van wie de site is. Laat leeg voor de organisatie die bovenaan gekozen is, of je eigen (persoonlijke) ruimte als alle organisaties getoond worden."
           },
           "label": {
             "en": "Organization",
@@ -873,6 +873,34 @@
             "nl": "Hoofdtitel"
           }
         },
+        "OgTitle": {
+          "label": {
+            "en": "og:title",
+            "nl": "og:title"
+          }
+        },
+        "OgDescription": {
+          "label": {
+            "en": "og:description",
+            "nl": "og:description"
+          }
+        },
+        "OgImage": {
+          "label": {
+            "en": "og:image",
+            "nl": "og:image"
+          },
+          "description": {
+            "en": "Shown in the card through SeoTester's server, never loaded by your browser from the site.",
+            "nl": "In de kaart getoond via de server van SeoTester, nooit door je browser van de site geladen."
+          }
+        },
+        "OgUrl": {
+          "label": {
+            "en": "og:url",
+            "nl": "og:url"
+          }
+        },
         "Findings": {
           "label": {
             "en": "Findings",
@@ -1647,6 +1675,26 @@
       "noDescription": {
         "en": "(no description: Google picks text from the page)",
         "nl": "(geen beschrijving: Google kiest tekst van de pagina)"
+      },
+      "noImage": {
+        "en": "No og:image: networks show the link without a picture, or pick one themselves.",
+        "nl": "Geen og:image: netwerken tonen de link zonder afbeelding, of kiezen er zelf een."
+      },
+      "imageNotShown": {
+        "en": "The image could not be shown: not reachable, larger than 5 MB, or not a PNG, JPEG, GIF or WebP.",
+        "nl": "De afbeelding kan niet getoond worden: niet bereikbaar, groter dan 5 MB, of geen PNG, JPEG, GIF of WebP."
+      },
+      "imageSize": {
+        "en": "{0} × {1} pixels (1200 × 630 is what most networks ask for)",
+        "nl": "{0} × {1} pixels (1200 × 630 is wat de meeste netwerken vragen)"
+      },
+      "fromOpenGraph": {
+        "en": "From the page's og:title and og:description.",
+        "nl": "Uit og:title en og:description van de pagina."
+      },
+      "fromTitle": {
+        "en": "The page has no og:title or og:description: networks fall back to its title and description.",
+        "nl": "De pagina heeft geen og:title of og:description: netwerken nemen dan de titel en beschrijving."
       }
     },
     "trend": {

@@ -30,6 +30,14 @@ public class PageResult : IOrganizationOwned, IExpiring
     public string? Description { get; set; }
     public string? H1 { get; set; }
 
+    // The page's Open Graph tags as written (Q-M11d), for the shared-link card. They expire with the page. The image is
+    // never loaded by the viewer's browser from the audited site: the card shows it through <c>/seotester/og-image</c>,
+    // fetched by the server over the SSRF-safe client with a size and type cap (<c>Reports/OgImageProxy</c>).
+    public string? OgTitle { get; set; }
+    public string? OgDescription { get; set; }
+    public string? OgImage { get; set; }
+    public string? OgUrl { get; set; }
+
     public List<PageFinding> Findings { get; set; } = [];
 
     public DateTime? ExpiresAtUtc { get; set; }

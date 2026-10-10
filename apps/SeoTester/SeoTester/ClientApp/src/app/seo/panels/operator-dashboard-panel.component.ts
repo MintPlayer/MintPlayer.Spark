@@ -35,8 +35,10 @@ export function formatBytes(bytes: number | null | undefined): string {
   selector: 'app-seo-operator-dashboard-panel',
   imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsTableComponent, SparkQueryCardComponent, TranslateKeyPipe],
   styles: [`
-    .seo-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: .75rem; }
-    .seo-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem; }
+    .seo-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(10rem, 100%), 1fr)); gap: .75rem; }
+    /* min(…, 100%) and min-width: 0: a 20rem column was wider than a phone. */
+    .seo-pair > * { min-width: 0; }
+    .seo-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); gap: 1rem; }
   `],
   templateUrl: './operator-dashboard-panel.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,

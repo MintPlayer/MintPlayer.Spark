@@ -35,10 +35,15 @@ public class SiteTests(SeoTesterHostFixture host)
     [Fact]
     public async Task Without_an_organization_the_site_goes_to_the_creators_personal_one()
     {
-        var (status, body, raw) = await CreateSiteAsync(host, $"{Guid.NewGuid():N}"[..12] + ".example.org", organizationId: null, Max);
+        var origin = $"{Guid.NewGuid():N}"[..12] + ".example.org";
+        var (status, body, raw) = await CreateSiteAsync(host, origin, organizationId: null, Max);
+        var duplicate = await CreateSiteAsync(host, origin, organizationId: null, Max);
 
         status.Should().Be(HttpStatusCode.Created, raw);
         (await LoadDocumentAsync<Site>(host, body.GetProperty("result").GetProperty("id").GetString()!))!.OrganizationId.Should().Be("Organizations/personal/SparkUsers/max");
+        // The default comes from the organizations package (Q-M11a); the duplicate check runs after it (Finalize stage).
+        duplicate.Status.Should().Be(HttpStatusCode.BadRequest, duplicate.Raw);
+        duplicate.Raw.Should().Contain("already one of this organization's sites");
     }
 
     [Fact]

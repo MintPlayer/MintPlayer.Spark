@@ -3,7 +3,7 @@ import { SeoRunProgressComponent, seoRunProgress } from './run-progress.componen
 import { SeoVerificationComponent, seoVerificationProofs } from './verification.component';
 import { SeoCategoryScoresComponent } from './category-scores.component';
 import { seoPageFindings } from './page-findings.component';
-import { breadcrumbUrl, cut } from './previews.component';
+import { SeoPreviewsComponent, breadcrumbUrl, cut, socialCard } from './previews.component';
 import { SPEC_CHECKS, provideSeoSpecServices } from '../testing';
 
 describe('seoRunProgress', () => {
@@ -115,5 +115,53 @@ describe('previews', () => {
     expect(cut('a'.repeat(70), 60).endsWith('…')).toBe(true);
     expect(cut('short', 60)).toBe('short');
     expect(breadcrumbUrl('https://example.com/blog/post-1')).toBe('example.com › blog › post-1');
+  });
+
+  it('draws the card from the Open Graph values, falling back to the title, description and address (Q-M11d)', () => {
+    const og = socialCard({ Title: 'T', Description: 'D', Url: 'https://example.com/a', OgTitle: 'OG T', OgDescription: 'OG D',
+      OgUrl: 'https://www.example.com/a', OgImage: 'https://cdn.example.net/a.png' }, 'Runs/1/pages/x');
+    expect(og).toMatchObject({ title: 'OG T', description: 'OG D', host: 'www.example.com', fromOpenGraph: true });
+    expect(og.imageSrc).toBe('/seotester/og-image?page=Runs%2F1%2Fpages%2Fx');
+
+    const plain = socialCard({ Title: 'T', Description: 'D', Url: 'https://example.com/a' }, 'Runs/1/pages/x');
+    expect(plain).toMatchObject({ title: 'T', description: 'D', host: 'example.com', fromOpenGraph: false, imageUrl: '', imageSrc: null });
+  });
+});
+
+describe('SeoPreviewsComponent', () => {
+  beforeEach(() => TestBed.configureTestingModule({ providers: provideSeoSpecServices() }));
+
+  async function render(formData: Record<string, unknown>) {
+    const fixture = TestBed.createComponent(SeoPreviewsComponent);
+    fixture.componentRef.setInput('value', 'Title');
+    fixture.componentRef.setInput('formData', formData);
+    fixture.componentRef.setInput('item', { id: 'Runs/1/pages/x' });
+    await fixture.whenStable();
+    return fixture;
+  }
+
+  it('loads the og:image only through the server proxy and shows its address as text', async () => {
+    const fixture = await render({ Url: 'https://example.com/', OgImage: 'https://tracker.example.net/pixel.png' });
+    const html = fixture.nativeElement as HTMLElement;
+
+    const images = Array.from(html.querySelectorAll('img')).map(i => i.getAttribute('src'));
+    expect(images).toEqual(['/seotester/og-image?page=Runs%2F1%2Fpages%2Fx']);
+    expect(html.innerHTML).not.toContain('src="https://');
+    expect(html.querySelector('.seo-card-image-url')?.textContent).toBe('https://tracker.example.net/pixel.png');
+  });
+
+  it('says why when the proxy refuses the image, and says when there is none', async () => {
+    const fixture = await render({ Url: 'https://example.com/', OgImage: 'https://example.com/huge.png' });
+    fixture.componentInstance.imageFailed.set(true);
+    await fixture.whenStable();
+    const html = fixture.nativeElement as HTMLElement;
+    expect(html.querySelector('img')).toBeNull();
+    expect(html.querySelector('.seo-card-image-failed')).not.toBeNull();
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: provideSeoSpecServices() });
+    const none = await render({ Url: 'https://example.com/' });
+    expect((none.nativeElement as HTMLElement).querySelector('img')).toBeNull();
+    expect((none.nativeElement as HTMLElement).querySelector('.seo-card-no-image')).not.toBeNull();
   });
 });

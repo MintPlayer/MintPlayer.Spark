@@ -39,7 +39,7 @@
       <bs-card class="d-block h-100">
         <bs-card-header>{{ 'seoUi.dashboard.database' | t }}: {{ bytes(d.database.sizeOnDiskBytes) }}</bs-card-header>
         <bs-card-body>
-          <bs-table data-collections>
+          <bs-table [isResponsive]="true" data-collections>
             <thead><tr><th>{{ 'seoUi.dashboard.collection' | t }}</th><th class="text-end">{{ 'seoUi.dashboard.documents' | t }}</th><th class="text-end">{{ 'seoUi.dashboard.size' | t }}</th></tr></thead>
             <tbody>
               @for (c of d.database.collections; track c.name) {

@@ -2,7 +2,6 @@ using System.Security.Claims;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
-using MintPlayer.Spark.Organizations.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -16,8 +15,8 @@ namespace SeoTester.Interceptors;
 /// <summary>
 /// Every persistent-object write of a <see cref="Site"/> (<c>docs/seo_analyzer_PRD.md</c> F2, F3):
 /// <list type="bullet">
-/// <item><b>Create:</b> the origin is normalized (or refused), the organization defaults to the creator's personal one
-/// (D21), a second site with the same origin in one organization is refused, and the server-owned fields start
+/// <item><b>Create:</b> the origin is normalized (or refused), an empty organization is the one chosen in the switcher,
+/// else the creator's personal one (the organizations package, D21, Q-M11a), a second site with the same origin in one organization is refused, and the server-owned fields start
 /// fresh: a new verification token, unverified, no latest run.</item>
 /// <item><b>Edit:</b> only the profile changes. The origin, the organization, the verification and the latest run keep
 /// their stored values whatever the client posted, the way <c>ExpiresAtUtc</c> and <c>ShareTokenHash</c> are kept (D41):
@@ -27,6 +26,9 @@ namespace SeoTester.Interceptors;
 /// </summary>
 public sealed partial class SiteSaveInterceptor : IBeforeSave<Site>
 {
+    /// <summary>After the organizations package's default (registered later, D21), which the duplicate check reads.</summary>
+    public InterceptorStage Stage => InterceptorStage.Finalize;
+
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly TimeProvider time;
 
@@ -44,8 +46,6 @@ public sealed partial class SiteSaveInterceptor : IBeforeSave<Site>
         var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
         site.Origin = origin;
         site.Host = host;
-        if (string.IsNullOrEmpty(site.OrganizationId) && userId is { Length: > 0 })
-            site.OrganizationId = Organization.PersonalIdFor(userId);
         if (site.Monitoring is null)
             site.Monitoring = MonitoringSchedule.Off;
 
@@ -97,6 +97,9 @@ public sealed partial class SiteSaveInterceptor : IBeforeSave<Site>
 /// </summary>
 public sealed partial class CheckDefinitionSaveInterceptor : IBeforeSave<CheckDefinition>
 {
+    /// <summary>After the organizations package's default (registered later, D21), which the duplicate check reads.</summary>
+    public InterceptorStage Stage => InterceptorStage.Finalize;
+
     [Inject] private readonly IAsyncDocumentSession session;
 
     public async ValueTask OnBeforeSaveAsync(CheckDefinition definition, SaveContext context)

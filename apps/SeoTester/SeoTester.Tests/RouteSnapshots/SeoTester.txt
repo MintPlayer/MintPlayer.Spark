@@ -4,6 +4,7 @@ GET /privacy
 GET /seotester/admin/dashboard
 GET /seotester/badge.svg
 GET /seotester/catalogue
+GET /seotester/og-image
 GET /seotester/report.pdf
 GET /spark
 POST /spark/actions/execute | antiforgery=required
@@ -45,6 +46,8 @@ POST /spark/notifications/push/subscribe | antiforgery=required | authorize(poli
 POST /spark/notifications/push/unsubscribe | antiforgery=required | authorize(policy=;roles=;schemes=)
 POST /spark/notifications/read | antiforgery=required | authorize(policy=;roles=;schemes=)
 POST /spark/organizations/accept | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/organizations/current | authorize(policy=;roles=;schemes=)
+POST /spark/organizations/current | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/permissions/{entityTypeId}
 POST /spark/po/create | antiforgery=required
 POST /spark/po/delete | antiforgery=required
