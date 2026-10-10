@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "StartAudit": {
+    "icon": "Play",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "StartFullCrawl": {
+    "icon": "Diagram3",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "VerifySite": {
+    "icon": "PatchCheck",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "ResetCheckDefinition": {
+    "icon": "ArrowCounterclockwise",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  }
+}

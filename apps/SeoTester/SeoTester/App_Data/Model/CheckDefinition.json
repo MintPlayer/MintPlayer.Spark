@@ -1,0 +1,220 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "persistentObject": {
+    "id": "b474d13d-5d55-4abb-806f-bfd72d7382de",
+    "name": "CheckDefinition",
+    "clrType": "SeoTester.Entities.CheckDefinition",
+    "alias": "check",
+    "breadcrumb": "{CheckId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "ba80f2c1-f8c3-43da-a152-52439ad50ee9",
+        "name": "Category",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "lookupReferenceType": "CheckCategoryLookup",
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "826bab90-68b9-451f-9565-eafa0c0ebc14",
+        "name": "CheckId",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "823c170b-12e9-43ca-be9a-b968586a537e",
+        "name": "DocsUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 16,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2db35855-f075-45f9-876d-7b6ac0f3508f",
+        "name": "Enabled",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "620934bb-579f-42a5-b0bf-f275444caea8",
+        "name": "HowToFixEn",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f044985f-c4b3-41fe-89eb-2fec0c11a4c9",
+        "name": "HowToFixNl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a41a6716-e249-492e-94e4-5a112a7d0006",
+        "name": "Layer",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 17,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "830fd9fc-636d-44ac-bf3a-45b72b367e0f",
+        "name": "Severity",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "lookupReferenceType": "CheckSeverityLookup",
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "93d66c87-214f-44d5-bf00-5ac207347d9e",
+        "name": "SnippetApache",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "754d4b23-b0a5-4469-a5ec-7a2f59d704fc",
+        "name": "SnippetHtml",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "86c924e7-bbc9-4dd9-93a3-ca71a56ea5ef",
+        "name": "SnippetIis",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f82fcc41-50a0-449a-b109-817f98f27564",
+        "name": "SnippetNginx",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6b08fd88-299f-4786-a125-25f95fcdd10e",
+        "name": "SummaryEn",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0e573913-bf0b-43a2-bffc-c03adb1de546",
+        "name": "SummaryNl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "259e3147-bc38-4d6c-9cf6-a44e25a876c7",
+        "name": "TitleEn",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6180b0d8-1d64-44a9-80da-2ffc975cb58a",
+        "name": "TitleNl",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0d7a6db1-3aa5-49b8-bec9-f2790a68159a",
+        "name": "Weight",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "8d1be047-0014-4221-bd04-e5c7eb94332f",
+      "name": "GetCheckDefinitions",
+      "source": "Database.CheckDefinitions",
+      "alias": "checks",
+      "sortColumns": [
+        {
+          "property": "CheckId",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "CheckDefinition"
+    }
+  ]
+}

@@ -26,7 +26,7 @@ namespace SeoTester.Tests._Infrastructure;
 /// <c>builder.Configuration</c> while it registers services (<c>AddExternalProviders</c>).</item>
 /// </list>
 /// </remarks>
-public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictionary<string, string?>? settings = null) : WebApplicationFactory<Program>
+public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictionary<string, string?>? settings = null, FakeDns? dns = null, FakeWeb? web = null) : WebApplicationFactory<Program>
 {
     public const string EnvironmentName = "IntegrationTest";
 
@@ -52,7 +52,15 @@ public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictio
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
             builder.UseSetting(key, value);
 
-        builder.ConfigureTestServices(services => services.AddSingleton<IStartupFilter, SeoPrincipalStartupFilter>());
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IStartupFilter, SeoPrincipalStartupFilter>();
+            // Ownership verification reads DNS and the site: both answer from tables (FakeDns, FakeWeb).
+            if (dns is not null)
+                services.AddSingleton<SeoTester.Verification.IDnsTxtResolver>(dns);
+            if (web is not null)
+                services.AddHttpClient(SeoTester.Verification.SiteVerification.HttpClientName).ConfigurePrimaryHttpMessageHandler(web.CreateHandler);
+        });
     }
 }
 
@@ -163,13 +171,23 @@ public sealed class SeoTesterHostFixture : SparkTestDriver
 
     public SeoTesterWebAppFactory Factory { get; private set; } = null!;
 
+    /// <summary>The DNS the host's verification sees.</summary>
+    public FakeDns Dns { get; } = new();
+
+    /// <summary>The web the host's verification client sees.</summary>
+    public FakeWeb Web { get; } = new();
+
+    /// <summary>Ann owns Acme (Max Member, Vic Viewer); Bob owns Globex; Ann and Max have personal organizations.</summary>
+    public Task SeedOrganizationsAsync() => SeedFromJsonAsync("Data/organizations.json");
+
     /// <summary>A client without a cookie jar: each request carries exactly the cookies the test gives it.</summary>
     public HttpClient CreateClient() => Factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false, AllowAutoRedirect = false });
 
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        Factory = new SeoTesterWebAppFactory(Store);
+        await SeedOrganizationsAsync();
+        Factory = new SeoTesterWebAppFactory(Store, dns: Dns, web: Web);
         // Boot here, so a startup failure is reported by the fixture and not by whichever test runs first.
         _ = Factory.CreateClient();
     }

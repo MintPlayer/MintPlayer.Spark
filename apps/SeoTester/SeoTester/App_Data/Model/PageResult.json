@@ -1,0 +1,156 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "persistentObject": {
+    "id": "c7e5d8d7-f1c9-4dec-9492-ead5186dd59e",
+    "name": "PageResult",
+    "clrType": "SeoTester.Entities.PageResult",
+    "alias": "page-result",
+    "breadcrumb": "{Url}",
+    "expiresAfter": "7.00:00:00",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "8e755eb6-baeb-48ac-b627-8173ed01eb8f",
+        "name": "Url",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "74d48322-eb1b-4f37-8771-f7cc09ba2bb0",
+        "name": "StatusCode",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "659c38ce-bf58-4858-af42-3b35e252ec11",
+        "name": "Depth",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b9624460-8df5-40fa-8a96-0af2982f7b87",
+        "name": "LoadMs",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ac046a30-36db-4988-94d6-b6c111383913",
+        "name": "Title",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "759afbb8-d60e-4768-9b6c-efac82a87e3f",
+        "name": "Description",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d66569fe-16c5-44db-8599-ef9f960651fe",
+        "name": "H1",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "29bbc126-fb88-4b9b-80b0-77a306fd78d4",
+        "name": "Findings",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "asDetailType": "SeoTester.Entities.PageFinding",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c2a3b88b-4826-4c1c-a8c7-051104c016e8",
+        "name": "RunId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "query": "GetAuditRuns",
+        "referenceType": "SeoTester.Entities.AuditRun",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "211702c0-cfa0-487d-af8c-4d5fc205bbda",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "966b4f3f-4dc7-4f1a-94c4-3ef3ebb8f766",
+        "name": "ExpiresAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "0ba4ef82-a5da-463b-9774-23b97ab61380",
+      "name": "RunPages",
+      "source": "Custom.RunPages",
+      "alias": "run-pages",
+      "sortColumns": [
+        {
+          "property": "Url",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "PageResult"
+    }
+  ]
+}

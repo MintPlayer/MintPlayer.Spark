@@ -16,11 +16,11 @@ export const routes: Routes = [
     children: [
       // External sign-in only (docs/seo_analyzer_PRD.md D2): the page shows a button per provider the SERVER
       // registered, so an unconfigured one never appears. SparkId is Development's (appsettings.Development.json).
-      // The account pages include the connected logins (ConfirmByEmail linking, D7); no passwords, no passkeys.
+      // The account pages include the connected logins (ConfirmByEmail linking, D7) and passkeys (D46); no passwords.
       // withOrganizationRoutes() is the page a mailed invitation or join request opens (X11).
       ...sparkAuthRoutes(
         withExternalLogin(microsoftProvider(), githubProvider(), twitterProvider(), googleProvider(), oidcProvider('SparkId', 'Spark Identity')),
-        withAccount({ exclude: ['passkeys'] }),
+        withAccount(),
         withOrganizationRoutes(),
       ),
       { path: '', redirectTo: 'home', pathMatch: 'full' },

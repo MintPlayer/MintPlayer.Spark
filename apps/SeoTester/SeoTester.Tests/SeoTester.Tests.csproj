@@ -40,6 +40,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- JSON fixtures (users, organizations, memberships), imported with SparkTestDriver.SeedFromJsonAsync. -->
+    <Content Include="Data\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
     <ProjectReference Include="..\SeoTester\SeoTester.csproj" />
   </ItemGroup>

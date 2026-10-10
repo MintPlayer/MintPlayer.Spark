@@ -47,5 +47,888 @@
         }
       }
     }
+  },
+  "model": {
+    "Site": {
+      "attributes": {
+        "OrganizationId": {
+          "description": {
+            "en": "The owning organization; the creator's personal organization when the form leaves it empty."
+          },
+          "label": {
+            "en": "Organization",
+            "nl": "Organisatie"
+          }
+        },
+        "Origin": {
+          "description": {
+            "en": "https://example.com: scheme, lower-case ASCII host and a non-default port only. Fixed after creation."
+          },
+          "label": {
+            "en": "Website",
+            "nl": "Website"
+          }
+        },
+        "Host": {
+          "description": {
+            "en": "The host of Origin (the TXT record is _seotester.{Host}, the cool-down key)."
+          },
+          "label": {
+            "en": "Host",
+            "nl": "Host"
+          }
+        },
+        "PwaProfile": {
+          "description": {
+            "en": "Audit the PWA checks too (opt-in profile, PRD §3.1)."
+          },
+          "label": {
+            "en": "Audit as PWA",
+            "nl": "Controleren als PWA"
+          }
+        },
+        "Language": {
+          "description": {
+            "en": "The report's language, en or nl."
+          },
+          "label": {
+            "en": "Report language",
+            "nl": "Taal van het rapport"
+          }
+        },
+        "VerificationToken": {
+          "description": {
+            "en": "The secret the organization publishes to prove control; random, made at creation."
+          },
+          "label": {
+            "en": "Verification token",
+            "nl": "Verificatiecode"
+          }
+        },
+        "IsVerified": {
+          "description": {
+            "en": "Whether this organization proved control of the site; re-checked periodically."
+          },
+          "label": {
+            "en": "Verified",
+            "nl": "Geverifieerd"
+          }
+        },
+        "VerificationCheckedAtUtc": {
+          "description": {
+            "en": "The last check, by the Verify action or the re-verification sweep."
+          },
+          "label": {
+            "en": "Last checked",
+            "nl": "Laatst gecontroleerd"
+          }
+        },
+        "VerificationFailures": {
+          "description": {
+            "en": "Re-checks failed in a row; the verification is withdrawn at the configured count."
+          },
+          "label": {
+            "en": "Failed re-checks",
+            "nl": "Mislukte hercontroles"
+          }
+        },
+        "LatestScore": {
+          "label": {
+            "en": "Score",
+            "nl": "Score"
+          }
+        },
+        "LatestGrade": {
+          "label": {
+            "en": "Grade",
+            "nl": "Graad"
+          }
+        },
+        "LatestRunAtUtc": {
+          "label": {
+            "en": "Last audited",
+            "nl": "Laatst geaudit"
+          }
+        },
+        "Monitoring": {
+          "label": {
+            "en": "Monitoring",
+            "nl": "Opvolging"
+          }
+        },
+        "VerificationMethod": {
+          "label": {
+            "en": "Verified by",
+            "nl": "Geverifieerd via"
+          }
+        },
+        "VerifiedAtUtc": {
+          "label": {
+            "en": "Verified on",
+            "nl": "Geverifieerd op"
+          }
+        },
+        "LatestRunId": {
+          "label": {
+            "en": "Latest audit",
+            "nl": "Laatste audit"
+          }
+        },
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "nl": "Aangemaakt door"
+          }
+        },
+        "CreatedAtUtc": {
+          "label": {
+            "en": "Created on",
+            "nl": "Aangemaakt op"
+          }
+        }
+      },
+      "label": {
+        "en": "Site",
+        "nl": "Site"
+      }
+    },
+    "AuditRun": {
+      "attributes": {
+        "Phase": {
+          "description": {
+            "en": "The pipeline stage (probe, crawl, render, psi, aggregate)."
+          },
+          "label": {
+            "en": "Phase",
+            "nl": "Fase"
+          }
+        },
+        "CancelRequested": {
+          "description": {
+            "en": "Set by Cancel; the crawler stops at its next batch."
+          },
+          "label": {
+            "en": "Cancel requested",
+            "nl": "Annulering gevraagd"
+          }
+        },
+        "StartedBy": {
+          "description": {
+            "en": "The user who started the run."
+          },
+          "label": {
+            "en": "Started by",
+            "nl": "Gestart door"
+          }
+        },
+        "IsVerified": {
+          "description": {
+            "en": "The organization had verified the site when the run started."
+          },
+          "label": {
+            "en": "Verified",
+            "nl": "Geverifieerd"
+          }
+        },
+        "DeepCrawl": {
+          "description": {
+            "en": "The run got the verified (deep-crawl) limits: the DeepCrawl gate said so."
+          },
+          "label": {
+            "en": "Deep crawl",
+            "nl": "Diepe crawl"
+          }
+        },
+        "IsFullCrawl": {
+          "description": {
+            "en": "A full-site crawl: the weekly allowance, the safety ceiling instead of the page limit."
+          },
+          "label": {
+            "en": "Full-site crawl",
+            "nl": "Volledige crawl"
+          }
+        },
+        "IntrusiveProbes": {
+          "description": {
+            "en": "Probes for exposed files may run (the IntrusiveProbes gate)."
+          },
+          "label": {
+            "en": "File probes",
+            "nl": "Bestandsproeven"
+          }
+        },
+        "ScoringVersion": {
+          "description": {
+            "en": "The hash of ScoringSnapshot; the trend chart marks a change."
+          },
+          "label": {
+            "en": "Scoring version",
+            "nl": "Scoreversie"
+          }
+        },
+        "Origin": {
+          "label": {
+            "en": "Website",
+            "nl": "Website"
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "nl": "Status"
+          }
+        },
+        "PagesDone": {
+          "label": {
+            "en": "Pages done",
+            "nl": "Pagina's klaar"
+          }
+        },
+        "PagesDiscovered": {
+          "label": {
+            "en": "Pages found",
+            "nl": "Pagina's gevonden"
+          }
+        },
+        "CurrentUrl": {
+          "label": {
+            "en": "Current page",
+            "nl": "Huidige pagina"
+          }
+        },
+        "StartedAtUtc": {
+          "label": {
+            "en": "Started",
+            "nl": "Gestart"
+          }
+        },
+        "CompletedAtUtc": {
+          "label": {
+            "en": "Completed",
+            "nl": "Voltooid"
+          }
+        },
+        "Score": {
+          "label": {
+            "en": "Score",
+            "nl": "Score"
+          }
+        },
+        "Grade": {
+          "label": {
+            "en": "Grade",
+            "nl": "Graad"
+          }
+        },
+        "CategoryScores": {
+          "label": {
+            "en": "Categories",
+            "nl": "Categorieën"
+          }
+        },
+        "CheckResults": {
+          "label": {
+            "en": "Checks",
+            "nl": "Controles"
+          }
+        },
+        "MaxPages": {
+          "label": {
+            "en": "Page limit",
+            "nl": "Paginalimiet"
+          }
+        },
+        "WallTimeMinutes": {
+          "label": {
+            "en": "Time limit (minutes)",
+            "nl": "Tijdslimiet (minuten)"
+          }
+        },
+        "ConnectionsPerHost": {
+          "label": {
+            "en": "Connections per host",
+            "nl": "Verbindingen per host"
+          }
+        },
+        "RenderedSample": {
+          "label": {
+            "en": "Rendered pages",
+            "nl": "Gerenderde pagina's"
+          }
+        },
+        "PsiSample": {
+          "label": {
+            "en": "PageSpeed pages",
+            "nl": "PageSpeed-pagina's"
+          }
+        },
+        "Error": {
+          "label": {
+            "en": "Error",
+            "nl": "Fout"
+          }
+        },
+        "SiteId": {
+          "label": {
+            "en": "Site",
+            "nl": "Site"
+          }
+        },
+        "OrganizationId": {
+          "label": {
+            "en": "Organization",
+            "nl": "Organisatie"
+          }
+        }
+      },
+      "label": {
+        "en": "Audit",
+        "nl": "Audit"
+      }
+    },
+    "CheckDefinition": {
+      "attributes": {
+        "CheckId": {
+          "description": {
+            "en": "{category}.{kebab-case}, permanent."
+          },
+          "label": {
+            "en": "Check",
+            "nl": "Controle"
+          }
+        },
+        "Weight": {
+          "description": {
+            "en": "The weight inside its category (Critical 10, High 6, Medium 3, Low 1, Info 0 as shipped)."
+          },
+          "label": {
+            "en": "Weight",
+            "nl": "Gewicht"
+          }
+        },
+        "Layer": {
+          "description": {
+            "en": "Where it is measured (H, R, N, T, D, X, S)."
+          },
+          "label": {
+            "en": "Measured from",
+            "nl": "Gemeten via"
+          }
+        },
+        "SummaryEn": {
+          "description": {
+            "en": "The plain-language message, with {url}, {n}, … placeholders."
+          },
+          "label": {
+            "en": "Summary (English)",
+            "nl": "Samenvatting (Engels)"
+          }
+        },
+        "HowToFixEn": {
+          "description": {
+            "en": "The technical explanation behind \"How to fix\"."
+          },
+          "label": {
+            "en": "How to fix (English)",
+            "nl": "Oplossing (Engels)"
+          }
+        },
+        "Category": {
+          "label": {
+            "en": "Category",
+            "nl": "Categorie"
+          }
+        },
+        "Severity": {
+          "label": {
+            "en": "Severity",
+            "nl": "Ernst"
+          }
+        },
+        "Enabled": {
+          "label": {
+            "en": "Enabled",
+            "nl": "Actief"
+          }
+        },
+        "TitleEn": {
+          "label": {
+            "en": "Title (English)",
+            "nl": "Titel (Engels)"
+          }
+        },
+        "TitleNl": {
+          "label": {
+            "en": "Title (Dutch)",
+            "nl": "Titel (Nederlands)"
+          }
+        },
+        "SummaryNl": {
+          "label": {
+            "en": "Summary (Dutch)",
+            "nl": "Samenvatting (Nederlands)"
+          }
+        },
+        "HowToFixNl": {
+          "label": {
+            "en": "How to fix (Dutch)",
+            "nl": "Oplossing (Nederlands)"
+          }
+        },
+        "SnippetNginx": {
+          "label": {
+            "en": "nginx",
+            "nl": "nginx"
+          }
+        },
+        "SnippetApache": {
+          "label": {
+            "en": "Apache",
+            "nl": "Apache"
+          }
+        },
+        "SnippetIis": {
+          "label": {
+            "en": "IIS / ASP.NET Core",
+            "nl": "IIS / ASP.NET Core"
+          }
+        },
+        "SnippetHtml": {
+          "label": {
+            "en": "HTML",
+            "nl": "HTML"
+          }
+        },
+        "DocsUrl": {
+          "label": {
+            "en": "Documentation",
+            "nl": "Documentatie"
+          }
+        }
+      },
+      "label": {
+        "en": "Check",
+        "nl": "Controle"
+      }
+    },
+    "AuditLogEntry": {
+      "attributes": {
+        "Kind": {
+          "description": {
+            "en": "What happened: see AuditLogKinds."
+          },
+          "label": {
+            "en": "Event",
+            "nl": "Gebeurtenis"
+          }
+        },
+        "Verified": {
+          "description": {
+            "en": "The site was verified at the time."
+          },
+          "label": {
+            "en": "Verified",
+            "nl": "Geverifieerd"
+          }
+        },
+        "Detail": {
+          "description": {
+            "en": "A short reason for a refusal or a claim."
+          },
+          "label": {
+            "en": "Detail",
+            "nl": "Detail"
+          }
+        },
+        "AtUtc": {
+          "label": {
+            "en": "When",
+            "nl": "Wanneer"
+          }
+        },
+        "Origin": {
+          "label": {
+            "en": "Website",
+            "nl": "Website"
+          }
+        },
+        "UserId": {
+          "label": {
+            "en": "User",
+            "nl": "Gebruiker"
+          }
+        },
+        "OrganizationId": {
+          "label": {
+            "en": "Organization",
+            "nl": "Organisatie"
+          }
+        },
+        "SiteId": {
+          "label": {
+            "en": "Site",
+            "nl": "Site"
+          }
+        },
+        "RunId": {
+          "label": {
+            "en": "Audit",
+            "nl": "Audit"
+          }
+        },
+        "ExpiresAtUtc": {
+          "label": {
+            "en": "Expires",
+            "nl": "Verloopt"
+          }
+        }
+      },
+      "label": {
+        "en": "Audit log entry",
+        "nl": "Logregel"
+      }
+    },
+    "RunCategoryScore": {
+      "attributes": {
+        "Score": {
+          "description": {
+            "en": "0–100; empty when nothing in the category was measured."
+          },
+          "label": {
+            "en": "Score",
+            "nl": "Score"
+          }
+        },
+        "Capped": {
+          "description": {
+            "en": "A failing critical check held the category at an F."
+          },
+          "label": {
+            "en": "Capped by a critical issue",
+            "nl": "Begrensd door een kritiek probleem"
+          }
+        },
+        "Category": {
+          "label": {
+            "en": "Category",
+            "nl": "Categorie"
+          }
+        },
+        "Grade": {
+          "label": {
+            "en": "Grade",
+            "nl": "Graad"
+          }
+        }
+      },
+      "label": {
+        "en": "Category score",
+        "nl": "Categoriescore"
+      }
+    },
+    "RunCheckResult": {
+      "attributes": {
+        "Status": {
+          "description": {
+            "en": "Pass, Warn, Fail, NotApplicable or Error (SeoTester.Scoring.CheckStatus)."
+          },
+          "label": {
+            "en": "Status",
+            "nl": "Status"
+          }
+        },
+        "Affected": {
+          "description": {
+            "en": "Pages that failed or warned."
+          },
+          "label": {
+            "en": "Affected pages",
+            "nl": "Getroffen pagina's"
+          }
+        },
+        "SampleUrls": {
+          "description": {
+            "en": "At most five of them."
+          },
+          "label": {
+            "en": "Examples",
+            "nl": "Voorbeelden"
+          }
+        },
+        "Delta": {
+          "description": {
+            "en": "New, Fixed or Unchanged since the previous run."
+          },
+          "label": {
+            "en": "Since last audit",
+            "nl": "Sinds vorige audit"
+          }
+        },
+        "CheckId": {
+          "label": {
+            "en": "Check",
+            "nl": "Controle"
+          }
+        }
+      },
+      "label": {
+        "en": "Check result",
+        "nl": "Controleresultaat"
+      }
+    },
+    "PageResult": {
+      "attributes": {
+        "OrganizationId": {
+          "description": {
+            "en": "The run's organization: the page is read under the same rule as its run."
+          },
+          "label": {
+            "en": "Organization",
+            "nl": "Organisatie"
+          }
+        },
+        "LoadMs": {
+          "description": {
+            "en": "Time to the full response, in milliseconds."
+          },
+          "label": {
+            "en": "Load time (ms)",
+            "nl": "Laadtijd (ms)"
+          }
+        },
+        "Url": {
+          "label": {
+            "en": "URL",
+            "nl": "URL"
+          }
+        },
+        "StatusCode": {
+          "label": {
+            "en": "HTTP status",
+            "nl": "HTTP-status"
+          }
+        },
+        "Depth": {
+          "label": {
+            "en": "Depth",
+            "nl": "Diepte"
+          }
+        },
+        "Title": {
+          "label": {
+            "en": "Title",
+            "nl": "Titel"
+          }
+        },
+        "Description": {
+          "label": {
+            "en": "Description",
+            "nl": "Beschrijving"
+          }
+        },
+        "H1": {
+          "label": {
+            "en": "Main heading",
+            "nl": "Hoofdtitel"
+          }
+        },
+        "Findings": {
+          "label": {
+            "en": "Findings",
+            "nl": "Bevindingen"
+          }
+        },
+        "RunId": {
+          "label": {
+            "en": "Audit",
+            "nl": "Audit"
+          }
+        },
+        "ExpiresAtUtc": {
+          "label": {
+            "en": "Expires",
+            "nl": "Verloopt"
+          }
+        }
+      },
+      "label": {
+        "en": "Page",
+        "nl": "Pagina"
+      }
+    },
+    "PageFinding": {
+      "attributes": {
+        "Status": {
+          "description": {
+            "en": "Pass, Warn, Fail, NotApplicable or Error."
+          },
+          "label": {
+            "en": "Status",
+            "nl": "Status"
+          }
+        },
+        "Detail": {
+          "description": {
+            "en": "The template parameters ({n}, {value}, …) as a short JSON object."
+          },
+          "label": {
+            "en": "Detail",
+            "nl": "Detail"
+          }
+        },
+        "CheckId": {
+          "label": {
+            "en": "Check",
+            "nl": "Controle"
+          }
+        }
+      },
+      "label": {
+        "en": "Finding",
+        "nl": "Bevinding"
+      }
+    }
+  },
+  "queries": {
+    "GetSites": {
+      "label": {
+        "en": "Sites",
+        "nl": "Sites"
+      }
+    },
+    "GetAuditRuns": {
+      "label": {
+        "en": "Audits",
+        "nl": "Audits"
+      }
+    },
+    "SiteRuns": {
+      "label": {
+        "en": "Audits",
+        "nl": "Audits"
+      }
+    },
+    "RunPages": {
+      "label": {
+        "en": "Pages",
+        "nl": "Pagina's"
+      }
+    },
+    "GetCheckDefinitions": {
+      "label": {
+        "en": "Check catalogue",
+        "nl": "Controlecatalogus"
+      }
+    },
+    "GetAuditLogEntries": {
+      "label": {
+        "en": "Audit log",
+        "nl": "Auditlog"
+      }
+    }
+  },
+  "actions": {
+    "StartAudit": {
+      "label": {
+        "en": "Run audit",
+        "nl": "Audit starten"
+      },
+      "description": {
+        "en": "Audits the site now, or joins the audit already running for it."
+      }
+    },
+    "StartFullCrawl": {
+      "label": {
+        "en": "Full-site crawl",
+        "nl": "Volledige crawl"
+      },
+      "description": {
+        "en": "Crawls every page of a verified site: once a week per user."
+      }
+    },
+    "VerifySite": {
+      "label": {
+        "en": "Verify ownership",
+        "nl": "Eigendom verifiëren"
+      },
+      "description": {
+        "en": "Looks for your verification token in DNS, in /.well-known/ or in a meta tag."
+      }
+    },
+    "ResetCheckDefinition": {
+      "label": {
+        "en": "Reset to shipped",
+        "nl": "Terugzetten naar origineel"
+      },
+      "description": {
+        "en": "Restores this check's shipped texts, weight and severity."
+      },
+      "confirmation": {
+        "en": "Replace your edits of this check with the shipped version?",
+        "nl": "Je wijzigingen aan deze controle vervangen door de originele versie?"
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "seo": {
+        "en": "SEO",
+        "nl": "SEO"
+      },
+      "seoAdmin": {
+        "en": "SEO administration",
+        "nl": "SEO-beheer"
+      }
+    },
+    "sites": {
+      "en": "Sites",
+      "nl": "Sites"
+    },
+    "audits": {
+      "en": "Audits",
+      "nl": "Audits"
+    },
+    "checks": {
+      "en": "Check catalogue",
+      "nl": "Controlecatalogus"
+    },
+    "auditLog": {
+      "en": "Audit log",
+      "nl": "Auditlog"
+    }
+  },
+  "seo": {
+    "auditStarted": {
+      "en": "Audit of {0} started.",
+      "nl": "Audit van {0} gestart."
+    },
+    "auditJoined": {
+      "en": "An audit of {0} was already running: you joined it.",
+      "nl": "Er liep al een audit van {0}: je bent erbij gekomen."
+    },
+    "verified": {
+      "en": "{0} is verified.",
+      "nl": "{0} is geverifieerd."
+    },
+    "claimRequested": {
+      "en": "{0} is verified by another organization. We asked its owners to let you in; you will get an e-mail when they accept.",
+      "nl": "{0} is geverifieerd door een andere organisatie. We vroegen de eigenaars je toe te laten; je krijgt een e-mail zodra ze aanvaarden."
+    },
+    "heldByYourOtherOrganization": {
+      "en": "{0} is already verified by another organization you belong to.",
+      "nl": "{0} is al geverifieerd door een andere organisatie waar je lid van bent."
+    },
+    "noProof": {
+      "en": "No proof found yet. Add one of these, then try again: a DNS TXT record {0} with the value {1}; or a file {2} containing {1}; or this tag in your home page's <head>: {3}",
+      "nl": "Nog geen bewijs gevonden. Voeg een van deze toe en probeer opnieuw: een DNS TXT-record {0} met de waarde {1}; of een bestand {2} met {1}; of deze tag in de <head> van je startpagina: {3}"
+    },
+    "notShipped": {
+      "en": "The check {0} was created here: there is no shipped version to restore.",
+      "nl": "De controle {0} is hier aangemaakt: er is geen originele versie om terug te zetten."
+    },
+    "checkReset": {
+      "en": "{0} is back to the shipped version.",
+      "nl": "{0} staat terug op de originele versie."
+    }
   }
 }

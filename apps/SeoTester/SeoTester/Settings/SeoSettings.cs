@@ -58,6 +58,14 @@ public static class SeoSettings
 
     public static readonly SparkSetting<TimeSpan> AuditLogRetention = new("SeoTester:AuditLog:Retention", TimeSpan.FromDays(365), "How long the abuse log keeps an entry.");
 
+    // ---- Ownership verification (F3). ------------------------------------------------------------------------------
+
+    public static readonly SparkSetting<TimeSpan> VerificationRecheckInterval = new("SeoTester:Verification:RecheckInterval", TimeSpan.FromDays(1),
+        "How often a verified site's proof (DNS record, file or meta tag) is checked again.");
+
+    public static readonly SparkSetting<int> VerificationFailuresBeforeWithdrawal = new("SeoTester:Verification:FailuresBeforeWithdrawal", 3,
+        "Failed re-checks in a row after which a site's verification is withdrawn.");
+
     // ---- Category weights (§7, D15). A category with no measurements drops out of the weighted mean. -------------
 
     public static readonly SparkSetting<int> WeightSeo = new("SeoTester:Weights:Seo", 25, "Weight of the SEO category in the headline score.");

@@ -1,0 +1,54 @@
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Organizations;
+
+namespace SeoTester.Entities;
+
+/// <summary>
+/// One crawled page of a run (<c>docs/seo_analyzer_PRD.md</c> F6, §4.2): expires 7 days after it was written (D8,
+/// <c>expiresAfter</c> in the model; X1 hides it from every read the moment it is due, before RavenDB's sweep). Its
+/// id is <c>{runId}/pages/{urlHash}</c>, so re-crawling a page overwrites it (M9). Shown as a sub-query of its run.
+/// </summary>
+public class PageResult : IOrganizationOwned, IExpiring
+{
+    public string? Id { get; set; }
+
+    [Reference(typeof(AuditRun))]
+    public string? RunId { get; set; }
+
+    /// <summary>The run's organization: the page is read under the same rule as its run.</summary>
+    public string? OrganizationId { get; set; }
+
+    public string Url { get; set; } = string.Empty;
+    public int StatusCode { get; set; }
+    public int Depth { get; set; }
+
+    /// <summary>Time to the full response, in milliseconds.</summary>
+    public int? LoadMs { get; set; }
+
+    // The previewers' snapshot (F7).
+    public string? Title { get; set; }
+    public string? Description { get; set; }
+    public string? H1 { get; set; }
+
+    public List<PageFinding> Findings { get; set; } = [];
+
+    public DateTime? ExpiresAtUtc { get; set; }
+
+    /// <summary>The id of the page <paramref name="url"/> of run <paramref name="runId"/>: a hash, so any URL makes a valid id.</summary>
+    public static string IdFor(string runId, string url)
+        => $"{runId}/pages/{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)))[..32]}";
+}
+
+/// <summary>A check's result on one page. Texts are rendered from the catalogue and <see cref="Detail"/>, never stored.</summary>
+[ValueObject]
+public partial class PageFinding
+{
+    [ValueKey]
+    public string CheckId { get; set; } = string.Empty;
+
+    /// <summary>Pass, Warn, Fail, NotApplicable or Error.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>The template parameters (<c>{n}</c>, <c>{value}</c>, …) as a short JSON object.</summary>
+    public string? Detail { get; set; }
+}

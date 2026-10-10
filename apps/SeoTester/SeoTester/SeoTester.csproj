@@ -10,6 +10,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- TXT lookups for ownership verification (F3); the crawl's DNS checks (CAA, SPF, DMARC, …) in M9. -->
+		<PackageReference Include="DnsClient" Version="1.8.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.1">

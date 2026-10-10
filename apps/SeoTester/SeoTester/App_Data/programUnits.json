@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "programUnitGroups": [
+    {
+      "id": "5e070000-0000-4000-8000-000000000100",
+      "name": "programUnits.groups.seo",
+      "icon": "bi-search",
+      "order": 1,
+      "programUnits": [
+        {
+          "id": "5e070000-0000-4000-8000-000000000101",
+          "name": "programUnits.sites",
+          "icon": "bi-globe",
+          "type": "query",
+          "queryId": "e9fe78ac-680a-4a2e-b27b-fd3d46966092",
+          "alias": "sites",
+          "order": 1
+        },
+        {
+          "id": "5e070000-0000-4000-8000-000000000102",
+          "name": "programUnits.audits",
+          "icon": "bi-activity",
+          "type": "query",
+          "queryId": "f4a05674-89dc-4a7d-b32f-02eaee02e15a",
+          "alias": "audit-runs",
+          "order": 2
+        },
+        {
+          "id": "5e070000-0000-4000-8000-000000000103",
+          "name": "programUnits.checks",
+          "icon": "bi-list-check",
+          "type": "query",
+          "queryId": "8d1be047-0014-4221-bd04-e5c7eb94332f",
+          "alias": "checks",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "5e070000-0000-4000-8000-000000000110",
+      "name": "programUnits.groups.seoAdmin",
+      "icon": "bi-shield-lock",
+      "order": 80,
+      "programUnits": [
+        {
+          "id": "5e070000-0000-4000-8000-000000000111",
+          "name": "programUnits.auditLog",
+          "icon": "bi-journal-text",
+          "type": "query",
+          "queryId": "2498a0df-9613-4822-8b12-b60a8449c83f",
+          "alias": "audit-log",
+          "order": 1
+        }
+      ]
+    }
+  ]
+}

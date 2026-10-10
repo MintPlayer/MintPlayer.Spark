@@ -15,7 +15,21 @@ settings | MintPlayer.Spark.Settings | 43f5e2626927
 (nothing)
 
 ## Rights
+Administrators | grant | EditNewDelete/CheckDefinition | checks-edit | app
+Administrators | grant | QueryRead/AuditLogEntry | audit-log | app
+Administrators | grant | ResetCheckDefinition/CheckDefinition | checks-reset | app
 Administrators (settings:administrators) | grant | QueryReadEdit/Setting | settings:administrators | settings
+Signed-in users | grant | QueryRead/AuditRun | runs | app
+Signed-in users | grant | QueryRead/CheckDefinition | checks | app
+Signed-in users | grant | QueryRead/PageResult | pages | app
+Signed-in users | grant | QueryReadEditNewDelete/Site | sites | app
+Signed-in users | grant | RevokeShareLink/AuditRun | runs-unshare | app
+Signed-in users | grant | RevokeShareLink/Site | sites-unshare | app
+Signed-in users | grant | ShareLink/AuditRun | runs-share | app
+Signed-in users | grant | ShareLink/Site | sites-share | app
+Signed-in users | grant | StartAudit/Site | sites-start-audit | app
+Signed-in users | grant | StartFullCrawl/Site | sites-full-crawl | app
+Signed-in users | grant | VerifySite/Site | sites-verify | app
 Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
 Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
 Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
