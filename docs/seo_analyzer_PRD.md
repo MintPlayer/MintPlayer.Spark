@@ -1854,7 +1854,7 @@ second member (server-tested), phone widths, light mode, the badge on a forge.
 dashboard's access and figures, the actions per run state), `StartAuditTests` +1 (navigate, Dutch refusal with the
 wait), the notification URL pinned; core `ShareLinkTests` +1. **Red:** core stub 1/11; SeoTester with 7 mechanisms
 removed at once (Dutch catalogue, badge token check, dashboard right, disable Cancel, navigate, translated refusal,
-notification URL): 8 of 23 failed. Green: the full SeoTester.Tests (see below). SPA (vitest, 25 specs): 8 mutations
+notification URL): 8 of 23 failed. Green: the full SeoTester.Tests 167/167, ng-spark 1546/1546, CodeCoverage's SPA 261/261 (its interceptor moved), core's translation goldens regenerated (+8 keys each). SPA (vitest, 25 specs): 8 mutations
 → 8 failed; green 25/25. ng-spark: every change red first (2 po-detail, 1 grid, 1 gauge, 1 share, 1 notifications, 1
 pwa, then the keep-the-page change 2), green: services, grid, po-detail, share, score renderers, notifications, pwa.
 
