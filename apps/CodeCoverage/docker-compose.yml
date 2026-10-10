@@ -7,12 +7,22 @@ services:
     image: docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64
     environment:
       - RAVEN_Setup_Mode=None
-      # Raven only permits unsecured access on a 0.0.0.0 bind with this flag.
-      # What keeps Raven off the public internet is the network topology:
-      # coverage-raven publishes no host ports and lives only on the internal
-      # network below, never on the public 'web' Traefik network.
-      - RAVEN_Security_UnsecuredAccessAllowed=PublicNetwork
-      - RAVEN_ServerUrl=http://0.0.0.0:8080
+      # SECURED (SeoTester PRD D55/D56): HTTPS with client certificates, nothing unsecured. Every client presents a
+      # certificate registered on this server: coverage-app may use only the database Coverage, seotester-app only
+      # SeoTester, and the operator certificate (the owner's, and the licence one-shot's) is the only administrator.
+      # The server certificate is issued by the private CA of the runbook for the host name coverage-raven;
+      # the apps trust that CA through Spark:RavenDb:ServerCertificateAuthorityFile.
+      # One-time migration of the live server: docs/code-coverage/raven-tls-migration.md.
+      - RAVEN_ServerUrl=https://0.0.0.0:8080
+      - RAVEN_ServerUrl_Tcp=tcp://0.0.0.0:38888
+      # What clients are told in the topology: must be the certificate's name, or every client refuses the name.
+      - RAVEN_PublicServerUrl=https://coverage-raven:8080
+      - RAVEN_PublicServerUrl_Tcp=tcp://coverage-raven:38888
+      - RAVEN_Security_Certificate_Path=/run/secrets/raven/server.pfx
+      - RAVEN_Security_Certificate_Password=${RAVEN_SERVER_CERTIFICATE_PASSWORD:?RAVEN_SERVER_CERTIFICATE_PASSWORD is not set in .env (docs/code-coverage/raven-tls-migration.md)}
+      # The operator certificate's SHA-1 thumbprint: a cluster administrator without being registered first. App
+      # certificates are registered by the operator (runbook), never through this setting.
+      - RAVEN_Security_WellKnownCertificates_Admin=${RAVEN_OPERATOR_THUMBPRINT:?RAVEN_OPERATOR_THUMBPRINT is not set in .env (docs/code-coverage/raven-tls-migration.md)}
       # No licence settings here on purpose. Measured against this exact image
       # (7.1.10): a licence supplied through *configuration* is silently ignored
       # — RAVEN_License (inline JSON), RAVEN_License_Path, --License.Path via
@@ -22,11 +32,17 @@ services:
       # the coverage-raven-license service below, which is what actually works.
     volumes:
       - raven-data:/var/lib/ravendb/data
+      # Only the server certificate (PKCS#12, password in .env). No client key and not the CA's key.
+      - ./raven-certs/server.pfx:/run/secrets/raven/server.pfx:ro
+    # Two networks, both internal (no egress): RavenDB needs none. Activating a valid, unexpired licence makes no
+    # outbound call (Raven.Server 7.1 LicenseManager.ActivateAsync); without egress the daily licence lease to
+    # api.ravendb.net fails with a warning alert and nothing else, so a renewed licence is applied by replacing
+    # raven-license.json and re-running coverage-raven-license (SeoTester PRD D55).
     networks:
-      - coverage-internal
-      # Shared with SeoTester (apps/SeoTester/docker-compose.yml), which reaches this service by the same name.
-      # External: created once by either deploy, never removed by this stack's up/down (SeoTester PRD Q-M12b).
-      - mintplayer-backend
+      - coverage-db
+      # Shared with SeoTester's app only (apps/SeoTester/docker-compose.yml), which reaches this service by the same
+      # name. External: created by either deploy, never removed by either stack's up/down.
+      - seo-raven
     # No curl/wget assumptions: bash's /dev/tcp is enough for "is it listening".
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
@@ -46,8 +62,8 @@ services:
   # container exits non-zero and the deployment carries on unlicensed, exactly
   # as it did before — coverage-app deliberately does not depend on it.
   #
-  # The endpoint needs no credentials because coverage-raven is unsecured and
-  # reachable only from coverage-internal.
+  # The endpoint is a cluster-admin one, so this is the one container that gets the operator certificate (the
+  # apps never do). The server's name is checked against the private CA (--cacert).
   coverage-raven-license:
     image: curlimages/curl:8.11.1
     depends_on:
@@ -55,8 +71,11 @@ services:
         condition: service_healthy
     volumes:
       - ./raven-license.json:/raven-license.json:ro
+      - ./raven-operator/operator.crt:/run/secrets/raven/operator.crt:ro
+      - ./raven-operator/operator.key:/run/secrets/raven/operator.key:ro
+      - ./raven-certs/ca.crt:/run/secrets/raven/ca.crt:ro
     networks:
-      - coverage-internal
+      - coverage-db
     # curl IS the entrypoint, so this is an argument list.
     command:
       - "-sS"
@@ -72,7 +91,13 @@ services:
       - "Content-Type: application/json"
       - "--data-binary"
       - "@/raven-license.json"
-      - "http://coverage-raven:8080/admin/license/activate"
+      - "--cert"
+      - "/run/secrets/raven/operator.crt"
+      - "--key"
+      - "/run/secrets/raven/operator.key"
+      - "--cacert"
+      - "/run/secrets/raven/ca.crt"
+      - "https://coverage-raven:8080/admin/license/activate"
     restart: "no"
 
   # Outgoing mail only. The app hands a message to this container and returns; the
@@ -85,9 +110,10 @@ services:
   # late" and "the link was never sent". Putting an internet round-trip and its timeouts
   # in the middle of a sign-in is the thing being avoided.
   #
-  # ⚠️ It is NOT a mail server in the inbound sense. No ports are published and it sits
-  # only on coverage-internal, so nothing outside this compose project can reach it —
-  # which is also what makes running it without authentication safe.
+  # ⚠️ It is NOT a mail server in the inbound sense. No ports are published, and the only
+  # containers that reach it are the two apps, each on a network of its own with the relay
+  # (coverage-mail, seo-mail) — which is also what makes running it without authentication safe.
+  # It never shares a network with RavenDB.
   coverage-smtp:
     image: boky/postfix:v4.3.0
     environment:
@@ -135,10 +161,11 @@ services:
       # stack is redeployed.
       - smtp-queue:/var/spool/postfix
     networks:
-      - coverage-internal
-      # Shared with SeoTester (apps/SeoTester/docker-compose.yml), which reaches this service by the same name.
-      # External: created once by either deploy, never removed by this stack's up/down (SeoTester PRD Q-M12b).
-      - mintplayer-backend
+      - coverage-mail
+      # Shared with SeoTester's app only; external, created by either deploy (like seo-raven).
+      - seo-mail
+      # The relay's own way out (it delivers to recipients' MX on port 25). Nothing else joins it.
+      - coverage-smtp-egress
     # bash, not sh: /dev/tcp is a bash feature, and this image's sh is dash, so the sh form
     # failed on every probe and marked a working relay "unhealthy" in production. The image is
     # Debian-based and ships /usr/bin/bash, as the other two healthchecks here assume.
@@ -173,8 +200,15 @@ services:
       # Explicit: Program.cs derives the GitHub__{env}__* config prefix from
       # the environment name — anything else silently disables sign-in.
       - ASPNETCORE_ENVIRONMENT=Production
-      - Spark__RavenDb__Urls__0=http://coverage-raven:8080
-      - Spark__RavenDb__EnsureDatabaseCreated=true
+      # The secured server: this app's own client certificate (registered with Admin on the database Coverage
+      # and nothing else) and the private CA that issued the server's certificate.
+      - Spark__RavenDb__Urls__0=https://coverage-raven:8080
+      - Spark__RavenDb__CertificateFile=/run/secrets/raven/codecoverage.crt
+      - Spark__RavenDb__CertificateKeyFile=/run/secrets/raven/codecoverage.key
+      - Spark__RavenDb__ServerCertificateAuthorityFile=/run/secrets/raven/ca.crt
+      # Off: creating a database is a cluster-admin operation this certificate is refused. The database exists
+      # (the operator creates a new one, runbook); listing the databases, which startup still does, is allowed.
+      - Spark__RavenDb__EnsureDatabaseCreated=false
       # Data Protection key ring (auth + antiforgery cookies decrypt with it). Kept on the
       # dataprotection-keys volume so a redeploy does not sign everyone out; Spark refuses to
       # start in Production without a location. appsettings.json deliberately sets no
@@ -203,7 +237,7 @@ services:
       # From:Address are set, so an unset MAIL_FROM_ADDRESS still means "this deployment
       # cannot send" — supported as long as ExternalLoginLinking is not ConfirmByEmail
       # (startup refuses that combination rather than discarding confirmations silently).
-      # Security=None: the relay is reachable only on coverage-internal and advertises
+      # Security=None: the relay is reachable only on coverage-mail (and seo-mail) and advertises
       # STARTTLS it has no certificate for; None never sends STARTTLS (spike S-M6), exactly
       # what the old System.Net.Mail client (EnableSsl=false) did.
       - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
@@ -220,6 +254,10 @@ services:
       # GitHub App private key, downloaded from the App settings page; see
       # .env.example for the expected location.
       - ./github-app.pem:/run/secrets/github-app.pem:ro
+      # Its RavenDB client certificate and the CA. Not the operator's certificate, not SeoTester's.
+      - ./raven-certs/codecoverage.crt:/run/secrets/raven/codecoverage.crt:ro
+      - ./raven-certs/codecoverage.key:/run/secrets/raven/codecoverage.key:ro
+      - ./raven-certs/ca.crt:/run/secrets/raven/ca.crt:ro
       # Survives `docker compose down` / image updates. Deleting this volume signs every user
       # out once and invalidates outstanding antiforgery tokens -- nothing else is lost.
       - dataprotection-keys:/var/lib/codecoverage/dataprotection-keys
@@ -234,8 +272,8 @@ services:
       - "traefik.http.routers.coverage.tls.certresolver=letsencrypt"
       # Pin the upstream port explicitly so Traefik never guesses.
       - "traefik.http.services.coverage.loadbalancer.server.port=8080"
-      # The app sits on two networks; without this Traefik may resolve the
-      # container's coverage-internal IP, which it can't reach (random 504s).
+      # The app sits on three networks; without this Traefik may resolve the
+      # container's address on coverage-db or coverage-mail, which it can't reach (random 504s).
       - "traefik.docker.network=web"
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
@@ -255,7 +293,8 @@ services:
       start_period: 600s
     networks:
       - web
-      - coverage-internal
+      - coverage-db
+      - coverage-mail
     restart: unless-stopped
 
 volumes:
@@ -266,14 +305,28 @@ volumes:
 networks:
   web:
     external: true
-  # Dedicated internal network for app<->Raven traffic. Raven sits on this
-  # network only; the public Traefik network never reaches port 8080.
-  coverage-internal:
+  # Pairwise and internal (SeoTester PRD D55): each backend service is reachable only by the app that uses it, and no
+  # network carries both RavenDB and the mail relay. internal: true = no route out; only coverage-smtp-egress has one.
+  # tools/verify-backend-networks.test.mjs checks the members of each network in both stacks.
+  #
+  #   coverage-db           coverage-app, coverage-raven, coverage-raven-license
+  #   coverage-mail         coverage-app, coverage-smtp
+  #   coverage-smtp-egress  coverage-smtp (its way to the recipients' MX)
+  #   seo-raven  (external) coverage-raven + SeoTester's app
+  #   seo-mail   (external) coverage-smtp  + SeoTester's app
+  coverage-db:
     driver: bridge
-  # The backend network shared with the other MintPlayer apps on this host (SeoTester): coverage-raven and
-  # coverage-smtp join it, coverage-app does not need to. It belongs to no compose project, so neither stack's
-  # `down` removes it; both deploy workflows create it when it is missing (`docker network create mintplayer-backend`).
-  # Like coverage-internal it publishes nothing: only containers attached to it reach the unsecured RavenDB.
-  mintplayer-backend:
+    internal: true
+  coverage-mail:
+    driver: bridge
+    internal: true
+  coverage-smtp-egress:
+    driver: bridge
+  # Shared with SeoTester. They belong to no compose project, so neither stack's `down` removes them; both deploy
+  # workflows create them, internal, when missing (`docker network create --internal seo-raven`).
+  seo-raven:
     external: true
-    name: mintplayer-backend
+    name: seo-raven
+  seo-mail:
+    external: true
+    name: seo-mail

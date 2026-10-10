@@ -6,8 +6,9 @@
 //   which is `internal: true` and holds exactly the two services; no service publishes a port;
 // - images are pinned, and the Chromium tag is the Playwright version of its image, its playwright-core and the
 //   app's Microsoft.Playwright (ConnectAsync needs the same major.minor on both sides);
-// - the app joins Traefik's `web` (with traefik.docker.network=web) and the backend network it shares with CodeCoverage
-//   (both compose files declare it external, same name; both deploys create it), and its Host rule is the public host;
+// - the app joins Traefik's `web` (with traefik.docker.network=web) and the two backend networks it shares with
+//   CodeCoverage (seo-raven, seo-mail; their members, TLS and the deploys' part: verify-backend-networks.test.mjs), and its
+//   Host rule is the public host;
 // - the workflows' path filters, the Dockerfile's COPY lines and the csproj graph name the same projects, so a new
 //   dependency cannot silently skip a deploy or fail the image's restore;
 // - the deploy uses only CodeCoverage's secret names, and its readiness bound covers the healthcheck's start period;
@@ -33,10 +34,6 @@ const CHECK = '.github/workflows/seotester-image-check.yml';
 const APP_CSPROJ = 'apps/SeoTester/SeoTester/SeoTester.csproj';
 const APP_DOCKERFILE = 'apps/SeoTester/SeoTester/Dockerfile';
 const CHROMIUM_DOCKERFILE = 'apps/SeoTester/chromium/Dockerfile';
-const CC_COMPOSE = 'apps/CodeCoverage/docker-compose.yml';
-const CC_DEPLOY = '.github/workflows/code-coverage-deploy.yml';
-/** The backend network SeoTester shares with CodeCoverage's RavenDB and mail relay (PRD Q-M12b). */
-const SHARED = 'mintplayer-backend';
 
 const compose = yaml(COMPOSE);
 const services = compose.services ?? {};
@@ -109,41 +106,16 @@ test('every image is pinned, and the Chromium tag is the Playwright version on b
   assert.equal(services[CHROMIUM].image, `ghcr.io/mintplayer/seotester-chromium:${base}`, 'compose pins the Chromium image to that version');
 });
 
-test('the app joins Traefik and the shared backend network', () => {
+test('the app joins Traefik and the backend networks it shares with CodeCoverage', () => {
   const app = services[APP];
-  assert.deepEqual(networksOf(app).sort(), [SHARED, 'seo-browser', 'web']);
+  assert.deepEqual(networksOf(app).sort(), ['seo-browser', 'seo-mail', 'seo-raven', 'web']);
   assert.equal(compose.networks.web?.external, true);
 
   const labels = app.labels;
-  assert.ok(labels.includes('traefik.docker.network=web'), 'traefik.docker.network=web (three networks)');
+  assert.ok(labels.includes('traefik.docker.network=web'), 'traefik.docker.network=web (several networks)');
   const host = new URL(JSON.parse(read('apps/SeoTester/SeoTester/appsettings.Production.json').replace(/^\s*\/\/.*$/gm, '')).Spark.Auth.PublicBaseUrl).host;
   assert.ok(labels.includes(`traefik.http.routers.seotester.rule=Host(\`${host}\`)`), `the Host rule is ${host}, hard-coded`);
   assert.ok(labels.includes('traefik.http.services.seotester.loadbalancer.server.port=8080'));
-});
-
-test('both compose files declare the shared backend network as external with the same name (Q-M12b)', () => {
-  const cc = yaml(CC_COMPOSE);
-  assert.deepEqual(compose.networks[SHARED], { external: true, name: SHARED }, 'SeoTester declares it external');
-  assert.deepEqual(cc.networks[SHARED], { external: true, name: SHARED }, 'CodeCoverage declares it external, same name');
-  // The database and the relay join it; CodeCoverage keeps its own internal network for its own services.
-  for (const name of ['coverage-raven', 'coverage-smtp']) {
-    assert.ok(networksOf(cc.services[name]).includes(SHARED), `${name} joins ${SHARED}`);
-    assert.ok(networksOf(cc.services[name]).includes('coverage-internal'), `${name} stays on coverage-internal`);
-  }
-  assert.ok(!networksOf(cc.services['coverage-app']).includes(SHARED), 'coverage-app does not need the shared network');
-  assert.ok(networksOf(cc.services['coverage-app']).includes('coverage-internal'));
-});
-
-test('both deploys create the shared network when it is missing, before compose up', () => {
-  for (const workflow of [DEPLOY, CC_DEPLOY]) {
-    const script = read(workflow);
-    const create = script.indexOf(`docker network inspect ${SHARED} > /dev/null 2>&1 || docker network create ${SHARED}`);
-    assert.ok(create >= 0, `${workflow} creates ${SHARED} only when inspect fails (idempotent)`);
-    assert.ok(create < script.indexOf('docker compose --env-file .env up -d'), `${workflow} creates it before up`);
-    assert.ok(create < script.indexOf('docker compose --env-file .env down'), `${workflow} creates it before down`);
-  }
-  assert.match(read(DEPLOY), /grep -q 'coverage-raven' \|\| \{ echo "::error::coverage-raven is not on the network mintplayer-backend/,
-    'SeoTester refuses, before touching its stack, until CodeCoverage\'s database is on the shared network');
 });
 
 test('the app reaches the browser at the service the compose file runs', () => {

@@ -183,6 +183,15 @@ jobs:
           # file is refreshed from the repo, so service/label changes ship with the push.
           test -f .env || { echo "::error::/var/www/code-coverage/.env is missing — create it from apps/CodeCoverage/.env.example (server-managed, never written by deploys)"; exit 1; }
           test -f github-app.pem || { echo "::error::/var/www/code-coverage/github-app.pem is missing — the GitHub App private key must be placed there (chmod 644)"; exit 1; }
+          # RavenDB runs secured (HTTPS + client certificates): its server certificate, the CA, this app's client certificate and
+          # the operator certificate (for the licence one-shot) must be on the server before compose starts anything. Presence
+          # and non-emptiness only; nothing is printed. Placed once by docs/code-coverage/raven-tls-migration.md.
+          for f in raven-certs/server.pfx raven-certs/ca.crt raven-certs/codecoverage.crt raven-certs/codecoverage.key raven-operator/operator.crt raven-operator/operator.key; do
+            test -s "$f" || { echo "::error::/var/www/code-coverage/$f is missing — RavenDB runs secured, see docs/code-coverage/raven-tls-migration.md"; exit 1; }
+          done
+          for v in RAVEN_SERVER_CERTIFICATE_PASSWORD RAVEN_OPERATOR_THUMBPRINT; do
+            grep -q "^$v=." .env || { echo "::error::$v is not set in /var/www/code-coverage/.env — see docs/code-coverage/raven-tls-migration.md"; exit 1; }
+          done
 
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
@@ -190,10 +199,14 @@ jobs:
 
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-          # The backend network shared with SeoTester (coverage-raven and coverage-smtp join it). External to every
-          # compose project, so it is created here when missing; idempotent, and a concurrent create by the other
-          # stack's deploy is fine (the second inspect then finds it). Same line in seotester-deploy.yml.
-          docker network inspect mintplayer-backend > /dev/null 2>&1 || docker network create mintplayer-backend > /dev/null 2>&1 || docker network inspect mintplayer-backend > /dev/null
+          # The two backend networks shared with SeoTester (seo-raven: coverage-raven + seotester-app; seo-mail: coverage-smtp +
+          # seotester-app). External to every compose project, so they are created here, INTERNAL (no route out), when missing;
+          # idempotent, and a concurrent create by the other deploy is fine (the second inspect finds it). A network of that name
+          # that is not internal is refused rather than used (SeoTester PRD D55). Same block in the other deploy.
+          for net in seo-raven seo-mail; do
+            docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
+            [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
+          done
 
           docker compose --env-file .env pull
           docker compose --env-file .env down --remove-orphans

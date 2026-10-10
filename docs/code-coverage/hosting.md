@@ -27,32 +27,33 @@ Contents:
 ## 1. Compose services
 
 Source: [`apps/CodeCoverage/docker-compose.yml`](../../apps/CodeCoverage/docker-compose.yml). No
-service publishes a host port. Traefik reaches the app over the external `web` network; everything
-else is on the project's own `coverage-internal` bridge network, and `coverage-raven` and `coverage-smtp` also join
-the external **`mintplayer-backend`** network they share with SeoTester (below). Traefik itself is a separate stack;
+service publishes a host port. Traefik reaches the app over the external `web` network; behind it every network is
+pairwise and `internal: true` (SeoTester PRD D55): `coverage-db` (app, RavenDB, licence one-shot), `coverage-mail`
+(app, relay), `coverage-smtp-egress` (the relay alone, its only way out), and the external `seo-raven` and `seo-mail`
+shared with SeoTester's app (below; matrix in [raven-tls-migration.md](raven-tls-migration.md) §1). RavenDB runs **secured**, HTTPS with client certificates (D56). Traefik itself is a separate stack;
 what it must provide (Docker provider on `web`, `exposedbydefault=false`, entrypoints `web` →
 `websecure`, resolver `letsencrypt`) is sketched in the README's
 [§3](../../apps/CodeCoverage/README.md#3-the-server-docker-and-traefik).
 
 | Service | Image (pinned tag) | Networks | Volumes | Healthcheck | Restart | Role |
 |---|---|---|---|---|---|---|
-| `coverage-raven` | `docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64` | `coverage-internal`, `mintplayer-backend` | `raven-data` → `/var/lib/ravendb/data` | TCP connect to `127.0.0.1:8080`; interval 10 s, timeout 5 s, retries 12, start period 30 s | `unless-stopped` | The database, unsecured, reachable only from the internal network. |
-| `coverage-raven-license` | `curlimages/curl:8.11.1` | `coverage-internal` | `./raven-license.json` → `/raven-license.json` (ro) | — | `"no"` (one-shot) | POSTs the licence to `http://coverage-raven:8080/admin/license/activate` once Raven is healthy, with 10 retries 3 s apart, then exits. Runs on every `up`. Nothing depends on it. |
-| `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-internal`, `mintplayer-backend` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587` (under `bash`: `/dev/tcp` does not exist in the image's `sh`, which is dash); interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
-| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-internal` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` to be *started*. |
+| `coverage-raven` | `docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64` | `coverage-db`, `seo-raven` | `raven-data` → `/var/lib/ravendb/data`; `./raven-certs/server.pfx` (ro) | TCP connect to `127.0.0.1:8080`; interval 10 s, timeout 5 s, retries 12, start period 30 s | `unless-stopped` | The database, HTTPS with client certificates only ([raven-tls-migration.md](raven-tls-migration.md)); no egress. |
+| `coverage-raven-license` | `curlimages/curl:8.11.1` | `coverage-db` | `./raven-license.json` → `/raven-license.json` (ro); the operator certificate and `ca.crt` (ro) | — | `"no"` (one-shot) | POSTs the licence to `https://coverage-raven:8080/admin/license/activate` with the operator certificate once Raven is healthy, with 10 retries 3 s apart, then exits. Runs on every `up`. Nothing depends on it. |
+| `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-mail`, `seo-mail`, `coverage-smtp-egress` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587` (under `bash`: `/dev/tcp` does not exist in the image's `sh`, which is dash); interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
+| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` to be *started*. |
 
 Named volumes: `raven-data`, `smtp-queue`, `dataprotection-keys`. Docker prefixes them with the
 compose project name, which is the directory name (`code-coverage` for `/var/www/code-coverage`), so
-the internal network is `code-coverage_coverage-internal`. The backup commands in the README rely on
+the database network is `code-coverage_coverage-db`. The backup commands in the README rely on
 that name.
 
-**`mintplayer-backend`** (since SeoTester, PRD `docs/seo_analyzer_PRD.md` Q-M12b): an external bridge network that no
-compose project owns, so neither CodeCoverage's nor SeoTester's `down` removes it. `coverage-raven` and `coverage-smtp`
-join it; SeoTester's app reaches them there by the same names (database `SeoTester` on the same server, mail through the
-same relay). `coverage-app` does not join it. Both deploy workflows create it when it is missing
-(`docker network inspect mintplayer-backend || docker network create mintplayer-backend`, idempotent) before `down`/`up`,
-so whichever deploys first finds it. It publishes nothing: as with `coverage-internal`, only attached containers reach
-the unsecured RavenDB. One-time migration and the order with SeoTester: `docs/seotester/deploy.md` §3.0.
+**`seo-raven`, `seo-mail`** (since SeoTester, PRD `docs/seo_analyzer_PRD.md` D55; they replace D48's
+`mintplayer-backend`): external networks that no compose project owns, so neither CodeCoverage's nor SeoTester's `down`
+removes them. `coverage-raven` joins `seo-raven` and `coverage-smtp` joins `seo-mail`; SeoTester's app reaches them
+there by the same names (database `SeoTester` on the same server with its own certificate, mail through the same relay).
+`coverage-app` joins neither. Both deploy workflows create them `--internal` when missing (idempotent) before
+`down`/`up`, and refuse one that exists but is not internal. One-time migration: [raven-tls-migration.md](raven-tls-migration.md); the order with SeoTester:
+`docs/seotester/deploy.md` §3.0.
 
 Traefik labels on `coverage-app`:
 
@@ -63,7 +64,7 @@ Traefik labels on `coverage-app`:
 | `traefik.http.routers.coverage.entrypoints` | `websecure` | Traefik must have an entrypoint of exactly this name. |
 | `traefik.http.routers.coverage.tls.certresolver` | `letsencrypt` | Traefik must have a certificate resolver of exactly this name. |
 | `traefik.http.services.coverage.loadbalancer.server.port` | `8080` | Pinned so Traefik never guesses. The image exposes 8080 only, deliberately (Dockerfile). |
-| `traefik.docker.network` | `web` | ⚠️ The app is on two networks; without this Traefik may pick the `coverage-internal` address, which it cannot reach — random 504s. |
+| `traefik.docker.network` | `web` | ⚠️ The app is on three networks; without this Traefik may pick its `coverage-db` or `coverage-mail` address, which it cannot reach — random 504s. |
 
 ## 2. Server `.env`
 
@@ -106,8 +107,10 @@ Set directly in `docker-compose.yml` (not overridable from `.env`):
 | Variable | Value | Meaning |
 |---|---|---|
 | `ASPNETCORE_ENVIRONMENT` | `Production` | ⚠️ Load-bearing: `Program.cs` builds the `GitHub:{environment}:*` key prefix from it, so any other value silently reads different keys and disables sign-in. |
-| `Spark__RavenDb__Urls__0` | `http://coverage-raven:8080` | |
-| `Spark__RavenDb__EnsureDatabaseCreated` | `true` | Creates the database (named by `Spark:RavenDb:Database`, `Coverage` from appsettings) on first start. |
+| `Spark__RavenDb__Urls__0` | `https://coverage-raven:8080` | The secured server ([raven-tls-migration.md](raven-tls-migration.md)). |
+| `Spark__RavenDb__CertificateFile`, `…KeyFile` | `/run/secrets/raven/codecoverage.crt`, `.key` | This app's client certificate: Admin on the database `Coverage`, nothing else. |
+| `Spark__RavenDb__ServerCertificateAuthorityFile` | `/run/secrets/raven/ca.crt` | The private CA of the server's certificate. |
+| `Spark__RavenDb__EnsureDatabaseCreated` | `false` | Creating a database is cluster admin, which the app's certificate is refused; `Coverage` exists. |
 | `Spark__DataProtection__KeysPath` | `/var/lib/codecoverage/dataprotection-keys` | On the `dataprotection-keys` volume. |
 | `Coverage__BaseUrl` | `https://coverage.mintplayer.com` | Public base URL. Also the **OIDC audience** and the passkey relying-party id. |
 | `Spark__Auth__PublicBaseUrl` | `https://coverage.mintplayer.com` | Base for links in mail; never taken from the request `Host`. |
@@ -116,8 +119,10 @@ Set directly in `docker-compose.yml` (not overridable from `.env`):
 | relay `POSTFIX_inet_protocols` | `ipv4` | ⚠️ Mail leaves over IPv4 only; see the README's *Outgoing mail*. |
 | relay `POSTFIX_smtp_address_preference` | `ipv4` | Kept alongside; on its own it only *prefers* IPv4. |
 | Raven `RAVEN_Setup_Mode` | `None` | |
-| Raven `RAVEN_Security_UnsecuredAccessAllowed` | `PublicNetwork` | Needed for unsecured access on a `0.0.0.0` bind. The topology, not this flag, keeps Raven private. |
-| Raven `RAVEN_ServerUrl` | `http://0.0.0.0:8080` | |
+| Raven `RAVEN_ServerUrl`, `RAVEN_ServerUrl_Tcp` | `https://0.0.0.0:8080`, `tcp://0.0.0.0:38888` | TLS only; no unsecured-access flag. |
+| Raven `RAVEN_PublicServerUrl`, `…_Tcp` | `https://coverage-raven:8080`, `tcp://coverage-raven:38888` | The certificate's name, which clients get in the topology. |
+| Raven `RAVEN_Security_Certificate_Path` / `_Password` | `/run/secrets/raven/server.pfx` / `${RAVEN_SERVER_CERTIFICATE_PASSWORD}` | Required in `.env`. |
+| Raven `RAVEN_Security_WellKnownCertificates_Admin` | `${RAVEN_OPERATOR_THUMBPRINT}` | The operator certificate, the only cluster admin. Required in `.env`. |
 
 ## 3. Files next to the compose file
 
@@ -127,6 +132,8 @@ All server-managed: a deploy re-downloads `docker-compose.yml` and touches nothi
 |---|---|---|---|
 | `.env` | **Yes** — the deploy fails without it | readable by the deploying user | §2. LF line endings. |
 | `github-app.pem` | **Yes** — the deploy fails without it | readable by UID **1654** (the image's `app` user), e.g. `chmod 644` | The **production** App's private key. ⚠️ If missing at first `up`, Docker creates a *directory* here. ⚠️ A single-file bind mount binds the inode: replace with `cat new.pem > github-app.pem`, never `mv`/`scp` over it. |
+| `raven-certs/server.pfx`, `ca.crt`, `codecoverage.crt`, `codecoverage.key` | **Yes** — the deploy fails without them | [raven-tls-migration.md](raven-tls-migration.md) §3 | RavenDB's server certificate and this app's client certificate. Never in the repository. |
+| `raven-operator/operator.crt`, `operator.key` | **Yes** — the deploy fails without them | [raven-tls-migration.md](raven-tls-migration.md) §3 | The operator (cluster admin) certificate, mounted only into the licence one-shot. |
 | `raven-license.json` | No | any; read whole, so pretty-printing and CRLF are fine | Without it the one-shot exits non-zero and Raven runs unlicensed. Also a single-file bind mount; same inode rule. `apps/*/raven-license.json` is gitignored. |
 | `mail-dkim/<domain>.private` | Only with mail | owned **101:104** (opendkim in `boky/postfix:v4.3.0`), `600` | ⚠️ Must be *flat*, not `opendkim-genkey`'s `<domain>/<selector>.private`, or the relay delivers unsigned. |
 
@@ -159,7 +166,9 @@ takes the framework default. Sources are under `libs/`.
 
 | Key | Default | App value | Meaning |
 |---|---|---|---|
-| `Urls` | `[]` | `http://localhost:8080` (appsettings); `http://coverage-raven:8080` (compose) | RavenDB URLs. |
+| `Urls` | `[]` | `http://localhost:8080` (appsettings); `https://coverage-raven:8080` (compose) | RavenDB URLs. |
+| `CertificateFile`, `CertificateKeyFile`, `CertificatePassword` | unset | the client certificate (compose) | PEM or PKCS#12; requires `https://` URLs (startup refuses otherwise). |
+| `ServerCertificateAuthorityFile` | unset | `ca.crt` (compose) | A private CA for the server's certificate; the host name must still match. |
 | `Database` | `Spark` | `Coverage` (appsettings) | ⚠️ The production database is still named `Coverage`; that is data, not a naming leftover. |
 | `EnsureDatabaseCreated` | `false` | `true` (compose) | Create the database if absent. |
 | `MaxConnectionRetries` / `RetryDelaySeconds` | `30` / `2` | — | Startup connection retries. |
@@ -340,11 +349,13 @@ and a model mismatch refuses to start in Production anyway.
 **Job `deploy`** (permissions `contents: read`, `packages: read`; timeout 25 min), over SSH, with `set -e`:
 
 1. `mkdir -p /var/www/code-coverage && cd` there.
-2. Fail if `.env` or `github-app.pem` is missing.
+2. Fail if `.env` or `github-app.pem` is missing, if a certificate file of §3 is missing or empty, or if
+   `RAVEN_SERVER_CERTIFICATE_PASSWORD` / `RAVEN_OPERATOR_THUMBPRINT` is unset in `.env` (nothing is printed).
 3. Replace `docker-compose.yml` with the one on `master`, from `raw.githubusercontent.com`.
 4. `docker login ghcr.io` with the job's `GITHUB_TOKEN`.
-5. Create the shared network `mintplayer-backend` if it is missing (idempotent; `seotester-deploy.yml` has the same
-   line), because the compose file declares it `external` and `up` refuses without it.
+5. Create the shared networks `seo-raven` and `seo-mail` `--internal` if they are missing (idempotent;
+   `seotester-deploy.yml` has the same block) and refuse one that is not internal, because the compose file declares
+   them `external` and `up` refuses without them.
 6. `docker compose --env-file .env pull`, then `down --remove-orphans`, then `up -d --remove-orphans`.
    There is a short outage between `down` and `up`.
 7. `docker image prune -f`, `docker compose ps`.

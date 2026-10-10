@@ -4,13 +4,20 @@
 #
 # Networks (the point of this file):
 #   web                              Traefik's public network (external). Only seotester-app joins it.
-#   mintplayer-backend               the backend network shared with CodeCoverage (external, created by either deploy,
-#                                    removed by neither): coverage-raven (unsecured, the database "SeoTester" lives
-#                                    there) and coverage-smtp join it from CodeCoverage's stack. Only seotester-app here.
+#   seo-raven                        internal: true, external (created by either deploy, removed by neither): this
+#                                    app and CodeCoverage's coverage-raven ONLY (HTTPS with client certificates; the
+#                                    app's certificate may use the database "SeoTester" and nothing else, PRD D56).
+#   seo-mail                         internal: true, external, likewise: this app and coverage-smtp ONLY.
+#                                    RavenDB and the mail relay never share a network (PRD D55).
 #   seo-browser                      internal: true, no egress at all. seotester-app and seo-chromium ONLY. Chromium
 #                                    never fetches anything itself (SeoTester routes and fulfils every request through
 #                                    its SSRF-safe client, PRD §6), so it needs no route anywhere: not to the internet,
 #                                    not to RavenDB, not to the mail relay.
+#   seo-fetch                        internal: true. seotester-app and seo-fetcher ONLY: the app's calls to the
+#                                    fetcher's API (shared secret SEO_FETCHER_KEY), nothing else (PRD D54).
+#   seo-egress                       a plain bridge with a route out. seo-fetcher ONLY: every request to an audited site,
+#                                    a registry or PageSpeed Insights leaves from here, from a container that has no
+#                                    database client and no network to RavenDB, the relay or the app's other services.
 #
 # The deploy (.github/workflows/seotester-deploy.yml) refreshes this file and runs pull / down / up. .env and the
 # volumes are server-managed; deploys never write them. tools/verify-seotester-deploy.test.mjs keeps the rules above.
@@ -24,11 +31,15 @@ services:
     stop_grace_period: 120s
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      # CodeCoverage's RavenDB server, database SeoTester (created on first start). Unsecured, reachable only on
-      # mintplayer-backend: no certificate (Spark:RavenDb has none to set).
-      - Spark__RavenDb__Urls__0=http://coverage-raven:8080
+      # CodeCoverage's RavenDB server over HTTPS (seo-raven), with this app's own client certificate, registered with
+      # Admin on the database SeoTester only (PRD D56), and the private CA of the server's certificate.
+      - Spark__RavenDb__Urls__0=https://coverage-raven:8080
       - Spark__RavenDb__Database=SeoTester
-      - Spark__RavenDb__EnsureDatabaseCreated=true
+      - Spark__RavenDb__CertificateFile=/run/secrets/raven/seotester.crt
+      - Spark__RavenDb__CertificateKeyFile=/run/secrets/raven/seotester.key
+      - Spark__RavenDb__ServerCertificateAuthorityFile=/run/secrets/raven/ca.crt
+      # Off: creating a database needs the operator; the operator creates SeoTester once (deploy.md §3.0).
+      - Spark__RavenDb__EnsureDatabaseCreated=false
       # Data Protection key ring on a volume: a redeploy does not sign everyone out.
       - Spark__DataProtection__KeysPath=/var/lib/seotester/dataprotection-keys
       # Sign-in providers (PRD §4.1, D2). A provider without a ClientId is not offered; with none the app refuses to start.
@@ -40,8 +51,8 @@ services:
       - Spark__Auth__Providers__Twitter__ClientSecret=${X_CLIENT_SECRET:-}
       - Spark__Auth__Providers__Google__ClientId=${GOOGLE_CLIENT_ID:-}
       - Spark__Auth__Providers__Google__ClientSecret=${GOOGLE_CLIENT_SECRET:-}
-      # Mail through CodeCoverage's relay (required: ConfirmByEmail needs a sender). Security=None: the relay is only
-      # on the internal network and advertises STARTTLS without a certificate (as CodeCoverage).
+      # Mail through CodeCoverage's relay (required: ConfirmByEmail needs a sender). Security=None: the relay is reachable
+      # from here only on seo-mail (internal) and advertises STARTTLS without a certificate (as CodeCoverage).
       - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
       - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
       - Spark__Mail__Smtp__Security=None
@@ -61,11 +72,20 @@ services:
       - SeoTester__Legal__Court=${LEGAL_COURT:-}
       - SeoTester__Legal__HostingProvider=${LEGAL_HOSTING_PROVIDER:-}
       # The browser: appsettings.Production.json already says Connect to ws://seo-chromium:3000/.
+      # The fetcher (D54): appsettings.Production.json says Remote at http://seo-fetcher:8080/; this is the shared secret.
+      - SeoTester__Fetcher__Key=${SEO_FETCHER_KEY:?SEO_FETCHER_KEY is required, see docs/seotester/deploy.md}
     volumes:
       - dataprotection-keys:/var/lib/seotester/dataprotection-keys
+      # Its RavenDB client certificate and the CA (server-managed, deploy.md §3.0). Only this container mounts them.
+      - ./raven-certs/seotester.crt:/run/secrets/raven/seotester.crt:ro
+      - ./raven-certs/seotester.key:/run/secrets/raven/seotester.key:ro
+      - ./raven-certs/ca.crt:/run/secrets/raven/ca.crt:ro
     depends_on:
       seo-chromium:
         # Started, not waited on: a browser that is slow or broken makes the rendered checks errors, never the site down.
+        condition: service_started
+      seo-fetcher:
+        # Started, not waited on: a fetcher that is down fails the crawl stages (retried by Messaging), never the site.
         condition: service_started
     labels:
       - "traefik.enable=true"
@@ -74,7 +94,7 @@ services:
       - "traefik.http.routers.seotester.entrypoints=websecure"
       - "traefik.http.routers.seotester.tls.certresolver=letsencrypt"
       - "traefik.http.services.seotester.loadbalancer.server.port=8080"
-      # Three networks: without this Traefik may pick an address it cannot reach (random 504s).
+      # Five networks: without this Traefik may pick an address it cannot reach (random 504s).
       - "traefik.docker.network=web"
       # /spark/live is a WebSocket: Traefik forwards the upgrade by default, no middleware needed. The server pings
       # after 30 s of silence, under any idle timeout Traefik applies (post-deploy check Q-M5a in the runbook).
@@ -88,7 +108,8 @@ services:
     mem_limit: 1g
     networks:
       - web
-      - mintplayer-backend
+      - seo-raven
+      - seo-mail
       - seo-browser
     restart: unless-stopped
 
@@ -126,12 +147,15 @@ volumes:
 networks:
   web:
     external: true
-  # Shared with CodeCoverage (apps/CodeCoverage/docker-compose.yml declares it the same way): coverage-raven and
-  # coverage-smtp are reachable here by those names. No compose project owns it, so neither stack's up/down touches
-  # it; both deploys create it when missing (PRD Q-M12b, docs/seotester/deploy.md §3.0).
-  mintplayer-backend:
+  # Shared with CodeCoverage (apps/CodeCoverage/docker-compose.yml declares them the same way): coverage-raven is
+  # reachable on seo-raven, coverage-smtp on seo-mail, by those names. No compose project owns them, so neither
+  # stack's up/down touches them; both deploys create them, internal, when missing (PRD D55, deploy.md §3.0).
+  seo-raven:
     external: true
-    name: mintplayer-backend
+    name: seo-raven
+  seo-mail:
+    external: true
+    name: seo-mail
   seo-browser:
     driver: bridge
     internal: true

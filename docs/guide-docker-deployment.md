@@ -81,6 +81,10 @@ docker compose up -d
 | `Spark__RavenDb__EnsureDatabaseCreated` | Auto-create database if it doesn't exist | `false` |
 | `Spark__RavenDb__MaxConnectionRetries` | Max retry attempts waiting for RavenDB | `30` |
 | `Spark__RavenDb__RetryDelaySeconds` | Seconds between retry attempts | `2` |
+| `Spark__RavenDb__CertificateFile` | Client certificate for a secured RavenDB server: PEM (key in `CertificateKeyFile` or the same file) or PKCS#12. Requires `https://` URLs | unset (unsecured server) |
+| `Spark__RavenDb__CertificateKeyFile` | PEM private key of `CertificateFile` | unset |
+| `Spark__RavenDb__CertificatePassword` | Password of a PKCS#12 file or an encrypted PEM key | unset |
+| `Spark__RavenDb__ServerCertificateAuthorityFile` | CA (PEM/DER) that issued the server's certificate, when it is not publicly trusted; the host name must still match | unset (OS trust store) |
 
 ### Data Protection keys
 

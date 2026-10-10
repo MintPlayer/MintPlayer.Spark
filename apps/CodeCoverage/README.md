@@ -226,8 +226,9 @@ directory `/var/www/code-coverage`.
 **Layout: one directory per compose stack.** Every service on the host is its own compose project
 in its own directory under `/var/www/<name>` — Traefik in `/var/www/traefik`, this app in
 `/var/www/code-coverage`. The directory name is the compose project name, so it prefixes the
-volumes and networks (`code-coverage_raven-data`, `code-coverage_coverage-internal`). Stacks share
-exactly one thing: the external `web` network, which every public stack joins and Traefik watches.
+volumes and networks (`code-coverage_raven-data`, `code-coverage_coverage-db`). Stacks share the external `web`
+network, which every public stack joins and Traefik watches, and SeoTester's two backend networks `seo-raven` and
+`seo-mail` ([raven-tls-migration.md](../../docs/code-coverage/raven-tls-migration.md) §1).
 
 **Traefik**, as its own stack. What this app's labels need from it, as Traefik v3 command-line
 arguments (the same settings can live in a static config file):
@@ -272,8 +273,9 @@ One-time setup, in `/var/www/code-coverage` (the path the deploy workflow uses):
 2. `docker network create web` if it doesn't exist; Traefik must be attached to it, with
    an entrypoint named `websecure` and an ACME resolver named `letsencrypt` (the compose
    labels assume those exact names). The app joins `web` only so Traefik can reach it; RavenDB and
-   the mail relay live on the project's own `coverage-internal` network and publish no host
-   ports, which is what keeps the unsecured RavenDB and the unauthenticated relay off the internet.
+   the mail relay live on internal networks of their own (`coverage-db`, `coverage-mail`) and publish no host
+   ports. RavenDB is secured (HTTPS, client certificates, [raven-tls-migration.md](../../docs/code-coverage/raven-tls-migration.md));
+   the unauthenticated relay is reachable only by the two apps.
 3. The DNS A/AAAA record for the subdomain → the server, *before* the first deploy ([§2](#2-dns)).
 4. Place the **production** GitHub App's private key at `/var/www/code-coverage/github-app.pem`,
    readable by the container's `app` user (UID 1654) — e.g. `chmod 644` or `chown 1654`.
@@ -362,7 +364,7 @@ To set it up:
 
    ```bash
    docker compose run --rm --entrypoint sh coverage-raven-license -c \
-     'curl -s http://coverage-raven:8080/license/status'
+     'curl -s --cert /run/secrets/raven/operator.crt --key /run/secrets/raven/operator.key --cacert /run/secrets/raven/ca.crt https://coverage-raven:8080/license/status'
    ```
 
    `"Status":"Commercial"` with the expected `"Type"` means it took. `"Status":"AGPL -
@@ -692,21 +694,27 @@ re-key, a bulk delete, a RavenDB upgrade.
 ```bash
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 DIR=/var/backups/coverage-raven && mkdir -p "$DIR"
-NET=code-coverage_coverage-internal
+NET=code-coverage_coverage-db
+# RavenDB is secured: every call presents the operator certificate and checks the server against the CA
+# (docs/code-coverage/raven-tls-migration.md). Before that migration: NET=code-coverage_coverage-internal, http://,
+# and MNT and AUTH empty.
+C=/var/www/code-coverage
+MNT="-v $C/raven-operator/operator.crt:/op.crt:ro -v $C/raven-operator/operator.key:/op.key:ro -v $C/raven-certs/ca.crt:/ca.crt:ro"
+AUTH="--cert /op.crt --key /op.key --cacert /ca.crt"
 
 # Stats first: this is what the restore gets checked against.
-docker run --rm --network $NET --user 0 -v "$DIR":/out curlimages/curl:8.11.1 \
-  -sS "http://coverage-raven:8080/databases/Coverage/stats" -o "/out/coverage-$STAMP.stats.json"
+docker run --rm --network $NET --user 0 $MNT -v "$DIR":/out curlimages/curl:8.11.1 \
+  -sS $AUTH "https://coverage-raven:8080/databases/Coverage/stats" -o "/out/coverage-$STAMP.stats.json"
 
-docker run --rm --network $NET --user 0 -v "$DIR":/out curlimages/curl:8.11.1 \
-  -sS -f --max-time 3600 \
-  -X POST "http://coverage-raven:8080/databases/Coverage/smuggler/export" \
+docker run --rm --network $NET --user 0 $MNT -v "$DIR":/out curlimages/curl:8.11.1 \
+  -sS $AUTH -f --max-time 3600 \
+  -X POST "https://coverage-raven:8080/databases/Coverage/smuggler/export" \
   -H "Content-Type: application/json" \
   --data '{"OperateOnTypes":"Documents,RevisionDocuments,Indexes,Identities,CompareExchange,Attachments,CounterGroups,Subscriptions,TimeSeries","IncludeExpired":true}' \
   -o "/out/coverage-$STAMP.ravendbdump"
 ```
 
-`NET` is `<compose project>_coverage-internal`, and the project name is the directory name — so
+`NET` is `<compose project>_coverage-db`, and the project name is the directory name — so
 this value holds for `/var/www/code-coverage`.
 
 ⚠️ `CompareExchange` is not optional. The Identity **email reservations** live in compare-exchange,
@@ -727,18 +735,18 @@ permissions nor the directory.
    `CountOfDocuments` and `CountOfAttachments` against the stats file captured above:
 
 ```bash
-docker run --rm --network $NET --user 0 curlimages/curl:8.11.1 -sS \
-  -X PUT "http://coverage-raven:8080/admin/databases?name=CoverageRestoreTest&replicationFactor=1" \
+docker run --rm --network $NET --user 0 $MNT curlimages/curl:8.11.1 -sS $AUTH \
+  -X PUT "https://coverage-raven:8080/admin/databases?name=CoverageRestoreTest&replicationFactor=1" \
   -H 'Content-Type: application/json' --data '{"DatabaseName":"CoverageRestoreTest"}'
 
-docker run --rm --network $NET --user 0 -v "$DIR":/b curlimages/curl:8.11.1 -sS -f --max-time 3600 \
-  -X POST "http://coverage-raven:8080/databases/CoverageRestoreTest/smuggler/import" \
+docker run --rm --network $NET --user 0 $MNT -v "$DIR":/b curlimages/curl:8.11.1 -sS $AUTH -f --max-time 3600 \
+  -X POST "https://coverage-raven:8080/databases/CoverageRestoreTest/smuggler/import" \
   -F 'importOptions={"OperateOnTypes":"Documents,RevisionDocuments,Identities,CompareExchange,Attachments,CounterGroups,TimeSeries"}' \
   -F "file=@/b/coverage-$STAMP.ravendbdump"
 
 # ... compare stats, then hard-delete the scratch database ...
-docker run --rm --network $NET --user 0 curlimages/curl:8.11.1 -sS \
-  -X DELETE "http://coverage-raven:8080/admin/databases?name=CoverageRestoreTest&hard-delete=true" \
+docker run --rm --network $NET --user 0 $MNT curlimages/curl:8.11.1 -sS $AUTH \
+  -X DELETE "https://coverage-raven:8080/admin/databases?name=CoverageRestoreTest&hard-delete=true" \
   -H 'Content-Type: application/json' \
   --data '{"DatabaseNames":["CoverageRestoreTest"],"HardDelete":true}'
 ```
@@ -772,8 +780,8 @@ How to check what is in place, since none of it announces itself:
 
 ```bash
 crontab -l; ls /etc/cron.d; systemctl list-timers --no-pager      # host-level schedules
-docker run --rm --network code-coverage_coverage-internal curlimages/curl:8.11.1 -sS \
-  "http://coverage-raven:8080/databases/Coverage/tasks"            # look for a Backup task
+docker run --rm --network $NET --user 0 $MNT curlimages/curl:8.11.1 -sS $AUTH \
+  "https://coverage-raven:8080/databases/Coverage/tasks"            # look for a Backup task
 ```
 
 Provider backups are visible only in the provider's console (for Hetzner: the server's *Backups*
@@ -821,7 +829,7 @@ were read on 2026-09-29.
 | Host | A Hetzner Cloud **CPX32** (shared vCPU) in Nuremberg, running Debian GNU/Linux 13 (trixie), Docker Engine 29.3.0 and Docker Compose 5.1.1. |
 | Layout | Twelve compose stacks, one directory each under `/var/www/<name>`. This one is `/var/www/code-coverage`, deployed by `code-coverage-deploy.yml` on every qualifying push to `master`. |
 | Traefik | 3.6.11 (image `traefik:latest`), its own stack in `/var/www/traefik`, configured exactly as the sketch in [§3](#3-the-server-docker-and-traefik): Docker provider with `exposedbydefault=false` on network `web`, `web` (:80) redirecting to `websecure` (:443), resolver `letsencrypt` using the HTTP challenge, certificates on a volume. It also loads a file provider from a host directory (`/var/www/traefik/dynamic`, watched) for routes that are not containers, and a certificate-dumper container runs beside it. Neither matters to this app. |
-| Networks | `web` (external, shared by every public stack), `code-coverage_coverage-internal`, and Traefik's own default network. |
+| Networks | `web` (external, shared by every public stack), `code-coverage_coverage-db`, `code-coverage_coverage-mail`, `code-coverage_coverage-smtp-egress`, `seo-raven` and `seo-mail` (external, shared with SeoTester), and Traefik's own default network. |
 | Server-managed files | `.env`, `github-app.pem`, `raven-license.json` and `mail-dkim/` (the flat `coverage.mintplayer.com.private`, plus the nested copy `opendkim-genkey` wrote, which the relay ignores). |
 | `.env` | Sets `GITHUB_WEBHOOK_SECRET`, `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` and `COVERAGE_BADGE_SIGNING_KEY`. It also still carries a `TRAEFIK_HOST`, a leftover that nothing reads since the hostname was hard-coded. |
 | Volumes | `code-coverage_raven-data` and `code-coverage_smtp-queue`. `code-coverage_dataprotection-keys` is created by the first deploy that declares it — that deploy signs everyone out once ([§9](#data-protection-keys)). |
