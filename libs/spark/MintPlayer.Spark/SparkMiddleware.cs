@@ -134,6 +134,8 @@ public static class SparkExtensions
         // applies only to IExpiring types; the database is configured by UseSpark() when needed.
         services.AddSparkConfigurationSection<Expiration.SparkExpirationOptions>(Expiration.SparkExpirationOptions.SectionName);
         services.AddSparkRowPolicy<Expiration.ExpirationRowPolicy>();
+        // ExpiresAtUtc is the framework's on pipeline writes (D41): a client can neither extend nor clear it.
+        Abstractions.Interceptors.SparkBuilderInterceptorExtensions.AddSparkInterceptor<Expiration.ExpirationInterceptor>(services);
 
         // The per-request group-membership snapshot SecurityFileAccessControl and the
         // [SparkAuthorize] group handler share (#460, D12). A concrete class, which the [Register]

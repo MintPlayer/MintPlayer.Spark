@@ -26,14 +26,19 @@ public class PageResult : IExpiring                 // MintPlayer.Spark.Abstract
 - **`expiresAfter`** (optional) gives a **new** document stored without an `ExpiresAtUtc`
   `now + expiresAfter`. Without it, a document expires only when code sets `ExpiresAtUtc`.
 - **`ExpiresAtUtc` is the source of truth.** Set it before the first store to override the default,
-  change it later to extend or shorten, set it to `null` to keep the document for good. `@expires`
+  change it later from server code to extend or shorten, set it to `null` to keep the document for good. `@expires`
   follows it on the next store; a `Local` time is converted to UTC.
 - Nothing to register: stamping and hiding are always on for `IExpiring` types. `spark.AddExpiration(o
   => …)` is only for options in code and for an app that writes `@expires` by hand.
 - Startup refuses an `ExpiresAtUtc` that is not a public `DateTime?` property, an `expiresAfter` on a type
   that is not `IExpiring`, and an `expiresAfter` of zero or less.
-- `ExpiresAtUtc` becomes a model attribute like any public property. If users must not change it, mark
-  the attribute read-only or the property `[IgnoreProperty]`.
+- **`ExpiresAtUtc` is framework-protected on persistent-object writes** (`ExpirationInterceptor`,
+  `docs/seo_analyzer_PRD.md` D41), the way SoftDelete owns its fields. Whatever a client posts, an edit
+  (or a revert or restore) keeps the stored value and a create starts without one, so `expiresAfter`
+  applies. A user with `Edit` on the type can neither extend nor clear an expiry. Only server code changes
+  it: a raw-session write, or a before-save interceptor of your own (the framework's
+  is registered first by `AddSpark`, so yours runs after it). The attribute may still be shown; mark it
+  read-only in the model so the edit form does not offer a field that has no effect.
 
 ## Where `@expires` is written
 

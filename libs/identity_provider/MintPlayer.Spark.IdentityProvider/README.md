@@ -84,7 +84,7 @@ Tokens:
 | `RateLimits:PermitLimit` / `Window` | `120` / 1 min | Per IP on token, PAR, device authorization, revocation and userinfo, when the app runs `spark.AddRateLimiter()` |
 | `RateLimits:ClientAuthenticationFailures` / `ClientAuthenticationFailureWindow` | `10` / 5 min | Failed client authentications per client and IP before that pair is refused |
 | `EnableDynamicCors` | `false` | CORS for the registered origins on the browser-facing endpoints |
-| `ClientRequests:AllowedNetworks` / `AllowedPorts` / … | none / `80`, `443` | The SSRF-safe clients that fetch a client's `jwks_uri` and post to its `backchannel_logout_uri` (`SafeHttpOptions`). Loopback, private and metadata addresses are refused; a local relying party in development is allowed by naming it, e.g. `AllowedNetworks: ["127.0.0.1/32"]` and its port |
+| `ClientRequests:AllowedNetworks` / `AllowedPorts` / … | none / `80`, `443` | The SSRF-safe clients that fetch a client's `jwks_uri` and post to its `backchannel_logout_uri` (`SafeHttpOptions`). Loopback, private and metadata addresses are refused; a local relying party in development is allowed by naming it, e.g. `AllowedNetworks: ["127.0.0.1/32"]` and its port. A configured list **replaces** its default, so `AllowedPorts: [5001]` allows 5001 only; list 443 as well to keep it. The back-channel client follows at most 3 redirects, all within the origin (scheme, host, port) of the registered URI; a cross-origin redirect is refused because it would resend the logout token |
 
 ## Keys
 

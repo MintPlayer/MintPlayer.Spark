@@ -263,12 +263,15 @@ public static class SparkIdentityProviderExtensions
 
     /// <summary>
     /// The SSRF-safe client that POSTs back-channel logout tokens to a client's <c>backchannel_logout_uri</c>:
-    /// 5 s, 64 KiB, no redirects (a redirect would re-send the logout token to a URI the client never registered).
+    /// 5 s, 64 KiB, up to 3 redirects and only within the origin of the registered URI (D40 of
+    /// <c>docs/seo_analyzer_PRD.md</c>): a cross-origin redirect would re-send the logout token to a URI the
+    /// client never registered, so it is refused; every hop is still SSRF-checked.
     /// </summary>
     public const string BackChannelLogoutHttpClient = "Spark.IdentityProvider.BackChannelLogout";
 
     /// <summary>
-    /// Configuration both client-request clients bind (<see cref="SafeHttpOptions"/>), on top of their defaults.
+    /// Configuration both client-request clients bind (<see cref="SafeHttpOptions"/>), on top of their defaults;
+    /// a list it names replaces the default list (so <c>AllowedPorts: [ 5001 ]</c> allows 5001 only).
     /// There is no exception for development by default. A local relying party whose JWKS or logout endpoint
     /// listens on loopback is allowed by naming it, e.g. in <c>appsettings.Development.json</c>:
     /// <c>"Spark": { "IdentityProvider": { "ClientRequests": { "AllowedNetworks": [ "127.0.0.1/32", "::1/128" ], "AllowedPorts": [ 5001 ] } } }</c>.
@@ -291,7 +294,8 @@ public static class SparkIdentityProviderExtensions
         builder.Services.Configure<SafeHttpOptions>(BackChannelLogoutHttpClient, o =>
         {
             o.Timeout = TimeSpan.FromSeconds(5);
-            o.MaxRedirects = 0;
+            o.MaxRedirects = 3;
+            o.RedirectsWithinOriginOnly = true;
             o.MaxResponseBytes = 64 * 1024;
             o.MaxDecompressedBytes = 64 * 1024;
         });

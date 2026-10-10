@@ -211,6 +211,59 @@ public class SafeHttpClientTests : IAsyncLifetime
         response.Content.Headers.ContentEncoding.Should().BeEmpty();
     }
 
+    // D40 (docs/seo_analyzer_PRD.md): RedirectsWithinOriginOnly follows redirects within the requested
+    // origin (scheme + host + port) and refuses any other, before the next hop is sent.
+
+    [Fact]
+    public async Task Within_origin_only_follows_a_same_origin_redirect()
+    {
+        var client = Client(o => o.RedirectsWithinOriginOnly = true);
+
+        (await client.GetStringAsync(Url("/redirect?to=" + Uri.EscapeDataString(Url("/ok"))))).Should().Be("hello");
+        (await client.GetStringAsync(Url("/redirect?to=%2Fok"))).Should().Be("hello");
+    }
+
+    [Theory]
+    [InlineData("host")]
+    [InlineData("port")]
+    [InlineData("scheme")]
+    public async Task Within_origin_only_refuses_a_cross_origin_redirect(string change)
+    {
+        var otherPort = port == 65535 ? port - 1 : port + 1;
+        var target = change switch
+        {
+            "host" => Url("/ok", "a.test"),
+            "port" => $"http://127.0.0.1:{otherPort}/ok",
+            _ => $"https://127.0.0.1:{port}/ok",
+        };
+        // Everything about the target is allowed, so only the origin rule can refuse it.
+        var client = Client(o =>
+        {
+            o.RedirectsWithinOriginOnly = true;
+            o.AllowedPorts.Add(otherPort);
+        });
+
+        var thrown = await Blocked(() => client.GetStringAsync(Url("/redirect?to=" + Uri.EscapeDataString(target))));
+
+        thrown.Reason.Should().Be(SafeHttpBlockReason.CrossOriginRedirect);
+        // Without the rule the same host change is followed.
+        if (change == "host")
+            (await Client().GetStringAsync(Url("/redirect?to=" + Uri.EscapeDataString(target)))).Should().Be("hello");
+    }
+
+    [Fact]
+    public async Task Within_origin_only_still_respects_the_redirect_limit()
+    {
+        var client = Client(o =>
+        {
+            o.RedirectsWithinOriginOnly = true;
+            o.MaxRedirects = 3;
+        });
+
+        (await client.GetStringAsync(Url("/loop/3"))).Should().Be("done");
+        (await Blocked(() => client.GetStringAsync(Url("/loop/4")))).Reason.Should().Be(SafeHttpBlockReason.TooManyRedirects);
+    }
+
     [Fact]
     public async Task Authorization_is_dropped_when_a_redirect_changes_origin()
     {

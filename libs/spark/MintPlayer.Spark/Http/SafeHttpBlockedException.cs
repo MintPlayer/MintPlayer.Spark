@@ -13,6 +13,8 @@ public enum SafeHttpBlockReason
     Port,
     /// <summary>More redirects than <see cref="SafeHttpOptions.MaxRedirects"/>.</summary>
     TooManyRedirects,
+    /// <summary>A redirect left the requested origin while <see cref="SafeHttpOptions.RedirectsWithinOriginOnly"/> is set.</summary>
+    CrossOriginRedirect,
     /// <summary>The response exceeded <see cref="SafeHttpOptions.MaxResponseBytes"/>.</summary>
     ResponseTooLarge,
     /// <summary>The decompressed response exceeded <see cref="SafeHttpOptions.MaxDecompressedBytes"/>.</summary>
@@ -39,6 +41,7 @@ public sealed class SafeHttpBlockedException(SafeHttpBlockReason reason)
         SafeHttpBlockReason.Scheme => "Only http and https are allowed.",
         SafeHttpBlockReason.Port => "The target port is not allowed.",
         SafeHttpBlockReason.TooManyRedirects => "Too many redirects.",
+        SafeHttpBlockReason.CrossOriginRedirect => "A redirect to another origin is not allowed.",
         SafeHttpBlockReason.ResponseTooLarge => "The response is too large.",
         SafeHttpBlockReason.DecompressedTooLarge => "The decompressed response is too large.",
         _ => "The request is not allowed.",

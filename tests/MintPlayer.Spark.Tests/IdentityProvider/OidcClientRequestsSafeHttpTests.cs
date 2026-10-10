@@ -51,7 +51,9 @@ public class OidcClientRequestsSafeHttpTests
 
         var logout = options.Get(SparkIdentityProviderExtensions.BackChannelLogoutHttpClient);
         logout.Timeout.Should().Be(TimeSpan.FromSeconds(5));
-        logout.MaxRedirects.Should().Be(0);
+        logout.MaxRedirects.Should().Be(3);
+        logout.RedirectsWithinOriginOnly.Should().BeTrue();
+        jwks.RedirectsWithinOriginOnly.Should().BeFalse();
         logout.AllowedNetworks.Should().BeEmpty();
     }
 
@@ -68,9 +70,10 @@ public class OidcClientRequestsSafeHttpTests
         {
             var o = options.Get(name);
             o.AllowedNetworks.Should().Equal("127.0.0.1/32");
-            o.AllowedPorts.Should().Contain(5001).And.Contain(443).And.Contain(80);
+            // D39: a configured list replaces the default ports.
+            o.AllowedPorts.Should().Equal(5001);
         }
-        // The section adds to the defaults; it does not undo the per-client limits.
-        options.Get(SparkIdentityProviderExtensions.BackChannelLogoutHttpClient).MaxRedirects.Should().Be(0);
+        // The section does not undo the per-client limits it does not name.
+        options.Get(SparkIdentityProviderExtensions.BackChannelLogoutHttpClient).MaxRedirects.Should().Be(3);
     }
 }

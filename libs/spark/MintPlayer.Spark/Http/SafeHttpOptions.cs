@@ -5,13 +5,18 @@ namespace MintPlayer.Spark.Http;
 /// default; an application only widens what it needs, and only per client name.
 /// <para>
 /// Bound from configuration where the registering call names a section (<c>Spark:SafeHttp</c> for
-/// <c>spark.AddSafeHttp()</c>). The binder <b>appends</b> to the list properties, so configured ports and
-/// networks are added to the defaults, never replace them.
+/// <c>spark.AddSafeHttp()</c>). A list the section names <b>replaces</b> the list beneath it rather than
+/// appending to it (<c>docs/seo_analyzer_PRD.md</c> D39), so configuration can remove the default ports:
+/// <c>"AllowedPorts": [ 443 ]</c> allows 443 only, and <c>"AllowedPorts": [ 443, 8443 ]</c> adds 8443 to
+/// HTTPS only. A list the section does not name keeps its default.
 /// </para>
 /// </summary>
 public sealed class SafeHttpOptions
 {
-    /// <summary>Destination ports a request or a redirect may use. Default 80 and 443.</summary>
+    /// <summary>
+    /// Destination ports a request or a redirect may use. Default 80 and 443. A configured list replaces
+    /// the default; code that only adds a port calls <c>AllowedPorts.Add</c>.
+    /// </summary>
     public List<int> AllowedPorts { get; set; } = [80, 443];
 
     /// <summary>
@@ -43,4 +48,14 @@ public sealed class SafeHttpOptions
 
     /// <summary>Redirects followed, each re-checked (scheme, port, address). 0 refuses any redirect. Default 5.</summary>
     public int MaxRedirects { get; set; } = 5;
+
+    /// <summary>
+    /// When <see langword="true"/>, a redirect is followed only when it stays on the origin (scheme, host and
+    /// port) of the URI the caller requested; a redirect to any other origin is refused with
+    /// <see cref="SafeHttpBlockReason.CrossOriginRedirect"/>. Every hop is still checked like any other
+    /// (scheme, port, address). Meant for requests that carry a credential in the body, such as a
+    /// back-channel logout token, which a cross-origin hop would resend to a URI nobody registered
+    /// (<c>docs/seo_analyzer_PRD.md</c> D40). Default <see langword="false"/>.
+    /// </summary>
+    public bool RedirectsWithinOriginOnly { get; set; }
 }

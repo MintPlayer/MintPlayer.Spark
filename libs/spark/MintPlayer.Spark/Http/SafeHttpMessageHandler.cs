@@ -11,7 +11,8 @@ namespace MintPlayer.Spark.Http;
 /// <item>checks the scheme and port of the request and of every redirect before it is sent;</item>
 /// <item>follows redirects itself (the primary handler has <c>AllowAutoRedirect = false</c>), at most
 /// <see cref="SafeHttpOptions.MaxRedirects"/>, dropping <c>Authorization</c> and <c>Cookie</c> when the
-/// origin changes. The address of each hop is checked by <see cref="SafeHttpConnector"/> when it connects;</item>
+/// origin changes, or refusing any origin change under <see cref="SafeHttpOptions.RedirectsWithinOriginOnly"/>
+/// (compared with the origin first requested). The address of each hop is checked by <see cref="SafeHttpConnector"/> when it connects;</item>
 /// <item>decompresses itself, so the wire bytes and the decompressed bytes are each capped while they stream;</item>
 /// <item>surfaces a <see cref="SafeHttpBlockedException"/> raised in the connect callback as itself, not
 /// wrapped in the <see cref="HttpRequestException"/> the sockets handler puts around it.</item>
@@ -50,7 +51,11 @@ internal sealed class SafeHttpMessageHandler(SafeHttpPolicy policy, SafeHttpOpti
             if (redirects >= options.MaxRedirects)
                 throw new SafeHttpBlockedException(SafeHttpBlockReason.TooManyRedirects);
 
-            current = NextHop(current, new Uri(current.RequestUri!, location), response.StatusCode);
+            var target = new Uri(current.RequestUri!, location);
+            if (options.RedirectsWithinOriginOnly && !SameOrigin(request.RequestUri, target))
+                throw new SafeHttpBlockedException(SafeHttpBlockReason.CrossOriginRedirect);
+
+            current = NextHop(current, target, response.StatusCode);
         }
     }
 
@@ -61,6 +66,10 @@ internal sealed class SafeHttpMessageHandler(SafeHttpPolicy policy, SafeHttpOpti
                 return blocked;
         return null;
     }
+
+    /// <summary>Scheme, host and port equal (<see cref="UriComponents.SchemeAndServer"/> includes the port, default ports normalised).</summary>
+    private static bool SameOrigin(Uri? a, Uri b)
+        => Uri.Compare(a, b, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
 
     private static bool IsRedirect(HttpStatusCode status) => status is
         HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther or
@@ -84,7 +93,7 @@ internal sealed class SafeHttpMessageHandler(SafeHttpPolicy policy, SafeHttpOpti
             VersionPolicy = previous.VersionPolicy,
             Content = content,
         };
-        var sameOrigin = Uri.Compare(previous.RequestUri, target, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
+        var sameOrigin = SameOrigin(previous.RequestUri, target);
         foreach (var header in previous.Headers)
         {
             if (!sameOrigin && (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase) || header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)))

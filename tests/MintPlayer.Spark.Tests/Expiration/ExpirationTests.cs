@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Expiration;
 using MintPlayer.Spark.Extensions;
@@ -168,6 +169,103 @@ public class ExpirationTests : SparkTestDriver
         stored.Title.Should().Be("after edit");
         Iso(stored.ExpiresAtUtc).Should().Be(Iso(original.ExpiresAtUtc), "an edit is not a new document");
         Iso(expires).Should().Be(Iso(original.ExpiresAtUtc));
+    }
+
+    // ---- D41: the client cannot set ExpiresAtUtc --------------------------------------------------
+
+    [Theory]
+    [InlineData("2099-01-01T00:00:00Z")]   // extend
+    [InlineData(null)]                     // clear: keep the document forever
+    public async Task A_client_edit_cannot_change_the_expiry(string? posted)
+    {
+        var host = await StartAsync();
+        var page = await SeedPageAsync("edited by client");
+        var (original, _) = await LoadWithExpiresAsync<ExPage>(page.Id!);
+
+        var (status, _) = await host.SendAsync("/spark/po/update", Wire.Typed(PageTypeId, new
+        {
+            persistentObject = new
+            {
+                id = page.Id,
+                etag = await StoredEtag.OfAsync(Store, page.Id!),
+                name = "ExPage",
+                objectTypeId = PageTypeId.ToString(),
+                attributes = new object[]
+                {
+                    new { name = "Title", value = (object?)"changed", isValueChanged = true },
+                    new { name = "ExpiresAtUtc", value = (object?)posted, isValueChanged = true },
+                },
+            },
+        }, page.Id));
+
+        status.Should().Be(HttpStatusCode.OK);
+        var (stored, expires) = await LoadWithExpiresAsync<ExPage>(page.Id!);
+        stored.Title.Should().Be("changed", "the rest of the edit is applied");
+        Iso(stored.ExpiresAtUtc).Should().Be(Iso(original.ExpiresAtUtc), "ExpiresAtUtc is the framework's (D41)");
+        Iso(expires).Should().Be(Iso(original.ExpiresAtUtc));
+    }
+
+    [Fact]
+    public async Task A_client_create_cannot_choose_the_expiry()
+    {
+        var host = await StartAsync();
+        var before = DateTime.UtcNow;
+
+        var (status, _) = await host.SendAsync("/spark/po/create", Wire.Typed(PageTypeId, new
+        {
+            persistentObject = new
+            {
+                name = "ExPage",
+                objectTypeId = PageTypeId.ToString(),
+                attributes = new object[]
+                {
+                    new { name = "Title", value = (object?)"created by client", isValueChanged = true },
+                    new { name = "ExpiresAtUtc", value = (object?)"2099-01-01T00:00:00Z", isValueChanged = true },
+                },
+            },
+        }));
+
+        status.Should().Be(HttpStatusCode.Created);
+        var (page, expires) = await LoadWithExpiresAsync<ExPage>(await IdOfPageAsync("created by client"));
+        page.ExpiresAtUtc!.Value.Should().BeOnOrAfter(before + PageLifetime).And.BeOnOrBefore(DateTime.UtcNow + PageLifetime, "the model's expiresAfter applies, not the posted value");
+        Iso(expires).Should().Be(Iso(page.ExpiresAtUtc));
+    }
+
+    [Fact]
+    public async Task Server_code_after_the_framework_still_sets_the_expiry()
+    {
+        var keep = ExKeepLonger.Until;
+        var host = await StartAsync(spark => spark.AddInterceptor<ExKeepLonger>());
+        var page = await SeedPageAsync("kept by code");
+
+        var (status, _) = await host.SendAsync("/spark/po/update", Wire.Typed(PageTypeId, new
+        {
+            persistentObject = new
+            {
+                id = page.Id,
+                etag = await StoredEtag.OfAsync(Store, page.Id!),
+                name = "ExPage",
+                objectTypeId = PageTypeId.ToString(),
+                attributes = new[] { new { name = "Title", value = "code extends", isValueChanged = true } },
+            },
+        }, page.Id));
+
+        status.Should().Be(HttpStatusCode.OK);
+        (await LoadWithExpiresAsync<ExPage>(page.Id!)).Page.ExpiresAtUtc.Should().Be(keep);
+    }
+
+    /// <summary>Server code: an app interceptor registered after the framework's, so it may set the expiry.</summary>
+    private sealed class ExKeepLonger : IBeforeSave
+    {
+        public static readonly DateTime Until = new(2098, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        public bool AppliesTo(Type entityType) => entityType == typeof(ExPage);
+
+        public ValueTask OnBeforeSaveAsync(SaveContext context)
+        {
+            ((ExPage)context.Entity).ExpiresAtUtc = Until;
+            return ValueTask.CompletedTask;
+        }
     }
 
     [Fact]
@@ -386,6 +484,8 @@ public class ExpirationTests : SparkTestDriver
             [
                 new() { Id = Guid.NewGuid(), Name = "Title", DataType = "string" },
                 new() { Id = Guid.NewGuid(), Name = "FolderId", DataType = "Reference", ReferenceType = typeof(ExFolder).FullName },
+                // Synchronised like any public property; D41 makes the pipeline ignore what a client posts for it.
+                new() { Id = Guid.NewGuid(), Name = "ExpiresAtUtc", DataType = "datetime" },
             ],
         },
         Queries =

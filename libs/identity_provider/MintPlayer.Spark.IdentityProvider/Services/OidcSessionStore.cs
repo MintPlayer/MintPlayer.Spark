@@ -131,7 +131,7 @@ internal sealed class OidcSessionStore(IDocumentStore store, OidcKeyRing keys, I
         try
         {
             // The client chose this URI, so the POST goes through the SSRF-safe client (seo_analyzer_PRD X2):
-            // no loopback, private or metadata address, no redirects, limits in SparkIdentityProviderExtensions.
+            // no loopback, private or metadata address, redirects only within the registered origin, limits in SparkIdentityProviderExtensions.
             using var client = httpClientFactory.CreateClient(SparkIdentityProviderExtensions.BackChannelLogoutHttpClient);
             using var response = await client.PostAsync(app.BackChannelLogoutUri,
                 new FormUrlEncodedContent([KeyValuePair.Create("logout_token", logoutToken)]), ct);

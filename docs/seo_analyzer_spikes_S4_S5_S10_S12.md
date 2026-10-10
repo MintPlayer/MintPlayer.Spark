@@ -252,6 +252,9 @@ RFC 8291 Appendix A has exact test vectors, so the code can be verified byte-for
 **Recommendation: hand-roll it (RFC 8291 + RFC 8292) in roughly 300 lines, verified against the
 RFC 8291 Appendix A test vectors.**
 
+> **Decided (owner, 2026-10-10, `docs/seo_analyzer_PRD.md` D38):** hand-rolled, in its own library in this
+> solution, on built-in .NET crypto only, verified against the RFC 8291 Appendix A vectors. Built in M6.
+
 Reasons:
 - **web-push-csharp is ruled out**: it sends only the legacy `aesgcm` encoding, it drags
   Portable.BouncyCastle 1.9 (the old, unmaintained fork) onto net11, and it is MPL-2.0.

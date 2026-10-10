@@ -14,6 +14,11 @@ namespace MintPlayer.Spark.Abstractions;
 /// null on an existing document makes it permanent.
 /// </para>
 /// <para>
+/// <b>Only server code sets it</b> (D41). On a persistent-object create or edit the framework ignores
+/// what the client posted: an edit keeps the stored value, a create starts with none. A raw-session write
+/// or a before-save interceptor registered by the app (which runs after the framework's) can change it.
+/// </para>
+/// <para>
 /// Implement it as a <b>public</b> property, never explicitly: the read filter is rebound onto the
 /// entity by member name, and RavenDB stores only public properties. Startup refuses a model type that
 /// gets this wrong.

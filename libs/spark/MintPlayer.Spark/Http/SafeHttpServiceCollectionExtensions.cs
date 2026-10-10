@@ -32,7 +32,10 @@ public static class SafeHttpServiceCollectionExtensions
         services.TryAddSingleton<ISafeHttpDnsResolver, SystemDnsResolver>();
         var options = services.AddOptions<SafeHttpOptions>(name);
         if (configuration is not null)
-            options.Bind(configuration);
+        {
+            options.Configure(o => Bind(configuration, o));
+            services.AddSingleton<IOptionsChangeTokenSource<SafeHttpOptions>>(new ConfigurationChangeTokenSource<SafeHttpOptions>(name, configuration));
+        }
         if (configure is not null)
             options.Configure(configure);
 
@@ -49,6 +52,25 @@ public static class SafeHttpServiceCollectionExtensions
                 var o = OptionsOf(sp, name);
                 return new SafeHttpMessageHandler(new SafeHttpPolicy(o), o);
             });
+    }
+
+    /// <summary>
+    /// Binds <paramref name="configuration"/> onto <paramref name="options"/>, a list the section names
+    /// <b>replacing</b> the list beneath it (D39). The plain binder appends to a non-empty list, which left
+    /// configuration unable to remove the default ports 80 and 443. A list the section does not name keeps
+    /// its value, so an empty section changes nothing and the secure defaults stay.
+    /// </summary>
+    internal static void Bind(IConfiguration configuration, SafeHttpOptions options)
+    {
+        if (Names(nameof(SafeHttpOptions.AllowedPorts)))
+            options.AllowedPorts = [];
+        if (Names(nameof(SafeHttpOptions.AllowedNetworks)))
+            options.AllowedNetworks = [];
+        if (Names(nameof(SafeHttpOptions.BlockedNetworks)))
+            options.BlockedNetworks = [];
+        configuration.Bind(options);
+
+        bool Names(string key) => configuration.GetSection(key).GetChildren().Any();
     }
 
     private static SafeHttpOptions OptionsOf(IServiceProvider services, string name)
