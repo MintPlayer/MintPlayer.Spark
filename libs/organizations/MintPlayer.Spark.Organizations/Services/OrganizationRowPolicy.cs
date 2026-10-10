@@ -31,7 +31,7 @@ namespace MintPlayer.Spark.Organizations.Services;
 /// is the type right <c>New/Organization</c>. The system context (background work) is not limited.
 /// </para>
 /// </remarks>
-internal sealed class OrganizationRowPolicy(OrganizationMembershipReader memberships) : IRowFilterPolicy
+internal sealed class OrganizationRowPolicy(OrganizationMembershipReader memberships, CurrentOrganization current) : IRowFilterPolicy
 {
     /// <summary>An organization id no document holds: random per process, never written anywhere.</summary>
     internal static readonly string[] NoOrganization = ["Organizations/none/" + Guid.NewGuid().ToString("N")];
@@ -50,6 +50,16 @@ internal sealed class OrganizationRowPolicy(OrganizationMembershipReader members
             return null;
 
         var ids = await AllowedOrganizationIdsAsync(context.User, context.EntityType, context.Action);
+
+        // The switcher (Q-M11a): a list of organization-owned rows shows the chosen organization's only.
+        // Lists only: a detail page, an edit, a custom action and a sub-query (the audits of a site the
+        // caller opened from elsewhere) keep every organization the role allows, and so does the
+        // organization list itself, which the switcher picks from. It only ever narrows.
+        if (!isOrganization && !context.IsSubQuery
+            && string.Equals(context.Action, "Query", StringComparison.OrdinalIgnoreCase)
+            && ids.Length > 0
+            && await current.GetIdAsync() is { } chosen)
+            ids = ids.Where(id => string.Equals(id, chosen, StringComparison.OrdinalIgnoreCase)).ToArray();
 
         // No organization: a constant false is evaluated in memory, which for a list means the whole
         // collection is read and dropped (S13: 170 ms for 10 000 rows, against 7–10 ms for a member).

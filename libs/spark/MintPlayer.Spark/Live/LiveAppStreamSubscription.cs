@@ -89,7 +89,8 @@ internal sealed class LiveAppStreamSubscription(LiveConnection connection, strin
         // The framework's own reads run on a fresh session per evaluation, capped like any request, so the
         // identity map is bounded to one evaluation.
         using var session = services.GetRequiredService<IDocumentStore>().OpenAsyncSession();
-        var secured = await services.GetRequiredService<IRowSecurityGate>().ApplyAsync(current, new RowSecurityContext
+        services.GetRequiredService<IRowPolicyRequestState>().IsSubQuery = !string.IsNullOrEmpty(request.ParentId);
+        var secured =await services.GetRequiredService<IRowSecurityGate>().ApplyAsync(current, new RowSecurityContext
         {
             Session = session,
             Definition = definition,

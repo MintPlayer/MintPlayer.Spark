@@ -14,7 +14,8 @@ namespace MintPlayer.Spark.Organizations;
 /// ⚠️ <see cref="OrganizationId"/> must be a public <c>string?</c> property named exactly that: the policy's
 /// predicate is rebound onto each type by member name. A row without one belongs to nobody and is visible
 /// to nobody. On a create the row must name an organization the caller holds the <c>New</c> role in
-/// (WITH CHECK), so an application sets it from the parent or the form.
+/// (WITH CHECK). A create through the generic pipeline that leaves it empty gets the organization chosen in
+/// the switcher, else the caller's personal one (<c>Interceptors/OrganizationOwnedDefaults</c>).
 /// </para>
 /// <para>
 /// Raw session queries are not filtered: background code that acts for a user asks
@@ -24,7 +25,7 @@ namespace MintPlayer.Spark.Organizations;
 public interface IOrganizationOwned
 {
     /// <summary>The id of the owning <see cref="Models.Organization"/>.</summary>
-    string? OrganizationId { get; }
+    string? OrganizationId { get; set; }
 }
 
 /// <summary>

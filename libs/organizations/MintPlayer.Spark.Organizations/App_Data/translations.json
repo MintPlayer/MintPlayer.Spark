@@ -292,6 +292,21 @@
         "en": "This invitation was sent to another email address. Sign in with the account that uses that address, then open the link again.",
         "fr": "Cette invitation a été envoyée à une autre adresse e-mail. Connectez-vous avec le compte qui utilise cette adresse, puis rouvrez le lien.",
         "nl": "Deze uitnodiging is naar een ander e-mailadres gestuurd. Meld je aan met het account dat dat adres gebruikt en open de link opnieuw."
+      },
+      "switcher": {
+        "en": "Organization",
+        "fr": "Organisation",
+        "nl": "Organisatie"
+      },
+      "allOrganizations": {
+        "en": "All organizations",
+        "fr": "Toutes les organisations",
+        "nl": "Alle organisaties"
+      },
+      "personal": {
+        "en": "personal",
+        "fr": "personnelle",
+        "nl": "persoonlijk"
       }
     }
   }

@@ -22,6 +22,9 @@ internal interface IRowPolicyRequestState
     /// </summary>
     string? DeletedScopeClrType { get; set; }
 
+    /// <summary>Whether the query being read names a parent (<see cref="Abstractions.Authorization.RowPolicyContext.IsSubQuery"/>).</summary>
+    bool IsSubQuery { get; set; }
+
     /// <summary>The <c>deleted</c> mode row policies see for <paramref name="entityType"/>.</summary>
     SparkDeletedFilter DeletedFor(Type entityType)
         => DeletedScopeClrType is null || string.Equals(DeletedScopeClrType, entityType.FullName, StringComparison.Ordinal)
@@ -35,4 +38,6 @@ internal sealed partial class RowPolicyRequestState : IRowPolicyRequestState
     public SparkDeletedFilter Deleted { get; set; }
 
     public string? DeletedScopeClrType { get; set; }
+
+    public bool IsSubQuery { get; set; }
 }

@@ -251,12 +251,12 @@ public abstract class OrganizationsTestHost : SparkTestDriver
 
     // ---- HTTP as a user -------------------------------------------------------------------------------
 
-    internal async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload, string? userId)
+    internal async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(string url, object payload, string? userId, string? cookie = null)
     {
         using var client = Factory.CreateClient();
-        var (cookie, xsrf) = await MintAsync(client, userId);
+        var (antiforgeryCookie, xsrf) = await MintAsync(client, userId);
         var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(payload) };
-        request.Headers.Add("Cookie", cookie);
+        request.Headers.Add("Cookie", cookie is null ? antiforgeryCookie : antiforgeryCookie + "; " + cookie);
         request.Headers.Add("X-XSRF-TOKEN", xsrf);
         if (userId is not null)
             request.Headers.Add(OgPrincipalStartupFilter.Header, userId);
@@ -265,9 +265,9 @@ public abstract class OrganizationsTestHost : SparkTestDriver
         return (response.StatusCode, string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone());
     }
 
-    internal async Task<IReadOnlyList<string>> QueryIdsAsync(JsonNode body, string userId)
+    internal async Task<IReadOnlyList<string>> QueryIdsAsync(JsonNode body, string userId, string? cookie = null)
     {
-        var (status, result) = await SendAsync("/spark/queries/execute", body, userId);
+        var (status, result) = await SendAsync("/spark/queries/execute", body, userId, cookie);
         status.Should().Be(HttpStatusCode.OK);
         return result.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetString()!).OrderBy(i => i).ToList();
     }

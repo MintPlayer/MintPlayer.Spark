@@ -64,6 +64,7 @@ internal sealed partial class DistinctValues : IPostEndpoint<DistinctValuesReque
 
         // T2 (#460): the same soft-deletion mode as the grid, so the panel offers what the grid can show.
         rowPolicyRequestState.Deleted = request.Deleted ?? SparkDeletedFilter.Exclude;
+        rowPolicyRequestState.IsSubQuery = !string.IsNullOrEmpty(request.ParentId);
 
         var query = queryLoader.ResolveQuery(id);
 

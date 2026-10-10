@@ -73,4 +73,10 @@ The link opens `{PublicBaseUrl}/organizations/accept/{token}?id={invitationId}`.
 add `withOrganizationRoutes()` to `sparkAuthRoutes(...)`. It posts the two values to
 `POST /spark/organizations/accept` on an explicit click. Change the path with `Spark:Organizations:AcceptPath`.
 
+**The organization switcher.** `<spark-organization-switcher>` (ng-spark `/organizations`) picks a current
+organization, kept in a cookie and checked against the caller's memberships on every request. Lists of
+`IOrganizationOwned` rows show only its rows (detail pages, sub-queries and the organization list do not narrow),
+and a create whose form names no organization lands there, else in the personal one.
+`GET|POST /spark/organizations/current`; `ISparkOrganizations.GetCurrentOrganizationIdAsync()`.
+
 Guide: [docs/guide-organizations.md](../../../docs/guide-organizations.md).

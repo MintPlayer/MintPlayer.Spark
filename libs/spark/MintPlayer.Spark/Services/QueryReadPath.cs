@@ -62,6 +62,7 @@ internal sealed partial class QueryReadPath : IQueryReadPath
         // T2 (#460): the soft-deletion mode reaches row policies through RowPolicyContext. Set before
         // anything asks row security, because row filters are memoized per request.
         rowPolicyRequestState.Deleted = request.Deleted ?? SparkDeletedFilter.Exclude;
+        rowPolicyRequestState.IsSubQuery = !string.IsNullOrEmpty(request.ParentId);
 
         var query = queryLoader.ResolveQuery(id);
 

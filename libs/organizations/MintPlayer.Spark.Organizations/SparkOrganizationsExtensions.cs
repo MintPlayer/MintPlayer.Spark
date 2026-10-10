@@ -55,6 +55,7 @@ public static class SparkOrganizationsExtensions
         services.AddHttpContextAccessor();
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddScoped<OrganizationMembershipReader>();
+        services.TryAddScoped<CurrentOrganization>();
         services.TryAddScoped<SparkOrganizations>();
         services.TryAddScoped<ISparkOrganizations>(sp => sp.GetRequiredService<SparkOrganizations>());
         services.TryAddScoped<OrganizationMail>();
@@ -65,6 +66,7 @@ public static class SparkOrganizationsExtensions
         builder.AddSparkRowPolicy<OrganizationRowPolicy>();
         builder.AddInterceptor<OrganizationInterceptors>();
         builder.AddInterceptor<OrganizationMembershipInterceptors>();
+        builder.AddInterceptor<OrganizationOwnedDefaults>();
 
         // Open generics: they close over whichever user type AddAuthentication<TUser>() registered.
         services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(ISparkSignedInHandler<>), typeof(PersonalOrganizationOnSignIn<>)));

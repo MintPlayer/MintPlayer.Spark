@@ -23,6 +23,13 @@ public interface ISparkOrganizations
     Task<OrganizationRole?> GetRoleAsync(string organizationId, string userId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The organization the caller chose in the switcher (<c>/spark/organizations/current</c>, Q-M11a) while they are
+    /// still a member of it; null for "All organizations". Read from the current request: lists of
+    /// <see cref="IOrganizationOwned"/> rows show only its rows, and a new row with no organization lands there.
+    /// </summary>
+    Task<string?> GetCurrentOrganizationIdAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// <paramref name="userId"/>'s personal organization, created with them as Owner when missing (D21).
     /// Idempotent and race-free: its id is fixed (<see cref="Organization.PersonalIdFor"/>).
     /// </summary>

@@ -18,6 +18,7 @@ namespace MintPlayer.Spark.Organizations.Services;
 internal sealed class SparkOrganizations(
     IDocumentStore store,
     OrganizationMembershipReader reader,
+    CurrentOrganization current,
     OrganizationMail mail,
     IEnumerable<IOrganizationDataHandler> dataHandlers,
     IModelLoader modelLoader,
@@ -43,6 +44,9 @@ internal sealed class SparkOrganizations(
 
     public async Task<OrganizationRole?> GetRoleAsync(string organizationId, string userId, CancellationToken cancellationToken = default)
         => (await GetMembershipsAsync(userId, cancellationToken)).TryGetValue(organizationId, out var role) ? role : null;
+
+    public Task<string?> GetCurrentOrganizationIdAsync(CancellationToken cancellationToken = default)
+        => current.GetIdAsync(cancellationToken);
 
     public async Task<Organization> EnsurePersonalOrganizationAsync(string userId, CancellationToken cancellationToken = default)
     {
