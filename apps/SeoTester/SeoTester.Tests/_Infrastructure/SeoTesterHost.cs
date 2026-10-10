@@ -127,10 +127,13 @@ internal static class SeoRequests
 {
     public static Task<(System.Net.HttpStatusCode Status, JsonElement Body, string Raw)> PostAsync(
         HttpClient client, string url, object payload, string? user, params string[] roles)
-        => PostAsync(client, url, payload, user, language: null, roles);
+        => PostWithLanguageAsync(client, url, payload, user, language: null, roles);
 
-    /// <summary>As above, with an <c>Accept-Language</c> (the server's messages follow it).</summary>
-    public static async Task<(System.Net.HttpStatusCode Status, JsonElement Body, string Raw)> PostAsync(
+    /// <summary>
+    /// As above, with an <c>Accept-Language</c> (the server's messages follow it). A name of its own: as an overload of
+    /// <c>PostAsync</c> it took a single role for the language (the settings test lost its Administrators role).
+    /// </summary>
+    public static async Task<(System.Net.HttpStatusCode Status, JsonElement Body, string Raw)> PostWithLanguageAsync(
         HttpClient client, string url, object payload, string? user, string? language, params string[] roles)
     {
         var (cookie, xsrf) = await MintAsync(client, user, roles);

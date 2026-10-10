@@ -168,8 +168,10 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
 
         (await ActionAsync(host, AuditRunTypeId, "AuditRun", "CancelAudit", runId, Vic)).Status.Should().NotBe(HttpStatusCode.OK);
         var (status, _, raw) = await ActionAsync(host, AuditRunTypeId, "AuditRun", "CancelAudit", runId, Max);
-        status.Should().NotBe(HttpStatusCode.OK);
-        raw.Should().Contain("already finished");
+        // M11: a finished run withholds the action (403, the page shows no button); CancelAudit's own
+        // "already finished" answer stays for a run that finishes between loading the page and the click.
+        status.Should().Be(HttpStatusCode.Forbidden, raw);
+        raw.Should().Contain("CancelAudit");
     }
 
     [Fact]

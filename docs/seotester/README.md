@@ -5,10 +5,11 @@ X or Google, register websites in an organization, and get an SEO / performance 
 The spec, decisions and milestones are in [seo_analyzer_PRD.md](../seo_analyzer_PRD.md); this folder is the
 operator's documentation. Treat changes to `apps/SeoTester` as production changes.
 
-Status: **M10** (M8's sites, verification, catalogue, scoring, audit start, share links, abuse log and passkeys; M9's
+Status: **M11** (M8's sites, verification, catalogue, scoring, audit start, share links, abuse log and passkeys; M9's
 crawl pipeline: robots.txt, the site-level probe, page batches, the aggregate that scores the run, cancel; M10's
-headless-browser render of a sample, PageSpeed Insights and the PDF report). All 110 catalogue checks are measured.
-The pages arrive with M11, compose, deploy and monitoring with M12.
+headless-browser render of a sample, PageSpeed Insights and the PDF report; M11's pages: landing page, site, live run
+report with how to fix in English and Dutch, page previews, trend, share page and badge, operator dashboard). All 110
+catalogue checks are measured. Compose, deploy and monitoring arrive with M12.
 
 ## Layout
 
@@ -44,7 +45,29 @@ The pages arrive with M11, compose, deploy and monitoring with M12.
    (`VerifiedOnly` hides unverified sites' links until they verify).
 5. **Passkeys** (account page): after the first external sign-in a user can add a passkey and sign in with it.
 
-**Administrators** also get the check catalogue editor (SEO → Check catalogue: edit texts, weights, severities, enable
+## The pages (M11)
+
+Every page is ng-spark's generic detail page; SeoTester adds attribute renderers (`ClientApp/src/app/seo/renderers.ts`)
+and a few panels (`seo/po-detail-page.component.ts`). The layout (tabs, groups, which renderer draws what) is the
+model JSON in `App_Data/Model`.
+
+| Page | URL | What it shows |
+|---|---|---|
+| Landing | `/` → `/home` | what is checked and how; signed in: my sites and the (live) audits |
+| Site | `/po/site/{id}` | latest score (gauge), settings, ownership: verified state or the three proofs with copy buttons; the audits; the score trend (scoring changes marked) |
+| Audit | `/po/audit-run/{id}` | *Report*: live progress while it runs, then the score, category bars and every check (issues first; New/Fixed/Unchanged; why not measured; sample pages; how to fix with nginx/Apache/IIS/HTML snippets); the pages (7 days, then a note). *Details*: what the run was allowed |
+| Page | `/po/page-result/{id}` | Google desktop/phone previews, a link card, the page's findings |
+| Shared report | `/shared/{Type}/{token}?id=…` | anonymous, read-only (a site or an audit) |
+| Operator dashboard | `/po/operator-dashboard/main` | Administrators: usage, refusals, database size per collection, every site, the abuse log |
+
+*Run audit* opens the run's page and follows it live. A refusal (cool-down, quota, gate) says why and when to try again.
+*Download PDF* downloads a printed report at once, otherwise prints it and notifies. *Badge* (Owners and Admins) makes a
+share link and shows the Markdown of a badge (`/seotester/badge.svg?site=…&token=…`, the latest score and grade) that
+links to it; *Stop sharing* ends both. The check texts come from `GET /seotester/catalogue?culture=en|nl` (public: the
+share page needs them). The figures of the operator dashboard come from `GET /seotester/admin/dashboard`
+(`Read/OperatorDashboard`, Administrators).
+
+**Administrators** also get the operator dashboard (SEO administration → Dashboard), the check catalogue editor (SEO → Check catalogue: edit texts, weights, severities, enable
 or disable a check, add one, *Reset to shipped*) and the abuse log (SEO administration → Audit log). The catalogue is
 seeded at startup: new shipped checks are added and unedited entries follow the shipped text; an edit is never
 overwritten.

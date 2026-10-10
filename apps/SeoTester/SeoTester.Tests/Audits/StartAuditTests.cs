@@ -97,7 +97,7 @@ public class StartAuditTests(SeoTesterHostFixture host)
         navigate[0].GetProperty("objectTypeId").GetString().Should().Be(AuditRunTypeId);
 
         using var client = host.CreateClient();
-        var (refused, refusedBody, refusedRaw) = await SeoRequests.PostAsync(client, "/spark/actions/execute",
+        var (refused, refusedBody, refusedRaw) = await SeoRequests.PostWithLanguageAsync(client, "/spark/actions/execute",
             MintPlayer.Spark.Testing.Wire.Action(SiteTypeId, "StartAudit", new { parent = new { id = globexSite.Id, objectTypeId = SiteTypeId, name = "Site" } }),
             Bob, "nl-BE");
         refused.Should().Be(HttpStatusCode.TooManyRequests, refusedRaw);

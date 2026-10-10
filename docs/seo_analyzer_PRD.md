@@ -33,6 +33,7 @@ Research behind this document:
 | M8 ✅ | 2026-10-10 (§12 "M8"): `Site` (organization rows, live), ownership verification by DNS TXT / well-known file / meta tag with the claim flow (D18, D42) and an hourly re-check; the check catalogue (110 checks, 8 categories) seeded into editable `CheckDefinition`s with "Reset to shipped"; the pure scoring engine (snapshot + `ScoringVersion`, headline and category scores); `AuditRun` / `PageResult` shapes; `StartAudit` / `StartFullCrawl` (join, 6 h cool-down, three quotas, gates, first message enqueued); share links for `Site` and `AuditRun` (core: per-object share gates); `AuditLogEntry`; D26 cascade; passkeys (D46). Open: Q-M8a–Q-M8e (§11) |
 | M9 ✅ | 2026-10-10 (§12 "M9"): the crawl pipeline: `seo-probe` (robots.txt first and the opt-out, Q-M8e; sitemaps, redirects, TLS incl. the raw TLS 1.0/1.1 hello, well-known files, DNS, RDAP and hstspreload through `LookupCache`), `seo-crawl` (`CrawlFrontier`, page batches, per-host politeness, tier limits, full-crawl ceiling), `seo-aggregate` (scores with the run's snapshot, New/Fixed/Unchanged, notifications), `CancelAudit`; 92 of 110 checks (18 wait for Chromium/PSI, M10); core `SafeHttpTrace` and `ISafeHttpSockets`; spikes S2, S7, S9 measured. Open: Q-M9a, Q-M9b (§11) |
 | M10 ✅ | 2026-10-10 (§12 "M10"): `seo-render` (a sample per tier, one URL template each, in Chromium over Playwright: launched locally or `ConnectAsync` to the container's `server.mjs`; every browser request fetched by the app through the SSRF-safe client, one redirect hop at a time (core `SafeHttpOptions.FollowRedirects`), robots.txt and the tier's connections, analytics hits answered locally; axe-core 4.13.0 bundled; phone and desktop renders), `seo-psi` (PageSpeed Insights with the key in a header, recorded real answers, 429 deferred then "not measured"), `seo-pdf` (the report printed per language, kept 7 days, members-only download), the aggregate waiting for crawl, render and PSI; **110 of 110 checks**; `RunCheckResult.Note` says why a check was not measured; the Chromium container's image and server script for M12; spikes S3 and S5 measured. Open: Q-M10a–Q-M10f (§11) |
+| M11 ✅ | 2026-10-10 (§12 "M11"): the pages, on ng-spark's generic detail page with SeoTester's renderers and panels: landing page, site (gauge, verification with copy buttons, trend), run report (live progress over `/spark/live`, gauge and category bars, every check with New/Fixed/Unchanged, why not measured, how to fix in en/nl with platform snippets; PDF download), page previews and findings, share page, badge (`ShareBadge`, `/seotester/badge.svg`), operator dashboard (`OperatorDashboard`, `/seotester/admin/dashboard`), public catalogue texts; the notification link fixed to `/po/audit-run/{id}`; refusals say when to try again; ng-spark fixes found in the browser (gauge badge, share page, action errors, language header, notification links). Q-M6d reviewed. Open: Q-M11a–Q-M11d (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -455,7 +456,30 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   category PERFORMANCE only; accessibility comes from our own axe-core run on the rendered page, SEO and best practices
   from our checks. Options: (a) as built; (b) also desktop (a second call per page, twice the quota); (c) all four
   Lighthouse categories (the answer grows ~40 %, the scores duplicate our checks). **Recommendation: (a).**
-- **Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).
+- **Q-M11a (from M11): an organization switcher.** M11's brief lists one; ng-spark's organizations UI has none. Built:
+  no switcher. Every list (sites, audits) shows the rows of all the caller's organizations through the row policy, with
+  an *Organization* column to sort and filter by; a new site picks its organization on the form (empty = personal,
+  D21); organizations are managed on the generic Organizations pages (members, roles, invitations, leave, delete).
+  Options: (a) as built; (b) a switcher in the topbar that scopes every list to one organization (a generic ng-spark
+  feature: a "current organization" the row policy reads, carried per request). **Recommendation: (a)**: a user in two
+  organizations sees both sites' state at once, which a switcher would hide, and (b) adds per-request state to every
+  query for a filter the grids already have.
+- **Q-M11b (from M11): the catalogue texts are public.** `GET /seotester/catalogue` answers anonymously: the share page
+  (anonymous by design, X6) shows a run's results and needs the check titles and how-to-fix. The catalogue holds no user
+  or organization data (D32; `CheckDefinitionActions.RowSecurityRationale`). Options: (a) public, as built; (b) only
+  signed-in users, and the share page shows check ids. **Recommendation: (a).**
+- **Q-M11c (from M11): the badge is the share link's.** F11 asks for a share link and a badge; built as one secret: the
+  badge URL carries the site's share token, *Badge* makes a new link (replacing the old one, like *Share link*) and
+  shows the Markdown `[![SEO score](…/seotester/badge.svg?site=…&token=…)](share link)`, *Stop sharing* ends both,
+  the sharing switch hides both. Options: (a) as built; (b) a separate badge token per site (a second secret to
+  store, show and revoke). **Recommendation: (a)**: a badge is a public pointer to the shared report anyway.
+- **Q-M11d (from M11): the social card has no image or own title.** F7's previewers draw the Google results from the
+  page's title and description; the Open Graph / X card uses them too, because the crawl keeps neither `og:title`,
+  `og:description`, `og:image` nor `twitter:card` on `PageResult` (the checks judge them, the values are not stored).
+  Options: (a) as built; (b) store those four values on `PageResult` (expires with it, 7 days) and draw the real card
+  with its image (fetched by the viewer's browser from the audited site). **Recommendation: (b)** if the owner wants the
+  card to be exact; (a) keeps the page free of third-party requests. Proceeding with (a) until answered.
+- ~~**Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).~~ **Reviewed in M11** (§12 "M11"): the colours and the gauge are kept; the grade badge was unstyled and is fixed (ng-bootstrap's `bs-badge`).
 
 
 ---
@@ -1733,3 +1757,105 @@ restored, green. The full SeoTester.Tests run: 160/160 (the route snapshot gaine
 intended change).
 
 **Open (§11):** Q-M10a–Q-M10f.
+
+### M11 (2026-10-10): the pages
+
+Commits: `8e443891` (core: `ISparkShareLinks.IsValidAsync`), `cc85abdb` (ng-spark: refusal text and the action
+result), `5d4f6234` (SeoTester server: catalogue texts, badge, operator dashboard, the start opens the run),
+`7854d197`, `9f341153`, `c0c476b4`, `2628d8c5` (ng-spark fixes found in the browser), `260924a7` (the SPA, the model
+layout, en/nl), then this record. Operator documentation: `docs/seotester/README.md`.
+
+**How the pages are built: the generic detail page, the model and renderers, not hand-written pages.** Every page is
+ng-spark's `spark-po-detail` (one `poDetail` override, `seo/po-detail-page.component.ts`, adds the panels a renderer
+cannot be). The report is the run's own attributes laid out by the model (tabs *Report* / *Details*, groups) and drawn
+by full-width attribute renderers (`seo/renderers.ts`), so the live type, the actions, sharing and the share page all
+work on it unchanged:
+
+| Renderer | Attribute | Draws |
+|---|---|---|
+| `seo-score` | `AuditRun.Score`, `Site.LatestScore` | ng-spark's `spark-gauge` (letter grades) at the model's size, 32 px in a grid row |
+| `seo-run-progress` | `AuditRun.Phase` | the run's state: live stage (1–5), pages of the run's limit, current page; why it was blocked, failed or cancelled |
+| `seo-category-scores` | `AuditRun.CategoryScores` | a `spark-threshold-bar` per category (catalogue order), "not measured", "capped by a critical issue", Domain "not scored" |
+| `seo-check-results` | `AuditRun.CheckResults` | every check: Issues / Not measured / Passed / All, grouped by category, issues ordered by status, severity, weight × pages (F5); New / Fixed / Unchanged; why not measured (`Note`); sample pages; how to fix (the catalogue's explanation in the viewer's language, a snippet per platform with copy, the docs link); "show how to fix" remembered per browser |
+| `seo-verification` | `Site.VerificationToken` | verified (how, last check, failing re-checks) or the three proofs exactly as `OwnershipProof` matches them, each with a copy button |
+| `seo-previews` | `PageResult.Title` | Google desktop and phone results (cut at 60/70 and 158/120 characters), a shared-link card |
+| `seo-page-findings` | `PageResult.Findings` | the page's findings, failures first, the summary filled with the page's own values |
+
+Panels (`extraContentTemplate`): the site's score trend (`site-runs`, completed runs, `spark-trend-chart` 0–100, a
+line per `ScoringVersion` change, F8); the run's "page details expired" note (7 days, D8); the operator dashboard.
+
+**Pages and routes.** `/` → `/home` (the landing page: what is checked and how; signed in, *my sites* and the live
+audits as query cards). The redirect moved to the top level: as a child of the shell's `''` route it never ran and `/`
+was blank (CodeCoverage's routes say the same). `/po/site/{id}`, `/po/audit-run/{id}` (Report, Details, the pages
+sub-query), `/po/page-result/{id}`, `/po/operator-dashboard/main` (menu *SEO administration → Dashboard*),
+`/shared/{Type}/{token}?id=…` (the public share page), the generic organization, notification and settings pages.
+**The notification link `/po/auditrun/{id}` from M9 opened nothing**: the SPA resolves `/po/{type}` by the type's
+alias or id, and the alias is `audit-run`; it is now `RunPipeline.RunUrl` = `/po/audit-run/{id}`, pinned by
+`CrawlPipelineTests`. *Run audit* and *Full-site crawl* navigate to the run (a `Navigate` client operation, joined runs
+included), where it is followed live.
+
+**Server additions.**
+- `GET /seotester/catalogue?culture=en|nl` (anonymous; Q-M11b): the catalogue's texts in one language and the category
+  and severity labels, for the report and the share page.
+- `GET /seotester/badge.svg?site=…&token=…` and the action *Badge* (`ShareBadge`, site Owners and Admins, D31): F11's
+  badge rides on the site's share link (Q-M11c); core gains `ISparkShareLinks.IsValidAsync` (the share page's own token
+  check made public), every refusal is one 404.
+- The operator dashboard (F16, D28): a virtual persistent object `OperatorDashboard` (hand-written model, no
+  documents) gated by `Read/OperatorDashboard` (Administrators), so its menu entry is hidden from everyone else, and
+  `GET /seotester/admin/dashboard` (same right, else 404): users, organizations, sites (verified), audits (total, 24 h,
+  7 days by status, running), refused starts of the week by kind, the database's size on disk and per collection, and
+  every organization's sites (500 newest) with the organization's name. The abuse log is the `audit-log` query card
+  under it. A parentless query cannot be the virtual object's sub-query: Spark refuses to run it with a parent
+  ("cannot be scoped to that parent"), seen in the browser.
+- Refusals are translated (`seo.coolDownRefused`, `seo.auditQuotaRefused`, …) and keep 429 + `Retry-After`; the abuse
+  log keeps an English detail. The SPA appends "Try again in 5 hours." (ng-spark, below).
+- `AuditRunActions.OnDisableActionsAsync`: a finished run offers no *Cancel audit*, an unfinished one no *Download PDF*.
+- *Download PDF* downloads at once when the report is already printed (the action's result reaches the page through
+  ng-spark's `customActionExecuted`), else the notification with the link follows.
+
+**ng-spark (22.33.0 already on this branch; no bump), each red→green:**
+- `describeSparkError` (services): a refused action's envelope reason (`result.error`, validation messages) plus "Try
+  again in {wait}" from `retryAfterSeconds`/`Retry-After` (`spark.tryAgainIn`, `spark.wait.*`, en/fr/nl in core's
+  translations). The detail page and the grid showed Angular's "Http failure response … 429" before.
+- The detail page shows an action failure as a dismissible alert above the page (`actionError`); it used to replace
+  the whole page with the alert.
+- `customActionExecuted` carries the action's result.
+- **Q-M6d, the renderers in a browser:** the gauge's grade was `<span class="badge text-bg-…">`, but ng-bootstrap ships
+  the badge CSS with its component, so the letter was unstyled (black on the dark page). It is `<bs-badge>` now. The
+  letter-grade colours read well (A/B green, C/D amber, F red) and the ring at 72 px on the report, 56 px on the site,
+  32 px in a grid. `spark-delta` is not used by SeoTester's pages (the trend shows the history), so its defaults stay.
+  Seen in dark mode only (the owner's default); light mode not looked at.
+- The share page handed an AsDetail array's `value` (empty) to its renderer: `objects` holds the rows; it uses
+  `rendererValue` like the detail page. Its `row`/`col`/`table` classes had no CSS (grid and table CSS ship with
+  `bs-grid`/`bs-table`), so it was unstyled edge to edge; component styles lay it out.
+- `withSparkLanguage()`: CodeCoverage's `sparkLanguageInterceptor` moved into ng-spark unchanged (with its spec);
+  CodeCoverage and SeoTester call it. Server-resolved texts (the dashboard title, refusals) followed the browser's
+  language, not the selector.
+- A notification (bell or push click) whose same-origin link no route matches (`/seotester/report.pdf`) is loaded as a
+  page; the router threw NG04002.
+- SeoTester's own: `provideSparkAuth({ loginUrl: '/sign-in' })` (the auth bar and sign-out went to `/login`, which an
+  external-only app does not have).
+
+**Seen in a browser** (`dotnet run --launch-profile https`, SparkId, a dev account `ann.m11@example.com`, Chromium
+over the playwright MCP, dark theme, 1400 px; screenshots in the session scratchpad, not the repo): the landing page
+signed in; a site (gauge, verification instructions, copy buttons, trend panel's one-run note, the audits grid);
+`https://example.com` and `https://coverage.mintplayer.com` audited end to end (unverified tier; the second followed
+live from "Reading robots.txt" through "Rendering in a browser" to the completed report without a reload); the report
+in English and Dutch (catalogue texts, labels, categories, how-to-fix with snippets); the page view with previews and
+findings; *Run audit* during the cool-down ("… Try again in 5 hours.", page kept); *Download PDF* (printed, then
+downloaded); the notification bell, a run notification opening `/po/audit-run/…`, the PDF notification; a run's share
+link opened in a second tab; the badge (`200 image/svg+xml`, "SEO score: 73 C"); the operator dashboard as an
+administrator (my dev user's `Roles` += `Administrators` in the local database, as the README describes); the
+organizations and notification-preference pages. **Not seen:** the landing page signed out, Web Push (no VAPID keys
+locally: the bell's push key answers 404, push is off), a verified site and a full crawl, joining a running audit as a
+second member (server-tested), phone widths, light mode, the badge on a forge.
+
+**Tests.** Server (`SeoTester.Tests`): `ReportSurfaceTests` (catalogue in two languages, the badge's life cycle, the
+dashboard's access and figures, the actions per run state), `StartAuditTests` +1 (navigate, Dutch refusal with the
+wait), the notification URL pinned; core `ShareLinkTests` +1. **Red:** core stub 1/11; SeoTester with 7 mechanisms
+removed at once (Dutch catalogue, badge token check, dashboard right, disable Cancel, navigate, translated refusal,
+notification URL): 8 of 23 failed. Green: the full SeoTester.Tests (see below). SPA (vitest, 25 specs): 8 mutations
+→ 8 failed; green 25/25. ng-spark: every change red first (2 po-detail, 1 grid, 1 gauge, 1 share, 1 notifications, 1
+pwa, then the keep-the-page change 2), green: services, grid, po-detail, share, score renderers, notifications, pwa.
+
+**Open (§11):** Q-M11a–Q-M11d.
