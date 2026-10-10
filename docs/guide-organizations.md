@@ -148,18 +148,19 @@ await organizations.RequestToJoinAsync(organizationId, requesterId);   // e.g. a
   expires with the invitation.
 - The page posts both values to `POST /spark/organizations/accept` on an explicit click: mail scanners
   open links, so a GET never acts. The caller must be signed in.
+- **The sender's address must be confirmed** (PRD D43). An invitation is mailed on the inviter's behalf,
+  so `InviteAsync` refuses, with a `SparkValidationException` and nothing stored or sent, when the
+  inviting account has no confirmed email address. The *Invite* action says so (translated) before it
+  asks for an address. A join request mails the requester's address to the Owners on the requester's
+  behalf, so `RequestToJoinAsync` applies the same rule to the requester.
 - **An invitation** makes the signed-in account a member with the invited role, **only when that
-  account owns the invited address** (PRD D43): the account's address is the invited one, compared the
-  way ASP.NET Identity normalizes it, and the account has confirmed it. It is the rule the identity
-  provider's team invitations use, shared as `SparkEmailOwnership` in the Authorization package
-  (`IsAddressOf` for the address, `Owns` adding the confirmation). Any other account, or one that has not
-  confirmed that address (an X or Entra sign-in that brought no verified address, a registration that
-  was never confirmed), gets `reason: "otherAddress"`, and the accept page says the invitation was sent to
-  another address and to sign in with the account that confirmed it. That refusal does not spend the
-  link, so the right account can still use it.
+  account's address is the invited one** (PRD D43), compared the way ASP.NET Identity normalizes it. The
+  invitee's address need not be confirmed: they may not even have had an account when invited. Any other
+  account gets `reason: "otherAddress"`, and the accept page says the invitation was sent to another
+  address and to sign in with the account that uses it. That refusal does not spend the link, so the
+  right account can still use it.
 - **A join request** is mailed to every Owner. It makes its requester a member, and needs an Owner or
-  Admin to accept it; the requester cannot accept their own. No address rule applies: the requester
-  signed in to ask, and an Owner or Admin decides, whatever either account's address.
+  Admin to accept it; the requester cannot accept their own. The approver's address plays no part.
 - **Single use**: accepting deletes the invitation, with optimistic concurrency, so of two concurrent
   accepts one fails. A second invitation to the same address replaces the first.
 - **Expiry**: `OrganizationInvitation` is `IExpiring` with `expiresAfter` 14 days in the library's

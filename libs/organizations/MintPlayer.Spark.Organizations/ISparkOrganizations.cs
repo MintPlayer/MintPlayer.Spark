@@ -34,19 +34,25 @@ public interface ISparkOrganizations
     /// <summary>
     /// Invites <paramref name="email"/> as <paramref name="role"/> (never Owner) and mails the link. Admin
     /// and up; an invitation to the same address replaces the pending one. A personal organization too (D42).
+    /// The mail goes out on the inviter's behalf, so the inviter's account needs a confirmed email address
+    /// (D43); without one the call throws a <see cref="MintPlayer.Spark.Abstractions.SparkValidationException"/> and nothing is stored or sent.
+    /// The invited address needs no account at all.
     /// </summary>
     Task InviteAsync(string organizationId, string email, OrganizationRole role, string inviterUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Asks the Owners of <paramref name="organizationId"/>, by mail, to let <paramref name="requesterUserId"/>
     /// in as <paramref name="role"/> (D18), a personal organization's too (D42). A member already: nothing happens.
-    /// A request from the same user replaces their pending one. Returns whether a request was made.
+    /// A request from the same user replaces their pending one. Returns whether a request was made. The mail
+    /// carries the requester's address on their behalf, so like an inviter the requester needs a confirmed
+    /// email address (D43); without one the call throws a <see cref="MintPlayer.Spark.Abstractions.SparkValidationException"/>.
     /// </summary>
     Task<bool> RequestToJoinAsync(string organizationId, string requesterUserId, OrganizationRole role = OrganizationRole.Member, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Redeems a mailed link as <paramref name="userId"/>. An invitation makes the signed-in user a
-    /// member, and only when that account owns the invited address (confirmed, D43); a join request makes
+    /// member, and only when that account's address is the invited one (D43; it need not be confirmed, the
+    /// inviter's is); a join request makes
     /// its requester one, and needs an Owner or Admin to open it, whatever their address. The token is
     /// single-use and expires; every refusal reads the same, except the wrong account for a valid invitation.
     /// </summary>
@@ -76,10 +82,10 @@ public sealed record OrganizationAcceptance(bool Accepted, string? OrganizationI
     public const string InvalidProblem = "This link is not valid. It may have expired, been used already, or be meant for someone else.";
 
     /// <summary>
-    /// A valid invitation opened by an account that does not own the invited address (D43). The link
+    /// A valid invitation opened by an account whose address is not the invited one (D43). The link
     /// stays live for the right account.
     /// </summary>
-    public const string OtherAddressProblem = "This invitation was sent to another email address. Sign in with the account that has confirmed that address, then open the link again.";
+    public const string OtherAddressProblem = "This invitation was sent to another email address. Sign in with the account that uses that address, then open the link again.";
 
     /// <summary><see cref="Reason"/> of <see cref="InvalidProblem"/>.</summary>
     public const string InvalidReason = "invalid";

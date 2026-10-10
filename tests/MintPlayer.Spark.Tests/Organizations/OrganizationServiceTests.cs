@@ -1,4 +1,6 @@
+using System.Net;
 using System.Text.Json;
+using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Organizations;
@@ -195,15 +197,21 @@ public class OrganizationServiceTests : OrganizationsTestHost
     }
 
     [Fact]
-    public async Task A_join_request_is_approved_whatever_the_approvers_or_requesters_address()
+    public async Task A_join_request_needs_the_requesters_address_confirmed_but_not_the_approvers()
     {
-        // D43 binds an invitation to its address; a join request has none to bind: the requester signed
-        // in to ask, and an Owner or Admin decides. Neither account needs a confirmed address.
+        // D43 (owner correction 2026-10-10): the Owners are mailed the requester's address on the
+        // requester's behalf, so it must be confirmed, as an inviter's. The approver mails nobody.
         var ann = await SeedUserAsync("ann");
         var ada = await SeedUserAsync("ada", emailConfirmed: false);
         var rex = await SeedUserAsync("rex", emailConfirmed: false);
         var acme = await SeedOrganizationAsync("Acme", ann, (ada, OrganizationRole.Admin));
 
+        var unconfirmed = () => Organizations().RequestToJoinAsync(acme.Id!, rex.Id!);
+        await unconfirmed.Should().ThrowAsync<SparkValidationException>().WithMessage(SparkOrganizations.RequesterUnconfirmedProblem);
+        Mailer.Sent.Should().BeEmpty();
+        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
+
+        await ConfirmEmailAsync(rex.Id!);
         (await Organizations().RequestToJoinAsync(acme.Id!, rex.Id!)).Should().BeTrue();
         var (requestId, token, _) = LastLink("ann@test.local");
 
@@ -235,22 +243,70 @@ public class OrganizationServiceTests : OrganizationsTestHost
     }
 
     [Fact]
-    public async Task An_invitation_needs_the_invited_address_confirmed_on_the_account()
+    public async Task An_invitee_whose_matching_address_is_unconfirmed_accepts()
     {
+        // D43 (owner correction 2026-10-10): the invitee may not even have had an account when invited,
+        // so the address only has to match; the inviter's is the one that must be confirmed.
         var ann = await SeedUserAsync("ann");
         var uma = await SeedUserAsync("uma", emailConfirmed: false);
         var acme = await SeedOrganizationAsync("Acme", ann);
         await Organizations().InviteAsync(acme.Id!, "uma@test.local", OrganizationRole.Viewer, ann.Id!);
         var (invitationId, token, _) = LastLink("uma@test.local");
 
-        (await Organizations().AcceptAsync(invitationId, token, uma.Id!)).Should().Be(OrganizationAcceptance.OtherAddress, "an unconfirmed address proves nothing");
-
-        using (var session = Store.OpenAsyncSession())
-        {
-            (await session.LoadAsync<MintPlayer.Spark.Authorization.Identity.SparkUser>(uma.Id!)).EmailConfirmed = true;
-            await session.SaveChangesAsync();
-        }
         (await Organizations().AcceptAsync(invitationId, token, uma.Id!)).Accepted.Should().BeTrue();
+        (await Organizations().GetRoleAsync(acme.Id!, uma.Id!)).Should().Be(OrganizationRole.Viewer);
+    }
+
+    [Fact]
+    public async Task An_inviter_without_a_confirmed_email_is_refused_and_nothing_is_stored_or_sent()
+    {
+        var ann = await SeedUserAsync("ann", emailConfirmed: false);
+        var acme = await SeedOrganizationAsync("Acme", ann);
+
+        var invite = () => Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
+
+        await invite.Should().ThrowAsync<SparkValidationException>().WithMessage(SparkOrganizations.InviterUnconfirmedProblem);
+        Mailer.Sent.Should().BeEmpty();
+        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task An_inviter_with_a_confirmed_email_invites()
+    {
+        var ann = await SeedUserAsync("ann", emailConfirmed: false);
+        var acme = await SeedOrganizationAsync("Acme", ann);
+        await ConfirmEmailAsync(ann.Id!);
+
+        await Organizations().InviteAsync(acme.Id!, "bob@test.local", OrganizationRole.Member, ann.Id!);
+
+        Mailer.Sent.Select(m => m.To).Should().Equal("bob@test.local");
+        (await InvitationsAsync(acme.Id!)).Should().ContainSingle(i => i.Email == "bob@test.local");
+    }
+
+    [Fact]
+    public async Task The_invite_action_tells_an_inviter_without_a_confirmed_email_why()
+    {
+        var ann = await SeedUserAsync("ann", emailConfirmed: false);
+        var acme = await SeedOrganizationAsync("Acme", ann);
+
+        var (status, body) = await SendAsync("/spark/actions/execute", Wire.Action(OrganizationTypeId, "InviteOrganizationMember", new
+        {
+            parent = new { id = acme.Id, name = "Organization", objectTypeId = OrganizationTypeId, attributes = Array.Empty<object>() },
+        }), ann.Id);
+
+        status.Should().Be(HttpStatusCode.OK, body.ToString());
+        var operations = body.GetProperty("operations").EnumerateArray().ToList();
+        operations.Should().ContainSingle(o => o.GetProperty("type").GetString() == "notify"
+            && o.GetProperty("message").GetString() == SparkOrganizations.InviterUnconfirmedProblem, "the refusal says why, before any prompt");
+        Mailer.Sent.Should().BeEmpty();
+        (await InvitationsAsync(acme.Id!)).Should().BeEmpty();
+    }
+
+    private async Task ConfirmEmailAsync(string userId)
+    {
+        using var session = Store.OpenAsyncSession();
+        (await session.LoadAsync<MintPlayer.Spark.Authorization.Identity.SparkUser>(userId)).EmailConfirmed = true;
+        await session.SaveChangesAsync();
     }
 
     // ---- roles: leaving, transferring, deleting ------------------------------------------------------

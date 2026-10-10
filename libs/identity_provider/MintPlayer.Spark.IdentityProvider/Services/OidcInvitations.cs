@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
@@ -89,7 +88,7 @@ internal sealed class OidcInvitations(
         using (var lookup = store.OpenAsyncSession())
         {
             var account = await lookup.LoadAsync<Account>(userId, ct);
-            if (!SparkEmailOwnership.IsAddressOf(account?.NormalizedEmail, entry.Email))
+            if (account?.NormalizedEmail is null || account.NormalizedEmail != Normalize(entry.Email))
                 return new(false, null, invalid);
         }
 
@@ -117,8 +116,8 @@ internal sealed class OidcInvitations(
             .FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>The shared address rule's normalization (<see cref="SparkEmailOwnership.Normalize"/>).</summary>
-    private static string Normalize(string? email) => SparkEmailOwnership.Normalize(email);
+    /// <summary>The way ASP.NET Identity normalizes an address (<c>UpperInvariantLookupNormalizer</c>).</summary>
+    private static string Normalize(string? email) => (email ?? "").Trim().ToUpperInvariant();
 
     private static string Hash(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 }

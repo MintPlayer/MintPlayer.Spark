@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Organizations.Identity;
 using MintPlayer.Spark.Organizations.Models;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
@@ -32,6 +33,8 @@ internal sealed class SparkOrganizations(
     /// </summary>
     internal const string PersonalOwnerProblem = "A personal organization belongs to its user: its Owner role cannot change hands.";
     internal const string LastOwnerProblem = "An organization needs an Owner. Make another member Owner first.";
+    internal const string InviterUnconfirmedProblem = "Confirm your email address before you invite anyone: an invitation is sent on your behalf.";
+    internal const string RequesterUnconfirmedProblem = "Confirm your email address before you ask to join: the request is mailed to the owners on your behalf.";
 
     private DateTime Now => timeProvider.GetUtcNow().UtcDateTime;
 
@@ -110,6 +113,10 @@ internal sealed class SparkOrganizations(
         using var session = store.OpenAsyncSession();
         var organization = await LoadOrganizationAsync(session, organizationId, cancellationToken);
         var inviter = await RequireRoleAsync(session, organization.Id!, inviterUserId, OrganizationRole.Admin, cancellationToken);
+        // D43 (owner correction 2026-10-10): the mail goes out on the inviter's behalf, so the inviter's
+        // address must be confirmed. The invitee may not even have an account yet.
+        if (!OrganizationEmail.HasConfirmedAddress(await session.LoadAsync<SparkUser>(inviterUserId, cancellationToken)))
+            throw new SparkValidationException(InviterUnconfirmedProblem);
 
         // One live link per address: a new invitation replaces the pending one.
         foreach (var pending in await PendingAsync(session, organization.Id!, OrganizationInvitationKind.Invitation, i => i.Email == email, cancellationToken))
@@ -155,6 +162,10 @@ internal sealed class SparkOrganizations(
 
         var requester = await session.LoadAsync<SparkUser>(requesterUserId, cancellationToken)
             ?? throw new InvalidOperationException($"User '{requesterUserId}' does not exist.");
+        // D43 (owner correction 2026-10-10): the Owners are mailed the requester's address on their
+        // behalf, so, like an inviter's, it must be confirmed.
+        if (!OrganizationEmail.HasConfirmedAddress(requester))
+            throw new SparkValidationException(RequesterUnconfirmedProblem);
 
         foreach (var pending in await PendingAsync(session, organization.Id!, OrganizationInvitationKind.JoinRequest, i => i.UserId == requesterUserId, cancellationToken))
             session.Delete(pending);
@@ -227,12 +238,12 @@ internal sealed class SparkOrganizations(
         }
         else
         {
-            // D43: an invitation is for the mailbox it was sent to. The signed-in account must own that
-            // address (confirmed), by the rule the identity provider's invitations use. Refused before
-            // anything is written, so the link stays live for the right account. The token was valid, so
-            // the holder already knows the invitation exists: saying why discloses nothing (#453).
+            // D43: an invitation is for the mailbox it was sent to. The signed-in account's address must be
+            // the invited one; it need not be confirmed (owner correction 2026-10-10: the inviter's is).
+            // Refused before anything is written, so the link stays live for the right account. The token
+            // was valid, so the holder already knows the invitation exists: saying why discloses nothing (#453).
             if (await session.LoadAsync<SparkUser>(userId, cancellationToken) is not { } account
-                || !SparkEmailOwnership.Owns(account, invitation.Email))
+                || !OrganizationEmail.IsAddressOf(account, invitation.Email))
                 return OrganizationAcceptance.OtherAddress;
             memberUserId = userId;
         }

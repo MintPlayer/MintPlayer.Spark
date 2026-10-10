@@ -10,9 +10,10 @@ organization, with the role each action needs. Depends on `MintPlayer.Spark.Auth
   good. Others join it like any other organization (D42); its Owner role never changes hands.
 - **Invitations by email** (Admin and up) and **join requests** raised by application code
   (`ISparkOrganizations.RequestToJoinAsync`), both mailed with a single-use acceptance link that expires
-  after 14 days (`expiresAfter` on `OrganizationInvitation`). Only the token's SHA-256 is stored. An
-  invitation is accepted only by the account that owns the invited address, confirmed (D43,
-  `SparkEmailOwnership`, the identity provider's rule); a join request is approved by an Owner or Admin.
+  after 14 days (`expiresAfter` on `OrganizationInvitation`). Only the token's SHA-256 is stored. The
+  mail goes out on the sender's behalf, so the inviter (or the join requester) needs a confirmed email
+  address (D43). An invitation is accepted only by the account whose address is the invited one,
+  confirmed or not; a join request is approved by an Owner or Admin.
 - **The last Owner cannot leave**; ownership is transferred to a member.
 - **Deleting an organization cascades**: every `IOrganizationDataHandler` deletes the application's data
   first, then memberships and invitations go. **Deleting an account** deletes the personal organization and

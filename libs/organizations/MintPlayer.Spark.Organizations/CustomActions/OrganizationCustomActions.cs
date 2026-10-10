@@ -5,6 +5,8 @@ using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Retry;
+using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Organizations.Identity;
 using MintPlayer.Spark.Organizations.Models;
 using Raven.Client.Documents.Session;
 
@@ -21,12 +23,21 @@ internal sealed partial class InviteOrganizationMemberAction : ICustomAction
 
     [Inject] private readonly IManager manager;
     [Inject] private readonly ISparkOrganizations organizations;
+    [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
         if (args.Parent?.Id is not { Length: > 0 } organizationId || OrganizationActionUser.Id(httpContextAccessor) is not { } userId)
             return;
+
+        // D43 (owner correction 2026-10-10): the invitation is mailed on the inviter's behalf, so say why
+        // before asking for an address. InviteAsync enforces the same rule.
+        if (!OrganizationEmail.HasConfirmedAddress(await session.LoadAsync<SparkUser>(userId, cancellationToken)))
+        {
+            manager.Client.Notify(manager.GetTranslatedMessage("organizations.confirmEmailToInvite"), NotificationKind.Error);
+            return;
+        }
 
         var prompt = await manager.GetPersistentObjectAsync(PromptType, cancellationToken: cancellationToken);
         prompt["Role"].Value = OrganizationRole.Member.ToString();

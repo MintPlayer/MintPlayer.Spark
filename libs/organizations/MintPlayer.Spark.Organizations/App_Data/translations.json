@@ -237,6 +237,11 @@
       "fr": "Invitation envoyée.",
       "nl": "Uitnodiging verstuurd."
     },
+    "confirmEmailToInvite": {
+      "en": "Confirm your email address before you invite anyone: an invitation is sent on your behalf.",
+      "fr": "Confirmez votre adresse e-mail avant d'inviter quelqu'un : l'invitation est envoyée en votre nom.",
+      "nl": "Bevestig je e-mailadres voordat je iemand uitnodigt: de uitnodiging wordt in jouw naam verstuurd."
+    },
     "left": {
       "en": "You left the organization.",
       "fr": "Vous avez quitté l'organisation.",
@@ -284,9 +289,9 @@
         "nl": "Deze link is niet geldig. Hij is misschien vervallen, al gebruikt, of voor iemand anders bedoeld."
       },
       "otherAddress": {
-        "en": "This invitation was sent to another email address. Sign in with the account that has confirmed that address, then open the link again.",
-        "fr": "Cette invitation a été envoyée à une autre adresse e-mail. Connectez-vous avec le compte qui a confirmé cette adresse, puis rouvrez le lien.",
-        "nl": "Deze uitnodiging is naar een ander e-mailadres gestuurd. Meld je aan met het account dat dat adres bevestigd heeft en open de link opnieuw."
+        "en": "This invitation was sent to another email address. Sign in with the account that uses that address, then open the link again.",
+        "fr": "Cette invitation a été envoyée à une autre adresse e-mail. Connectez-vous avec le compte qui utilise cette adresse, puis rouvrez le lien.",
+        "nl": "Deze uitnodiging is naar een ander e-mailadres gestuurd. Meld je aan met het account dat dat adres gebruikt en open de link opnieuw."
       }
     }
   }
