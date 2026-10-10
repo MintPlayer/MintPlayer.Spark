@@ -103,6 +103,8 @@ checked byte for byte against the RFC 8291 Appendix A vectors.
 - The payload is Angular's service-worker format, so `provideSparkServiceWorker()`'s `ngsw-worker.js` shows it
   with no code of yours. A click uses `focusLastFocusedOrOpen`: an open tab of the app is focused and
   `SparkNotificationClicks` (ng-spark `pwa`) navigates it in-app to `data.url`; a closed app opens at that URL.
+  `SparkNotificationsService` marks the clicked notification read (`data.notificationId`) when the click reaches
+  an open page.
   (`navigateLastFocusedOrOpen` would reload the open tab first.)
 - **Apple:** iOS/iPadOS 16.4+ deliver only to a web app added to the Home Screen; subscribe from a click; every
   push must show a notification (they always do here).

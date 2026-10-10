@@ -34,8 +34,17 @@ public interface ISparkShareLinks
     string LinkFor(string typeName, string id, string token, HttpContext? context);
 }
 
-/// <summary>What a link shows: the declared attributes of one object and the first page of each declared child query.</summary>
-public sealed record SharedObject(string Id, string Type, IReadOnlyList<PersistentObjectAttribute> Attributes, IReadOnlyDictionary<string, QueryResult> Queries);
+/// <summary>
+/// What a link shows: the declared attributes of one object and the first page of each declared child query, with the
+/// type's label and each shown query's label (translated as on any page) so the page can head them.
+/// </summary>
+public sealed record SharedObject(
+    string Id,
+    string Type,
+    TranslatedString? Label,
+    IReadOnlyList<PersistentObjectAttribute> Attributes,
+    IReadOnlyDictionary<string, QueryResult> Queries,
+    IReadOnlyDictionary<string, TranslatedString?> QueryLabels);
 
 internal sealed class SparkShareLinks(
     IDocumentStore store,
@@ -96,12 +105,22 @@ internal sealed class SparkShareLinks(
                 return null;
 
             var queries = new Dictionary<string, QueryResult>(StringComparer.OrdinalIgnoreCase);
+            var labels = new Dictionary<string, TranslatedString?>(StringComparer.OrdinalIgnoreCase);
             foreach (var (name, _) in shared.Definition.Queries)
             {
                 if (await RunChildAsync(services, shared, name, 0, Math.Min(25, options.Value.MaxTake), null, cancellationToken) is { } page)
+                {
                     queries[name] = page;
+                    labels[name] = queryLoader.ResolveQuery(name)?.Label;
+                }
             }
-            return new SharedObject(id, shared.Definition.TypeName, po.Attributes.Where(a => shared.Definition.Attributes.Contains(a.Name)).ToList(), queries);
+            return new SharedObject(
+                id,
+                shared.Definition.TypeName,
+                shared.EntityType.Label,
+                po.Attributes.Where(a => shared.Definition.Attributes.Contains(a.Name)).ToList(),
+                queries,
+                labels);
         });
     }
 

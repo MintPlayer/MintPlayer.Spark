@@ -109,6 +109,12 @@ export class SparkNotificationsService {
 
     if (this.swPush?.isEnabled) {
       const subscription = this.swPush.subscription.subscribe(current => this.subscribed.set(!!current));
+      // A clicked push is read: its payload carries `data.notificationId` (the server's Angular-format payload).
+      // The navigation itself is `SparkNotificationClicks`' (pwa), which does not know about notifications.
+      subscription.add(this.swPush.notificationClicks.subscribe(({ notification }) => {
+        const id = (notification?.data as { notificationId?: unknown } | undefined)?.notificationId;
+        if (typeof id === 'string' && id) this.markRead([id]).catch(() => undefined);
+      }));
       inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
     }
   }

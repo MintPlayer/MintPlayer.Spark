@@ -80,7 +80,8 @@ export const routes: Routes = [...withShareRoutes(), /* … */];
 
 `withShareRoutes({ path?, component? })` (`@mintplayer/ng-spark/share`) lazy-loads `SparkSharedObjectComponent`
 (`@mintplayer/ng-spark/share/page`) at `shared/:type/:token?id=…`: the attributes through `<spark-grid-cell>`, so
-registered renderers (the [score renderers](guide-score-renderers.md) too) apply, and one table per child query,
+registered renderers (the [score renderers](guide-score-renderers.md) too) apply, under the type's label, and one table per child query
+(headed by its query's label),
 paged through `/spark/share/query`. A refused link shows `share.notFound`.
 
 ## Reading
@@ -89,7 +90,7 @@ The page calls two anonymous endpoints:
 
 | Endpoint | Body | Answer |
 |---|---|---|
-| `POST /spark/share/load` | `{ type, id, token }` | `{ id, type, attributes, queries: { name: firstPage } }` |
+| `POST /spark/share/load` | `{ type, id, token }` | `{ id, type, label, attributes, queries: { name: firstPage }, queryLabels: { name: label } }` |
 | `POST /spark/share/query` | `{ type, id, token, query, skip, take, sortColumns? }` | one page of a declared child query |
 
 Every refusal is the same **404** (#453): unknown type, id or token, a revoked or replaced link, sharing off, an

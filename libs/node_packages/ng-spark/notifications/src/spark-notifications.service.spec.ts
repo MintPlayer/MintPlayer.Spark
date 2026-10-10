@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { SwPush } from '@angular/service-worker';
-import { BehaviorSubject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
 import { QueryResult } from '@mintplayer/ng-spark/models';
@@ -189,7 +189,7 @@ describe('SparkNotificationsService', () => {
 
   describe('Web Push', () => {
     let subscription: BehaviorSubject<PushSubscription | null>;
-    let swPush: { isEnabled: boolean; subscription: BehaviorSubject<PushSubscription | null>; requestSubscription: ReturnType<typeof vi.fn>; unsubscribe: ReturnType<typeof vi.fn> };
+    let swPush: { isEnabled: boolean; subscription: BehaviorSubject<PushSubscription | null>; notificationClicks: Subject<{ action: string; notification: NotificationOptions & { title: string } }>; requestSubscription: ReturnType<typeof vi.fn>; unsubscribe: ReturnType<typeof vi.fn> };
     let permissions: { permission: NotificationPermission; requestPermission: ReturnType<typeof vi.fn> };
     const device = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'P', auth: 'A' } }) } as unknown as PushSubscription;
 
@@ -198,6 +198,7 @@ describe('SparkNotificationsService', () => {
       swPush = {
         isEnabled: true,
         subscription,
+        notificationClicks: new Subject(),
         requestSubscription: vi.fn().mockResolvedValue(device),
         unsubscribe: vi.fn().mockResolvedValue(undefined),
       };
@@ -272,6 +273,27 @@ describe('SparkNotificationsService', () => {
       expect(http.post).toHaveBeenCalledWith('/spark/notifications/push/unsubscribe', { endpoint: device.endpoint });
       expect(swPush.unsubscribe).toHaveBeenCalledTimes(1);
       expect(service.pushState()).toBe('off');
+    });
+
+    it('marks a clicked push read (its data.notificationId), and ignores a push without one', async () => {
+      setup({ swPush, permissions });
+
+      swPush.notificationClicks.next({ action: '', notification: { title: 'Score dropped', data: { url: '/sites/1', notificationId: 'Notifications/7' } } });
+      await Promise.resolve();
+      expect(http.post).toHaveBeenCalledWith('/spark/notifications/read', { ids: ['Notifications/7'] });
+
+      http.post.mockClear();
+      swPush.notificationClicks.next({ action: '', notification: { title: 'Other', data: { url: '/x' } } });
+      await Promise.resolve();
+      expect(http.post).not.toHaveBeenCalled();
+    });
+
+    it('survives a failed mark-read on a clicked push', async () => {
+      http.post.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      setup({ swPush, permissions });
+      swPush.notificationClicks.next({ action: '', notification: { title: 'x', data: { notificationId: 'Notifications/8' } } });
+      await Promise.resolve();
+      expect(http.post).toHaveBeenCalledTimes(1);
     });
   });
 });

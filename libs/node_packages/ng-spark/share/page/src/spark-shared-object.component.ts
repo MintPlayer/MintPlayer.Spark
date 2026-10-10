@@ -7,7 +7,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
-import { PersistentObject, PersistentObjectAttribute, QueryColumn, QueryResult, QueryResultItem, valueFor } from '@mintplayer/ng-spark/models';
+import { PersistentObject, PersistentObjectAttribute, QueryColumn, QueryResult, QueryResultItem, TranslatedString, valueFor } from '@mintplayer/ng-spark/models';
 import { QueryCellValuePipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
@@ -16,9 +16,13 @@ import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 export interface SparkSharedObject {
   id: string;
   type: string;
+  /** The type's label (the model's, translated); the page's heading. */
+  label?: TranslatedString | null;
   attributes: PersistentObjectAttribute[];
   /** By query name. */
   queries: Record<string, QueryResult>;
+  /** Each shown query's label, by query name; the tables' headings. */
+  queryLabels?: Record<string, TranslatedString | null>;
 }
 
 /** English fallbacks, shown until (or where) the server's translations have none. */
@@ -56,6 +60,7 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
           <bs-alert [type]="colors.danger" class="d-block spark-shared-not-found">{{ t('notFound') }}</bs-alert>
         }
         @case ('ready') {
+          <h1 class="h4 mb-3 spark-shared-title">{{ shared()?.label ?? undefined | resolveTranslation:(shared()?.type ?? '') }}</h1>
           <dl class="row spark-shared-attributes">
             @for (cell of attributeCells(); track cell.attribute.name) {
               <dt class="col-sm-4">{{ cell.attribute.label | resolveTranslation:cell.attribute.name }}</dt>
@@ -66,7 +71,7 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
           </dl>
           @for (query of queryTables(); track query.name) {
             <section class="mt-4 spark-shared-query" [attr.data-query]="query.name">
-              <h2 class="h5">{{ query.name }}</h2>
+              <h2 class="h5">{{ query.label | resolveTranslation:query.name }}</h2>
               <div class="table-responsive">
                 <table class="table table-sm align-middle">
                   <thead>
@@ -144,6 +149,7 @@ export class SparkSharedObjectComponent {
   protected readonly queryTables = computed(() =>
     Object.entries(this.pages()).map(([name, result]) => ({
       name,
+      label: this.shared()?.queryLabels?.[name] ?? undefined,
       result,
       columns: [...(result.columns ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
       last: Math.min(result.skip + result.take, result.totalItems),

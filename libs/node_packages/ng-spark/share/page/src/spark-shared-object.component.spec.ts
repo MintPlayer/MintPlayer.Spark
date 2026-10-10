@@ -94,6 +94,24 @@ describe('SparkSharedObjectComponent', () => {
     expect(element.querySelector('a')).toBeNull();
   });
 
+  it('heads the object with its type label and each table with its query label', async () => {
+    const { fixture } = render(() => of({ ...loaded, label: { en: 'Website', nl: 'Website (nl)' }, queryLabels: { Runs: { en: 'Audit runs' } } }));
+    await settle(fixture);
+    const element: HTMLElement = fixture.nativeElement;
+
+    expect(element.querySelector('.spark-shared-title')!.textContent!.trim()).toBe('Website');
+    expect(element.querySelector('[data-query="Runs"] h2')!.textContent!.trim()).toBe('Audit runs');
+  });
+
+  it('falls back to the type and query names when the server sends no labels', async () => {
+    const { fixture } = render(() => of(loaded));
+    await settle(fixture);
+    const element: HTMLElement = fixture.nativeElement;
+
+    expect(element.querySelector('.spark-shared-title')!.textContent!.trim()).toBe('Site');
+    expect(element.querySelector('[data-query="Runs"] h2')!.textContent!.trim()).toBe('Runs');
+  });
+
   it('pages a child query through /share/query', async () => {
     const { fixture, post } = render((url) => url.endsWith('/load')
       ? of(loaded)

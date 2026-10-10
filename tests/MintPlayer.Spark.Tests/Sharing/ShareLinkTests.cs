@@ -83,6 +83,29 @@ public class ShareLinkTests : OrganizationsTestHost
         page.Body.GetProperty("totalItems").GetInt32().Should().Be(2);
     }
 
+    /// <summary>
+    /// The page heads the object and each child table with the model's labels (M6 leftover, fixed in M7): the type's
+    /// label and each declared child query's, translated like every other label, never the raw query name.
+    /// </summary>
+    [Fact]
+    public async Task The_share_carries_the_type_label_and_a_label_per_child_query()
+    {
+        var (ann, _, _, note, _) = await SeedAsync();
+
+        var shared = await LoadSharedAsync(await ShareAsync(note.Id!, ann.Id!));
+
+        shared.Status.Should().Be(HttpStatusCode.OK);
+        // No translations here, so the labels are the model loader's humanized names: what a page shows for them too.
+        Texts(shared.Body.GetProperty("label")).Should().Contain("Sh Note");
+        var labels = shared.Body.GetProperty("queryLabels");
+        Texts(labels.GetProperty("ShNoteComments")).Should().Contain("Sh Note Comments");
+        labels.TryGetProperty("AllShComments", out _).Should().BeFalse("only the queries the link shows are named");
+
+        static List<string> Texts(JsonElement translated) => translated.ValueKind == JsonValueKind.Object
+            ? translated.EnumerateObject().Select(p => p.Value.GetString() ?? "").ToList()
+            : [];
+    }
+
     [Fact]
     public async Task A_Member_may_not_share_and_a_stranger_cannot_even_see_the_action_target()
     {
