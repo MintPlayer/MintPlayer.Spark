@@ -44,6 +44,18 @@ describe('SparkNotificationClicks', () => {
     expect(router.navigateByUrl).toHaveBeenCalledWith('/runs/42?tab=issues#top');
   });
 
+  // A same-origin link no route matches is the server's (SeoTester's report PDF, M11): loaded as a page.
+  it('loads a same-origin link the router cannot match as a page', async () => {
+    router.navigateByUrl.mockRejectedValue(new Error('NG04002'));
+    start();
+    const clicksService = TestBed.inject(SparkNotificationClicks);
+    const assign = vi.spyOn(clicksService as unknown as { assign(href: string): void }, 'assign').mockImplementation(() => undefined);
+    click('/seotester/report.pdf?run=1');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(assign).toHaveBeenCalledWith(`${location.origin}/seotester/report.pdf?run=1`);
+  });
+
   it('navigates in-app to an app-relative URL', () => {
     start();
     click('/runs/7');

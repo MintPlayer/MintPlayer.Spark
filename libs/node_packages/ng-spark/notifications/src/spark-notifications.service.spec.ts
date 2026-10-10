@@ -178,6 +178,20 @@ describe('SparkNotificationsService', () => {
       expect(router.navigateByUrl).toHaveBeenCalledWith('/runs/42');
     });
 
+    // A same-origin link the router does not know is a server endpoint (SeoTester's /seotester/report.pdf): the
+    // router threw NG04002 and nothing opened (M11). It is loaded as a page instead.
+    it('loads a same-origin link the router cannot match as a page', async () => {
+      router.navigateByUrl.mockRejectedValue(new Error('NG04002: Cannot match any routes'));
+      const service = setup();
+      const assign = vi.spyOn(service as unknown as { assign(href: string): void }, 'assign').mockImplementation(() => undefined);
+
+      await service.open({ id: 'n/2', title: 'PDF', body: null, url: '/seotester/report.pdf?run=1', isRead: true, createdAt: null });
+      await Promise.resolve();
+
+      expect(router.navigateByUrl).toHaveBeenCalledWith('/seotester/report.pdf?run=1');
+      expect(assign).toHaveBeenCalledWith(`${location.origin}/seotester/report.pdf?run=1`);
+    });
+
     it('does not mark a read notification again, nor load a link the row has', async () => {
       const service = setup();
       await service.open({ id: 'n/1', title: 'One', body: null, url: `${location.origin}/runs/7`, isRead: true, createdAt: null });

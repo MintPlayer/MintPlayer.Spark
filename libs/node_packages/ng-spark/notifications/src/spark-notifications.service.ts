@@ -238,17 +238,23 @@ export class SparkNotificationsService {
 
   private navigate(url: string | null): void {
     if (!url) return;
-    const inApp = sparkInAppUrl(url, this.document, this.location);
-    if (inApp) {
-      void this.router?.navigateByUrl(inApp);
-      return;
-    }
     let parsed: URL;
     try {
       parsed = new URL(url, this.document.baseURI);
     } catch {
       return;
     }
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') this.document.defaultView?.location.assign(parsed.href);
+    const inApp = sparkInAppUrl(url, this.document, this.location);
+    if (inApp && this.router) {
+      // A same-origin link the router has no route for is the server's (a PDF download, /bot): load it as a page.
+      this.router.navigateByUrl(inApp).catch(() => this.assign(parsed.href));
+      return;
+    }
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') this.assign(parsed.href);
+  }
+
+  /** A full page load (overridden in specs: jsdom cannot navigate). */
+  protected assign(href: string): void {
+    this.document.defaultView?.location.assign(href);
   }
 }
