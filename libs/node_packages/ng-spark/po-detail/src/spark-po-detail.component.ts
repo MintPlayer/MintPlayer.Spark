@@ -113,7 +113,10 @@ export class SparkPoDetailComponent {
   customActionExecuted = output<{ action: CustomActionDefinition; item: PersistentObject; result?: unknown }>();
 
   colors = Color;
+  /** The page could not be loaded: shown instead of the page. */
   errorMessage = signal<string | null>(null);
+  /** A custom action failed or was refused: shown above the page, which stays (it used to replace the page). */
+  actionError = signal<string | null>(null);
   entityType = signal<EntityType | null>(null);
 
   /** The sub-queries rendered as cards below the form, in object form (#460, D17). */
@@ -613,6 +616,7 @@ export class SparkPoDetailComponent {
     if (message && !confirm(message)) return;
 
     this.runningAction.set(action.name);
+    this.actionError.set(null);
     try {
       const result = await this.sparkService.executeCustomAction(this.type, action.name, this.item() || undefined);
       this.customActionExecuted.emit({ action, item: this.item()!, result });
@@ -634,7 +638,7 @@ export class SparkPoDetailComponent {
       }
     } catch (e) {
       // The envelope's reason (and, for a 429, when to try again), never Angular's HTTP status line.
-      this.errorMessage.set(describeSparkError(e, this.lang, (e as HttpErrorResponse)?.message || this.lang.t('common.actionFailed', 'Action failed')));
+      this.actionError.set(describeSparkError(e, this.lang, (e as HttpErrorResponse)?.message || this.lang.t('common.actionFailed', 'Action failed')));
     } finally {
       // finally, not after the try: an action that fails must not leave every button on the page
       // permanently disabled.

@@ -530,7 +530,7 @@ describe('SparkPoDetailComponent', () => {
     expect(lastRequest).toBeLessThan((service.get as any).mock.invocationCallOrder[0]);
   });
 
-  it('onCustomAction failure sets errorMessage', async () => {
+  it('onCustomAction failure sets actionError and keeps the page', async () => {
     const { harness } = await setup({
       executeCustomAction: vi.fn().mockRejectedValue(new HttpErrorResponse({ status: 500, error: { error: 'Boom' } })),
     });
@@ -538,8 +538,14 @@ describe('SparkPoDetailComponent', () => {
     await harness.fixture.whenStable();
 
     await c.onCustomAction(customAction);
+    harness.fixture.detectChanges();
 
-    expect(c.errorMessage()).toBe('Boom');
+    expect(c.actionError()).toBe('Boom');
+    // A refused action used to replace the whole page with the alert (seen in SeoTester, M11).
+    expect(c.errorMessage()).toBeNull();
+    const page = harness.routeNativeElement as HTMLElement;
+    expect(page.querySelector('h2')).not.toBeNull();
+    expect(page.querySelector('.spark-action-error')!.textContent).toContain('Boom');
   });
 
   // A refused action answers in the envelope (`{ result: { error, retryAfterSeconds }, operations }`): the banner showed
@@ -557,8 +563,8 @@ describe('SparkPoDetailComponent', () => {
     await c.onCustomAction(customAction);
 
     // The spec's language service answers keys: the reason, then spark.tryAgainIn with the wait.
-    expect(c.errorMessage()).toBe('example.com was audited recently. spark.tryAgainIn');
-    expect(c.errorMessage()).not.toContain('Http failure');
+    expect(c.actionError()).toBe('example.com was audited recently. spark.tryAgainIn');
+    expect(c.actionError()).not.toContain('Http failure');
   });
 
   // The action's result (CustomActionArgs.SetResult) reaches the host page, e.g. a PDF's download url.
