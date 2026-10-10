@@ -123,5 +123,20 @@ describe('SparkLanguageService', () => {
       expect(service.t('save')).toBe('save');
       await load();
     });
+
+    /**
+     * #268 M6: `t(key) || 'fallback'` (spark-query-grid) could never fall back, because a missing key comes
+     * back as the key itself; the grid showed "spark.query.unavailable" to users before the translations
+     * arrived. The fallback argument is the one way to say it.
+     */
+    it('returns the fallback instead of the key when the text is missing, and the text when it is there', async () => {
+      const service = create();
+      expect(service.t('spark.query.unavailable', 'This list is not available.')).toBe('This list is not available.');
+      await load('/spark', { 'spark.query.unavailable': { nl: 'Deze lijst is niet beschikbaar.' }, blank: { nl: '' } });
+
+      expect(service.t('spark.query.unavailable', 'This list is not available.')).toBe('Deze lijst is niet beschikbaar.');
+      expect(service.t('blank', 'Fallback')).toBe('Fallback');
+      expect(service.t('missing', 'Fallback')).toBe('Fallback');
+    });
   });
 });

@@ -55,6 +55,9 @@ import { SPARK_QUERY_ROW_ACTIONS, SparkQueryRowAction, orderSparkExtensions } fr
 import { LiveGridSession } from './live-grid-session';
 import type { BsDatatableFetchRequest } from '@mintplayer/ng-bootstrap/datatable';
 
+/** The HTTP status `/spark/queries/execute` gives for the same refusal, per live error code (guide-live-updates.md). */
+const LIVE_ERROR_STATUS: Record<string, number> = { unavailable: 404, invalid: 400, limit: 429, failed: 500 };
+
 /**
  * The one Spark grid: a `<bs-datatable>` rendering a query or a sub-query.
  *
@@ -877,11 +880,18 @@ export class SparkQueryGridComponent {
   private onLiveError(error: LiveErrorEvent): void {
     this.liveFailed.set(true);
     this.errorMessage.set(error.code === 'unavailable'
-      ? (this.lang.t('spark.query.unavailable') || 'This list is not available.')
-      : (error.message || this.lang.t('common.unexpectedError') || 'An unexpected error occurred'));
+      ? (this.lang.t('spark.query.unavailable', 'This list is not available.'))
+      : (error.message || this.lang.t('common.unexpectedError', 'An unexpected error occurred')));
     this.resultCount.set(0);
     this.loadedIds.set(new Set());
     this.onLivePush();
+    // One error channel for both transports (#268 M6): a host listening to (error) hears a live failure the
+    // way it hears an /execute failure, with the status /execute would have answered.
+    this.error.emit(new HttpErrorResponse({
+      status: LIVE_ERROR_STATUS[error.code] ?? 500,
+      statusText: error.code,
+      error: { error: error.message, code: error.code },
+    }));
   }
 
   /**
@@ -1108,7 +1118,7 @@ export class SparkQueryGridComponent {
       if (action.refreshOnCompleted) this.reload();
     } catch (e) {
       const err = e as HttpErrorResponse;
-      this.errorMessage.set(err.error?.error || err.message || this.lang.t('common.actionFailed') || 'Action failed');
+      this.errorMessage.set(err.error?.error || err.message || this.lang.t('common.actionFailed', 'Action failed'));
     }
   }
 
@@ -1127,10 +1137,10 @@ export class SparkQueryGridComponent {
    */
   private describe(err: HttpErrorResponse): string {
     if (err?.status === 404) {
-      return this.lang.t('spark.query.unavailable') || 'This list is not available.';
+      return this.lang.t('spark.query.unavailable', 'This list is not available.');
     }
     return err?.error?.error || err?.message
-      || this.lang.t('common.unexpectedError') || 'An unexpected error occurred';
+      || this.lang.t('common.unexpectedError', 'An unexpected error occurred');
   }
 
   private async loadData(queryId: string, parentId: string, parentType: string): Promise<void> {

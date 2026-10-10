@@ -313,7 +313,7 @@ export class SparkQueryListComponent {
   private reportLoadFailure(err: HttpErrorResponse): void {
     this.errorMessage.set(
       err?.status === 404
-        ? (this.lang.t('spark.query.unavailable') || 'This list is not available.')
+        ? this.lang.t('spark.query.unavailable', 'This list is not available.')
         : (err?.error?.error || err?.message || 'An unexpected error occurred'));
   }
 

@@ -1434,6 +1434,22 @@ describe('SparkQueryGridComponent live', () => {
     expect(service.executeQuery).not.toHaveBeenCalled();
   });
 
+  /**
+   * #268 M6: the (error) output fired for an /execute failure but stayed silent for the same refusal over the
+   * socket, so a host that hid its chrome on (error) kept it up over an empty, failed grid. Red before: no emit.
+   */
+  it('emits (error) for a live error with the status /execute would have answered', async () => {
+    const { c, events } = await setupLive(liveQuery);
+    const emitted: any[] = [];
+    c.error.subscribe(e => emitted.push(e));
+
+    events.next({ type: 'error', code: 'unavailable', message: 'This list is not available.' });
+    events.next({ type: 'error', code: 'limit', message: 'Too many subscriptions' });
+
+    expect(emitted.map(e => [e.status, e.error?.code])).toEqual([[404, 'unavailable'], [429, 'limit']]);
+    expect(emitted[1].error.error).toBe('Too many subscriptions');
+  });
+
   it('shows the server\'s message for an error other than `unavailable`', async () => {
     const { c, events } = await setupLive(liveQuery);
     events.next({ type: 'error', code: 'invalid', message: 'Unknown sort column' });
