@@ -26,4 +26,9 @@
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- DevelopmentRelyingPartiesTests pins the seeded relying parties. -->
+		<InternalsVisibleTo Include="SparkId.Tests" />
+	</ItemGroup>
+
 </Project>

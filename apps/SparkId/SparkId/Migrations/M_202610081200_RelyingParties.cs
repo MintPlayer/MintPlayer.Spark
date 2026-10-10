@@ -56,49 +56,9 @@ public partial class M_202610081200_RelyingParties : ISparkMigration
         await EnsureScopeAsync("email", TranslatedString.Create("Your email address", "Votre adresse e-mail", "Je e-mailadres"), ["email", "email_verified"], required: false, cancellationToken);
 
         foreach (var rp in RelyingParties)
-            await EnsureRelyingPartyAsync(rp.ClientId, rp.DisplayName, rp.Origin, rp.Secret, cancellationToken);
+            await DevelopmentRelyingParties.EnsureAsync(session, rp.ClientId, rp.DisplayName, rp.Origin, rp.Secret, cancellationToken);
 
         await session.SaveChangesAsync(cancellationToken);
-    }
-
-    private async Task EnsureRelyingPartyAsync(string clientId, string displayName, string origin, string secret, CancellationToken ct)
-    {
-        var exists = await session.Query<OidcApplication>()
-            .Where(a => a.ClientId == clientId, exact: true)
-            .AnyAsync(ct);
-        if (exists)
-            return;
-
-        await session.StoreAsync(new OidcApplication
-        {
-            ClientId = clientId,
-            DisplayName = displayName,
-            ClientType = "confidential",
-            Enabled = true,
-            Secrets =
-            [
-                new ClientSecret
-                {
-                    Hash = ClientSecretHasher.Hash(secret),
-                    Description = "Development only",
-                    CreatedAt = DateTime.UtcNow,
-                },
-            ],
-            AllowedGrantTypes = ["authorization_code"],
-            RedirectUris = [$"{origin}/signin-SparkId"],
-            PostLogoutRedirectUris = [$"{origin}/signout-callback-SparkId"],
-            // D6: openid and profile are required, email is optional (the user may untick it).
-            Scopes =
-            [
-                new OidcApplicationScope { Name = "openid", Required = true },
-                new OidcApplicationScope { Name = "profile", Required = true },
-                new OidcApplicationScope { Name = "email", Required = false },
-            ],
-            // The seeds are the demo's trusted first-party apps: Live, no members, consent implicit.
-            Mode = OidcApplicationModes.Live,
-            ConsentType = "implicit",
-            RequirePkce = true,
-        }, ct);
     }
 
     private async Task EnsureScopeAsync(string name, TranslatedString displayName, List<string> claimTypes, bool required, CancellationToken ct)
