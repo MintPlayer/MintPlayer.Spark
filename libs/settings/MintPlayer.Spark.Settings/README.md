@@ -70,3 +70,5 @@ once; another instance sees the change within the cache duration.
 A save is refused (400) when the key is not declared in code, or when `Value` does not parse as the
 declared type. An empty `Value` is stored as "not overridden". A stored value that stops parsing later
 (the type changed in code) is skipped with a warning, never thrown: configuration or the default applies.
+
+Guide: [docs/guide-settings.md](../../../docs/guide-settings.md).
