@@ -10,6 +10,29 @@ public class SparkModuleRegistry
     private readonly List<SparkCredentialScheme> credentialSchemes = [];
 
     private readonly List<System.Reflection.Assembly> indexAssemblies = [];
+    private readonly List<string> expirationRequesters = [];
+
+    /// <summary>
+    /// Declares that <paramref name="requester"/> writes <c>@expires</c> and needs RavenDB's document
+    /// expiration enabled on the database (<c>docs/seo_analyzer_PRD.md</c> X1). <c>UseSpark()</c>
+    /// then enables it once, with the one shared delete frequency (<c>Spark:Expiration</c>, never more
+    /// often than the Community licence's 36 hours). Declare from the module's <c>AddXxx(...)</c> body.
+    /// A model type implementing <c>IExpiring</c> declares it implicitly. Idempotent.
+    /// </summary>
+    /// <remarks>
+    /// Here, rather than as a core extension, so a library that references only the abstractions —
+    /// Messaging — can declare it without configuring the database itself. Each library configuring
+    /// it on its own is how the frequency came to be pinned in two places that had to agree.
+    /// </remarks>
+    public void RequireDocumentExpiration(string requester)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(requester);
+        if (!expirationRequesters.Contains(requester))
+            expirationRequesters.Add(requester);
+    }
+
+    /// <summary>Who declared <see cref="RequireDocumentExpiration"/>, in declaration order.</summary>
+    public IReadOnlyList<string> DocumentExpirationRequesters => expirationRequesters;
 
     /// <summary>
     /// Declares that <paramref name="assembly"/> contains RavenDB indexes and/or

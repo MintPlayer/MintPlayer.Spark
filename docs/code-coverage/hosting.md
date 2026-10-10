@@ -213,9 +213,11 @@ registered only when both `Smtp:Host` and `From:Address` are non-empty (`Program
 | `FallbackPollInterval` | 30 s | |
 | `Queues:{name}:*` | none | Per-queue throttling/concurrency. The app's queues are `coverage-parse-session` and `coverage-publish-feedback` (`CoverageQueues.cs`), plus `coverage-project-automation` (`Feedback/ProjectAutomationQueue.cs`) and `spark-forge-all` (`CodeCoverage.Library/Forge/ForgeWebhookMessage.cs`). |
 
-The expiration sweep the messaging host enables is pinned to 36 h in code
-(`libs/messaging/MintPlayer.Spark.Messaging/SparkMessagingExtensions.cs`). ⚠️ That is a **Community
-licence minimum**: a smaller value is rejected by the cluster and kills the RavenDB process.
+The expiration sweep (enabled by `UseSpark()` because Messaging, Mail and the IdP write `@expires`)
+runs every `Spark:Expiration:DeleteFrequency`, default and minimum 36 h
+(`libs/spark/MintPlayer.Spark/Expiration/SparkExpiration.cs`, `docs/guide-expiration.md`). ⚠️ That is a
+**Community licence minimum**: a smaller value is rejected by the cluster and kills the RavenDB process,
+so startup refuses it on every licence.
 
 **`Spark:RateLimiter`** — `libs/spark/MintPlayer.Spark/Extensions/SparkRateLimiterOptions.cs`
 

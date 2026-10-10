@@ -17,7 +17,6 @@ using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.Expiration;
 
 namespace MintPlayer.Spark.IdentityProvider.Extensions;
 
@@ -166,6 +165,12 @@ public static class SparkIdentityProviderExtensions
             OidcUserEndpoints.Map(endpoints, userType);
         });
 
+        // Authorization requests, tokens, sessions and audit events carry @expires, so RavenDB reaps them
+        // itself rather than needing a sweeper. Deletion is housekeeping only: an expired record is refused
+        // on read whether or not the document is still there (OidcExpiry). UseSpark() enables expiration
+        // once, with the shared frequency.
+        builder.Registry.RequireDocumentExpiration("IdentityProvider");
+
         // Register middleware to deploy indexes
         builder.Registry.AddMiddleware(app =>
         {
@@ -217,18 +222,6 @@ public static class SparkIdentityProviderExtensions
             }
 
             new OidcGrants_BySubject().Execute(documentStore);
-
-            // Authorization requests carry @expires, so RavenDB reaps them itself rather than
-            // needing a sweeper. Deletion is housekeeping only — an expired request is refused
-            // on read regardless of whether the document is still there.
-            //
-            // The frequency matches MintPlayer.Spark.Messaging, which configures the same
-            // database-level setting; they must agree or whichever starts last wins.
-            documentStore.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
-            {
-                Disabled = false,
-                DeleteFrequencyInSec = 36 * 60 * 60, // 36 hours (community license minimum)
-            }));
         });
 
         return builder;

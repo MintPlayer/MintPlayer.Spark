@@ -52,6 +52,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // spark.AddMessaging();  spark.AddCron();  spark.AddMigrations();  spark.AddReplication();
     // spark.AddIdentityProvider();  spark.AddRateLimiter();  spark.AddGithubWebhooks();
     // spark.AddSafeHttp();   // SSRF-safe named HttpClient for user-supplied URLs (SparkBuilderSafeHttpExtensions.ClientName)
+    // spark.AddExpiration(); // only for options in code; IExpiring types need nothing (docs/guide-expiration.md)
 });
 
 // Build-time commands. Each returns true when it handled the invocation and the host should stop.
@@ -223,6 +224,14 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
   `/spark/queries/execute` and `/spark/queries/distinct-values` (the mode the **parent** is resolved
   under; honoured for `ViewDeleted/{ParentType}` holders, otherwise the missing-parent 404). Actions
   and delete-many always resolve a live parent, and judge live rows only.
+- **Document expiration is core, not hand-written** — entity implements `IExpiring` (public
+  `DateTime? ExpiresAtUtc`), optional `"expiresAfter": "7.00:00:00"` in the model JSON for new documents.
+  A store-level `OnBeforeStore` mirrors the property into `@expires` (pipeline and raw sessions; not
+  patches/bulk inserts), a row policy hides expired rows on every read path (expired load = 404), and
+  `UseSpark()` enables expiration on the database once, never more often than 36 h (Community floor;
+  startup refuses less on every licence). A library that writes `@expires` itself declares
+  `builder.Registry.RequireDocumentExpiration("Name")`; never send `ConfigureExpirationOperation` by hand.
+  Guide: `docs/guide-expiration.md`.
 - **History / audit is a package** — `MintPlayer.Spark.History`: `spark.AddHistory()`, entity
   implements `IAuditable` (stamped with user **ids**; `CreatedBy` immutable), revisions come from the
   model's `"revisions": { "enabled": true, … }` block (merged into the database at startup — never

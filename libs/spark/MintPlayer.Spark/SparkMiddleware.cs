@@ -129,6 +129,12 @@ public static class SparkExtensions
         // controllers and jobs (#301).
         services.AddScoped(typeof(Abstractions.Authorization.ISparkRowRule<>), typeof(Services.SparkRowRule<>));
 
+        // Document expiration (seo_analyzer_PRD X1): always on, because an IExpiring type whose expired
+        // rows stayed visible until someone remembered to opt in would be a silent leak. The policy
+        // applies only to IExpiring types; the database is configured by UseSpark() when needed.
+        services.AddSparkConfigurationSection<Expiration.SparkExpirationOptions>(Expiration.SparkExpirationOptions.SectionName);
+        services.AddSparkRowPolicy<Expiration.ExpirationRowPolicy>();
+
         // The per-request group-membership snapshot SecurityFileAccessControl and the
         // [SparkAuthorize] group handler share (#460, D12). A concrete class, which the [Register]
         // generator does not register as itself, so it is wired here too.
@@ -460,6 +466,11 @@ public static class SparkExtensions
         app.ApplicationServices.GetRequiredService<IActionsCatalogueLoader>().GetCatalogue();
 
         ReportSecurityPosture(app);
+
+        // Document expiration (seo_analyzer_PRD X1): checks the model, installs the @expires stamper on
+        // the store and enables expiration on the database once, for every library that needs it.
+        // Before the module tasks, so their startup writes are stamped too.
+        Expiration.ExpirationStartup.Run(app.ApplicationServices, registry);
 
         // Run module-specific middleware/startup tasks
         registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);

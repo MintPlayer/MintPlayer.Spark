@@ -596,7 +596,7 @@ Example document in RavenDB Studio:
 
 In this example, `LogCompanyUpdated` completed on the first attempt and will not be re-executed. `NotifyEmployeesRecipient` failed twice and will resume from checkpoint `"37"` on the next retry.
 
-You can query message status directly in RavenDB Studio for observability. Completed and dead-lettered messages are automatically expired after `RetentionDays` (default 7) using RavenDB's built-in document expiration.
+You can query message status directly in RavenDB Studio for observability. Completed and dead-lettered messages are automatically expired after `RetentionDays` (default 7) using RavenDB's built-in document expiration, which `UseSpark()` enables (at most every 36 h, the Community licence floor, so a terminal message can linger that long; see `docs/guide-expiration.md`).
 
 ## API Reference
 

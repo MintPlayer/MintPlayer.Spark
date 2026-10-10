@@ -88,6 +88,9 @@ public static class SparkModerationExtensions
             .AddJob<ModerationFraudDetectorJob>(jobs.DetectorSchedule, "Moderation.FraudDetector"));
 
         builder.Registry.AddMiddleware(app => ModerationStartupCheck.Run(app.ApplicationServices));
+        // Daily counters and IP observations carry @expires. Declared here rather than left to Messaging,
+        // which happened to enable expiration too: nothing said this library relied on it.
+        builder.Registry.RequireDocumentExpiration("Moderation");
         // The per-library method the Endpoints generator emits for this assembly (AssemblyInfo.cs).
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkModerationEndpoints());
         return builder;
