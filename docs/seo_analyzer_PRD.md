@@ -21,8 +21,9 @@ Research behind this document:
 | Changes API on the production Community licence | ✅ measured 2026-10-10 (§12) |
 | Body consolidated with §12 | ✅ 2026-10-10 |
 | Grilling round 9: live-update details | ✅ 2026-10-10, D33–D37 |
-| Spikes S1–S11 | ⏳ |
+| Spikes S1–S11 | ⏳ (S1 ✅ 2026-10-10, §12) |
 | Milestones M0–M12 | ⏳ |
+| M1 ✅ | 2026-10-10, commit `72c84933`: X2 SSRF-safe client in `libs/spark/MintPlayer.Spark/Http/`, adopted by the IdP (§12 "Spike S1") |
 
 ---
 
@@ -630,3 +631,68 @@ The X4 design depends on the RavenDB Changes API, so this was measured on the **
   - **Rights:** only `QueryReadEdit/Setting`, so there is no New or Delete. The app binds `settings:administrators`.
   - **Cache:** a 30 s TTL, cleared on the saving instance. Changes-API invalidation can be added later behind the same API.
   - **No secrets in settings.**
+
+### Spike S1 (2026-10-10)
+
+**Answer: yes.** A `SocketsHttpHandler.ConnectCallback` guard blocks every listed case, closes DNS rebinding and survives redirects. Its overhead is a few µs per pooled request. Built as X2 and adopted by the IdP in M1, commit `72c84933`.
+
+- **Where:**
+  - `libs/spark/MintPlayer.Spark/Http/`: `SafeHttpOptions`, `SafeHttpPolicy`, `SafeHttpConnector`, `SafeHttpMessageHandler`, `SafeHttpBlockedException`, `SafeHttpServiceCollectionExtensions`.
+  - `Extensions/SparkBuilderSafeHttpExtensions.cs`.
+  - The library sits in core because the IdP, SeoTester and any app that fetches a user's URL all need it, and it adds no dependency.
+- **API:**
+  - `spark.AddSafeHttp(o => …)` registers the named client `SparkBuilderSafeHttpExtensions.ClientName` (`"Spark.SafeHttp"`). Configuration comes from `Spark:SafeHttp` first, then code.
+  - `services.AddSafeHttpClient(name, section, configure)` registers a client with limits of its own.
+  - Defaults: ports 80/443, 10 MiB on the wire, 50 MiB decompressed, 30 s total, 10 s connect, 5 redirects, no extra networks.
+  - `AllowedNetworks`/`BlockedNetworks` take CIDRs. Blocked wins, and is also checked against embedded IPv4.
+  - The configuration binder **appends** to the list defaults, so configuration adds ports and networks but never removes 80/443.
+- **Mechanism:**
+  - The connect callback resolves once, keeps only allowed addresses, and dials one of **those**. A mixed answer (public + private) dials only the public one.
+  - IP literals are vetted without a lookup. That includes decimal forms such as `http://2130706434/`, which `Uri` normalises.
+  - Only `2000::/3` passes for IPv6, minus `2001::/23` (except Teredo, which is unwrapped), `2001:db8::/32` and `3fff::/20`.
+  - NAT64 `64:ff9b::/96`, 6to4 `2002::/16`, Teredo `2001::/32` (server, and client inverted) and IPv4-mapped addresses are judged by their IPv4 address.
+  - `UseProxy=false`, `UseCookies=false`, `AllowAutoRedirect=false`, `AutomaticDecompression=None`.
+  - The outer handler follows 301/302/303/307/308 itself, re-checking scheme and port per hop; the address is checked again at connect. 303, and POST under 301/302, become GET.
+  - Across origins it drops `Authorization` and `Cookie`.
+  - It decompresses gzip/deflate/br itself, with a wire-byte cap (also checked early against `Content-Length`) and a decompressed-byte cap, both enforced while streaming.
+  - A refusal raised inside the sockets handler is re-thrown unwrapped.
+  - `SafeHttpBlockedException : HttpRequestException` carries a `Reason` and a fixed message that never names an address (asserted in tests).
+- **Tests, red→green:**
+  - The red run had the checks stubbed: `IsAddressAllowed` returned true, `CheckUri` did nothing, and the caps and the redirect limit were off. Result: **76 of 99 failing**. The green run: **99/99 passing**.
+  - `tests/MintPlayer.Spark.Tests/Http/SafeHttpPolicyTests.cs`:
+    - 43 refused addresses: every IPv4/IPv6 range above, plus mapped/NAT64/6to4/Teredo forms of 127.0.0.1, 10/8, 192.168/16 and 169.254.169.254;
+    - 10 allowed;
+    - allow and deny CIDRs;
+    - scheme and port.
+  - `SafeHttpConnectorTests.cs`, with a fake resolver and a fake dialler:
+    - **DNS rebinding:** the resolver answers public, then private. The connector resolves once and dials the public address; the next connection is refused.
+    - a mixed answer dials only the public address;
+    - IP literals are not looked up;
+    - no address in the message;
+    - resolution failure;
+    - the port is checked before resolving;
+    - explicit loopback allowance.
+  - `SafeHttpClientTests.cs`, end to end against Kestrel on 127.0.0.1, which is allowed only through the explicit `AllowedNetworks = ["127.0.0.1/32"]` plus the port:
+    - loopback is refused by default, by literal and by name;
+    - **redirects to `169.254.169.254`, `10.0.0.1`, `[::1]`, `[::ffff:169.254.169.254]`, decimal 127.0.0.2, `ftp:`, `file:` and port 6379 are refused**;
+    - the redirect chain: 5 followed, the 6th refused, `MaxRedirects=0` follows none;
+    - byte cap, chunked and with `Content-Length`;
+    - a gzip bomb (64 MiB of zeros, small on the wire) is refused at the 1 MiB decompressed cap;
+    - gzip is decompressed;
+    - `Authorization` is dropped across origins;
+    - 303 → GET and 307 keeps the POST body;
+    - handler flags;
+    - timeout.
+  - IdP: `tests/MintPlayer.Spark.Tests/IdentityProvider/OidcClientRequestsSafeHttpTests.cs`, **7/7 red** before the adoption and green after. It covers internal JWKS and back-channel URIs refused, the per-client limits, and loopback opened only by configuration. `OidcSessionLogoutTests` and `OidcClientAuthenticatorTests` still pass: 127/127 in the combined run.
+- **Overhead** (scratch console, Release, local Kestrel on 127.0.0.1, 2 KiB body, median of 5 alternating rounds, two runs):
+  - keep-alive: plain 163–180 µs, safe 170–203 µs, so **+7 to +23 µs per request** (4–13 %), from the outer handler and the stream wrapping;
+  - new connection per request: plain 626–710 µs, safe 563–610 µs, so **no measurable cost**. Vetting is sub-µs, and the safe dialler's IPv4 socket with `NoDelay` beats the default dual-mode connect.
+  - DNS was excluded (IP literal). The safe client does the same single lookup the default handler would.
+- **IdP adoption (X2):**
+  - `OidcClientKeys` (jwks_uri) and `OidcSessionStore.SendBackChannelAsync` (back-channel logout) use the safe clients `SparkIdentityProviderExtensions.JwksHttpClient` and `BackChannelLogoutHttpClient`, with their names unchanged so test stubs still apply.
+  - Limits: JWKS 10 s / 1 MiB / 5 redirects. Back-channel 5 s / 64 KiB / **no redirects**, because a redirect would re-send the logout token to an unregistered URI.
+  - There is no implicit Development exception. No app, demo or E2E test registers a `jwks_uri` or back-channel URI on loopback (searched `apps/`, `tests/`). A local relying party is opened with `Spark:IdentityProvider:ClientRequests:AllowedNetworks`/`AllowedPorts` (README table).
+- **Other outbound fetches in `libs/` and `apps/`:** none fetches a user-supplied URL, so none was adopted.
+  - The IdP's `SectorIdentifierUri` is never fetched (host only, `OidcSubjects.cs:42`), `request_uri` by reference is unsupported (`Discovery.cs:78-80`), and front-channel logout URIs are loaded by the browser.
+  - These all use config-set or fixed hosts: Authorization's introspection (`SparkIntrospectionHandler.cs:95`) and the external-login backchannels, Replication (`ReplicationHttpClientProvider.cs:69`), GitHub webhooks (`GitHubInstallationService.cs:151`) and the Smee/dev-tunnel clients, CodeCoverage's GitHub calls (fixed `api.github.com`/`raw.githubusercontent.com`/`github.com` hosts, the repository name only in the path), and HR's Fleet proxy (`FleetCarsProxyEndpoint.cs:39`).
+  - `MintPlayer.Spark.Client` is a client library whose base URL is its caller's.
