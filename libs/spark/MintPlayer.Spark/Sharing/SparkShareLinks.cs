@@ -36,6 +36,13 @@ public interface ISparkShareLinks
     /// <summary>Revokes the object's link; its holders get the unknown-link answer at once.</summary>
     Task RevokeAsync(string typeName, string id, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Whether <paramref name="token"/> is the current link of the object <paramref name="id"/> and the link may be read
+    /// now: the same check the share page's read makes (declared type, switch and gates, fixed-time hash compare), for an
+    /// application's own anonymous surface on a link, such as a badge image.
+    /// </summary>
+    Task<bool> IsValidAsync(string typeName, string id, string token, CancellationToken cancellationToken = default);
+
     /// <summary>The page the link opens, absolute when the public base URL (or, for its creator, the request) is known.</summary>
     string LinkFor(string typeName, string id, string token, HttpContext? context);
 }
@@ -115,6 +122,9 @@ internal sealed class SparkShareLinks(
     }
 
     /// <summary>The object behind a valid link, as its link shows it; null for every refusal alike (unknown type, id or token, revoked, disabled, expired).</summary>
+    public async Task<bool> IsValidAsync(string typeName, string id, string token, CancellationToken cancellationToken = default)
+        => await ResolveAsync(typeName, id, token, cancellationToken) is not null;
+
     internal async Task<SharedObject?> ReadAsync(string typeName, string id, string token, HttpContext context, CancellationToken cancellationToken)
     {
         if (await ResolveAsync(typeName, id, token, cancellationToken) is not { } shared)

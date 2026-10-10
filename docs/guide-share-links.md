@@ -53,7 +53,9 @@ public class Site : IOrganizationOwned, ISparkShareable { … }
 `ShareLink` makes a new token (replacing the old one) and shows the link once, in the secret dialog:
 `{origin}/shared/{type}/{token}?id={id}`. The origin is `Spark:Share:PublicBaseUrl`, else `Spark:Auth:PublicBaseUrl`,
 else the request's own (the link is shown only to its creator). Code can do the same through `ISparkShareLinks`
-(`CreateAsync`, `RevokeAsync`, `LinkFor`).
+(`CreateAsync`, `RevokeAsync`, `LinkFor`). `IsValidAsync(type, id, token)` makes the share page's own check (declared
+type, switch, gates, fixed-time compare) for an app's own anonymous surface on a link, such as SeoTester's SVG badge
+(`/seotester/badge.svg?site=…&token=…`): it answers yes only for the object's current token while the link may be read.
 
 `ShareTokenHash` is framework-protected like `ExpiresAtUtc`: a create starts without a link and an edit keeps the
 stored value, whatever a client posts.

@@ -189,6 +189,36 @@ public class ShareLinkTests : OrganizationsTestHost
         (await LoadSharedAsync(link)).Status.Should().Be(HttpStatusCode.OK, "allowed again, the same link works");
     }
 
+    /// <summary>
+    /// <see cref="ISparkShareLinks.IsValidAsync"/> answers the same question the share page's read does, for an app's
+    /// own anonymous surface on the link (SeoTester's SVG badge): the right token for the object while the link, the
+    /// switch and the gates allow it; never a wrong token, another object's id, a revoked link or a refused object.
+    /// </summary>
+    [Fact]
+    public async Task IsValidAsync_accepts_exactly_the_current_token_of_a_readable_link()
+    {
+        var (ann, _, _, note, other) = await SeedAsync();
+        var link = await ShareAsync(note.Id!, ann.Id!);
+        using var scope = Factory.CreateScope();
+        var links = scope.ServiceProvider.GetRequiredService<ISparkShareLinks>();
+
+        (await links.IsValidAsync("ShNote", note.Id!, link.Token)).Should().BeTrue();
+        (await links.IsValidAsync("ShNote", note.Id!, link.Token + "x")).Should().BeFalse("a wrong token");
+        (await links.IsValidAsync("ShNote", other.Id!, link.Token)).Should().BeFalse("another object");
+        (await links.IsValidAsync("ShComment", note.Id!, link.Token)).Should().BeFalse("an undeclared type");
+        (await links.IsValidAsync("ShNote", note.Id!, "")).Should().BeFalse("no token");
+
+        sharingOn = false;
+        (await links.IsValidAsync("ShNote", note.Id!, link.Token)).Should().BeFalse("sharing switched off");
+        sharingOn = true;
+        objectGate = _ => false;
+        (await links.IsValidAsync("ShNote", note.Id!, link.Token)).Should().BeFalse("a gate refuses the object");
+        objectGate = _ => true;
+
+        (await ExecuteAsync("RevokeShareLink", note.Id!, ann.Id!)).Status.Should().Be(HttpStatusCode.OK);
+        (await links.IsValidAsync("ShNote", note.Id!, link.Token)).Should().BeFalse("revoked");
+    }
+
     [Fact]
     public async Task An_expired_object_is_gone_from_its_link_too()
     {
