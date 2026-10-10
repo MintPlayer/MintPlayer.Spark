@@ -9,7 +9,7 @@ import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
 import { PersistentObject, PersistentObjectAttribute, QueryColumn, QueryResult, QueryResultItem, TranslatedString, valueFor } from '@mintplayer/ng-spark/models';
 import { QueryCellValuePipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
-import { cellValue } from '@mintplayer/ng-spark/renderers';
+import { cellValue, rendererValue } from '@mintplayer/ng-spark/renderers';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 
 /** What `POST /spark/share/load` answers: the declared attributes and the first page of each declared child query. */
@@ -142,7 +142,8 @@ export class SparkSharedObjectComponent {
       .map(attribute => ({
         attribute,
         display: this.cellPipe.transform(attribute as unknown as QueryColumn, object as unknown as QueryResultItem, {}),
-        value: cellValue(valueFor(object, attribute.name)),
+        // As the detail page: an AsDetail value travels in `object`/`objects`, not `value`.
+        value: rendererValue(attribute),
       }));
   });
 

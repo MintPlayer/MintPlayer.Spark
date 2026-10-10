@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, LOCALE_ID } from '@angular/core';
 import { formatNumber } from '@angular/common';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import type { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 import { resolveSparkScoreBands, SparkScoreBandsOption, sparkScoreBand, SparkScoreColor, toSparkScoreNumber } from './score-bands';
 import { numberOption, stringOption } from './option-readers';
@@ -30,6 +32,8 @@ interface GaugeView {
   text: string;
   color: SparkScoreColor;
   grade: string | null;
+  /** The grade badge's colour (the band's). */
+  badge: Color;
   /** Arc length on a ring of circumference 100: the share of the scale reached, clamped to 0–100. */
   arc: number;
 }
@@ -43,6 +47,8 @@ interface GaugeView {
  */
 @Component({
   selector: 'spark-gauge',
+  // The grade is ng-bootstrap's badge: its CSS ships with the component, so a bare `.badge` class drew an unstyled letter.
+  imports: [BsBadgeComponent],
   template: `
     @if (view(); as v) {
       <span class="d-inline-flex align-items-center gap-2" role="meter"
@@ -57,7 +63,7 @@ interface GaugeView {
           <text x="18" y="18" text-anchor="middle" dominant-baseline="central" class="spark-gauge-text">{{ v.text }}</text>
         </svg>
         @if (v.grade) {
-          <span class="badge" [class]="'text-bg-' + v.color">{{ v.grade }}</span>
+          <bs-badge [type]="v.badge">{{ v.grade }}</bs-badge>
         }
       </span>
     } @else {
@@ -101,6 +107,7 @@ export class SparkGaugeComponent implements SparkAttributeColumnRenderer, SparkA
       text: formatNumber(value, this.locale, `1.${s.decimals}-${s.decimals}`) + s.suffix,
       color: band?.color ?? 'secondary',
       grade: band?.label ?? null,
+      badge: Color[band?.color ?? 'secondary'],
       arc: Math.round(Math.min(1, Math.max(0, share)) * 1000) / 10,
     };
   });

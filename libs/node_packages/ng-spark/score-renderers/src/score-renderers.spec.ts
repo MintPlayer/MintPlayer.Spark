@@ -275,9 +275,11 @@ describe('SparkGaugeComponent', () => {
   it('shows the letter grade with letter-grades', () => {
     const fixture = render(SparkGaugeComponent, 72, { bands: 'letter-grades' });
 
-    const badge = host(fixture).querySelector('.badge')!;
+    // ng-bootstrap's badge: a bare .badge class is unstyled, since the badge CSS ships with the component, not
+    // globally (seen in SeoTester, Q-M6d: a black "C" on the dark page with no badge behind it).
+    const badge = host(fixture).querySelector('bs-badge .badge')!;
     expect(badge.textContent!.trim()).toBe('C');
-    expect(badge.classList.contains('text-bg-warning')).toBe(true);
+    expect([...badge.classList].some(c => c.endsWith('-warning'))).toBe(true);
     expect(meter(fixture)!.getAttribute('aria-valuetext')).toBe('72 (C)');
     expect(arc(fixture).getAttribute('stroke')).toBe('var(--bs-warning)');
   });

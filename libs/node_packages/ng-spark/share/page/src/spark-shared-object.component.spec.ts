@@ -15,6 +15,12 @@ class SpecScoreComponent {
   value = input<unknown>();
 }
 
+@Component({ selector: 'spec-rows', standalone: true, template: '<i class="spec-rows">{{ count() }} rows</i>' })
+class SpecRowsComponent {
+  value = input<unknown>();
+  count = () => (Array.isArray(this.value()) ? (this.value() as unknown[]).length : 'no');
+}
+
 const loaded = {
   id: 'Sites/1',
   type: 'Site',
@@ -43,7 +49,7 @@ function render(post: (url: string, body: any) => Observable<unknown>, params = 
       { provide: HttpClient, useValue: { post: postSpy } },
       { provide: SparkService, useValue: {} },
       { provide: SparkLanguageService, useValue: { t: (key: string, fallback?: string) => `${key}|${fallback}`, language: signal('en') } },
-      { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [{ name: 'spec-score', columnComponent: SpecScoreComponent, detailComponent: SpecScoreComponent }] },
+      { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [{ name: 'spec-score', columnComponent: SpecScoreComponent, detailComponent: SpecScoreComponent }, { name: 'spec-rows', columnComponent: SpecRowsComponent }] },
       {
         provide: ActivatedRoute,
         useValue: { snapshot: { paramMap: convertToParamMap(params), queryParamMap: convertToParamMap(id ? { id } : {}) } },
@@ -80,6 +86,19 @@ describe('SparkSharedObjectComponent', () => {
     expect(element.querySelector('[data-attribute="Host"]')!.textContent!.trim()).toBe('example.com');
     expect(element.querySelector('[data-attribute="Score"] .spec-score')!.textContent!.trim()).toBe('score 87');
     expect(Array.from(element.querySelectorAll('.spark-shared-attributes dt')).map(d => d.textContent!.trim())).toEqual(['Host', 'Score']);
+  });
+
+  // An AsDetail array travels in `objects`, not `value` (as on the detail page, rendererValue): the share page handed its
+  // renderer undefined, so SeoTester's shared run showed "no results" for a run with 99 (M11).
+  it('hands an AsDetail array attribute its rows, as the detail page does', async () => {
+    const withRows = { ...loaded, attributes: [...loaded.attributes, {
+      id: 'a3', name: 'Results', label: { en: 'Results' }, dataType: 'AsDetail', isArray: true, order: 3, renderer: 'spec-rows',
+      objects: [{ id: 'r1', name: 'Row', attributes: [] }, { id: 'r2', name: 'Row', attributes: [] }], isRequired: false, isReadOnly: true, rules: [],
+    }] };
+    const { fixture } = render(() => of(withRows));
+    await settle(fixture);
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-attribute="Results"] .spec-rows')!.textContent!.trim()).toBe('2 rows');
   });
 
   it('renders one read-only table per child query', async () => {
