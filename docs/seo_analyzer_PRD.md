@@ -1,6 +1,6 @@
 # SeoTester (#268): PRD and plan
 
-Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M8 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
+Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M9 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
 
 §1–§11 are the current spec. §12 is the decision log (D1–D46 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
 
@@ -22,7 +22,7 @@ Research behind this document:
 | Body consolidated with §12 | ✅ 2026-10-10 |
 | Grilling round 9: live-update details | ✅ 2026-10-10, D33–D37 |
 | Round 10: Web Push, SafeHttp ports and redirects, expiry ownership | ✅ 2026-10-10, D38–D41 (D39–D41 built, §12) |
-| Spikes S1–S13 | ⏳ (S1, S6, S8 (L5 open), S11, S12 (Chrome; Q-M6a open), S13 ✅ 2026-10-10, §12; S4, S5, S10 researched) |
+| Spikes S1–S13 | ⏳ (S1, S2 (Windows; Debian Q-M9b), S6, S7, S8 (L5 open), S9, S11, S12 (Chrome; Q-M6a open), S13 ✅ 2026-10-10, §12; S4, S5, S10 researched) |
 | Milestones M0–M12 | ⏳ |
 | M1 ✅ | 2026-10-10, commit `72c84933`: X2 SSRF-safe client in `libs/spark/MintPlayer.Spark/Http/`, adopted by the IdP (§12 "Spike S1") |
 | M2 ✅ | 2026-10-10, commit `6df64fb3`: X1 document expiration in `libs/spark/MintPlayer.Spark/Expiration/` (`IExpiring`, `"expiresAfter"`, stamper, read filter, one 36 h configurator), adopted by Messaging, Mail, Moderation and the IdP (§12 "Spike S6"). ⚠️ `model.schema.json` gains `expiresAfter`: CI mints the next `schemas/v{n}` tag on merge (no tag created by hand) |
@@ -31,6 +31,7 @@ Research behind this document:
 | M6 ✅ | 2026-10-10 (§12 "Spike S12 and M6"): X10 notifications `libs/notifications/MintPlayer.Spark.Notifications` (alias `notifications`) with the hand-rolled Web Push library `libs/webpush/MintPlayer.Spark.WebPush` (both `11.0.0-preview.104`), preferences per organization (D44); X3 quotas (`[SparkQuota]`, `ISparkQuotas`, settings package; core `ISparkCustomActionGate`); X5 ng-spark score renderers (`@mintplayer/ng-spark/score-renderers`), CodeCoverage switched over with its DOM pinned; X6 share links in core (`ISparkShareable`, `AddShareLinks`, `ShareLink`/`RevokeShareLink`, `/spark/share`); ng-spark notifications/share UI; M5 follow-ups; S12 measured on Chrome (5/5 delivered). Guides: notifications, quotas, share links, score renderers. Open: Q-M6a–Q-M6d (§11) |
 | M7 ✅ | 2026-10-10 (§12 "M7"): the SeoTester skeleton `apps/SeoTester` (host + SPA, `.Library`, `.Tests`; https 5013 / http 5014; database `SeoTester`), composed per §4.1 (external sign-in only with `ConfirmByEmail`, the four provider presets from configuration, MailManager, Messaging with the six crawl queues declared, SafeHttp, settings with every §6 gate and limit and the §7 weights, three quotas, notifications, organizations, the sharing switch); server-rendered `/bot`; Dockerfile; nx, solution and CI lists; `docs/seotester/README.md` (credentials to register). SparkId registers a Development `seotester` client. M6 leftovers: share-page headings, a clicked push is read. Open: Q-M7a, ~~Q-M7b~~ (§11; Q-M7b answered by D46) |
 | M8 ✅ | 2026-10-10 (§12 "M8"): `Site` (organization rows, live), ownership verification by DNS TXT / well-known file / meta tag with the claim flow (D18, D42) and an hourly re-check; the check catalogue (110 checks, 8 categories) seeded into editable `CheckDefinition`s with "Reset to shipped"; the pure scoring engine (snapshot + `ScoringVersion`, headline and category scores); `AuditRun` / `PageResult` shapes; `StartAudit` / `StartFullCrawl` (join, 6 h cool-down, three quotas, gates, first message enqueued); share links for `Site` and `AuditRun` (core: per-object share gates); `AuditLogEntry`; D26 cascade; passkeys (D46). Open: Q-M8a–Q-M8e (§11) |
+| M9 ✅ | 2026-10-10 (§12 "M9"): the crawl pipeline: `seo-probe` (robots.txt first and the opt-out, Q-M8e; sitemaps, redirects, TLS incl. the raw TLS 1.0/1.1 hello, well-known files, DNS, RDAP and hstspreload through `LookupCache`), `seo-crawl` (`CrawlFrontier`, page batches, per-host politeness, tier limits, full-crawl ceiling), `seo-aggregate` (scores with the run's snapshot, New/Fixed/Unchanged, notifications), `CancelAudit`; 92 of 110 checks (18 wait for Chromium/PSI, M10); core `SafeHttpTrace` and `ISafeHttpSockets`; spikes S2, S7, S9 measured. Open: Q-M9a, Q-M9b (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -406,6 +407,20 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 - **Q-M8c (from M8): "a site already held in another organization" = verified there.** Several organizations may add the same site unverified (each tests it). The claim flow (D18) starts only when the proof is found and another organization holds the same **host** verified: that organization's Owners get a join request, and the second organization's site stays unverified. A holder that lost the domain loses its verification at the re-check (3 failed checks in a row, a setting), after which the other can verify. Options: (a) as built; (b) "held" = registered anywhere, verified or not. **Recommendation: (a)**: (b) would let anyone who registers a site first block its real owner.
 - **Q-M8d (from M8): how-to-fix texts.** §3.1 asks for "en/nl `howToFix` per platform". Built: a translated explanation (`HowToFixEn`/`HowToFixNl`) plus one code snippet per platform (nginx, Apache, IIS/ASP.NET Core, HTML) that is not translated, since code is the same in both languages. Options: (a) as built; (b) eight translated fields per check. **Recommendation: (a).**
 - **Q-M8e (from M8): robots.txt opt-out at StartAudit.** §4.3 lists the robots.txt opt-out among StartAudit's checks; the robots.txt fetch and RFC 9309 matcher belong to the M9 probe (`SiteProbeMessage`). Built: StartAudit does not fetch robots.txt; the probe will stop the run before any page is fetched. Options: (a) as built (the run is created and then ends "opted out"); (b) a synchronous robots.txt fetch inside the action as well. **Recommendation: (a)**: one fetch per run, in the background, through the same SSRF-safe client, and the abuse log still records the attempt.
+- **Q-M9a (from M9): what a site that disallows every crawler gets.** RFC 9309 makes the `*` group bind any crawler
+  that has no group of its own, and makes an unreachable robots.txt (5xx) a complete disallow. Built: the run ends
+  `Blocked` after the robots.txt request, with no score and no further request to the host (a staging site with
+  `User-agent: *` / `Disallow: /` cannot be audited at all). Options: (a) as built; (b) still score what needs no page
+  of the host (DNS, RDAP, hstspreload; TLS needs a handshake but no path) and mark the crawl "blocked"; (c) for
+  **verified** owners, an "ignore robots.txt for this site" profile switch (research §4.2, as Screaming Frog offers),
+  logged. **Recommendation: (a)** now, and (c) only if owners ask: D19 makes robots.txt the one opt-out, and (b) still
+  touches the host (TLS) of a site that said no.
+- **Q-M9b (from M9, S2): where the TLS probe is measured from the Debian image.** The raw TLS 1.0/1.1 hello is built
+  byte by byte, so it does not depend on the platform's TLS library, and it matched badssl.com from Windows 11 (§12
+  "M9"). The platform handshake (certificate, version, ALPN) on the `aspnet:11.0` image's OpenSSL 3 was not run: Docker
+  Desktop was not running on the build machine. Options: (a) measure at the M12 deploy, from the real container on the
+  VPS; (b) start Docker locally and run the spike in the image now. **Recommendation: (a)**, as Q-M5a: it is the real
+  image on the real network, and nothing before M12 runs the crawler in production.
 - **Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).
 
 
@@ -1378,3 +1393,160 @@ limits, the shipped catalogue's shape.
 **Also:** two settings `SeoTester:Verification:{RecheckInterval, FailuresBeforeWithdrawal}`; menu groups "SEO" (sites,
 audits, check catalogue) and "SEO administration" (audit log); `securityPosture.txt` gains the new grants (none
 anonymous); translations en/nl for every label, action and message. Not run here: the browser (M11 builds the pages).
+
+### M9 (2026-10-10): the crawl pipeline (probe, page batches, aggregate, cancel) and spikes S2, S7, S9
+
+Commits: `b4f92702` (core: `SafeHttpTrace`, `ISafeHttpSockets`), `dae3746f` (SeoTester.Library: robots.txt, sitemaps,
+HTML, the TLS hello probe, 92 checks), `97e94699` (the pipeline, cancel, tests), `151fb94f` (Retry-After bound), then
+this record. Operator documentation: `docs/seotester/README.md` ("The crawl pipeline").
+
+**Pipeline (§4.3), as built.** Recipients for `seo-probe`, `seo-crawl` and `seo-aggregate` (`apps/SeoTester/SeoTester/Crawler/`);
+render, PSI and PDF stay M10's.
+- **Probe** (`SiteProbeRecipient`, `SiteProber`): robots.txt is read **first** (Q-M8e as recommended): an opt-out by
+  name, a `*` disallow-all, or a 5xx/unreachable robots.txt (RFC 9309 §2.3.1.4: "complete disallow") ends the run with
+  the new status **`Blocked`** and an abuse-log entry (`RobotsBlocked`) before any other request to the host (see
+  Q-M9a). Otherwise, paced like the crawl: home page, sitemaps (robots.txt `Sitemap:` lines on the same host, else
+  `/sitemap.xml`; gzip; an index followed ≤ 3 children), `http://` → `https://`, the www/apex twin (only when it
+  resolves), TLS, `security.txt`, `change-password` (only with a login form), `favicon.ico`, a random path (soft 404),
+  the home page's manifest, icons, OpenSearch description, ≤ 3 stylesheets and ≤ 3 scripts (compression, caching,
+  minification, `@font-face`, `prefers-color-scheme`, `prefers-reduced-motion`); then DNS (`ISeoDns`), RDAP and
+  hstspreload (`ExternalLookups`, cached in `LookupCaches/{kind}/{key}`: bootstrap 7 d, RDAP and hstspreload 1 d, a
+  failure 15 min). `/.git/HEAD`, `/.env`, `/.DS_Store`, `/web.config`, `/phpinfo.php`, `/.htpasswd` and the listing of
+  ≤ 3 folders the home page's assets live in are requested **only** when the run holds `IntrusiveProbes` (D11). The
+  site-level findings, the home page's `PageResult`, the seeded `CrawlFrontier` and `PageBatchMessage(run, 0)` commit
+  together; a redelivery finds the frontier (stored "must not exist") and stops.
+- **Crawl** (`PageBatchRecipient`): a batch takes up to `SeoTester:Crawl:BatchSize` (25) pages allowed by robots.txt,
+  stops taking more after `BatchBudget` (90 s), fetches through `HostPacer` (the tier's connections per host and request
+  interval, a robots.txt `Crawl-delay` when larger, capped at 30 s; `Retry-After` defers, a URL is asked ≤ 3 times),
+  judges each page (`PageChecks`), extends the frontier (same host, breadth first, files and assets skipped, at most the
+  page limit + 50 % queued), writes progress at most every 2 s (patches: live, X4), and commits pages, frontier (with its
+  change vector: a duplicate delivery of the same batch cannot commit twice), progress and the next message (delayed by
+  a `Retry-After`) in one `SaveChanges`. It stops at the page limit, the wall time (the run's `WallTimeMinutes`, i.e.
+  the full-crawl ceiling for full crawls), an empty frontier, a cancel, or > 50 % errors after ≥ 10 pages; a verified
+  run then checks ≤ 50 external links (one `HEAD` per host, `GET` on 405/501) and adds `crawl` to `StagesDone` and
+  enqueues the aggregate (M10's render and PSI stages will each enqueue it when they finish last).
+- **Aggregate** (`AggregateRecipient`): pages are read by id prefix (`{runId}/pages/`, `StreamAsync`: no index, never
+  stale); `RunTally` gives one vote per (check, URL), the worst status winning when a page check and the crawl's look at
+  the same URL disagree; `CrawlChecks` adds the site-level S checks over all pages; `ScoreCalculator.Score` with the
+  run's own snapshot (D32); `Delta` New/Fixed/Unchanged against the site's previous completed run; one commit finishes
+  the run (patches), updates `Site.Latest*` and deletes the frontier; then `ISparkNotifier` tells the participants
+  (a failed notification is logged, never retried: the run is over).
+- **The run is written only by patches** (`RunPipeline`), so the pipeline never overwrites a concurrent join or cancel
+  and vice versa. **Fixed in M8's join on the way:** `JoinAsync` stored the whole loaded run, which would have put a
+  stale `Status`/progress back over the crawler's writes; it now patches `Participants`. A stage failing on its queue's
+  last attempt marks the run `Failed` (otherwise a dead-lettered run would stay `Running`, and joinable, for ever).
+- **Cancel** (`CancelAudit` on `AuditRun`, Members by `[RequiresOrganizationRole]`, right `CancelAudit/AuditRun` to
+  signed-in users; `securityPosture.txt`: nothing anonymous): patches `CancelRequested`; the probe or the next batch
+  ends the run `Cancelled` and deletes the frontier; a finished run answers "already finished".
+- **What a redirect is.** A URL that redirects is judged as a redirect (chain length, temporary vs permanent), not by
+  the content it led to; its target is queued and judged under its own URL. *Evidence: before this, `/old` (301 → `/a`)
+  was counted as a second page titled like `/a` and `seo.duplicate-titles` sampled three URLs: red in
+  `CrawlPipelineTests.An_audit_probes_crawls_in_batches_scores_and_finishes_the_run`, then green.*
+
+**Checks (§3.1):** 92 of 110 implemented; the 18 others need Chromium or PSI and wait for M10
+(`CheckImplementations.AwaitingRenderOrPsi`; the test `Every_catalogue_check_is_implemented_now_or_waits_…` pins
+both lists against the catalogue). Per category, implemented / M10: **Seo 19/0, Social 3/0, Performance 10/5, Security
+25/1, Accessibility 4/6, Mobile 8/3, Technical 14/3, Domain 9/0.** M10: `performance.{core-web-vitals, lab-score,
+page-weight, lazy-loading, code-splitting}`, `security.analytics-consent`, `accessibility.{aria, color-contrast,
+touch-targets, heading-order, landmarks, axe-other}`, `mobile.{responsive, service-worker, service-worker-caching}`,
+`technical.{raw-vs-rendered, spa-analytics, mobile-parity}`. Checks the catalogue marks H+R (single h1, structured data,
+thin content, resource hints, mixed content, form labels, share buttons) are measured on the raw HTML now; M10 adds the
+rendered view. Three levels: `PageChecks` (49, per page), `SiteChecks` (36, once per run), `CrawlChecks` (11, over all
+pages); `performance.compression`, `seo.canonical`, `seo.hreflang` and `technical.sitemap` are measured at two levels
+and add up. Thresholds chosen where the research leaves a range (all data in code, versioned by the scoring snapshot
+only through weights): title < 30 or > 60 characters or > 600 px, description 70–160, thin content < 200 words,
+> 4 preconnects, > 20 `style=` attributes, HSTS ≥ 1 year, a static asset's `max-age` ≥ 30 days, minified when
+whitespace and comments are ≤ 10 %, certificate < 14 d fail / < 30 d warn, domain < 30 d fail / < 1 y warn, crawl depth
+> 3, near-duplicate when SimHash (word 3-shingles) differs in ≤ 3 of 64 bits (pairwise up to 5 000 pages, exact
+matches above). Untrusted input everywhere: body caps (3 MiB pages, 10 MiB sitemaps, 512 KiB lookups), AngleSharp with
+scripting off, `JsonDocument` with a depth limit, `XmlReader` with DTDs prohibited, regexes with timeouts, robots.txt
+matched by a hand-written wildcard walk (a hostile 4 000-character pattern against a 20 000-character path: < 2 s,
+tested).
+
+**Framework additions (behaviour of existing callers unchanged):** `SafeHttpTrace` (opt-in per request: redirect hops
+and the wire `Content-Encoding`) and `ISafeHttpSockets` (a raw connection under a named client's port and address
+rules, for the TLS probes), both in `libs/spark/MintPlayer.Spark/Http/`. *Evidence: the 116 existing SafeHttp tests pass
+unchanged; 3 new tests (hops and encoding, hops up to a refused redirect, sockets refused/allowed).* `MintPlayer.Spark`
+was already `11.0.0-preview.104` on this branch: no version change.
+
+**Dedupe:** `IDnsTxtResolver` (M8, verification) became `ISeoDns` (`apps/SeoTester/SeoTester/Dns/`): the same TXT call
+plus `QueryAsync(name, type)` and `ZoneApexAsync(host)` for the domain checks. Verification behaves identically
+(`VerificationTests` 6/6 unchanged).
+
+**Spike S2 (TLS on the target, msquic).** Measured 2026-10-10 from the build machine (Windows 11 26200, .NET 11),
+`LegacyTlsProbe` and an `SslStream` handshake per badssl.com reference host:
+
+| Host | TLS 1.0 hello | TLS 1.1 hello | Platform handshake |
+|---|---|---|---|
+| `tls-v1-0.badssl.com:1010` | **Accepted** | Refused | Tls (1.0), no errors |
+| `tls-v1-1.badssl.com:1011` | Refused | **Accepted** | Tls11, no errors |
+| `tls-v1-2.badssl.com:1012` | Refused | Refused | Tls12, no errors |
+| `badssl.com:443`, `expired.`, `wrong.host.`, `self-signed.` | Accepted | Accepted | Tls12; `ChainErrors` (expired 2015-04-13, self-signed), `NameMismatch` (wrong.host) |
+
+  The hand-built hellos match badssl's own labels on all seven hosts (the 443 hosts do serve 1.0/1.1, as badssl's
+  dashboard lists), 240–380 ms per hello. The raw probe sends bytes and reads one record, so it gives the same answer on
+  any platform; that is why it exists (§1 hosting: OpenSSL 3 at its default level, like current Windows by policy,
+  refuses to *speak* 1.0/1.1). Notably this Windows machine's SChannel still *spoke* TLS 1.0 both as client
+  (`tls-v1-0.badssl.com` above) and as server (`TlsProbeTests` first saw its own loopback server accept the 1.0 hello
+  until the test pinned `Tls12 | Tls13`): an `SslStream` result depends on the machine, the raw probe does not.
+  Tests: `TlsProbeTests` (canned ServerHello 1.0 → Accepted, alert / ServerHello 1.2 / closed → Refused, silence and
+  non-TLS → Inconclusive; a loopback `SslStream` server through `ISafeHttpSockets`: version, ALPN `h2`, expiry,
+  untrusted certificate, legacy refused; a private address refused before any byte). **HTTP/3 decision:** no
+  `libmsquic` in the image; `performance.http3` (Info, weight 0) reports "advertised (Alt-Svc)" or not. **Not run:** the
+  platform handshake inside the Debian `aspnet:11.0` image (Docker Desktop not running): Q-M9b.
+
+**Spike S7 (crawl chaining).** The batch is bounded twice: `BatchSize` 25 pages **and** `BatchBudget` 90 s
+of fetching (no new page after it). At the unverified 1 request/s a full batch is ~25 s (the pacer's gaps measured exact:
+≥ 280 ms at a 300 ms setting across probe and batches, one connection); the worst case, a server that lets every
+request run into the 30 s client timeout, is 90 s + one 30 s fetch per connection = 2 min, a fifth of `seo-crawl`'s
+10-minute `HandlerTimeout`. A 100-page unverified run is 4 batches; the 20 000-page full-crawl ceiling 800 batches,
+each commit writing one frontier (pending URLs + visited hashes, ~16 hex characters per URL). **Kill test**
+(`CrawlResumeTests`): batches of 10, the host stopped while `/k5` hangs in batch 0 (`/k0`–`/k4` fetched, nothing of the
+batch committed; Messaging drains handlers on a graceful stop, so the host's 2 s shutdown timeout cancels the hanging
+one, as a killed container would end it); a new host on the same database reclaims the message after `ClaimTtl` (4 s
+here, 5 min in production) and finishes the run: 21 pages, each stored once, `/k0` fetched twice. *Red first: with a
+graceful stop alone the batch simply finished (`/k0` fetched once), which proved nothing; green 1/1, 11 s.*
+
+**Spike S9 (HTML parsing).** **Decision: AngleSharp 1.7.2** (MIT, HTML5 tree construction, no scripting;
+AngleSharp.Css not needed: `@font-face`/`prefers-*` are found by bounded scans). Measured 2026-10-10 (Release, build
+machine, 20 iterations after warm-up, synthetic pages with navigation, sections, images, links, scripts):
+
+| HTML | Parse | Allocated | All page checks + links + fingerprint | Allocated |
+|---|---|---|---|---|
+| 19 KB | 2.1 ms | 0.4 MB | 6.4 ms | 1.5 MB |
+| 174 KB | 24.5 ms | 3.0 MB | 76.6 ms | 12.7 MB |
+| 1.3 MB | 50.7 ms | 21.9 MB | 304 ms | 75 MB |
+
+  Even the 1.3 MB page costs a third of a second against ≥ 1 s between requests to an unverified host, so CPU is not
+  the crawl's limit; pages are parsed one at a time per connection and dropped after their result is stored (no raw
+  HTML kept, §4.2). Parsing stops at 2 Mi characters (`HtmlPage.MaxCharacters`), the body read at 3 MiB.
+  **Title width without a browser:** `TitleWidth` (Arial = Helvetica AFM advance widths at 20 px) against Chromium's
+  `measureText` with `20px Arial` (playwright, same machine): 468.0 vs 467.3, 566.4 vs 566.3 (30 × W), 133.2 vs 133.3
+  (30 × i), 588.0 vs 585.8 px: within 0.4 %, so the ~600 px cut is judged without rendering.
+
+**Politeness, measured.** `HostPacer` counted the interval from the *scheduled* start; a timer that fires late made two
+real starts 138 ms apart at a 150 ms interval (`CrawlerUnitTests.The_pacer_keeps_one_connection_…`, red). It now counts
+from the real start (green). End to end at 300 ms: every request start to an unverified host ≥ 280 ms apart, across
+the probe and every batch, never more than one in flight (`CrawlPipelineTests.An_unverified_site_gets_one_connection_…`).
+A URL answering 429 with `Retry-After: 1` is asked three times, each ≥ 950 ms apart, then recorded as a 429 page
+(before the bound it held the crawl until the wall time).
+
+**Tests** (`SeoTester.Tests`, 127; nothing leaves the machine: the host fakes DNS (`FakeDns`), TLS (`FakeTls`) and
+every named client's primary handler (`FakeWeb`), so the SSRF-safe handlers still run; recorded RDAP/IANA/hstspreload
+answers in `Data/Fixtures`): `RobotsTxtTests` 11, `SitemapReaderTests` 5, `PageChecksTests` 8, `SiteAndCrawlChecksTests`
+7, `TlsProbeTests` 5, `CrawlerUnitTests` 7, `CrawlPipelineTests` 8 (own host, collection "SeoTester pipeline host"),
+`CrawlResumeTests` 1 (own host), plus M7/M8's 75 (one assertion relaxed: a started run is `Queued` **or** `Running`, the
+probe now starts at once). Spark.Tests: `SafeHttpClientTests` +3. **Red→green** (Developer licence; 20 mechanisms removed at once (robots.txt Disallow in the batch, the opt-out, cancel,
+the interval, the intrusive-probe gate, "a redirect is not judged by its target", the redirect trace (core), the delta,
+the external-link check, the legacy hello's version compare, allow-wins-a-tie, the notification, the Retry-After bound,
+the real-start pacing, the aggregate's link set, the near-duplicate scan, the active/passive mixed-content split, the
+CAA issuer match, the sitemap DTD prohibition): **15 of 127 SeoTester tests failed** and **2 of 30**
+`SafeHttpClientTests` (the trace); green **127/127** and 30/30 (`SafeHttp*` 119/119). Several mechanisms share the end-to-end
+test `An_audit_probes_crawls_in_batches_…` (robots Disallow, intrusive gate, redirect judging, notification, link set),
+so only their union is shown red. Confirmed rather than red: the sitemap DTD (with DTDs ignored instead of prohibited the
+undeclared entity still fails the read, and `XmlResolver = null` blocks external entities anyway); the frontier's change
+vector against a concurrent duplicate batch (no test makes two deliveries race); M8's join now patching (its tests pass
+unchanged; the race it closes is not reproduced). Before the run, three defects were found red and fixed: the redirect
+judged by its target's content, the pacer counting from the scheduled start, and a URL answering 429 holding the crawl.)
+
+**Open (§11):** Q-M9a, Q-M9b.
