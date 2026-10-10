@@ -1,0 +1,18 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "5e070000-0000-4000-8000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "5e070000-0000-4000-8000-00000000000f": "Signed-in users",
+    "5e070000-0000-4000-8000-000000000001": "Administrators"
+  },
+  "bindings": {
+    "organizations:users": [ "Signed-in users" ],
+    "notifications:users": [ "Signed-in users" ],
+    "settings:administrators": [ "Administrators" ]
+  },
+  "rights": []
+}

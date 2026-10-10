@@ -33,6 +33,11 @@
     <Project Path="apps/QnA/QnA.Tests/QnA.Tests.csproj" />
     <Project Path="apps/QnA/QnA/QnA.csproj" />
   </Folder>
+  <Folder Name="/apps/SeoTester/">
+    <Project Path="apps/SeoTester/SeoTester.Library/SeoTester.Library.csproj" />
+    <Project Path="apps/SeoTester/SeoTester.Tests/SeoTester.Tests.csproj" />
+    <Project Path="apps/SeoTester/SeoTester/SeoTester.csproj" />
+  </Folder>
   <Folder Name="/apps/SparkId/">
     <Project Path="apps/SparkId/SparkId.Tests/SparkId.Tests.csproj" />
     <Project Path="apps/SparkId/SparkId/SparkId.csproj" />

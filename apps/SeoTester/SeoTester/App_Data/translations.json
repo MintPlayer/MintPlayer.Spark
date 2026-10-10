@@ -1,0 +1,51 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "app": {
+    "title": {
+      "en": "SeoTester",
+      "nl": "SeoTester"
+    },
+    "welcomeTitle": {
+      "en": "Welcome to SeoTester",
+      "nl": "Welkom bij SeoTester"
+    },
+    "welcomeSubtitle": {
+      "en": "Check your websites for SEO, performance, security, accessibility and social previews, and get a prioritised list of fixes.",
+      "nl": "Controleer je websites op SEO, prestaties, beveiliging, toegankelijkheid en sociale previews, en krijg een geordende lijst met verbeteringen."
+    },
+    "signInPrompt": {
+      "en": "Sign in with Microsoft, GitHub, X or Google to register your sites.",
+      "nl": "Meld je aan met Microsoft, GitHub, X of Google om je sites te registreren."
+    },
+    "selectMenuItem": {
+      "en": "Your organizations, notifications and (for administrators) the settings are in the sidebar.",
+      "nl": "Je organisaties, meldingen en (voor beheerders) de instellingen staan in de zijbalk."
+    },
+    "aboutTheCrawler": {
+      "en": "About our crawler",
+      "nl": "Over onze crawler"
+    }
+  },
+  "security": {
+    "groups": {
+      "Anonymous visitors": {
+        "label": {
+          "en": "Anonymous visitors",
+          "nl": "Anonieme bezoekers"
+        }
+      },
+      "Signed-in users": {
+        "label": {
+          "en": "Signed-in users",
+          "nl": "Aangemelde gebruikers"
+        }
+      },
+      "Administrators": {
+        "label": {
+          "en": "Administrators",
+          "nl": "Beheerders"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "version": 2,
+  "modelHash": "5c2b95c9bc2156e71bc8e2804b031f11c948823075c4c7d33282840c88fbb4ff",
+  "contextRoots": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "modelFiles": "8aae5f1d8bad7ab3eb4944b97de0ddabfe4955628ce3d1fb7f783786c10bc384",
+  "files": {
+    "Notification.json": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd",
+    "NotificationPreference.json": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da",
+    "Organization.json": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935",
+    "OrganizationInvitation.json": "8e40cf9b44347a167f5eada49a9adc613ca2b1e913b7d6d4c2d6340508ced115",
+    "OrganizationInvite.json": "6e65251c03be7fb106c8dc45a0aff242b775dc3023fe01a49fc68d5105f53eaa",
+    "OrganizationMembership.json": "bd3c26cf32d9ca0f8e307e283fe2e37492271c66eacd2dbd589069bc88aff4b8",
+    "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
+    "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
+    "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
+    "PushSubscription.json": "e32e2c6c486e62dfbffd5b4e30a2b49bc06b6f045066992220e66e7bc9cd5735",
+    "Setting.json": "e946dbf665e3a615067a3f517d567b4b6cbd754610d04b2017d541d869227834",
+    "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+  },
+  "entities": {},
+  "configFiles": {
+    "actions.json": "f3cdd4e3b23986b913d5e7965a14007105946561f1c0c5eae4e548e399c325e1"
+  },
+  "libraries": {
+    "authorization": "MintPlayer.Spark.Authorization",
+    "notifications": "MintPlayer.Spark.Notifications",
+    "organizations": "MintPlayer.Spark.Organizations",
+    "settings": "MintPlayer.Spark.Settings",
+    "spark": "MintPlayer.Spark"
+  },
+  "layers": {
+    "Model/Notification.json": {
+      "notifications": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd"
+    },
+    "Model/NotificationPreference.json": {
+      "notifications": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da"
+    },
+    "Model/Organization.json": {
+      "organizations": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935"
+    },
+    "Model/OrganizationInvitation.json": {
+      "organizations": "8e40cf9b44347a167f5eada49a9adc613ca2b1e913b7d6d4c2d6340508ced115"
+    },
+    "Model/OrganizationInvite.json": {
+      "organizations": "6e65251c03be7fb106c8dc45a0aff242b775dc3023fe01a49fc68d5105f53eaa"
+    },
+    "Model/OrganizationMembership.json": {
+      "organizations": "bd3c26cf32d9ca0f8e307e283fe2e37492271c66eacd2dbd589069bc88aff4b8"
+    },
+    "Model/PasskeyRename.json": {
+      "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
+    },
+    "Model/PasskeyRow.json": {
+      "authorization": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33"
+    },
+    "Model/Passkeys.json": {
+      "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
+    },
+    "Model/PushSubscription.json": {
+      "notifications": "e32e2c6c486e62dfbffd5b4e30a2b49bc06b6f045066992220e66e7bc9cd5735"
+    },
+    "Model/Setting.json": {
+      "settings": "e946dbf665e3a615067a3f517d567b4b6cbd754610d04b2017d541d869227834"
+    },
+    "Model/SparkUser.json": {
+      "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+    },
+    "actions.json": {
+      "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
+      "organizations": "254d9fe0f061cf7cbc6fd6de921d9a00cf8e0426052ba5a95e1d7895e70c62f9",
+      "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
+    },
+    "programUnits.json": {
+      "notifications": "b962972bc9e43ff5f3ce944c4276dfaa2b713f6dc7c5b64644db81abd4585d19",
+      "organizations": "5a4e33ac1d686d6c1b0e2c07d31cb6c60f19107c1bd6d2d223a74cd09c65e963",
+      "settings": "562d0dfbe0badee24003f1faf8f2b5e088cc18fabd5ad5493db5e7e75f1418c5"
+    }
+  }
+}

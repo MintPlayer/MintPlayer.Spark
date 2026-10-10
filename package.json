@@ -18,6 +18,7 @@
     "apps/QnA/QnA/ClientApp",
     "apps/SparkId/SparkId/ClientApp",
     "apps/CodeCoverage/CodeCoverage/ClientApp",
+    "apps/SeoTester/SeoTester/ClientApp",
     "apps/CodeCoverage/action"
   ],
   "dependencies": {

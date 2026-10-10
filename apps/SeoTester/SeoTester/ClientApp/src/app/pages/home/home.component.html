@@ -1,0 +1,21 @@
+<bs-grid>
+  <div bsRow class="justify-content-center">
+    <div [md]="8">
+      <bs-card>
+        <bs-card-header>{{ 'app.title' | t }}</bs-card-header>
+        <div class="p-3 text-center">
+          <h1 class="display-5">{{ 'app.welcomeTitle' | t }}</h1>
+          <p class="lead">{{ 'app.welcomeSubtitle' | t }}</p>
+          <hr>
+          @if (auth.isAuthenticated()) {
+            <p>{{ 'app.selectMenuItem' | t }}</p>
+          } @else {
+            <p><a routerLink="/sign-in">{{ 'app.signInPrompt' | t }}</a></p>
+          }
+          <!-- The server's page (not a route of this app): a full page load, outside the service worker. -->
+          <p class="small mb-0"><a href="/bot">{{ 'app.aboutTheCrawler' | t }}</a></p>
+        </div>
+      </bs-card>
+    </div>
+  </div>
+</bs-grid>

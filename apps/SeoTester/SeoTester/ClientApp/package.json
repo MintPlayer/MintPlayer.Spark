@@ -1,0 +1,25 @@
+{
+  "name": "@spark-apps/seo-tester",
+  "version": "0.0.0",
+  "scripts": {
+    "start": "nx run @spark-apps/seo-tester:serve",
+    "build": "nx run @spark-apps/seo-tester:build",
+    "test": "nx run @spark-apps/seo-tester:test"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "private": true,
+  "dependencies": {
+    "@mintplayer/ng-spark": "^22.33.0"
+  }
+}

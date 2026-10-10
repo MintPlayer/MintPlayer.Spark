@@ -1,0 +1,12 @@
+<spark-shell title="SeoTester">
+  <!-- The menu is server-driven: Organizations, Notifications and (administrators only) Settings come with their
+       packages. The topbar adds the notification bell (live unread count, push opt-in) and the account pages. -->
+  <ng-container *sparkShellTopbarEnd>
+    <spark-language-selector />
+    @if (auth.isAuthenticated()) {
+      <spark-notification-bell />
+    }
+    <spark-auth-bar />
+  </ng-container>
+  <router-outlet />
+</spark-shell>
