@@ -75,6 +75,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/moderation` | `provideSparkModeration()`, `sparkModerationRoutes()`, `sparkModerationRenderers` — vote widget, flag button, review queue, reputation badge, moderator panel |
 | `/organizations` | `withOrganizationRoutes()` for `sparkAuthRoutes(...)`: the page a mailed organization invitation or join request opens (`organizations/accept/:token`), accepting on an explicit click ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-organizations.md)) |
 | `/pwa` | `provideSparkServiceWorker()` — Angular's service worker with Spark's update policy (`SparkServiceWorkerUpdates`) and in-app navigation for a clicked push notification (`SparkNotificationClicks`) |
+| `/share` | `withShareRoutes(options?)` — the anonymous page a share link opens (`shared/:type/:token?id=…`); `SparkSharedObject` (the `/spark/share/load` answer). The page itself is `SparkSharedObjectComponent` in `/share/page`, lazy-loaded |
 | `/notifications` | `<spark-notification-bell>`, `<spark-push-toggle>`, `SparkNotificationsService` (live unread count, latest notifications, mark read, Web Push opt-in), `provideSparkNotifications()` — the client of MintPlayer.Spark.Notifications |
 
 ### Timezone (`withSparkTimezone`)
@@ -271,6 +272,24 @@ The client of the server package MintPlayer.Spark.Notifications (`spark.AddNotif
 - A push clicked while the app is open becomes an in-app navigation (`SparkNotificationClicks`, started by
   `provideSparkServiceWorker()`). When the app is closed, Angular's service worker opens the page itself
   from the payload's `onActionClick`.
+
+### Share links
+
+```ts
+import { withShareRoutes } from '@mintplayer/ng-spark/share';
+
+export const routes: Routes = [
+  ...withShareRoutes(),                     // shared/:type/:token, no guard
+  { path: '', component: ShellComponent, children: [...sparkRoutes()] },
+];
+```
+
+A share link (`spark.AddShareLinks(...)` on the server) is `{origin}/shared/{type}/{token}?id={id}`. The page shows,
+read-only and to anyone holding the link, exactly what `POST /spark/share/load` returns: the declared attributes
+through the usual cells and renderers (the score renderers included) and one table per declared child query,
+paged through `POST /spark/share/query`. A revoked, replaced or unknown link reads "This link does not work (any
+more)" (`share.notFound`). `withShareRoutes({ path, component })` moves or replaces the page; keep
+`Spark:Share:LinkPath` in step with the path.
 
 ## More
 
