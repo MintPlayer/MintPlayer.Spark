@@ -14,6 +14,7 @@ namespace SeoTester.Entities;
 [RequiresOrganizationRole("ShareLink", OrganizationRole.Admin)]
 [RequiresOrganizationRole("RevokeShareLink", OrganizationRole.Admin)]
 [RequiresOrganizationRole(SeoActionNames.CancelAudit, OrganizationRole.Member)]
+[RequiresOrganizationRole(SeoActionNames.ExportReport, OrganizationRole.Viewer)]
 public class AuditRun : IOrganizationOwned, ISparkShareable
 {
     public string? Id { get; set; }
@@ -88,8 +89,8 @@ public class AuditRun : IOrganizationOwned, ISparkShareable
     public string? Error { get; set; }
 
     /// <summary>
-    /// The pipeline stages that finished (<c>crawl</c>; <c>render</c> and <c>psi</c> join in M10). The last one to finish
-    /// enqueues the aggregate (§4.3). Server-only.
+    /// The pipeline stages that finished (<c>crawl</c>, then <c>render</c> and <c>psi</c> side by side). Each enqueues the
+    /// aggregate, which runs once all three are here (§4.3). Server-only.
     /// </summary>
     [IgnoreProperty]
     public List<string> StagesDone { get; set; } = [];
@@ -137,4 +138,7 @@ public partial class RunCheckResult
 
     /// <summary>New, Fixed or Unchanged since the previous run.</summary>
     public string? Delta { get; set; }
+
+    /// <summary>Why the check was not measured, for example: PageSpeed Insights is not configured.</summary>
+    public string? Note { get; set; }
 }

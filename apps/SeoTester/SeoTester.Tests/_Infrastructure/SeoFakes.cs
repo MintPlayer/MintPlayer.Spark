@@ -53,7 +53,8 @@ public sealed record FakeResponse(HttpStatusCode Status, string Body, string? Lo
     IReadOnlyDictionary<string, string>? Headers = null, TimeSpan Delay = default);
 
 /// <summary>A request <see cref="FakeWeb"/> received.</summary>
-public sealed record FakeRequest(DateTime StartedUtc, DateTime EndedUtc, string Method, string Url, string? UserAgent);
+/// <param name="HeaderNames">The request's header names (never their values: one may be an API key).</param>
+public sealed record FakeRequest(DateTime StartedUtc, DateTime EndedUtc, string Method, string Url, string? UserAgent, IReadOnlyList<string>? HeaderNames = null);
 
 /// <summary>
 /// The web as the app's clients see it: absolute URL → response; anything else is a 404. It replaces only the named
@@ -112,7 +113,7 @@ public sealed class FakeWeb
             {
                 web.inFlight.AddOrUpdate(host, 0, (_, n) => n - 1);
                 web.Requests.Enqueue(new FakeRequest(started, DateTime.UtcNow, request.Method.Method, request.RequestUri.AbsoluteUri,
-                    request.Headers.UserAgent.ToString()));
+                    request.Headers.UserAgent.ToString(), request.Headers.Select(h => h.Key).ToList()));
             }
         }
     }

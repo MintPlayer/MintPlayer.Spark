@@ -73,7 +73,11 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         results["technical.redirect-chains"].SampleUrls.Should().Equal(site.Origin + "/old");
         results["domain.expiry"].Status.Should().Be("Pass", "the recorded .com RDAP answer expires in 2028");
         results["security.exposed-files"].Status.Should().Be("NotApplicable", "an unverified site gets no intrusive probes");
-        results.Keys.Should().NotContain("performance.core-web-vitals", "PSI is M10");
+        // M10: without a PageSpeed key or a browser (this host has neither), those checks are not measured, with why.
+        results["performance.core-web-vitals"].Status.Should().Be("NotApplicable");
+        results["performance.core-web-vitals"].Note.Should().Be("PageSpeed Insights is not configured");
+        results["accessibility.color-contrast"].Status.Should().Be("NotApplicable");
+        results["accessibility.color-contrast"].Note.Should().Be("the headless browser is not configured");
         run.CategoryScores.Should().Contain(c => c.Category == "Seo" && c.Score != null);
         run.Delta().Should().BeEmpty("the first run has nothing to compare with");
 

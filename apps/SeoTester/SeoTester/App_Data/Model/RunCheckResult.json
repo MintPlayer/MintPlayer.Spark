@@ -42,6 +42,17 @@
         "rules": []
       },
       {
+        "id": "1f89dd8f-eb36-49cd-9446-7206f752df6d",
+        "name": "Note",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "d69a09b6-b26d-4a7f-b649-02577362ded4",
         "name": "SampleUrls",
         "dataType": "string",

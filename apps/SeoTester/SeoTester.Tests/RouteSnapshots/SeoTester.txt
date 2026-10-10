@@ -1,4 +1,5 @@
 GET /bot
+GET /seotester/report.pdf
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required

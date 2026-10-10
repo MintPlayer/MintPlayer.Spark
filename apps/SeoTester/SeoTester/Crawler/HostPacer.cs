@@ -26,9 +26,18 @@ public sealed class HostPacer : IDisposable
     public DateTime? LastStartUtc { get; private set; }
 
     /// <summary>Waits for a connection slot and the next allowed start; dispose the result when the request is done.</summary>
-    public async Task<IDisposable> WaitAsync(CancellationToken cancellationToken)
+    public Task<IDisposable> WaitAsync(CancellationToken cancellationToken) => WaitAsync(paced: true, cancellationToken);
+
+    /// <summary>
+    /// Waits for a connection slot and, when <paramref name="paced"/>, the next allowed start. An unpaced request (a
+    /// rendered page's sub-resource, M10) still holds one of the host's connections but neither waits for nor moves the
+    /// interval.
+    /// </summary>
+    public async Task<IDisposable> WaitAsync(bool paced, CancellationToken cancellationToken)
     {
         await slots.WaitAsync(cancellationToken);
+        if (!paced)
+            return new Release(slots);
         try
         {
             DateTimeOffset start;

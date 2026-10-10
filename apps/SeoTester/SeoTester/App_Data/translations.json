@@ -669,6 +669,15 @@
             "en": "Check",
             "nl": "Controle"
           }
+        },
+        "Note": {
+          "label": {
+            "en": "Not measured because",
+            "nl": "Niet gemeten omdat"
+          },
+          "description": {
+            "en": "Why the check was not measured, for example: PageSpeed Insights is not configured."
+          }
         }
       },
       "label": {
@@ -868,6 +877,15 @@
         "nl": "Deze audit stoppen? Hij eindigt zonder score."
       }
     },
+    "ExportReport": {
+      "label": {
+        "en": "Download PDF",
+        "nl": "PDF downloaden"
+      },
+      "description": {
+        "en": "Prints this report as a PDF in your language; you get a notification with the link when it is ready."
+      }
+    },
     "ResetCheckDefinition": {
       "label": {
         "en": "Reset to shipped",
@@ -946,6 +964,18 @@
     "notShipped": {
       "en": "The check {0} was created here: there is no shipped version to restore.",
       "nl": "De controle {0} is hier aangemaakt: er is geen originele versie om terug te zetten."
+    },
+    "reportBeingPrinted": {
+      "en": "The report of {0} is being printed. You will get a notification with the link.",
+      "nl": "Het rapport van {0} wordt afgedrukt. Je krijgt een melding met de link."
+    },
+    "reportNeedsFinishedRun": {
+      "en": "The audit of {0} has no report yet: it has not completed.",
+      "nl": "De audit van {0} heeft nog geen rapport: hij is niet voltooid."
+    },
+    "reportUnavailable": {
+      "en": "PDF export is not available here (no headless browser is configured).",
+      "nl": "PDF-export is hier niet beschikbaar (er is geen headless browser ingesteld)."
     },
     "checkReset": {
       "en": "{0} is back to the shipped version.",

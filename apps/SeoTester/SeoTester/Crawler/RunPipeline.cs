@@ -104,6 +104,32 @@ public sealed class RunPipeline(
                 error, "audit-ended", cancellationToken);
     }
 
+    /// <summary>
+    /// Ends a stage in the caller's unit of work: its findings were written in the same session; this adds the stage to
+    /// <c>StagesDone</c> and enqueues the aggregate, which runs once every stage before it is done (§4.3).
+    /// </summary>
+    public async Task FinishStageAsync(IAsyncDocumentSession session, IMessageOutbox outbox, string runId, string stage, CancellationToken cancellationToken)
+    {
+        session.Advanced.Patch<AuditRun, string>(runId, r => r.StagesDone, stages => stages.Add(stage));
+        await outbox.EnqueueAsync(session, new SeoTester.Messaging.AggregateMessage(runId), cancellationToken: cancellationToken);
+    }
+
+    /// <summary>Adds findings to stored pages (by page id) and site-level findings to the frontier, in the caller's unit of work.</summary>
+    public static void AddFindings(IAsyncDocumentSession session, string runId, IReadOnlyDictionary<string, List<PageFinding>> pages, IReadOnlyList<StoredFinding> site)
+    {
+        foreach (var (pageId, findings) in pages)
+            if (findings.Count > 0)
+            {
+                var added = findings.ToArray();
+                session.Advanced.Patch<PageResult, PageFinding>(pageId, p => p.Findings, list => list.Add(added));
+            }
+        if (site.Count > 0)
+        {
+            var added = site.ToArray();
+            session.Advanced.Patch<CrawlFrontier, StoredFinding>(CrawlFrontier.IdFor(runId), f => f.SiteFindings, list => list.Add(added));
+        }
+    }
+
     public async Task NotifyAsync(AuditRun run, string title, string? body, string category, CancellationToken cancellationToken)
     {
         try

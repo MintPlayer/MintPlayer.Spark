@@ -62,7 +62,7 @@ public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictio
             // answer from tables. FakeWeb replaces only the primary handlers, so the SSRF-safe handlers still run.
             services.AddSingleton<SeoTester.Dns.ISeoDns>(dns ?? new FakeDns());
             var fakeWeb = web ?? new FakeWeb();
-            foreach (var client in new[] { SeoTester.Verification.SiteVerification.HttpClientName, SeoTester.Crawler.SeoHttp.Crawler, SeoTester.Crawler.SeoHttp.Lookups })
+            foreach (var client in new[] { SeoTester.Verification.SiteVerification.HttpClientName, SeoTester.Crawler.SeoHttp.Crawler, SeoTester.Crawler.SeoHttp.Lookups, SeoTester.Crawler.SeoHttp.Browser, SeoTester.Crawler.SeoHttp.PageSpeed })
                 services.AddHttpClient(client).ConfigurePrimaryHttpMessageHandler(fakeWeb.CreateHandler);
             services.AddSingleton<SeoTester.Crawler.ITlsProber>(tls ?? new FakeTls());
         });

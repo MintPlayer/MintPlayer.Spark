@@ -70,8 +70,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddMailManager();
 
     // The crawl pipeline's queues (SeoTester.Messaging.SeoQueues) are declared in Spark:Messaging:Queues; the
-    // recipients of probe, crawl and aggregate are Crawler/ (M9), render, PSI and PDF arrive with M10. Web Push
-    // deliveries ride the same outbox.
+    // recipients of probe, crawl and aggregate are Crawler/ (M9), render Rendering/, PSI PageSpeed/ and PDF Reports/
+    // (M10). Web Push deliveries ride the same outbox.
     spark.AddMessaging();
     spark.AddRecipients();
     spark.AddHistory();

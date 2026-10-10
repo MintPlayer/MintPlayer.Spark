@@ -168,8 +168,10 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
                 frontier.ExternalResults = await CheckExternalLinksAsync(frontier.External, cancellationToken);
             RunPipeline.PatchProgress(session, run.Id!, "aggregate", frontier.Fetched, frontier.Seen.Count, null);
             session.Advanced.Patch<AuditRun, string>(run.Id!, r => r.StagesDone, stages => stages.Add(PipelineStages.Crawl));
-            // M9 has one stage before the aggregate; M10's render and PSI stages each enqueue it when they finish last.
-            await outbox.EnqueueAsync(session, new AggregateMessage(run.Id!), cancellationToken: cancellationToken);
+            // The render and PageSpeed stages sample the crawled pages, so they start now, side by side; each enqueues
+            // the aggregate as it finishes, and the aggregate waits for both (M10).
+            await outbox.EnqueueAsync(session, new RenderSampleMessage(run.Id!), cancellationToken: cancellationToken);
+            await outbox.EnqueueAsync(session, new PsiMessage(run.Id!), cancellationToken: cancellationToken);
         }
 
         await session.StoreAsync(frontier, changeVector, frontier.Id, cancellationToken);
@@ -207,8 +209,13 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
     }
 }
 
-/// <summary>The stages a run passes before its aggregate (§4.3).</summary>
+/// <summary>The stages a run passes before its aggregate (§4.3): the crawl, then the render and PageSpeed stages side by side.</summary>
 public static class PipelineStages
 {
     public const string Crawl = "crawl";
+    public const string Render = "render";
+    public const string Psi = "psi";
+
+    /// <summary>Every stage the aggregate waits for.</summary>
+    public static IReadOnlyList<string> BeforeAggregate { get; } = [Crawl, Render, Psi];
 }

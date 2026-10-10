@@ -32,6 +32,9 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
     {
         if (await RunPipeline.LoadActiveAsync(session, message.RunId, cancellationToken) is not { } run)
             return;
+        // Each of the stages before it enqueues the aggregate when it finishes; only the last one finds them all done.
+        if (!PipelineStages.BeforeAggregate.All(run.StagesDone.Contains))
+            return;
         await pipeline.GuardAsync(run, context, () => AggregateAsync(run, cancellationToken), cancellationToken);
     }
 
@@ -67,6 +70,7 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
             Affected = c.Affected,
             SampleUrls = tallies.TryGetValue(c.CheckId, out var t) ? t.SampleUrls.ToList() : [],
             Delta = previous is null ? null : DeltaOf(previous.GetValueOrDefault(c.CheckId), c.Status),
+            Note = c.Status is CheckStatus.NotApplicable or CheckStatus.Error && tallies.TryGetValue(c.CheckId, out var n) ? n.Detail?.GetValueOrDefault("reason") ?? (c.Status == CheckStatus.Error ? n.Detail?.GetValueOrDefault("value") : null) : null,
         }).ToList();
         var categoryScores = card.Categories.Select(c => new RunCategoryScore
         {

@@ -20,6 +20,11 @@
     "showedOn": "detail",
     "refreshOnCompleted": true
   },
+  "ExportReport": {
+    "icon": "FiletypePdf",
+    "showedOn": "detail",
+    "refreshOnCompleted": false
+  },
   "ResetCheckDefinition": {
     "icon": "ArrowCounterclockwise",
     "showedOn": "detail",

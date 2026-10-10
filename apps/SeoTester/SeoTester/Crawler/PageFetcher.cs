@@ -90,7 +90,9 @@ public sealed class PageFetcher(IHttpClientFactory httpClients, ILogger<PageFetc
     /// <summary>Most bytes of an HTML page kept (HtmlPage parses at most 2 Mi characters).</summary>
     public const int MaxPageBytes = 3 * 1024 * 1024;
 
-    public async Task<FetchResult> FetchAsync(Uri url, int maxBodyBytes, CancellationToken cancellationToken, HttpMethod? method = null, string client = SeoHttp.Crawler)
+    /// <param name="requestHeaders">Extra request headers (an API key: sent in a header, never in the URL, so no log shows it).</param>
+    public async Task<FetchResult> FetchAsync(Uri url, int maxBodyBytes, CancellationToken cancellationToken, HttpMethod? method = null, string client = SeoHttp.Crawler,
+        IReadOnlyDictionary<string, string>? requestHeaders = null)
     {
         var stopwatch = Stopwatch.StartNew();
         using var request = new HttpRequestMessage(method ?? HttpMethod.Get, url)
@@ -103,6 +105,8 @@ public sealed class PageFetcher(IHttpClientFactory httpClients, ILogger<PageFetc
         request.Headers.AcceptEncoding.ParseAdd("br");
         request.Headers.AcceptEncoding.ParseAdd("gzip");
         request.Headers.AcceptEncoding.ParseAdd("deflate");
+        foreach (var (name, value) in requestHeaders ?? new Dictionary<string, string>())
+            request.Headers.TryAddWithoutValidation(name, value);
         var trace = SafeHttpTrace.Attach(request);
         try
         {
@@ -178,6 +182,12 @@ public static class SeoHttp
 
     /// <summary>Third-party registries and lists: RDAP and its IANA bootstrap, hstspreload.org.</summary>
     public const string Lookups = "SeoTester.Lookups";
+
+    /// <summary>Every request of the headless browser (M10): redirects handed back to Chromium, which asks again.</summary>
+    public const string Browser = "SeoTester.Browser";
+
+    /// <summary>PageSpeed Insights (M10): a slow API with large answers.</summary>
+    public const string PageSpeed = "SeoTester.PageSpeed";
 
     /// <summary>Name used for raw TLS connections (the TLS probes), under the crawler client's rules.</summary>
     public const string Tls = Crawler;

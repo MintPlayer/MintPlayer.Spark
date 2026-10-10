@@ -34,4 +34,7 @@ public static class SeoActionNames
 
     /// <summary>On a running audit: stop it at the crawler's next batch (F4).</summary>
     public const string CancelAudit = nameof(CancelAudit);
+
+    /// <summary>On a completed audit: the report as PDF in the caller's language (F14, M10).</summary>
+    public const string ExportReport = nameof(ExportReport);
 }
