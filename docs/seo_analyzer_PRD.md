@@ -29,6 +29,7 @@ Research behind this document:
 | M3 ✅ | 2026-10-10: X9 settings package `libs/settings/MintPlayer.Spark.Settings` (alias `settings`, `11.0.0-preview.104`) and X7 per-queue `HandlerTimeout` in Messaging (§12 "Spike S11"). Owner round 10 (D38–D41) committed separately before it |
 | M4 ✅ | 2026-10-10: X11 organizations package `libs/organizations/MintPlayer.Spark.Organizations` (alias `organizations`, `11.0.0-preview.104`), the `ISparkSignedInHandler<TUser>` hook in Authorization (`preview.104`), ng-spark `/organizations` (`withOrganizationRoutes()`, `22.33.0`), and a startup refusal of unsupported verb combinations in `security.json` (§12 "Spike S13"). Guides `docs/guide-organizations.md` and `docs/guide-settings.md` (M3's). ~~Open: Q-M4a, Q-M4b (§11)~~ answered 2026-10-10: D42, D43 (§12 Round 11) |
 | M6 ✅ | 2026-10-10 (§12 "Spike S12 and M6"): X10 notifications `libs/notifications/MintPlayer.Spark.Notifications` (alias `notifications`) with the hand-rolled Web Push library `libs/webpush/MintPlayer.Spark.WebPush` (both `11.0.0-preview.104`), preferences per organization (D44); X3 quotas (`[SparkQuota]`, `ISparkQuotas`, settings package; core `ISparkCustomActionGate`); X5 ng-spark score renderers (`@mintplayer/ng-spark/score-renderers`), CodeCoverage switched over with its DOM pinned; X6 share links in core (`ISparkShareable`, `AddShareLinks`, `ShareLink`/`RevokeShareLink`, `/spark/share`); ng-spark notifications/share UI; M5 follow-ups; S12 measured on Chrome (5/5 delivered). Guides: notifications, quotas, share links, score renderers. Open: Q-M6a–Q-M6d (§11) |
+| M7 ✅ | 2026-10-10 (§12 "M7"): the SeoTester skeleton `apps/SeoTester` (host + SPA, `.Library`, `.Tests`; https 5013 / http 5014; database `SeoTester`), composed per §4.1 (external sign-in only with `ConfirmByEmail`, the four provider presets from configuration, MailManager, Messaging with the six crawl queues declared, SafeHttp, settings with every §6 gate and limit and the §7 weights, three quotas, notifications, organizations, the sharing switch); server-rendered `/bot`; Dockerfile; nx, solution and CI lists; `docs/seotester/README.md` (credentials to register). SparkId registers a Development `seotester` client. M6 leftovers: share-page headings, a clicked push is read. Open: Q-M7a, Q-M7b (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -397,6 +398,8 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 - **Q-M6a (from S12): where is delivery to Firefox, Edge and Safari measured?** Chrome 154 was measured (5/5 delivered and decrypted, §12 "Spike S12 and M6"). Edge refused to subscribe under automation (`Registration failed - permission denied`: its WNS channel is not reachable from an automation profile), and no Firefox or Apple device is reachable from the build machine. All three accept `aes128gcm` (RFC 8291) per their documentation, and the library is byte-exact against the RFC vectors. Options: (a) the owner subscribes a desktop Firefox, a desktop Edge and an iPhone with SeoTester installed to the Home Screen and the result is recorded; (b) a scripted run in a non-automation browser profile here; (c) do it at the M12 deploy, on the real origin over HTTPS. **Recommendation: (c)**, with (a)'s devices: iOS needs an installed PWA on a real HTTPS origin anyway, which only exists at M12.
 - **Q-M6b (from M6): push subscriptions are documents of their own, not a list on `SparkUser`.** D30 says "stored per device on the SparkUser". Built as `PushSubscriptions/{userId}/{hash}` (read by id prefix), because a list on the user document would put every subscribe on Identity's concurrency stamp (a sign-in racing a subscribe fails one of them) and make Authorization know about push. Options: (a) keep separate documents; (b) move them onto `SparkUser`. **Recommendation: (a).**
 - **Q-M6c (from M6): what a share link shows is declared in code** (`AddShareLinks(o => o.Share<Site>(attributes, queries))`, allow-lists) rather than in the model JSON. Options: (a) keep it in code; (b) a `"share"` block on the persistent object in the model (low-code, but it moves the model hash and the schema, and a model edit could widen a public link). **Recommendation: (a).**
+- **Q-M7a (from M7): a feature gate has three values, not two.** D11 says the owner wants to "enable or disable" monitoring, intrusive probes, deep-crawl limits and sharing, with defaults "verified-only" for the first three and "allowed for unverified sites" for sharing. An on/off switch cannot express both, so each gate is built as `SeoFeatureScope` = `Off` / `VerifiedOnly` / `AllSites` (`SeoTester:Features:*`, defaults as D11). Options: (a) the three-valued gate; (b) a boolean per gate with "verified-only" fixed in code (then "intrusive probes on unverified sites" can never be switched on, which D11's legal note argues for); (c) two booleans per gate (enabled, unverified allowed). **Recommendation: (a)**: one setting per gate, every D11 default expressible, and `AllSites` for probes remains an explicit administrator choice.
+- **Q-M7b (from M7): passkeys on SeoTester?** D2 says external sign-in only. CodeCoverage, also external-only, enables passkeys as a second, forge-independent way in. Built without them (the account page excludes them; the Authorization package ships its passkey rights to signed-in users regardless, as in every app; with passkeys off no passkey can be enrolled). Options: (a) keep them off (D2 as written); (b) enable them (`auth.Passkeys = SparkPasskeys.Enabled` and `PasskeyServerDomain = seotester.mintplayer.com`, pinned for life). **Recommendation: (a)** until the owner asks: a passkey's relying-party id cannot be moved later, so turning them on is a decision to make once, deliberately.
 - **Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).
 
 
@@ -1156,3 +1159,110 @@ XSRF surface (the share reads, exempt) and the three convention findings above; 
 Live and Mail **156/156**, and the notification, share and translation classes again after the last changes
 **38/38**. `CodeCoverage.Tests` 1213/1213. ng-spark: grid, language, query-list 138/138; notifications/pwa/share
 64/64; score renderers 46/46.
+
+### M7 (2026-10-10): the SeoTester skeleton
+
+Commits: "Share page headings from model labels; a clicked push is read" (`966af902`, the M6 leftovers), then the
+skeleton, the SparkId development client and this record. Operator documentation: `docs/seotester/README.md`.
+
+**Layout.** `apps/SeoTester/SeoTester` (host, `ClientApp` = nx `@spark-apps/seo-tester`, `Settings/`, `Bot/`,
+`Dockerfile`), `SeoTester.Library` (plain-SDK entity library: `SeoTesterBot`, `SeoFeatureScope`, the queue messages),
+`SeoTester.Tests`. https 5013 / http 5014, database `SeoTester`, cookie `.SparkAuth.SeoTester`, user secrets
+`seotester-app-5b1e0c7d`. Wired into the root `package.json` workspaces, `MintPlayer.Spark.slnx`,
+`.github/workflows/pull-request.yml` (build, verify model, verify security) and `tools/verify-ngsw-config.test.mjs`
+(`SeoTester: ['!/bot']`). Not in `tools/test-local.mjs`: no E2E yet. New SPA icons (a magnifying glass over a rising
+bar chart, indigo), not QnA's.
+
+**Composition (§4.1), as built, with what differs from the sketch:**
+- `AddAuthentication<SparkUser>` with `LocalCredentials = Disabled`, `ExternalLoginLinking = ConfirmByEmail`;
+  `AddExternalProviders(configuration)` with empty `MicrosoftAccount`/`GitHub`/`Twitter`/`Google` placeholders in
+  `appsettings.json` (a provider without a `ClientId` is not registered: `SparkExternalProvidersConfigurationExtensions.cs:99`).
+  *Evidence: `CompositionTests.The_sign_in_page_offers_exactly_Microsoft_GitHub_X_and_Google_and_no_password_form`
+  (`/spark/auth/capabilities`: `localCredentials: Disabled`, schemes GitHub, Google, Microsoft, Twitter).*
+- **"An app that runs without them" = Development signs in through SparkId.** With `LocalCredentials = Disabled` and
+  no provider, Spark refuses to start (`LocalCredentialEndpointFilter.GuardAgainstUnreachableSignIn`), which is right
+  for production. Development registers SparkId (the demo identity provider) in `appsettings.Development.json`, as
+  QnA and HR do, so a fresh clone signs in with no OAuth app. SparkId gains the migration
+  `M_202610101200_SeoTesterRelyingParty` (Development only; a migration of its own so databases that ran
+  `M_202610081200_RelyingParties` get it too). Production offers the four providers only.
+- `AddMailManager()` always: `ConfirmByEmail` needs a link-confirmation sender, which only MailManager registers
+  (the startup guard, `docs/guide-outgoing-mail.md` §1). Development uses the pickup folder; production must set
+  `Spark:Mail:Smtp:Host` or the app refuses to start (README).
+- `AddMessaging()`; the six queues of §4.3 are **declared in configuration** (`Spark:Messaging:Queues`, with
+  `MaxConcurrency` and a `HandlerTimeout` each, render 1 at a time) and their messages in `SeoTester.Library`
+  (`[MessageQueue]`). A declared queue counts before any recipient exists
+  (`MessageSubscriptionManager.cs:59-62`). *Evidence: `CompositionTests.The_crawl_queues_are_declared_…`.*
+- **Not called, and why:** `AddActions`, `AddCustomActions`, `AddRecipients`, `AddCronJobs` are generated over the
+  app's assembly only once it declares such a class (the build failed with CS1061 for `AddActions` and
+  `AddCronJobs`); they arrive with M8, M9 and M12. `AddLive` and `AddExpiration` are core and always on; both take
+  options only (`SparkBuilderLiveExtensions.cs:17`, `docs/guide-expiration.md:31`). `AddHistory()` is called.
+- `AddSafeHttp()`; `AddSettings(typeof(SeoSettings))` and `AddQuotas(typeof(SeoQuotas))`; `AddNotifications()`;
+  `AddOrganizations()`; `AddShareLinks(_ => { })` with `Share<Site>` in M8, plus `SharingSwitch : ISparkShareGate`
+  (the D11/D31 switch, `SeoTester:Features:Sharing` ≠ `Off`).
+- `security.json`: groups Anonymous visitors, Signed-in users, Administrators; bindings `organizations:users` and
+  `notifications:users` → Signed-in users, `settings:administrators` → Administrators; no rights of its own yet (the
+  packages ship theirs). `securityPosture.txt`: nothing reachable anonymously. An administrator is a user whose
+  `SparkUser.Roles` holds `Administrators` (Spark reads groups from role claims).
+- `appsettings.Production.json` sets `Spark:Auth:PublicBaseUrl` to `https://seotester.mintplayer.com` (Development
+  uses the request origin).
+
+**Settings (X9, D11, §6, §7).** `SeoSettings`: four gates (`SeoTester:Features:{Monitoring, IntrusiveProbes,
+DeepCrawl, Sharing}`, three-valued, see Q-M7a), every §6 limit per unverified/verified (pages, wall time,
+connections per host, request interval, rendered sample, PSI sample), the full-crawl ceiling (20 000 pages / 6 h,
+D14), the target cool-down (6 h, D37), concurrent renders (1), the audit-log retention (1 year, D37) and the seven
+category weights (§7). `SeoQuotas`: `audits` 5/day, `verified-audits` 24/day, `full-crawls` 1/7 days (D14). They
+live in the host, not the Library: the settings package is a web package, and an entity library refuses ASP.NET
+(SPARKLIB001).
+- *Evidence: `SettingsAccessTests` (an administrator lists them; a signed-in non-administrator gets 404 on the list
+  and on an edit, and the value is unchanged; anonymous 404/401) and
+  `CompositionTests.Every_gate_and_limit_of_the_PRD_is_a_declared_setting_…`.*
+- **Spark refuses the dangerous widening by itself:** binding `settings:administrators` to Signed-in users does not
+  start (`VerifyRowPolicyDeclarations`: "grants 'QueryReadEdit/Setting' to the 'authenticated' role … but
+  'SettingActions' declares no row rule"). So a non-administrator's 404 cannot be turned red by widening the binding;
+  the startup refusal is the red.
+
+**`/bot` is rendered by the server, not the SPA** (`Bot/BotPageEndpoint.cs`, a generator endpoint, anonymous, English
+or Dutch by `Accept-Language` or `?lang=`). Its readers are site operators following a URL from an access log, often
+with curl or a text browser, so it must read without JavaScript; and it states the **current** limits from the
+settings (pages per run, connections and interval per host, wall time, cool-down, the intrusive-probe gate), never
+numbers copied into a page. It is excluded from the service worker (`ngsw-config.json` `!/bot`, enforced by the tools
+test) and the SPA links to it with a plain `href`. This also covers M11's "/bot" item. *Evidence: `BotPageTests`
+(user agent, the robots.txt opt-out block, "At most 100 pages and 10 minutes per check", a stored 250 shows at once,
+Dutch for `nl-BE`).*
+
+**No SeoTester documents yet.** §4.2's shapes are listed, but each type brings model JSON, row rules
+(`IOrganizationOwned`, `[RequiresOrganizationRole]`), rights and tests; M8 builds `Site` with its verification and
+share declaration, M9 the run documents. The skeleton shows organizations, settings and notifications, which are the
+packages' types.
+
+**Tests** (`SeoTester.Tests`, one host per collection, a principal from `X-Seo-User` / `X-Seo-Roles` role claims,
+`HandleCookies = false` so each request carries exactly the antiforgery pair minted for its identity):
+`CompositionTests` 5, `SettingsAccessTests` 3, `BotPageTests` 3, `RouteTableSnapshotTests` 1 (anonymous routes: `/bot`,
+the external-login callbacks, `/spark/share/*`). **Red→green:** with the settings slot bound to an unused group, the
+`/bot` endpoint unmapped, `AddQuotas` removed and the `seo-render` queue undeclared: **7 of 12 failed** (the
+administrator list, the route table, the settings catalogue, the queues, the three bot-page tests); the five still
+green are the non-administrator and anonymous refusals (red only through the startup refusal above), the sign-in
+options, `ConfirmByEmail` and the composed services. Green **12/12**.
+
+**M6 leftovers:**
+- **Share-page headings.** `POST /spark/share/load` answers the type's `label` and `queryLabels` (each shown child
+  query's label, translated like any label); the page heads the object with the type label and each table with its
+  query label, falling back to the names. *Evidence: `ShareLinkTests.The_share_carries_the_type_label_and_a_label_per_child_query`
+  (red: no `label`), two share-page specs (red, then 11/11).*
+- **A clicked push is read.** `SparkNotificationsService` subscribes to `SwPush.notificationClicks` and marks
+  `data.notificationId` read (`pwa` still knows nothing of notifications). *Evidence: two service specs (red, then
+  green; notifications, pwa and share specs 68/68).* Limit: when no tab of the app is open, ngsw opens one and
+  broadcasts the click right away; the click marks the notification read only if the new page's service is listening
+  by then. Not measured in a browser (Q-M6a's devices, M12).
+
+**Dedupe (behaviour kept identical, with tests):** SparkId's relying-party seed (`EnsureRelyingPartyAsync`, private to
+`M_202610081200_RelyingParties`) is `DevelopmentRelyingParties.EnsureAsync`, used by both migrations.
+`SparkId.Tests.DevelopmentRelyingPartiesTests` pins the shape (confidential, PKCE, exact `/signin-SparkId` and
+`/signout-callback-SparkId` redirects, implicit consent, Live, openid/profile required and email optional, the secret
+stored hashed and verifiable) and that an administrator's edit survives a re-run.
+
+**Seen running** (`dotnet run --launch-profile https`, Development, local RavenDB): the host starts, the SPA serves at https://localhost:5013, the sign-in page offers only "Spark Identity" (no real provider configured), `/bot` renders. A full SparkId sign-in was not exercised (it needs a SparkId account).
+
+**Found along the way:** the committed route snapshots of SparkId, DemoApp, Fleet, HR and QnA predated M5 and M6 (they still listed
+`/spark/queries/{id}/stream` and lacked `/spark/live` and `/spark/share/*`), so those five test projects were red on this
+branch (M6 regenerated only CodeCoverage's); regenerated, the same four-line diff in each.
