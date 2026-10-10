@@ -1,8 +1,11 @@
 import { Component, input, model, output, Provider } from '@angular/core';
-import { ComponentFixture } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, Params } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { vi } from 'vitest';
+import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline';
+import { BsTrendChartComponent } from '@mintplayer/ng-bootstrap/charts/trend';
+import { SparkTrendChartComponent, SparkTrendSparklineComponent } from '@mintplayer/ng-spark/score-renderers';
 import { BrowseService } from '../app/services/browse.service';
 
 /**
@@ -136,4 +139,14 @@ export class StubTrendChart {
   readonly goal = input<number>();
   readonly goalLabel = input<string>();
   readonly inputLabel = input<string>();
+}
+
+/**
+ * Swaps the stubs above into ng-spark's trend components, which draw the app's sparklines
+ * (`<spark-trend-sparkline>`) and its coverage-over-time chart (`<spark-trend-chart>`). Call after
+ * `configureTestingModule`.
+ */
+export function stubSparkTrendCharts(): void {
+  TestBed.overrideComponent(SparkTrendSparklineComponent, { remove: { imports: [BsSparklineComponent] }, add: { imports: [StubSparkline] } });
+  TestBed.overrideComponent(SparkTrendChartComponent, { remove: { imports: [BsTrendChartComponent] }, add: { imports: [StubTrendChart] } });
 }

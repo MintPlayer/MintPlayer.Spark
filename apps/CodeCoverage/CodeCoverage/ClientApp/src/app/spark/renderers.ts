@@ -1,4 +1,5 @@
 import type { SparkAttributeRendererRegistration } from '@mintplayer/ng-spark/renderers';
+import { SparkDeltaComponent } from '@mintplayer/ng-spark/score-renderers';
 import { CoverageBarRendererComponent } from './coverage-bar-renderer.component';
 import { CoverageSummaryDetailRendererComponent } from './coverage-summary-detail-renderer.component';
 import { CoverageSparklineRendererComponent } from './coverage-sparkline-renderer.component';
@@ -7,7 +8,6 @@ import { BuildSessionsRendererComponent } from './build-sessions-renderer.compon
 import { RepoNameRendererComponent } from './repo-name-renderer.component';
 import { PrivateLockRendererComponent } from './private-lock-renderer.component';
 import { DateTimeRendererComponent } from './date-time-renderer.component';
-import { CoverageDeltaRendererComponent } from './coverage-delta-renderer.component';
 import { AccountAvatarRendererComponent } from './account-avatar-renderer.component';
 import { AccountLinkRendererComponent } from './account-link-renderer.component';
 import { AccountCoverageRendererComponent } from './account-coverage-renderer.component';
@@ -54,10 +54,12 @@ export const codeCoverageRenderers: SparkAttributeRendererRegistration[] = [
     detailComponent: DateTimeRendererComponent,
     columnComponent: DateTimeRendererComponent,
   },
+  // ng-spark's delta with its defaults, which are this renderer's: one decimal, signed, green up,
+  // red down, a muted dash when the commit has no reference to compare against.
   {
     name: 'coverage-delta',
-    detailComponent: CoverageDeltaRendererComponent,
-    columnComponent: CoverageDeltaRendererComponent,
+    detailComponent: SparkDeltaComponent,
+    columnComponent: SparkDeltaComponent,
   },
   // The composed Home page's accounts grid. Column-only: MyAccountRow is a
   // virtual type with Query but no Read, so its rows have no detail page for

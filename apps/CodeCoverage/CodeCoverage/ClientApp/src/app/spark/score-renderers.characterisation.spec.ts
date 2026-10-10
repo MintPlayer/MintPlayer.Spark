@@ -3,10 +3,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PersistentObject, QueryResultItem } from '@mintplayer/ng-spark/models';
-import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline';
-import { createBrowseStub, provideBrowseStub, settle, StubSparkline } from '../../testing/test-utils';
+import { createBrowseStub, provideBrowseStub, settle, StubSparkline, stubSparkTrendCharts } from '../../testing/test-utils';
 import { CoverageBarComponent } from '../components/coverage-bar/coverage-bar.component';
-import { clearSparklineCacheForTesting, CoverageSparklineRendererComponent } from './coverage-sparkline-renderer.component';
+import { clearSparklineCacheForTesting } from './coverage-sparkline-renderer.component';
 import { codeCoverageRenderers } from './renderers';
 
 /**
@@ -173,18 +172,14 @@ describe('coverage renderers, characterised (#268 X5)', () => {
 
   describe("'coverage-sparkline'", () => {
     // The real sparkline hosts a Lit element jsdom cannot; the stub has its selector and inputs.
-    // ⚠ The one line that names an implementation: the component that imports BsSparklineComponent.
-    const SPARKLINE_HOST: Type<unknown> = CoverageSparklineRendererComponent;
-
+    // The one line that names an implementation: the component that imports BsSparklineComponent
+    // was CoverageSparklineRendererComponent until #268 X5 and is ng-spark's SparkTrendSparklineComponent since.
     function configure(batch: Record<string, number[]>): void {
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [provideZonelessChangeDetection(), provideBrowseStub(createBrowseStub({ getSparklines: () => Promise.resolve(batch) }))],
       });
-      TestBed.overrideComponent(SPARKLINE_HOST, {
-        remove: { imports: [BsSparklineComponent] },
-        add: { imports: [StubSparkline] },
-      });
+      stubSparkTrendCharts();
     }
 
     async function draw(component: Type<unknown>, value: unknown): Promise<{ dom: string; stub: StubSparkline | undefined }> {
