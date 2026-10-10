@@ -22,7 +22,7 @@ import { SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer
 import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { QueryCellValuePipe, QueryReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkLiveService, SparkService, sparkDatatableLabels } from '@mintplayer/ng-spark/services';
+import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkLiveService, SparkService, sparkDatatableLabels, describeSparkError } from '@mintplayer/ng-spark/services';
 import { SparkColumnFilterPanelComponent } from '@mintplayer/ng-spark/column-filter';
 import {
   CustomActionDefinition,
@@ -1117,8 +1117,8 @@ export class SparkQueryGridComponent {
       this.customActionExecuted.emit({ action });
       if (action.refreshOnCompleted) this.reload();
     } catch (e) {
-      const err = e as HttpErrorResponse;
-      this.errorMessage.set(err.error?.error || err.message || this.lang.t('common.actionFailed', 'Action failed'));
+      // The envelope's reason (and, for a 429, when to try again); the HTTP message only when the server sent none.
+      this.errorMessage.set(describeSparkError(e, this.lang, (e as HttpErrorResponse)?.message || this.lang.t('common.actionFailed', 'Action failed')));
     }
   }
 

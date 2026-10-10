@@ -186,6 +186,16 @@
     "unavailable":   { "en": "This page could not be loaded. Try again later.", "fr": "Cette page n'a pas pu être chargée. Réessayez plus tard.", "nl": "Deze pagina kon niet geladen worden. Probeer het later opnieuw." }
   },
   "spark": {
+    "tryAgainIn": { "en": "Try again in {0}.", "fr": "Réessayez dans {0}.", "nl": "Probeer opnieuw over {0}." },
+    "wait": {
+      "fewSeconds": { "en": "a few seconds", "fr": "quelques secondes", "nl": "enkele seconden" },
+      "minute": { "en": "1 minute", "fr": "1 minute", "nl": "1 minuut" },
+      "minutes": { "en": "{0} minutes", "fr": "{0} minutes", "nl": "{0} minuten" },
+      "hour": { "en": "1 hour", "fr": "1 heure", "nl": "1 uur" },
+      "hours": { "en": "{0} hours", "fr": "{0} heures", "nl": "{0} uur" },
+      "day": { "en": "1 day", "fr": "1 jour", "nl": "1 dag" },
+      "days": { "en": "{0} days", "fr": "{0} jours", "nl": "{0} dagen" }
+    },
     "query": {
       "unavailable": { "en": "This list is not available.", "fr": "Cette liste n'est pas disponible.", "nl": "Deze lijst is niet beschikbaar." }
     },

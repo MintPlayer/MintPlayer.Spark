@@ -542,6 +542,38 @@ describe('SparkPoDetailComponent', () => {
     expect(c.errorMessage()).toBe('Boom');
   });
 
+  // A refused action answers in the envelope (`{ result: { error, retryAfterSeconds }, operations }`): the banner showed
+  // Angular's "Http failure response for …: 429" instead of the server's reason, and never when to try again.
+  it('onCustomAction refused with 429 shows the server reason and when to try again', async () => {
+    const { harness } = await setup({
+      executeCustomAction: vi.fn().mockRejectedValue(new HttpErrorResponse({
+        status: 429, url: '/spark/actions/execute',
+        error: { result: { error: 'example.com was audited recently.', retryAfterSeconds: 2 * 3600 }, operations: [] },
+      })),
+    });
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    await c.onCustomAction(customAction);
+
+    // The spec's language service answers keys: the reason, then spark.tryAgainIn with the wait.
+    expect(c.errorMessage()).toBe('example.com was audited recently. spark.tryAgainIn');
+    expect(c.errorMessage()).not.toContain('Http failure');
+  });
+
+  // The action's result (CustomActionArgs.SetResult) reaches the host page, e.g. a PDF's download url.
+  it('customActionExecuted carries the result the action set', async () => {
+    const { harness } = await setup({ executeCustomAction: vi.fn().mockResolvedValue({ url: '/report.pdf', ready: true }) });
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    const executed = vi.fn();
+    c.customActionExecuted.subscribe(executed);
+
+    await c.onCustomAction(customAction);
+
+    expect(executed).toHaveBeenCalledWith(expect.objectContaining({ action: customAction, result: { url: '/report.pdf', ready: true } }));
+  });
+
   describe('renderer inputs (#241/#245)', () => {
     @Component({ selector: 'spec-detail-full-renderer', standalone: true, template: '' })
     class FullDetailRenderer {

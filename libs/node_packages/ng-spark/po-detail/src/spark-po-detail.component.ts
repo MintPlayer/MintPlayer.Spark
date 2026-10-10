@@ -13,7 +13,7 @@ import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, SparkLiveService, SparkReturnNavigationService, describeSparkError } from '@mintplayer/ng-spark/services';
 import { SparkAttributePatch, SparkAttributeRefreshService, SparkClientMethodRegistry, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import {
   TranslateKeyPipe,
@@ -109,7 +109,8 @@ export class SparkPoDetailComponent {
 
   edited = output<void>();
   deleted = output<void>();
-  customActionExecuted = output<{ action: CustomActionDefinition; item: PersistentObject }>();
+  /** After an action succeeded; `result` is what it handed to `CustomActionArgs.SetResult` (a download url, a new id). */
+  customActionExecuted = output<{ action: CustomActionDefinition; item: PersistentObject; result?: unknown }>();
 
   colors = Color;
   errorMessage = signal<string | null>(null);
@@ -613,8 +614,8 @@ export class SparkPoDetailComponent {
 
     this.runningAction.set(action.name);
     try {
-      await this.sparkService.executeCustomAction(this.type, action.name, this.item() || undefined);
-      this.customActionExecuted.emit({ action, item: this.item()! });
+      const result = await this.sparkService.executeCustomAction(this.type, action.name, this.item() || undefined);
+      this.customActionExecuted.emit({ action, item: this.item()!, result });
       if (action.refreshOnCompleted) {
         // The sub-query grids below do not depend on item(), so re-fetching the PO left them
         // showing pre-action rows -- the action appeared to have done nothing to the very
@@ -632,8 +633,8 @@ export class SparkPoDetailComponent {
         this.item.set(item);
       }
     } catch (e) {
-      const err = e as HttpErrorResponse;
-      this.errorMessage.set(err.error?.error || err.message || 'Action failed');
+      // The envelope's reason (and, for a 429, when to try again), never Angular's HTTP status line.
+      this.errorMessage.set(describeSparkError(e, this.lang, (e as HttpErrorResponse)?.message || this.lang.t('common.actionFailed', 'Action failed')));
     } finally {
       // finally, not after the try: an action that fails must not leave every button on the page
       // permanently disabled.

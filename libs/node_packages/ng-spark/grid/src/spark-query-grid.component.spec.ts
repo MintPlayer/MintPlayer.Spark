@@ -1083,6 +1083,17 @@ describe('SparkQueryGridComponent', () => {
 
       expect(c.errorMessage()).toBe('common.actionFailed');
     });
+
+    it('shows a refusal\'s envelope reason and when to try again, not the HTTP status line', async () => {
+      const { c } = await setup({ executeCustomAction: vi.fn().mockRejectedValue({
+        status: 429, message: 'Http failure response for /spark/actions/execute: 429',
+        error: { result: { error: 'Quota used.', retryAfterSeconds: 600 }, operations: [] },
+      }) });
+
+      await c.onCustomAction(archive);
+
+      expect(c.errorMessage()).toBe('Quota used. spark.tryAgainIn');
+    });
   });
 
   describe('error text', () => {
