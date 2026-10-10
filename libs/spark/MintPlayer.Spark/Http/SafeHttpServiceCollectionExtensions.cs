@@ -30,6 +30,7 @@ public static class SafeHttpServiceCollectionExtensions
         Action<SafeHttpOptions>? configure = null)
     {
         services.TryAddSingleton<ISafeHttpDnsResolver, SystemDnsResolver>();
+        services.TryAddSingleton<ISafeHttpSockets, SafeHttpSockets>();
         var options = services.AddOptions<SafeHttpOptions>(name);
         if (configuration is not null)
         {

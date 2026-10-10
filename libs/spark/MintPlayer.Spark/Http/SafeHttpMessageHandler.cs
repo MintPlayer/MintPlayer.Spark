@@ -23,6 +23,7 @@ internal sealed class SafeHttpMessageHandler(SafeHttpPolicy policy, SafeHttpOpti
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var current = request;
+        request.Options.TryGetValue(SafeHttpTrace.Key, out var trace);
         for (var redirects = 0; ; redirects++)
         {
             policy.CheckUri(current.RequestUri);
@@ -45,13 +46,18 @@ internal sealed class SafeHttpMessageHandler(SafeHttpPolicy policy, SafeHttpOpti
             }
 
             if (!IsRedirect(response.StatusCode) || response.Headers.Location is not { } location)
+            {
+                if (trace is not null)
+                    trace.ContentEncoding = response.Content.Headers.ContentEncoding.Count > 0 ? string.Join(", ", response.Content.Headers.ContentEncoding) : null;
                 return await CapAsync(response, cancellationToken);
+            }
 
             response.Dispose();
+            var target = new Uri(current.RequestUri!, location);
+            trace?.Redirects.Add(new SafeHttpHop(current.RequestUri!, response.StatusCode, target));
             if (redirects >= options.MaxRedirects)
                 throw new SafeHttpBlockedException(SafeHttpBlockReason.TooManyRedirects);
 
-            var target = new Uri(current.RequestUri!, location);
             if (options.RedirectsWithinOriginOnly && !SameOrigin(request.RequestUri, target))
                 throw new SafeHttpBlockedException(SafeHttpBlockReason.CrossOriginRedirect);
 

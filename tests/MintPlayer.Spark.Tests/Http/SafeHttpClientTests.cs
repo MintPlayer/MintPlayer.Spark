@@ -312,4 +312,69 @@ public class SafeHttpClientTests : IAsyncLifetime
 
         client.Timeout.Should().Be(TimeSpan.FromSeconds(7));
     }
+
+    // ---- SafeHttpTrace: the hops and the wire encoding, opt-in per request (M9, the crawler's redirect chains). ----
+
+    [Fact]
+    public async Task A_trace_records_every_redirect_hop_and_the_wire_encoding()
+    {
+        var client = Client();
+        using var request = new HttpRequestMessage(HttpMethod.Get, Url("/loop/2"));
+        var trace = SafeHttpTrace.Attach(request);
+
+        using var response = await client.SendAsync(request);
+
+        (await response.Content.ReadAsStringAsync()).Should().Be("done");
+        trace.Redirects.Select(h => (h.Uri.AbsolutePath, (int)h.Status, h.Location.AbsolutePath))
+            .Should().Equal(("/loop/2", 302, "/loop/1"), ("/loop/1", 302, "/loop/0"));
+        trace.ContentEncoding.Should().BeNull();
+
+        using var gzipped = new HttpRequestMessage(HttpMethod.Get, Url("/gzip?text=compressed"));
+        var gzipTrace = SafeHttpTrace.Attach(gzipped);
+        using var gzipResponse = await client.SendAsync(gzipped);
+        (await gzipResponse.Content.ReadAsStringAsync()).Should().Be("compressed");
+        gzipResponse.Content.Headers.ContentEncoding.Should().BeEmpty("the client decompressed it");
+        gzipTrace.ContentEncoding.Should().Be("gzip");
+        gzipTrace.Redirects.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_trace_keeps_the_hops_up_to_a_refused_redirect()
+    {
+        var client = Client(o => o.MaxRedirects = 1);
+        using var request = new HttpRequestMessage(HttpMethod.Get, Url("/loop/3"));
+        var trace = SafeHttpTrace.Attach(request);
+
+        (await Blocked(() => client.SendAsync(request))).Reason.Should().Be(SafeHttpBlockReason.TooManyRedirects);
+
+        trace.Redirects.Select(h => h.Uri.AbsolutePath).Should().Equal("/loop/3", "/loop/2");
+    }
+
+    // ---- ISafeHttpSockets: a raw connection under a named client's rules (M9, the TLS probes). ------------------
+
+    private ISafeHttpSockets Sockets(bool allowLoopback)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ISafeHttpDnsResolver, LoopbackResolver>();
+        services.AddSafeHttpClient(Name, configure: o =>
+        {
+            o.AllowedPorts.Add(port);
+            if (allowLoopback)
+                o.AllowedNetworks.Add("127.0.0.1/32");
+        });
+        return services.BuildServiceProvider().GetRequiredService<ISafeHttpSockets>();
+    }
+
+    [Fact]
+    public async Task A_raw_connection_follows_the_named_clients_address_and_port_rules()
+    {
+        (await Blocked(async () => await Sockets(allowLoopback: false).ConnectAsync(Name, "a.test", port, CancellationToken.None)))
+            .Reason.Should().Be(SafeHttpBlockReason.Address);
+        (await Blocked(async () => await Sockets(allowLoopback: true).ConnectAsync(Name, "a.test", 81, CancellationToken.None)))
+            .Reason.Should().Be(SafeHttpBlockReason.Port);
+
+        await using var stream = await Sockets(allowLoopback: true).ConnectAsync(Name, "a.test", port, CancellationToken.None);
+        await stream.WriteAsync("GET /ok HTTP/1.1\r\nHost: a.test\r\nConnection: close\r\n\r\n"u8.ToArray());
+        (await new StreamReader(stream).ReadToEndAsync()).Should().Contain("\r\nhello\r\n");
+    }
 }
