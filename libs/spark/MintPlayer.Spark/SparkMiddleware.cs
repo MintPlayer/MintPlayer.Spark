@@ -191,6 +191,10 @@ public static class SparkExtensions
             // production and the suite drifted apart -- see SparkStoreConfiguration.
             store.ApplySparkConventions();
 
+            // A secured server: the client certificate and a private server authority, from
+            // Spark:RavenDb. Nothing configured = nothing changes (local dev, the tests).
+            SparkRavenDbSecurity.Apply(store, options.RavenDb);
+
             store.Initialize();
 
             // Wait for RavenDB to become available (handles container startup ordering in docker-compose, etc.)
