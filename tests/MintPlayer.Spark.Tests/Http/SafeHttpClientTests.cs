@@ -175,6 +175,30 @@ public class SafeHttpClientTests : IAsyncLifetime
         (await Blocked(() => client.GetStringAsync(Url("/loop/1")))).Reason.Should().Be(SafeHttpBlockReason.TooManyRedirects);
     }
 
+    // M10 (docs/seo_analyzer_PRD.md §6): the headless browser's router hands each redirect back to Chromium, which
+    // asks for the target itself (and that request is routed and checked again).
+    [Fact]
+    public async Task A_redirect_is_returned_as_it_is_when_following_is_off()
+    {
+        var client = Client(o => o.FollowRedirects = false);
+
+        using var response = await client.GetAsync(Url("/loop/3"));
+
+        ((int)response.StatusCode).Should().Be(302);
+        response.Headers.Location!.OriginalString.Should().Be("/loop/2");
+        (await client.GetStringAsync(Url("/loop/0"))).Should().Be("done");
+    }
+
+    [Fact]
+    public async Task A_redirect_to_a_refused_address_is_returned_unfollowed_when_following_is_off()
+    {
+        var client = Client(o => o.FollowRedirects = false);
+
+        using var response = await client.GetAsync(Url("/redirect?to=" + Uri.EscapeDataString("http://10.0.0.1/")));
+
+        ((int)response.StatusCode).Should().Be(302, "the hop is not taken here; whoever follows it is checked when it asks");
+    }
+
     [Theory]
     [InlineData(false)]   // chunked: caught while streaming
     [InlineData(true)]    // Content-Length: refused before reading

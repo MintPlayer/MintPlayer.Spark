@@ -45,7 +45,7 @@ internal sealed class SafeHttpMessageHandler(SafeHttpPolicy policy, SafeHttpOpti
                 throw;
             }
 
-            if (!IsRedirect(response.StatusCode) || response.Headers.Location is not { } location)
+            if (!options.FollowRedirects || !IsRedirect(response.StatusCode) || response.Headers.Location is not { } location)
             {
                 if (trace is not null)
                     trace.ContentEncoding = response.Content.Headers.ContentEncoding.Count > 0 ? string.Join(", ", response.Content.Headers.ContentEncoding) : null;

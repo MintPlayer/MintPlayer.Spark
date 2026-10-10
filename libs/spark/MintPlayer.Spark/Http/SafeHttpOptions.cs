@@ -50,6 +50,15 @@ public sealed class SafeHttpOptions
     public int MaxRedirects { get; set; } = 5;
 
     /// <summary>
+    /// When <see langword="false"/>, a redirect is returned to the caller as it is (status and <c>Location</c>)
+    /// instead of being followed, and <see cref="MaxRedirects"/> does not apply. The caller that follows it sends a
+    /// new request, which is checked like any other. Meant for a caller that follows redirects itself, such as a
+    /// headless browser whose requests are fulfilled through this client (<c>docs/seo_analyzer_PRD.md</c> §6, M10).
+    /// Default <see langword="true"/>.
+    /// </summary>
+    public bool FollowRedirects { get; set; } = true;
+
+    /// <summary>
     /// When <see langword="true"/>, a redirect is followed only when it stays on the origin (scheme, host and
     /// port) of the URI the caller requested; a redirect to any other origin is refused with
     /// <see cref="SafeHttpBlockReason.CrossOriginRedirect"/>. Every hop is still checked like any other
