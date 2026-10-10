@@ -1,4 +1,4 @@
-import { HttpInterceptorFn } from '@angular/common/http';
+import { HttpFeature, HttpFeatureKind, HttpInterceptorFn, withInterceptors } from '@angular/common/http';
 import { currentLanguage } from '@mintplayer/ng-spark/models';
 
 /**
@@ -7,8 +7,7 @@ import { currentLanguage } from '@mintplayer/ng-spark/models';
  * `SparkLanguageService` keeps the choice in `localStorage` and never puts it on the wire: it is a
  * client-side concern, because almost everything translated reaches the client as a whole
  * `TranslatedString` and is resolved by the `resolveTranslation` pipe. Server-*resolved* strings
- * are the exception, and the composed Home page has two of them — the breadcrumb that becomes the
- * page's `<h2>`, and the welcome subtitle — because a `PersistentObject`'s breadcrumb and an
+ * are the exception (CodeCoverage's Home page title, SeoTester's refusals and its dashboard title) because a `PersistentObject`'s breadcrumb and an
  * attribute's value are plain strings with nowhere to carry three languages.
  *
  * Spark resolves those through `IRequestCultureResolver`, which reads `Accept-Language`. Without
@@ -30,3 +29,12 @@ export const sparkLanguageInterceptor: HttpInterceptorFn = (req, next) => {
   if (!language) return next(req);
   return next(req.clone({ setHeaders: { 'Accept-Language': language } }));
 };
+
+/**
+ * `provideHttpClient(...withSparkLanguage())`: registers {@link sparkLanguageInterceptor}, so server-resolved texts
+ * (breadcrumbs, action messages, refusals) follow the language selector instead of the browser's preference.
+ * Moved from CodeCoverage (M11), where it was the app's own; SeoTester needed the same.
+ */
+export function withSparkLanguage(): HttpFeature<HttpFeatureKind>[] {
+  return [withInterceptors([sparkLanguageInterceptor])];
+}

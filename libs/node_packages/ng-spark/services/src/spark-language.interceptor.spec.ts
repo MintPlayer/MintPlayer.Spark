@@ -1,11 +1,11 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { currentLanguage } from '@mintplayer/ng-spark/models';
-import { sparkLanguageInterceptor } from './spark-language.interceptor';
+import { withSparkLanguage } from './spark-language.interceptor';
 
 describe('sparkLanguageInterceptor', () => {
   let http: HttpClient;
@@ -17,7 +17,7 @@ describe('sparkLanguageInterceptor', () => {
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
-        provideHttpClient(withInterceptors([sparkLanguageInterceptor])),
+        provideHttpClient(...withSparkLanguage()),
         provideHttpClientTesting(),
       ],
     });

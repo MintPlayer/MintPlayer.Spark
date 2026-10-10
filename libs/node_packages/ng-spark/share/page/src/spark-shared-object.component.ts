@@ -45,6 +45,16 @@ type State = 'loading' | 'ready' | 'notFound' | 'failed';
 @Component({
   selector: 'spark-shared-object',
   standalone: true,
+  // Bootstrap's grid and table CSS are not global in ng-bootstrap (they ship with bs-grid / bs-table), so the
+  // `row`/`col-sm-4`/`table` classes alone left the page unstyled and edge to edge (seen in SeoTester, M11).
+  styles: [`
+    .spark-shared-object { max-width: 72rem; margin: 0 auto; padding: 1.5rem 1rem; }
+    .spark-shared-attributes { display: grid; grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr); gap: .5rem 1.5rem; margin: 0; }
+    .spark-shared-attributes dt { font-weight: 600; }
+    .spark-shared-attributes dd { margin: 0; min-width: 0; }
+    .spark-shared-query table { width: 100%; border-collapse: collapse; }
+    .spark-shared-query th, .spark-shared-query td { padding: .35rem .5rem; border-bottom: 1px solid var(--bs-border-color); text-align: start; }
+  `],
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [BsAlertComponent, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe],
   template: `
