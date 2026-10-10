@@ -1,5 +1,10 @@
 # PRD / Plan: Spark IdentityProvider as a full identity-provider plugin
 
+> **Shipped in PR #499 (2026-10-09). The remaining identity-provider work (open items from §0 item 6,
+> the conformance plans that were not run, and Duende parity) now lives in
+> [identity_provider_parity_PRD.md](identity_provider_parity_PRD.md).** The status line below is
+> historical.
+
 Status: **grilled, all decisions locked (§6). Implementation in progress: I0–I6 and I8–I10 done,
 I11 partly; I7, I12–I14 and #490 D11 open (§0)** (2026-10-08). Branch:
 `feat/464-490-pwa-external-login` (PR #499). Nothing pushed yet (R4).
