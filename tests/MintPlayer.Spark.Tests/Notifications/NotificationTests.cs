@@ -135,7 +135,7 @@ public class NotificationTests : OrganizationsTestHost
         shown.GetProperty("title").GetString().Should().Be("Certificate expires");
         shown.GetProperty("body").GetString().Should().Be("in 9 days");
         shown.GetProperty("data").GetProperty("url").GetString().Should().Be(PublicBaseUrl + "/sites/1");
-        shown.GetProperty("data").GetProperty("onActionClick").GetProperty("default").GetProperty("operation").GetString().Should().Be("navigateLastFocusedOrOpen");
+        shown.GetProperty("data").GetProperty("onActionClick").GetProperty("default").GetProperty("operation").GetString().Should().Be("focusLastFocusedOrOpen");
         shown.GetProperty("data").GetProperty("notificationId").GetString().Should().Be(receipt.NotificationIds.Single());
         laptop.Key.Dispose();
         phone.Key.Dispose();

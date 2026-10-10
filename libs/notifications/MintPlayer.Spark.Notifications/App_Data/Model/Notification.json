@@ -49,7 +49,7 @@
         "isReadOnly": true,
         "order": 3,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": []
       },
       {

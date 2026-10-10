@@ -105,8 +105,10 @@ internal sealed class SparkWebPushSender : IDisposable
 
     /// <summary>
     /// The payload Angular's service worker (<c>provideSparkServiceWorker()</c>) shows and acts on by itself:
-    /// <c>notification.title/body/tag</c>, and <c>data.onActionClick.default</c> opening <c>url</c> (focusing
-    /// an open tab of the app first).
+    /// <c>notification.title/body/tag</c>, and <c>data.onActionClick.default</c> = <c>focusLastFocusedOrOpen</c>: an open tab of the app
+    /// is focused and ng-spark's <c>SparkNotificationClicks</c> navigates it in-app to <c>data.url</c> (with
+    /// <c>navigateLastFocusedOrOpen</c> the worker reloads the tab first, so the in-app handler had nothing left to do);
+    /// a closed app is opened at <c>url</c>.
     /// </summary>
     internal static string Payload(string? notificationId, string title, string? body, string? url, string? tag)
     {
@@ -121,7 +123,7 @@ internal sealed class SparkWebPushSender : IDisposable
                 data["url"] = url;
                 data["onActionClick"] = new JsonObject
                 {
-                    ["default"] = new JsonObject { ["operation"] = "navigateLastFocusedOrOpen", ["url"] = url },
+                    ["default"] = new JsonObject { ["operation"] = "focusLastFocusedOrOpen", ["url"] = url },
                 };
             }
             var notification = new JsonObject { ["title"] = title, ["data"] = data };

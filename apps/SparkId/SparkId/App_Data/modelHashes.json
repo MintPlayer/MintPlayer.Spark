@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "modelHash": "dc71380e8b6e102ac1978b123b6084a229836a2da2901f0cc78afb2ae04dae65",
+  "modelHash": "6312e80f30c70816c1e5c96fba809be8c131dda95a70ff77807c05dbf8828cbd",
   "contextRoots": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "modelFiles": "e721fe87ced9c8d805b2134897a3d5b9cc24f5c0f496ee36ea83e35c66503ccd",
   "files": {
@@ -27,7 +27,7 @@
   },
   "entities": {},
   "configFiles": {
-    "actions.json": "4251dab9408a1046c233b35fb0f7d2ee7fdf6331ecaad81ad5d021b0781de91b"
+    "actions.json": "79049e88b60c2e61a6fe02095dffdc9077c7f63894ee38a4c87f65c45d426f6c"
   },
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",
@@ -98,7 +98,7 @@
     "actions.json": {
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "identity-provider": "06f7de305383ac57955571ab5c16d3aed1b802a7c2159b49d23634d241d33b15",
-      "spark": "178159b4155481a5718c310954503cdfb20f49fc10034ce9665c213f30ea3491"
+      "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
     },
     "programUnits.json": {
       "identity-provider": "5bf759a10e423cf6d9fc3d0f423b424ed736312d6f74cc572743ab1f8988b28b"
