@@ -5,18 +5,19 @@ X or Google, register websites in an organization, and get an SEO / performance 
 The spec, decisions and milestones are in [seo_analyzer_PRD.md](../seo_analyzer_PRD.md); this folder is the
 operator's documentation. Treat changes to `apps/SeoTester` as production changes.
 
-Status: **M9** (M8's sites, verification, catalogue, scoring, audit start, share links, abuse log and passkeys, plus
-the crawl pipeline: robots.txt, the site-level probe, page batches, the aggregate that scores the run, cancel). 92 of
-the 110 catalogue checks are measured; the 18 that need the rendered page (Chromium) or PageSpeed Insights arrive
-with M10, the pages with M11, compose, deploy and monitoring with M12.
+Status: **M10** (M8's sites, verification, catalogue, scoring, audit start, share links, abuse log and passkeys; M9's
+crawl pipeline: robots.txt, the site-level probe, page batches, the aggregate that scores the run, cancel; M10's
+headless-browser render of a sample, PageSpeed Insights and the PDF report). All 110 catalogue checks are measured.
+The pages arrive with M11, compose, deploy and monitoring with M12.
 
 ## Layout
 
 | Project | What |
 |---|---|
-| `apps/SeoTester/SeoTester` | the host (`Program.cs`) and the Angular SPA (`ClientApp`, nx project `@spark-apps/seo-tester`); `Entities/` (Site, AuditRun, PageResult, CheckDefinition, AuditLogEntry, TargetCooldown: here, not in the Library, because their marker interfaces are web types, PRD Q-M8a), `Actions/`, `CustomActions/` (StartAudit, StartFullCrawl, VerifySite, ResetCheckDefinition), `Interceptors/`, `Verification/` (proofs, re-check cron), `Audits/` (start, abuse log, organization cascade), `Catalogue/` (seeder, scoring snapshot), `Crawler/` (the pipeline's recipients, fetcher, prober, politeness, TLS probe, registry lookups), `Dns/` (`ISeoDns`), `Settings/` (every gate and limit), `Bot/` (the `/bot` page), `Dockerfile` |
-| `apps/SeoTester/SeoTester.Library` | plain SDK, nothing web: the shipped check catalogue (`Catalogue/checks.json`, 110 checks) and its parser, the scoring engine (`Scoring/`), origin normalization and ownership-proof matching (`Sites/`), the crawler's identity (`SeoTesterBot`), the pipeline's queues and messages (`Messaging/SeoQueues.cs`); robots.txt (RFC 9309), sitemaps, HTML parsing (AngleSharp, no scripts), the TLS 1.0/1.1 hello probe, and the check implementations (`Checks/`: page, site and crawl level) |
-| `apps/SeoTester/SeoTester.Tests` | boots the real `Program` against an embedded RavenDB (users and organizations from `Data/organizations.json`; DNS and the web faked): composition, settings, `/bot`, the route table, sites, verification, audit start, catalogue, sharing, passkeys, the crawl pipeline end to end and a host restart in the middle of a batch; and the pure scoring, catalogue, robots.txt, sitemap, check and TLS-probe tests. Nothing leaves the machine: DNS, TLS, the crawled sites and the registries are fakes (recorded RDAP/IANA/hstspreload answers in `Data/Fixtures`) |
+| `apps/SeoTester/SeoTester` | the host (`Program.cs`) and the Angular SPA (`ClientApp`, nx project `@spark-apps/seo-tester`); `Entities/` (Site, AuditRun, PageResult, CheckDefinition, AuditLogEntry, TargetCooldown: here, not in the Library, because their marker interfaces are web types, PRD Q-M8a), `Actions/`, `CustomActions/` (StartAudit, StartFullCrawl, VerifySite, ResetCheckDefinition), `Interceptors/`, `Verification/` (proofs, re-check cron), `Audits/` (start, abuse log, organization cascade), `Catalogue/` (seeder, scoring snapshot), `Crawler/` (the pipeline's recipients, fetcher, prober, politeness, TLS probe, registry lookups), `Rendering/` (the Chromium connection, the request router, the page renderer, the bundled axe-core 4.13.0, `seo-render`), `PageSpeed/` (the PageSpeed Insights client, `seo-psi`), `Reports/` (the printable report, `seo-pdf`, the PDF download), `Dns/` (`ISeoDns`), `Settings/` (every gate and limit), `Bot/` (the `/bot` page), `Dockerfile` |
+| `apps/SeoTester/SeoTester.Library` | plain SDK, nothing web: the shipped check catalogue (`Catalogue/checks.json`, 110 checks) and its parser, the scoring engine (`Scoring/`), origin normalization and ownership-proof matching (`Sites/`), the crawler's identity (`SeoTesterBot`), the pipeline's queues and messages (`Messaging/SeoQueues.cs`); robots.txt (RFC 9309), sitemaps, HTML parsing (AngleSharp, no scripts), the TLS 1.0/1.1 hello probe, and the check implementations (`Checks/`: page, site and crawl level, and `RenderChecks` for the rendered page; `PageSpeed/` for PageSpeed Insights), judged from facts the host collects |
+| `apps/SeoTester/chromium` | the Chromium container's `Dockerfile` and `server.mjs` (M12 adds it to compose: "The Chromium container" below) |
+| `apps/SeoTester/SeoTester.Tests` | boots the real `Program` against an embedded RavenDB (users and organizations from `Data/organizations.json`; DNS and the web faked): composition, settings, `/bot`, the route table, sites, verification, audit start, catalogue, sharing, passkeys, the crawl pipeline end to end and a host restart in the middle of a batch; the render, PageSpeed and PDF stages end to end and the browser escape test (`Rendering/`: own collections, a local Chromium, see "Running it locally"); and the pure scoring, catalogue, robots.txt, sitemap, check, PageSpeed-parser and TLS-probe tests. Nothing leaves the machine: DNS, TLS, the crawled sites, the registries and PageSpeed Insights are fakes (recorded RDAP/IANA/hstspreload/PageSpeed answers in `Data/Fixtures`) |
 
 ## What a user does (M9)
 
@@ -58,6 +59,11 @@ overwritten.
    The host starts the Angular dev server itself (`UseAngularCliServer`); do not run `ng serve` beside it. The app is
    ready when the host prints the dev server's `➜ Local:` line.
 
+Development renders with a Chromium launched on the machine (`SeoTester:Browser:Mode = Launch`): install it once with
+`pwsh apps/SeoTester/SeoTester/bin/Debug/net11.0/playwright.ps1 install chromium` after a build (the browser tests in
+`SeoTester.Tests/Rendering/` need the same). PageSpeed Insights runs when `SeoTester:PageSpeed:ApiKey` is in your user
+secrets.
+
 Development writes every mail as an `.eml` file into `apps/SeoTester/SeoTester/mail-pickup/` (link confirmations,
 invitations, notifications). To sign in with a real provider locally, set its keys in user secrets (below) and
 register `https://localhost:5013/signin-…` as an extra callback on that provider's development app.
@@ -89,7 +95,8 @@ empty is simply not offered; with **no** provider at all the app refuses to star
 | Public origin | `Spark:Auth:PublicBaseUrl` | `https://seotester.mintplayer.com`, already in `appsettings.Production.json`; mailed and share links are built from it. ⚠️ Its host is also the **passkey relying-party id** (D46): a passkey binds to it for life, so never change it once users enrolled passkeys. Development uses `localhost` |
 | Mail (SMTP relay) | `Spark:Mail:Smtp:Host` (+ `Port`, `UserName`, `Password` if the relay needs them), `Spark:Mail:From:Address` | The sender defaults to `noreply@seotester.mintplayer.com`. **Required in production:** without a transport the app refuses to start (account-link confirmations need mail). Same relay as CodeCoverage (`docs/code-coverage/hosting.md`) |
 | Web Push (VAPID) | `Spark:Notifications:WebPush:PublicKey`, `…:PrivateKey`, `…:Subject` | Generate once with `MintPlayer.Spark.WebPush.VapidDetails.Generate("mailto:…")`; the private key is a secret. Empty = push off, in-app and mail still work. Changing the pair later invalidates every browser subscription |
-| PageSpeed Insights / CrUX | `SeoTester:PageSpeed:ApiKey` | A Google Cloud API key with the PageSpeed Insights API enabled (restrict it to that API). Empty = "not measured" (from M10) |
+| PageSpeed Insights / CrUX | `SeoTester:PageSpeed:ApiKey` | A Google Cloud API key with the PageSpeed Insights API enabled (restrict it to that API). Empty = both PageSpeed checks "not measured: PageSpeed Insights is not configured" (never a failure; no keyless call: its quota is 0). Sent as the `X-Goog-Api-Key` header, never in a URL, so no log line holds it |
+| Headless browser | `SeoTester:Browser:Mode`, `…:Endpoint` | `Off` (the rendered checks "not measured", no PDF), `Launch` (Development: a local Chromium), `Connect` (production: `ws://seo-chromium:3000/`, already in `appsettings.Production.json`). Not a secret |
 | Data Protection keys | `Spark:DataProtection:KeysPath` | A mounted volume (`/var/lib/seotester/dataprotection-keys` in the image), set by the compose file (M12) |
 | RavenDB | `Spark:RavenDb:Urls:0`, `Spark:RavenDb:Database` | Database `SeoTester` on the VPS's RavenDB (Community licence: Changes API yes, ≤ 3 subscriptions, expiration every 36 h) |
 
@@ -100,9 +107,9 @@ Every feature gate and limit of PRD §6 and the category weights of §7 are **se
 stored value, else the configuration key of the same name (`SeoTester:Limits:Unverified:PagesPerRun`, …), else the
 PRD's default. They are never secrets.
 
-## The crawl pipeline (M9)
+## The crawl pipeline (M9, M10)
 
-Three queues (`Spark:Messaging:Queues`, concurrency and handler timeout per queue) carry a run:
+Five queues (`Spark:Messaging:Queues`, concurrency and handler timeout per queue) carry a run, and a sixth prints it:
 
 1. **`seo-probe`** (`Crawler/SiteProbeRecipient.cs`): reads `/robots.txt` first. A site whose robots.txt names
    `MintPlayerSeoTester` with `Disallow: /`, disallows every crawler, or answers 5xx (RFC 9309: "crawl nothing") ends as
@@ -120,11 +127,37 @@ Three queues (`Spark:Messaging:Queues`, concurrency and handler timeout per queu
    (a URL is asked three times at most). A batch's pages, the frontier and the next message commit together, so a host
    that stops in the middle of a batch leaves nothing half-done: the next host fetches the batch again. The crawl stops
    at the page limit, the wall time, an empty frontier, a cancel, or a server that fails most requests. For verified
-   runs it then checks up to 50 links to other sites (one `HEAD` per host).
-3. **`seo-aggregate`** (`AggregateRecipient.cs`): adds up every page's findings, the probe's and the crawl-level ones
+   runs it then checks up to 50 links to other sites (one `HEAD` per host). Then it hands over to the next two stages,
+   which run side by side.
+3. **`seo-render`** (`Rendering/RenderSampleRecipient.cs`): the run's sample (3 pages unverified, 10 verified: the home
+   page, then the shallowest HTML pages that answered 200, one per URL template) in Chromium, one render at a time for
+   the whole application (`SeoTester:Limits:ConcurrentRenders`). Each page is rendered twice in a fresh browser context:
+   as a 375 px phone (layout and text size, lazy images, the network log, Chromium's script coverage, axe-core 4.13.0
+   with the WCAG 2.0–2.2 AA and best-practice rules) and at desktop width (the rendered text and links against the HTML
+   as served, phone/desktop parity; on the home page one click on a same-site link to see whether an SPA route change
+   records an analytics hit). **Every request the browser makes is fetched by SeoTester** (`Rendering/BrowserRouter.cs`)
+   through the SSRF-safe client: redirects are handed back to Chromium one hop at a time, robots.txt applies to the
+   audited host, its pages wait for the tier's interval and every request holds one of its connections, static files are
+   fetched once per run, and analytics hits (GA4, Meta, Clarity, Matomo, …) are answered locally and never sent on, so an
+   audit never shows up in the site's statistics. Service workers are never installed: their registration is recorded
+   and the script fetched (does it handle `fetch`, how long is it cached). Without a browser the rendered checks are
+   "not measured"; when the browser cannot be reached they are errors; neither counts in the score.
+4. **`seo-psi`** (`PageSpeed/PsiRecipient.cs`): PageSpeed Insights (mobile, performance) for the sample (the home page;
+   5 pages verified): Lighthouse's score and its insights that did not pass, and the Chrome UX Report's field data
+   (Core Web Vitals at the 75th percentile, the page's own or else the origin's). Measured pages are cached a day
+   (`LookupCaches/psi/…`). A 429 is Google's quota: asked again `QuotaRetries` times, then "not measured".
+5. **`seo-aggregate`** (`AggregateRecipient.cs`): runs once crawl, render and PageSpeed are all done (each enqueues it;
+   only the last finds them all). It adds up every page's findings, the probe's and the crawl-level ones
    (duplicate titles and descriptions, broken links, redirect chains, orphans, depth, near-duplicate text, hreflang
    return links), scores the run with the weights it started with, marks each check New / Fixed / Unchanged against the
-   site's previous completed run, updates the site's latest score, deletes the frontier and notifies the participants.
+   site's previous completed run, keeps why a check was not measured (`Note`), updates the site's latest score, deletes
+   the frontier and notifies the participants.
+
+**PDF** (`seo-pdf`, `Reports/`): *Download PDF* on a completed audit (any member of its organization, Viewers included)
+prints the report in the caller's language (English or Dutch): a self-contained page (no script, no request at all)
+printed by Chromium to A4. It is kept 7 days as an attachment of `{runId}/reports/{en|nl}` and downloaded from
+`GET /seotester/report.pdf?run=…&culture=…` (members only; anyone else gets 404). The caller gets a notification with
+the link when it is ready.
 
 Probes for exposed files (`/.git/HEAD`, `/.env`, …) and folder listings run only when the run was granted them
 (`SeoTester:Features:IntrusiveProbes`, verified sites by default). Every request to a site goes through the SSRF-safe
@@ -142,6 +175,40 @@ live. Page details (`PageResult`) expire after 7 days, the frontier after 2.
 
 The verified tier's request interval is the setting `SeoTester:Limits:Verified:RequestInterval` (default 0: four
 connections, no pause).
+
+| Configuration | Default | |
+|---|---|---|
+| `SeoTester:Browser:Mode` | `Off` (`Launch` in Development, `Connect` in Production) | where the browser comes from |
+| `SeoTester:Browser:Endpoint` | `ws://seo-chromium:3000/` in Production | the Chromium container |
+| `SeoTester:Browser:NavigationTimeout` | `00:00:20` | one page load |
+| `SeoTester:Browser:SettleTimeout` | `00:00:05` | after `load`, at most this long for the network to go quiet |
+| `SeoTester:Browser:PageBudget` | `00:00:50` | everything one sampled page may take (10 pages fit the 10-minute handler timeout) |
+| `SeoTester:PageSpeed:Strategy` | `MOBILE` | |
+| `SeoTester:PageSpeed:CacheFor` | `1.00:00:00` | a measured page is reused this long |
+| `SeoTester:PageSpeed:QuotaRetries`, `…:QuotaRetryDelay` | 3, `00:02:00` (× attempt) | after a 429 |
+
+## The Chromium container (for M12)
+
+Production renders in a container of its own, reached only by SeoTester (D3, D6). M10 ships its image and was tested
+without Docker (spike S3: the same server script run with Microsoft.Playwright's own node); M12 wires it into compose.
+
+- **Image:** `apps/SeoTester/chromium/Dockerfile`: `mcr.microsoft.com/playwright:v1.63.0-noble` plus
+  `playwright-core@1.63.0`, running `node server.mjs` as `pwuser` on port 3000. The version must equal the app's
+  `Microsoft.Playwright` (1.63.0): `ConnectAsync` needs the same major.minor on both sides; bump both together.
+- **Server:** `server.mjs` launches one headless Chromium with the flags fixed on the server side (`launchServer`), so a
+  client cannot loosen them: `--host-resolver-rules=MAP * ~NOTFOUND`, `--webrtc-ip-handling-policy=disable_non_proxied_udp`,
+  `--force-webrtc-ip-handling-policy`, `--disable-background-networking`, `--disable-component-update`,
+  `--disable-domain-reliability`, `--disable-sync`, `--no-pings`, `--dns-prefetch-disable`, and the proxy
+  `http://127.0.0.1:9` with bypass `<-loopback>` (a proxy that does not exist: whatever SeoTester does not fulfil is
+  refused). A test keeps the script's flags equal to the app's `ChromiumBrowser.HardeningArgs`. Do **not** use a plain
+  `playwright run-server`: it ignores client launch arguments (spike S3 measured what then escapes).
+- **Compose (M12):** service `seo-chromium` on the network `seo-browser` only, which SeoTester also joins and which can
+  be `internal: true` (no egress: every request is fulfilled by SeoTester); `init: true`; `shm_size` and a memory limit
+  (S3 measured ~160–210 MB of Chromium processes on small pages on Windows; the Debian numbers are measured at the
+  deploy, PRD Q-M10b); no published port. SeoTester's `SeoTester__Browser__Endpoint=ws://seo-chromium:3000/` is
+  already the Production default.
+- **The app's own image** needs no browser, only Microsoft.Playwright's driver (its `node` and `playwright-core`, copied
+  by `dotnet publish` into `.playwright/`, ~100 MB on Windows): check its size in the published image at M12.
 
 ## The crawler's identity
 

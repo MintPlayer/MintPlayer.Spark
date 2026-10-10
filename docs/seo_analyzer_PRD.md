@@ -1,6 +1,6 @@
 # SeoTester (#268): PRD and plan
 
-Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M9 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
+Status: **spec consolidated after 8 grilling rounds** (2026-10-10); M1–M10 built. Issue: https://github.com/MintPlayer/MintPlayer.Spark/issues/268
 
 §1–§11 are the current spec. §12 is the decision log (D1–D46 plus measurements): each decision with its evidence, in the order it was taken. Where the body and the log disagree, the log is the record and the body is wrong. Fix the body.
 
@@ -22,7 +22,7 @@ Research behind this document:
 | Body consolidated with §12 | ✅ 2026-10-10 |
 | Grilling round 9: live-update details | ✅ 2026-10-10, D33–D37 |
 | Round 10: Web Push, SafeHttp ports and redirects, expiry ownership | ✅ 2026-10-10, D38–D41 (D39–D41 built, §12) |
-| Spikes S1–S13 | ⏳ (S1, S2 (Windows; Debian Q-M9b), S6, S7, S8 (L5 open), S9, S11, S12 (Chrome; Q-M6a open), S13 ✅ 2026-10-10, §12; S4, S5, S10 researched) |
+| Spikes S1–S13 | ⏳ (S1, S2 (Windows; Debian Q-M9b), S3 (escape test and timings; the container Q-M10b), S5 (real answers with the owner's key), S6, S7, S8 (L5 open), S9, S11, S12 (Chrome; Q-M6a open), S13 ✅ 2026-10-10, §12; S4, S10 researched) |
 | Milestones M0–M12 | ⏳ |
 | M1 ✅ | 2026-10-10, commit `72c84933`: X2 SSRF-safe client in `libs/spark/MintPlayer.Spark/Http/`, adopted by the IdP (§12 "Spike S1") |
 | M2 ✅ | 2026-10-10, commit `6df64fb3`: X1 document expiration in `libs/spark/MintPlayer.Spark/Expiration/` (`IExpiring`, `"expiresAfter"`, stamper, read filter, one 36 h configurator), adopted by Messaging, Mail, Moderation and the IdP (§12 "Spike S6"). ⚠️ `model.schema.json` gains `expiresAfter`: CI mints the next `schemas/v{n}` tag on merge (no tag created by hand) |
@@ -32,6 +32,7 @@ Research behind this document:
 | M7 ✅ | 2026-10-10 (§12 "M7"): the SeoTester skeleton `apps/SeoTester` (host + SPA, `.Library`, `.Tests`; https 5013 / http 5014; database `SeoTester`), composed per §4.1 (external sign-in only with `ConfirmByEmail`, the four provider presets from configuration, MailManager, Messaging with the six crawl queues declared, SafeHttp, settings with every §6 gate and limit and the §7 weights, three quotas, notifications, organizations, the sharing switch); server-rendered `/bot`; Dockerfile; nx, solution and CI lists; `docs/seotester/README.md` (credentials to register). SparkId registers a Development `seotester` client. M6 leftovers: share-page headings, a clicked push is read. Open: Q-M7a, ~~Q-M7b~~ (§11; Q-M7b answered by D46) |
 | M8 ✅ | 2026-10-10 (§12 "M8"): `Site` (organization rows, live), ownership verification by DNS TXT / well-known file / meta tag with the claim flow (D18, D42) and an hourly re-check; the check catalogue (110 checks, 8 categories) seeded into editable `CheckDefinition`s with "Reset to shipped"; the pure scoring engine (snapshot + `ScoringVersion`, headline and category scores); `AuditRun` / `PageResult` shapes; `StartAudit` / `StartFullCrawl` (join, 6 h cool-down, three quotas, gates, first message enqueued); share links for `Site` and `AuditRun` (core: per-object share gates); `AuditLogEntry`; D26 cascade; passkeys (D46). Open: Q-M8a–Q-M8e (§11) |
 | M9 ✅ | 2026-10-10 (§12 "M9"): the crawl pipeline: `seo-probe` (robots.txt first and the opt-out, Q-M8e; sitemaps, redirects, TLS incl. the raw TLS 1.0/1.1 hello, well-known files, DNS, RDAP and hstspreload through `LookupCache`), `seo-crawl` (`CrawlFrontier`, page batches, per-host politeness, tier limits, full-crawl ceiling), `seo-aggregate` (scores with the run's snapshot, New/Fixed/Unchanged, notifications), `CancelAudit`; 92 of 110 checks (18 wait for Chromium/PSI, M10); core `SafeHttpTrace` and `ISafeHttpSockets`; spikes S2, S7, S9 measured. Open: Q-M9a, Q-M9b (§11) |
+| M10 ✅ | 2026-10-10 (§12 "M10"): `seo-render` (a sample per tier, one URL template each, in Chromium over Playwright: launched locally or `ConnectAsync` to the container's `server.mjs`; every browser request fetched by the app through the SSRF-safe client, one redirect hop at a time (core `SafeHttpOptions.FollowRedirects`), robots.txt and the tier's connections, analytics hits answered locally; axe-core 4.13.0 bundled; phone and desktop renders), `seo-psi` (PageSpeed Insights with the key in a header, recorded real answers, 429 deferred then "not measured"), `seo-pdf` (the report printed per language, kept 7 days, members-only download), the aggregate waiting for crawl, render and PSI; **110 of 110 checks**; `RunCheckResult.Note` says why a check was not measured; the Chromium container's image and server script for M12; spikes S3 and S5 measured. Open: Q-M10a–Q-M10f (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
 ---
@@ -195,6 +196,7 @@ Org-owned documents carry `OrganizationId`. Row security for every SeoTester typ
 | `LookupCache` (RDAP, hstspreload, robots, PSI) | `@expires` 1–7 d | small | natural ids (`rdap/example.com`) |
 | `TargetCooldown` | `@expires` = cool-down | tiny | per-target throttle across **all** users for unverified targets (D17) |
 | `CheckDefinition` | permanent | small | admin-editable catalogue (D32) |
+| `RunReport` (M10) | `@expires` 7 d | tiny + a ~90 KB PDF attachment | `{runId}/reports/{en\|nl}`: a printed report (F14), printed again on demand (Q-M10d) |
 | `AuditLogEntry` | permanent (`@expires` 1 y, D37) | tiny | who audited what, when, from which org (D28) |
 | `Setting` (X9), `Notification` + `PushSubscription` (X10) | per package | tiny | — |
 
@@ -218,7 +220,7 @@ Queues (`[MessageQueue]`; per-queue `HandlerTimeout`, X7):
 | `seo-aggregate` | `AggregateMessage(runId)` | site-level checks (duplicates, orphans, broken links, redirect chains, hreflang return links), scoring with the snapshot, delta vs the previous run, `Site.Latest*`, alerts | 1 |
 | `seo-pdf` | `PdfMessage(runId, culture)` | Chromium prints the report page | 1 |
 
-The stages run independently. Each one sets its flag on the run when it finishes, and the last one enqueues the aggregate with `BroadcastOnceAsync(runId)`. Page work is idempotent: a `PageResult` id is `{runId}/pages/{urlHash}`.
+~~The stages run independently. Each one sets its flag on the run when it finishes, and the last one enqueues the aggregate with `BroadcastOnceAsync(runId)`.~~ The crawl's last batch starts `seo-render` and `seo-psi` side by side (their sample is taken from the crawled pages, Q-M10c). Each stage adds its flag to `StagesDone` and enqueues the aggregate in the same commit; the aggregate runs only when `crawl`, `render` and `psi` are all there (§12 "M10"). Page work is idempotent: a `PageResult` id is `{runId}/pages/{urlHash}`.
 
 **Monitoring:** a cron sweep every 15 min selects verified sites with `NextRunAt <= now` (when the monitoring setting is on) and calls `BroadcastOnceAsync($"{siteId}:{slot}")`. This is the `ManifestScanScheduler` pattern.
 
@@ -340,9 +342,9 @@ Each spike ends with a measured result recorded in §12 (numbers, file:line, or 
 |---|---|---|---|
 | S1 | SSRF-safe handler | Does a `ConnectCallback` guard block loopback, private, link-local, `169.254.169.254`, IPv4-mapped IPv6, NAT64, DNS rebinding, and survive redirects? Overhead? | red→green tests per case; overhead measured |
 | S2 | TLS/protocol probing on Debian | raw ClientHello for TLS 1.0–1.3 from the `aspnet:11.0` Debian image vs badssl.com (`tls-v1-0.badssl.com:1010`, …); h2 via ALPN; h3 with `libmsquic` vs `Alt-Svc` only | matches badssl; msquic decision |
-| S3 | Chromium container | image/RAM per page on Debian; `shm_size`; axe-core time; `ConnectAsync` + `RouteAsync` + host-resolver rules: **does any request escape?** Can `seo-browser` be `internal: true`? PDF render time | escape test red→green; numbers |
+| S3 ✅ (container: Q-M10b) | Chromium container | image/RAM per page on Debian; `shm_size`; axe-core time; `ConnectAsync` + `RouteAsync` + host-resolver rules: **does any request escape?** Can `seo-browser` be `internal: true`? PDF render time | escape test red→green; numbers |
 | S4 | RDAP coverage | expiry for .com/.net/.org/.eu/.nl/.be/.io; confirm .be has no RDAP or WHOIS expiry | TLD table |
-| S5 | PSI + CrUX | real quota, latency, Lighthouse 13 insight ids, CrUX availability for small sites | real responses stored as fixtures |
+| S5 ✅ | PSI + CrUX | real quota, latency, Lighthouse 13 insight ids, CrUX availability for small sites | real responses stored as fixtures |
 | S6 | Expiration on Community | per-document `@expires` (7 d, 2 d, 14 d) with the 36 h frequency; visibility window; the read filter hiding expired docs; storage of a 100- and a 2 000-page run | sizes + window recorded; filter test red→green |
 | S7 | Crawl chaining | batch size B well under `HandlerTimeout` at 1 req/s; resume after killing the host mid-batch | kill test passes; B with evidence |
 | S8 ✅ | Live updates | L1–L4, L6–L8 measured (§12 "Spike S8"); L5 (real proxy) open as Q-M5a. Questions were: patch vs full size, cost per push with 1/10/50 viewers, slow clients, nginx/Traefik upgrade + idle timeout, index freshness after BatchCompleted, login expiry on long sockets, po-edit merge under pushes | numbers per L-item |
@@ -421,6 +423,38 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   Desktop was not running on the build machine. Options: (a) measure at the M12 deploy, from the real container on the
   VPS; (b) start Docker locally and run the spike in the image now. **Recommendation: (a)**, as Q-M5a: it is the real
   image on the real network, and nothing before M12 runs the crawler in production.
+- **Q-M10a (from M10): how politely the browser loads a page.** A rendered page asks for its CSS, scripts, fonts and
+  images, often 30–100 requests. Built: on the audited host, every browser request holds one of the tier's connections
+  (unverified: 1), its **documents** also wait for the tier's interval (1 s), sub-resources do not; other hosts 4 at a
+  time; static files fetched once per run. Options: (a) as built; (b) the interval for every request (an unverified
+  render of 3 pages × ~50 resources × 2 viewports would take minutes and run into the page budget); (c) no limit on
+  sub-resources (a browser's normal behaviour, 6 connections per host). **Recommendation: (a)**: one connection is
+  what an unverified host agreed to, and a page's resources are what one visitor causes, once (cached across the sample).
+- **Q-M10b (from M10, S3): where the Chromium container is measured.** Image size, RAM per page and `shm_size` on
+  Debian, and whether `seo-browser` can be `internal: true` in the real compose network, need Docker; Docker Desktop was
+  not running on the build machine and was not started. Everything else of S3 was measured here (escape test over a
+  launched browser, over `ConnectAsync` to a run-server and to the container's own `server.mjs`; timings). Options:
+  (a) measure at the M12 deploy, as Q-M5a and Q-M9b; (b) start Docker locally and measure the image now.
+  **Recommendation: (a)**: the real VPS, network and limits, and nothing renders in production before M12.
+- **Q-M10c (from M10): render and PageSpeed run after the crawl, not beside it.** §4.3 says the stages run
+  independently. Built: crawl → (render ∥ PageSpeed) → aggregate. Options: (a) as built; (b) start render and PageSpeed
+  after the probe, on a sample taken from the home page's links. **Recommendation: (a)**: the sample is one page per URL
+  template of the crawled pages (not just the home page's first links), and on an unverified host a render beside the
+  crawl would be a second connection.
+- **Q-M10d (from M10): the PDF is printed on demand and kept 7 days.** Built: *Download PDF* prints the report in the
+  caller's language once, stores it as an attachment of `RunReport` (expires after 7 days, like page details), and
+  notifies with the link; a later request prints it again. Options: (a) as built; (b) print both languages when the run
+  completes and keep them with the run (forever, ~90 KB × 2 per run). **Recommendation: (a)**: §4.2 keeps storage
+  modest and the run (kept for good) is all a report is printed from.
+- **Q-M10e (from M10): the rendering browser's user agent.** Built: a real Chrome phone/desktop string with
+  `MintPlayerSeoTester/1.0 (+https://seotester.mintplayer.com/bot)` appended, sent on the wire (as Googlebot's renderer
+  does), so a site that serves phones differently is seen as a phone and still knows who asks; robots.txt is matched for
+  the token as before. Options: (a) as built; (b) the bare crawler user agent for every request (D29 to the letter; the
+  mobile-parity check then misses sites that serve phones by user agent). **Recommendation: (a).**
+- **Q-M10f (from M10): what PageSpeed Insights measures.** Built: strategy MOBILE (Google indexes mobile-first),
+  category PERFORMANCE only; accessibility comes from our own axe-core run on the rendered page, SEO and best practices
+  from our checks. Options: (a) as built; (b) also desktop (a second call per page, twice the quota); (c) all four
+  Lighthouse categories (the answer grows ~40 %, the scores duplicate our checks). **Recommendation: (a).**
 - **Q-M6d (from M6, X5): the renderers' look.** The letter-grade colours (A, B green; C, D amber; F red), `spark-delta`'s defaults being CodeCoverage's (1 decimal, small), and the gauge (a 48 px ring with a grade badge; no CodeCoverage precedent, not yet seen in a browser). **Recommendation:** keep them and review the gauge in SeoTester's UI (M11).
 
 
@@ -1550,3 +1584,152 @@ unchanged; the race it closes is not reproduced). Before the run, three defects 
 judged by its target's content, the pacer counting from the scheduled start, and a URL answering 429 holding the crawl.)
 
 **Open (§11):** Q-M9a, Q-M9b.
+
+### M10 (2026-10-10): render sample, PageSpeed Insights, PDF; spikes S3 and S5
+
+Commits: `da08f4c8` (core: SafeHttp `FollowRedirects`), then the Library (render/PSI checks, parser, fixtures), the host
+(render, PSI, PDF stages, pipeline join, tests) and this record. Operator documentation: `docs/seotester/README.md`
+("The crawl pipeline", "The Chromium container (for M12)").
+
+**Pipeline (§4.3), as built.** The crawl's last batch enqueues `RenderSampleMessage` and `PsiMessage` (instead of the
+aggregate) in its commit; each of the two writes its findings, adds its stage to `StagesDone` and enqueues
+`AggregateMessage` in **one** commit (`RunPipeline.FinishStageAsync`); the aggregate returns unless `crawl`, `render`
+and `psi` are all there, so only the last stage's message aggregates. This replaces "the last one enqueues the
+aggregate with `BroadcastOnceAsync`" (§4.3): deciding "last" after a commit is not crash-safe (a host stopping between
+commit and broadcast strands the run), the in-commit enqueue is (outbox). Render and PSI start **after** the crawl, not
+beside it: their sample is chosen from the crawled pages, and an unverified host keeps one connection (Q-M10c).
+*Evidence: removing the aggregate's wait made `RenderPipelineTests.An_audit_renders_…` fail ("technical.raw-vs-rendered
+not present": the run was scored before the render) and `CrawlPipelineTests.An_audit_probes_…` fail; restored, green.*
+
+**Sample (§6).** `RenderSample.Pick`: HTML pages that answered 200 and did not redirect, the home page first, then the
+shallowest, **one per URL template** (`/blog/a` and `/blog/b` are `/blog/*`, digits generalised) before a second of any;
+`RenderedSample` (3 / 10) for the render, `PsiSample` (1 / 5) for PageSpeed. One render at a time per process
+(`RenderGate`, the `ConcurrentRenders` setting read per render; a cancelled waiter no longer blocks the next one).
+
+**Render (F12).** `PageRenderer`: each sampled page twice, each in a fresh context with service workers blocked:
+375 px phone (`isMobile`, touch, DPR 2: layout and text size, images and the LCP element, the network log, V8 precise
+coverage through a CDP session, axe-core 4.13.0 with tags wcag2a/aa, wcag21a/aa, wcag22aa, best-practice) and 1350 px
+desktop (rendered text and links, the SPA route probe on the home page). The served HTML is the routed main-document
+response, parsed by AngleSharp (`RawView`). The checks are pure (`SeoTester.Library/Checks/RenderChecks.cs`), with these
+thresholds: page weight warn > 80 requests or > 3 MB, fail > 150 or > 6 MB (decompressed bytes: the router's client
+decompresses, so above Lighthouse's transfer-size limits); lazy-loading fails a lazy LCP image, warns ≥ 3 eager images
+below the first screen; code-splitting warns ≥ 150 KB with ≥ 50 % never run, fails ≥ 1 MB with ≥ 60 %; responsive fails
+on horizontal overflow at 375 px or > 50 % of text below 12 px (Lighthouse: 60 % legible); raw-vs-rendered fails when the
+served HTML has < 1/5 of ≥ 100 rendered words or lacks a title/h1 the render has, warns < 60 %; mobile parity fails < 50 %
+of the desktop words, warns < 70 % or > 10 % of its same-site links (≥ 3) missing; axe: a critical/serious violation
+fails its check, moderate/minor warns. axe rules map to checks by id (`color-contrast`, `target-size`, `heading-order`,
+`landmark-*`/`region`/`bypass`/`skip-link`, `aria-*`), the rest to `axe-other` except the rules a raw check already
+measures (image-alt, label, html lang, document title, meta viewport, link name: not counted twice). Service worker: the
+registration is recorded by the init script (never performed, §6) and the script fetched through the router: pass when it
+answers 2xx and handles `fetch` (it can serve offline), warn otherwise, fail only for a site with the PWA profile when
+none is registered; caching warns when `max-age` > 0. Analytics: GA4, GTM, Meta, Clarity, Hotjar, Plausible, LinkedIn,
+Bing UET, TikTok, Matomo recognised by request; consent warns on a hit before any interaction or a tracker without a
+known consent manager (Info, weight 0); SPA analytics fails when a click on a same-site link changed the URL without a
+document request and no hit followed.
+- **Measured on the way:** an emulated phone zooms out to fit overflowing content, so `scrollWidth > innerWidth` missed a
+  900 px block at 375 px (red in `RenderPipelineTests`, `mobile.responsive` Pass); compared with `screen.width`, green.
+
+**Routing (§6, D6), `RenderNetwork` + `BrowserRouter`.** Every HTTP(S) request of every context is fetched by the app
+through the new named SSRF-safe client `SeoTester.Browser` with `FollowRedirects = false` (core, below): a 3xx is handed
+to Chromium, which asks for the target, which is routed and checked again. The audited host's requests hold one of its
+tier connections (`HostPacer.WaitAsync(paced:)`), its documents also wait for the tier's interval (Q-M10a); other hosts
+4 at a time; robots.txt Disallow applies to the audited host; GET sub-resources are fetched once per run (≤ 2 MB, not
+`no-store`); request bodies ≤ 1 MiB; analytics hits are answered 204 locally and never sent on (*evidence: with the sink
+removed, the fake web received `google-analytics.com/g/collect` and the test failed*). The browser's user agent is a
+phone/desktop Chrome string **plus** `MintPlayerSeoTester/1.0 (+…/bot)`, sent on the wire (Q-M10e). WebSockets are
+closed before they connect (`RouteWebSocketAsync`, no server connection).
+
+**Core change, behaviour of existing callers unchanged:** `SafeHttpOptions.FollowRedirects` (default `true`; `false`
+returns a redirect as it is, `MaxRedirects` not applied). *Evidence: 2 new tests red (302 followed) → green;
+`SafeHttp*` 121/121 (the 119 before, unchanged, + 2).* `MintPlayer.Spark` already `11.0.0-preview.104` on this branch: no
+version change. **Dedupe:** `HostPacer` (M9) gained an unpaced slot for the render instead of a second pacer;
+`PageFetcher.FetchAsync` takes extra request headers (the PSI key) instead of a second fetcher; the PSI cache is a
+`LookupCache` like RDAP's.
+
+**Spike S3 (Chromium; measured 2026-10-10 on the build machine, Windows 11, Chromium 153.0.8010.12 headless shell,
+Playwright 1.63.0; no Docker).** `BrowserEscapeTests`: a page with every vector the PRD names (WebSocket, WebRTC STUN
+and TURN, WebTransport, prefetch, dns-prefetch, preconnect, `sendBeacon`, a keepalive fetch, `<a ping>`, EventSource,
+img/iframe/stylesheet/fetch, a service worker, an iframe's own `RTCPeerConnection`) against TCP and UDP listeners on
+loopback:
+
+| Setup | Reached the listeners |
+|---|---|
+| control: routing alone (every routed request aborted), no flags, no init script | `GET /prefetch`, `GET /ws`, `POST /beacon`, keepalive `GET /fetch-localhost`, `GET /ws-localhost`, `POST /ping`, 6 STUN datagrams |
+| E1: flags + init script + WebSocket routing, no proxy | nothing |
+| E2: dead proxy only, no flags/init/WebSocket routing | 6 STUN datagrams (WebRTC) |
+| Connect to a plain `playwright run-server`, flags sent as `x-playwright-launch-options` | prefetch, beacon, keepalive fetch, ping: **the server drops client `args` unless started with `--unsafe`** |
+| all layers, launched; over `ConnectAsync` to `run-server` (proxy as a launch option, which it keeps); over `ConnectAsync` to the container's `server.mjs` | **nothing** (green) |
+
+  So: Playwright's routing does not see prefetch, beacons, keepalive fetches, pings, WebSockets or UDP. Two
+  independent guards close them: the dead proxy (`http://127.0.0.1:9`, bypass `<-loopback>`, a Playwright *launch
+  option* so even a plain run-server applies it) for TCP, and the init script (WebRTC/WebTransport removed in every
+  frame) plus `--webrtc-ip-handling-policy=disable_non_proxied_udp` for UDP; `--host-resolver-rules="MAP * ~NOTFOUND"`
+  alone also stopped the TCP vectors (E1). Every routed request to loopback was **refused by the SSRF-safe client**
+  (layer 1: the network log shows `/img`, `/style.css`, `/frame`, `/fetch`, `/eventsource`, `/ping` = blocked). The
+  container therefore runs `apps/SeoTester/chromium/server.mjs` (`launchServer`, flags fixed server-side; a test keeps
+  them equal to `ChromiumBrowser.HardeningArgs`), not `run-server`. **`internal: true` for `seo-browser`:** nothing the
+  browser needs leaves it (every request is fulfilled by the app), so yes, to be confirmed in the real network at M12.
+  Timings (fixture pages, warm): browser ready 1.1–1.4 s launched, 0.4–2.5 s over ConnectAsync; per viewport load
+  12–100 ms + settle ≥ 500 ms (the network-idle window), axe-core 120–160 ms, coverage 1–13 ms, collect 2–17 ms, the SPA
+  probe 2.1 s; Chromium's processes 160–210 MB working set (headless shell, contexts closed between pages); **PDF**
+  1.3 s for an 89.5 KB A4 report. Static resources fetched once per run: 9 renders of 3 pages made 20 network fetches.
+  **Not measured (no Docker on the build machine): the image's size and RAM per page on Debian, `shm_size`, and the
+  `internal: true` network itself: Q-M10b.**
+
+**Spike S5 (PageSpeed Insights; measured 2026-10-10 with the owner's key, 5 calls).** The key was read from SeoTester's
+user secrets by a throwaway tool and sent as `X-Goog-Api-Key` (never printed, never in a URL; the fixtures were checked
+for it and a test asserts no `key=`/`AIza` in them).
+
+| Call | Status | Latency | Answer |
+|---|---|---|---|
+| example.com, mobile, 4 categories | 200 | 8.3 s | 419 KB; Lighthouse 13.5.0; performance 1.00, a11y 0.96, BP 1.00, SEO 0.80; CrUX page **and** origin data, all FAST (LCP p75 1038 ms, INP 87 ms, CLS 0) |
+| mintplayer.com, mobile, performance | 200 | 29.4 s | 305 KB; performance 0.46; **no CrUX data** (`loadingExperience` = `{initial_url}` only, no origin block) |
+| mintplayer.com, desktop, performance | 200 | 15.9 s | 397 KB; performance 0.71 |
+| example.com with `fields=…audits/*(…)` | 400 | 0.24 s | a field mask cannot name map entries ("Cannot find field 'value'") |
+| example.com with `fields=…,audits` | 200 | 8.1 s | 295 KB (-30 %): the mask SeoTester uses (`PsiReport.FieldMask`) |
+
+  Fixtures (`SeoTester.Tests/Data/Fixtures/psi_*.json`): the three 200 answers **trimmed** to the fields the parser reads
+  (categories, metrics, insights, CrUX; real values), plus S4/S5's keyless 429 JSON (`quota_limit_value: "0"`) and the
+  HTML 429. Decisions: mobile, performance only (accessibility is axe's, Q-M10f); the 5 weighted metrics; insights
+  scoring < 0.9 are the "main opportunities", ordered by their LCP + FCP savings; lab score ≥ 90 pass / ≥ 50 warn / else
+  fail; Core Web Vitals by CrUX's own category (FAST/AVERAGE/SLOW, worst metric wins; CLS's percentile is × 100), the
+  page's data else the origin's, else not measured; a measured page cached a day; client timeout 100 s (five pages fit
+  the queue's 10 minutes); a 429 deferred `QuotaRetries` (3) × `QuotaRetryDelay` (2 min × attempt), then "not measured:
+  the PageSpeed Insights quota is exhausted". No key: both checks not measured, "PageSpeed Insights is not configured".
+  *Evidence: the parser tests run on the recorded answers; the quota test (fake web answering the recorded 429) asks
+  twice with `QuotaRetries` 1 and records "not measured"; with the retry removed it asked once (red).*
+
+**Not measured, with why (§7).** `RunCheckResult.Note` (model attribute, label "Not measured because"): the reason of a
+not-applicable finding or the message of an error finding, e.g. "PageSpeed Insights is not configured", "the headless
+browser is not configured", "the Chrome UX Report has no field data for this page or its origin". *Evidence:
+`CrawlPipelineTests.An_audit_probes_…` (no browser, no key) asserts both notes; red with the note removed.* Without a
+browser (`SeoTester:Browser:Mode` Off, the default outside Development and Production) the 16 rendered checks are not
+measured; an unreachable browser makes them errors; neither counts in the score, and the run completes.
+
+**PDF (F14).** `ExportReport` on a completed `AuditRun` (`[RequiresOrganizationRole(…, Viewer)]`, right
+`ExportReport/AuditRun` to signed-in users; posture: nothing anonymous) enqueues `PdfMessage(run, culture, requester)`
+(culture from the request, en or nl), or returns the link when a report of that language exists. `seo-pdf` renders
+`ReportPage` (self-contained HTML: inline print CSS, no script, no image, every value encoded; scores, categories,
+issues by category with the catalogue's current how-to-fix text and sample URLs, "not measured" with notes) in a context
+with JavaScript off and every request aborted, prints A4, and stores it as the attachment `report.pdf` of
+`RunReport` `{runId}/reports/{en|nl}`, **expiring after 7 days** (X1; a report can always be printed again from the
+kept run, Q-M10d); the requester is notified with `GET /seotester/report.pdf?run=…&culture=…`, which serves it to
+members of the run's organization only and answers 404 to anyone else, exactly as for a missing report (#453).
+*Evidence: `RenderPipelineTests` downloads it as a Viewer (`%PDF-`, 89.5 KB) and gets 404 as Bob (another organization)
+and anonymously; with the membership check removed Bob got 200 (red).*
+
+**Checks: 110 of 110** (Seo 19, Social 3, Performance 15, Security 26, Accessibility 10, Mobile 11, Technical 17,
+Domain 9). `CheckImplementations.AwaitingRenderOrPsi` is gone; `Every_catalogue_check_is_implemented` pins
+`Implemented` = the catalogue.
+
+**Tests** (`SeoTester.Tests` 127 → **160, all green** (2 min 42 s); Spark.Tests `SafeHttpClientTests` +2, `SafeHttp*` 121/121). New:
+`RenderAndPsiChecksTests` 25 (parser on the recorded answers, thresholds, axe mapping, analytics recognition, coverage,
+sample, the Dutch report), `BrowserEscapeTests` 5 (S3, collection "SeoTester browser"), `RenderPipelineTests` 3 (own
+host "SeoTester render host": browser Launch, a fake PSI key). The browser tests need `playwright.ps1 install chromium`.
+**Red → green** (Developer licence): all 15 render/PSI/PDF/escape mechanisms removed at once failed 9 of 41 affected
+tests; the ones that end-to-end test masks were then removed one at a time (the sink, the key in a header, the
+responsive width, the quota retry, the PDF membership check, the redirect exclusion in the sample): each red alone;
+restored, green. The full SeoTester.Tests run: 160/160 (the route snapshot gained `GET /seotester/report.pdf`, an
+intended change).
+
+**Open (§11):** Q-M10a–Q-M10f.
