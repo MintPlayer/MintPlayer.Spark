@@ -144,6 +144,15 @@ public static class SparkExtensions
         // ExpiresAtUtc is the framework's on pipeline writes (D41): a client can neither extend nor clear it.
         Abstractions.Interceptors.SparkBuilderInterceptorExtensions.AddSparkInterceptor<Expiration.ExpirationInterceptor>(services);
 
+        // Share links (seo_analyzer_PRD X6): always available, nothing shareable until AddShareLinks declares a
+        // type. ShareTokenHash is the framework's on pipeline writes, like ExpiresAtUtc.
+        services.AddSparkConfigurationSection<Sharing.SparkShareOptions>(Sharing.SparkShareOptions.SectionName);
+        services.AddScoped<Sharing.SparkShareGrant>();
+        services.AddScoped<Sharing.SparkShareLinks>();
+        services.AddScoped<Sharing.ISparkShareLinks>(sp => sp.GetRequiredService<Sharing.SparkShareLinks>());
+        services.AddSingleton<Endpoints.Share.SparkShareRateLimiter>();
+        Abstractions.Interceptors.SparkBuilderInterceptorExtensions.AddSparkInterceptor<Sharing.ShareTokenInterceptor>(services);
+
         // The per-request group-membership snapshot SecurityFileAccessControl and the
         // [SparkAuthorize] group handler share (#460, D12). A concrete class, which the [Register]
         // generator does not register as itself, so it is wired here too.

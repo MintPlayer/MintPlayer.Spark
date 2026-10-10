@@ -11,6 +11,9 @@ internal partial class PermissionService : IPermissionService
     // "null => allow" branch this replaced was the original fail-open path.
     [Inject] private readonly IAccessControl accessControl;
 
+    // Scoped and inactive except inside a share-link read (X6). Optional for hand-built instances.
+    [Inject] private readonly Sharing.SparkShareGrant? shareGrant;
+
     /// <summary>
     /// One decision per resource per request.
     /// </summary>
@@ -44,6 +47,10 @@ internal partial class PermissionService : IPermissionService
 
     private async Task<bool> DecideAsync(string resource, CancellationToken cancellationToken)
     {
+        // A share-link read (X6) has exactly the rights of its link and no others, whatever security.json says.
+        if (shareGrant is { IsActive: true })
+            return shareGrant.Allows(resource);
+
         if (decisions.TryGetValue(resource, out var cached))
             return cached;
 

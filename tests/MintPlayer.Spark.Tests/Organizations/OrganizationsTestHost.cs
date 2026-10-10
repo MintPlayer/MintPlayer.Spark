@@ -73,11 +73,17 @@ public abstract class OrganizationsTestHost : SparkTestDriver
     /// <summary>Library aliases whose rights stay on, each with its slot bound to the signed-in group.</summary>
     internal Dictionary<string, string> ExtraLibrarySlots { get; } = [];
 
+    /// <summary>More model types for a test class built on this host.</summary>
+    internal List<EntityTypeFile> ExtraModels { get; } = [];
+
+    /// <summary>More rights for the signed-in group.</summary>
+    internal List<Right> ExtraRights { get; } = [];
+
     private SparkEndpointFactory<OgContext> CreateFactory()
     {
         var created = new SparkEndpointFactory<OgContext>(
             Store,
-            [NoteModel()],
+            [NoteModel(), .. ExtraModels],
             configureServices: services =>
             {
                 services.AddSingleton<IStartupFilter, OgPrincipalStartupFilter>();
@@ -129,7 +135,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
             // Without the package OgNote has no row rule, and startup refuses a type every signed-in user may
             // list without one (VerifyRowPolicyDeclarations): the guard that stands in for the missing policy.
             Rights = WithPackage
-                ? [new Right { Key = "notes", Resource = "QueryReadEditNewDelete/OgNote", GroupId = SparkTestSecurity.AuthenticatedGroupId }]
+                ? [new Right { Key = "notes", Resource = "QueryReadEditNewDelete/OgNote", GroupId = SparkTestSecurity.AuthenticatedGroupId }, .. ExtraRights]
                 : [],
             Bindings = bindings,
             Libraries = libraries.Count > 0 ? libraries : null,

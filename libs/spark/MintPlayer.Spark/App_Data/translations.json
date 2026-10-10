@@ -166,7 +166,22 @@
     "Delete": {
       "label":        { "en": "Delete", "fr": "Supprimer", "nl": "Verwijderen" },
       "confirmation": { "en": "Are you sure you want to delete {count} item(s)?", "fr": "Êtes-vous sûr de vouloir supprimer {count} élément(s) ?", "nl": "Weet u zeker dat u {count} item(s) wilt verwijderen?" }
+    },
+    "ShareLink": {
+      "label":        { "en": "Share link", "fr": "Lien de partage", "nl": "Deellink" },
+      "description":  { "en": "Makes a read-only link anyone can open. An earlier link stops working.", "fr": "Crée un lien en lecture seule que tout le monde peut ouvrir. Un lien précédent cesse de fonctionner.", "nl": "Maakt een alleen-lezen link die iedereen kan openen. Een eerdere link werkt dan niet meer." }
+    },
+    "RevokeShareLink": {
+      "label":        { "en": "Stop sharing", "fr": "Arrêter le partage", "nl": "Delen stoppen" },
+      "confirmation": { "en": "The share link stops working for everyone. Continue?", "fr": "Le lien de partage cesse de fonctionner pour tout le monde. Continuer ?", "nl": "De deellink werkt voor niemand meer. Doorgaan?" }
     }
+  },
+  "share": {
+    "linkTitle":     { "en": "Share link", "fr": "Lien de partage", "nl": "Deellink" },
+    "linkShownOnce": { "en": "Anyone with this link can read this page. Copy it now: it is shown only once. Making a new link or stopping sharing ends it.", "fr": "Toute personne disposant de ce lien peut lire cette page. Copiez-le maintenant : il n'est affiché qu'une fois. Un nouveau lien ou l'arrêt du partage le désactive.", "nl": "Iedereen met deze link kan deze pagina lezen. Kopieer hem nu: hij wordt maar één keer getoond. Een nieuwe link maken of het delen stoppen beëindigt hem." },
+    "revoked":       { "en": "Sharing stopped: the link no longer works.", "fr": "Partage arrêté : le lien ne fonctionne plus.", "nl": "Delen gestopt: de link werkt niet meer." },
+    "disabled":      { "en": "Sharing is switched off.", "fr": "Le partage est désactivé.", "nl": "Delen is uitgeschakeld." },
+    "notFound":      { "en": "This link does not work (any more).", "fr": "Ce lien ne fonctionne pas (ou plus).", "nl": "Deze link werkt niet (meer)." }
   },
   "spark": {
     "query": {
