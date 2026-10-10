@@ -67,6 +67,12 @@ public abstract class OrganizationsTestHost : SparkTestDriver
     /// <summary>More registrations a test adds before the host boots.</summary>
     internal Action<IServiceCollection>? ExtraServices { get; set; }
 
+    /// <summary>More Spark features for a test class built on this host (notifications, quotas, share links).</summary>
+    internal Action<MintPlayer.Spark.Abstractions.Builder.ISparkBuilder>? ExtraSpark { get; set; }
+
+    /// <summary>Library aliases whose rights stay on, each with its slot bound to the signed-in group.</summary>
+    internal Dictionary<string, string> ExtraLibrarySlots { get; } = [];
+
     private SparkEndpointFactory<OgContext> CreateFactory()
     {
         var created = new SparkEndpointFactory<OgContext>(
@@ -92,6 +98,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
                     spark.AddLive(LiveOptions);
                 if (WithPackage)
                     spark.AddOrganizations();
+                ExtraSpark?.Invoke(spark);
             },
             security: SparkTestSecurity.FromJson(JsonSerializer.Serialize(Security())));
         factories.Add(created);
@@ -102,6 +109,11 @@ public abstract class OrganizationsTestHost : SparkTestDriver
     {
         var libraries = SparkTestSecurity.LibraryRightsOff() ?? [];
         libraries.Remove("organizations");
+        foreach (var alias in ExtraLibrarySlots.Keys)
+            libraries.Remove(alias);
+        var bindings = new Dictionary<string, List<string>> { ["organizations:users"] = ["Signed-in users"] };
+        foreach (var slot in ExtraLibrarySlots.Values)
+            bindings[slot] = ["Signed-in users"];
         return new SecurityConfiguration
         {
             WellKnown = new Dictionary<string, string>
@@ -119,7 +131,7 @@ public abstract class OrganizationsTestHost : SparkTestDriver
             Rights = WithPackage
                 ? [new Right { Key = "notes", Resource = "QueryReadEditNewDelete/OgNote", GroupId = SparkTestSecurity.AuthenticatedGroupId }]
                 : [],
-            Bindings = new Dictionary<string, List<string>> { ["organizations:users"] = ["Signed-in users"] },
+            Bindings = bindings,
             Libraries = libraries.Count > 0 ? libraries : null,
         };
     }

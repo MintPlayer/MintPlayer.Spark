@@ -1,0 +1,38 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The notifications package's rights, shipped as a library layer (docs/seo_analyzer_PRD.md X10). One slot the",
+    "application binds in its own security.json, or startup is refused:",
+    "  \"bindings\": { \"notifications:users\": [ \"Users\" ] }",
+    "Every row is its owner's alone (the Actions classes' row rule), so the slot only says who may use notifications",
+    "at all. Notifications: QueryRead + Delete (written by ISparkNotifier, marked read through /spark/notifications/read).",
+    "Devices: QueryRead + Delete (subscribed by the browser). Preferences: the user's own, every verb."
+  ],
+  "rights": [
+    {
+      "key": "notifications",
+      "resource": "QueryRead/Notification",
+      "groupId": "notifications:users"
+    },
+    {
+      "key": "notifications-delete",
+      "resource": "Delete/Notification",
+      "groupId": "notifications:users"
+    },
+    {
+      "key": "devices",
+      "resource": "QueryRead/PushSubscription",
+      "groupId": "notifications:users"
+    },
+    {
+      "key": "devices-delete",
+      "resource": "Delete/PushSubscription",
+      "groupId": "notifications:users"
+    },
+    {
+      "key": "preferences",
+      "resource": "QueryReadEditNewDelete/NotificationPreference",
+      "groupId": "notifications:users"
+    }
+  ]
+}

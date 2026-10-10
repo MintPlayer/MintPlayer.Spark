@@ -94,6 +94,9 @@
       <Platform Project="AnyCPU" />
     </Project>
   </Folder>
+  <Folder Name="/libs/notifications/">
+    <Project Path="libs/notifications/MintPlayer.Spark.Notifications/MintPlayer.Spark.Notifications.csproj" />
+  </Folder>
   <Folder Name="/libs/organizations/">
     <Project Path="libs/organizations/MintPlayer.Spark.Organizations/MintPlayer.Spark.Organizations.csproj" />
   </Folder>

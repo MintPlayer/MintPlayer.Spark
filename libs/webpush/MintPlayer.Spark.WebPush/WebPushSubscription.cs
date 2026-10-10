@@ -7,7 +7,24 @@ namespace MintPlayer.Spark.WebPush;
 /// <param name="Endpoint">The push service URL the message is POSTed to (<c>https://fcm.googleapis.com/…</c>, <c>https://updates.push.services.mozilla.com/…</c>, <c>https://web.push.apple.com/…</c>).</param>
 /// <param name="P256dh">The user agent's P-256 public key, uncompressed (65 bytes, base64url).</param>
 /// <param name="Auth">The user agent's authentication secret (16 bytes, base64url).</param>
-public sealed record WebPushSubscription(string Endpoint, string P256dh, string Auth);
+public sealed record WebPushSubscription(string Endpoint, string P256dh, string Auth)
+{
+    /// <summary>
+    /// The checks a send would fail on, for the moment a browser hands the subscription over: an absolute https
+    /// endpoint, a 65-byte uncompressed point on P-256 and a 16-byte secret.
+    /// </summary>
+    /// <exception cref="ArgumentException">Which part is wrong.</exception>
+    public void Validate()
+    {
+        if (!Uri.TryCreate(Endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+            throw new ArgumentException("A push endpoint is an absolute https URL.", nameof(Endpoint));
+        WebPushEncryption.DecodeKey(Auth, 16, "auth");
+        var point = WebPushEncryption.DecodeKey(P256dh, 65, "p256dh");
+        if (point[0] != 0x04)
+            throw new ArgumentException("The p256dh key is not an uncompressed P-256 point.", nameof(P256dh));
+        using var _ = WebPushEncryption.ImportPublicKey(point);
+    }
+}
 
 /// <summary>The <c>Urgency</c> header of RFC 8030 §5.3.</summary>
 public enum WebPushUrgency

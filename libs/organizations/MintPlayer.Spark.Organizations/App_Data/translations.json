@@ -45,9 +45,9 @@
             "nl": "Persoonlijk"
           },
           "description": {
-            "en": "Your own organization, created with your account. Nobody else can join it.",
-            "fr": "Votre propre organisation, créée avec votre compte. Personne d'autre ne peut la rejoindre.",
-            "nl": "Je eigen organisatie, aangemaakt met je account. Niemand anders kan er lid van worden."
+            "en": "Your own organization, created with your account. You stay its only Owner; others can join it as members.",
+            "fr": "Votre propre organisation, créée avec votre compte. Vous en restez le seul propriétaire ; d'autres peuvent la rejoindre comme membres.",
+            "nl": "Je eigen organisatie, aangemaakt met je account. Jij blijft de enige eigenaar; anderen kunnen er lid van worden."
           }
         },
         "CreatedAtUtc": {

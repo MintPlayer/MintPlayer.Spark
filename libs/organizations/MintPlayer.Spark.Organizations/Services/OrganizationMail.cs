@@ -96,14 +96,5 @@ internal sealed class OrganizationMail(
     }
 
     private string? BaseUrl()
-    {
-        var configured = authOptions.Value.Links.PublicBaseUrl ?? configuration?["Spark:Auth:PublicBaseUrl"];
-        if (!string.IsNullOrWhiteSpace(configured))
-            return configured.TrimEnd('/');
-
-        if (environment?.IsDevelopment() == true && httpContextAccessor?.HttpContext is { } context)
-            return $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}";
-
-        return null;
-    }
+        => MintPlayer.Spark.Abstractions.SparkPublicBaseUrl.Resolve(authOptions.Value.Links.PublicBaseUrl, configuration, environment, httpContextAccessor?.HttpContext);
 }
