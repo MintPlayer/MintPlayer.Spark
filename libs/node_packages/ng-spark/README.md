@@ -63,6 +63,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/po-detail`, `/po-create`, `/po-edit` | The routed detail, create and edit pages |
 | `/po-form` | `<spark-po-form>`, `<spark-reference-picker>`, `<spark-lookup-picker>` |
 | `/renderers` | `provideSparkAttributeRenderers([...])`, `SPARK_ATTRIBUTE_RENDERERS` (with the core `paragraph` renderer built in), `withDeclaredInputs` ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-custom-attribute-renderers.md)) |
+| `/score-renderers` | `provideSparkScoreRenderers([...])` — the `spark-gauge`, `spark-threshold-bar`, `spark-trend` and `spark-delta` renderers, their components, bands and grade presets ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-score-renderers.md)) |
 | `/panels` | `provideSparkDetailPanels(...)`, `provideSparkDetailActions(...)`, `provideSparkQueryListActions(...)` — how add-ons put components on the routed pages |
 | `/client-operations` | `provideSparkClientOperations()` — notify, navigate and refresh operations from server-side action code; the toast container |
 | `/retry-action-modal` | The modal that answers a server's retry action ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-manager-retry-actions.md)) |
@@ -212,6 +213,35 @@ providers: [
 No routes of its own: the History link opens `query/:queryId` with `?parentId=&parentType=` and one
 column filter per slot, which the query page reads for any query. Needs
 [MintPlayer.Spark.Contributions](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/contributions/MintPlayer.Spark.Contributions/README.md).
+
+### Score renderers
+
+```ts
+import { provideSparkScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
+
+providers: [
+  provideSparkScoreRenderers([/* the app's own renderers */]),  // instead of provideSparkAttributeRenderers
+]
+```
+
+```json
+{ "name": "Score", "renderer": "spark-gauge", "rendererOptions": { "bands": "letter-grades" } }
+```
+
+Four renderers for scores and their history, each drawing a grid cell and a detail value and configured
+through `rendererOptions`:
+
+- `spark-gauge`: a ring with the score inside and, with `"bands": "letter-grades"`, an A–F grade (A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 50).
+- `spark-threshold-bar`: a compact bar coloured by band (default green ≥ 80, amber ≥ 60, red), the value beside it.
+- `spark-trend`: a sparkline, or with `"display": "chart"` a trend chart with an optional goal line.
+- `spark-delta`: a signed change, green up and red down, or the reverse with `"higherIsBetter": false`.
+
+No value draws a muted dash, never a zero. The components (`<spark-threshold-bar>` and so on) can also be
+used in a template with `[value]` and `[options]`; `<spark-trend-sparkline>` and `<spark-trend-chart>` are the
+two halves of `spark-trend`, each loading only its own chart. CodeCoverage draws its coverage bar, sparkline, trend
+chart and Δ column through them. See
+[guide-score-renderers.md](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-score-renderers.md)
+for every option.
 
 ## More
 
