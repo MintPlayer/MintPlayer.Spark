@@ -4,6 +4,7 @@ using System.Net;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Settings;
+using SeoTester.Pages;
 using SeoTester.Settings;
 
 namespace SeoTester.Bot;
@@ -50,23 +51,13 @@ internal sealed record BotPageLimits(
 /// <summary>The <c>/bot</c> page's HTML, in English or Dutch. Every value is encoded.</summary>
 internal static class BotPage
 {
-    public static string LanguageFor(HttpRequest request)
-    {
-        if (request.Query["lang"].ToString() is { Length: > 0 } forced)
-            return forced.StartsWith("nl", StringComparison.OrdinalIgnoreCase) ? "nl" : "en";
-
-        var preferred = request.GetTypedHeaders().AcceptLanguage
-            .OrderByDescending(l => l.Quality ?? 1)
-            .Select(l => l.Value.ToString())
-            .FirstOrDefault(l => l.StartsWith("nl", StringComparison.OrdinalIgnoreCase) || l.StartsWith("en", StringComparison.OrdinalIgnoreCase));
-        return preferred?.StartsWith("nl", StringComparison.OrdinalIgnoreCase) == true ? "nl" : "en";
-    }
+    public static string LanguageFor(HttpRequest request) => ServerPage.LanguageFor(request);
 
     public static string Render(string language, BotPageLimits limits)
     {
         var nl = language == "nl";
 
-        static string E(string text) => WebUtility.HtmlEncode(text);
+        static string E(string text) => ServerPage.E(text);
 
         var interval = Duration(limits.RequestInterval, nl);
         var wallTime = Duration(limits.WallTime, nl);
@@ -82,13 +73,8 @@ internal static class BotPage
                 : "Only on sites whose owner proved ownership (DNS, meta tag or file).",
         };
 
-        var sb = new StringBuilder();
-        sb.Append("<!doctype html>\n<html lang=\"").Append(nl ? "nl" : "en").Append("\">\n<head>\n<meta charset=\"utf-8\">\n")
-          .Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n")
-          .Append("<title>").Append(E(nl ? "MintPlayerSeoTester, de crawler van SeoTester" : "MintPlayerSeoTester, the SeoTester crawler")).Append("</title>\n")
-          .Append("<style>body{font-family:system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem;line-height:1.55}")
-          .Append("code,pre{font-family:ui-monospace,monospace}pre{padding:.75rem;border:1px solid #8884;border-radius:.375rem;overflow-x:auto}")
-          .Append("h1{font-size:1.6rem}h2{font-size:1.15rem;margin-top:1.75rem}</style>\n</head>\n<body>\n<main>\n");
+        var title = nl ? "MintPlayerSeoTester, de crawler van SeoTester" : "MintPlayerSeoTester, the SeoTester crawler";
+        var sb = ServerPage.Start(nl, title);
 
         sb.Append("<h1>").Append(E(nl ? "MintPlayerSeoTester, de crawler van SeoTester" : "MintPlayerSeoTester, the SeoTester crawler")).Append("</h1>\n");
         sb.Append("<p>").Append(E(nl
@@ -129,8 +115,7 @@ internal static class BotPage
             : "That is the only way to opt out, and it works at once: robots.txt is read again for every check. A partial Disallow limits the check to the allowed paths."))
           .Append("</p>\n");
 
-        sb.Append("</main>\n</body>\n</html>\n");
-        return sb.ToString();
+        return ServerPage.End(sb);
 
         void Item(string text) => sb.Append("<li>").Append(E(text)).Append("</li>\n");
     }

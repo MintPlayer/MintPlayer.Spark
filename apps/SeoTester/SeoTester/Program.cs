@@ -18,6 +18,7 @@ using SeoTester.Audits;
 using SeoTester.Catalogue;
 using SeoTester.Crawler;
 using SeoTester.Dns;
+using SeoTester.Legal;
 using SeoTester.Monitoring;
 using SeoTester.Entities;
 using SeoTester.Settings;
@@ -121,6 +122,9 @@ builder.Services.AddScoped<IOrganizationDataHandler, SeoOrganizationData>();
 // M12: scheduled monitoring (F9: the 15-minute sweep, Monitoring/) and its alerts (F10).
 builder.Services.AddScoped<MonitoringScheduler>();
 builder.Services.AddScoped<SiteAlerter>();
+// D47: /privacy and /terms (Legal/); the operator's identity is configuration, and production warns while it is missing.
+builder.Services.Configure<SeoLegalOptions>(builder.Configuration.GetSection(SeoLegalOptions.SectionName));
+builder.Services.AddHostedService<LegalConfigurationCheck>();
 builder.Services.AddHostedService<CatalogueSeeder>();
 
 builder.Services.ConfigureApplicationCookie(options =>

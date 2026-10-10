@@ -266,3 +266,11 @@ the same server script run with Microsoft.Playwright's own node).
 User agent `MintPlayerSeoTester/1.0 (+https://seotester.mintplayer.com/bot)`; robots.txt token `MintPlayerSeoTester`
 (the only opt-out, D19). `/bot` is rendered by the server (`Bot/BotPageEndpoint.cs`) in English or Dutch and states the
 current limits from the settings.
+
+## Privacy policy and terms (D47)
+
+`/privacy` and `/terms` are server pages like `/bot` (`Legal/`, English or Dutch, no script, version and effective date
+on top), linked from the SPA's footer under every page, the sign-in page included, and left to the server by the service
+worker. ⚠️ The texts are a draft written from the code for the owner to review, not legal advice. The operator's name,
+address, contact address, enterprise number, court and hosting provider are configuration (`SeoTester:Legal:*`, in
+production `LEGAL_*` in the server's `.env`, [deploy.md](deploy.md) §4.3); an empty one shows "[to be completed]".

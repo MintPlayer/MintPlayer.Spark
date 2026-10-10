@@ -1,5 +1,6 @@
 GET /bot
 GET /health
+GET /privacy
 GET /seotester/admin/dashboard
 GET /seotester/badge.svg
 GET /seotester/catalogue
@@ -66,3 +67,4 @@ POST /spark/share/query | allow-anonymous | antiforgery=not-required
 GET /spark/translations
 GET /spark/types
 GET /spark/types/{id}
+GET /terms

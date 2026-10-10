@@ -43,6 +43,8 @@
     "!/signout-*",
     "!/connect/**",
     "!/.well-known/**",
-    "!/bot"
+    "!/bot",
+    "!/privacy",
+    "!/terms"
   ]
 }

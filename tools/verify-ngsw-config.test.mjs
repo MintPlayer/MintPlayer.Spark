@@ -37,8 +37,8 @@ export const SPARK_NAVIGATION_URLS = [
  */
 export const APP_NAVIGATION_URLS = {
   CodeCoverage: ['!/api', '!/api/**', '!/badge', '!/badge/**', '!/health', '!/health/**'],
-  // The crawler's page is the server's (Bot/BotPageEndpoint.cs), never the cached index.html.
-  SeoTester: ['!/bot'],
+  // The crawler's page and the legal pages are the server's (Bot/, Legal/), never the cached index.html.
+  SeoTester: ['!/bot', '!/privacy', '!/terms'],
 };
 
 /** Every directory under apps/ named ClientApp that holds an Angular project.json. */

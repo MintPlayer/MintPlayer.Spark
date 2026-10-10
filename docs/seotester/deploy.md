@@ -224,7 +224,7 @@ At least one is required (with none, the app refuses to start). A provider whose
 |---|---|---|---|---|---|
 | Microsoft (Entra, personal **and** work/school) | entra.microsoft.com → App registrations → New; *Accounts in any organizational directory and personal Microsoft accounts*; platform **Web**; a client secret under *Certificates & secrets* | `https://seotester.mintplayer.com/signin-microsoft` | `openid`, `profile`, `email` (the preset asks); `common` endpoint | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | `Spark:Auth:Providers:MicrosoftAccount:ClientId` / `ClientSecret` |
 | GitHub | github.com → Settings → Developer settings → **OAuth Apps** → New (homepage `https://seotester.mintplayer.com`) | `https://seotester.mintplayer.com/signin-github` | `user:email` | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | `Spark:Auth:Providers:GitHub:…` |
-| X | developer.x.com → Projects & Apps → the app → *User authentication settings*: **OAuth 2.0**, type *Web App*, **Request email from users** on (X requires a privacy policy URL and a terms URL, which SeoTester does not have yet: PRD Q-M12a) | `https://seotester.mintplayer.com/signin-twitter` | `users.read`, `tweet.read`, `users.email`; the **OAuth 2.0 Client ID and Client Secret**, not the 1.0a API key | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `Spark:Auth:Providers:Twitter:…` |
+| X | developer.x.com → Projects & Apps → the app → *User authentication settings*: **OAuth 2.0**, type *Web App*, **Request email from users** on (privacy policy URL `https://seotester.mintplayer.com/privacy`, terms URL `https://seotester.mintplayer.com/terms`, §4.3) | `https://seotester.mintplayer.com/signin-twitter` | `users.read`, `tweet.read`, `users.email`; the **OAuth 2.0 Client ID and Client Secret**, not the 1.0a API key | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `Spark:Auth:Providers:Twitter:…` |
 | Google | console.cloud.google.com → APIs & Services → *OAuth consent screen* (External, app name SeoTester, scopes below), then Credentials → *OAuth client ID* → Web application | `https://seotester.mintplayer.com/signin-google` | `openid`, `profile`, `email` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `Spark:Auth:Providers:Google:…` |
 
 For local development, add `https://localhost:5013/signin-…` as a second redirect URI on a development app instead of
@@ -253,6 +253,25 @@ shred -u vapid.pem
 
 Paste the two lines into `/var/www/seotester/.env`. The app refuses to start with a malformed pair (it checks the keys
 belong together), so a copy mistake shows at the deploy, not at the first push.
+
+### 4.3 The operator on `/privacy` and `/terms` (PRD D47)
+
+The privacy policy and the terms are server pages (`apps/SeoTester/SeoTester/Legal/`, English and Dutch, version and
+effective date at the top). ⚠️ **The texts are a draft written from the code for you to review, not legal advice.**
+Who operates the service is configuration, never the repository: until a value is set the pages show
+**"[to be completed]"** ("[nog in te vullen]") in its place, and production logs a warning at startup naming the keys.
+
+| `.env` | Config key | What |
+|---|---|---|
+| `LEGAL_OPERATOR_NAME` | `SeoTester:Legal:OperatorName` | the controller's legal name (person or company) |
+| `LEGAL_ADDRESS` | `SeoTester:Legal:Address` | postal address, one line |
+| `LEGAL_CONTACT_EMAIL` | `SeoTester:Legal:ContactEmail` | for questions and privacy requests (shown as a mailto link) |
+| `LEGAL_ENTERPRISE_NUMBER` | `SeoTester:Legal:EnterpriseNumber` | KBO/BCE number |
+| `LEGAL_COURT` | `SeoTester:Legal:Court` | completes "disputes go to …" (e.g. "the courts of <district>") |
+| `LEGAL_HOSTING_PROVIDER` | `SeoTester:Legal:HostingProvider` | completes "The server is hosted by …" (provider and country) |
+
+Google's OAuth consent screen and X's app settings take the two URLs above. When a text changes in substance, raise
+`LegalPages.Version` and `EffectiveDate` in the code.
 
 ## 5. Post-deploy checklist (measurements deferred to M12)
 
@@ -320,6 +339,9 @@ not configured" or errors, and *Download PDF* produces a PDF. If Chromium's peak
 `/dev/shm` fills, adjust `mem_limit` / `shm_size` in `apps/SeoTester/docker-compose.yml` and record the numbers.
 
 ### Also check once
+
+- **The legal pages:** `https://seotester.mintplayer.com/privacy` and `/terms` (and `?lang=nl`) show no
+  "[to be completed]", and `docker compose --env-file .env logs seotester-app | grep -i "to be completed"` is empty.
 
 - **The shared network after the migration (§3.0).** CodeCoverage still sends mail (sign in there once with a provider
   that mails, or check `docker logs code-coverage-coverage-smtp-1 --since 1h | grep status=sent`), and on the next

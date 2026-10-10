@@ -24,6 +24,14 @@
     "aboutTheCrawler": {
       "en": "About our crawler",
       "nl": "Over onze crawler"
+    },
+    "privacy": {
+      "en": "Privacy policy",
+      "nl": "Privacyverklaring"
+    },
+    "terms": {
+      "en": "Terms of use",
+      "nl": "Gebruiksvoorwaarden"
     }
   },
   "security": {
