@@ -3,7 +3,10 @@
 > **Proven in Docker on 2026-10-11** (§8; SeoTester PRD Q-D56a, §12 "Q-D56a"): the pinned
 > `ravendb/ravendb:7.1.10-ubuntu.22.04-x64` with this page's settings and certificates, both compose files brought up
 > locally with stand-ins for the apps, and §4.2, §4.4, §4.6, §4.7, §4.8 and §4.9 run as written. What could not be
-> measured is said so in §7 and §8.
+> measured is said so in §7 and §8. (Those numbers are the first plan's; §8 keeps them.) **Re-proven the same day for
+> the short window** (owner: "5 minutes is really long"): §4.2–4.7 as now written, from master's unsecured compose
+> file with data in it, in a throwaway docker:dind "VPS": 18 s from `down` to the first TLS 200, rollback 14 s, the
+> data intact both ways, 10/10 checks. And the automatic renewal of §6: 43/43.
 
 Owner decision 2026-10-10 (PRD D55, D56): minimal network exposure, and a secured RavenDB server shared by CodeCoverage
 and SeoTester. Files: [`apps/CodeCoverage/docker-compose.yml`](../../apps/CodeCoverage/docker-compose.yml),
@@ -79,10 +82,15 @@ the SeoTester deploy likewise for its three files.
 
 ## 4. The migration, step by step
 
-**Expected downtime: about 5 minutes** for CodeCoverage (steps 4.5–4.8: RavenDB restarts secured, two certificate
-registrations, the app's ordinary start), plus the cold copy in 4.4, whose length is the size of `code-coverage_raven-data`
-(time `du -sh` of the volume first). Then one ordinary deploy restart when the PR merges (4.10). SeoTester has not been
-deployed yet, so it has no downtime; it is deployed after this (deploy.md §3.0).
+**Expected downtime: about 30 seconds**, the length of an ordinary deploy, and only in 4.5. Everything else is
+prepared while the unsecured server keeps serving. *Evidence (owner 2026-10-11: "5 minutes is really long", the
+first plan's cold copy and hand-typed registrations inside the window):* the switch rehearsed from master's
+unsecured compose file to this one, scripted as 4.5, took **18 s** from `down` to the first TLS 200 (RavenDB healthy
+on TLS 12 s, both registrations 2 s, stand-in app 4 s), and the real app's start is 11-17 s (the last three
+deploys, 2026-10-09: stopped → `/health/ready` 200 in 28 s each). A downtime cannot be avoided altogether: RavenDB
+serves either plain HTTP or TLS with client certificates, switched only by a restart, and the app must switch with it;
+a second node to hand over to is not available on the Community licence. Then one ordinary deploy restart when the PR
+merges (4.8). SeoTester has not been deployed yet, so it has no downtime; it is deployed after this (deploy.md §3.0).
 
 Done **before merging the PR**, by hand, with the PR's compose file, so that the deploy after the merge finds
 everything in place. Run as root on the VPS, in `bash`.
@@ -159,70 +167,68 @@ The directories must be traversable by the container users: `0750` root-owned wo
 files by path (the daemon, not the container user, opens the directory). `/root/raven-ca` (`0700`) keeps the public
 `.crt` files and `ca.key` (`0400`); the deploy re-asserts those modes.
 
-### 4.4 The window opens: stop, cold copy (the rollback point)
+### 4.4 Prepare the switch (no downtime)
+
+While the unsecured server still serves: SeoTester's database (any admin call works unsecured), the networks, and the
+new compose file beside the old one, validated against `.env`. The app certificates are **not** registered here:
+measured on 7.1.10, an unsecured server refuses `PUT /admin/certificates` (HTTP 500), so they are registered inside
+the window, where they take 2 s.
 
 ```bash
 cd /var/www/code-coverage
-cp docker-compose.yml docker-compose.yml.pre-tls
-docker compose --env-file .env down          # removes the old coverage-internal network too
-docker run --rm -v code-coverage_raven-data:/data:ro -v /var/backups/coverage-raven:/out alpine:3.20 \
-  tar -C /data -czf "/out/raven-data-$STAMP.tgz" .
-```
-
-### 4.5 The new compose file and the networks
-
-From the PR branch (or `scp` it from a checkout of the PR if raw.githubusercontent.com refuses):
-
-```bash
-curl -sf -o docker-compose.yml \
-  https://raw.githubusercontent.com/MintPlayer/MintPlayer.Spark/feat/268-seotester/apps/CodeCoverage/docker-compose.yml
+docker run --rm --network code-coverage_coverage-internal curlimages/curl:8.11.1 -sS -f -o /dev/null \
+  -X PUT "http://coverage-raven:8080/admin/databases?replicationFactor=1" -H 'Content-Type: application/json' \
+  --data '{"DatabaseName":"SeoTester"}'
 docker network rm mintplayer-backend 2>/dev/null || true   # D48's network, if it was ever created
 for net in seo-raven seo-mail; do
   docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null
 done
-docker compose --env-file .env config -q        # fails here, not later, on a missing variable
-docker compose --env-file .env up -d coverage-raven
-docker compose --env-file .env ps coverage-raven  # wait for (healthy)
+# From the PR branch (or scp it from a checkout of the PR if raw.githubusercontent.com refuses):
+curl -sf -o docker-compose.next.yml \
+  https://raw.githubusercontent.com/MintPlayer/MintPlayer.Spark/feat/268-seotester/apps/CodeCoverage/docker-compose.yml
+docker compose -f docker-compose.next.yml --env-file .env config -q   # fails here, not in the window
 ```
 
-### 4.6 Register the app certificates and create SeoTester's database (operator)
+### 4.5 The window: one block, about 30 seconds
+
+Paste as one block (or run it as one script): nothing in it waits for a person.
 
 ```bash
 cd /var/www/code-coverage
 OP="docker run --rm --network code-coverage_coverage-db \
   -v $PWD/raven-operator/operator.crt:/op.crt:ro -v $PWD/raven-operator/operator.key:/op.key:ro -v $PWD/raven-certs/ca.crt:/ca.crt:ro \
-  curlimages/curl:8.11.1 -sS -f --cert /op.crt --key /op.key --cacert /ca.crt"
+  curlimages/curl:8.11.1 -sS -f --retry 10 --retry-delay 1 --retry-connrefused --cert /op.crt --key /op.key --cacert /ca.crt"
 R=https://coverage-raven:8080
-
 register() {   # name, database, certificate file (public; base64 of the DER)
   local b64; b64=$(openssl x509 -in "$3" -outform der | base64 -w0)
-  $OP -X PUT "$R/admin/certificates" -H 'Content-Type: application/json' \
+  $OP -o /dev/null -X PUT "$R/admin/certificates" -H 'Content-Type: application/json' \
     --data "{\"Name\":\"$1\",\"Certificate\":\"$b64\",\"SecurityClearance\":\"ValidUser\",\"Permissions\":{\"$2\":\"Admin\"}}"
 }
+
+docker compose --env-file .env down          # the window opens (removes the old coverage-internal network too)
+cp docker-compose.yml docker-compose.yml.pre-tls && mv docker-compose.next.yml docker-compose.yml
+docker compose --env-file .env up -d coverage-raven
+until [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q coverage-raven)")" = healthy ]; do sleep 1; done
 register codecoverage Coverage  raven-certs/codecoverage.crt
 register seotester    SeoTester /var/www/seotester/raven-certs/seotester.crt
-$OP -X PUT "$R/admin/databases?replicationFactor=1" -H 'Content-Type: application/json' --data '{"DatabaseName":"SeoTester"}'
-
-$OP "$R/admin/certificates" | grep -o '"Name":"[^"]*"' | sort -u   # codecoverage, seotester, "Server Certificate" (the well-known operator is not listed)
-$OP "$R/databases?namesOnly=true"                           # Coverage, SeoTester
+docker compose --env-file .env up -d          # the licence one-shot, the relay, the app
+for i in $(seq 1 66); do
+  code=$(docker compose --env-file .env exec -T coverage-app bash -c "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && head -1 <&3" 2>/dev/null | grep -o '[0-9][0-9][0-9]' | head -1 || true)
+  [ "$code" = 200 ] && { echo "window closed: /health/ready 200"; break; }
+  sleep 2
+done
 ```
 
-Each `PUT` answers 201 (measured on 7.1.10; re-registering the same certificate also answers 201).
+If `/health/ready` is not 200 within the loop, roll back (4.7) first and investigate afterwards.
 
-### 4.7 Start the rest
-
-```bash
-docker compose --env-file .env up -d           # the licence one-shot, the relay, the app
-docker compose --env-file .env ps -a           # coverage-raven-license: Exited (0); the others healthy
-```
-
-### 4.8 Verify, then the window is closed
+### 4.6 Verify (no downtime)
 
 ```bash
 # The licence is still there (it lives in raven-data), and the one-shot re-applied it over TLS:
 $OP "$R/license/status" | grep -o '"Type":"[^"]*"\|"Expired":[a-z]*'
-# The app is up against the secured server (the deploy's readiness check):
-docker compose --env-file .env exec -T coverage-app bash -c "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && head -1 <&3"
+docker compose --env-file .env ps -a           # coverage-raven-license: Exited (0); the others healthy
+$OP "$R/admin/certificates" | grep -o '"Name":"[^"]*"' | sort -u   # codecoverage, seotester, "Server Certificate"
+$OP "$R/databases?namesOnly=true"              # Coverage, SeoTester
 # Unsecured access is gone, and the app certificate cannot reach SeoTester's database (expect 000 and 403):
 docker run --rm --network code-coverage_coverage-db curlimages/curl:8.11.1 -s -o /dev/null -w '%{http_code}\n' http://coverage-raven:8080/databases
 docker run --rm --network code-coverage_coverage-db --user 0 \
@@ -230,12 +236,11 @@ docker run --rm --network code-coverage_coverage-db --user 0 \
   --cert /c/codecoverage.crt --key /c/codecoverage.key --cacert /c/ca.crt "$R/databases/SeoTester/stats"
 ```
 
-Then open https://coverage.mintplayer.com, sign in, open a repository. When all of this passed, delete the cold copy
-(R10; the `.ravendbdump` of 4.1 stays as the fallback): `rm -f /var/backups/coverage-raven/raven-data-$STAMP.tgz`,
-and check the renewal sees all four certificates: `raven-cert-renew --status` (installed by the deploy at 4.10; before
-that, run `apps/CodeCoverage/ops/raven-cert-renew.sh --status` from a copy).
+Then open https://coverage.mintplayer.com, sign in, open a repository. Check the renewal sees all four certificates
+with `apps/CodeCoverage/ops/raven-cert-renew.sh --status` from a copy (the deploy installs it as `raven-cert-renew` at
+4.8).
 
-### 4.9 Rollback (any step from 4.5 on)
+### 4.7 Rollback (from 4.5 on; about 30 seconds)
 
 The data is untouched by TLS (the certificates live in the cluster state inside `raven-data`, harmless to an unsecured
 server), so rolling back is the old compose file:
@@ -247,12 +252,12 @@ cp docker-compose.yml.pre-tls docker-compose.yml
 docker compose --env-file .env up -d
 ```
 
-Only if the data itself is damaged (not expected): `down`, then restore the cold copy into the volume
-(`docker run --rm -v code-coverage_raven-data:/data -v /var/backups/coverage-raven:/in alpine:3.20 sh -c 'rm -rf /data/* && tar -C /data -xzf /in/raven-data-$STAMP.tgz'`),
-then `up -d`. The `.ravendbdump` from 4.1 is the second line (README *Backup*, restore). Do not merge the PR until 4.8
-passed: after the merge, the deploy would bring back the secured compose file.
+Rehearsed: back on the unsecured server in 14 s (RavenDB healthy), the data readable as before. Only if the data
+itself is damaged (not expected): restore the `.ravendbdump` of 4.1 (README *Backup*, restore). There is no cold copy
+any more (R10 amended: it was the longest part of the old window, and TLS never writes the data). Do not merge the PR
+until 4.6 passed: after the merge, the deploy would bring back the secured compose file.
 
-### 4.10 Merge
+### 4.8 Merge
 
 The deploy finds the files and variables (its pre-checks), creates nothing new, and does its ordinary `down`/`up`
 (one more short restart). Then SeoTester's first deploy (deploy.md §3.0).
@@ -309,7 +314,7 @@ service runs with `NoNewPrivileges` and `UMask=0077`; `flock` refuses a second c
 | R7 | The CodeCoverage deploy installs and updates the script and timer. |
 | R8 | No browser certificate, no Studio in production; the operator certificate is server-only. |
 | R9 | Local development stays unsecured, without certificates. |
-| R10 | Migration right after the local rehearsal, on the owner's go; the cold rollback copy (4.4) is deleted after 4.8 passed; the `.ravendbdump` of 4.1 stays. |
+| R10 | Migration right after the local rehearsal, on the owner's go. ~~The cold rollback copy is deleted after verification.~~ **Amended (owner: "5 minutes is really long"):** no cold copy at all; everything but the switch is prepared beforehand (4.1-4.4) and the switch is one scripted block (4.5), about 30 s (rehearsed 18 s + the app's start). The `.ravendbdump` of 4.1 is the data fallback. |
 
 ## 7. Certificate validity and the licence
 

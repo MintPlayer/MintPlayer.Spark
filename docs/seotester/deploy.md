@@ -104,7 +104,7 @@ file joins (PRD D55), and RavenDB is secured with client certificates (D56). Bot
 migration, [raven-tls-migration.md](../code-coverage/raven-tls-migration.md) §4, which also generates SeoTester's certificate, puts it in `/var/www/seotester/raven-certs/`,
 registers it (Admin on `SeoTester` only) and creates the database `SeoTester`. In this order:
 
-1. **CodeCoverage's migration**, [raven-tls-migration.md](../code-coverage/raven-tls-migration.md) §4.1–4.10 (it ends with the PR merged and CodeCoverage's deploy green). The same
+1. **CodeCoverage's migration**, [raven-tls-migration.md](../code-coverage/raven-tls-migration.md) §4.1–4.8 (it ends with the PR merged and CodeCoverage's deploy green). The same
    push may start `seotester-deploy.yml`: until CodeCoverage is on the new networks it **refuses** ("deploy CodeCoverage
    first") and changes nothing; re-run it (*Run workflow*) afterwards.
 2. **Check** that the database and the relay are on their networks:

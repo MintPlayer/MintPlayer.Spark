@@ -2277,7 +2277,12 @@ two take D55 and D56 so no number is shared.
     `SparkModules` store (`ModuleDirectory`), which has its own options and no secured deployment.
   - Runbook `docs/code-coverage/raven-tls-migration.md` (~~DRAFT until Q-D56a~~ proven 2026-10-11): certificates, VPS paths, owners and modes, the migration with exact commands
     (hot backup, openssl, files, cold copy, the new compose file staged by hand before the merge, registration, start,
-    verification, rollback), expected downtime ~5 min plus the cold copy, renewal.
+    verification, rollback), ~~expected downtime ~5 min plus the cold copy, renewal.~~ **Amended 2026-10-11 (owner:
+    "5 minutes is really long"; "This must go automatically"):** no cold copy, everything but the switch prepared
+    beforehand, the switch one scripted block of about 30 s (rehearsed from master's unsecured stack: 18 s to the first
+    TLS 200, rollback 14 s; an unsecured 7.1.10 refuses certificate registration with HTTP 500, so the two
+    registrations stay inside the window at 2 s). Renewal is automatic: `raven-cert-renew` + a nightly timer,
+    decisions R1-R10 in runbook §6 (rehearsed 43/43).
   - *Tests: `SparkRavenDbSecurityTests` (9; certificates made in the test; a real TLS handshake against a Kestrel
     server that requires a client certificate). Red with the `Apply` call removed: 6 of 9 failed (no certificate on the
     store, no refusals, no handshake); green 9/9, with `AddSparkDocumentStoreFactoryTests` 13/13.
