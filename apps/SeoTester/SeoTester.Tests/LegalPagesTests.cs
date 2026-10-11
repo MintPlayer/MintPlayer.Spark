@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Configuration;
 using SeoTester.Tests._Infrastructure;
 
 namespace SeoTester.Tests;
@@ -132,6 +133,39 @@ public class LegalPagesTests(SeoTesterHostFixture host)
         termsEn.Should().Contain("disputes go to the competent Belgian courts,");
         termsNl.Should().Contain("geschillen gaan naar de bevoegde Belgische rechtbanken,");
         legal.Missing().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_policy_names_only_the_sign_in_providers_that_are_offered()
+    {
+        // X is not configured in production (2026-10-11): the policy must not name a recipient the app never uses.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Spark:Auth:Providers:MicrosoftAccount:ClientId"] = "id",
+                ["Spark:Auth:Providers:GitHub:ClientId"] = "id",
+                ["Spark:Auth:Providers:Twitter:ClientId"] = "",
+                ["Spark:Auth:Providers:Google:ClientId"] = "id",
+            })
+            .Build();
+        var providers = SeoTester.Legal.LegalPages.ConfiguredSignInProviders(configuration);
+        providers.Should().BeEquivalentTo(["Microsoft", "GitHub", "Google"]);
+
+        var legal = new SeoTester.Legal.SeoLegalOptions();
+        var facts = new SeoTester.Legal.LegalPages.Facts(TimeSpan.FromDays(365), TimeSpan.FromHours(6), providers);
+        var en = SeoTester.Legal.LegalPages.RenderPrivacy("en", legal, facts);
+        var nl = SeoTester.Legal.LegalPages.RenderPrivacy("nl", legal, facts);
+
+        en.Should().Contain("When you sign in with Microsoft, GitHub or Google, SeoTester receives");
+        en.Should().Contain("The sign-in provider you choose (Microsoft, GitHub or Google) learns");
+        nl.Should().Contain("Wanneer je aanmeldt met Microsoft, GitHub of Google, ontvangt");
+        nl.Should().Contain("De aanmeldprovider die je kiest (Microsoft, GitHub of Google) weet");
+        en.Should().NotContain(" X ").And.NotContain("X or").And.NotContain(", X,");
+
+        var one = SeoTester.Legal.LegalPages.RenderPrivacy("en", legal, facts with { SignInProviders = ["GitHub"] });
+        one.Should().Contain("When you sign in with GitHub, SeoTester receives");
+        var none = SeoTester.Legal.LegalPages.RenderPrivacy("en", legal, facts with { SignInProviders = [] });
+        none.Should().Contain("When you sign in with an external sign-in provider, SeoTester receives");
     }
 
     [Fact]

@@ -2042,6 +2042,10 @@ audience). The deferred measurements Q-M5a, Q-M6a, Q-M9b and Q-M10b stay open un
     duties for paid services). An empty `Court` reads "the competent Belgian courts" / "de bevoegde Belgische
     rechtbanken" (`LegalPages.DefaultCourtEn/Nl`), one text per language, since a configured value appears in both.
     Version stays 1: nothing was published yet. *Tests: `LegalPagesTests` (below).*
+  - **Amended 2026-10-11 (owner: X is skipped, its project is pay-per-use with no credits):** the privacy policy names
+    only the sign-in providers actually offered (`LegalPages.ConfiguredSignInProviders`: the same rule as
+    `AddExternalProviders`, a non-empty `Spark:Auth:Providers:{Key}:ClientId`), in both places it lists them; none
+    reads "an external sign-in provider". *Test: `The_policy_names_only_the_sign_in_providers_that_are_offered`.*
   - ⚠️ **The texts are a draft written from the code for the owner to review, not legal advice.**
   - *Tests: `LegalPagesTests` (both pages anonymous in English with the retention figures and the marker; Dutch by
     header and by `?lang`; configured values replace the marker, HTML-encoded, mailto link). Red: the three HTTP tests

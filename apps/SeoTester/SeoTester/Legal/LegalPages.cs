@@ -30,8 +30,23 @@ public static class LegalPages
     public const string DefaultCourtEn = "the competent Belgian courts";
     public const string DefaultCourtNl = "de bevoegde Belgische rechtbanken";
 
-    /// <summary>The retention periods the policy states that are settings, not constants.</summary>
-    public sealed record Facts(TimeSpan AuditLogRetention, TimeSpan TargetCoolDown);
+    /// <summary>
+    /// What the policy states that is configuration, not constants: the retention settings, and the sign-in providers
+    /// actually offered (display names; <see langword="null"/> or empty reads "an external sign-in provider").
+    /// </summary>
+    public sealed record Facts(TimeSpan AuditLogRetention, TimeSpan TargetCoolDown, IReadOnlyList<string>? SignInProviders = null);
+
+    /// <summary>The configuration key of each external provider, with the name the policy shows, in the sign-in page's order.</summary>
+    private static readonly (string Key, string Name)[] Providers =
+        [("MicrosoftAccount", "Microsoft"), ("GitHub", "GitHub"), ("Twitter", "X"), ("Google", "Google")];
+
+    /// <summary>
+    /// The providers the app registers: the same rule as <c>AddExternalProviders</c>, a provider with an empty
+    /// <c>Spark:Auth:Providers:{Key}:ClientId</c> is not offered, so the policy does not name it either.
+    /// </summary>
+    public static IReadOnlyList<string> ConfiguredSignInProviders(IConfiguration configuration) =>
+        Providers.Where(p => !string.IsNullOrWhiteSpace(configuration[$"Spark:Auth:Providers:{p.Key}:ClientId"]))
+                 .Select(p => p.Name).ToArray();
 
     public static string RenderPrivacy(string language, SeoLegalOptions legal, Facts facts)
     {
@@ -44,8 +59,8 @@ public static class LegalPages
 
         w.H2("What is stored, and for how long", "Wat er bewaard wordt, en hoe lang");
         w.List(
-            ("Your account. When you sign in with Microsoft, GitHub, X or Google, SeoTester receives and keeps your name or user name, your e-mail address (when the provider gives one) and the provider's identifier for your account, so you can sign in again and link providers. A passkey you add is stored as its public key only. Kept until you delete your account.",
-             "Je account. Wanneer je aanmeldt met Microsoft, GitHub, X of Google, ontvangt en bewaart SeoTester je naam of gebruikersnaam, je e-mailadres (als de provider het meegeeft) en de identificatie van je account bij die provider, zodat je opnieuw kan aanmelden en providers kan koppelen. Een passkey die je toevoegt, wordt enkel als publieke sleutel bewaard. Bewaard tot je je account verwijdert."),
+            ("Your account. When you sign in with {providers}, SeoTester receives and keeps your name or user name, your e-mail address (when the provider gives one) and the provider's identifier for your account, so you can sign in again and link providers. A passkey you add is stored as its public key only. Kept until you delete your account.",
+             "Je account. Wanneer je aanmeldt met {providers}, ontvangt en bewaart SeoTester je naam of gebruikersnaam, je e-mailadres (als de provider het meegeeft) en de identificatie van je account bij die provider, zodat je opnieuw kan aanmelden en providers kan koppelen. Een passkey die je toevoegt, wordt enkel als publieke sleutel bewaard. Bewaard tot je je account verwijdert."),
             ("Organizations: their names, their members and roles. An invitation (with the invited e-mail address) expires after 14 days.",
              "Organisaties: hun namen, hun leden en rollen. Een uitnodiging (met het uitgenodigde e-mailadres) vervalt na 14 dagen."),
             ("Websites you add: their address, settings, monitoring schedule and ownership verification (the token and how it was proven).",
@@ -71,8 +86,8 @@ public static class LegalPages
 
         w.H2("Who else receives data", "Wie nog gegevens ontvangt");
         w.List(
-            ("The sign-in provider you choose (Microsoft, GitHub, X or Google) learns that you signed in to SeoTester.",
-             "De aanmeldprovider die je kiest (Microsoft, GitHub, X of Google) weet dat je aanmeldde bij SeoTester."),
+            ("The sign-in provider you choose ({providers}) learns that you signed in to SeoTester.",
+             "De aanmeldprovider die je kiest ({providers}) weet dat je aanmeldde bij SeoTester."),
             ("Google PageSpeed Insights receives the addresses of the sampled pages of an audited website, never who asked. Google may process them outside the European Union.",
              "Google PageSpeed Insights ontvangt de adressen van de gekozen pagina's van een geaudite website, nooit wie het vroeg. Google kan ze buiten de Europese Unie verwerken."),
             ("Your browser's push service (Google, Mozilla, Apple or Microsoft, depending on the browser) carries push notifications. Their content is encrypted for your browser only; the push service sees when a message is sent to which subscription.",
@@ -182,6 +197,7 @@ public static class LegalPages
                 .Replace("{host}", Value(legal.HostingProvider))
                 .Replace("{mail}", string.IsNullOrWhiteSpace(legal.ContactEmail) ? Marker()
                     : $"<a href=\"mailto:{ServerPage.E(legal.ContactEmail)}\">{ServerPage.E(legal.ContactEmail)}</a>")
+                .Replace("{providers}", ServerPage.E(ProviderList()))
                 .Replace("{log}", facts is null ? "" : ServerPage.E(BotPage.Duration(facts.AuditLogRetention, nl)))
                 .Replace("{cool}", facts is null ? "" : ServerPage.E(BotPage.Duration(facts.TargetCoolDown, nl)))
                 .Replace("{bot}", "<a href=\"/bot\">/bot</a>")
@@ -204,6 +220,18 @@ public static class LegalPages
             return who.ToString();
         }
 
+        /// <summary>"Microsoft, GitHub or Google" / "Microsoft, GitHub of Google"; no providers reads "an external sign-in provider".</summary>
+        private string ProviderList()
+        {
+            var names = facts?.SignInProviders ?? [];
+            return names.Count switch
+            {
+                0 => nl ? "een externe aanmeldprovider" : "an external sign-in provider",
+                1 => names[0],
+                _ => string.Join(", ", names.Take(names.Count - 1)) + (nl ? " of " : " or ") + names[^1],
+            };
+        }
+
         private string Value(string? value) => string.IsNullOrWhiteSpace(value) ? Marker() : ServerPage.E(value);
 
         private string Marker() => "<mark data-to-be-completed>" + ServerPage.E(nl ? MarkerNl : MarkerEn) + "</mark>";
@@ -217,13 +245,15 @@ internal sealed partial class PrivacyPageEndpoint : IGetEndpoint
 
     [Inject] private readonly ISparkSettings settings;
     [Inject] private readonly IOptions<SeoLegalOptions> legal;
+    [Inject] private readonly IConfiguration configuration;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var ct = httpContext.RequestAborted;
         var facts = new LegalPages.Facts(
             await settings.GetAsync(SeoSettings.AuditLogRetention, ct),
-            await settings.GetAsync(SeoSettings.TargetCoolDown, ct));
+            await settings.GetAsync(SeoSettings.TargetCoolDown, ct),
+            LegalPages.ConfiguredSignInProviders(configuration));
         httpContext.Response.Headers.CacheControl = "public, max-age=300";
         return Results.Content(LegalPages.RenderPrivacy(ServerPage.LanguageFor(httpContext.Request), legal.Value, facts), "text/html; charset=utf-8", Encoding.UTF8);
     }
