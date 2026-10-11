@@ -44,6 +44,7 @@ These supersede the text below where they disagree. Superseded passages are mark
 | D21 | **Review fix: snapshots and paging under a moving repository.** <br>• **Total rows:** the virtual scroll needs a total height, and a lazy snapshot has no `totalRows` until its walk ends. `totalRows` therefore comes from `git rev-list --count --branches --tags`, cheap with a commit-graph (S3 measures it). <br>• **Stale snapshots:** a fetch changes the refs hash and starts a new snapshot. A page request carrying an old `snapshotId` gets **410 Gone**, and the panel reloads at the same top SHA (`at=`). <br>• **Search arguments:** they are passed as `--grep=<value>` / `--author=<value>` in the argument array with `--fixed-strings -i`, so a value beginning with `-` cannot be read as an option. | Self-review. |
 | D22 | **Review fix: the sidecar's memory is bounded.** The VPS has about 3 GB available (D7). The sidecar gets a compose `mem_limit` (placeholder 1 GB) and a snapshot cache bounded by bytes, not by count. S5's < 200 MB per 100k-row snapshot is the input to that bound. | Self-review. |
 | D23 | **Review fix: public repositories without an installation get no webhooks.** <br>• **Freshness:** for these, it comes only from stale-on-view (the endpoint refetches when the mirror is older than N minutes) and from the hourly safety net. <br>• **Avatars:** for these, they come only from GitHub no-reply emails; other authors get initials. Anonymous API calls (60/h) are never spent on avatars. | Self-review. Webhooks are delivered only to App installations. |
+| D24 | **RavenDB stays isolated; the sidecar follows the existing "pairwise and internal" network rule** (SeoTester PRD D55; `apps/CodeCoverage/docker-compose.yml:305-335` **[verified]**). <br>• **Names** (correcting D1/D4/D18, which said `codecoverage`): the app service is `coverage-app`, the sidecar is `coverage-git`, the networks are `coverage-git` (`internal: true`: `coverage-app` + `coverage-git`) and `coverage-git-egress` (`coverage-git` only, like `coverage-smtp-egress`). <br>• **Raven untouched:** `coverage-git` joins **neither** `coverage-db`, `seo-raven` nor `web`. No network carries both RavenDB and the sidecar, and `coverage-db` keeps exactly its three members (`coverage-app`, `coverage-raven`, `coverage-raven-license`). <br>• **Compose comments:** the member table in the networks comment gains two rows. <br>• **Test:** `tools/verify-backend-networks.test.mjs` is extended to assert both new networks' exact members, and that no network contains both `coverage-raven` and `coverage-git`. <br>• **Dashboard provider:** it reads RavenDB statistics from **inside `coverage-app`** through its existing client certificate. No container gains access to Raven for it. | Owner, 2026-10-11: *"Make sure the RavenDB container remains properly isolated."* |
 | D9 | **[superseded by D11]** **No dashboard package now.** Host and mirror metrics are app code in CodeCoverage: a live virtual `HostMetrics` PO (§9). | Two-agent investigation: every building block exists (§9.1), and there is no second consumer. **Pending owner confirmation (Q7).** |
 
 ---
@@ -435,6 +436,7 @@ the plan before the milestone that depends on them starts.
 | **S7** | Is a hostile repository harmless? | Fetch a scratch repository with a submodule, a `.gitmodules` `file://` URL and 60k refs; one above the size quota | No submodule fetch and no local file access. A planted local hook (`reference-transaction`, `post-checkout`) writes **no** marker file on clone or fetch (D5). Quota rejection is recorded in `RepositoryGraphState` with a reason. The process is killed at the timeout with no orphan left. |
 | **S8** | Does a long initial clone survive the messaging claim TTL (5 min)? (D19) | Initial clone throttled to exceed 5 min. A second `POST /fetch` for the same repository mid-way, simulating the redelivered message. | Exactly **one** git process per repository at any time. The second call **joins** and returns the same result. The clone completes once. No duplicate or corrupt mirror. |
 | **S9** | Does per-row SVG in the virtual datatable scroll well, in both themes? | Panel prototype over 10k and 100k rows; scripted fast scroll with a performance trace; contrast check of an 8-colour lane palette on light and dark backgrounds | p95 frame **< 16.7 ms**. First rows painted **< 200 ms** after data arrives. **< 2,000** live DOM nodes. Every lane colour **≥ 3:1** against both backgrounds. |
+| **S12** | Can avatars be resolved without leaking emails or burning budget (D17)? | Resolve this repository's authors: no-reply emails parsed locally, the rest through the forge with a per-author cache. | **0** author emails in any response body sent to the browser (asserted by a test). A second view of the same page makes **0** forge calls. No-reply authors make **0** forge calls. |
 
 ---
 
@@ -451,93 +453,10 @@ the plan before the milestone that depends on them starts.
 
 ---
 
-## 9. Host metrics for administrators (D8, D9)
+---
 
-The mirrors add a disk cost that someone must be able to see. The owner asked two things: whether
-the **host's** disk can be measured from inside a container, and whether Spark should ship a package
-for administrator dashboards. Two investigators answered on 2026-10-11.
+## 9. Host metrics and the Spark dashboard package
 
-### 9.1 No dashboard package. A live virtual PersistentObject instead.
+Moved to [spark_dashboards_PRD.md](spark_dashboards_PRD.md) (owner, 2026-10-11). Its decisions (D9, D11–D14, D24)
+stay in §0 above, which remains the single decision log for the pull request.
 
-Spark already has every piece **[verified]**:
-- **Virtual POs:** SeoTester's `OperatorDashboard` has no `clrType` and no documents. It is filled in
-  `OnLoadAsync` (`apps/SeoTester/SeoTester/Admin/OperatorDashboard.cs:21-33`).
-- **Push:** `/spark/live` is a multiplexed WebSocket.
-  - It accepts PO subscriptions only for types with `"live": true` (`libs/spark/MintPlayer.Spark/Endpoints/Live/LiveConnection.cs:243-251`).
-  - It re-evaluates through the normal read path on Raven changes, on `ISparkLiveNotifier.Changed(id)`
-    (`MintPlayer.Spark.Abstractions/Live/ISparkLiveNotifier.cs:19`), or every 1 min by default
-    (`SparkLiveOptions.cs:60`).
-  - `spark-po-detail` follows live types automatically (`ng-spark/models/src/entity-type.ts:126-130`).
-- **Renderers:** `spark-gauge`, `spark-threshold-bar`, `spark-trend-sparkline`
-  (`ng-spark` `score-renderers/src/index.ts`).
-- **Rights:**
-  - A `Read/HostMetrics` right granted to a group in `security.json` hides the menu entry.
-  - The live subscription refuses callers without that right, giving one answer for unknown,
-    forbidden and not-live (`LiveConnection.cs:229`).
-
-There is **no second consumer**. SeoTester's dashboard is deliberately app code
-(`docs/seo_analyzer_PRD.md:676-682`, D28), SparkId has no admin dashboard, and the demos don't drive
-framework design. A widget package would add an API with one user. That goes against the owner's
-standing preferences (compose existing blocks, a lean API). **Revisit when a second app needs the
-same metrics.** At that point, extract the parts both apps share (e.g. `formatBytes` into
-`ng-spark/pipes`, and a library virtual PO under an `xyz:administrators` slot).
-
-> **[superseded by D11–D14]** The block below described app code. HostMetrics is now a *provider* on
-> the Spark dashboard package (plan M5a/M5b). The package owns the notifier, the read cache and the
-> slot. The attributes and sources in §9.2 are unchanged.
-
-**The design (app code in CodeCoverage):**
-- `App_Data/Model/HostMetrics.json`: `"live": true`, no `clrType`, object id `hostmetrics/main`.
-  Attributes are rendered with `spark-gauge` / `spark-threshold-bar`.
-- `HostMetricsActions.OnLoadAsync` reads the sources in §9.2.
-- A `BackgroundService` calls `ISparkLiveNotifier.Changed("hostmetrics/main")` every 15 s while
-  anyone is subscribed. Each read is cached for 5 s, so that concurrent viewers trigger one statfs
-  between them.
-- A query over `RepositoryGraphState` with a size column answers "which repositories use the disk",
-  with no new widget.
-- **An `Administrators` group in CodeCoverage's `security.json`.** Today it has only "Anonymous
-  visitors" and "Signed-in users" (`apps/CodeCoverage/.../App_Data/security.json:7-10`)
-  **[verified]**. This is a production authorization change. The security posture must be
-  regenerated (`--spark-synchronize-security`).
-
-**Untested, so S10 covers it:** `"live": true` on a type with no `clrType`, and a notifier id with no
-backing document.
-
-### 9.2 Which numbers come from where
-
-Owner, 2026-10-11: *"Some of the measurements can probably be the container measurements. But the
-disk usage should probably be from the host."*
-
-| Attribute | Source | Measures |
-|---|---|---|
-| Host disk: total / free / used % | `DriveInfo("/")` in the app container | **The host root filesystem** (`/dev/sdb1`, 150 GB). overlay2 reports its backing filesystem, `/var/lib/docker` on the host root **[cited]**. Exception: overlay2 on XFS with `pquota`, which this host does not appear to use **[inferred → S10]**. |
-| Mirror count, total mirror size vs budget, largest mirrors, `DiskGuard` refusals | `RepositoryGraphState` documents (size measured per repository directory by the sidecar after each fetch, D8) | App data. The total is exact as of each repository's last fetch. |
-| App CPU % | `System.Runtime` meter (`process.cpu.time`) over the sampling interval, or ResourceMonitoring `container.cpu.limit.utilization` | **The container** |
-| App memory | cgroup v2 `memory.current` / `memory.max`; GC heap from `GC.GetGCMemoryInfo` | **The container** (`memory.current` includes page cache) |
-| Host RAM / CPU | **Not shown** | A container sees only host totals in `/proc` without its own share. True host-wide figures need the host's `/proc` mounted in, a security cost not worth paying when Hetzner's console already graphs them. |
-
-No `docker.sock`, no host `/proc`, and no writable host mount in the app.
-
-### 9.3 Security
-
-- The PO is readable by Administrators only.
-- Without the right, the live subscription and the load both give Spark's single denial answer, so
-  the type's existence doesn't leak.
-- No mount paths, device names, exception text or environment values go into attribute values.
-  Labels are fixed strings ("Host disk", "Mirror volume").
-- The 5 s read cache plus the live hub's 500 ms throttle bound the statfs cost per viewer.
-
-### 9.4 Spikes S10–S12
-
-S11 and S12 sit here with S10 because they were added during the grill.
-
-| # | Question | Method | Pass |
-|---|---|---|---|
-| **S11** | Does dashboard history work on RavenDB time series (D14)? | One value sampled every 60 s on the embedded test server, keeping raw points for 1 day and hourly rollups for 30 days. Simulate 2 days of points through timestamps. Two sampler hosts run concurrently. | Raw points older than 1 day are gone and rollups exist. A 7-day history read returns **≤ 300** points in **< 100 ms**. **0** duplicate points from the two hosts (lease holds). **0** revisions created on the backing collection. |
-| **S12** | Can avatars be resolved without leaking emails or burning budget (D17)? | Resolve this repository's authors: no-reply emails parsed locally, the rest through the forge with a per-author cache. | **0** author emails in any response body sent to the browser (asserted by a test). A second view of the same page makes **0** forge calls. No-reply authors make **0** forge calls. |
-
-### S10
-
-| # | Question | Method | Pass |
-|---|---|---|---|
-| **S10** | Do the metrics measure what §9.2 claims, and does a live virtual PO stream them? | On the VPS: log `DriveInfo` for `/` from inside the app container and for the named volume from inside the sidecar, then compare both with `df -B1 /` on the host. Compare the sidecar's per-repository size with `du -sb` of that directory. Locally: a virtual `"live": true` PO with no `clrType`, notified every 15 s. | Totals and free bytes within **1%** of the host's `df` for both, and no 0 values. Per-repository size within **1%** of `du`. The detail page updates **≥ 3** times in 60 s without a reload. An anonymous user and a signed-in non-admin get Spark's standard denial on both load and live subscribe. |

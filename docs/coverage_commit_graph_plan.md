@@ -88,11 +88,15 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
   needs a nx project and an image workflow following `codecoverage`'s.
 - `docker-compose.yml`:
   - Service `codecoverage-git`.
-  - Network `git-graph` (`internal: true`), holding only `codecoverage` and `codecoverage-git`,
-    with no published port. A comment on the network and on both services says it must hold exactly
-    these two hosts (D4).
-  - Network `git-egress`, holding **only** `codecoverage-git`, for outbound clones (D18). Its comment
-    says nothing else may join it.
+  - Service `coverage-git` (D24 names). Network `coverage-git` (`internal: true`), holding only
+    `coverage-app` and `coverage-git`, with no published port. A comment on the network and on both
+    services says it must hold exactly these two hosts (D4).
+  - Network `coverage-git-egress`, holding **only** `coverage-git`, for outbound clones (D18). Its
+    comment says nothing else may join it.
+  - `coverage-git` is **not** on `coverage-db`, `seo-raven` or `web` (D24). Add two rows to the
+    networks comment's member table.
+  - Extend `tools/verify-backend-networks.test.mjs`: assert both new networks' exact members, and that
+    no network holds both `coverage-raven` and `coverage-git`.
   - Sidecar `mem_limit` (D22).
   - A named volume `codecoverage-git-data` at `/data/git`, mounted in the sidecar only (D8).
 - `DiskGuard` in the sidecar enforces the total mirror budget and the host free-space floor before
@@ -201,7 +205,7 @@ for signed-in with the same body, including while the hidden repository's mirror
 and the states. A manual check through the Playwright MCP on the local app covers this repository's
 graph in both themes.
 
-### M5a — The Spark dashboard package (D11–D14)
+### M5a — The Spark dashboard package (D11–D14; [spark_dashboards_PRD.md](spark_dashboards_PRD.md))
 
 - **NuGet:** `libs/dashboards/MintPlayer.Spark.Dashboards`, shaped like the Settings package:
   - `net11.0`, version `11.0.0-preview.*`
@@ -225,7 +229,7 @@ graph in both themes.
 - **Done when:** S10 (local half) and S11 pass. SeoTester's dashboard shows the same numbers as
   before the migration. A guide page is added at `docs/guide-dashboards.md`.
 
-### M5b — CodeCoverage host metrics on the package (PRD §9)
+### M5b — CodeCoverage host metrics on the package ([spark_dashboards_PRD.md](spark_dashboards_PRD.md) §9.2)
 
 > Updated for D11. HostMetrics is now a dashboard *provider* on the package (M5a), not a hand-written
 > live PO.
