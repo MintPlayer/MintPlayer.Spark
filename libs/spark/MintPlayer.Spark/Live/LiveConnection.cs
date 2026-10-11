@@ -324,6 +324,15 @@ internal sealed class LiveConnection
                 TimeSpan? nextDue = null;
                 foreach (var subscription in Snapshot())
                 {
+                    if (subscription.StaleRetryAt is { } retryAt)
+                    {
+                        // A page read before its indexes caught up: re-run it once the back-off passed.
+                        var until = retryAt - time.GetUtcNow();
+                        if (until <= TimeSpan.Zero)
+                            subscription.FireStaleRetry();
+                        else
+                            nextDue = nextDue is null || until < nextDue ? until : nextDue;
+                    }
                     if (!subscription.IsDirty)
                         continue;
                     var since = subscription.LastRun == 0 ? TimeSpan.MaxValue : time.GetElapsedTime(subscription.LastRun);
@@ -334,6 +343,12 @@ internal sealed class LiveConnection
                         continue;
                     }
                     await EvaluateAsync(subscription, cancellationToken);
+                    if (subscription.StaleRetryAt is { } scheduled)
+                    {
+                        // The evaluation just scheduled a re-read: sleep no longer than until it is due.
+                        var until = scheduled - time.GetUtcNow();
+                        nextDue = nextDue is null || until < nextDue ? until : nextDue;
+                    }
                 }
 
                 var silence = time.GetElapsedTime(Interlocked.Read(ref lastSend));
@@ -374,13 +389,29 @@ internal sealed class LiveConnection
         var collections = subscription.TakeDirty();
         subscription.LastRun = time.GetTimestamp();
         var started = Stopwatch.GetTimestamp();
+        var caughtUp = true;
         LiveOutcome outcome;
         try
         {
             // A query re-run straight after a write would read its index stale; wait (bounded) until the
             // indexes over the changed collections caught up. Cheap when they already have: one statistics call.
             if (collections.Count > 0 && subscription is LiveQuerySubscription)
-                await SparkIndexWait.WaitAsync(store, store.Database, collections, options.IndexWait, null, cancellationToken);
+            {
+                // The callback also fires for an index that went away under the wait, which then goes on with
+                // whatever replaced it; only the final outcome says whether the read may be stale.
+                caughtUp = await SparkIndexWait.WaitAsync(store, store.Database, collections, options.IndexWait,
+                    (ex, index, elapsed) => Logger.LogDebug(ex,
+                        "Live subscription {Subscription}: waiting for index {Index} ended after {Elapsed} ms",
+                        subscription.Id, index, (long)elapsed.TotalMilliseconds),
+                    cancellationToken);
+                var waited = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                if (caughtUp)
+                    Logger.LogDebug("Live subscription {Subscription}: the indexes over [{Collections}] caught up after {Elapsed} ms",
+                        subscription.Id, string.Join(", ", collections), waited);
+                else if (!cancellationToken.IsCancellationRequested)
+                    Logger.LogWarning("Live subscription {Subscription}: the indexes over [{Collections}] did not catch up within {Elapsed} ms; the page is read now and read again once they have",
+                        subscription.Id, string.Join(", ", collections), waited);
+            }
 
             // A fresh scope per evaluation: the request-scoped row-filter memo, group snapshot, deleted mode and
             // session are new each time, so a revoked right or membership applies to this push, and the session
@@ -406,6 +437,16 @@ internal sealed class LiveConnection
         {
             Interlocked.Increment(ref Evaluations);
             Interlocked.Add(ref EvaluationTicks, Stopwatch.GetTimestamp() - started);
+        }
+
+        if (!outcome.Ends && collections.Count > 0 && subscription is LiveQuerySubscription)
+        {
+            // Read before the indexes caught up: what was diffed (and sent, or found unchanged) may be stale, and
+            // no other trigger is coming for it. Re-run it, bounded by a back-off that ends at Revalidate.
+            if (caughtUp)
+                subscription.ClearStaleRetry();
+            else
+                subscription.ScheduleStaleRetry(collections, time.GetUtcNow(), options.Throttle, options.Revalidate);
         }
 
         if (outcome.Frame is { } frame)

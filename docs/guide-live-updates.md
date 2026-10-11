@@ -60,7 +60,7 @@ may no longer read, ends its subscription with `gone` — the same answer for bo
 | `SendTimeout` | `00:00:10` | A frame the client has not taken by then aborts the socket (slow consumer). |
 | `Revalidate` | `00:01:00` | Every subscription is re-evaluated at least this often. |
 | `MaxSocketLifetime` | `00:30:00` | The socket closes with `4401` at this age or at the login ticket's expiry, whichever is first; the client reconnects with its current cookie. |
-| `IndexWait` | `00:00:05` | How long a query re-run waits for the indexes over a changed collection to catch up first (a failure bound). |
+| `IndexWait` | `00:00:05` | How long a query re-run waits for the indexes over a changed collection to catch up first (a failure bound). When it runs out, the page is read anyway (a warning is logged) and read again, waiting again, after a back-off that starts at `Throttle` and doubles; once the back-off reaches `Revalidate`, `Revalidate` takes over. A page read stale (a row's new values in its old place) is therefore corrected once the index caught up, without another write. |
 | `MaxMessageBytes` | `65536` | The largest client frame accepted. |
 
 The Changes API is **not** a data subscription: it does not count against the Community licence's three

@@ -27,14 +27,18 @@ namespace MintPlayer.Spark.Services;
 /// PAUSED index never catches up, so it costs the full bound. Disabled and errored indexes, and a side-by-side
 /// replacement (the original keeps answering queries), are not waited on.
 /// </para>
-/// <para>Never throws: a timeout or a failure is reported through <c>unfinished</c> and swallowed.</para>
+/// <para>
+/// Never throws: a timeout or a failure is reported through <c>unfinished</c> and swallowed. The result says
+/// whether the wait ended with every index caught up; <see langword="false"/> means a read right after it may be
+/// stale (the bound ran out, the statistics could not be read, or the caller went away).
+/// </para>
 /// </remarks>
 internal static class SparkIndexWait
 {
     /// <summary>The longest single waiting query inside the bound.</summary>
     internal static readonly TimeSpan Slice = TimeSpan.FromMilliseconds(500);
 
-    public static async Task WaitAsync(
+    public static async Task<bool> WaitAsync(
         IDocumentStore documentStore,
         string database,
         IReadOnlySet<string> collections,
@@ -43,7 +47,7 @@ internal static class SparkIndexWait
         CancellationToken cancellationToken)
     {
         if (collections.Count == 0)
-            return;
+            return true;
 
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -107,15 +111,18 @@ internal static class SparkIndexWait
                 }
             }
             while (reread);
+            return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // The caller went away: nobody is left to read the index.
+            return false;
         }
         catch (Exception ex)
         {
             // The bound ran out, or the index statistics could not be read.
             unfinished?.Invoke(ex, waitingOn ?? "(index statistics)", elapsed.Elapsed);
+            return false;
         }
     }
 }

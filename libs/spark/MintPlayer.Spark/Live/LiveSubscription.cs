@@ -47,16 +47,27 @@ internal abstract class LiveSubscription(LiveConnection connection, string id) :
     /// Marks the subscription for re-evaluation. <paramref name="collection"/> names a changed collection whose
     /// indexes the evaluation first waits for, so a re-run query does not read them stale.
     /// </summary>
-    public void MarkDirty(string? collection)
+    public void MarkDirty(string? collection) => MarkDirty(collection, change: true);
+
+    private void MarkDirty(string? collection, bool change)
     {
         lock (dirtyGate)
         {
             dirty = true;
+            changedSinceTake |= change;
             if (collection is not null)
                 changedCollections.Add(collection);
         }
         OnDirty();
     }
+
+    private bool changedSinceTake;
+
+    /// <summary>
+    /// Whether the evaluation that last took the dirty bit was only a stale re-read (<see cref="FireStaleRetry"/>),
+    /// with no new change since the one before it. Only then does the re-read back-off double.
+    /// </summary>
+    public bool LastTakeWasRetryOnly { get; private set; }
 
     /// <summary>Wakes the connection's worker.</summary>
     protected virtual void OnDirty() => Connection.Wake();
@@ -67,6 +78,8 @@ internal abstract class LiveSubscription(LiveConnection connection, string id) :
         lock (dirtyGate)
         {
             dirty = false;
+            LastTakeWasRetryOnly = !changedSinceTake;
+            changedSinceTake = false;
             if (changedCollections.Count == 0)
                 return EmptySet;
             var taken = new HashSet<string>(changedCollections, StringComparer.OrdinalIgnoreCase);
@@ -76,6 +89,66 @@ internal abstract class LiveSubscription(LiveConnection connection, string id) :
     }
 
     private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>();
+
+    // ---- re-reading a page read before its indexes caught up ----------------------------------------------------
+
+    /// <summary>The shortest first back-off, so a zero throttle cannot turn the retry into a busy loop.</summary>
+    private static readonly TimeSpan MinimumStaleBackoff = TimeSpan.FromMilliseconds(100);
+
+    private IReadOnlySet<string>? staleCollections;
+    private TimeSpan staleBackoff;
+
+    /// <summary>When a re-evaluation of a page read stale is due (null = none pending).</summary>
+    public DateTimeOffset? StaleRetryAt { get; private set; }
+
+    /// <summary>
+    /// The last evaluation read before the indexes over <paramref name="collections"/> caught up with the
+    /// change that triggered it (the index wait's bound ran out). Its diff may have found nothing to send, or
+    /// only part of the change — a row's new values but not its new place — and without another write nothing
+    /// re-runs it until <see cref="SparkLiveOptions.Revalidate"/>. So it is re-run, waiting again, after a
+    /// back-off that starts at <paramref name="first"/> and doubles while the re-reads stay stale with no new
+    /// change in between (a new change starts over at <paramref name="first"/>: it is a new episode, not the same
+    /// index still lagging). Bounded: once the back-off reaches <paramref name="ceiling"/> (Revalidate), no
+    /// further retry is scheduled and Revalidate takes over.
+    /// </summary>
+    /// <returns>false when the back-off reached the ceiling and no retry was scheduled.</returns>
+    public bool ScheduleStaleRetry(IReadOnlySet<string> collections, DateTimeOffset now, TimeSpan first, TimeSpan ceiling)
+    {
+        staleBackoff = staleBackoff == TimeSpan.Zero || !LastTakeWasRetryOnly
+            ? (first > MinimumStaleBackoff ? first : MinimumStaleBackoff)
+            : staleBackoff * 2;
+        if (staleBackoff >= ceiling)
+        {
+            ClearStaleRetry();
+            return false;
+        }
+        var merged = new HashSet<string>(collections, StringComparer.OrdinalIgnoreCase);
+        if (staleCollections is not null)
+            merged.UnionWith(staleCollections);
+        staleCollections = merged;
+        StaleRetryAt = now + staleBackoff;
+        return true;
+    }
+
+    /// <summary>An evaluation read its indexes caught up: no retry is pending and the back-off starts over.</summary>
+    public void ClearStaleRetry()
+    {
+        staleCollections = null;
+        staleBackoff = TimeSpan.Zero;
+        StaleRetryAt = null;
+    }
+
+    /// <summary>The retry is due: marks the subscription dirty with the collections whose indexes it waits for.</summary>
+    public void FireStaleRetry()
+    {
+        var collections = staleCollections;
+        StaleRetryAt = null;
+        staleCollections = null;
+        if (collections is null)
+            return;
+        foreach (var collection in collections)
+            MarkDirty(collection, change: false);
+    }
 
     /// <summary>Re-runs the read under the viewer's rights in <paramref name="services"/> (a fresh scope) and diffs it.</summary>
     public abstract Task<LiveOutcome> EvaluateAsync(IServiceProvider services, CancellationToken cancellationToken);

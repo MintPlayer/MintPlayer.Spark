@@ -1030,8 +1030,9 @@ process: "test-process CPU" is the Spark host and the test clients only). Tests 
 - **L6 — index freshness** (`LiveSpikeTests.L6_…`, a page sorted by an auto-indexed field, 20 writes each moving
   a row to the top, `Source = Actions` so no Changes echo re-runs a stale page): with the wait for the indexes
   over the changed collection (`SparkIndexWait`, shared with `DatabaseAccess`'s post-write wait) **20/20** pushes
-  fresh; with the wait removed **19/20 fresh, 1 stale** — and a stale evaluation that diffs as unchanged sends
-  nothing, leaving the viewer stale until the next change or `Revalidate`. **Decision: watch collections, not
+  fresh; with the wait removed **19/20 fresh, 1 stale** — ~~and a stale evaluation that diffs as unchanged sends
+  nothing, leaving the viewer stale until the next change or `Revalidate`~~ (superseded 2026-10-11, "L6 in the
+  sweep" below: a wait that runs out now schedules a bounded re-read). **Decision: watch collections, not
   `ForIndex`**; each query evaluation after a collection change waits (bounded, `IndexWait` 5 s) for that
   collection's indexes; one write costs one evaluation instead of two (write + index batch). Not covered: a
   change reached only through `LoadDocument`, a reference's breadcrumb or a multi-map index — `Revalidate` (1 min)
@@ -2536,3 +2537,46 @@ shows in earlier full 12.1.1 logs (CS0436 `EndpointContractAttribute` in Identit
 `UseOptimisticConcurrency`, CS8602/CS8618, ASP0014, SPARK024, RS10xx/RS2008 in the generator projects).
 Tests: SourceGenerators.Tests 631/631; Spark.Tests (SubscriptionWorker incl. `SyncActionSubscriptionWorkerE2ETests`,
 Messaging, Settings, Endpoints, Notification, OidcApplication, OidcResource) 733/733; SeoTester.Tests Fetcher 15/15.
+
+### L6 in the sweep (2026-10-11): a page read before its index caught up was never read again
+
+The third local sweep failed `LiveSpikeTests.L6_…(waitForIndexes: True)` once (passed in the sweep before and alone):
+`of 20 writes, 13 pushes fresh, 2 stale, 5 never pushed (stale evaluation diffed as unchanged)`.
+
+**What the numbers meant (the test's accounting was wrong).** The page holds all 50 seeded runs and each write
+changes one of them, so every evaluation sends a frame, stale or not: a stale read loads the row's new values from
+the document and takes its place from the index, a values-only `patch` with no `order` (seen:
+`While paused: patch top=(order unchanged)`). "Never pushed, diffed as unchanged" cannot happen in L6. "No frame in
+2 s" meant an evaluation that took over 2 s; the test then wrote again without its 550 ms pause and counted the late
+frame against the next write ("stale"). The sweep recorded no timings, so why 5 evaluations took over 2 s in it is
+**not located**. Not reproduced in 2 runs of the full Spark.Tests (4 727) with CodeCoverage.Tests (1 213) in
+parallel, nor in 5 L6 runs during CodeCoverage.Tests: 20/20 fresh every time, index wait ≤ 68 ms (11 ms max under
+load), slowest write-to-top 471 ms. The test now prints, per write, every frame with its time, and the engine's own
+log line per evaluation (how long the index wait took and whether it caught up), so a recurrence names the slow step.
+
+**The real defect it pointed at.** `SparkIndexWait` waits on the right indexes and the right cutoff: every stale index (not disabled,
+errored or a side-by-side copy) whose collections include the changed one (a superset of what the page reads), each with
+`WaitForNonStaleResults`, whose server cutoff is the collection's last etag when the query starts, which is at or
+after the write (`OnAfterSaveChanges` and the Changes notification both follow the commit). But when its 5 s bound
+ran out, the live engine passed `unfinished: null`, so it **proceeded silently**, read the page stale, diffed it, and
+never looked again: the rows' values arrived, their new order did not, and nothing re-ran the page until the next
+write or `Revalidate` (1 min; 10 min in the test). *Red:* new `L6_a_page_read_before_its_index_caught_up_is_pushed_again_once_it_has`
+pauses the auto index (`StopIndexOperation`), `IndexWait` 300 ms, writes: a values-only patch, then after
+`StartIndexOperation` **no frame in 10 s** (`Expected top to be "SpRuns/…" …, but found <null>`).
+
+**Fix.** `SparkIndexWait.WaitAsync` returns whether every index caught up. A live query evaluation whose wait ran
+out logs a warning ("did not catch up within N ms; the page is read now and read again once they have") and
+schedules a re-read of the same collections (`LiveSubscription.ScheduleStaleRetry`): after `Throttle` (≥ 100 ms),
+doubling while re-reads stay stale with no new change in between, and none once the back-off reaches `Revalidate`,
+which takes over. A wait that caught up clears it; a new change starts the back-off over. The worker sleeps no longer
+than the next re-read. *Green:* the frame with the row on top arrives **842–875 ms** after the index is resumed. A
+first version doubled the back-off across new writes too; L6 with the wait off (every read may be stale) then left 4
+of 20 rows off the top for 3 s, because the back-off had grown to seconds. Fixed by resetting on a new change; now
+20/20.
+
+**L6 now asserts** what the design promises, not a latency: every written row reaches the top within 15 s (both
+modes), and with the wait on, a first push is stale only when the wait reported running out (`corrected ≤ ran out`).
+The old 2 s window is gone because it misattributed late frames, not to absorb slow evaluations: their time is printed.
+
+**Runs** (`RAVENDB_LICENSE` = Developer licence): `tests/MintPlayer.Spark.Tests/Live/` 5× 49/49; full Spark.Tests
+4 727/4 727 with CodeCoverage.Tests 1 213/1 213 in parallel. Guide: `docs/guide-live-updates.md`, `IndexWait` row.

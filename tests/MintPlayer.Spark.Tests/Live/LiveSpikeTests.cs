@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Net.WebSockets;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Actions;
@@ -32,7 +34,7 @@ public class LiveSpikeTests(ITestOutputHelper output) : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private SparkEndpointFactory<SpContext> Start(Action<SparkLiveOptions>? live = null)
+    private SparkEndpointFactory<SpContext> Start(Action<SparkLiveOptions>? live = null, LiveLogRecorder? logs = null)
     {
         var factory = new SparkEndpointFactory<SpContext>(
             Store,
@@ -59,6 +61,11 @@ public class LiveSpikeTests(ITestOutputHelper output) : SparkTestDriver
                 },
                 Queries = [new SparkQuery { Id = RunsQueryId, Name = "SpRuns", Source = "Database.Runs", EntityType = "SpRun", Live = true }],
             }],
+            configureServices: logs is null ? null : services =>
+            {
+                services.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider>(logs);
+                services.AddLogging(b => b.AddFilter<LiveLogRecorder>(typeof(LiveConnection).FullName, Microsoft.Extensions.Logging.LogLevel.Debug));
+            },
             configureSpark: live is null ? null : spark => MintPlayer.Spark.Extensions.SparkBuilderLiveExtensions.AddLive(spark, live));
         factories.Add(factory);
         return factory;
@@ -269,40 +276,111 @@ public class LiveSpikeTests(ITestOutputHelper output) : SparkTestDriver
     public async Task L6_a_pushed_index_page_reflects_the_write_that_triggered_it(bool waitForIndexes)
     {
         // Sorted by Score: an auto index, which is eventually consistent. Each write moves one run to the top.
+        // The page holds all 50 runs, so every write changes a row on it and every evaluation sends a frame: a
+        // stale read sends the row's new values (loaded from the document) without moving it (the index's
+        // order). Frames are matched to their write by reading until the written row is on top, so a late
+        // frame is never counted against the next write.
+        var logs = new LiveLogRecorder();
         var factory = Start(o =>
         {
             o.Source = SparkLiveSource.Actions; // only the in-process event: no Changes echo to re-run a stale page
             o.Revalidate = TimeSpan.FromMinutes(10);
             if (!waitForIndexes)
                 o.IndexWait = TimeSpan.FromTicks(1);
+        }, logs);
+        var runs = await SeedAsync(50);
+        await using var client = await LiveTestClient.ConnectAsync(factory.CreateWebSocketClient(), Server);
+        await client.SubscribeQueryAsync("q", Page("Score", "desc"));
+        await client.NextAsync("result", "q");
+
+        // On: the 5 s wait, then a re-read after the throttle's back-off if it ran out. Off: every read may be stale and
+        // is read again 500 ms later. Either way the written row reaches the top well within the bound.
+        var bound = TimeSpan.FromSeconds(15);
+        int fresh = 0, corrected = 0, never = 0;
+        var laps = new List<string>();
+        for (var i = 0; i < 20; i++)
+        {
+            var target = runs[(i * 7) % runs.Count];
+            var lap = Stopwatch.StartNew();
+            await WriteAsync(target.Id!, r => r.Score = 1000 + i);
+            var written = lap.ElapsedMilliseconds;
+            var frames = new List<string>();
+            var onTop = false;
+            while (!onTop && lap.Elapsed < bound && await client.TryNextAsync(bound - lap.Elapsed) is { } frame)
+            {
+                var top = Top(frame);
+                onTop = string.Equals(top, target.Id, StringComparison.OrdinalIgnoreCase);
+                frames.Add($"{(onTop ? "on top" : top is null ? "values only" : "other top")} at {lap.ElapsedMilliseconds} ms");
+            }
+            if (!onTop) never++;
+            else if (frames.Count == 1) fresh++;
+            else corrected++;
+            laps.Add($"#{i} write {written} ms; {string.Join(", ", frames.DefaultIfEmpty("no frame"))}");
+            await Task.Delay(550); // past the throttle, so every write gets its own leading-edge evaluation
+        }
+
+        var ranOut = logs.Count(Microsoft.Extensions.Logging.LogLevel.Warning, "did not catch up");
+        output.WriteLine($"L6 index wait {(waitForIndexes ? "on (5 s bound)" : "off")}: of 20 writes, {fresh} first push fresh, {corrected} first push stale then re-read, {never} never on top within {bound.TotalSeconds:0} s; index wait ran out {ranOut}×");
+        foreach (var lap in laps)
+            output.WriteLine("  " + lap);
+        foreach (var line in logs.Lines)
+            output.WriteLine("  log: " + line);
+        never.Should().Be(0, "a page read before its index caught up is read again once it has");
+        if (waitForIndexes)
+            corrected.Should().BeLessThanOrEqualTo(ranOut, "a first push is stale only when the index wait ran out first");
+    }
+
+    [Fact]
+    public async Task L6_a_page_read_before_its_index_caught_up_is_pushed_again_once_it_has()
+    {
+        // The index wait's bound runs out (here: the index is paused, so it cannot catch up), the evaluation
+        // reads the page stale and finds nothing to send. Nothing else will trigger: no further write, and
+        // Revalidate is 10 minutes away. The page must still reach the viewer once the index caught up.
+        var factory = Start(o =>
+        {
+            o.Source = SparkLiveSource.Actions;
+            o.Revalidate = TimeSpan.FromMinutes(10);
+            o.IndexWait = TimeSpan.FromMilliseconds(300);
         });
         var runs = await SeedAsync(50);
         await using var client = await LiveTestClient.ConnectAsync(factory.CreateWebSocketClient(), Server);
         await client.SubscribeQueryAsync("q", Page("Score", "desc"));
         await client.NextAsync("result", "q");
 
-        int fresh = 0, missed = 0, stale = 0;
-        for (var i = 0; i < 20; i++)
-        {
-            var target = runs[(i * 7) % runs.Count];
-            await WriteAsync(target.Id!, r => r.Score = 1000 + i);
-            var frame = await client.TryNextAsync(TimeSpan.FromSeconds(2));
-            if (frame is null)
-            {
-                missed++;
-                continue;
-            }
-            var patch = frame.Value.GetProperty(frame.Value.GetProperty("type").GetString() == "patch" ? "patch" : "result");
-            var top = patch.TryGetProperty("order", out var order) ? order[0].GetString()
-                : patch.TryGetProperty("items", out var items) ? items[0].GetProperty("id").GetString()
-                : null;
-            if (string.Equals(top, target.Id, StringComparison.OrdinalIgnoreCase)) fresh++; else stale++;
-            await Task.Delay(550); // past the throttle, so every write gets its own leading-edge evaluation
-        }
+        var indexes = await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.GetIndexesStatisticsOperation());
+        var index = indexes.Single(i => i.Collections?.ContainsKey("SpRuns") == true).Name;
+        await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexOperation(index));
 
-        output.WriteLine($"L6 index wait {(waitForIndexes ? "on (5 s bound)" : "off")}: of 20 writes, {fresh} pushes fresh, {stale} stale, {missed} never pushed (stale evaluation diffed as unchanged)");
-        if (waitForIndexes)
-            fresh.Should().Be(20, "each evaluation waits for the indexes over the changed collection first");
+        // The stale read loads the row's new values from the document but takes its place from the index: a
+        // values-only patch arrives, the row is not moved to the top.
+        var target = runs[17];
+        await WriteAsync(target.Id!, r => r.Score = 5000);
+        var whilePaused = new List<string>();
+        while (await client.TryNextAsync(TimeSpan.FromSeconds(1)) is { } early)
+            whilePaused.Add($"{early.GetProperty("type").GetString()} top={Top(early) ?? "(order unchanged)"}");
+        output.WriteLine($"While paused: {string.Join("; ", whilePaused.DefaultIfEmpty("no frame"))}");
+        whilePaused.Should().NotContain(f => f.Contains(target.Id!), "the paused index cannot have moved the row yet");
+
+        var resumed = Stopwatch.StartNew();
+        await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexOperation(index));
+        string? top = null;
+        while (resumed.Elapsed < TimeSpan.FromSeconds(10) && await client.TryNextAsync(TimeSpan.FromSeconds(10) - resumed.Elapsed) is { } frame)
+        {
+            top = Top(frame);
+            output.WriteLine($"After resume, at {resumed.ElapsedMilliseconds} ms: {frame.GetProperty("type").GetString()} top={top ?? "(order unchanged)"}");
+            if (top is not null)
+                break;
+        }
+        top.Should().Be(target.Id, "an evaluation that read the index before it caught up is re-run once it has");
+    }
+
+    /// <summary>The first row id of a <c>result</c>, or of a <c>patch</c> that reorders; null for a values-only patch.</summary>
+    private static string? Top(System.Text.Json.JsonElement frame)
+    {
+        var payload = frame.GetProperty(frame.GetProperty("type").GetString() == "patch" ? "patch" : "result");
+        return payload.TryGetProperty("order", out var order) ? order[0].GetString()
+            : payload.TryGetProperty("items", out var items) ? items[0].GetProperty("id").GetString()
+            : null;
     }
 }
 
@@ -327,4 +405,31 @@ public class SpContext : SparkContext
 public class SpRunActions(MintPlayer.Spark.Services.IEntityMapper mapper) : DefaultPersistentObjectActions<SpRun>(mapper), ISparkOwnsRowSecurity
 {
     public string RowSecurityRationale => "Spike fixture: every run is public.";
+}
+
+/// <summary>Records the live engine's log lines (the index wait's outcome per evaluation) with their time.</summary>
+public sealed class LiveLogRecorder : Microsoft.Extensions.Logging.ILoggerProvider
+{
+    private readonly Stopwatch clock = Stopwatch.StartNew();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(Microsoft.Extensions.Logging.LogLevel Level, string Line)> entries = new();
+
+    public IEnumerable<string> Lines => entries.Select(e => e.Line);
+
+    public int Count(Microsoft.Extensions.Logging.LogLevel level, string fragment)
+        => entries.Count(e => e.Level == level && e.Line.Contains(fragment, StringComparison.Ordinal));
+
+    public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
+    public void Dispose() { }
+
+    private sealed class Logger(LiveLogRecorder recorder, string category) : Microsoft.Extensions.Logging.ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => category == typeof(LiveConnection).FullName;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (IsEnabled(logLevel))
+                recorder.entries.Enqueue((logLevel, $"{recorder.clock.ElapsedMilliseconds} ms [{logLevel}] {formatter(state, exception)}{(exception is null ? "" : $" -- {exception.GetType().Name}: {exception.Message.Split('\n')[0].Trim()}")}"));
+        }
+    }
 }
