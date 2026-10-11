@@ -2391,3 +2391,63 @@ The server, its data, logs and every certificate were deleted afterwards; no key
     fetcher on `seo-raven`, writable, and the key missing from `.env.example`: 6 failed.
   - *Not run:* the images were not built (no Docker run here; the workflows build them on the next push), and nothing
     was deployed.
+
+### Untrusted content: proof tests (owner request, 2026-10-11)
+
+- **A site cannot make the fetcher or the browser carry its cookies, keep its state, save its downloads, or leave its
+  content behind.** *Evidence: owner request 2026-10-11* ("tests that prove users can't make SeoTester's fetcher or
+  browser carry malicious cookies or downloads"). Commit `9085b023`. Each test was red with its mechanism disabled
+  (mutations in a throwaway worktree, reverted), then green:
+  - **Cookies, no jar anywhere.** `SafeHttpClientTests.A_cookie_a_site_sets_is_never_sent_back_by_the_client` (Spark.Tests;
+    `a.example.com`/`b.example.com` via the fake resolver, `Domain=example.com`): the next request, the redirect hop, a
+    redirect to and a request to the other host, a later request all arrive with no `Cookie`.
+    `FetcherCookieTests` (2: `LocalSeoFetcher` and the fetcher service over its API; real sockets on `127.0.0.2` and
+    `127.0.0.3`, the wire's request heads recorded): `Set-Cookie` still reported in `FetchResult.SetCookies`, none of 9
+    requests (next, redirect hop, other site, browser profile, later run) carries `Cookie`. *Red:* `UseCookies = true` on
+    the SSRF-safe primary handler: SafeHttp got `cookie=s=evil` on the next request; both fetchers sent
+    `Cookie: s=evil; r=evil` on `/next`, `/hop`, `/after`, `/away`, `/later` and `Cookie: b=evil` to the other site.
+  - **No state between renders.** `BrowserStateTests.Nothing_a_site_stores_in_one_render_reaches_the_next` (the real
+    `PageRenderer`, one launched Chromium, the fake web): render 1 sets a server cookie, a script cookie, localStorage,
+    sessionStorage, IndexedDB and the Cache API, and its own report and next request prove they took (the control);
+    render 2 of the same site and of another site (which loads an image from the first) reports all five empty, and no
+    request of render 2 carries `Cookie`. *Red:* one context reused across renders: render 2 reported
+    `cookie=srv=evil; js=evil`, `ls-evil`, `idb-evil`, `cache-evil`.
+  - **No downloads.** `BrowserStateTests.A_page_cannot_make_the_browser_save_a_file`: a frame answered
+    `Content-Disposition: attachment`, scripted `<a download>` clicks (a served file and a blob), and a navigation to
+    `application/octet-stream`; Playwright's artifacts folders are scanned throughout (it deletes a context's downloads
+    when the context closes), the temp folder's top level and the user's Downloads folder at the end, for any new file
+    whose name or bytes hold the marker: none; the render finishes without an error and the next one works. **Chromium
+    does announce the downloads** (a Playwright `download` event per attempt), and every one ends failed ("Pass
+    { acceptDownloads: true } …"): no bytes are written, so the test asserts no completed download and no file rather
+    than no event. *Red:* `AcceptDownloads = true`: six files in `playwright-artifacts-*` (one a `.crdownload`), the
+    downloads "completed".
+  - **Nothing crawled is stored.** `CrawledContentTests.No_body_content_of_a_crawled_and_rendered_page_is_stored`: a full
+    audit (crawl, render, PageSpeed) of a site whose marker sits only in the body (text, a comment, an attribute, a
+    script, script-written text); a smuggler export of the whole database (documents, revisions, attachments, counters,
+    compare-exchange, expired and artificial included, gzip) holds the marker nowhere, while it holds the run and the
+    page's title (controls). *Red:* `PageResult.Fingerprint` set to the body text: the marker found in the export.
+    `FetcherFilesystemTests.The_fetcher_service_works_with_no_writable_folder_and_leaves_no_file` runs the real
+    `SeoTester.Fetcher` process with its working directory, content root, `TMP`/`TEMP`/`TMPDIR`, `ASPNETCORE_TEMP`,
+    home and app-data folders all pointed at one folder it may not write to (a deny-write ACL for the user on Windows,
+    mode 0555 elsewhere; the test first proves a write there fails), and fetches a 1 MB page and posts a 512 KB browser
+    body: both succeed, the folder stays empty, and no file in its binaries' folder holds the marker. Chosen because it is
+    deterministic: a write fails loudly instead of having to be caught by a scan or a watcher before it is deleted
+    (stricter than production, whose `read_only` container keeps a tmpfs `/tmp`). *Red:* a temp file written per fetch:
+    "The fetcher answered 500."
+  - **og-image proxy.** `OpenGraphCardTests.The_image_proxy_serves_only_raster_images_typed_by_their_bytes`: HTML, SVG,
+    SVG served as `image/png`, a PNG-signature polyglot, a PNG with `<script>` in a `tEXt` chunk and an over-5 MB image
+    all 404 (each was fetched); PNG served as `text/html`, GIF as `image/png`, JPEG as `image/svg+xml`, WebP as
+    `application/octet-stream` are served as `image/png`/`gif`/`jpeg`/`webp` with `nosniff` and
+    `default-src 'none'; sandbox`, bytes intact. Plus `Only_well_formed_raster_images_without_markup_are_recognised`.
+    *Red:* the site's `Content-Type` served ("text/html" vs "image/png"); `nosniff` removed ("The given header was not
+    found"); the upstream type as a fallback (HTML served, 200).
+  - **Gap found and fixed:** `OgImageRules.RasterType` checked only the signature, so the polyglot (and the script in a
+    text chunk) was served as `image/png` (red before the fix: "Expected RasterType(Polyglot) to be null … but found
+    image/png", the proxy answered 200). It now also requires a file well formed to its end (PNG: a chunk chain that
+    fits, IHDR first, an IDAT, IEND last with nothing after; JPEG: EOI last; GIF: the trailer last; WebP: the RIFF size
+    equal to the file's, chunks that fit, VP8/VP8L/VP8X first) and no `<script`, `<html`, `<svg`, `<!doctype`, `<head`,
+    `<body`, `<iframe`, `<object` or `<embed` anywhere, case-insensitively. Served images were already safe to render
+    (nosniff, the image type, the sandbox CSP); this refuses them outright, as asked. The existing test's truncated PNG
+    fixture became a real 1×1 PNG.
+  - *Runs (in a worktree):* the new tests and `OpenGraphCardTests` green; **the full SeoTester.Tests 210/210** (3 min
+    53 s, on `3f246566`); Spark.Tests `SafeHttp*` 122/122.
