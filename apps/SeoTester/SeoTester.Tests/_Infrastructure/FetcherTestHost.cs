@@ -89,7 +89,11 @@ public sealed class LoopbackHttpServer : IDisposable
 {
     private readonly TcpListener listener;
     private readonly CancellationTokenSource stop = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> heads = new();
     private int connections;
+
+    /// <summary>The request line and headers of every request received, as they arrived on the wire.</summary>
+    public IReadOnlyList<string> Heads => heads.ToList();
 
     public LoopbackHttpServer(IPAddress address, Func<string, string> respond)
     {
@@ -122,7 +126,20 @@ public sealed class LoopbackHttpServer : IDisposable
                             if (n == 0) break;
                             read += n;
                         }
-                        var path = Encoding.ASCII.GetString(buffer, 0, read).Split(' ') is { Length: > 1 } parts ? parts[1] : "/";
+                        var received = Encoding.ASCII.GetString(buffer, 0, read);
+                        var end = received.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+                        var head = end < 0 ? received : received[..(end + 4)];
+                        heads.Enqueue(head);
+                        // A request body is read to its end (and dropped), so the answer is not cut off by a reset.
+                        var length = head.Split("\r\n").Select(l => l.Split(':', 2)).Where(p => p.Length == 2 && p[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+                            .Select(p => long.TryParse(p[1].Trim(), out var v) ? v : 0).FirstOrDefault();
+                        for (var left = length - (read - head.Length); left > 0;)
+                        {
+                            var n = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, left)));
+                            if (n == 0) break;
+                            left -= n;
+                        }
+                        var path = head.Split(' ') is { Length: > 1 } parts ? parts[1] : "/";
                         await stream.WriteAsync(Encoding.ASCII.GetBytes(respond(path)));
                     }
                 });
@@ -134,9 +151,14 @@ public sealed class LoopbackHttpServer : IDisposable
 
     public int Connections => Volatile.Read(ref connections);
 
-    public static string Ok(string body) => $"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {Encoding.UTF8.GetByteCount(body)}\r\nConnection: close\r\n\r\n{body}";
+    /// <param name="setCookie">A <c>Set-Cookie</c> value to answer with, if any.</param>
+    public static string Ok(string body, string? setCookie = null)
+        => $"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {Encoding.UTF8.GetByteCount(body)}\r\n{SetCookie(setCookie)}Connection: close\r\n\r\n{body}";
 
-    public static string Redirect(string location) => $"HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    public static string Redirect(string location, string? setCookie = null)
+        => $"HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\n{SetCookie(setCookie)}Connection: close\r\n\r\n";
+
+    private static string SetCookie(string? value) => value is null ? "" : $"Set-Cookie: {value}\r\n";
 
     public void Dispose()
     {

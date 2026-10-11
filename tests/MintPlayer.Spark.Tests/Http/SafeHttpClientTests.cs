@@ -75,6 +75,19 @@ public class SafeHttpClientTests : IAsyncLifetime
             http.Response.StatusCode = 303;
             http.Response.Headers.Location = "/method";
         });
+        // A site that hands out a cookie (for its whole registrable domain), on a page and on a redirect, and a page that
+        // shows the Cookie header it was sent (empty when none).
+        server.MapGet("/cookie/set", (HttpContext http) =>
+        {
+            http.Response.Headers.SetCookie = "s=evil; Domain=example.com; Path=/";
+            return "set";
+        });
+        server.MapGet("/cookie/set-and-redirect", (HttpContext http, string to) =>
+        {
+            http.Response.Headers.SetCookie = "r=evil; Domain=example.com; Path=/";
+            return Results.Redirect(to);
+        });
+        server.MapGet("/cookie/echo", (HttpContext http) => "cookie=" + http.Request.Headers.Cookie);
 
         await server.StartAsync();
         port = new Uri(server.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First()).Port;
@@ -400,5 +413,25 @@ public class SafeHttpClientTests : IAsyncLifetime
         await using var stream = await Sockets(allowLoopback: true).ConnectAsync(Name, "a.test", port, CancellationToken.None);
         await stream.WriteAsync("GET /ok HTTP/1.1\r\nHost: a.test\r\nConnection: close\r\n\r\n"u8.ToArray());
         (await new StreamReader(stream).ReadToEndAsync()).Should().Contain("\r\nhello\r\n");
+    }
+
+    /// <summary>
+    /// The client keeps no cookie jar (<c>UseCookies = false</c> on the primary handler): a <c>Set-Cookie</c> a site
+    /// answers is never sent back, not on the next request to it, not on a redirect hop, not to another host of the same
+    /// registrable domain, not from a second client of the same name. Red with <c>UseCookies = true</c>: the jar sends
+    /// <c>s=evil</c> and <c>r=evil</c> on every later request (<c>docs/seo_analyzer_PRD.md</c> §12, proof tests).
+    /// </summary>
+    [Fact]
+    public async Task A_cookie_a_site_sets_is_never_sent_back_by_the_client()
+    {
+        var client = Client();
+
+        (await client.GetStringAsync(Url("/cookie/set", "a.example.com"))).Should().Be("set");
+        (await client.GetStringAsync(Url("/cookie/echo", "a.example.com"))).Should().Be("cookie=", "the same site, the next request");
+        (await client.GetStringAsync(Url("/cookie/set-and-redirect?to=%2Fcookie%2Fecho", "a.example.com"))).Should().Be("cookie=", "the redirect hop after the Set-Cookie");
+        (await client.GetStringAsync(Url("/cookie/set-and-redirect?to=" + Uri.EscapeDataString(Url("/cookie/echo", "b.example.com")), "a.example.com")))
+            .Should().Be("cookie=", "a redirect to another host the cookie's Domain covers");
+        (await client.GetStringAsync(Url("/cookie/echo", "b.example.com"))).Should().Be("cookie=", "another host the cookie's Domain covers");
+        (await client.GetStringAsync(Url("/cookie/echo", "a.example.com"))).Should().Be("cookie=", "a later request, after both cookies were set");
     }
 }

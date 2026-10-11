@@ -23,7 +23,8 @@ namespace SeoTester.Reports;
 /// page is gone), else the one 404 (#453);</item>
 /// <item>the tag is an absolute http(s) URL without user info;</item>
 /// <item>the answer is a 2xx of at most <see cref="OgImageRules.MaxBytes"/> (a larger one is refused, never cut);</item>
-/// <item>the bytes are PNG, JPEG, GIF or WebP by their signature (never SVG, never the site's <c>Content-Type</c>).</item>
+/// <item>the bytes are a well-formed PNG, JPEG, GIF or WebP holding no markup (<see cref="OgImageRules.RasterType"/>:
+/// never SVG, never a polyglot, never the site's <c>Content-Type</c>).</item>
 /// </list>
 /// The answer carries <c>nosniff</c> and a sandboxing CSP, and is cached privately by the browser. Results (images and
 /// refusals) are kept 10 minutes in a size-capped memory cache, so a page opened many times is fetched once.
