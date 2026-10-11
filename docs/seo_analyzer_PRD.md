@@ -2494,3 +2494,21 @@ Also not measured: host file modes (Docker Desktop for Windows ignores bind-moun
 
 **Runbook changes:** DRAFT banner removed; §1 the measured matrix note; §3 the measured uids and the relay; §4.6 the
 listing and 201s; §7 rewritten (measured vs cited); §8 replaced by these results.
+
+**NuGet bump (owner, 2026-10-11: "update packages solution-wide to the latest version").** The CS8785 the sweep found
+(`GenericMethodSourceGenerator`, `InvalidCastException` on `SparkQuota`, a record) is fixed upstream (Dotnet.Tools
+#193/#194, PR #195, `MintPlayer.SourceGenerators*`/`ValueComparerGenerator*` 12.2.0) but **not adopted yet**: 12.2.0
+breaks the build. *Evidence:* `MPSG001 ... MissingMethodException: Method not found: '...SymbolExtensions.OpenPathSpec(IndentedTextWriter, PathSpec)'`
+from the generator in `MintPlayer.AspNetCore.Endpoints` 11.4.0-rc.0 (the newest), which ships its own Tools 12.1.0;
+PR #195 gave `OpenPathSpec` optional parameters (a binary break), and the compiler loads one `MintPlayer.SourceGenerators.Tools`,
+the newer, so every endpoint project fails (CS0115/CS0535). The family stays on 12.1.1 until Tools restores the
+two-argument overload or Endpoints is republished against 12.2.x; CS8785 on Settings is still there.
+Adopting 12.2.0 also needs three base-constructor swaps: its `[Inject]` constructor follows declaration order, so
+`SparkSubscriptionWorker<T>`'s becomes `(IDocumentStore, ILoggerFactory)` (was `(ILoggerFactory, IDocumentStore)`;
+CS1503 at `MessageFeeder.cs:73`, `MessageSubscriptionWorker.cs:45`, and `SparkSubscriptionWorkerTests.cs:31`). That is a
+breaking change for any hand-written subclass constructor and belongs in that release's notes.
+Moved: `MintPlayer.Assertions` 11.0.0-rc.5 → rc.6, `AngleSharp` 1.7.2 → 1.8.4, `xunit.runner.visualstudio` 4.0.0 → 4.0.1.
+Kept: the rest is already latest (Microsoft.* on 11.0 rc.1; `RavenDB.Client`/`TestDriver` 7.2.6 is the latest stable,
+only 7.2.7-rc is newer; `Newtonsoft.Json` 13.0.4 stays stable over 14.0.1-beta2). Build 0 errors, no new warnings in
+the changed projects; SourceGenerators.Tests 631/631, Spark.Tests (SubscriptionWorker, Messaging, Settings, Endpoints)
+626/626, SeoTester.Tests Checks 40/40.

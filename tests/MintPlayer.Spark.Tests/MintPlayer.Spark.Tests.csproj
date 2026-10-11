@@ -14,7 +14,7 @@
     </PackageReference>
     <!-- #264 M6: validates the apps' App_Data files against the generated schemas (draft 2020-12). -->
     <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
-    <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.5" />
+    <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.6" />
     <!-- Plan M8: EndpointConventionsTests parses libs/ and apps/ to guard the endpoint conventions. Same version as the generators. -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
@@ -24,7 +24,7 @@
     <!-- #460 SP-D: decodes the server-rendered authenticator QR code the way a scanner would. -->
     <PackageReference Include="ZXing.Net" Version="0.16.11" />
     <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
