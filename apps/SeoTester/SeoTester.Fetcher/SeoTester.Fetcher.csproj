@@ -22,6 +22,18 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- The routes are generator endpoint classes (Endpoints/), as everywhere in this repository. Neither package brings
+		     Spark or RavenDB: the endpoints package depends on ASP.NET Core and its own abstractions only, and the
+		     source generators are build-time analyzers plus their attributes. -->
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.1" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.1">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
 		<InternalsVisibleTo Include="SeoTester.Tests" />
 	</ItemGroup>
 

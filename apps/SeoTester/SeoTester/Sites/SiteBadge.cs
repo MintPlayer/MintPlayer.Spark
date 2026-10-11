@@ -25,14 +25,17 @@ internal sealed partial class SiteBadgeEndpoint : IGetEndpoint
 
     public static string Path => Route;
 
+    [QueryParam("site")] public string? SiteId { get; set; }
+    [QueryParam] public string? Token { get; set; }
+
     [Inject] private readonly ISparkShareLinks links;
     [Inject] private readonly IDocumentStore store;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var ct = httpContext.RequestAborted;
-        var siteId = httpContext.Request.Query["site"].ToString();
-        var token = httpContext.Request.Query["token"].ToString();
+        var siteId = SiteId ?? string.Empty;
+        var token = Token ?? string.Empty;
         if (siteId.Length is 0 or > 200 || token.Length is 0 or > 128 || !await links.IsValidAsync(nameof(Site), siteId, token, ct))
             return Results.NotFound();
 

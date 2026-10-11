@@ -39,6 +39,8 @@ internal sealed partial class OgImageEndpoint : IGetEndpoint
 
     private static readonly TimeSpan Keep = TimeSpan.FromMinutes(10);
 
+    [QueryParam("page")] public string? PageId { get; set; }
+
     [Inject] private readonly IPermissionService permissions;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
@@ -47,7 +49,7 @@ internal sealed partial class OgImageEndpoint : IGetEndpoint
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var ct = httpContext.RequestAborted;
-        var pageId = httpContext.Request.Query["page"].ToString();
+        var pageId = PageId ?? string.Empty;
         if (pageId.Length is 0 or > 300
             || httpContext.User.Identity?.IsAuthenticated != true
             || modelLoader.GetEntityTypeByName(nameof(PageResult)) is not { } type

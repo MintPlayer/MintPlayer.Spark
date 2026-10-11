@@ -21,14 +21,15 @@ internal sealed partial class CatalogueEndpoint : IGetEndpoint
 
     public static string Path => Route;
 
+    [QueryParam] public string? Culture { get; set; }
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly MintPlayer.Spark.Services.IRequestCultureResolver cultures;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var ct = httpContext.RequestAborted;
-        var requested = httpContext.Request.Query["culture"].ToString();
-        var culture = ReportPage.CultureOf(requested.Length > 0 ? requested : cultures.GetCurrentCulture());
+        var culture = ReportPage.CultureOf(Culture is { Length: > 0 } requested ? requested : cultures.GetCurrentCulture());
         var nl = culture == "nl";
 
         using var session = store.OpenAsyncSession();

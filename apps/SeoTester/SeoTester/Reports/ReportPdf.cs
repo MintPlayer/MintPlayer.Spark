@@ -187,6 +187,9 @@ internal sealed partial class ReportPdfEndpoint : IGetEndpoint
     public static string Path => Route;
 
     [Inject] private readonly IDocumentStore store;
+    [QueryParam("run")] public string? RunId { get; set; }
+    [QueryParam] public string? Culture { get; set; }
+
     [Inject] private readonly ISparkOrganizations organizations;
     [Inject] private readonly TimeProvider time;
 
@@ -194,10 +197,10 @@ internal sealed partial class ReportPdfEndpoint : IGetEndpoint
     {
         var ct = httpContext.RequestAborted;
         var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var runId = httpContext.Request.Query["run"].ToString();
+        var runId = RunId ?? string.Empty;
         if (userId is null || runId.Length is 0 or > 200)
             return Results.NotFound();
-        var culture = ReportPage.CultureOf(httpContext.Request.Query["culture"].ToString());
+        var culture = ReportPage.CultureOf(Culture);
         using var session = store.OpenAsyncSession();
         var report = await session.LoadAsync<RunReport>(RunReport.IdFor(runId, culture), ct);
         if (report is null || report.RunId != runId || report.ExpiresAtUtc <= time.GetUtcNow().UtcDateTime
