@@ -6,7 +6,11 @@
   },
   "groups": {
     "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
-    "00000000-0000-0000-0000-000000000001": "Signed-in users"
+    "00000000-0000-0000-0000-000000000001": "Signed-in users",
+    "c0e5ad00-0000-4000-8000-000000000001": "Administrators"
+  },
+  "bindings": {
+    "dashboards:administrators": [ "Administrators" ]
   },
   "rights": [
     {
@@ -230,6 +234,18 @@
       "resource": "QueryRead/Home/RepoCount",
       "groupId": "00000000-0000-0000-0000-000000000000",
       "isDenied": true
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000091",
+      "resource": "Read/HostMetrics",
+      "groupId": "dashboards:administrators",
+      "isDenied": false
+    },
+    {
+      "key": "c0e5a9e1-0000-4000-8000-000000000092",
+      "resource": "QueryRead/RepositoryGraphState",
+      "groupId": "c0e5ad00-0000-4000-8000-000000000001",
+      "isDenied": false
     }
   ]
 }

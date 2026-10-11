@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -17,7 +19,12 @@ namespace CodeCoverage.Entities;
 /// mirror first and this document after. A trigger that finds no document therefore has nothing to
 /// delete and nothing to fetch.
 /// </para>
+/// <para>
+/// <b>Indexed for one reader only:</b> the administrators' mirrors list (the <c>GetRepositoryGraphStates</c>
+/// query, plan M5b). Every code path loads it by id or streams it by <see cref="Prefix"/>.
+/// </para>
 /// </remarks>
+[GenerateIndex]
 public class RepositoryGraphState
 {
     public string? Id { get; set; }

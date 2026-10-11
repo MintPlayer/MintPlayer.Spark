@@ -1815,6 +1815,265 @@
           }
         }
       }
+    },
+    "RepositoryGraphState": {
+      "label": {
+        "en": "Mirror",
+        "fr": "Miroir",
+        "nl": "Mirror"
+      },
+      "attributes": {
+        "Repository": {
+          "label": {
+            "en": "Repository",
+            "fr": "Dépôt",
+            "nl": "Repository"
+          },
+          "description": {
+            "en": "The repository document id, e.g. Repositories/github/123."
+          }
+        },
+        "HasMirror": {
+          "label": {
+            "en": "Has mirror",
+            "fr": "Miroir présent",
+            "nl": "Heeft mirror"
+          },
+          "description": {
+            "en": "True once a clone succeeded, until the mirror is deleted or found missing."
+          }
+        },
+        "SizeBytes": {
+          "label": {
+            "en": "Size",
+            "fr": "Taille",
+            "nl": "Grootte"
+          },
+          "description": {
+            "en": "The mirror's size on disk after its last fetch, as the sidecar measured it (D8)."
+          }
+        },
+        "CommitCount": {
+          "label": {
+            "en": "Commits",
+            "fr": "Commits",
+            "nl": "Commits"
+          },
+          "description": {
+            "en": "Commits in the mirror after the last fetch."
+          }
+        },
+        "Outcome": {
+          "label": {
+            "en": "Last outcome",
+            "fr": "Dernier résultat",
+            "nl": "Laatste resultaat"
+          },
+          "description": {
+            "en": "cloned, fetched, refused or failed, as the sidecar answered; null before the first fetch."
+          }
+        },
+        "Reason": {
+          "label": {
+            "en": "Reason",
+            "fr": "Raison",
+            "nl": "Reden"
+          },
+          "description": {
+            "en": "Why a fetch was refused or failed (the sidecar's reason, or the app's own such as installation-cap)."
+          }
+        },
+        "LastFetchAtUtc": {
+          "label": {
+            "en": "Last fetch",
+            "fr": "Dernière récupération",
+            "nl": "Laatst opgehaald"
+          },
+          "description": {
+            "en": "When the last clone or fetch finished, whatever its outcome."
+          }
+        },
+        "LastViewedAtUtc": {
+          "label": {
+            "en": "Last viewed",
+            "fr": "Dernière consultation",
+            "nl": "Laatst bekeken"
+          },
+          "description": {
+            "en": "When the graph was last read (D10). Eviction goes oldest first by this."
+          }
+        },
+        "Syncing": {
+          "label": {
+            "en": "Syncing",
+            "fr": "Synchronisation",
+            "nl": "Bezig met synchroniseren"
+          },
+          "description": {
+            "en": "A clone or fetch has been asked for and has not finished."
+          }
+        },
+        "SyncingSinceUtc": {
+          "label": {
+            "en": "Syncing since",
+            "fr": "Synchronisation depuis",
+            "nl": "Synchroniseert sinds"
+          },
+          "description": {
+            "en": "When Syncing was set; a request older than the fetch timeout is considered lost."
+          }
+        },
+        "InstallationId": {
+          "label": {
+            "en": "Installation",
+            "fr": "Installation",
+            "nl": "Installatie"
+          },
+          "description": {
+            "en": "What the credential the mirror was cloned with belongs to (on GitHub, github:{installation}), for the per-installation cap (D10). Null for an anonymous clone."
+          }
+        },
+        "RefsHash": {
+          "label": {
+            "en": "Refs hash",
+            "fr": "Empreinte des refs",
+            "nl": "Refs-hash"
+          },
+          "description": {
+            "en": "The sidecar's hash of the mirror's refs after the last fetch."
+          }
+        }
+      }
+    },
+    "HostMetrics": {
+      "label": {
+        "en": "Host metrics",
+        "fr": "Métriques de l'hôte",
+        "nl": "Hostmetingen"
+      },
+      "groups": {
+        "Host": {
+          "label": {
+            "en": "Host",
+            "fr": "Hôte",
+            "nl": "Host"
+          }
+        },
+        "Mirrors": {
+          "label": {
+            "en": "Commit-graph mirrors",
+            "fr": "Miroirs du graphe de commits",
+            "nl": "Commitgraaf-mirrors"
+          }
+        },
+        "Database": {
+          "label": {
+            "en": "Database",
+            "fr": "Base de données",
+            "nl": "Database"
+          }
+        }
+      },
+      "attributes": {
+        "HostDisk": {
+          "label": {
+            "en": "Host disk",
+            "fr": "Disque de l'hôte",
+            "nl": "Hostschijf"
+          }
+        },
+        "HostDiskFree": {
+          "label": {
+            "en": "Host disk free",
+            "fr": "Espace libre de l'hôte",
+            "nl": "Vrije ruimte host"
+          }
+        },
+        "HostDiskUsedPercent": {
+          "label": {
+            "en": "Host disk used",
+            "fr": "Disque de l'hôte utilisé",
+            "nl": "Hostschijf gebruikt"
+          }
+        },
+        "HostDiskUsedPercentHistory": {
+          "label": {
+            "en": "Host disk used, last 7 days",
+            "fr": "Disque de l'hôte utilisé, 7 derniers jours",
+            "nl": "Hostschijf gebruikt, laatste 7 dagen"
+          }
+        },
+        "Memory": {
+          "label": {
+            "en": "App memory",
+            "fr": "Mémoire de l'application",
+            "nl": "Geheugen van de app"
+          }
+        },
+        "Cpu": {
+          "label": {
+            "en": "App CPU",
+            "fr": "Processeur de l'application",
+            "nl": "CPU van de app"
+          }
+        },
+        "MirrorCount": {
+          "label": {
+            "en": "Mirrors",
+            "fr": "Miroirs",
+            "nl": "Mirrors"
+          }
+        },
+        "MirrorBytes": {
+          "label": {
+            "en": "Mirror size",
+            "fr": "Taille des miroirs",
+            "nl": "Grootte van de mirrors"
+          }
+        },
+        "MirrorVolume": {
+          "label": {
+            "en": "Mirror volume",
+            "fr": "Volume des miroirs",
+            "nl": "Mirror-volume"
+          }
+        },
+        "MirrorVolumeFree": {
+          "label": {
+            "en": "Mirror volume free",
+            "fr": "Espace libre du volume",
+            "nl": "Vrije ruimte mirror-volume"
+          }
+        },
+        "MirrorEvictions": {
+          "label": {
+            "en": "Mirrors evicted",
+            "fr": "Miroirs évincés",
+            "nl": "Verwijderde mirrors"
+          }
+        },
+        "MirrorRefusals": {
+          "label": {
+            "en": "Clones refused",
+            "fr": "Clones refusés",
+            "nl": "Geweigerde clones"
+          }
+        },
+        "DatabaseSize": {
+          "label": {
+            "en": "Database size",
+            "fr": "Taille de la base",
+            "nl": "Databasegrootte"
+          }
+        },
+        "DocumentCount": {
+          "label": {
+            "en": "Documents",
+            "fr": "Documents",
+            "nl": "Documenten"
+          }
+        }
+      }
     }
   },
   "queries": {
@@ -1866,6 +2125,13 @@
         "fr": "Dépôts sélectionnables",
         "nl": "Selecteerbare repositories"
       }
+    },
+    "GetRepositoryGraphStates": {
+      "label": {
+        "en": "Commit-graph mirrors",
+        "fr": "Miroirs du graphe de commits",
+        "nl": "Commitgraaf-mirrors"
+      }
     }
   },
   "programUnits": {
@@ -1874,6 +2140,11 @@
         "en": "Coverage",
         "fr": "Coverage",
         "nl": "Coverage"
+      },
+      "administration": {
+        "en": "Administration",
+        "fr": "Administration",
+        "nl": "Beheer"
       }
     },
     "home": {
@@ -1885,6 +2156,16 @@
       "en": "GitHub",
       "fr": "GitHub",
       "nl": "GitHub"
+    },
+    "hostMetrics": {
+      "en": "Host metrics",
+      "fr": "Métriques de l'hôte",
+      "nl": "Hostmetingen"
+    },
+    "mirrors": {
+      "en": "Mirrors",
+      "fr": "Miroirs",
+      "nl": "Mirrors"
     }
   },
   "security": {
@@ -1901,6 +2182,13 @@
           "en": "Signed-in users",
           "fr": "Utilisateurs connectés",
           "nl": "Aangemelde gebruikers"
+        }
+      },
+      "Administrators": {
+        "label": {
+          "en": "Administrators",
+          "fr": "Administrateurs",
+          "nl": "Beheerders"
         }
       }
     }

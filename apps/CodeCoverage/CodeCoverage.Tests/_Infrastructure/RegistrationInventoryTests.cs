@@ -159,4 +159,12 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(global::CodeCoverage.CommitGraph.IForgeAvatarResolver),
         typeof(IRecipient<global::CodeCoverage.CommitGraph.FetchCommitGraphMessage>),
         typeof(IRecipient<global::CodeCoverage.CommitGraph.DeleteCommitGraphMirrorMessage>));
+
+    /// <summary>
+    /// The Administrators group (#504, M5b). Without its membership provider the app still starts and the group still
+    /// exists, but nobody is in it: the host metrics dashboard and the mirrors list go dark with no error.
+    /// </summary>
+    [Fact]
+    public void The_administrators_membership_is_registered() => AssertRegistered(
+        typeof(CoverageAdministrators));
 }

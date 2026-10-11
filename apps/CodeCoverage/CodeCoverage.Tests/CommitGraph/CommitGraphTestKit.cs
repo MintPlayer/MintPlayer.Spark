@@ -46,9 +46,23 @@ public sealed class FakeSidecar : HttpMessageHandler
     public IReadOnlyList<string> Deletes => [.. Requests.Where(r => r.StartsWith("DELETE ")).Select(r => r["DELETE ".Length..])];
     public IReadOnlyList<string> GraphReads => [.. Requests.Where(r => r.StartsWith("GET "))];
 
+    /// <summary>The mirror volume <c>GET /stats</c> reports.</summary>
+    public SidecarStats Stats { get; set; } = new(FreeBytes: 600, TotalBytes: 1_000, MirrorCount: 0, MirrorBytes: 0);
+
+    /// <summary>When true, every request fails as a connection to a stopped container would.</summary>
+    public bool Down { get; set; }
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (Down)
+            throw new HttpRequestException("Connection refused (coverage-git.test:80)");
+
         var path = request.RequestUri!.AbsolutePath.TrimStart('/');
+        if (request.Method == HttpMethod.Get && path == "stats")
+        {
+            Requests.Add("GET stats");
+            return Json(HttpStatusCode.OK, Stats);
+        }
         if (!path.StartsWith("repos/")) return new HttpResponseMessage(HttpStatusCode.NotFound);
         path = path["repos/".Length..];
         Requests.Add(request.Method == HttpMethod.Get ? $"GET {path}{request.RequestUri.Query}" : $"{request.Method} {path}");

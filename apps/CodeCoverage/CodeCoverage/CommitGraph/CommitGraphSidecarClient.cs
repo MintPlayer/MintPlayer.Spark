@@ -38,6 +38,9 @@ public interface ICommitGraphSidecar
 
     /// <summary>Removes the mirror and its snapshots. Idempotent; waits for an in-flight fetch.</summary>
     Task DeleteAsync(string repositoryId, CancellationToken cancellationToken = default);
+
+    /// <summary>The mirror volume's free and total bytes and the mirrors on it (<c>GET /stats</c>, the host metrics dashboard).</summary>
+    Task<SidecarStats> GetStatsAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>A typed <see cref="HttpClient"/> over the sidecar contract.</summary>
@@ -92,6 +95,18 @@ public sealed partial class CommitGraphSidecarClient(HttpClient http, IOptions<C
         using var response = await http.DeleteAsync($"repos/{Path(repositoryId)}", cts.Token);
         response.EnsureSuccessStatusCode();
     }
+
+    public async Task<SidecarStats> GetStatsAsync(CancellationToken cancellationToken = default)
+    {
+        // The sidecar sums every mirror directory for this; a hung one must not hold a dashboard reading.
+        using var cts = Bounded(StatsTimeout, cancellationToken);
+        using var response = await http.GetAsync("stats", cts.Token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SidecarStats>(Json, cts.Token)
+            ?? throw new InvalidOperationException("The sidecar answered /stats with an empty body.");
+    }
+
+    private static readonly TimeSpan StatsTimeout = TimeSpan.FromSeconds(10);
 
     private static CancellationTokenSource Bounded(TimeSpan timeout, CancellationToken cancellationToken)
     {
@@ -181,6 +196,9 @@ public sealed record SidecarRow(
 
 /// <summary>A branch or tag.</summary>
 public sealed record SidecarRef(string Name, string Kind, string Sha);
+
+/// <summary>The body of <c>GET /stats</c>: the mirror volume as the sidecar sees it, and the mirrors on it.</summary>
+public sealed record SidecarStats(long FreeBytes, long TotalBytes, int MirrorCount, long MirrorBytes);
 
 /// <summary>The body of a 404 or 410.</summary>
 public sealed record SidecarStateBody(string? State, string? SnapshotId);
