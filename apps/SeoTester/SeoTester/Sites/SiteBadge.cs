@@ -101,7 +101,10 @@ public partial class ShareBadgeAction : SparkCustomAction
 
         var token = await links.CreateAsync(nameof(Site), id, cancellationToken);
         var link = links.LinkFor(nameof(Site), id, token, httpContextAccessor.HttpContext);
-        var origin = Uri.TryCreate(link, UriKind.Absolute, out var absolute) ? absolute.GetLeftPart(UriPartial.Authority) : string.Empty;
+        // The scheme check keeps a relative link relative on Linux, where TryCreate(Absolute) reads "/x" as file:///x.
+        var origin = Uri.TryCreate(link, UriKind.Absolute, out var absolute) && absolute.Scheme is "http" or "https"
+            ? absolute.GetLeftPart(UriPartial.Authority)
+            : string.Empty;
         var badge = SiteBadgeEndpoint.UrlFor(origin, id, token);
         manager.Client.ShowSecret(
             manager.GetTranslatedMessage("seo.badgeTitle"),

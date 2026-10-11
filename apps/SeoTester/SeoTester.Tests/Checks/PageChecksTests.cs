@@ -192,4 +192,19 @@ public class PageChecksTests
         page.Truncated.Should().BeTrue();
         page.Title.Should().Be("x");
     }
+
+    [Fact]
+    public void A_root_relative_og_image_or_canonical_is_not_absolute_on_any_os()
+    {
+        // On Linux, Uri.TryCreate(UriKind.Absolute) accepts "/x" as file:///x, so both used to pass there.
+        var head = GoodHead
+            .Replace("<link rel=\"canonical\" href=\"https://example.com/shoes\">", "<link rel=\"canonical\" href=\"/shoes\">")
+            .Replace("content=\"https://example.com/og.png\"", "content=\"/og.png\"");
+        head.Should().Contain("href=\"/shoes\"").And.Contain("content=\"/og.png\"");
+
+        var findings = PageChecks.Evaluate(Page(head + Body())).ToDictionary(f => f.CheckId);
+
+        findings["seo.canonical"].Status.Should().Be(CheckStatus.Warn);
+        findings["social.open-graph"].Status.Should().NotBe(CheckStatus.Pass);
+    }
 }

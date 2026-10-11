@@ -143,7 +143,8 @@ internal sealed class SparkNotifier(
 
     private string? Absolute(string? url)
     {
-        if (url is null || Uri.TryCreate(url, UriKind.Absolute, out _))
+        // Decided on the text, not by Uri.TryCreate(UriKind.Absolute): on Linux that accepts "/runs/7" as a file:// URI.
+        if (url is null || !IsRootRelative(url))
             return url;
         var origin = SparkPublicBaseUrl.Resolve(authOptions.Value.Links.PublicBaseUrl, configuration, environment, httpContextAccessor?.HttpContext);
         if (origin is null)
@@ -155,8 +156,12 @@ internal sealed class SparkNotifier(
     }
 
     internal static bool IsAllowedUrl(string url)
-        => (url.StartsWith('/') && !url.StartsWith("//", StringComparison.Ordinal) && !url.StartsWith("/\\", StringComparison.Ordinal))
+        => IsRootRelative(url)
            || (Uri.TryCreate(url, UriKind.Absolute, out var absolute) && (absolute.Scheme == Uri.UriSchemeHttps || absolute.Scheme == Uri.UriSchemeHttp));
+
+    /// <summary>A path on this app ("/x"), not a protocol-relative "//host" or the "/\host" browsers read as one.</summary>
+    private static bool IsRootRelative(string url)
+        => url.StartsWith('/') && !url.StartsWith("//", StringComparison.Ordinal) && !url.StartsWith("/\\", StringComparison.Ordinal);
 
     /// <summary>A category as an RFC 8030 topic (1–32 base64url characters), or none.</summary>
     internal static string? Topic(string? category)

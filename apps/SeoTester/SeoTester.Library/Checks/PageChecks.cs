@@ -105,7 +105,7 @@ public static partial class PageChecks
         // ---- Social ----------------------------------------------------------------------------------------------
         var missingOg = new[] { "og:title", "og:description", "og:image", "og:url", "og:type" }.Where(p => string.IsNullOrWhiteSpace(html.MetaProperty(p))).ToList();
         var ogImage = html.MetaProperty("og:image");
-        if (ogImage is not null && !Uri.TryCreate(ogImage.Trim(), UriKind.Absolute, out _))
+        if (ogImage is not null && !IsHttpUrl(ogImage))
             missingOg.Add("og:image (not an absolute URL)");
         Add(missingOg.Count == 0 ? Finding.Pass("social.open-graph")
             : missingOg.Contains("og:title") || missingOg.Contains("og:image") ? Finding.Fail("social.open-graph", ("url", url), ("value", string.Join(", ", missingOg)))
@@ -201,7 +201,7 @@ public static partial class PageChecks
             return Finding.Warn("seo.canonical", ("url", url), ("target", "(none)"), ("status", "missing"));
         if (canonicals.Distinct(StringComparer.Ordinal).Count() > 1)
             return Finding.Fail("seo.canonical", ("url", url), ("target", string.Join(" | ", canonicals)), ("status", "several"));
-        if (!Uri.TryCreate(canonicals[0]!.Trim(), UriKind.Absolute, out _))
+        if (!IsHttpUrl(canonicals[0]!))
             return Finding.Warn("seo.canonical", ("url", url), ("target", canonicals[0]), ("status", "relative"));
         return Finding.Pass("seo.canonical", ("target", canonicals[0]));
     }
@@ -599,4 +599,11 @@ public static partial class PageChecks
 
     [GeneratedRegex(@"<meta[^>]+charset\s*=\s*[""']?([\w-]+)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 500)]
     private static partial Regex CharsetMeta();
+
+    /// <summary>
+    /// An absolute http(s) URL. The scheme check is what makes "/x" relative on every OS: on Linux,
+    /// Uri.TryCreate(UriKind.Absolute) accepts "/x" as file:///x.
+    /// </summary>
+    private static bool IsHttpUrl(string value)
+        => Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }
