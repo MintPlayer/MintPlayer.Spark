@@ -172,6 +172,41 @@ public partial class GitHubForgeClient : IForgeClient
         }
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// The installation token as the password of <c>x-access-token</c>, which is how GitHub accepts
+    /// an App installation token over https. A public repository with no installation is cloned
+    /// anonymously (D6); a private one with no installation has no path at all.
+    /// </para>
+    /// <para>
+    /// ⚠️ The clone URL is composed from <see cref="Repository.FullName"/>, which came from GitHub,
+    /// and is still checked against GitHub's own name grammar before it is used, so a document
+    /// written by something else can never steer the clone at another host or path.
+    /// </para>
+    /// </remarks>
+    public async Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(repository);
+        if (!GitHubFullName().IsMatch(repository.FullName)) return null;
+
+        var cloneUrl = $"https://github.com/{repository.FullName}.git";
+        if (await ResolveInstallationAsync(repository, cancellationToken) is { } installationId)
+        {
+            var token = await installationService.GetInstallationTokenAsync(installationId, cancellationToken);
+            return new ForgeGitAccess(cloneUrl, "x-access-token", token, $"github:{installationId}");
+        }
+
+        return repository.IsPrivate ? null : ForgeGitAccess.Anonymous(cloneUrl);
+    }
+
+    /// <summary>
+    /// <c>owner/name</c> as GitHub allows them: an owner of letters, digits and single hyphens, a
+    /// name of letters, digits, <c>.</c>, <c>_</c> and <c>-</c> that is not <c>.</c> or <c>..</c>.
+    /// </summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/(?!\.\.?$)[A-Za-z0-9._-]{1,100}$")]
+    private static partial System.Text.RegularExpressions.Regex GitHubFullName();
+
     private async Task<long?> ResolveInstallationAsync(Repository repository, CancellationToken cancellationToken)
     {
         if (repository.Id is not null && installations.TryGetValue(repository.Id, out var memoized))

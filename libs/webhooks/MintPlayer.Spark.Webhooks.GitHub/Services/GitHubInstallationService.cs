@@ -119,6 +119,9 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
         }
     }
 
+    public async Task<string> GetInstallationTokenAsync(long installationId, CancellationToken cancellationToken = default)
+        => (await GetOrCreateInstallationTokenAsync(installationId, cancellationToken)).Token;
+
     public Task<IGitHubClient> CreateInstallationClientAsync(long installationId)
         => Task.FromResult(_installationClients.GetOrAdd(installationId, BuildInstallationClient));
 
