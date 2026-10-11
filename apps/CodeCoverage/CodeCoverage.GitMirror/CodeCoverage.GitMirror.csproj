@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<!--
+	  The coverage-git sidecar (docs/coverage_commit_graph_PRD.md D1, D3, D24): the only process that runs git. It keeps one
+	  bare, treeless mirror per repository on its own volume, lays out the commit graph and serves it to CodeCoverage over the
+	  internal coverage-git network. It holds no GitHub App key, no RavenDB certificate and no database client: tokens arrive
+	  per request and are never stored.
+	  ⚠️ Never reference MintPlayer.Spark, RavenDB.Client, Octokit or anything that brings them: SidecarIsolationTests reads
+	  this assembly's references and fails if one appears.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>CodeCoverage.GitMirror</RootNamespace>
+		<!-- An Exe under this repository is a Spark application by default (Directory.Build.targets); this one is not. -->
+		<SparkApplication>false</SparkApplication>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- The routes are generator endpoint classes (Endpoints/), as everywhere in this repository. Neither package brings
+		     Spark or RavenDB: the endpoints package depends on ASP.NET Core only. -->
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="CodeCoverage.GitMirror.Tests" />
+	</ItemGroup>
+
+</Project>
