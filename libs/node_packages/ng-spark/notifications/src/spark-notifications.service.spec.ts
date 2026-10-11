@@ -4,7 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { SwPush } from '@angular/service-worker';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
 import { QueryResult } from '@mintplayer/ng-spark/models';
 import { SparkService } from '@mintplayer/ng-spark/services';
@@ -204,7 +204,7 @@ describe('SparkNotificationsService', () => {
   describe('Web Push', () => {
     let subscription: BehaviorSubject<PushSubscription | null>;
     let swPush: { isEnabled: boolean; subscription: BehaviorSubject<PushSubscription | null>; notificationClicks: Subject<{ action: string; notification: NotificationOptions & { title: string } }>; requestSubscription: ReturnType<typeof vi.fn>; unsubscribe: ReturnType<typeof vi.fn> };
-    let permissions: { permission: NotificationPermission; requestPermission: ReturnType<typeof vi.fn> };
+    let permissions: { permission: NotificationPermission; requestPermission: Mock<() => Promise<NotificationPermission>> };
     const device = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'P', auth: 'A' } }) } as unknown as PushSubscription;
 
     beforeEach(() => {
@@ -216,7 +216,7 @@ describe('SparkNotificationsService', () => {
         requestSubscription: vi.fn().mockResolvedValue(device),
         unsubscribe: vi.fn().mockResolvedValue(undefined),
       };
-      permissions = { permission: 'default', requestPermission: vi.fn().mockResolvedValue('granted') };
+      permissions = { permission: 'default', requestPermission: vi.fn<() => Promise<NotificationPermission>>().mockResolvedValue('granted') };
     });
 
     it('is unsupported without the Notification/PushManager APIs (iOS outside an installed app)', () => {
