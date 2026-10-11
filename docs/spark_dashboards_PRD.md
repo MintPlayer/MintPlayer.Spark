@@ -1,6 +1,20 @@
 # PRD — Spark dashboards: administrator dashboards as live virtual PersistentObjects
 
-**Status:** Proposed — spikes S10, S11 not yet run · **Date:** 2026-10-11 ·
+**Status:** Implemented on `feat/504-commit-graph` (PR pending), 2026-10-12. NuGet `MintPlayer.Spark.Dashboards`
+`11.0.0-preview.104` (`a69991f0`, tests `3d4f464a`); `@mintplayer/ng-spark` `22.34.0` with the
+`@mintplayer/ng-spark/dashboards` entry point (`db566b50`); SeoTester migrated (`bc5ead41`); CodeCoverage host metrics
+(`18f09853`); guide [guide-dashboards.md](guide-dashboards.md) (`361f8b24`). S11 passed; S10 passed for the host disk (VPS) and the live virtual PO (M5a tests), while its sidecar-size-vs-`du` check waits for mirrors in production (plan M8).
+**Deviations** (decisions in the commit-graph PRD's §0):
+- **D38:** the sampler lease is a new `DashboardSamplerLease`, modelled on Messaging's lease, not a generalised
+  `MessagingLease` (that would couple dashboards to Messaging or put a RavenDB type in the RavenDB-free Abstractions).
+  Supersedes D29's lease bullet.
+- **D39:** one global `SampleInterval` (default 60 s) in `SparkDashboardsOptions`; values opt in to history with
+  `.History(...)`. Supersedes D14's per-value `SampleEvery`.
+- CodeCoverage's Administrators group is filled by the `CoverageAdministrators` membership provider from
+  `Coverage:Administrators` (stable forge user ids, `github:9629574`), as §9.1 required (never by login); see
+  `docs/code-coverage/hosting.md` §4.
+
+~~Proposed — spikes S10, S11 not yet run~~ · **Date:** 2026-10-11 ·
 **Origin:** split out of [coverage_commit_graph_PRD.md](coverage_commit_graph_PRD.md) §9, where it began as
 "how do we watch the mirrors' disk usage". **Decisions:** D9 (superseded), D11–D14, D24 and D29 (S11 result: single-valued series) in that PRD's §0 table
 are the decision log for this package; they are not repeated here. **Plan:** milestones M5a (package +

@@ -8,7 +8,10 @@ bare mirror + git CLI, server-side lane layout) ·
 network (D4, D18) and a named volume for the mirrors (D8). **Packages:** a new NuGet
 `MintPlayer.Spark.Dashboards` at `11.0.0-preview.*`, and a **22.x minor** of `@mintplayer/ng-spark`
 for the new entry points (D11). Neither major moves. Check the version diff in review. ·
-**Status:** Proposed — spikes not run
+**Status:** Implemented (M1–M7 done on the branch, PR pending), 2026-10-12. M8 (deploy and dogfood) is open. Versions:
+`MintPlayer.Spark.Dashboards` `11.0.0-preview.104`, `@mintplayer/ng-spark` `22.34.0`, `MintPlayer.Spark.Testing`
+`preview.104`, `MintPlayer.Spark.Webhooks.GitHub` `preview.105` (commit `8b28cb86`); no major moved. Deviations from the
+PRD are its decisions D30–D39. ~~Proposed — spikes not run~~
 
 All code lands as **one pull request** in `MintPlayer.Spark`: image, compose, server, SPA, docs and
 tests, per `CLAUDE.md`. There is no follow-up PR and no phase 2.
@@ -65,10 +68,11 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
 | S3 commit-only walk, no lazy fetch | ✅ **with D25** (`--no-mailmap`). Without it the first walk lazily fetched all HEAD trees. Full walk ≈ 13 µs/row (100k ≈ 1.3 s; vscode 192k 2.5 s). The commit-graph does not speed up the full walk; it speeds up the first rows 6–30×. First 200 rows: 80 ms aspnetcore; **213 ms vscode all refs** (5.9k tips; 13 ms over target, accepted), 50 ms one branch. `rev-list --count` 159 ms on vscode. | 2026-10-11 | `spikes/mirrors/*.s3.log` |
 | S4 incremental fetch correctness | ✅ All 5 cases plus tag deletion correct; each fetch 0.3–0.55 s (git daemon, protocol v2, `filter tree:0`). The explicit tag refspec makes `--prune` remove deleted tags. | 2026-10-11 | `spikes/fetch/s4.sh`, `*.out` |
 | S5 server lane layout speed and stability | ✅ **JoinLeft (D27).** vscode 192k: layout 0.1–0.25 s, parse+layout < 1 s, peak 151 MB working set. First page < 50 ms cold, 0.01 ms warm. Paged equals full pass on 0 mismatches over 192k + 100k rows. Deterministic SHA-256; golden test passes. Width 92 vs git 90, within the relaxed criterion. | 2026-10-11 | `spikes/layout/src`, `out/` |
-| S6 page + overlay read time | — | | |
+| S6 page + overlay read time | ◐ **Overlay half proven; timing not measured as a benchmark.** The overlay is one `LoadAsync` of the page's deterministic commit ids with **0 RQL queries** (counted with `OnBeforeQuery`). No p95-over-50-reads run against a 100k-row snapshot was made; the sidecar's page time is bounded by S3/S5 (first 200 rows 50–213 ms cold, < 50 ms layout, 0.01 ms warm). Measure on the VPS at M8. | 2026-10-12 | `The_coverage_overlay_is_one_load_and_no_query` (`CodeCoverage.Tests/CommitGraph/CommitGraphReaderTests.cs:42`) |
 | S7 hostile repository | ✅ **with D26.** Submodule `file://`: 0 accesses (control proved the path leaks without the recipe). Hooks: 0 markers (controls fire). 60k refs: clone 13.8 s, 7.5 MB, log 251 ms once `--no-tags` is dropped. Tree kill: no orphans. | 2026-10-11 | `spikes/fetch/s7*.sh`, `*.out` |
-| S8 claim TTL vs long clone | — | | |
+| S8 claim TTL vs long clone | ✅ **The join (D19), at test scale.** Two concurrent `POST /fetch` for one repository, the first held in flight by a 400 ms server delay: one clone, and the second caller gets the identical result, duration included. Control: two different repositories run two clones. A delete aborts an in-flight clone and leaves nothing. Not run with a clone throttled past the real 5 min claim TTL; the join does not depend on the duration. | 2026-10-12 | `Two_concurrent_fetches_of_one_repository_run_one_clone_and_get_the_same_result`, `Control_two_concurrent_fetches_of_different_repositories_run_two_clones`, `Delete_aborts_a_clone_in_flight_and_nothing_is_left` (`CodeCoverage.GitMirror.Tests/Mirror/MirrorServiceTests.cs:117,132,210`) |
 | S9 per-row SVG scroll, palette contrast | ⚠️ **Partly the library.** Full page, dev build: p95 15–19.5 ms per frame, about 11 ms per update inside `mp-datatable`. Code reading (not re-measured): on each range change the component re-renders the whole window, `detectChanges` on every visible row view, and rebuilds its flat list over every loaded row (`@mintplayer/web-components/chunks/mp-datatable-*.mjs`, `willUpdate`/`getFlatList`); the ng-bootstrap wrapper keeps every row view ever rendered (`rowViews`, destroyed only on a template change). **The ~690 empty comments per scroll pass are Lit's, not the panel's:** tbody rows are a `repeat`, and lit-html 3.3.3's `removePart` (`directive-helpers.js:172-175`) leaves each removed part's end marker behind, one per row that leaves the window, whatever the row template is (reproduced in jsdom with plain `<tr><td>` rows: 1022 comments after 1000 one-row slides). Panel side: `virtualBuffer` 6 → 3. | 2026-10-12 | library code, jsdom simulation |
+| | **S9 status (M7, 2026-10-12):** the p95 < 16.7 ms criterion is **not met** on the full page in a dev build (the panel alone measured 8.1 ms, per the panel track's report, 2026-10-12). It is recorded, not waived. The remaining cost and the comment-node leak are in `@mintplayer/web-components` 2.19.0 (`mp-datatable` and lit-html's `repeat`), a separate repository: genuinely outside this one, so no change here can fix it. A production build was not measured; re-measure at M8. | | commit `0d6cba36` |
 | S10 host-disk accuracy from the container, live virtual PO | ✅ **Disk (VPS):** `df -B1 /` inside `coverage-app` reports exactly the host's numbers (same total, used and available bytes: an overlay on the host root fs). `DriveInfo("/")` in a container therefore measures the host disk; no bind mount is needed. **CPU/RAM:** cgroup v2 `memory.max` and `cpu.max` are `max` (no limits), so the provider reads `memory.current` and falls back to `/proc/meminfo` for the host total. The live-PO half is covered by M5a tests. | 2026-10-11 | VPS script, `df` inside and outside the container |
 | S11 dashboard history on RavenDB time series | ✅ **with D29** (single-valued series only; 6 values per entry silently disabled rollups and retention). Retention and rollup ran; 7-day read 2.2 ms, 30-day/200 buckets 3–4.5 ms warm; 0 duplicates under the lease; 0 revisions. Developer licence only. | 2026-10-11 | `spikes/timeseries/*.log` |
 | S12 avatars without email leakage | ✅ **with D28.** No-reply ids parsed locally (0 calls); one batched GraphQL call ≈ 1 point per 60 authors; needs the installation token. Bot logins map to the wrong account, so the numeric id is used; GitLab returns Gravatar URLs, treated as negative. The no-email test is a sketch until M3/M4. | 2026-10-11 | `spikes/avatars/*.log` |
@@ -76,6 +80,9 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
 ## Milestones
 
 ### M1 — The sidecar image, the two-host network, the volume, and a safe runner
+
+> ✅ **Done** — `c2b981ed` (sidecar), `bdaaf4a6` (tests against real repositories), `51a9c831` (compose + CI),
+> `debeaa79` (`GetGitAccessAsync`). Deviations: D31 (`clone --config`), D34 (quota after fetch), D35 (input contract).
 
 > Rewritten for D1, D3, D4, D5 and D8. `git` goes into a **new sidecar image**, not into the
 > CodeCoverage runtime image.
@@ -121,13 +128,17 @@ network. The token-absence assertions check without printing.
 
 ### M2 — Mirror service, triggers and deletion
 
+> ✅ **Done** — `3407a320`; stuck-syncing fix `2e613194` (red→green `A_clone_asked_for_twice_in_one_window_is_queued_both_times`).
+> Queue `coverage-commit-graph`. Deviations: D32 (the dedupe key below is **[superseded by D32]**), D36 (view stamp at
+> most once a minute), D37 (deletion queued only when a state exists).
+
 - `CommitGraphMirror`:
   - `EnsureClonedAsync` / `FetchAsync`, using `--filter=tree:0`, heads and tags refspecs only,
     `--prune`, and `fetch.writeCommitGraph=true`
   - quota checks
   - `DeleteAsync`
 - `RepositoryGraphState` document (`RepositoryGraphStates/{provider}/{repoId}`), additive.
-- `FetchCommitGraphRecipient`, broadcast with `BroadcastOnceAsync("graph-fetch:{repoId}")` from:
+- `FetchCommitGraphRecipient`, broadcast with `BroadcastOnceAsync("graph-fetch:{repoId}")` **[superseded by D32: the key names its trigger and window]** from:
   - the push handler (`GitHubEventsRecipient.cs:301-327`)
   - repository-added events
   - the endpoint, when the mirror is stale
@@ -153,6 +164,10 @@ network. The token-absence assertions check without printing.
 
 ### M3 — Snapshot and lane layout
 
+> ✅ **Done** — in the sidecar (D3), `c2b981ed`; golden topologies in `LaneLayoutGoldenTests`, paging equals one full
+> pass in `SnapshotPagingTests` (`bdaaf4a6`). Deviation: D30 (search is a flat list; first-parent draws only
+> first-parent edges).
+
 - `CommitGraphReader`: parses `git log --branches --tags --date-order -z` and `git for-each-ref`;
   streams rows. Date order is newest first with children before parents, as SourceTree does
   (PRD §4.3).
@@ -177,6 +192,10 @@ make date order deterministic, and include one skewed clock where a child is old
 
 ### M4 — Endpoint
 
+> ✅ **Done** — `3407a320` (`/graph`, `/avatar/{key}`), `aded931c` (`/coverage-drops`, D17). Visibility:
+> `CommitGraphVisibilityTests`. Deviation: D33 (every post-gate outcome is 200 with a state; no public 410). S6: see the
+> spike table.
+
 - `GET /api/browse/repos/{provider}/{owner}/{name}/graph` in `BrowseController`:
   - `[SparkAuthorize("Browse","Coverage")]`, `[EnableRateLimiting("browse")]`
   - owners fetched first, then `ResolveAsync(…IsVisible)`, then `Refuse()` on null (PRD §5.1)
@@ -189,6 +208,10 @@ repository and an unknown provider return identical responses. That means 401 fo
 for signed-in with the same body, including while the hidden repository's mirror is syncing.
 
 ### M5 — The panel
+
+> ✅ **Done** — `6dfd3a0a` (panel), `b96e7100` (exact row height, precomputed rows), `9b44fcdf` (sparkline, drop list,
+> row buttons), `0d6cba36` (virtual buffer 6 → 3, S9 findings). S9's frame criterion is not met; the cause is in
+> `@mintplayer/web-components` (spike table).
 
 - `app-repo-commit-graph-panel` in the Repository branch of `po-detail-page.component.ts:44-48`.
 - Virtual datatable with fixed rows and one SVG per row (PRD §4.5).
@@ -206,6 +229,10 @@ and the states. A manual check through the Playwright MCP on the local app cover
 graph in both themes.
 
 ### M5a — The Spark dashboard package (D11–D14; [spark_dashboards_PRD.md](spark_dashboards_PRD.md))
+
+> ✅ **Done** — `a69991f0` (package, `11.0.0-preview.104`), `3d4f464a` (tests), `db566b50` (`@mintplayer/ng-spark`
+> `22.34.0`, `/dashboards` entry point), `bc5ead41` (SeoTester migrated), `361f8b24` (`docs/guide-dashboards.md`);
+> merged `222716ba`. Deviations: D38 (own lease, not a generalised one), D39 (global `SampleInterval`).
 
 - **NuGet:** `libs/dashboards/MintPlayer.Spark.Dashboards`, shaped like the Settings package:
   - `net11.0`, version `11.0.0-preview.*`
@@ -231,6 +258,10 @@ graph in both themes.
 
 ### M5b — CodeCoverage host metrics on the package ([spark_dashboards_PRD.md](spark_dashboards_PRD.md) §9.2)
 
+> ✅ **Done** — `18f09853`, merged `5cf565cb`. Administrators come from the `CoverageAdministrators` membership provider
+> reading `Coverage:Administrators` (`github:9629574`); HostMetrics dashboard, Mirrors query, Administration menu;
+> `HostMetricsDashboardTests`. Documented in `docs/code-coverage/hosting.md` §4.
+
 > Updated for D11. HostMetrics is now a dashboard *provider* on the package (M5a), not a hand-written
 > live PO.
 
@@ -251,7 +282,14 @@ denial on load and on live subscribe.
 `CodeCoverage.Tests` for M1–M4 and vitest for M5. The full sweep runs **once**, after M5, through
 `npm run test:affected` with the Developer licence (`CLAUDE.md`). No intermediate full runs.
 
+> **Status (2026-10-12):** the tests are on the branch with each milestone. The single full sweep was running while M7
+> was written; its result is not recorded here and belongs in the PR.
+
 ### M7 — Docs
+
+> ✅ **Done** — this commit: `docs/code-coverage/commit-graph.md` (new), `hosting.md` (sidecar service, networks,
+> volume, image, env and config keys, deploy jobs), `README.md` link, PRD status and D30–D39, this plan, and
+> `spark_dashboards_PRD.md` status.
 
 - `docs/code-coverage/commit-graph.md`: what it shows, how it syncs, quotas, deletion.
 - `docs/code-coverage/hosting.md`: the new volume and the disk budget (Q1).
@@ -260,6 +298,32 @@ denial on load and on live subscribe.
 
 ### M8 — Deploy and dogfood
 
+> ⏳ **Open.** Nothing here has run. The original bullets are kept below the checklist.
+
+Deploy checklist:
+
+- [ ] Merge; `code-coverage-deploy.yml` builds both images (`build-and-push`, `build-and-push-git`) before `deploy`.
+- [ ] **Make the GHCR package `codecoverage-git` public** (GitHub → Packages → `codecoverage-git` → Package settings →
+  Change visibility → Public) if the workflow's best-effort PATCH did not. The first publish creates it; a private
+  package fails the VPS pull. Owner, 2026-10-12: public is fine.
+- [ ] If the first deploy failed on that pull: on the VPS, `cd /var/www/code-coverage && docker compose pull && docker compose up -d`.
+  The compose file from `master` already declares `coverage-git`, both networks and `codecoverage-git-data`; no manual
+  volume or network creation is needed.
+- [ ] `docker compose ps`: `coverage-git` running; `docker network inspect code-coverage_coverage-git` lists exactly
+  `coverage-app` and `coverage-git`.
+- [ ] Open `https://coverage.mintplayer.com/po/repository/Repositories%2Fgithub%2F1006469943`: `syncing`, then the graph
+  with this repository's full history.
+- [ ] Push a commit: it appears within a minute.
+- [ ] An anonymous browser gets a private repository's graph refused exactly as its page.
+- [ ] Record the clone size and time (Administration → Mirrors, or `du -sh` in `coverage-git`) next to S2's numbers.
+- [ ] Re-measure S9 on the production build, and S6's page time on a large repository. Finish S10: the sidecar's per-repository size within 1% of `du -sb`.
+- [ ] Revisit the D7/D8 placeholders (quotas, 20 GB budget, 15 GiB floor) against the measured sizes.
+
+Known follow-up, **outside this repository:** lit-html's `repeat` in `@mintplayer/web-components` 2.19.0 leaves one
+empty comment per row that leaves the virtual window, and `mp-datatable` re-renders its whole window on each range
+change (S9). It lives in the web-components repository, not here.
+
+Original bullets:
 - Add the volume on the VPS compose file.
 - Deploy.
 - Confirm on `coverage.mintplayer.com/po/repository/Repositories%2Fgithub%2F1006469943`:

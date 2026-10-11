@@ -29,8 +29,9 @@ Contents:
 Source: [`apps/CodeCoverage/docker-compose.yml`](../../apps/CodeCoverage/docker-compose.yml). No
 service publishes a host port. Traefik reaches the app over the external `web` network; behind it every network is
 pairwise and `internal: true` (SeoTester PRD D55): `coverage-db` (app, RavenDB, licence one-shot), `coverage-mail`
-(app, relay), `coverage-smtp-egress` (the relay alone, its only way out), and the external `seo-raven` and `seo-mail`
-shared with SeoTester's app (below; matrix in [raven-tls-migration.md](raven-tls-migration.md) §1). RavenDB runs **secured**, HTTPS with client certificates (D56). Traefik itself is a separate stack;
+(app, relay), `coverage-smtp-egress` (the relay alone, its only way out), `coverage-git` (app and the commit-graph
+sidecar, #504), `coverage-git-egress` (the sidecar alone, its way out to the forges), and the external `seo-raven` and
+`seo-mail` shared with SeoTester's app (below; matrix in [raven-tls-migration.md](raven-tls-migration.md) §1). RavenDB runs **secured**, HTTPS with client certificates (D56). Traefik itself is a separate stack;
 what it must provide (Docker provider on `web`, `exposedbydefault=false`, entrypoints `web` →
 `websecure`, resolver `letsencrypt`) is sketched in the README's
 [§3](../../apps/CodeCoverage/README.md#3-the-server-docker-and-traefik).
@@ -40,12 +41,31 @@ what it must provide (Docker provider on `web`, `exposedbydefault=false`, entryp
 | `coverage-raven` | `docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64` | `coverage-db`, `seo-raven` | `raven-data` → `/var/lib/ravendb/data`; `./raven-certs/server.pfx` (ro) | TCP connect to `127.0.0.1:8080`; interval 10 s, timeout 5 s, retries 12, start period 30 s | `unless-stopped` | The database, HTTPS with client certificates only ([raven-tls-migration.md](raven-tls-migration.md)); no egress. |
 | `coverage-raven-license` | `curlimages/curl:8.11.1` | `coverage-db` | `./raven-license.json` → `/raven-license.json` (ro); the operator certificate and `ca.crt` (ro) | — | `"no"` (one-shot) | POSTs the licence to `https://coverage-raven:8080/admin/license/activate` with the operator certificate once Raven is healthy, with 10 retries 3 s apart, then exits. Runs on every `up`. Nothing depends on it. |
 | `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-mail`, `seo-mail`, `coverage-smtp-egress` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587` (under `bash`: `/dev/tcp` does not exist in the image's `sh`, which is dash); interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
-| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` to be *started*. |
+| `coverage-git` | `ghcr.io/mintplayer/codecoverage-git:master` (floating, pull-only) | `coverage-git`, `coverage-git-egress` | `codecoverage-git-data` → `/data/git` | — | `unless-stopped` | The commit-graph mirror sidecar (#504, [commit-graph.md](commit-graph.md)): the only container that runs `git`. `mem_limit: 1g` (D22). Holds no App key, no Raven certificate and no stored credential; the app sends a token per fetch. ⚠️ **Its API has no authentication**: the `coverage-git` network is the boundary (D4). |
+| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail`, `coverage-git` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` and `coverage-git` to be *started* (the graph answers `unavailable` without the sidecar). |
 
-Named volumes: `raven-data`, `smtp-queue`, `dataprotection-keys`. Docker prefixes them with the
+Named volumes: `raven-data`, `smtp-queue`, `dataprotection-keys`, `codecoverage-git-data`. Docker prefixes them with the
 compose project name, which is the directory name (`code-coverage` for `/var/www/code-coverage`), so
 the database network is `code-coverage_coverage-db`. The backup commands in the README rely on
-that name.
+that name. `codecoverage-git-data` (`code-coverage_codecoverage-git-data`) holds only mirrors, a cache of the forges:
+it needs no backup, and deleting it costs re-clones on the next views ([commit-graph.md](commit-graph.md) §9).
+
+**`coverage-git`, `coverage-git-egress`** (#504, `docs/coverage_commit_graph_PRD.md` D4, D18, D24). The sidecar's API
+is unauthenticated, so its networks are the security boundary:
+
+- `coverage-git` is `internal: true` and holds **exactly** `coverage-app` and `coverage-git`. ⚠️ Adding any other
+  container to it exposes the private commit history of every mirrored repository to that container.
+- `coverage-git-egress` is not internal and holds **only** `coverage-git`: its outbound route for clones. Nothing else
+  may join it.
+- `coverage-git` is never on `coverage-db`, `seo-raven` or `web`: no network carries both RavenDB and the sidecar.
+  `tools/verify-backend-networks.test.mjs` asserts both networks' exact members and that no network holds both
+  `coverage-raven` and `coverage-git`.
+
+The image `ghcr.io/mintplayer/codecoverage-git` is a separate GHCR package. ⚠️ **Its first publish creates it private**
+unless the deploy's best-effort "make the package public" step succeeds (`continue-on-error`; it can fail on token
+scope), while the workflow assumes "the VPS pulls without credentials" (its comment on that step). After the first
+publish, check *Package settings → Change
+visibility → Public* on GitHub (owner, 2026-10-12: public is fine; the image holds no secret).
 
 **`seo-raven`, `seo-mail`** (since SeoTester, PRD `docs/seo_analyzer_PRD.md` D55; they replace D48's
 `mintplayer-backend`): external networks that no compose project owns, so neither CodeCoverage's nor SeoTester's `down`
@@ -64,7 +84,7 @@ Traefik labels on `coverage-app`:
 | `traefik.http.routers.coverage.entrypoints` | `websecure` | Traefik must have an entrypoint of exactly this name. |
 | `traefik.http.routers.coverage.tls.certresolver` | `letsencrypt` | Traefik must have a certificate resolver of exactly this name. |
 | `traefik.http.services.coverage.loadbalancer.server.port` | `8080` | Pinned so Traefik never guesses. The image exposes 8080 only, deliberately (Dockerfile). |
-| `traefik.docker.network` | `web` | ⚠️ The app is on three networks; without this Traefik may pick its `coverage-db` or `coverage-mail` address, which it cannot reach — random 504s. |
+| `traefik.docker.network` | `web` | ⚠️ The app is on four networks; without this Traefik may pick its `coverage-db`, `coverage-mail` or `coverage-git` address, which it cannot reach — random 504s. |
 
 ## 2. Server `.env`
 
@@ -95,6 +115,7 @@ is **never written by a deploy**, and must have **LF line endings** — a CRLF f
 | `MAIL_RELAY_HOST` | relay `RELAYHOST` | empty | No | Empty: deliver directly to each recipient's MX (needs outbound 25). Set to a provider's submission host (e.g. `[smtp.example.com]:587`) to relay instead. |
 | `MAIL_RELAY_USERNAME` | relay `RELAYHOST_USERNAME` | empty | With `MAIL_RELAY_HOST` | Provider credentials. |
 | `MAIL_RELAY_PASSWORD` | relay `RELAYHOST_PASSWORD` | empty | With `MAIL_RELAY_HOST` | Provider credentials. |
+| `GIT_MIRROR_MIN_FREE_BYTES` | sidecar `GitMirror__MinFreeBytes` | `16106127360` (15 GiB) | No | The host free-space floor: below it the commit-graph sidecar refuses every clone and fetch (D8, D20). It guards the root disk RavenDB shares. Not listed in `.env.example`. |
 
 Not in `.env` on purpose:
 
@@ -115,6 +136,8 @@ Set directly in `docker-compose.yml` (not overridable from `.env`):
 | `Coverage__BaseUrl` | `https://coverage.mintplayer.com` | Public base URL. Also the **OIDC audience** and the passkey relying-party id. |
 | `Spark__Auth__PublicBaseUrl` | `https://coverage.mintplayer.com` | Base for links in mail; never taken from the request `Host`. |
 | `GitHub__Production__PrivateKeyPath` | `/run/secrets/github-app.pem` | The bind-mounted App key. |
+| `CommitGraph__SidecarUrl` | `http://coverage-git:8080` | The commit-graph sidecar over the internal `coverage-git` network. Removing it turns the graph off (`unavailable`). |
+| sidecar `GitMirror__Root` | `/data/git` | On the `codecoverage-git-data` volume. The image also sets `GitMirror__HooksPath=/opt/git-hooks-empty`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_TERMINAL_PROMPT=0` (`CodeCoverage.GitMirror/Dockerfile`). |
 | `Spark__Mail__Smtp__Security` | `None` | The relay is internal and advertises STARTTLS it has no certificate for; `None` never sends STARTTLS. |
 | relay `POSTFIX_inet_protocols` | `ipv4` | ⚠️ Mail leaves over IPv4 only; see the README's *Outgoing mail*. |
 | relay `POSTFIX_smtp_address_preference` | `ipv4` | Kept alongside; on its own it only *prefers* IPv4. |
@@ -147,6 +170,8 @@ Keys the CodeCoverage assemblies read themselves. Environment-variable form repl
 | `Coverage:BaseUrl` | `https://localhost:5200` (`appsettings.json`; same fallback in `Program.cs`) | Yes in production | `Program.cs` (OIDC audience, passkey server domain), `BrowseController`, `UploadsController`, feedback recipients | The public base URL, **without a trailing slash**. ⚠️ Changing it after users enrolled passkeys makes every passkey unusable, and every workflow's OIDC audience must change with it. |
 | `Coverage:BadgeSigningKey` | unset (`Badges/BadgePrSignature.cs`) | No | PR-comment badges | See `COVERAGE_BADGE_SIGNING_KEY`. |
 | `Coverage:Administrators` | `[ "github:9629574" ]` (`appsettings.json`, the owner's GitHub user id) | No | `Services/CoverageAdministrators.cs` | Who is in the `Administrators` group: `{provider}:{forge user id}`, never a login. See "Administrators and the host metrics dashboard" below. Not mapped in compose; override with `Coverage__Administrators__0`, `__1`, …. |
+| `CommitGraph:*` | `SidecarUrl` unset (compose sets it); `BudgetBytes` 20 GB, `InstallationShare` 0.25, `EvictAfterDays` 60, `StaleAfterMinutes` 10, `RetryAfterMinutes` 60, `Installed` 2 GB / 50k refs / 600 s, `Anonymous` 500 MB / 10k refs / 180 s, `AvatarKeySecret` unset, `AvatarMaxBytes` 256 KB (`CommitGraph/CommitGraphOptions.cs`) | No | the commit graph (#504) | Mirror budget, quotas, eviction and avatars; full table in [commit-graph.md](commit-graph.md) §8. Only `SidecarUrl` is mapped in compose. `AvatarKeySecret` unset falls back to a key derived from `Coverage:BadgeSigningKey`; neither set means initials instead of avatars. |
+| `GitMirror:*` *(sidecar)* | `Root` `/data/git`, `MinFreeBytes` 15 GiB, `SnapshotCacheBytes` 256 MB, `ReaderIdleSeconds` 60, `HooksPath` `/opt/git-hooks-empty` (`CodeCoverage.GitMirror/appsettings.json`, `GitMirrorOptions.cs`, `Dockerfile`) | No | `coverage-git` | The sidecar's own configuration; quotas are not here, the app sends them with every fetch. [commit-graph.md](commit-graph.md) §8. |
 | `Coverage:Retention:ReportAttachmentDays` | `7` (`appsettings.json`; `DefaultRetentionDays = 7` in `Ingestion/ReapReportAttachmentsCronJob.cs`) | No | the reaper cron job | Days an uploaded raw report attachment is kept after parsing. Not mapped in compose. |
 | `GitHub:WebhookSecret` | `""` (`appsettings.json`) | Yes | `Program.cs` → Spark GitHub webhooks | Webhook signature secret. |
 | `GitHub:SmeeChannelUrl` | `""` (`appsettings.json`) | Development only | `Program.cs` | A smee.io channel relayed into the local webhook processor. |
@@ -345,7 +370,8 @@ in the app's `ProjectReference` closure (`libs/spark/MintPlayer.Spark`, `…Abst
 `libs/cron/…`, `libs/messaging/…` + `.Abstractions`, `libs/mail/…` + `.Abstractions`,
 `libs/migrations/…`, `libs/webhooks/…GitHub` + `.DevTunnel`,
 `libs/subscription_worker/…Abstractions`, `libs/source_generators/…SourceGenerators` +
-`…LibraryGenerators`, `libs/socket_extensions/…`); `libs/node_packages/ng-spark/**` (auth entries included);
+`…LibraryGenerators`, `libs/socket_extensions/…`, `libs/dashboards/MintPlayer.Spark.Dashboards` (#504));
+`libs/node_packages/ng-spark/**` (auth entries included);
 `package.json`, `package-lock.json`, `nx.json`, `tsconfig.base.json`. ⚠️
 Hand-maintained: a new Spark dependency of CodeCoverage goes in **three** places, or it breaks
 silently:
@@ -375,7 +401,14 @@ cache, pushes `ghcr.io/mintplayer/codecoverage` with `docker/metadata-action` ta
 public. It runs no tests and no model verification — `pull-request.yml` gates those before merge,
 and a model mismatch refuses to start in Production anyway.
 
-**Job `deploy`** (permissions `contents: read`, `packages: read`; timeout 25 min), over SSH, with `set -e`:
+**Job `build-and-push-git`** (#504; same permissions, timeout 30 min): the same steps for the commit-graph sidecar,
+`apps/CodeCoverage/CodeCoverage.GitMirror/Dockerfile` → `ghcr.io/mintplayer/codecoverage-git`, with its own GHA cache
+scope `codecoverage-git` so the two images do not evict each other's layers. The sidecar lives under
+`apps/CodeCoverage/`, so the path filter already covers it, and its Dockerfile copies only its own csproj (it has no
+`ProjectReference`). Its best-effort PATCH to public may fail on the first publish; see §1.
+
+**Job `deploy`** (needs **both** image jobs, because compose pulls `coverage-git` too and a missing tag fails `pull`;
+permissions `contents: read`, `packages: read`; timeout 25 min), over SSH, with `set -e`:
 
 1. `mkdir -p /var/www/code-coverage && cd` there.
 2. Fail if `.env` or `github-app.pem` is missing, if a certificate file of §3 is missing or empty, or if
@@ -407,7 +440,8 @@ deploy's path filter (mirrored, plus the two workflow files). Before it existed 
 failed production deploy. It has `contents: read` only, never logs in to a registry, never pushes
 (`push: false`) and never deploys. It reads the GHA layer cache the master deploy writes
 (`cache-from: type=gha`) but never writes to it, so nothing a pull request builds can be replayed
-into a production image. Timeout 30 min; concurrency cancels a superseded run on the same branch.
+into a production image. Timeout 30 min; concurrency cancels a superseded run on the same branch. A second job,
+`build-git-image`, builds the sidecar's Dockerfile the same way (no push, reading the `codecoverage-git` cache scope).
 
 ## 8. The upload action
 
