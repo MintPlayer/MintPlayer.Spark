@@ -16,6 +16,22 @@ rests on has a spike in §7.
 
 > Written before the work. Where the build disagrees with it, the plan's milestone notes say so.
 
+## 0. Decisions (owner grill, 2026-10-11)
+
+These supersede the text below where they disagree. Superseded passages are marked **[superseded by Dn]**.
+
+| # | Decision | Evidence / reason |
+|---|---|---|
+| D1 | **The mirror runs in a separate sidecar container** (`codecoverage-git`), not in the app container. The sidecar holds no GitHub App key and no RavenDB certificate. | Owner choice. It isolates git's hostile-input surface from the process holding the App private key, the Raven certificate and the session keys (§5). |
+| D2 | **No work on new GitHub App permissions.** Users accept a raised permission themselves. S1 proves only that the token works and doesn't leak. | Owner. `contents` is already requested (`GitHubForgeClient.cs:193-224` expects `contents: write`; manifest scanning uses `GetFileContent`/`GetTree`) **[verified]**. |
+| D3 | **The sidecar owns git, lane layout and lazy snapshots.** The app owns the visibility gate, the coverage overlay, `RepositoryGraphState`, the triggers, and minting tokens (passed per request). | Owner, option A. Layout stays next to the data and the snapshot memory stays out of the app process. Raven credentials never enter the sidecar. |
+| D4 | **App ↔ sidecar is secured by network isolation only, with no key.** A dedicated compose network holds exactly two hosts, `codecoverage` and `codecoverage-git`, with no published port. Comments in `docker-compose.yml` (on the network and on both services) and in `hosting.md` say that adding any other container to it exposes private commit history. | Owner, option B, with the explicit comments as the safeguard. |
+| D5 | **Git hooks are disabled explicitly**: clone with an empty `--template=`, and set `core.hooksPath` to an empty read-only directory. Fetch never runs remote hooks, but git does run *local* hooks such as `reference-transaction` on ref updates. | Owner. S7 adds a planted-hook check. |
+| D6 | **Public repositories without an installation are cloned anonymously, under stricter quotas** than installed ones. | Owner, option C. A clone is already how commits are determined (D3), so anonymous repositories need no other path. |
+| D7 | **The quota numbers are set after S2**, from measurements on the VPS. Until then the placeholders are: installed 2 GB / 50k refs / 10 min; anonymous 500 MB / 10k refs / 3 min. | Owner, option C. VPS on 2026-10-11 (`df -h` on the host): `/` 150 GB with **93 GB free**; an **empty 10 GB Hetzner volume** at `/mnt/HC_Volume_105198417`; 4 cores; 7.6 GB RAM with about 3 GB available **[verified]**. |
+| D8 | **Mirrors live on the dedicated Hetzner block volume**, bind-mounted into the sidecar read-write and into the app read-only (for measuring only). | statfs on a bind-mounted block volume reports that volume exactly. On `/` or a named volume it reports the host root disk, which is shared with Docker and RavenDB **[cited]** (§9). The volume's 10 GB is also a hard total cap. **Pending owner confirmation (Q6).** |
+| D9 | **No dashboard package now.** Host and mirror metrics are app code in CodeCoverage: a live virtual `HostMetrics` PO (§9). | Two-agent investigation: every building block exists (§9.1), and there is no second consumer. **Pending owner confirmation (Q7).** |
+
 ---
 
 ## 1. The question
@@ -164,6 +180,21 @@ for a structure that git, with a commit-graph file, already stores compactly and
 ## 4. Design
 
 ### 4.1 The mirror
+
+> **[superseded by D1, D3, D4, D8]** The mirror and everything below now run in the **sidecar**
+> `codecoverage-git`, not in the app. "The app runs `git`" becomes "the app calls the sidecar's
+> internal API over the two-host network". The data volume is the dedicated Hetzner block volume. The
+> runner rules below (environment-only credentials, quotas, lock, hooks per D5) apply unchanged inside
+> the sidecar.
+
+**The sidecar's internal API (D3).** It is reachable only on the two-host network (D4). The token is
+minted by the app and sent in the request body, never stored:
+
+| Call | Does |
+|---|---|
+| `POST /repos/{provider}/{repoId}/fetch` `{ cloneUrl, credential?, quota }` | Clones or fetches under the per-repository lock. Returns the outcome, the size on disk, the refs hash and the volume's free bytes. |
+| `GET /repos/{provider}/{repoId}/graph?from&count&ref&at` | Extends the lazy snapshot (§4.3) and returns rows. Coverage is not included; the app adds it. |
+| `DELETE /repos/{provider}/{repoId}` | Removes the mirror and its snapshots. |
 
 - **One bare, treeless clone per repository** under a data volume, e.g.
   `/data/git/{provider}/{repoId}.git`, keyed by the stable repository id rather than the full name
@@ -380,7 +411,7 @@ the plan before the milestone that depends on them starts.
 | **S4** | Is the incremental fetch correct and cheap? | Against a scratch repository: push 1 commit, push 50, force-push a branch, delete a branch, push 5 tags at once; `git fetch --prune` after each | Each fetch **< 3 s**. The DAG and refs are correct in all five cases: the force-pushed branch loses its old tip, the deleted branch disappears, all 5 tags appear. |
 | **S5** | Is server-side lane layout fast, compact, stable and incremental? | C# straight-branch layout over S2's 100k DAG and a synthetic merge-heavy DAG, in `--date-order`; extend page by page versus one full pass | Full layout **< 1 s** using **< 200 MB**. The first page laid out **< 50 ms** after its rows arrive. Paged extension produces lanes **identical** to one full pass for 100% of rows. Lane count **≤** `git log --graph`'s width on the same input. Golden-file output deterministic across runs. If it fails, switch to the client-side fallback (§4.3). |
 | **S6** | Is the page read plus coverage overlay fast? | Endpoint over a 100k-row snapshot: 200-row pages at the top, middle and end; overlay via `LoadAsync` of 200 commit ids | **< 100 ms** server time per page (p95 over 50 reads), with 0 RQL queries in the overlay. |
-| **S7** | Is a hostile repository harmless? | Fetch a scratch repository with a submodule, a `.gitmodules` `file://` URL and 60k refs; one above the size quota | No submodule fetch and no local file access. Quota rejection is recorded in `RepositoryGraphState` with a reason. The process is killed at the timeout with no orphan left. |
+| **S7** | Is a hostile repository harmless? | Fetch a scratch repository with a submodule, a `.gitmodules` `file://` URL and 60k refs; one above the size quota | No submodule fetch and no local file access. A planted local hook (`reference-transaction`, `post-checkout`) writes **no** marker file on clone or fetch (D5). Quota rejection is recorded in `RepositoryGraphState` with a reason. The process is killed at the timeout with no orphan left. |
 | **S8** | Does a long initial clone survive the messaging claim TTL (5 min)? | Initial clone throttled to exceed 5 min, with a second `FetchCommitGraph` broadcast mid-way | Exactly **one** git process per repository at any time (the file lock holds). The clone completes once. No duplicate or corrupt mirror. |
 | **S9** | Does per-row SVG in the virtual datatable scroll well, in both themes? | Panel prototype over 10k and 100k rows; scripted fast scroll with a performance trace; contrast check of an 8-colour lane palette on light and dark backgrounds | p95 frame **< 16.7 ms**. First rows painted **< 200 ms** after data arrives. **< 2,000** live DOM nodes. Every lane colour **≥ 3:1** against both backgrounds. |
 
@@ -396,3 +427,84 @@ the plan before the milestone that depends on them starts.
 | Messaging claim expiry causes a double clone | Per-repository file lock (S8) |
 | The production deploy needs a new volume | Add the volume to `docker-compose.yml` and `docs/code-coverage/hosting.md`; plan M8 is the deploy step |
 | A large repository makes the first view slow | The panel renders "syncing" from `RepositoryGraphState`; the mirror is never fetched on the request thread |
+
+---
+
+## 9. Host metrics for administrators (D8, D9)
+
+The mirrors add a disk cost that someone must be able to see. The owner asked two things: whether
+the **host's** disk can be measured from inside a container, and whether Spark should ship a package
+for administrator dashboards. Two investigators answered on 2026-10-11.
+
+### 9.1 No dashboard package. A live virtual PersistentObject instead.
+
+Spark already has every piece **[verified]**:
+- **Virtual POs:** SeoTester's `OperatorDashboard` has no `clrType` and no documents. It is filled in
+  `OnLoadAsync` (`apps/SeoTester/SeoTester/Admin/OperatorDashboard.cs:21-33`).
+- **Push:** `/spark/live` is a multiplexed WebSocket.
+  - It accepts PO subscriptions only for types with `"live": true` (`libs/spark/MintPlayer.Spark/Endpoints/Live/LiveConnection.cs:243-251`).
+  - It re-evaluates through the normal read path on Raven changes, on `ISparkLiveNotifier.Changed(id)`
+    (`MintPlayer.Spark.Abstractions/Live/ISparkLiveNotifier.cs:19`), or every 1 min by default
+    (`SparkLiveOptions.cs:60`).
+  - `spark-po-detail` follows live types automatically (`ng-spark/models/src/entity-type.ts:126-130`).
+- **Renderers:** `spark-gauge`, `spark-threshold-bar`, `spark-trend-sparkline`
+  (`ng-spark` `score-renderers/src/index.ts`).
+- **Rights:**
+  - A `Read/HostMetrics` right granted to a group in `security.json` hides the menu entry.
+  - The live subscription refuses callers without that right, giving one answer for unknown,
+    forbidden and not-live (`LiveConnection.cs:229`).
+
+There is **no second consumer**. SeoTester's dashboard is deliberately app code
+(`docs/seo_analyzer_PRD.md:676-682`, D28), SparkId has no admin dashboard, and the demos don't drive
+framework design. A widget package would add an API with one user. That goes against the owner's
+standing preferences (compose existing blocks, a lean API). **Revisit when a second app needs the
+same metrics.** At that point, extract the parts both apps share (e.g. `formatBytes` into
+`ng-spark/pipes`, and a library virtual PO under an `xyz:administrators` slot).
+
+**The design (app code in CodeCoverage):**
+- `App_Data/Model/HostMetrics.json`: `"live": true`, no `clrType`, object id `hostmetrics/main`.
+  Attributes are rendered with `spark-gauge` / `spark-threshold-bar`.
+- `HostMetricsActions.OnLoadAsync` reads the sources in §9.2.
+- A `BackgroundService` calls `ISparkLiveNotifier.Changed("hostmetrics/main")` every 15 s while
+  anyone is subscribed. Each read is cached for 5 s, so that concurrent viewers trigger one statfs
+  between them.
+- A query over `RepositoryGraphState` with a size column answers "which repositories use the disk",
+  with no new widget.
+- **An `Administrators` group in CodeCoverage's `security.json`.** Today it has only "Anonymous
+  visitors" and "Signed-in users" (`apps/CodeCoverage/.../App_Data/security.json:7-10`)
+  **[verified]**. This is a production authorization change. The security posture must be
+  regenerated (`--spark-synchronize-security`).
+
+**Untested, so S10 covers it:** `"live": true` on a type with no `clrType`, and a notifier id with no
+backing document.
+
+### 9.2 Which numbers come from where
+
+Owner, 2026-10-11: *"Some of the measurements can probably be the container measurements. But the
+disk usage should probably be from the host."*
+
+| Attribute | Source | Measures |
+|---|---|---|
+| Host disk: total / free / used % | `DriveInfo("/")` in the app container | **The host root filesystem** (`/dev/sdb1`, 150 GB). overlay2 reports its backing filesystem, `/var/lib/docker` on the host root **[cited]**. Exception: overlay2 on XFS with `pquota`, which this host does not appear to use **[inferred → S10]**. |
+| Mirror volume: total / free / used % | `DriveInfo` on the read-only bind mount of the Hetzner volume (D8) | **That volume exactly** (10 GB) **[cited]** |
+| Mirror count, total mirror size, largest mirrors | `RepositoryGraphState` documents (size reported by the sidecar per fetch) | App data |
+| App CPU % | `System.Runtime` meter (`process.cpu.time`) over the sampling interval, or ResourceMonitoring `container.cpu.limit.utilization` | **The container** |
+| App memory | cgroup v2 `memory.current` / `memory.max`; GC heap from `GC.GetGCMemoryInfo` | **The container** (`memory.current` includes page cache) |
+| Host RAM / CPU | **Not shown** | A container sees only host totals in `/proc` without its own share. True host-wide figures need the host's `/proc` mounted in, a security cost not worth paying when Hetzner's console already graphs them. |
+
+No `docker.sock`, no host `/proc`, and no writable host mount in the app.
+
+### 9.3 Security
+
+- The PO is readable by Administrators only.
+- Without the right, the live subscription and the load both give Spark's single denial answer, so
+  the type's existence doesn't leak.
+- No mount paths, device names, exception text or environment values go into attribute values.
+  Labels are fixed strings ("Host disk", "Mirror volume").
+- The 5 s read cache plus the live hub's 500 ms throttle bound the statfs cost per viewer.
+
+### 9.4 Spike S10
+
+| # | Question | Method | Pass |
+|---|---|---|---|
+| **S10** | Do the metrics measure what §9.2 claims, and does a live virtual PO stream them? | On the VPS: log `DriveInfo` for `/` and for the bind-mounted volume from inside the container, then compare with `df -B1` on the host. Locally: a virtual `"live": true` PO with no `clrType`, notified every 15 s. | Totals and free bytes within **1%** of the host's `df` for both mounts, and no 0 values. The detail page updates **≥ 3** times in 60 s without a reload. An anonymous user and a signed-in non-admin get Spark's standard denial on both load and live subscribe. |

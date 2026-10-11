@@ -4,7 +4,8 @@
 bare mirror + git CLI, server-side lane layout) ·
 **Issue:** [#504](https://github.com/MintPlayer/MintPlayer.Spark/issues/504) ·
 **Branch:** `feat/504-commit-graph` · **Base:** `master` @ `b0395764` ·
-**Release:** server deploy only, with a new Docker volume and `git` in the runtime image. No npm or
+**Release:** server deploy, plus a new sidecar image `codecoverage-git` (D1), a two-host compose
+network (D4) and the Hetzner volume bind-mounted (D8). No npm or
 NuGet version bump, because nothing under `libs/` is published by this work. ·
 **Status:** Proposed — spikes not run
 
@@ -23,11 +24,13 @@ These are decisions, not research. Each changes what gets built.
 
 | # | Question | Default if unanswered |
 |---|---|---|
-| Q1 | Disk budget on the VPS for mirrors, and the per-repository size/ref quota | 2 GB per repository, 50k refs, total budget alerted at 20 GB |
+| ~~Q1~~ | ~~Disk budget and quotas~~ | **Decided (D7, D8):** numbers set from S2; mirrors on the 10 GB Hetzner volume |
+| ~~Q5~~ | ~~Anonymous clones~~ | **Decided (D6):** anonymous, stricter quotas |
+| Q6 | Confirm D8: mirrors on the dedicated 10 GB Hetzner volume (`/mnt/HC_Volume_105198417`), bind-mounted read-write into the sidecar and read-only into the app | Yes |
+| Q7 | Confirm D9: no dashboard package; a live virtual `HostMetrics` PO plus a new `Administrators` group in CodeCoverage | Yes |
 | Q2 | `Commit.ParentSha` is the **PR base tip** for PR commits (`ForgeEventsRecipient.cs:82`), so `CoverageDeltaVsParent` is measured against it. Defect or intended? | Leave as is; the graph draws true parents from the mirror regardless |
 | Q3 | Which of the PRD §4.5 "later" features to pull into this PR (hover path, search, first-parent view, sparkline, drop filter) | MVP only |
 | Q4 | Default view: all branches + tags, or default branch + its ancestry with a toggle? | All refs, like SourceTree's "All branches" |
-| Q5 | Clone public repositories that have no installation, anonymously? | Yes. No API budget is used, and they are already listed. |
 
 ## Sequencing
 
@@ -60,15 +63,31 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
 | S7 hostile repository | — | | |
 | S8 claim TTL vs long clone | — | | |
 | S9 per-row SVG scroll, palette contrast | — | | |
+| S10 host-disk accuracy from the container, live virtual PO | — | | |
 
 ## Milestones
 
-### M1 — `git` in the image, a volume, and a safe runner
+### M1 — The sidecar image, the two-host network, the volume, and a safe runner
 
-- `CodeCoverage/Dockerfile` runtime stage: `apt-get install --no-install-recommends git`, then
-  create `/data/git` owned by `app`, then `USER app`.
-- `docker-compose.yml`: a named volume mounted at `/data/git`. Mirror path configurable through
-  `CodeCoverage:CommitGraph:Root`, so tests use a temp directory.
+> Rewritten for D1, D3, D4, D5 and D8. `git` goes into a **new sidecar image**, not into the
+> CodeCoverage runtime image.
+
+- New project `apps/CodeCoverage/CodeCoverage.GitMirror`: a minimal ASP.NET Core app on
+  `mcr.microsoft.com/dotnet/aspnet:11.0`, with `git` installed (`--no-install-recommends`), running as
+  non-root. It hosts the internal API from PRD §4.1. It references **no** RavenDB or GitHub App
+  package, which a test checks on the assembly's references.
+- CI builds and publishes `ghcr.io/mintplayer/codecoverage-git:master` next to the app image. This
+  needs a nx project and an image workflow following `codecoverage`'s.
+- `docker-compose.yml`:
+  - Service `codecoverage-git`.
+  - Network `git-graph`, holding only `codecoverage` and `codecoverage-git`, with no published
+    port. A comment on the network and on both services says it must hold exactly these two hosts
+    (D4).
+  - The Hetzner volume bind-mounted read-write at `/data/git` in the sidecar, and read-only in the
+    app (D8).
+- Mirror path configurable (`GitMirror:Root`), so tests use a temp directory.
+- Hooks off: clone with an empty `--template=`, and set `core.hooksPath` to an empty read-only
+  directory (D5).
 - `GitRunner`: the only class that starts `git`.
   - Argument array, never a shell string.
   - Credentials only through `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n`.
@@ -158,6 +177,20 @@ for signed-in with the same body, including while the hidden repository's mirror
 **Done when:** S9 criteria hold on the prototype-turned-panel. Vitest covers the row-SVG path builder
 and the states. A manual check through the Playwright MCP on the local app covers this repository's
 graph in both themes.
+
+### M5b — Host metrics for administrators (PRD §9)
+
+- An `Administrators` group in CodeCoverage's `security.json`, granted `Read/HostMetrics`. Regenerate
+  the security posture.
+- `HostMetrics.json`: virtual, `"live": true`, object `hostmetrics/main`.
+- `HostMetricsActions.OnLoadAsync`: host disk from `DriveInfo("/")`, the mirror volume from its
+  read-only mount, container CPU and memory, and mirror totals from `RepositoryGraphState`.
+- A notifier `BackgroundService` running every 15 s, with a 5 s read cache.
+- A program-unit entry visible to Administrators only, plus a `RepositoryGraphState` query with a
+  size column.
+
+**Done when:** S10 passes. Tests show an anonymous user and a signed-in non-admin get the standard
+denial on load and on live subscribe.
 
 ### M6 — Tests (alongside each milestone, run once at the end)
 
