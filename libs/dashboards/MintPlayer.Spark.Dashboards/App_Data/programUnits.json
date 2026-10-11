@@ -1,0 +1,30 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "_comment": [
+    "The dashboards package's menu fragment: the database statistics, shown only to callers holding",
+    "Read/DatabaseStatistics, i.e. the group the application binds to dashboards:administrators. Ids are UUIDv5 of",
+    "'dashboards:programUnits.groups.dashboards' and 'dashboards:programUnits.databaseStatistics'.",
+    "An application removes it with { \"id\": \"…\", \"$remove\": true } in its own programUnits.json, and puts its own",
+    "dashboards in its own groups."
+  ],
+  "programUnitGroups": [
+    {
+      "id": "cfdced24-dcda-52e0-ab53-56d50876b220",
+      "name": "programUnits.groups.dashboards",
+      "icon": "bi-speedometer2",
+      "order": 94,
+      "programUnits": [
+        {
+          "id": "dcb89939-15e3-55e2-9231-2d6917dbf2ba",
+          "name": "programUnits.databaseStatistics",
+          "icon": "bi-database",
+          "type": "persistentObject",
+          "persistentObjectId": "81451b51-5162-5c37-af6e-8e682800cafd",
+          "alias": "database-statistics",
+          "objectId": "main",
+          "order": 1
+        }
+      ]
+    }
+  ]
+}

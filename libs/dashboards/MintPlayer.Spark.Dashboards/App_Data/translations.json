@@ -1,0 +1,113 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "programUnits": {
+    "groups": {
+      "dashboards": {
+        "en": "Dashboards",
+        "fr": "Tableaux de bord",
+        "nl": "Dashboards"
+      }
+    },
+    "databaseStatistics": {
+      "en": "Database",
+      "fr": "Base de données",
+      "nl": "Database"
+    }
+  },
+  "model": {
+    "DatabaseStatistics": {
+      "label": {
+        "en": "Database statistics",
+        "fr": "Statistiques de la base de données",
+        "nl": "Databasestatistieken"
+      },
+      "groups": {
+        "Database": {
+          "label": {
+            "en": "Database",
+            "fr": "Base de données",
+            "nl": "Database"
+          }
+        },
+        "Collections": {
+          "label": {
+            "en": "Collections",
+            "fr": "Collections",
+            "nl": "Collecties"
+          }
+        }
+      },
+      "attributes": {
+        "DatabaseSize": {
+          "label": {
+            "en": "Size on disk",
+            "fr": "Taille sur disque",
+            "nl": "Grootte op schijf"
+          }
+        },
+        "DatabaseSizeHistory": {
+          "label": {
+            "en": "Size, last 7 days",
+            "fr": "Taille, 7 derniers jours",
+            "nl": "Grootte, laatste 7 dagen"
+          }
+        },
+        "DocumentCount": {
+          "label": {
+            "en": "Documents",
+            "fr": "Documents",
+            "nl": "Documenten"
+          }
+        },
+        "DocumentCountHistory": {
+          "label": {
+            "en": "Documents, last 7 days",
+            "fr": "Documents, 7 derniers jours",
+            "nl": "Documenten, laatste 7 dagen"
+          }
+        },
+        "CollectionCount": {
+          "label": {
+            "en": "Collections",
+            "fr": "Collections",
+            "nl": "Collecties"
+          }
+        },
+        "Collections": {
+          "label": {
+            "en": "Collections",
+            "fr": "Collections",
+            "nl": "Collecties"
+          }
+        }
+      }
+    }
+  },
+  "dashboards": {
+    "collection": {
+      "en": "Collection",
+      "fr": "Collection",
+      "nl": "Collectie"
+    },
+    "documents": {
+      "en": "Documents",
+      "fr": "Documents",
+      "nl": "Documenten"
+    },
+    "size": {
+      "en": "Size",
+      "fr": "Taille",
+      "nl": "Grootte"
+    },
+    "updated": {
+      "en": "Updated",
+      "fr": "Mis à jour",
+      "nl": "Bijgewerkt"
+    },
+    "empty": {
+      "en": "None",
+      "fr": "Aucun",
+      "nl": "Geen"
+    }
+  }
+}
