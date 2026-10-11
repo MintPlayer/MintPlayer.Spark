@@ -5,8 +5,9 @@ bare mirror + git CLI, server-side lane layout) ·
 **Issue:** [#504](https://github.com/MintPlayer/MintPlayer.Spark/issues/504) ·
 **Branch:** `feat/504-commit-graph` · **Base:** `master` @ `b0395764` ·
 **Release:** server deploy, plus a new sidecar image `codecoverage-git` (D1), a two-host compose
-network (D4) and a named volume for the mirrors (D8). No npm or
-NuGet version bump, because nothing under `libs/` is published by this work. ·
+network (D4, D18) and a named volume for the mirrors (D8). **Packages:** a new NuGet
+`MintPlayer.Spark.Dashboards` at `11.0.0-preview.*`, and a **22.x minor** of `@mintplayer/ng-spark`
+for the new entry points (D11). Neither major moves. Check the version diff in review. ·
 **Status:** Proposed — spikes not run
 
 All code lands as **one pull request** in `MintPlayer.Spark`: image, compose, server, SPA, docs and
@@ -87,9 +88,12 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
   needs a nx project and an image workflow following `codecoverage`'s.
 - `docker-compose.yml`:
   - Service `codecoverage-git`.
-  - Network `git-graph`, holding only `codecoverage` and `codecoverage-git`, with no published
-    port. A comment on the network and on both services says it must hold exactly these two hosts
-    (D4).
+  - Network `git-graph` (`internal: true`), holding only `codecoverage` and `codecoverage-git`,
+    with no published port. A comment on the network and on both services says it must hold exactly
+    these two hosts (D4).
+  - Network `git-egress`, holding **only** `codecoverage-git`, for outbound clones (D18). Its comment
+    says nothing else may join it.
+  - Sidecar `mem_limit` (D22).
   - A named volume `codecoverage-git-data` at `/data/git`, mounted in the sidecar only (D8).
 - `DiskGuard` in the sidecar enforces the total mirror budget and the host free-space floor before
   every clone and fetch, and measures each repository directory's size after a fetch (D8).
