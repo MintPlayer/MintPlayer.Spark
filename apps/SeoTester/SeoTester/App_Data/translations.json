@@ -991,6 +991,118 @@
       "label": {
         "en": "Operator dashboard",
         "nl": "Beheerdersdashboard"
+      },
+      "groups": {
+        "Usage": {
+          "label": {
+            "en": "Usage",
+            "nl": "Gebruik"
+          }
+        },
+        "Audits": {
+          "label": {
+            "en": "Audits of the last 7 days",
+            "nl": "Audits van de laatste 7 dagen"
+          }
+        },
+        "Database": {
+          "label": {
+            "en": "Database",
+            "nl": "Database"
+          }
+        },
+        "Sites": {
+          "label": {
+            "en": "Websites",
+            "nl": "Websites"
+          }
+        }
+      },
+      "attributes": {
+        "Users": {
+          "label": {
+            "en": "Users",
+            "nl": "Gebruikers"
+          }
+        },
+        "Organizations": {
+          "label": {
+            "en": "Organizations",
+            "nl": "Organisaties"
+          }
+        },
+        "Sites": {
+          "label": {
+            "en": "Websites",
+            "nl": "Websites"
+          }
+        },
+        "VerifiedSites": {
+          "label": {
+            "en": "Verified websites",
+            "nl": "Geverifieerde websites"
+          }
+        },
+        "Audits": {
+          "label": {
+            "en": "Audits (all time)",
+            "nl": "Audits (totaal)"
+          }
+        },
+        "AuditsLastDay": {
+          "label": {
+            "en": "Audits, last 24 h",
+            "nl": "Audits, laatste 24 u"
+          }
+        },
+        "AuditsLastWeek": {
+          "label": {
+            "en": "Audits, last 7 days",
+            "nl": "Audits, laatste 7 dagen"
+          }
+        },
+        "Running": {
+          "label": {
+            "en": "Running now",
+            "nl": "Nu bezig"
+          }
+        },
+        "AuditsByStatus": {
+          "label": {
+            "en": "Audits of the last 7 days",
+            "nl": "Audits van de laatste 7 dagen"
+          }
+        },
+        "Refusals": {
+          "label": {
+            "en": "Refused starts, last 7 days",
+            "nl": "Geweigerde starts, laatste 7 dagen"
+          }
+        },
+        "DatabaseSize": {
+          "label": {
+            "en": "Size on disk",
+            "nl": "Grootte op schijf"
+          }
+        },
+        "DocumentCount": {
+          "label": {
+            "en": "Documents",
+            "nl": "Documenten"
+          }
+        },
+        "Collections": {
+          "label": {
+            "en": "Collections",
+            "nl": "Collecties"
+          }
+        },
+        "SiteList": {
+          "label": {
+            "en": "Every organization's websites, newest first",
+            "nl": "De websites van elke organisatie, nieuwste eerst"
+          }
+        }
       }
     }
   },
@@ -1234,10 +1346,6 @@
     "badgeShownOnce": {
       "en": "Paste this Markdown in a README or page. The badge shows the latest score and links to the shared report. It is shown only once; it stops working when you stop sharing or make a new link.",
       "nl": "Plak deze Markdown in een README of pagina. De badge toont de laatste score en linkt naar het gedeelde rapport. Hij wordt maar één keer getoond en werkt niet meer als je stopt met delen of een nieuwe link maakt."
-    },
-    "dashboardTitle": {
-      "en": "Operator dashboard",
-      "nl": "Beheerdersdashboard"
     }
   },
   "seoUi": {
@@ -1716,54 +1824,6 @@
       }
     },
     "dashboard": {
-      "unavailable": {
-        "en": "The figures could not be loaded.",
-        "nl": "De cijfers konden niet geladen worden."
-      },
-      "users": {
-        "en": "Users",
-        "nl": "Gebruikers"
-      },
-      "organizations": {
-        "en": "Organizations",
-        "nl": "Organisaties"
-      },
-      "sites": {
-        "en": "Websites",
-        "nl": "Websites"
-      },
-      "verifiedSites": {
-        "en": "Verified websites",
-        "nl": "Geverifieerde websites"
-      },
-      "audits": {
-        "en": "Audits (all time)",
-        "nl": "Audits (totaal)"
-      },
-      "auditsLastDay": {
-        "en": "Audits, last 24 h",
-        "nl": "Audits, laatste 24 u"
-      },
-      "auditsLastWeek": {
-        "en": "Audits, last 7 days",
-        "nl": "Audits, laatste 7 dagen"
-      },
-      "running": {
-        "en": "Running now",
-        "nl": "Nu bezig"
-      },
-      "auditsByStatus": {
-        "en": "Audits of the last 7 days",
-        "nl": "Audits van de laatste 7 dagen"
-      },
-      "refusals": {
-        "en": "Refused starts, last 7 days",
-        "nl": "Geweigerde starts, laatste 7 dagen"
-      },
-      "noRefusals": {
-        "en": "None",
-        "nl": "Geen"
-      },
       "kind": {
         "QuotaRefused": {
           "en": "Quota",
@@ -1778,21 +1838,9 @@
           "nl": "Uitgeschakeld"
         }
       },
-      "database": {
-        "en": "Database",
-        "nl": "Database"
-      },
-      "collection": {
-        "en": "Collection",
-        "nl": "Collectie"
-      },
-      "documents": {
-        "en": "Documents",
-        "nl": "Documenten"
-      },
-      "size": {
-        "en": "Size",
-        "nl": "Grootte"
+      "noRefusals": {
+        "en": "None",
+        "nl": "Geen"
       },
       "website": {
         "en": "Website",
@@ -1801,6 +1849,10 @@
       "organization": {
         "en": "Organization",
         "nl": "Organisatie"
+      },
+      "personal": {
+        "en": "personal",
+        "nl": "persoonlijk"
       },
       "verified": {
         "en": "Verified",
@@ -1818,13 +1870,17 @@
         "en": "Added",
         "nl": "Toegevoegd"
       },
-      "personal": {
-        "en": "personal",
-        "nl": "persoonlijk"
+      "status": {
+        "en": "Status",
+        "nl": "Status"
       },
-      "generated": {
-        "en": "Figures of",
-        "nl": "Cijfers van"
+      "count": {
+        "en": "Count",
+        "nl": "Aantal"
+      },
+      "reason": {
+        "en": "Reason",
+        "nl": "Reden"
       }
     }
   }

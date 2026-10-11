@@ -62,14 +62,18 @@ model JSON in `App_Data/Model`.
 | Audit | `/po/audit-run/{id}` | *Report*: live progress while it runs, then the score, category bars and every check (issues first; New/Fixed/Unchanged; why not measured; sample pages; how to fix with nginx/Apache/IIS/HTML snippets); the pages (7 days, then a note). *Details*: what the run was allowed |
 | Page | `/po/page-result/{id}` | Google desktop/phone previews, the shared-link card from the page's Open Graph tags (its image through `/seotester/og-image`, never loaded from the site by the browser, D51), the page's findings |
 | Shared report | `/shared/{Type}/{token}?id=…` | anonymous, read-only (a site or an audit) |
-| Operator dashboard | `/po/operator-dashboard/main` | Administrators: usage, refusals, database size per collection, every site, the abuse log |
+| Operator dashboard | `/po/operator-dashboard/main` | Administrators: usage, refusals, database size per collection, every site, the abuse log; live, refreshed every 15 s |
+| Database statistics | `/po/database-statistics/main` | Administrators: the dashboards package's own page (size, documents, collections, 7-day trends) |
 
 *Run audit* opens the run's page and follows it live. A refusal (cool-down, quota, gate) says why and when to try again.
 *Download PDF* downloads a printed report at once, otherwise prints it and notifies. *Badge* (Owners and Admins) makes a
 share link and shows the Markdown of a badge (`/seotester/badge.svg?site=…&token=…`, the latest score and grade) that
 links to it; *Stop sharing* ends both. The check texts come from `GET /seotester/catalogue?culture=en|nl` (public: the
-share page needs them). The figures of the operator dashboard come from `GET /seotester/admin/dashboard`
-(`Read/OperatorDashboard`, Administrators).
+share page needs them). The operator dashboard is a [Spark dashboard](../guide-dashboards.md) (#504): a live virtual
+page whose figures are its own attributes (`Admin/OperatorDashboard.cs`: `OperatorDashboardFigures` plus the
+package's RavenDB statistics), drawn as tiles by `@mintplayer/ng-spark/dashboards` and pushed over `/spark/live`.
+`Read/OperatorDashboard` is granted to the `dashboards:administrators` slot, which `security.json` binds to
+Administrators. There is no separate dashboard endpoint.
 
 **Administrators** also get the operator dashboard (SEO administration → Dashboard), the check catalogue editor (SEO → Check catalogue: edit texts, weights, severities, enable
 or disable a check, add one, *Reset to shipped*) and the abuse log (SEO administration → Audit log). The catalogue is
@@ -97,7 +101,8 @@ register `https://localhost:5013/signin-…` as an extra callback on that provid
 
 **Becoming an administrator** (the Settings screen): add `"Administrators"` to the `Roles` list of your `SparkUsers/…`
 document (RavenDB Studio), then sign out and in again. `security.json` binds the settings package's slot
-`settings:administrators` to that group; every other user gets a 404 on the settings.
+`settings:administrators` and the dashboards package's slot `dashboards:administrators` to that group; every other
+user gets a 404 on the settings and the dashboards.
 
 ## Configuration and credentials the owner registers
 

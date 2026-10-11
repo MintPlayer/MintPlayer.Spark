@@ -4,6 +4,7 @@
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+dashboards | MintPlayer.Spark.Dashboards | 4684f577b028
 notifications | MintPlayer.Spark.Notifications | 0da69183be2b
 organizations | MintPlayer.Spark.Organizations | 3f770bc98628
 settings | MintPlayer.Spark.Settings | 43f5e2626927
@@ -17,8 +18,9 @@ settings | MintPlayer.Spark.Settings | 43f5e2626927
 ## Rights
 Administrators | grant | EditNewDelete/CheckDefinition | checks-edit | app
 Administrators | grant | QueryRead/AuditLogEntry | audit-log | app
-Administrators | grant | Read/OperatorDashboard | operator-dashboard | app
 Administrators | grant | ResetCheckDefinition/CheckDefinition | checks-reset | app
+Administrators (dashboards:administrators) | grant | Read/DatabaseStatistics | dashboards:administrators | dashboards
+Administrators (dashboards:administrators) | grant | Read/OperatorDashboard | operator-dashboard | app
 Administrators (settings:administrators) | grant | QueryReadEdit/Setting | settings:administrators | settings
 Signed-in users | grant | CancelAudit/AuditRun | runs-cancel | app
 Signed-in users | grant | ExportReport/AuditRun | runs-export | app

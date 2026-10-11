@@ -10,6 +10,7 @@
   "persistentObject": {
     "id": "81451b51-5162-5c37-af6e-8e682800cafd",
     "name": "DatabaseStatistics",
+    "alias": "database-statistics",
     "live": true,
     "tabs": [],
     "groups": [

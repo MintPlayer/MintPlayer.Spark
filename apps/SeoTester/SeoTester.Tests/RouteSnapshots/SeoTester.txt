@@ -1,7 +1,6 @@
 GET /bot
 GET /health
 GET /privacy
-GET /seotester/admin/dashboard
 GET /seotester/badge.svg
 GET /seotester/catalogue
 GET /seotester/og-image

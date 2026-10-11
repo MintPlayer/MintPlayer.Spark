@@ -37,7 +37,7 @@ interface DashboardSection {
  * The dashboard tile layout (D12): replaces a dashboard's attribute cards on the routed detail page
  * (`SPARK_DETAIL_LAYOUTS`, registered by `provideSparkDashboards()`). Each group of the model is a section, each
  * attribute a tile: its label above its detail renderer (`spark-stat`, `spark-meter`, `spark-trend`,
- * `spark-dashboard-table`, …) or its plain value. `columnSpan` 2 takes two columns, 3 and more (and a table) the
+ * `spark-dashboard-table`, …) or its plain value. `columnSpan` 2 takes two columns, 3 and more (and a table without one) the
  * whole row. An attribute the caller may not read is not on the object and has no tile. The page follows the object
  * over `/spark/live` like any live type, so the tiles change in place.
  */
@@ -124,7 +124,9 @@ export class SparkDashboardComponent {
     const value = rendererValue(item.attributes.find(a => a.name === attribute.name));
     const registration = attribute.renderer ? this.renderers.find(r => r.name === attribute.renderer) : undefined;
     const component = registration?.detailComponent ?? null;
-    const span = attribute.renderer === 'spark-dashboard-table' || (attribute.columnSpan ?? 1) >= 3 ? 'row' : attribute.columnSpan === 2 ? 2 : 1;
+    // A table without a columnSpan takes the row; a columnSpan of 3 or more is the row, 2 is two columns.
+    const columnSpan = attribute.columnSpan ?? (attribute.renderer === 'spark-dashboard-table' ? 3 : 1);
+    const span = columnSpan >= 3 ? 'row' : columnSpan === 2 ? 2 : 1;
     return {
       attribute,
       span,
