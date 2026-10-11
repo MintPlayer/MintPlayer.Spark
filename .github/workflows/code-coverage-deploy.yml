@@ -231,6 +231,29 @@ jobs:
 
           docker compose --env-file .env pull
           docker compose --env-file .env down --remove-orphans
+          # RavenDB first, then the app certificates (re)registered, then the rest: the apps never start against a server
+          # that does not know their certificate. The first deploy after the TLS migration's preparation is the switch
+          # itself (runbook §4.5: an unsecured server refuses registrations, so they can only happen here); on every other
+          # deploy the PUT is idempotent (201 for a certificate already registered, measured on 7.1.10) and costs ~2 s.
+          docker compose --env-file .env up -d --remove-orphans coverage-raven
+          for i in $(seq 1 36); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose --env-file .env ps -q coverage-raven)")" = healthy ] && break
+            sleep 5
+          done
+          [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose --env-file .env ps -q coverage-raven)")" = healthy ] || { echo "::error::coverage-raven did not become healthy within 180s"; exit 1; }
+          register_app_cert() {   # name, database, certificate file; as curl's own user, which owns operator.key
+            b64=$(openssl x509 -in "$3" -outform der | base64 -w0)
+            docker run --rm --network code-coverage_coverage-db \
+              -v "$PWD/raven-operator/operator.crt:/op.crt:ro" -v "$PWD/raven-operator/operator.key:/op.key:ro" -v "$PWD/raven-certs/ca.crt:/ca.crt:ro" \
+              curlimages/curl:8.11.1 -sS -f --retry 10 --retry-delay 2 --retry-connrefused -o /dev/null \
+              --cert /op.crt --key /op.key --cacert /ca.crt -X PUT "https://coverage-raven:8080/admin/certificates" \
+              -H 'Content-Type: application/json' \
+              --data "{\"Name\":\"$1\",\"Certificate\":\"$b64\",\"SecurityClearance\":\"ValidUser\",\"Permissions\":{\"$2\":\"Admin\"}}"
+          }
+          register_app_cert codecoverage Coverage raven-certs/codecoverage.crt
+          if [ -s /var/www/seotester/raven-certs/seotester.crt ]; then
+            register_app_cert seotester SeoTester /var/www/seotester/raven-certs/seotester.crt
+          fi
           docker compose --env-file .env up -d --remove-orphans
 
           docker image prune -f

@@ -92,8 +92,12 @@ serves either plain HTTP or TLS with client certificates, switched only by a res
 a second node to hand over to is not available on the Community licence. Then one ordinary deploy restart when the PR
 merges (4.8). SeoTester has not been deployed yet, so it has no downtime; it is deployed after this (deploy.md §3.0).
 
-Done **before merging the PR**, by hand, with the PR's compose file, so that the deploy after the merge finds
-everything in place. Run as root on the VPS, in `bash`.
+4.1-4.4 are done **before merging the PR**, by hand, as root on the VPS, in `bash`. ⚠️ **The switch itself (4.5) is
+the merge's deploy**, not a hand step: the running image (`codecoverage:master`) predates `SparkRavenDbSecurity` and
+cannot present a client certificate, so the app can only switch to TLS with the image the merge builds (found
+2026-10-11 just before the window, after 4.1-4.4 had run: `CertificateKeyFile` is in no file of master's `libs/`).
+The CodeCoverage deploy therefore starts `coverage-raven` alone, registers the app certificates (idempotent), then
+starts the rest; on the merge that is exactly the rehearsed window.
 
 ### 4.1 Hot backup (no downtime)
 
@@ -187,11 +191,18 @@ done
 curl -sf -o docker-compose.next.yml \
   https://raw.githubusercontent.com/MintPlayer/MintPlayer.Spark/feat/268-seotester/apps/CodeCoverage/docker-compose.yml
 docker compose -f docker-compose.next.yml --env-file .env config -q   # fails here, not in the window
+cp docker-compose.yml docker-compose.yml.pre-tls   # the rollback point (4.7): the deploy overwrites docker-compose.yml
 ```
 
-### 4.5 The window: one block, about 30 seconds
+### 4.5 The window: the merge's deploy, about 30 seconds
 
-Paste as one block (or run it as one script): nothing in it waits for a person.
+Merge the PR. `code-coverage-deploy.yml` builds the image with `SparkRavenDbSecurity`, finds 4.3's files and variables
+(its pre-checks), installs the renewal timer (§6), replaces `docker-compose.yml` with the secured one, and runs the
+switch: `down`, `coverage-raven` alone until healthy, both app certificates registered with the operator, `up` of the
+rest, `/health/ready`. Nothing to type. Remove the staged copy afterwards: `rm -f docker-compose.next.yml`.
+
+The same switch by hand, **only once the running image already supports client certificates** (e.g. a re-run after a
+rollback, when the secured image is deployed): paste as one block, nothing in it waits for a person.
 
 ```bash
 cd /var/www/code-coverage
@@ -237,8 +248,7 @@ docker run --rm --network code-coverage_coverage-db --user 0 \
 ```
 
 Then open https://coverage.mintplayer.com, sign in, open a repository. Check the renewal sees all four certificates
-with `apps/CodeCoverage/ops/raven-cert-renew.sh --status` from a copy (the deploy installs it as `raven-cert-renew` at
-4.8).
+with `raven-cert-renew --status` (installed by the merge's deploy, 4.5).
 
 ### 4.7 Rollback (from 4.5 on; about 30 seconds)
 
@@ -257,10 +267,11 @@ itself is damaged (not expected): restore the `.ravendbdump` of 4.1 (README *Bac
 any more (R10 amended: it was the longest part of the old window, and TLS never writes the data). Do not merge the PR
 until 4.6 passed: after the merge, the deploy would bring back the secured compose file.
 
-### 4.8 Merge
+### 4.8 After the merge
 
-The deploy finds the files and variables (its pre-checks), creates nothing new, and does its ordinary `down`/`up`
-(one more short restart). Then SeoTester's first deploy (deploy.md §3.0).
+SeoTester's first deploy (deploy.md §3.0) runs from the same merge. It refuses until `coverage-raven` is on
+`seo-raven`, i.e. until CodeCoverage's deploy has finished; if it lost that race, re-run `seotester-deploy` from the
+Actions tab. Its certificate is already registered by CodeCoverage's deploy.
 
 ## 5. Day to day
 
