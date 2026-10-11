@@ -12,6 +12,7 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Controllers;
+using MintPlayer.Spark.Dashboards;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
@@ -236,6 +237,19 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddCronJobs();
     // The commit-graph avatar cache (#504, D28) writes @expires by hand, so the database must reap it.
     spark.AddExpiration();
+
+    // Administrators (#504, D11): the forge accounts listed in Coverage:Administrators, by their stable user id
+    // ({provider}:{id}), never by login and never by a role a user could be given in this app.
+    spark.AddGroupMembershipProvider<CoverageAdministrators>();
+    // The host metrics dashboard (#504, M5b): host disk, memory and CPU, the RavenDB statistics and the commit-graph
+    // mirrors, pushed live; security.json binds dashboards:administrators to Administrators.
+    spark.AddDashboards(dashboards => dashboards
+        .Add(CodeCoverage.CommitGraph.HostMetricsActions.TypeName, d => d
+            .Provider<CodeCoverage.CommitGraph.CommitGraphFigures>()
+            .HostMetrics()
+            .DatabaseStatistics()
+            .History("HostDiskUsedPercent")
+            .ObjectId(CodeCoverage.CommitGraph.HostMetricsActions.ObjectId)));
 
     // ⚠ The four calls above are source-generated over THIS assembly only, so they do not see
     // anything in CodeCoverage.GithubIntegration. Its own entry point has to be called explicitly,

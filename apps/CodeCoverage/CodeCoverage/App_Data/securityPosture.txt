@@ -4,6 +4,7 @@
 
 ## Layers: libraries that ship rights (alias | assembly | hash)
 authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+dashboards | MintPlayer.Spark.Dashboards | 4684f577b028
 
 ## Reachable without signing in (expanded)
 Browse/Coverage
@@ -32,6 +33,9 @@ Anonymous visitors | deny | QueryRead/Repository/PreviousFullNames | c0e5a9e1-00
 Anonymous visitors | grant | Read/Home | c0e5a9e1-0000-4000-8000-000000000041 | app
 
 ## Rights
+Administrators | grant | QueryRead/RepositoryGraphState | c0e5a9e1-0000-4000-8000-000000000092 | app
+Administrators (dashboards:administrators) | grant | Read/DatabaseStatistics | dashboards:administrators | dashboards
+Administrators (dashboards:administrators) | grant | Read/HostMetrics | c0e5a9e1-0000-4000-8000-000000000091 | app
 Signed-in users | grant | Browse/Coverage | c0e5a9e1-0000-4000-8000-000000000022 | app
 Signed-in users | grant | DeleteData/Repository | c0e5a9e1-0000-4000-8000-000000000061 | app
 Signed-in users | grant | Edit/Account | c0e5a9e1-0000-4000-8000-00000000006b | app

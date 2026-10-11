@@ -146,6 +146,7 @@ Keys the CodeCoverage assemblies read themselves. Environment-variable form repl
 |---|---|---|---|---|
 | `Coverage:BaseUrl` | `https://localhost:5200` (`appsettings.json`; same fallback in `Program.cs`) | Yes in production | `Program.cs` (OIDC audience, passkey server domain), `BrowseController`, `UploadsController`, feedback recipients | The public base URL, **without a trailing slash**. ⚠️ Changing it after users enrolled passkeys makes every passkey unusable, and every workflow's OIDC audience must change with it. |
 | `Coverage:BadgeSigningKey` | unset (`Badges/BadgePrSignature.cs`) | No | PR-comment badges | See `COVERAGE_BADGE_SIGNING_KEY`. |
+| `Coverage:Administrators` | `[ "github:9629574" ]` (`appsettings.json`, the owner's GitHub user id) | No | `Services/CoverageAdministrators.cs` | Who is in the `Administrators` group: `{provider}:{forge user id}`, never a login. See "Administrators and the host metrics dashboard" below. Not mapped in compose; override with `Coverage__Administrators__0`, `__1`, …. |
 | `Coverage:Retention:ReportAttachmentDays` | `7` (`appsettings.json`; `DefaultRetentionDays = 7` in `Ingestion/ReapReportAttachmentsCronJob.cs`) | No | the reaper cron job | Days an uploaded raw report attachment is kept after parsing. Not mapped in compose. |
 | `GitHub:WebhookSecret` | `""` (`appsettings.json`) | Yes | `Program.cs` → Spark GitHub webhooks | Webhook signature secret. |
 | `GitHub:SmeeChannelUrl` | `""` (`appsettings.json`) | Development only | `Program.cs` | A smee.io channel relayed into the local webhook processor. |
@@ -156,6 +157,34 @@ Keys the CodeCoverage assemblies read themselves. Environment-variable form repl
 | `GitHub:{Env}:AppSlug` | `coveragedevelopment` for `Development` (`appsettings.json`); unset otherwise | No | `Services/MyAccountsService.cs` | Install-link slug. |
 | `GitHub:Development:AppId` *(outside Development)* | unset | No | `Program.cs` → `DevelopmentAppId` | Forward this App's webhooks to connected developer clients instead of processing them. ⚠️ Never set it on a developer machine: the processor then skips every recipient. |
 | `AllowedHosts` | `*` (`appsettings.json`) | — | ASP.NET Core | Left open; Traefik's `Host` rule is the filter. Also why `Spark:ForwardedHeaders:ForwardHost` must stay off (§5). |
+
+### Administrators and the host metrics dashboard
+
+`security.json` has a third group, **Administrators** (#504, plan M5b). Its members are the forge accounts listed in
+`Coverage:Administrators`, matched by **stable user id** against the `ProviderKey` of the user's external login
+(GitHub's numeric `id`; `gh api users/<login> --jq .id`). A login name is never accepted, and a role on the user
+document grants nothing here: membership changes only with configuration. `RegistrationInventoryTests` fails if the
+membership provider stops being registered.
+
+Administrators see an *Administration* menu group (nobody else sees it, because both entries need an Administrators
+right):
+
+- **Host metrics** (`/po/host-metrics/main`), a [dashboards package](../guide-dashboards.md) dashboard, pushed live
+  every 15 s:
+  - *Host*: the host's root disk (meter, free, used % and its 7-day history), the app container's memory and CPU.
+    `DriveInfo("/")` inside `coverage-app` measures the host's disk (S10).
+  - *Commit-graph mirrors*: mirror count and total size from the `RepositoryGraphState` documents (as of each
+    repository's last fetch), evictions and refused clones from `CommitGraphMetrics/mirrors`, and the mirror volume
+    (used of total, free) from the `coverage-git` sidecar's `GET /stats`. If the sidecar is down or slow (10 s), only
+    the two volume tiles show a dash; the rest of the page loads.
+  - *Database*: the RavenDB size and document count, read through the app's own client certificate (D24).
+- **Mirrors** (`/query/mirrors`): every `RepositoryGraphState`, largest first, with its size, commit count and last
+  fetch. Private repositories are listed too, which is why only Administrators hold `QueryRead/RepositoryGraphState`.
+
+The package also adds *Dashboards → Database* (the RavenDB collections) for the same group. Anyone else, anonymous
+or signed in, gets Spark's answer for a missing object on all three, on the load and on a live subscription.
+`Read/HostMetrics` is granted to the package's slot `dashboards:administrators`, which `security.json` binds to
+Administrators; the posture baseline (`securityPosture.txt`) lists all three rights.
 
 ## 5. Spark framework keys
 

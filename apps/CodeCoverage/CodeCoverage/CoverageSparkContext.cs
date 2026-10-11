@@ -30,4 +30,7 @@ public partial class CoverageSparkContext : SparkContext
     /// wire. Adding Hash to the model would undo the second one silently.
     /// </remarks>
     public IRavenQueryable<ApiToken> ApiTokens => Session.Query<ApiToken>();
+
+    // The commit-graph mirrors (#504, M5b): the administrators' list, with each mirror's size.
+    public IRavenQueryable<RepositoryGraphState> RepositoryGraphStates => Session.Query<RepositoryGraphState>();
 }

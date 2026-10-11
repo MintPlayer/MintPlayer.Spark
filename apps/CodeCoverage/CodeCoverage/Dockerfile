@@ -35,6 +35,7 @@ COPY ["libs/attributes/MintPlayer.Spark.Attributes/MintPlayer.Spark.Attributes.c
 COPY ["libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj", "libs/authorization/MintPlayer.Spark.Authorization/"]
 COPY ["libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj", "libs/controllers/MintPlayer.Spark.Controllers/"]
 COPY ["libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj", "libs/cron/MintPlayer.Spark.Cron/"]
+COPY ["libs/dashboards/MintPlayer.Spark.Dashboards/MintPlayer.Spark.Dashboards.csproj", "libs/dashboards/MintPlayer.Spark.Dashboards/"]
 COPY ["libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj", "libs/messaging/MintPlayer.Spark.Messaging/"]
 COPY ["libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj", "libs/messaging/MintPlayer.Spark.Messaging.Abstractions/"]
 COPY ["libs/mail/MintPlayer.Spark.MailManager/MintPlayer.Spark.MailManager.csproj", "libs/mail/MintPlayer.Spark.MailManager/"]
