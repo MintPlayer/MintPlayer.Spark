@@ -41,7 +41,7 @@ internal sealed partial class GitMirrorStatsEndpoint : IGetEndpoint
 }
 
 /// <summary><c>POST /repos/{provider}/{repoId}/fetch</c>: clone or fetch, joining one in flight (D19).</summary>
-internal sealed partial class GitMirrorFetchEndpoint : IPostEndpoint
+internal sealed partial class GitMirrorFetchEndpoint : IPostEndpoint<FetchRequestWire>
 {
     public static string Path => "/repos/{provider}/{repoId}/fetch";
 
@@ -53,12 +53,18 @@ internal sealed partial class GitMirrorFetchEndpoint : IPostEndpoint
     [Inject] private readonly MirrorService mirrors;
     [Inject] private readonly IOptions<GitMirrorOptions> options;
 
-    public async Task<IResult> HandleAsync(HttpContext httpContext)
+    // The body is read under MaxBodyBytes; a refusal (too large, malformed, JSON null) is a bare 400.
+    protected override async ValueTask<FetchRequestWire?> BindRequestAsync(HttpContext context)
+        => await ReadBodyAsync(context.Request.Body, context.Request.ContentLength, context.RequestAborted);
+
+    protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
+        => new(Results.BadRequest());
+
+    public override async Task<IResult> HandleAsync(FetchRequestWire request, CancellationToken cancellationToken)
     {
         if (RepoKey.TryCreate(Provider, RepoId) is not { } key)
             return Results.BadRequest();
-        var request = await ReadBodyAsync(httpContext);
-        if (request is null || CloneUrl(request.CloneUrl, options.Value.AllowInsecureHttp) is not { } url)
+        if (CloneUrl(request.CloneUrl, options.Value.AllowInsecureHttp) is not { } url)
             return Results.BadRequest();
         GitCredential? credential = null;
         if (request.Credential is { } wire)
@@ -90,14 +96,14 @@ internal sealed partial class GitMirrorFetchEndpoint : IPostEndpoint
     private static bool IsCredentialPart(string? value)
         => !string.IsNullOrEmpty(value) && value.Length <= 4096 && !value.Any(char.IsControl);
 
-    private static async Task<FetchRequestWire?> ReadBodyAsync(HttpContext context)
+    private static async Task<FetchRequestWire?> ReadBodyAsync(Stream body, long? contentLength, CancellationToken cancellationToken)
     {
-        if (context.Request.ContentLength > MaxBodyBytes)
+        if (contentLength > MaxBodyBytes)
             return null;
         using var buffer = new MemoryStream();
         var chunk = new byte[16 * 1024];
         int read;
-        while ((read = await context.Request.Body.ReadAsync(chunk, context.RequestAborted)) > 0)
+        while ((read = await body.ReadAsync(chunk, cancellationToken)) > 0)
         {
             if (buffer.Length + read > MaxBodyBytes)
                 return null;
@@ -141,11 +147,21 @@ internal sealed partial class GitMirrorGraphEndpoint : IGetEndpoint
     [RouteParam] public string Provider { get; set; } = "";
     [RouteParam] public string RepoId { get; set; } = "";
 
+    // Bound as strings so that every refusal is the bare 400 below, never the binder's problem details.
+    [QueryParam] public string? From { get; set; }
+    [QueryParam] public string? Count { get; set; }
+    [QueryParam("ref")] public string? Ref { get; set; }
+    [QueryParam] public string? At { get; set; }
+    [QueryParam] public string? Snapshot { get; set; }
+    [QueryParam] public string? FirstParent { get; set; }
+    [QueryParam] public string? Grep { get; set; }
+    [QueryParam] public string? Author { get; set; }
+
     [Inject] private readonly GraphService graph;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        if (RepoKey.TryCreate(Provider, RepoId) is not { } key || Parse(httpContext.Request.Query) is not { } query)
+        if (RepoKey.TryCreate(Provider, RepoId) is not { } key || Parse() is not { } query)
             return Results.BadRequest();
         return await graph.GetPageAsync(key, query, httpContext.RequestAborted) switch
         {
@@ -158,43 +174,42 @@ internal sealed partial class GitMirrorGraphEndpoint : IGetEndpoint
     }
 
     /// <summary>The query, or null when any value is out of range.</summary>
-    internal static GraphQuery? Parse(IQueryCollection q)
+    private GraphQuery? Parse()
     {
         var from = 0;
-        if (q.TryGetValue("from", out var fromValue) && (!int.TryParse(fromValue, out from) || from < 0))
+        if (From is not null && (!int.TryParse(From, out from) || from < 0))
             return null;
         var count = 100;
-        if (q.TryGetValue("count", out var countValue) && (!int.TryParse(countValue, out count) || count < 1 || count > GraphService.MaxCount))
+        if (Count is not null && (!int.TryParse(Count, out count) || count < 1 || count > GraphService.MaxCount))
             return null;
 
-        string? reference = Single(q, "ref");
+        string? reference = Value(Ref);
         if (reference is not null && !GraphFilter.IsValidRef(reference))
             return null;
 
-        string? at = Single(q, "at")?.ToLowerInvariant();
+        string? at = Value(At)?.ToLowerInvariant();
         if (at is not null && !GraphService.IsShaPrefix(at))
             return null;
 
-        string? snapshot = Single(q, "snapshot");
+        string? snapshot = Value(Snapshot);
         if (snapshot is not null && (snapshot.Length > 64 || !snapshot.All(char.IsAsciiHexDigitLower)))
             return null;
 
         var firstParent = false;
-        if (Single(q, "firstParent") is { } fp && !bool.TryParse(fp, out firstParent))
+        if (Value(FirstParent) is { } fp && !bool.TryParse(fp, out firstParent))
             return null;
 
-        if (!Search(q, "grep", out var grep) || !Search(q, "author", out var author))
+        if (!Search(Grep, out var grep) || !Search(Author, out var author))
             return null;
 
         return new GraphQuery(from, count, new GraphFilter(reference, firstParent, grep, author), at, snapshot);
     }
 
-    private static string? Single(IQueryCollection q, string name)
-        => q.TryGetValue(name, out var values) && values.Count == 1 && !string.IsNullOrEmpty(values[0]) ? values[0] : null;
+    private static string? Value(string? bound) => string.IsNullOrEmpty(bound) ? null : bound;
 
-    private static bool Search(IQueryCollection q, string name, out string? value)
+    private static bool Search(string? bound, out string? value)
     {
-        value = Single(q, name);
+        value = Value(bound);
         return value is null || (value.Length <= GraphFilter.MaxSearchLength && !value.Any(char.IsControl));
     }
 }
