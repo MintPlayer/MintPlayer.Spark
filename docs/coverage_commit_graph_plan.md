@@ -70,7 +70,7 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
 | S8 claim TTL vs long clone | — | | |
 | S9 per-row SVG scroll, palette contrast | — | | |
 | S10 host-disk accuracy from the container, live virtual PO | — | | |
-| S11 dashboard history on RavenDB time series | — | | |
+| S11 dashboard history on RavenDB time series | ✅ **with D29** (single-valued series only; 6 values per entry silently disabled rollups and retention). Retention and rollup ran; 7-day read 2.2 ms, 30-day/200 buckets 3–4.5 ms warm; 0 duplicates under the lease; 0 revisions. Developer licence only. | 2026-10-11 | `spikes/timeseries/*.log` |
 | S12 avatars without email leakage | ✅ **with D28.** No-reply ids parsed locally (0 calls); one batched GraphQL call ≈ 1 point per 60 authors; needs the installation token. Bot logins map to the wrong account, so the numeric id is used; GitLab returns Gravatar URLs, treated as negative. The no-email test is a sketch until M3/M4. | 2026-10-11 | `spikes/avatars/*.log` |
 
 ## Milestones
