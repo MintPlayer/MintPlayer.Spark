@@ -139,6 +139,27 @@ export function provideSparkQueryRowActions(...actions: SparkQueryRowAction[]): 
   return actions.map(action => ({ provide: SPARK_QUERY_ROW_ACTIONS, useValue: action, multi: true }));
 }
 
+/**
+ * A layout that draws a detail page's attributes in place of the tabs and cards (#504), for objects it
+ * `matches`: Dashboards' tile layout for objects carrying `metadata.dashboard`. It must declare
+ * `context = input.required<SparkDetailContext>()`. The action bar, sub-queries, the extra content
+ * template and the detail panels stay; the first matching layout wins.
+ */
+export interface SparkDetailLayout {
+  id: string;
+  component: Type<unknown>;
+  /** Whether this layout draws `item`. Called on every change of the object, so keep it cheap. */
+  matches(item: PersistentObject, entityType: EntityType): boolean;
+}
+
+/** Multi-provider: layouts that replace the attribute cards of the routed detail page for the objects they match. */
+export const SPARK_DETAIL_LAYOUTS = new InjectionToken<SparkDetailLayout[]>('SparkDetailLayouts');
+
+/** Registers detail layouts (multi — every call adds). */
+export function provideSparkDetailLayouts(...layouts: SparkDetailLayout[]): Provider[] {
+  return layouts.map(layout => ({ provide: SPARK_DETAIL_LAYOUTS, useValue: layout, multi: true }));
+}
+
 /** Multi-provider: panels under the attributes of the routed detail page. */
 export const SPARK_DETAIL_PANELS = new InjectionToken<SparkDetailPanel[]>('SparkDetailPanels');
 

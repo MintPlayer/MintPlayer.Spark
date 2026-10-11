@@ -4,6 +4,7 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Dashboards;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
@@ -13,6 +14,7 @@ using MintPlayer.Spark.Organizations;
 using MintPlayer.Spark.Settings;
 using MintPlayer.Spark.Sharing;
 using SeoTester;
+using SeoTester.Admin;
 using SeoTester.Audits;
 using SeoTester.Catalogue;
 using SeoTester.Crawler;
@@ -84,6 +86,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // (security.json binds settings:administrators to Administrators); the per-user run limits are quotas.
     spark.AddSettings(typeof(SeoSettings));
     spark.AddQuotas(typeof(SeoQuotas));
+
+    // F16, D28 on the dashboards package (#504, D13): the operator dashboard's figures and the RavenDB statistics,
+    // pushed live; security.json binds dashboards:administrators to Administrators.
+    spark.AddDashboards(dashboards => dashboards
+        .Add(OperatorDashboardActions.TypeName, d => d.Provider<OperatorDashboardFigures>().DatabaseStatistics()));
 
     // X10: in-app, mail and Web Push (Spark:Notifications:WebPush, VAPID keys from secrets; without them push is off).
     spark.AddNotifications();

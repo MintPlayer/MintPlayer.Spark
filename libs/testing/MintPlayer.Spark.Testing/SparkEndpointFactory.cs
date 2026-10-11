@@ -236,9 +236,12 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// </remarks>
     private void AssertSecurityFileWasLoaded(SparkTestSecurity security)
     {
-        var expected = JsonSerializer.Deserialize<Abstractions.Authorization.SecurityConfiguration>(
-            security.Build(),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        // Counted on the file as written, not through the typed model: a right's groupId may be a token or a
+        // slot (`dashboards:administrators`), which the typed Right's Guid cannot hold.
+        var expected = System.Text.Json.Nodes.JsonNode.Parse(
+            security.Build(), new System.Text.Json.Nodes.JsonNodeOptions { PropertyNameCaseInsensitive = true })!.AsObject();
+        var expectedRights = expected["rights"] is System.Text.Json.Nodes.JsonArray rights ? rights.Count : 0;
+        var expectedGroups = expected["groups"] is System.Text.Json.Nodes.JsonObject groups ? groups.Count : 0;
 
         var loaded = _host.Services
             .GetRequiredService<Abstractions.Authorization.ISecurityConfigurationLoader>()
@@ -246,11 +249,11 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
 
         // The application's own rights: the libraries' grants compose underneath (composition D4).
         var loadedOwn = loaded.Rights.Count(r => r.Layer is null);
-        if (loadedOwn != expected.Rights.Count || loaded.Groups.Count != expected.Groups.Count)
+        if (loadedOwn != expectedRights || loaded.Groups.Count != expectedGroups)
         {
             throw new InvalidOperationException(
                 "SparkEndpointFactory wrote a security.json the host did not load "
-                + $"(expected {expected.Rights.Count} rights in {expected.Groups.Count} groups, "
+                + $"(expected {expectedRights} rights in {expectedGroups} groups, "
                 + $"loaded {loadedOwn} in {loaded.Groups.Count}). Every authorization "
                 + "assertion in this fixture would be meaningless.");
         }

@@ -77,21 +77,25 @@ public class ReportSurfaceTests(SeoTesterHostFixture host)
     {
         var site = await SeedSiteAsync(host, Acme);
 
-        var page = await LoadAsync(host, OperatorDashboardTypeId, "main", Ann, Administrators);
-        page.Status.Should().Be(HttpStatusCode.OK, page.Raw);
-        (await LoadAsync(host, OperatorDashboardTypeId, "main", Ann)).Status.Should().Be(HttpStatusCode.NotFound);
-
-        var (adminStatus, admin) = await GetAsync("/seotester/admin/dashboard", Ann, Administrators);
-        adminStatus.Should().Be(HttpStatusCode.OK);
-        admin.GetProperty("counts").GetProperty("sites").GetInt32().Should().BeGreaterThan(0);
-        admin.GetProperty("database").GetProperty("collections").EnumerateArray().Should().Contain(c => c.GetProperty("name").GetString() == "Sites");
-        admin.GetProperty("database").GetProperty("sizeOnDiskBytes").GetInt64().Should().BeGreaterThan(0);
-        admin.GetProperty("sites").EnumerateArray().Should().Contain(s => s.GetProperty("origin").GetString() == site.Origin && s.GetProperty("organization").GetString() == "Acme",
+        // A package dashboard (#504, D13): the figures are the page's own attributes, read under Read/OperatorDashboard.
+        var (status, page, raw) = await LoadAsync(host, OperatorDashboardTypeId, "main", Ann, Administrators);
+        status.Should().Be(HttpStatusCode.OK, raw);
+        Value(page, "Sites").GetInt64().Should().BeGreaterThan(0);
+        Value(page, "Users").ValueKind.Should().Be(JsonValueKind.Number);
+        Value(page, "Running").ValueKind.Should().Be(JsonValueKind.Number);
+        Value(page, "AuditsByStatus").ValueKind.Should().Be(JsonValueKind.Object);
+        Value(page, "Collections").EnumerateArray().Should().Contain(c => c.GetProperty("name").GetString() == "Sites");
+        Value(page, "DatabaseSize").GetInt64().Should().BeGreaterThan(0);
+        Value(page, "SiteList").EnumerateArray().Should().Contain(s => s.GetProperty("origin").GetString() == site.Origin && s.GetProperty("organization").GetString() == "Acme",
             "every organization's sites, with the organization's name (D28)");
+        page.GetProperty("metadata").TryGetProperty("dashboard", out _).Should().BeTrue("drawn as tiles by @mintplayer/ng-spark/dashboards");
 
-        (await GetAsync("/seotester/admin/dashboard", Ann)).Status.Should().Be(HttpStatusCode.NotFound, "a signed-in non-administrator");
-        (await GetAsync("/seotester/admin/dashboard", null)).Status.Should().Be(HttpStatusCode.NotFound, "anonymous");
+        (await LoadAsync(host, OperatorDashboardTypeId, "main", Ann)).Status.Should().Be(HttpStatusCode.NotFound, "a signed-in non-administrator");
+        (await LoadAsync(host, OperatorDashboardTypeId, "main", null)).Status.Should().Be(HttpStatusCode.Unauthorized, "anonymous is refused before any load");
     }
+
+    private static JsonElement Value(JsonElement po, string attribute)
+        => po.GetProperty("attributes").EnumerateArray().Single(a => a.GetProperty("name").GetString() == attribute).GetProperty("value");
 
     /// <summary>A finished run offers no Cancel; only a completed one offers Download PDF.</summary>
     [Theory]
@@ -115,16 +119,6 @@ public class ReportSurfaceTests(SeoTesterHostFixture host)
             ? list.EnumerateArray().Select(a => a.GetString()!).Where(a => a is "CancelAudit" or "ExportReport").OrderBy(a => a).ToArray()
             : [];
         actual.Should().Equal(disabled);
-    }
-
-    private async Task<(HttpStatusCode Status, JsonElement Body)> GetAsync(string url, string? user, params string[] roles)
-    {
-        using var client = host.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        SeoRequests.AddIdentity(request, user, roles);
-        using var response = await client.SendAsync(request);
-        var raw = await response.Content.ReadAsStringAsync();
-        return (response.StatusCode, response.IsSuccessStatusCode ? JsonDocument.Parse(raw).RootElement.Clone() : default);
     }
 
     private static IEnumerable<string> Strings(JsonElement e) => e.ValueKind switch

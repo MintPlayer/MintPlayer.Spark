@@ -8,6 +8,7 @@ import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark/auth';
 import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { provideSparkNotifications } from '@mintplayer/ng-spark/notifications';
 import { provideSparkScoreRenderers } from '@mintplayer/ng-spark/score-renderers';
+import { provideSparkDashboards, sparkDashboardRenderers } from '@mintplayer/ng-spark/dashboards';
 import { seoRenderers } from './seo/renderers';
 
 import { routes } from './app.routes';
@@ -27,8 +28,11 @@ export const appConfig: ApplicationConfig = {
     provideSparkClientOperations(),
     // The bell's recent list and "see all" link (docs/guide-notifications.md).
     provideSparkNotifications(),
-    // The score renderers (gauge, bars, trend, delta) and SeoTester's own (seo/renderers.ts), by the model's names.
-    provideSparkScoreRenderers(seoRenderers),
+    // The score renderers (gauge, bars, trend, delta), the dashboard renderers (stat, meter, table) and SeoTester's own
+    // (seo/renderers.ts), by the model's names.
+    provideSparkScoreRenderers([...seoRenderers, ...sparkDashboardRenderers]),
+    // The operator dashboard and the database statistics (#504) draw as tiles.
+    provideSparkDashboards(),
     provideZonelessChangeDetection(),
   ]
 };

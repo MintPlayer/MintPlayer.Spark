@@ -4,7 +4,6 @@ import { TestBed } from '@angular/core/testing';
 import type { PersistentObject, QueryResultItem } from '@mintplayer/ng-spark/models';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { routes } from '../app.routes';
-import { formatBytes } from './panels/operator-dashboard-panel.component';
 import { seoTrend } from './panels/site-trend-panel.component';
 import { downloadUrlOf, pageDetailsExpired } from './po-detail-page.component';
 import { SeoCatalogueService } from './seo-catalogue.service';
@@ -42,15 +41,6 @@ describe('seoTrend', () => {
     const t = seoTrend([item('2026-10-03', 80, 'v2'), item('2026-10-01', 70, 'v1'), item('2026-10-02', 75, 'v1'), item('2026-10-04', 50, 'v2', 'Failed')]);
     expect(t.points.map(p => (p as { y: number }).y)).toEqual([70, 75, 80]);
     expect(t.changes.map(d => d.toISOString().slice(0, 10))).toEqual(['2026-10-03']);
-  });
-});
-
-describe('formatBytes', () => {
-  it('reads like a person writes it', () => {
-    expect(formatBytes(512)).toBe('512 B');
-    expect(formatBytes(1536)).toBe('1.5 KB');
-    expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MB');
-    expect(formatBytes(null)).toBe('—');
   });
 });
 

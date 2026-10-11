@@ -1,19 +1,84 @@
 {
   "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
   "_comment": [
-    "HAND-AUTHORED and NOT generated. The operator dashboard (docs/seo_analyzer_PRD.md F16, D28) is virtual: no",
-    "clrType, no documents. OperatorDashboardActions.OnLoadAsync scaffolds it and sets the breadcrumb (the page title);",
-    "Read/OperatorDashboard is the Administrators' (security.json), which also hides its menu entry from everyone else.",
-    "The SPA draws the abuse log (the audit-log query, not a sub-query: it has no parent) and the usage and storage figures from",
-    "GET /seotester/admin/dashboard, which answers only a caller with the same right."
+    "HAND-AUTHORED and NOT generated. The operator dashboard (docs/seo_analyzer_PRD.md F16, D28) is a dashboards-package",
+    "dashboard (#504, D13): virtual (no clrType, no documents) and live, filled by OperatorDashboardFigures and the",
+    "package's RavenDB statistics (Admin/OperatorDashboard.cs), pushed every 15 s and drawn as tiles by",
+    "@mintplayer/ng-spark/dashboards. Read/OperatorDashboard is dashboards:administrators' (security.json binds it to",
+    "Administrators), which also hides its menu entry from everyone else. The abuse log (the audit-log query, not a",
+    "sub-query: it has no parent) is drawn under the tiles by the app's detail page."
   ],
   "persistentObject": {
     "id": "458035ba-1fc4-4f98-b24c-de1edbf8214c",
     "name": "OperatorDashboard",
     "alias": "operator-dashboard",
+    "live": true,
     "tabs": [],
-    "groups": [],
-    "attributes": [],
+    "groups": [
+      { "id": "5e07da5b-0000-4000-8000-0000000000a1", "name": "Usage", "order": 1 },
+      { "id": "5e07da5b-0000-4000-8000-0000000000a2", "name": "Audits", "order": 2 },
+      { "id": "5e07da5b-0000-4000-8000-0000000000a3", "name": "Database", "order": 3 },
+      { "id": "5e07da5b-0000-4000-8000-0000000000a4", "name": "Sites", "order": 4 }
+    ],
+    "attributes": [
+      { "id": "5e07da5b-0000-4000-8000-000000000001", "name": "Users", "dataType": "number", "isReadOnly": true, "order": 1, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat" },
+      { "id": "5e07da5b-0000-4000-8000-000000000002", "name": "Organizations", "dataType": "number", "isReadOnly": true, "order": 2, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat" },
+      { "id": "5e07da5b-0000-4000-8000-000000000003", "name": "Sites", "dataType": "number", "isReadOnly": true, "order": 3, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat" },
+      { "id": "5e07da5b-0000-4000-8000-000000000004", "name": "VerifiedSites", "dataType": "number", "isReadOnly": true, "order": 4, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat" },
+      { "id": "5e07da5b-0000-4000-8000-000000000005", "name": "Audits", "dataType": "number", "isReadOnly": true, "order": 5, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat" },
+      { "id": "5e07da5b-0000-4000-8000-000000000006", "name": "AuditsLastDay", "dataType": "number", "isReadOnly": true, "order": 6, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat" },
+      { "id": "5e07da5b-0000-4000-8000-000000000007", "name": "AuditsLastWeek", "dataType": "number", "isReadOnly": true, "order": 7, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat" },
+      { "id": "5e07da5b-0000-4000-8000-000000000008", "name": "Running", "dataType": "number", "isReadOnly": true, "order": 8, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat" },
+      {
+        "id": "5e07da5b-0000-4000-8000-000000000009", "name": "AuditsByStatus", "dataType": "string", "isReadOnly": true, "order": 9, "showedOn": "PersistentObject", "rules": [],
+        "group": "5e07da5b-0000-4000-8000-0000000000a2", "columnSpan": 2, "renderer": "spark-dashboard-table",
+        "rendererOptions": {
+          "columns": [
+            { "key": "key", "label": "seoUi.dashboard.status", "translate": "seoUi.runStatus." },
+            { "key": "value", "label": "seoUi.dashboard.count", "format": "number" }
+          ]
+        }
+      },
+      {
+        "id": "5e07da5b-0000-4000-8000-00000000000a", "name": "Refusals", "dataType": "string", "isReadOnly": true, "order": 10, "showedOn": "PersistentObject", "rules": [],
+        "group": "5e07da5b-0000-4000-8000-0000000000a2", "columnSpan": 2, "renderer": "spark-dashboard-table",
+        "rendererOptions": {
+          "columns": [
+            { "key": "key", "label": "seoUi.dashboard.reason", "translate": "seoUi.dashboard.kind." },
+            { "key": "value", "label": "seoUi.dashboard.count", "format": "number" }
+          ],
+          "empty": "seoUi.dashboard.noRefusals"
+        }
+      },
+      { "id": "5e07da5b-0000-4000-8000-00000000000b", "name": "DatabaseSize", "dataType": "number", "isReadOnly": true, "order": 11, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a3", "renderer": "spark-stat", "rendererOptions": { "format": "bytes" } },
+      { "id": "5e07da5b-0000-4000-8000-00000000000c", "name": "DocumentCount", "dataType": "number", "isReadOnly": true, "order": 12, "showedOn": "PersistentObject", "rules": [], "group": "5e07da5b-0000-4000-8000-0000000000a3", "renderer": "spark-stat" },
+      {
+        "id": "5e07da5b-0000-4000-8000-00000000000d", "name": "Collections", "dataType": "string", "isReadOnly": true, "order": 13, "showedOn": "PersistentObject", "rules": [],
+        "group": "5e07da5b-0000-4000-8000-0000000000a3", "columnSpan": 4, "renderer": "spark-dashboard-table",
+        "rendererOptions": {
+          "columns": [
+            { "key": "name", "label": "dashboards.collection" },
+            { "key": "documents", "label": "dashboards.documents", "format": "number" },
+            { "key": "sizeBytes", "label": "dashboards.size", "format": "bytes" }
+          ]
+        }
+      },
+      {
+        "id": "5e07da5b-0000-4000-8000-00000000000e", "name": "SiteList", "dataType": "string", "isReadOnly": true, "order": 14, "showedOn": "PersistentObject", "rules": [],
+        "group": "5e07da5b-0000-4000-8000-0000000000a4", "columnSpan": 4, "renderer": "spark-dashboard-table",
+        "rendererOptions": {
+          "columns": [
+            { "key": "origin", "label": "seoUi.dashboard.website" },
+            { "key": "organization", "label": "seoUi.dashboard.organization" },
+            { "key": "personal", "label": "seoUi.dashboard.personal", "format": "boolean" },
+            { "key": "verified", "label": "seoUi.dashboard.verified", "format": "boolean" },
+            { "key": "score", "label": "seoUi.dashboard.score" },
+            { "key": "latestRunAtUtc", "label": "seoUi.dashboard.lastAudit", "format": "date" },
+            { "key": "createdAtUtc", "label": "seoUi.dashboard.added", "format": "date" }
+          ]
+        }
+      }
+    ],
     "queries": []
   }
 }
