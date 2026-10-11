@@ -60,6 +60,10 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR "/src/apps/SeoTester/SeoTester"
 # publish compiles the app itself; EnableSpaBuilder=false because Nx built the SPA above.
 RUN dotnet publish "./SeoTester.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:EnableSpaBuilder=false
+# Playwright's driver (node) is published executable for its OWNER only (0744, root), but the app runs as `app`:
+# every render then failed "Permission denied" starting /app/.playwright/node/linux-x64/node (production, 2026-10-11).
+# a+rX: readable by all, and executable by all where it was executable already; nothing else becomes executable.
+RUN chmod -R a+rX /app/publish/.playwright
 
 FROM base AS final
 WORKDIR /app

@@ -69,7 +69,22 @@ jobs:
         context: .
         file: ./apps/SeoTester/SeoTester/Dockerfile
         push: false
+        load: true
+        tags: seotester:check
         cache-from: type=gha,scope=seotester
+
+    # The image's own user must be able to start Playwright's driver: ChromiumBrowser runs it even to CONNECT to the
+    # Chromium container. Production (2026-10-11): node was 0744 root, every render failed "Permission denied" and the
+    # audit hung in its render stage, while every test passed (they run as the files' owner). No --user: the image's.
+    # ⚠️ node must be started BY a process of that user, as the app does (Process.Start): `--entrypoint node` passes
+    # even on the broken image, because Docker execs the entrypoint before the user's capabilities are dropped
+    # (measured on the production image: entrypoint form v24.21.0, child form "Permission denied", exit 126).
+    - name: The app user can run Playwright's driver
+      run: |
+        docker run --rm --entrypoint sh seotester:check -c 'id -un' | grep -qx app \
+          || { echo "::error::the image no longer runs as app, so this check proves nothing: update it"; exit 1; }
+        docker run --rm --entrypoint sh seotester:check -c '/app/.playwright/node/linux-x64/node --version' \
+          || { echo "::error::the app user cannot start Playwright's driver (/app/.playwright/node/linux-x64/node): see the Dockerfile's chmod"; exit 1; }
 
   build-chromium:
     name: Build the Chromium image (no push)

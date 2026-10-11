@@ -5,8 +5,44 @@ once, which credentials to register, and what to measure after the first deploy.
 §1 "Hosting constraints", D3, D6, M12. The app itself: [README.md](README.md). CodeCoverage's hosting, which this
 mirrors and shares: [docs/code-coverage/hosting.md](../code-coverage/hosting.md) and `apps/CodeCoverage/README.md`.
 
-Status (2026-10-10): the files are written and checked (`tools/verify-seotester-deploy.test.mjs`, `docker compose config`);
-**nothing has been deployed**. Every step below is the owner's.
+Status (2026-10-11): **live.** PR #505 merged, CodeCoverage's RavenDB secured (raven-tls-migration.md §4), SeoTester's
+first deploy green, sign-in with Microsoft, GitHub and Google working, mail delivered (SPF + DKIM). §0 records what was
+set up and where; the numbered sections are the procedure.
+
+## 0. Where everything is managed (as set up 2026-10-11)
+
+Names, IDs and places only. **No secret belongs in this repository**: client secrets, the pfx password, `.env` values,
+`ca.key`, the DKIM and operator keys stay on the VPS (or with the owner). An OAuth client ID is not a secret: it is in
+every sign-in URL.
+
+| What | Where | Identity | Notes |
+|---|---|---|---|
+| **Microsoft** sign-in | [entra.microsoft.com](https://entra.microsoft.com) → App registrations → *SeoTester* (the owner's default directory) | client ID `d3e309f8-bd12-4e59-ad34-e1db9647ab22` | All Microsoft accounts (work/school and personal). Redirects: `https://seotester.mintplayer.com/signin-microsoft`, `https://localhost:5013/signin-microsoft`. ⚠️ The client secret **expires** (at most 24 months): renew it under *Certificates & secrets* before then and replace `MICROSOFT_CLIENT_SECRET`. |
+| **GitHub** sign-in | OAuth App *SeoTester* in the **MintPlayer organization**: [settings](https://github.com/organizations/MintPlayer/settings/applications/3923314) | client ID `Ov23liowLf6rF9NW7LHd` | Owned by the org, not a person (OAuth Apps cannot be transferred: create them under the org). Redirects: production and `https://localhost:5013/signin-github`. |
+| **Google** sign-in | Google Cloud project **`seotester-mintplayer`** → Google Auth Platform | OAuth client *SeoTester production* (Web application) | Audience External, **In production** (not Testing: there only listed test users may sign in). Branding: app name, home page, `/privacy`, `/terms`, authorized domain `mintplayer.com`; **no logo** (a logo requires Google's verification). Scopes `openid profile email` are non-sensitive: no review. Redirects: production and `https://localhost:5013/signin-google`. |
+| **X** sign-in | **Not set up**: console.x.com, project *SeoTester* (empty) | — | X's API is pay-per-use and the account has no credits; the `users/me` call every X sign-in makes would be refused. `X_CLIENT_ID` stays empty, so no X button. To enable: buy credits, then an app in that project with OAuth 2.0 (Web App, *Request email*), callbacks `/signin-twitter` (production and localhost). X refuses new apps while a suspended one exists. |
+| **DNS** of `mintplayer.com` | Qweb (formerly Foxxl): [mijn.qweb.nl](https://mijn.qweb.nl) → hosting → Plesk → *DNS Settings* | name servers `ns10.foxxl.{nl,com,net}` | `seotester` A/AAAA → the VPS; TXT `v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87c:: -all`; TXT `mail._domainkey.seotester` = the DKIM public key (§3.2). ⚠️ Plesk keeps added records pending until **Update** in the banner is clicked. `mintplayer.com` has DMARC `sp=reject`: a subdomain without SPF/DKIM cannot send. |
+| **Mail** | `coverage-smtp` (CodeCoverage's relay) | `MAIL_SENDER_DOMAIN=coverage.mintplayer.com seotester.mintplayer.com` in **CodeCoverage's** `.env` | DKIM key `/var/www/code-coverage/mail-dkim/seotester.mintplayer.com.private` (101:104, 0600). Without the domain in that list the relay answers `554 5.7.1 Recipient address rejected: Access denied` and the mail is dead-lettered. |
+| **Database** | `SeoTester` on `coverage-raven` (TLS, client certificates) | certificate `seotester` (Admin on `SeoTester` only) | Renewed automatically, nightly check: `raven-cert-renew --status` on the VPS ([raven-tls-migration.md](../code-coverage/raven-tls-migration.md) §6). |
+| **Secrets on the VPS** | `/var/www/seotester/.env` (0600) | — | Sign-in client IDs and secrets, `SEO_FETCHER_KEY`, `LEGAL_*`, optional VAPID and PageSpeed keys (§4). |
+
+**Local development** uses the same three OAuth clients through their `localhost:5013` redirects. Put the IDs and secrets
+in user secrets yourself, never through a tool that shows them:
+`dotnet user-secrets set "Spark:Auth:Providers:Google:ClientId" "…"` (and `…:ClientSecret`; likewise `MicrosoftAccount`,
+`GitHub`) in `apps/SeoTester/SeoTester`. The trade-off: production and development share a client.
+
+**Linking a second provider** (e.g. Google to an account made with Microsoft): SeoTester runs
+`ExternalLoginLinking = ConfirmByEmail` (`Program.cs`), so there is **no** "link while signed in" endpoint, and the
+account page's link button answers 404 (a known client gap, left as is). The working path: sign out, sign in with the
+new provider; when its address belongs to an existing account a confirmation mail is sent, and its link attaches the
+provider.
+
+**Lessons from the first deploy (2026-10-11):**
+- The image must let its `app` user **start** Playwright's driver: `dotnet publish` writes it 0744 root, and every
+  render failed "Permission denied", hanging the audit in its render stage. The Dockerfile `chmod`s it, and
+  `seotester-image-check` starts it from a shell as `app` (not via `--entrypoint`, which passes even on a broken image).
+- `seotester-deploy` and `code-coverage-deploy` run from the same merge; SeoTester's refuses until CodeCoverage's has
+  put `coverage-raven` on `seo-raven` (§3.0). This time it went through in one pass.
 
 ## 1. What runs where
 
@@ -143,6 +179,12 @@ A self-signed "TRAEFIK DEFAULT CERT" means the Host rule did not match or the AC
 
 ### 3.2 Mail: let the relay send for seotester.mintplayer.com
 
+**Done 2026-10-11** (§0 "DNS" and "Mail"): records added in Plesk, `opendkim-testkey` "key OK", the relay recreated
+with both domains, a test mail DKIM-signed for `d=seotester.mintplayer.com` and accepted by Outlook (`dsn=2.6.0`).
+Until then every SeoTester mail was refused at the relay (`554 5.7.1 … Access denied`). Two adjustments to the steps
+below, as run: `opendkim-genkey -D` needs its output folder to exist (`mkdir -p` it first), and the SPF record is the
+same as CodeCoverage's, IPv4 and IPv6.
+
 SeoTester **requires** mail (account-link confirmations, `ConfirmByEmail`; invitations; notifications). The relay accepts
 only the domains in CodeCoverage's `MAIL_SENDER_DOMAIN` and signs only those it has a DKIM key for
 (`apps/CodeCoverage/README.md` "Outgoing mail" has the traps; both apply here).
@@ -156,7 +198,7 @@ only the domains in CodeCoverage's `MAIL_SENDER_DOMAIN` and signs only those it 
    ```bash
    cd /var/www/code-coverage/mail-dkim
    docker run --rm -v "$PWD":/out alpine:3.20 sh -c \
-     'apk add --no-cache opendkim-utils && opendkim-genkey -b 2048 -d seotester.mintplayer.com -s mail -D /out'
+     'apk add --no-cache opendkim-utils && mkdir -p /out/seotester.mintplayer.com && opendkim-genkey -b 2048 -d seotester.mintplayer.com -s mail -D /out/seotester.mintplayer.com'
    cat seotester.mintplayer.com/mail.txt        # the DNS record for step 1 (public)
    mv seotester.mintplayer.com/mail.private seotester.mintplayer.com.private
    sudo chown -R 101:104 . && sudo chmod 600 *.private
@@ -253,8 +295,11 @@ At least one is required (with none, the app refuses to start). A provider whose
 | X | developer.x.com → Projects & Apps → the app → *User authentication settings*: **OAuth 2.0**, type *Web App*, **Request email from users** on (privacy policy URL `https://seotester.mintplayer.com/privacy`, terms URL `https://seotester.mintplayer.com/terms`, §4.3) | `https://seotester.mintplayer.com/signin-twitter` | `users.read`, `tweet.read`, `users.email`; the **OAuth 2.0 Client ID and Client Secret**, not the 1.0a API key | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `Spark:Auth:Providers:Twitter:…` |
 | Google | console.cloud.google.com → APIs & Services → *OAuth consent screen* (External, app name SeoTester, scopes below), then Credentials → *OAuth client ID* → Web application | `https://seotester.mintplayer.com/signin-google` | `openid`, `profile`, `email` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `Spark:Auth:Providers:Google:…` |
 
-For local development, add `https://localhost:5013/signin-…` as a second redirect URI on a development app instead of
-the production one (README "Running it locally").
+For local development, add `https://localhost:5013/signin-…` as a second redirect URI. ~~on a development app instead
+of the production one~~ **As set up (owner, 2026-10-11): on the production apps themselves** (§0), so local
+development shares their client; a separate development app remains the stricter option (README "Running it
+locally"). Copy a client secret only when it is shown (Entra, GitHub and Google show it once), straight into `.env` or
+user secrets, never into a chat, a tool or the repository.
 
 ### 4.2 Everything else
 
