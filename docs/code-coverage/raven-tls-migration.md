@@ -40,9 +40,9 @@ cost: a licence renewal is not pulled automatically, and `POST /admin/license/re
 
 | Certificate | Clearance on the server | Lives on the VPS | Mounted into |
 |---|---|---|---|
-| CA (`ca.crt`/`ca.key`, 10 years) | — (signs the others) | `ca.crt` beside each stack; **`ca.key` never** (owner's password manager, needed only to issue) | `ca.crt`: both apps and the licence one-shot |
-| Server (`server.pfx`, 2 years, SAN `DNS:coverage-raven`, EKU server + client) | — | `/var/www/code-coverage/raven-certs/server.pfx` | `coverage-raven` only |
-| Operator (`operator.crt`/`.key`) | **Cluster admin**, through `RAVEN_Security_WellKnownCertificates_Admin` (its thumbprint) | `/var/www/code-coverage/raven-operator/` | the licence one-shot only (and the owner's browser, as a `.p12`) |
+| CA (`ca.crt`/`ca.key`, **20 years**) | — (signs the others) | `ca.crt` beside each stack; **`ca.key` in `/root/raven-ca/`, root-only `0400`** (R1: the nightly renewal signs with it), a copy in the owner's password manager | `ca.crt`: both apps, the licence one-shot and the renewal's curl calls; `ca.key`: nothing (read by the host script only) |
+| Server (`server.pfx`, 825 days, SAN `DNS:coverage-raven`, EKU server + client) | — | `/var/www/code-coverage/raven-certs/server.pfx` | `coverage-raven` only |
+| Operator (`operator.crt`/`.key`) | **Cluster admin**, through `RAVEN_Security_WellKnownCertificates_Admin` (its thumbprint) | `/var/www/code-coverage/raven-operator/` | the licence one-shot and the renewal script only (R8: no browser, no Studio in production) |
 | `codecoverage` | `ValidUser`, **`Coverage`: Admin**, nothing else | `/var/www/code-coverage/raven-certs/` | `coverage-app` only |
 | `seotester` | `ValidUser`, **`SeoTester`: Admin**, nothing else | `/var/www/seotester/raven-certs/` | `seotester-app` only |
 
@@ -104,7 +104,7 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ); echo "$STAMP"
 install -d -m 0700 /root/raven-ca && cd /root/raven-ca && umask 077
 openssl rand -hex 24 > server.pfx.pass
 
-openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+openssl req -x509 -newkey rsa:4096 -sha256 -days 7300 -nodes \
   -keyout ca.key -out ca.crt -subj "/CN=MintPlayer RavenDB CA" \
   -addext "basicConstraints=critical,CA:TRUE,pathlen:0" -addext "keyUsage=critical,keyCertSign,cRLSign"
 
@@ -124,9 +124,9 @@ done
 openssl verify -CAfile ca.crt server.crt operator.crt codecoverage.crt seotester.crt   # all OK
 ```
 
-(`openssl req -x509 -CA` needs OpenSSL ≥ 3.0, which Ubuntu 22.04 and later have.) Then copy `ca.key` off the server
-(password manager) and delete it here: `shred -u ca.key server.key`. Make the owner's browser certificate on the
-owner's machine, never on the VPS: `openssl pkcs12 -export -inkey operator.key -in operator.crt -out operator.p12`.
+(`openssl req -x509 -CA` needs OpenSSL ≥ 3.0, which Ubuntu 22.04 and later have.) **`ca.key` stays here** (R1),
+`chmod 0400 ca.key`; copy it to the password manager as well (scp to the owner's machine, never printed). No browser
+certificate (R8).
 
 ### 4.3 Put the files in place (no downtime)
 
@@ -150,12 +150,14 @@ install -m 0400 -o "$SEO_UID" seotester.key       /var/www/seotester/raven-certs
 cd /var/www/code-coverage
 printf 'RAVEN_SERVER_CERTIFICATE_PASSWORD=%s\n' "$(cat /root/raven-ca/server.pfx.pass)" >> .env
 printf 'RAVEN_OPERATOR_THUMBPRINT=%s\n' "$(openssl x509 -in raven-operator/operator.crt -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')" >> .env
-shred -u /root/raven-ca/server.pfx.pass /root/raven-ca/*.key 2>/dev/null || true   # keys now live only where mounted
+printf 'CERT_ALERT_EMAIL=%s\n' 'info@mintplayer.com' >> .env   # R6: the renewal's failure mail; comma-separated list allowed
+# R1: ca.key stays. Every OTHER key now lives only where it is mounted:
+cd /root/raven-ca && shred -u server.pfx.pass server.key operator.key codecoverage.key seotester.key server.pfx
 ```
 
 The directories must be traversable by the container users: `0750` root-owned works because Docker bind-mounts single
-files by path (the daemon, not the container user, opens the directory). Keep `/root/raven-ca` only for the public
-`.crt` files.
+files by path (the daemon, not the container user, opens the directory). `/root/raven-ca` (`0700`) keeps the public
+`.crt` files and `ca.key` (`0400`); the deploy re-asserts those modes.
 
 ### 4.4 The window opens: stop, cold copy (the rollback point)
 
@@ -228,7 +230,10 @@ docker run --rm --network code-coverage_coverage-db --user 0 \
   --cert /c/codecoverage.crt --key /c/codecoverage.key --cacert /c/ca.crt "$R/databases/SeoTester/stats"
 ```
 
-Then open https://coverage.mintplayer.com, sign in, open a repository.
+Then open https://coverage.mintplayer.com, sign in, open a repository. When all of this passed, delete the cold copy
+(R10; the `.ravendbdump` of 4.1 stays as the fallback): `rm -f /var/backups/coverage-raven/raven-data-$STAMP.tgz`,
+and check the renewal sees all four certificates: `raven-cert-renew --status` (installed by the deploy at 4.10; before
+that, run `apps/CodeCoverage/ops/raven-cert-renew.sh --status` from a copy).
 
 ### 4.9 Rollback (any step from 4.5 on)
 
@@ -256,18 +261,55 @@ The deploy finds the files and variables (its pre-checks), creates nothing new, 
 
 - **Admin calls** (backup, stats, licence status): the `OP` form of 4.6 on `code-coverage_coverage-db`, `https://`.
   The README's *Backup* commands are written that way.
-- **Studio:** the operator `.p12` in the owner's browser; RavenDB publishes no port, so tunnel to the container's
-  address on `code-coverage_coverage-db` and browse `https://coverage-raven:<local port>` with `coverage-raven` mapped to
-  `127.0.0.1` in the local hosts file (the certificate's name).
+- **No Studio in production** (R8, owner 2026-10-11: "No, never"). If it is ever needed, issue a ClusterAdmin
+  certificate for it then, with the 4.2 command and the 4.6 `register` (clearance `ClusterAdmin`).
 - **Licence:** replace `raven-license.json`, then `docker compose --env-file .env up coverage-raven-license`.
 
-## 6. Renewal (calendar: 2 years minus a month after 4.2)
+## 6. Renewal: automatic (`raven-cert-renew`)
 
-Issue a new certificate with the CA (the 4.2 command for that name), register the new app certificate **beside** the
-old one (a second `register` with a new `Name`), swap the files, restart the app, then delete the old registration
-(`$OP -X DELETE "$R/admin/certificates?thumbprint=<old>"`). The server certificate: replace `server.pfx` (same
-password or update `.env`) and restart `coverage-raven`; clients trust the CA, not the leaf. The operator: new
-thumbprint in `.env`, restart `coverage-raven`.
+Nothing to do by hand. `apps/CodeCoverage/ops/raven-cert-renew.sh`, installed by every CodeCoverage deploy as
+`/usr/local/sbin/raven-cert-renew` with `raven-cert-renew.timer` (from the deployed commit, root-owned), runs nightly
+at 04:00 Europe/Brussels. When any of the four leaves (server, operator, codecoverage, seotester) has 30 days or fewer
+left, it re-issues **all four with new keys** (825 days) and:
+
+1. registers the new app certificates **beside** the old ones, with the still-valid operator;
+2. swaps `server.pfx` and the operator files, writes the new `RAVEN_OPERATOR_THUMBPRINT` into `.env`, recreates
+   `coverage-raven` (≈30 s; a bind-mounted file stays pinned to its old inode until the container is recreated) and
+   checks the new operator is an administrator, **rolling back** to the old files and `.env` if not;
+3. swaps each app's files and recreates `coverage-app` (`/health/ready` 200) and `seotester-app` (`/health` 200);
+4. removes the old app registrations (only names `codecoverage*`/`seotester*` whose thumbprint is not installed, and
+   never with an incomplete keep-list).
+
+`--scheduled` (the timer) tries 3 times 10 minutes apart; when all fail it mails `CERT_ALERT_EMAIL` through
+`coverage-smtp` and tries again the next night, so a lasting problem mails every night. It also mails once a night
+while the CA has under a year left; the CA (20 years) is the one thing renewed by hand: a new CA means re-issuing
+everything, so plan it then.
+
+By hand: `raven-cert-renew --status` (expiry dates, whether due), `raven-cert-renew --force` (renew now, e.g. after a
+suspected key leak), `journalctl -u raven-cert-renew` (the logs).
+
+**Security of the mechanism** (owner, 2026-10-11: "Make sure not to introduce vulnerabilities"): RavenDB gets no new
+network or port, every call is a throwaway `curlimages/curl` container on the internal `coverage-db` (as curl's own
+user, not root), the mail goes over the internal `coverage-mail`; `umask 077` for everything the script creates and
+every key of a run shredded on exit; the pfx password reaches openssl through its environment only, never argv or a
+log; thumbprints must be 40 hex characters and alert addresses plain addresses before they reach `sed`, a URL, `.env`
+or a mail header; the deploy downloads into a fresh `mktemp -d` (no fixed `/tmp` names) and installs root-owned; the
+service runs with `NoNewPrivileges` and `UMask=0077`; `flock` refuses a second concurrent run.
+
+### Decisions (owner, 2026-10-11, grilled)
+
+| # | Decision |
+|---|---|
+| R1 | The CA key lives on the VPS (`/root/raven-ca/ca.key`, root, `0400`) plus the password manager: unattended renewal must sign. Root on the VPS already holds the data, the leaf keys and `.env`, so it adds little. CA 20 years. |
+| R2 | Leaves 825 days, renewed at 30 days left (Community licence: no duration limit, §7; the 4-month rule is the Developer licence's only). |
+| R3 | New keys at every renewal; app certificates registered explicitly beside the old ones (not relying on RavenDB trusting a reused key). |
+| R4 | All four renewed together: one RavenDB restart and one app restart per cycle, dates stay aligned. |
+| R5 | Nightly at 04:00 Europe/Brussels, 3 attempts 10 minutes apart, then a mail; repeated every failed night. |
+| R6 | Mail through `coverage-smtp` to `CERT_ALERT_EMAIL` (`info@mintplayer.com`, comma-separated list allowed). |
+| R7 | The CodeCoverage deploy installs and updates the script and timer. |
+| R8 | No browser certificate, no Studio in production; the operator certificate is server-only. |
+| R9 | Local development stays unsecured, without certificates. |
+| R10 | Migration right after the local rehearsal, on the owner's go; the cold rollback copy (4.4) is deleted after 4.8 passed; the `.ravendbdump` of 4.1 stays. |
 
 ## 7. Certificate validity and the licence
 

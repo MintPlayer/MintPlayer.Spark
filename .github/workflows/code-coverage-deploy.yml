@@ -189,9 +189,30 @@ jobs:
           for f in raven-certs/server.pfx raven-certs/ca.crt raven-certs/codecoverage.crt raven-certs/codecoverage.key raven-operator/operator.crt raven-operator/operator.key; do
             test -s "$f" || { echo "::error::/var/www/code-coverage/$f is missing — RavenDB runs secured, see docs/code-coverage/raven-tls-migration.md"; exit 1; }
           done
-          for v in RAVEN_SERVER_CERTIFICATE_PASSWORD RAVEN_OPERATOR_THUMBPRINT; do
+          for v in RAVEN_SERVER_CERTIFICATE_PASSWORD RAVEN_OPERATOR_THUMBPRINT CERT_ALERT_EMAIL; do
             grep -q "^$v=." .env || { echo "::error::$v is not set in /var/www/code-coverage/.env — see docs/code-coverage/raven-tls-migration.md"; exit 1; }
           done
+          # The nightly renewal signs with the private CA, which therefore stays on the server, root-only (runbook R1).
+          # Presence only; the modes are (re)asserted, never relaxed.
+          for f in /root/raven-ca/ca.crt /root/raven-ca/ca.key; do
+            test -s "$f" || { echo "::error::$f is missing — the CA must stay on the server for the renewal, see docs/code-coverage/raven-tls-migration.md §6"; exit 1; }
+          done
+          chown root:root /root/raven-ca /root/raven-ca/ca.key
+          chmod 0700 /root/raven-ca
+          chmod 0400 /root/raven-ca/ca.key
+
+          # The renewal script and its timer (runbook §6, R5/R7), from THIS commit (not a moving branch), into a fresh
+          # private directory (not fixed /tmp names another user could pre-create), installed root-owned.
+          renew_src=$(mktemp -d)
+          for f in raven-cert-renew.sh raven-cert-renew.service raven-cert-renew.timer; do
+            curl -sf -H "Authorization: token $GITHUB_TOKEN" -o "$renew_src/$f" \
+              "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/apps/CodeCoverage/ops/$f"
+          done
+          install -m 0755 -o root -g root "$renew_src/raven-cert-renew.sh" /usr/local/sbin/raven-cert-renew
+          install -m 0644 -o root -g root "$renew_src/raven-cert-renew.service" "$renew_src/raven-cert-renew.timer" /etc/systemd/system/
+          rm -rf "$renew_src"
+          systemctl daemon-reload
+          systemctl enable --now raven-cert-renew.timer
 
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \

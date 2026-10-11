@@ -350,7 +350,11 @@ and a model mismatch refuses to start in Production anyway.
 
 1. `mkdir -p /var/www/code-coverage && cd` there.
 2. Fail if `.env` or `github-app.pem` is missing, if a certificate file of §3 is missing or empty, or if
-   `RAVEN_SERVER_CERTIFICATE_PASSWORD` / `RAVEN_OPERATOR_THUMBPRINT` is unset in `.env` (nothing is printed).
+   `RAVEN_SERVER_CERTIFICATE_PASSWORD` / `RAVEN_OPERATOR_THUMBPRINT` / `CERT_ALERT_EMAIL` is unset in `.env` (nothing
+   is printed), or if `/root/raven-ca/ca.crt` / `ca.key` is missing; re-assert `/root/raven-ca` `0700` and `ca.key`
+   `0400` root. Then install the certificate renewal from **this commit** (`apps/CodeCoverage/ops/`, into a fresh
+   `mktemp -d`): `/usr/local/sbin/raven-cert-renew` and `raven-cert-renew.{service,timer}`, root-owned, timer enabled
+   (`raven-tls-migration.md` §6).
 3. Replace `docker-compose.yml` with the one on `master`, from `raw.githubusercontent.com`.
 4. `docker login ghcr.io` with the job's `GITHUB_TOKEN`.
 5. Create the shared networks `seo-raven` and `seo-mail` `--internal` if they are missing (idempotent;
