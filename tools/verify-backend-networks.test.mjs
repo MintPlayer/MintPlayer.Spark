@@ -64,6 +64,10 @@ test('each backend network holds exactly the services that need each other', () 
     'coverage-db': ['coverage-app', 'coverage-raven', 'coverage-raven-license'],
     'coverage-mail': ['coverage-app', 'coverage-smtp'],
     'coverage-smtp-egress': ['coverage-smtp'],
+    // The commit-graph sidecar (#504, D4/D18/D24): its unauthenticated API is shared with the app alone, and its way
+    // out with nothing.
+    'coverage-git': ['coverage-app', 'coverage-git'],
+    'coverage-git-egress': ['coverage-git'],
     'seo-raven': ['coverage-raven', 'seotester-app'],
     'seo-mail': ['coverage-smtp', 'seotester-app'],
     'seo-browser': ['seo-chromium', 'seotester-app'],
@@ -80,14 +84,35 @@ test('RavenDB and the mail relay share no network, and neither has a way out exc
     assert.ok(!(m.has('coverage-raven') && m.has('coverage-smtp')), `${name} carries both coverage-raven and coverage-smtp`);
   }
   const egress = [...nets].filter(([, n]) => n.decls.every((d) => d.internal !== true && d.external !== true)).map(([name]) => name).sort();
-  // Non-internal networks of a stack: Traefik's (external) aside, only the relay's egress network and the fetcher's (PRD D54).
-  assert.deepEqual(egress, ['coverage-smtp-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s and the fetcher\'s');
+  // Non-internal networks of a stack: Traefik's (external) aside, only the relay's egress network, the git sidecar's
+  // (commit graph D18) and the fetcher's (PRD D54).
+  assert.deepEqual(egress, ['coverage-git-egress', 'coverage-smtp-egress', 'seo-egress'], 'the only compose-created networks with a route out are the relay\'s, the git sidecar\'s and the fetcher\'s');
   assert.deepEqual(members('seo-egress'), ['seo-fetcher'], 'the fetcher\'s egress network carries the fetcher alone (no database, no relay)');
-  for (const name of ['coverage-db', 'coverage-mail', 'seo-browser', 'seo-fetch']) {
+  assert.deepEqual(members('coverage-git-egress'), ['coverage-git'], 'the git sidecar\'s egress network carries the sidecar alone (D18)');
+  for (const name of ['coverage-db', 'coverage-mail', 'coverage-git', 'seo-browser', 'seo-fetch']) {
     assert.ok(nets.get(name).decls.every((d) => d.internal === true), `${name} is internal: true`);
   }
   const ravenNets = [...nets].filter(([, n]) => n.members.has('coverage-raven')).map(([name]) => name).sort();
   assert.deepEqual(ravenNets, ['coverage-db', 'seo-raven'], 'RavenDB is only on internal networks (no egress, PRD D55)');
+});
+
+test('RavenDB and the commit-graph sidecar share no network, and the sidecar is only where D24 puts it', () => {
+  for (const [name, { members: m }] of nets) {
+    assert.ok(!(m.has('coverage-raven') && m.has('coverage-git')), `${name} carries both coverage-raven and coverage-git`);
+  }
+  assert.deepEqual(networksOf(stacks[CC].services['coverage-git']).sort(), ['coverage-git', 'coverage-git-egress'],
+    'coverage-git is on its two networks only (never coverage-db, seo-raven or web)');
+  assert.deepEqual(members('coverage-db'), ['coverage-app', 'coverage-raven', 'coverage-raven-license'], 'coverage-db keeps exactly its three members');
+
+  const sidecar = stacks[CC].services['coverage-git'];
+  assert.ok(!(sidecar.ports ?? []).length, 'the sidecar publishes no port');
+  assert.ok((sidecar.volumes ?? []).includes('codecoverage-git-data:/data/git'), 'the mirrors are on the named volume');
+  for (const [service, def] of Object.entries(stacks[CC].services)) {
+    if (service === 'coverage-git') continue;
+    assert.ok(!(def.volumes ?? []).some((v) => v.startsWith('codecoverage-git-data:')), `${service} must not mount the mirrors`);
+  }
+  assert.ok(sidecar.mem_limit, 'the sidecar has a memory limit (D22)');
+  assert.equal(env(stacks[CC].services['coverage-app']).CommitGraph__SidecarUrl, 'http://coverage-git:8080', 'the app reaches the sidecar by its service name');
 });
 
 test('the cross-stack networks are external in both files and created internal by both deploys before compose runs', () => {
