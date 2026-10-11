@@ -46,4 +46,12 @@ public static class CoverageQueues
     /// carrying the old <c>QueueName</c> are drained or migrated first.
     /// </summary>
     public const string Publishing = "coverage-publish-feedback";
+
+    /// <summary>
+    /// Commit-graph mirror clones, fetches and deletions (#504). Its own lane because a first
+    /// clone may legitimately run for the whole fetch quota (minutes), and nothing on
+    /// <see cref="Publishing"/> should wait behind it. Deletions share this lane on purpose: FIFO
+    /// keeps a deletion behind a fetch queued before it, never ahead of one.
+    /// </summary>
+    public const string CommitGraph = "coverage-commit-graph";
 }

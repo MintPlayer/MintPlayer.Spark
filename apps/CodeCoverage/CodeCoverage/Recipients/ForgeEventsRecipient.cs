@@ -56,8 +56,8 @@ public partial class ForgeEventsRecipient :
 
         // Deliberately does NOT write ParentSha — the event does not carry one, and the reason is
         // recorded on BranchCommitPushed: a push reports the previous ref tip, which is not this
-        // commit's parent in three of the six push shapes. The pull-request handler below is the
-        // one writer of that field, and means something precise by it.
+        // commit's parent in three of the six push shapes. The pull-request handler below writes a
+        // hint there, and CommitAssembler replaces it with the forge's answer (D15).
     }
 
     public async Task HandleAsync(ForgeWebhookMessage<PullRequestUpdated> message, CancellationToken cancellationToken = default)
@@ -76,9 +76,11 @@ public partial class ForgeEventsRecipient :
         commit.PullRequestBaseRef = evt.BaseRef;
         commit.PullRequestBaseSha = evt.BaseSha;
 
-        // The sole writer of ParentSha, and the only one that ever meant anything: the request's
-        // base tip. Still only a hint for finding the pull request — patch coverage resolves its own
-        // merge base at compute time.
+        // The first writer of ParentSha, not the only one: the request's base tip, a hint for
+        // finding the pull request. CommitAssembler later overwrites it with the forge's real first
+        // parent and sets ParentShaSource = "api", and the delta trusts only those (or "upload"
+        // parents on non-PR commits). Patch coverage resolves its own merge base at compute time,
+        // and the commit graph reads parents from its mirror, never from here (#504, D15).
         commit.ParentSha = evt.BaseSha;
 
         // Only on a first open. A later push is already served by the finalize path, which edits the
@@ -285,6 +287,11 @@ public partial class ForgeEventsRecipient :
 
         repository.MarkDisconnected(evt.Reason ?? DisconnectedReasons.RemovedFromInstallation);
         logger.LogInformation("{FullName} is no longer reachable ({Reason})", repository.FullName, evt.Reason);
+
+        // The commit-graph mirror is a copy of the history we just lost access to, so it goes now,
+        // not at the next eviction (#504, PRD §5.2). This one handler covers every forge's
+        // uninstall, suspension, removal from an installation and deletion.
+        await CommitGraph.CommitGraphDeletion.RequestAsync(session, messageBus, [evt.RepositoryId], "disconnected", cancellationToken);
     }
 
     /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>

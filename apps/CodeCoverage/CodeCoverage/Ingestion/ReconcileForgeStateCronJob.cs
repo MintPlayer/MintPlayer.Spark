@@ -27,6 +27,9 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
     [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly Dependencies.IManifestScanScheduler manifestScans;
     [Inject] private readonly ILogger<ReconcileForgeStateCronJob> logger;
+    // Nullable so the generated constructor keeps its old shape for callers that construct it
+    // directly; the running app always resolves one.
+    [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus? messageBus;
 
     /// <summary>03:20 UTC. Nightly is enough: the webhook path handles the timely case, and this
     /// only has to catch what that path lost.</summary>
@@ -69,12 +72,18 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
             try
             {
                 await forges.For(account.Provider).ReconcileAsync(account, cancellationToken);
+                var lost = await NewlyDisconnectedAsync(cancellationToken);
 
                 // Each account is its own unit of work. A single save after the loop persisted
                 // whatever a failing reconcile had written into the session before it threw — a
                 // half-applied reconcile, saved as though it were a whole one.
                 await session.SaveChangesAsync(cancellationToken);
                 reconciled++;
+
+                // Repositories this pass found no access to lose their commit-graph mirror (#504,
+                // PRD §5.2). After the save, so a failed reconcile deletes nothing.
+                if (messageBus is not null && lost.Count > 0)
+                    await CommitGraph.CommitGraphDeletion.RequestAsync(session, messageBus, lost, "reconcile", cancellationToken);
 
                 // Nightly manifest rescan (dependency-updates PRD §6.3), once the account's
                 // repositories are current. Never throws; a scan that finds nothing changed is cheap.
@@ -90,5 +99,31 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
         }
 
         logger.LogInformation("Reconciled {Reconciled} of {Total} installed accounts", reconciled, accounts.Count);
+    }
+
+    /// <summary>
+    /// The repositories the reconcile just disconnected, read from the session's pending changes.
+    /// </summary>
+    /// <remarks>
+    /// Read from the unit of work rather than reported by the reconciler, so this stays forge-neutral:
+    /// whichever forge's reconcile ran, a repository whose <c>Connection</c> it changed to
+    /// <c>Disconnected</c> is one we can no longer see.
+    /// </remarks>
+    private async Task<IReadOnlyList<string>> NewlyDisconnectedAsync(CancellationToken cancellationToken)
+    {
+        var changed = session.Advanced.WhatChanged()
+            .Where(c => c.Key.StartsWith("Repositories/", StringComparison.OrdinalIgnoreCase)
+                && c.Value.Any(d => d.FieldName == nameof(Repository.Connection)))
+            .Select(c => c.Key)
+            .ToList();
+
+        var lost = new List<string>();
+        foreach (var id in changed)
+        {
+            // Tracked already, so served from the session without a request.
+            if (await session.LoadAsync<Repository>(id, cancellationToken) is { Connection: RepositoryConnection.Disconnected })
+                lost.Add(id);
+        }
+        return lost;
     }
 }

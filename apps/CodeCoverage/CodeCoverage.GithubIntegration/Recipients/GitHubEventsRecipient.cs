@@ -136,6 +136,13 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         await UpsertRepositories(
             (evt.RepositoriesAdded ?? []).Select(r => (r.Id, r.Name, r.FullName, r.Private)), account, ct);
 
+        // A repository (re)joining the installation refreshes its graph mirror if it has one; it
+        // never clones one (D10).
+        var now = DateTimeOffset.UtcNow;
+        await RequestGraphFetchAsync(
+            [.. (evt.RepositoriesAdded ?? []).Select(r => Repository.DocumentId(EForgeProvider.GitHub, r.Id))],
+            id => CommitGraph.CommitGraphTriggers.AddedKey(id, now), ct);
+
         var removedIds = (evt.RepositoriesRemoved ?? [])
             .Select(r => Repository.DocumentId(EForgeProvider.GitHub, r.Id))
             .ToArray();
@@ -300,6 +307,13 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
     private async Task OnPush(PushEvent evt, CancellationToken ct)
     {
+        // Before the early returns below: a deleted branch or a pushed tag changes the graph too,
+        // even though it carries no commit for the coverage side to record.
+        if (evt.Repository is not null)
+            await RequestGraphFetchAsync(
+                [Repository.DocumentId(EForgeProvider.GitHub, evt.Repository.Id)],
+                id => CommitGraph.CommitGraphTriggers.PushKey(id, evt.Ref, evt.After), ct);
+
         if (evt.Repository is null || evt.Deleted || evt.HeadCommit is null) return;
         if (!evt.Ref.StartsWith("refs/heads/")) return;
 
@@ -350,6 +364,30 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             new ScanRepositoryManifestsMessage { RepositoryId = repository.Id! },
             ManifestScanTriggers.PushKey(repository.Id!, evt.After),
             ct);
+    }
+
+    /// <summary>
+    /// Refreshes the commit-graph mirrors of <paramref name="repositoryIds"/> that already have one
+    /// (#504, D10). A repository nobody has opened the graph of has no mirror, and a push or an
+    /// installation change never creates one: only a graph read does.
+    /// </summary>
+    /// <remarks>
+    /// One load for all of them, by id, so the common case — no mirror anywhere — costs a single
+    /// request and queues nothing.
+    /// </remarks>
+    private async Task RequestGraphFetchAsync(IReadOnlyCollection<string> repositoryIds, Func<string, string> key, CancellationToken ct)
+    {
+        if (repositoryIds.Count == 0) return;
+
+        var states = await session.LoadAsync<RepositoryGraphState>(
+            repositoryIds.Select(RepositoryGraphState.ForRepository), ct);
+        foreach (var repositoryId in repositoryIds)
+        {
+            if (states.GetValueOrDefault(RepositoryGraphState.ForRepository(repositoryId)) is not { HasMirror: true }) continue;
+            await messageBus.BroadcastOnceAsync(
+                new CommitGraph.FetchCommitGraphMessage { RepositoryId = repositoryId, AllowClone = false },
+                key(repositoryId), ct);
+        }
     }
 
     private async Task OnPullRequest(PullRequestEvent evt, CancellationToken ct)

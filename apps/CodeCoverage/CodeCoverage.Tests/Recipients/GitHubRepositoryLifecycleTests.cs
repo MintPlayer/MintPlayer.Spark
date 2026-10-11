@@ -110,11 +110,12 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
     /// a test that ran only the normaliser would assert on a document nothing had written yet — and
     /// would pass for any normaliser that raised nothing at all.
     /// </remarks>
-    private static async Task HandleAndDeliverAsync(IAsyncDocumentSession session, GitHubWebhookMessage message)
+    private static async Task<RecordingMessageBus> HandleAndDeliverAsync(IAsyncDocumentSession session, GitHubWebhookMessage message)
     {
         var bus = new RecordingMessageBus();
         await CreateRecipient(session, bus).HandleAsync(message);
         await DeliverForgeEventsAsync(session, bus);
+        return bus;
     }
 
     private static GitHubEventsRecipient CreateRecipient(IAsyncDocumentSession session, RecordingMessageBus? bus = null)
@@ -763,4 +764,100 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         account.Should().NotBeNull();
         account.Login.Should().Be("acme-renamed");
     }
+
+    // ── Commit-graph mirrors die with the access (#504, PRD §5.2) ────────────────────────────────
+
+    /// <summary>Seeds a mirror for the fixture repository, then runs whatever deletions a webhook queued.</summary>
+    private static async Task<CommitGraph.CommitGraphKit> SeedMirrorAsync(Raven.Client.Documents.IDocumentStore store)
+    {
+        var kit = new CommitGraph.CommitGraphKit(store);
+        await CommitGraph.CommitGraphKit.SeedMirrorAsync(store, kit.Sidecar, RepoId, 10, DateTime.UtcNow);
+        return kit;
+    }
+
+    private static async Task RunMirrorDeletionsAsync(CommitGraph.CommitGraphKit kit, RecordingMessageBus bus)
+    {
+        foreach (var message in bus.Messages.OfType<global::CodeCoverage.CommitGraph.DeleteCommitGraphMirrorMessage>().ToList())
+            await new global::CodeCoverage.CommitGraph.DeleteCommitGraphMirrorRecipient(
+                kit.Get<global::CodeCoverage.CommitGraph.ICommitGraphMirrors>()).HandleAsync(message);
+    }
+
+    [Fact]
+    public async Task Removing_a_repository_from_the_installation_deletes_its_commit_graph_mirror()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+        var kit = await SeedMirrorAsync(store);
+
+        var bus = await HandleAndDeliverAsync(session, Message(
+            "installation_repositories",
+            InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
+        await RunMirrorDeletionsAsync(kit, bus);
+
+        kit.Sidecar.Deletes.Should().Equal($"github/{RepoId}");
+        using var check = store.OpenAsyncSession();
+        (await check.LoadAsync<RepositoryGraphState>(RepositoryGraphState.ForRepository(Repository.DocumentId(EForgeProvider.GitHub, RepoId))))
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Uninstalling_the_App_deletes_the_commit_graph_mirrors_of_its_repositories()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+        WaitForIndexing(store);
+        var kit = await SeedMirrorAsync(store);
+
+        var bus = await HandleAndDeliverAsync(session, Message("installation", InstallationJson("deleted")));
+        await RunMirrorDeletionsAsync(kit, bus);
+
+        kit.Sidecar.Deletes.Should().Equal($"github/{RepoId}");
+    }
+
+    [Fact]
+    public async Task A_push_refreshes_an_existing_mirror_and_never_creates_one()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        // No mirror: nothing queued.
+        var before = new RecordingMessageBus();
+        await CreateRecipient(session, before).HandleAsync(Message("push", PushJson()));
+        before.Messages.OfType<global::CodeCoverage.CommitGraph.FetchCommitGraphMessage>().Should().BeEmpty();
+
+        // With one: a refresh that may not clone. A fresh session, as each delivery gets: the first
+        // one remembers the state id as missing.
+        await SeedMirrorAsync(store);
+        using var next = store.OpenAsyncSession();
+        var after = new RecordingMessageBus();
+        await CreateRecipient(next, after).HandleAsync(Message("push", PushJson()));
+        after.Messages.OfType<global::CodeCoverage.CommitGraph.FetchCommitGraphMessage>()
+            .Should().ContainSingle().Which.AllowClone.Should().BeFalse();
+    }
+
+    /// <summary>A minimal push of one commit to the default branch.</summary>
+    private static string PushJson() => $$"""
+        {
+          "ref": "refs/heads/master",
+          "before": "0000000000000000000000000000000000000001",
+          "after": "0000000000000000000000000000000000000002",
+          "created": false, "deleted": false, "forced": false, "base_ref": null,
+          "compare": "https://github.com/acme/widgets/compare/a...b",
+          "commits": [],
+          "head_commit": {
+            "id": "0000000000000000000000000000000000000002", "tree_id": "0000000000000000000000000000000000000003",
+            "distinct": true, "message": "Test commit", "timestamp": "2026-01-01T00:00:00Z",
+            "url": "https://github.com/acme/widgets/commit/2",
+            "author": { "name": "Test Author", "email": "author@example.invalid", "username": "test-author" },
+            "committer": { "name": "Test Author", "email": "author@example.invalid", "username": "test-author" },
+            "added": [], "removed": [], "modified": []
+          },
+          "repository": {{RepositoryJson(OldOwnerId, "acme", "widgets")}},
+          "pusher": { "name": "test-author", "email": "author@example.invalid" },
+          "sender": {{OwnerJson(OldOwnerId, "acme")}}
+        }
+        """;
 }
