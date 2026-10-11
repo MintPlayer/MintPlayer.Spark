@@ -61,17 +61,17 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
 | # | Result | Date | Evidence |
 |---|---|---|---|
 | S1 token auth, no leak, `contents: read` | — | | |
-| S2 clone size and time on the VPS | — | | |
-| S3 commit-only walk, no lazy fetch | — | | |
-| S4 incremental fetch correctness | — | | |
-| S5 server lane layout speed and stability | — | | |
+| S2 clone size and time on the VPS | ⏳ **Local proxy only.** Spark 371 commits 1.3 MB 1.5 s; aspnetcore 65k commits 34.5 MB 5.4 s; vscode 192k commits 119.5 MB 16.9 s. About 0.6 KB/commit, so 100k ≈ 55–62 MB, at the 60 MB limit. The VPS run is still owed. | 2026-10-11 | scratchpad `spikes/mirrors/*.s2.log` |
+| S3 commit-only walk, no lazy fetch | ✅ **with D25** (`--no-mailmap`). Without it the first walk lazily fetched all HEAD trees. Full walk ≈ 13 µs/row (100k ≈ 1.3 s; vscode 192k 2.5 s). The commit-graph does not speed up the full walk; it speeds up the first rows 6–30×. First 200 rows: 80 ms aspnetcore; **213 ms vscode all refs** (5.9k tips; 13 ms over target, accepted), 50 ms one branch. `rev-list --count` 159 ms on vscode. | 2026-10-11 | `spikes/mirrors/*.s3.log` |
+| S4 incremental fetch correctness | ✅ All 5 cases plus tag deletion correct; each fetch 0.3–0.55 s (git daemon, protocol v2, `filter tree:0`). The explicit tag refspec makes `--prune` remove deleted tags. | 2026-10-11 | `spikes/fetch/s4.sh`, `*.out` |
+| S5 server lane layout speed and stability | ✅ **JoinLeft (D27).** vscode 192k: layout 0.1–0.25 s, parse+layout < 1 s, peak 151 MB working set. First page < 50 ms cold, 0.01 ms warm. Paged equals full pass on 0 mismatches over 192k + 100k rows. Deterministic SHA-256; golden test passes. Width 92 vs git 90, within the relaxed criterion. | 2026-10-11 | `spikes/layout/src`, `out/` |
 | S6 page + overlay read time | — | | |
-| S7 hostile repository | — | | |
+| S7 hostile repository | ✅ **with D26.** Submodule `file://`: 0 accesses (control proved the path leaks without the recipe). Hooks: 0 markers (controls fire). 60k refs: clone 13.8 s, 7.5 MB, log 251 ms once `--no-tags` is dropped. Tree kill: no orphans. | 2026-10-11 | `spikes/fetch/s7*.sh`, `*.out` |
 | S8 claim TTL vs long clone | — | | |
 | S9 per-row SVG scroll, palette contrast | — | | |
 | S10 host-disk accuracy from the container, live virtual PO | — | | |
 | S11 dashboard history on RavenDB time series | — | | |
-| S12 avatars without email leakage | — | | |
+| S12 avatars without email leakage | ✅ **with D28.** No-reply ids parsed locally (0 calls); one batched GraphQL call ≈ 1 point per 60 authors; needs the installation token. Bot logins map to the wrong account, so the numeric id is used; GitLab returns Gravatar URLs, treated as negative. The no-email test is a sketch until M3/M4. | 2026-10-11 | `spikes/avatars/*.log` |
 
 ## Milestones
 
