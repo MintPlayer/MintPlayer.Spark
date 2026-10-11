@@ -191,7 +191,7 @@ public sealed class SparkCpuUsage
             var path = Path.Combine(cgroupRoot, "cpu.max");
             if (File.Exists(path))
             {
-                var parts = File.ReadAllText(path).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var parts = File.ReadAllText(path).Split([' ', '\n'], StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 2
                     && long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var quota)
                     && long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var period)
