@@ -181,7 +181,8 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
             <div class="cg-table" [class.cg-has-hl]="highlight().size > 0" tabindex="0" role="group"
                  aria-label="Commit graph; use the arrow keys to move and Enter to open a commit"
                  (keydown)="onKeydown($event)" (mouseover)="onHover($event)" (mouseleave)="hover.set(null)">
-              <bs-datatable [fetch]="fetchFn()" [virtualScroll]="true" [itemSize]="rowHeight" [virtualBuffer]="6"
+              <!-- virtualBuffer 3: mp-datatable re-renders and re-checks every row in the window on each range change (S9). -->
+              <bs-datatable [fetch]="fetchFn()" [virtualScroll]="true" [itemSize]="rowHeight" [virtualBuffer]="3"
                             [isResponsive]="true" [resizableColumns]="false" [rowKey]="rowKey"
                             [(settings)]="settings" (rowClick)="onRowClick($event)">
                 <div *bsDatatableColumn="'graph'; sortable: false; label: 'Graph'"><span class="visually-hidden">Graph</span></div>
