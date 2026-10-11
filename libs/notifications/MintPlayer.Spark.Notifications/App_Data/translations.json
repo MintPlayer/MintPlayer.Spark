@@ -1,0 +1,80 @@
+{
+  "$schema": "../../../../schemas/translations.schema.json",
+  "queries": {
+    "MyNotifications": {
+      "label": { "en": "Notifications", "fr": "Notifications", "nl": "Meldingen" }
+    },
+    "UnreadNotifications": {
+      "label": { "en": "Unread notifications", "fr": "Notifications non lues", "nl": "Ongelezen meldingen" }
+    },
+    "MyPushSubscriptions": {
+      "label": { "en": "Push devices", "fr": "Appareils push", "nl": "Pushtoestellen" }
+    },
+    "MyNotificationPreferences": {
+      "label": { "en": "Notification preferences", "fr": "Préférences de notification", "nl": "Meldingsvoorkeuren" }
+    }
+  },
+  "model": {
+    "Notification": {
+      "label": { "en": "Notification", "fr": "Notification", "nl": "Melding" },
+      "attributes": {
+        "Title": { "label": { "en": "Title", "fr": "Titre", "nl": "Titel" } },
+        "Body": { "label": { "en": "Message", "fr": "Message", "nl": "Bericht" } },
+        "Url": { "label": { "en": "Link", "fr": "Lien", "nl": "Link" } },
+        "Category": { "label": { "en": "Kind", "fr": "Type", "nl": "Soort" } },
+        "OrganizationId": { "label": { "en": "Organization", "fr": "Organisation", "nl": "Organisatie" } },
+        "CreatedAtUtc": { "label": { "en": "Received", "fr": "Reçue", "nl": "Ontvangen" } },
+        "IsRead": { "label": { "en": "Read", "fr": "Lue", "nl": "Gelezen" } },
+        "ReadAtUtc": { "label": { "en": "Read on", "fr": "Lue le", "nl": "Gelezen op" } }
+      }
+    },
+    "PushSubscription": {
+      "label": { "en": "Push device", "fr": "Appareil push", "nl": "Pushtoestel" },
+      "attributes": {
+        "Service": {
+          "label": { "en": "Push service", "fr": "Service push", "nl": "Pushdienst" }
+        },
+        "Device": {
+          "label": { "en": "Browser", "fr": "Navigateur", "nl": "Browser" }
+        },
+        "CreatedAtUtc": { "label": { "en": "Since", "fr": "Depuis", "nl": "Sinds" } }
+      }
+    },
+    "NotificationPreference": {
+      "label": { "en": "Notification preference", "fr": "Préférence de notification", "nl": "Meldingsvoorkeur" },
+      "attributes": {
+        "OrganizationId": {
+          "label": { "en": "Organization", "fr": "Organisation", "nl": "Organisatie" },
+          "description": {
+            "en": "Leave empty for your default: it applies to every organization without its own row.",
+            "fr": "Laissez vide pour votre choix par défaut : il s'applique à toute organisation sans ligne propre.",
+            "nl": "Laat leeg voor je standaard: die geldt voor elke organisatie zonder eigen rij."
+          }
+        },
+        "InApp": { "label": { "en": "In the app", "fr": "Dans l'application", "nl": "In de app" } },
+        "Email": { "label": { "en": "By email", "fr": "Par e-mail", "nl": "Per e-mail" } },
+        "Push": { "label": { "en": "Push notification", "fr": "Notification push", "nl": "Pushmelding" } }
+      }
+    }
+  },
+  "programUnits": {
+    "groups": {
+      "notifications": { "en": "Notifications", "fr": "Notifications", "nl": "Meldingen" }
+    },
+    "notifications": { "en": "Notifications", "fr": "Notifications", "nl": "Meldingen" },
+    "notificationPreferences": { "en": "Preferences", "fr": "Préférences", "nl": "Voorkeuren" },
+    "pushDevices": { "en": "Push devices", "fr": "Appareils push", "nl": "Pushtoestellen" }
+  },
+  "notifications": {
+    "spa": {
+      "title": { "en": "Notifications", "fr": "Notifications", "nl": "Meldingen" },
+      "empty": { "en": "No notifications", "fr": "Aucune notification", "nl": "Geen meldingen" },
+      "markAllRead": { "en": "Mark all as read", "fr": "Tout marquer comme lu", "nl": "Alles als gelezen markeren" },
+      "showAll": { "en": "All notifications", "fr": "Toutes les notifications", "nl": "Alle meldingen" },
+      "pushEnable": { "en": "Turn on push notifications", "fr": "Activer les notifications push", "nl": "Pushmeldingen inschakelen" },
+      "pushDisable": { "en": "Turn off push notifications on this device", "fr": "Désactiver les notifications push sur cet appareil", "nl": "Pushmeldingen op dit toestel uitschakelen" },
+      "pushDenied": { "en": "Notifications are blocked for this site in your browser settings.", "fr": "Les notifications sont bloquées pour ce site dans les réglages du navigateur.", "nl": "Meldingen zijn voor deze site geblokkeerd in je browserinstellingen." },
+      "pushUnsupported": { "en": "This browser cannot receive push notifications here. On iPhone and iPad, add the app to your Home Screen first.", "fr": "Ce navigateur ne peut pas recevoir de notifications push ici. Sur iPhone et iPad, ajoutez d'abord l'application à l'écran d'accueil.", "nl": "Deze browser kan hier geen pushmeldingen ontvangen. Voeg de app op iPhone en iPad eerst toe aan je beginscherm." }
+    }
+  }
+}

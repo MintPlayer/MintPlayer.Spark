@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "OrganizationInvite, the InviteOrganizationMember prompt (docs/seo_analyzer_PRD.md D18): a retry-action form, never stored.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'organizations:OrganizationInvite[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "ea792651-739e-5236-bf2e-15c7c9a9f341",
+    "name": "OrganizationInvite",
+    "breadcrumb": "{Email}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "cc658d88-1315-5745-aca3-440422cc1f2c",
+        "name": "Email",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "16db7785-e2fe-5252-b8a3-930b9d58ab31",
+        "name": "Role",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "lookupReferenceType": "OrganizationInviteRoles",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

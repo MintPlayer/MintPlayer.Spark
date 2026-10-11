@@ -1,0 +1,81 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "NotificationPreference, a user's channels for one organization (docs/seo_analyzer_PRD.md X10, preferences per",
+    "organization). OrganizationId empty = the user's default. An application with the organizations package can",
+    "make OrganizationId a reference to Organization in its own model layer. UserId is set by the save rule.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'notifications:NotificationPreference[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "43fb5ec9-230b-53c5-a493-a29ee36fb9dd",
+    "name": "NotificationPreference",
+    "clrType": "MintPlayer.Spark.Notifications.Models.NotificationPreference",
+    "breadcrumb": "{OrganizationId}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "355f0e14-a583-593b-b2e5-0794d386a0af",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bae62b40-c284-5aed-ad38-c230d4d4505f",
+        "name": "InApp",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ff8f4370-3fe0-539a-9d30-827a37455b15",
+        "name": "Email",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bcf5458e-aaa5-5e76-a9fa-62a82d8abc83",
+        "name": "Push",
+        "dataType": "boolean",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "8ac1d84a-f922-573f-b31b-2cebea736278",
+      "name": "MyNotificationPreferences",
+      "source": "Custom.MyNotificationPreferences",
+      "alias": "notification-preferences",
+      "sortColumns": [
+        {
+          "property": "OrganizationId",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "NotificationPreference"
+    }
+  ]
+}

@@ -262,8 +262,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Repository",
-      "isStreamingQuery": false
+      "entityType": "Repository"
     },
     {
       "id": "0f4e88db-d827-46ce-8367-56259fc81cad",
@@ -276,8 +275,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Repository",
-      "isStreamingQuery": false
+      "entityType": "Repository"
     },
     {
       "id": "551b2212-8f16-4129-aea6-1dfe313d8edc",
@@ -291,8 +289,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "Repositories_Overview",
-      "entityType": "Repository",
-      "isStreamingQuery": false
+      "entityType": "Repository"
     }
   ]
 }

@@ -4,6 +4,7 @@ import { AsDetailCellValuePipe } from './as-detail-cell-value.pipe';
 import { AsDetailColumnsPipe } from './as-detail-columns.pipe';
 import { AsDetailTypePipe } from './as-detail-type.pipe';
 import { AttributeValuePipe } from './attribute-value.pipe';
+import { OrDashPipe } from './or-dash.pipe';
 import { CanCreateDetailRowPipe } from './can-create-detail-row.pipe';
 import { CanDeleteDetailRowPipe } from './can-delete-detail-row.pipe';
 import { CanEditDetailRowPipe } from './can-edit-detail-row.pipe';
@@ -609,5 +610,23 @@ describe('RouterLinkPipe', () => {
   });
   it('returns / for unknown type', () => {
     expect(pipe.transform({ type: 'unknown' } as any)).toEqual(['/']);
+  });
+});
+
+describe('OrDashPipe', () => {
+  const pipe = new OrDashPipe();
+
+  it('keeps the falsy values that are data: 0 and false', () => {
+    expect(pipe.transform(0)).toBe(0);
+    expect(pipe.transform(false)).toBe(false);
+    expect(pipe.transform('0')).toBe('0');
+  });
+
+  it('shows - for null, undefined and an empty or blank string', () => {
+    expect(pipe.transform(null)).toBe('-');
+    expect(pipe.transform(undefined)).toBe('-');
+    expect(pipe.transform('')).toBe('-');
+    expect(pipe.transform('  ')).toBe('-');
+    expect(pipe.transform('x')).toBe('x');
   });
 });

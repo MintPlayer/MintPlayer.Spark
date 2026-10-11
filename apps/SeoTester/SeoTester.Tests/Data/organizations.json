@@ -1,0 +1,20 @@
+{
+  "Results": [
+    { "@metadata": { "@id": "SparkUsers/ann", "@collection": "SparkUsers" }, "UserName": "ann", "NormalizedUserName": "ANN", "Email": "ann@example.com", "NormalizedEmail": "ANN@EXAMPLE.COM", "EmailConfirmed": true, "SecurityStamp": "0f1e2d3c4b5a69788796a5b4c3d2e1f0", "Roles": [] },
+    { "@metadata": { "@id": "SparkUsers/max", "@collection": "SparkUsers" }, "UserName": "max", "NormalizedUserName": "MAX", "Email": "max@example.com", "NormalizedEmail": "MAX@EXAMPLE.COM", "EmailConfirmed": true, "SecurityStamp": "1f1e2d3c4b5a69788796a5b4c3d2e1f0", "Roles": [] },
+    { "@metadata": { "@id": "SparkUsers/vic", "@collection": "SparkUsers" }, "UserName": "vic", "NormalizedUserName": "VIC", "Email": "vic@example.com", "NormalizedEmail": "VIC@EXAMPLE.COM", "EmailConfirmed": true, "SecurityStamp": "2f1e2d3c4b5a69788796a5b4c3d2e1f0", "Roles": [] },
+    { "@metadata": { "@id": "SparkUsers/bob", "@collection": "SparkUsers" }, "UserName": "bob", "NormalizedUserName": "BOB", "Email": "bob@example.org", "NormalizedEmail": "BOB@EXAMPLE.ORG", "EmailConfirmed": true, "SecurityStamp": "3f1e2d3c4b5a69788796a5b4c3d2e1f0", "Roles": [] },
+
+    { "@metadata": { "@id": "Organizations/acme", "@collection": "Organizations" }, "Name": "Acme", "IsPersonal": false, "CreatedBy": "SparkUsers/ann", "CreatedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+    { "@metadata": { "@id": "Organizations/globex", "@collection": "Organizations" }, "Name": "Globex", "IsPersonal": false, "CreatedBy": "SparkUsers/bob", "CreatedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+    { "@metadata": { "@id": "Organizations/personal/SparkUsers/ann", "@collection": "Organizations" }, "Name": "ann", "IsPersonal": true, "CreatedBy": "SparkUsers/ann", "CreatedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+    { "@metadata": { "@id": "Organizations/personal/SparkUsers/max", "@collection": "Organizations" }, "Name": "max", "IsPersonal": true, "CreatedBy": "SparkUsers/max", "CreatedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+
+    { "@metadata": { "@id": "OrganizationMemberships/SparkUsers/ann/Organizations/acme", "@collection": "OrganizationMemberships" }, "OrganizationId": "Organizations/acme", "UserId": "SparkUsers/ann", "UserName": "ann", "Role": "Owner", "JoinedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+    { "@metadata": { "@id": "OrganizationMemberships/SparkUsers/max/Organizations/acme", "@collection": "OrganizationMemberships" }, "OrganizationId": "Organizations/acme", "UserId": "SparkUsers/max", "UserName": "max", "Role": "Member", "JoinedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+    { "@metadata": { "@id": "OrganizationMemberships/SparkUsers/vic/Organizations/acme", "@collection": "OrganizationMemberships" }, "OrganizationId": "Organizations/acme", "UserId": "SparkUsers/vic", "UserName": "vic", "Role": "Viewer", "JoinedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+    { "@metadata": { "@id": "OrganizationMemberships/SparkUsers/bob/Organizations/globex", "@collection": "OrganizationMemberships" }, "OrganizationId": "Organizations/globex", "UserId": "SparkUsers/bob", "UserName": "bob", "Role": "Owner", "JoinedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+    { "@metadata": { "@id": "OrganizationMemberships/SparkUsers/ann/Organizations/personal/SparkUsers/ann", "@collection": "OrganizationMemberships" }, "OrganizationId": "Organizations/personal/SparkUsers/ann", "UserId": "SparkUsers/ann", "UserName": "ann", "Role": "Owner", "JoinedAtUtc": "2026-10-01T09:00:00.0000000Z" },
+    { "@metadata": { "@id": "OrganizationMemberships/SparkUsers/max/Organizations/personal/SparkUsers/max", "@collection": "OrganizationMemberships" }, "OrganizationId": "Organizations/personal/SparkUsers/max", "UserId": "SparkUsers/max", "UserName": "max", "Role": "Owner", "JoinedAtUtc": "2026-10-01T09:00:00.0000000Z" }
+  ]
+}

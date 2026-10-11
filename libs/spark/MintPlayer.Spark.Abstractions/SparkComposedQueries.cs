@@ -64,13 +64,13 @@ public static class SparkComposedQueries
             // surfaced as `CLR type '' not found` wrapped in `{"message":"Stream failed"}` — a
             // message that names neither the query nor the reason, arrives only once someone opens
             // the page, and cannot be seen in CI at all.
-            if (query.IsStreamingQuery)
+            if (query.Live)
             {
                 problems.Add(
-                    $"Query '{query.Name}' streams over '{type.Name}', which declares no clrType. Streaming " +
-                    $"reads a RavenDB change stream for a collection, and a composed type has no collection " +
-                    $"to watch. Either give the query a non-streaming source, or point it at a type backed by " +
-                    $"an entity class.");
+                    $"Query '{query.Name}' is live over '{type.Name}', which declares no clrType. A live query " +
+                    $"is re-run when its RavenDB collection changes, or secures an app stream's rows as " +
+                    $"entities of that class, and a composed type has neither. Remove \"live\", or point the " +
+                    $"query at a type backed by an entity class.");
             }
 
         }

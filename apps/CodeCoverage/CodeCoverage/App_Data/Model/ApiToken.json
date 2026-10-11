@@ -145,8 +145,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "ApiToken",
-      "isStreamingQuery": false
+      "entityType": "ApiToken"
     },
     {
       "id": "cf2462ff-efde-4a89-a48e-b2b53c101f7a",
@@ -160,8 +159,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "ApiTokens_Overview",
-      "entityType": "ApiToken",
-      "isStreamingQuery": false
+      "entityType": "ApiToken"
     }
   ]
 }

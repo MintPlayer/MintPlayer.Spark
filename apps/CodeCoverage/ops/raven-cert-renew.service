@@ -1,0 +1,16 @@
+# Renews the RavenDB certificates when due (docs/code-coverage/raven-tls-migration.md §6). Started by
+# raven-cert-renew.timer; installed by .github/workflows/code-coverage-deploy.yml.
+[Unit]
+Description=Renew the RavenDB certificates of coverage-raven when due
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/raven-cert-renew --scheduled
+# It must run as root (it drives Docker and writes root-only files), so it gets what can still be taken away.
+# No PrivateTmp/ProtectHome: the Docker daemon must see the files it mounts, and CA_DIR is /root/raven-ca.
+NoNewPrivileges=yes
+UMask=0077
+# 3 attempts 10 minutes apart, each up to ~20 minutes (RavenDB and both apps restarting).
+TimeoutStartSec=2h

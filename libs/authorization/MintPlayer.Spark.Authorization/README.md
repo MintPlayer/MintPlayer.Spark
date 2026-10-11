@@ -317,6 +317,14 @@ the deletion stopped; one that throws is logged and the response is still 204. A
 ids only; **RavenDB revisions are not rewritten** — content-level personal data is the application's
 handler's job.
 
+#### After sign-in (`ISparkSignedInHandler<TUser>`)
+
+Every fresh sign-in (password, second factor, recovery code, external login, passkey; never a session
+refresh) runs each registered `ISparkSignedInHandler<TUser>` before the ticket is issued. A handler that
+throws is logged and the sign-in still succeeds, so make it idempotent and cheap (a load by id). The
+Organizations package uses it to create a user's personal organization on first sign-in
+(`docs/guide-organizations.md`).
+
 #### Custom Group Membership Provider
 
 By default, Spark resolves user groups from ASP.NET Core Identity roles. To integrate with a different authentication system, implement `IGroupMembershipProvider`:

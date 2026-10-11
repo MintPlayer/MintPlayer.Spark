@@ -1,0 +1,490 @@
+{
+ "kind": "pagespeedonline#result",
+ "id": "https://example.com/",
+ "loadingExperience": {
+  "id": "https://example.com/",
+  "metrics": {
+   "CUMULATIVE_LAYOUT_SHIFT_SCORE": {
+    "percentile": 0,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 10,
+      "proportion": 0.9983
+     },
+     {
+      "min": 10,
+      "max": 25,
+      "proportion": 0.0016
+     },
+     {
+      "min": 25,
+      "proportion": 0.0001
+     }
+    ],
+    "category": "FAST"
+   },
+   "EXPERIMENTAL_TIME_TO_FIRST_BYTE": {
+    "percentile": 708,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 800,
+      "proportion": 0.7764
+     },
+     {
+      "min": 800,
+      "max": 1800,
+      "proportion": 0.16
+     },
+     {
+      "min": 1800,
+      "proportion": 0.0636
+     }
+    ],
+    "category": "FAST"
+   },
+   "FIRST_CONTENTFUL_PAINT_MS": {
+    "percentile": 1004,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 1800,
+      "proportion": 0.8986
+     },
+     {
+      "min": 1800,
+      "max": 3000,
+      "proportion": 0.0506
+     },
+     {
+      "min": 3000,
+      "proportion": 0.0507
+     }
+    ],
+    "category": "FAST"
+   },
+   "INTERACTION_TO_NEXT_PAINT": {
+    "percentile": 87,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 200,
+      "proportion": 0.9257
+     },
+     {
+      "min": 200,
+      "max": 500,
+      "proportion": 0.0512
+     },
+     {
+      "min": 500,
+      "proportion": 0.0231
+     }
+    ],
+    "category": "FAST"
+   },
+   "LARGEST_CONTENTFUL_PAINT_MS": {
+    "percentile": 1038,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 2500,
+      "proportion": 0.9322
+     },
+     {
+      "min": 2500,
+      "max": 4000,
+      "proportion": 0.0372
+     },
+     {
+      "min": 4000,
+      "proportion": 0.0306
+     }
+    ],
+    "category": "FAST"
+   }
+  },
+  "overall_category": "FAST",
+  "initial_url": "https://example.com/"
+ },
+ "originLoadingExperience": {
+  "id": "https://example.com",
+  "metrics": {
+   "CUMULATIVE_LAYOUT_SHIFT_SCORE": {
+    "percentile": 0,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 10,
+      "proportion": 0.9983
+     },
+     {
+      "min": 10,
+      "max": 25,
+      "proportion": 0.0016
+     },
+     {
+      "min": 25,
+      "proportion": 0.0001
+     }
+    ],
+    "category": "FAST"
+   },
+   "EXPERIMENTAL_TIME_TO_FIRST_BYTE": {
+    "percentile": 707,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 800,
+      "proportion": 0.7786
+     },
+     {
+      "min": 800,
+      "max": 1800,
+      "proportion": 0.16
+     },
+     {
+      "min": 1800,
+      "proportion": 0.0614
+     }
+    ],
+    "category": "FAST"
+   },
+   "FIRST_CONTENTFUL_PAINT_MS": {
+    "percentile": 1004,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 1800,
+      "proportion": 0.9008
+     },
+     {
+      "min": 1800,
+      "max": 3000,
+      "proportion": 0.0499
+     },
+     {
+      "min": 3000,
+      "proportion": 0.0493
+     }
+    ],
+    "category": "FAST"
+   },
+   "INTERACTION_TO_NEXT_PAINT": {
+    "percentile": 87,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 200,
+      "proportion": 0.927
+     },
+     {
+      "min": 200,
+      "max": 500,
+      "proportion": 0.0504
+     },
+     {
+      "min": 500,
+      "proportion": 0.0226
+     }
+    ],
+    "category": "FAST"
+   },
+   "LARGEST_CONTENTFUL_PAINT_MS": {
+    "percentile": 1038,
+    "distributions": [
+     {
+      "min": 0,
+      "max": 2500,
+      "proportion": 0.933
+     },
+     {
+      "min": 2500,
+      "max": 4000,
+      "proportion": 0.0365
+     },
+     {
+      "min": 4000,
+      "proportion": 0.0306
+     }
+    ],
+    "category": "FAST"
+   }
+  },
+  "overall_category": "FAST",
+  "initial_url": "https://example.com/"
+ },
+ "analysisUTCTimestamp": "2026-10-10T17:05:16.640Z",
+ "lighthouseResult": {
+  "lighthouseVersion": "13.5.0",
+  "requestedUrl": "https://example.com/",
+  "finalUrl": "https://example.com/",
+  "fetchTime": "2026-10-10T17:05:16.640Z",
+  "configSettings": {
+   "formFactor": "mobile"
+  },
+  "categories": {
+   "performance": {
+    "id": "performance",
+    "title": "Performance",
+    "score": 1,
+    "auditRefs": [
+     {
+      "id": "first-contentful-paint",
+      "weight": 10
+     },
+     {
+      "id": "largest-contentful-paint",
+      "weight": 25
+     },
+     {
+      "id": "total-blocking-time",
+      "weight": 30
+     },
+     {
+      "id": "cumulative-layout-shift",
+      "weight": 25
+     },
+     {
+      "id": "speed-index",
+      "weight": 10
+     }
+    ]
+   },
+   "accessibility": {
+    "id": "accessibility",
+    "title": "Accessibility",
+    "score": 0.96
+   },
+   "best-practices": {
+    "id": "best-practices",
+    "title": "Best Practices",
+    "score": 1
+   },
+   "seo": {
+    "id": "seo",
+    "title": "SEO",
+    "score": 0.8
+   }
+  },
+  "audits": {
+   "third-parties-insight": {
+    "id": "third-parties-insight",
+    "title": "3rd parties",
+    "score": 1,
+    "scoreDisplayMode": "numeric"
+   },
+   "inp-breakdown-insight": {
+    "id": "inp-breakdown-insight",
+    "title": "INP breakdown",
+    "score": null,
+    "scoreDisplayMode": "notApplicable"
+   },
+   "font-display-insight": {
+    "id": "font-display-insight",
+    "title": "Font display",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "INP": 0
+    }
+   },
+   "lcp-discovery-insight": {
+    "id": "lcp-discovery-insight",
+    "title": "LCP request discovery",
+    "score": null,
+    "scoreDisplayMode": "notApplicable"
+   },
+   "speed-index": {
+    "id": "speed-index",
+    "title": "Speed Index",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "0.8 s",
+    "numericValue": 754.5,
+    "numericUnit": "millisecond"
+   },
+   "legacy-javascript-insight": {
+    "id": "legacy-javascript-insight",
+    "title": "Legacy JavaScript",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "total-byte-weight": {
+    "id": "total-byte-weight",
+    "title": "Avoids enormous network payloads",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "displayValue": "Total size was 2 KiB",
+    "numericValue": 2323,
+    "numericUnit": "byte"
+   },
+   "largest-contentful-paint": {
+    "id": "largest-contentful-paint",
+    "title": "Largest Contentful Paint",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "0.8 s",
+    "numericValue": 774.5,
+    "numericUnit": "millisecond"
+   },
+   "cache-insight": {
+    "id": "cache-insight",
+    "title": "Use efficient cache lifetimes",
+    "score": 0.5,
+    "scoreDisplayMode": "metricSavings",
+    "displayValue": "Est savings of 2 KiB",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "total-blocking-time": {
+    "id": "total-blocking-time",
+    "title": "Total Blocking Time",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "0 ms",
+    "numericValue": 0,
+    "numericUnit": "millisecond"
+   },
+   "forced-reflow-insight": {
+    "id": "forced-reflow-insight",
+    "title": "Forced reflow",
+    "score": 1,
+    "scoreDisplayMode": "numeric"
+   },
+   "dom-size-insight": {
+    "id": "dom-size-insight",
+    "title": "Optimize DOM size",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "numericValue": 16,
+    "numericUnit": "element",
+    "metricSavings": {
+     "INP": 0
+    }
+   },
+   "document-latency-insight": {
+    "id": "document-latency-insight",
+    "title": "Document request latency",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "cumulative-layout-shift": {
+    "id": "cumulative-layout-shift",
+    "title": "Cumulative Layout Shift",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "0",
+    "numericValue": 0,
+    "numericUnit": "unitless"
+   },
+   "image-delivery-insight": {
+    "id": "image-delivery-insight",
+    "title": "Improve image delivery",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "duplicated-javascript-insight": {
+    "id": "duplicated-javascript-insight",
+    "title": "Duplicated JavaScript",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "render-blocking-insight": {
+    "id": "render-blocking-insight",
+    "title": "Render-blocking requests",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "network-dependency-tree-insight": {
+    "id": "network-dependency-tree-insight",
+    "title": "Network dependency tree",
+    "score": 0,
+    "scoreDisplayMode": "numeric",
+    "metricSavings": {
+     "LCP": 0
+    }
+   },
+   "interactive": {
+    "id": "interactive",
+    "title": "Time to Interactive",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "0.8 s",
+    "numericValue": 775.3000000000001,
+    "numericUnit": "millisecond"
+   },
+   "unused-javascript": {
+    "id": "unused-javascript",
+    "title": "Reduce unused JavaScript",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "numericValue": 0,
+    "numericUnit": "millisecond",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "lcp-breakdown-insight": {
+    "id": "lcp-breakdown-insight",
+    "title": "LCP breakdown",
+    "score": 1,
+    "scoreDisplayMode": "informative",
+    "metricSavings": {
+     "LCP": 0
+    }
+   },
+   "cls-culprits-insight": {
+    "id": "cls-culprits-insight",
+    "title": "Layout shift culprits",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "metricSavings": {
+     "CLS": 0
+    }
+   },
+   "first-contentful-paint": {
+    "id": "first-contentful-paint",
+    "title": "First Contentful Paint",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "0.8 s",
+    "numericValue": 754.5,
+    "numericUnit": "millisecond"
+   },
+   "viewport-insight": {
+    "id": "viewport-insight",
+    "title": "Optimize viewport for mobile",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "metricSavings": {
+     "INP": 0
+    }
+   }
+  }
+ }
+}

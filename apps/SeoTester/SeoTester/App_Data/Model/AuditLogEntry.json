@@ -1,0 +1,145 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "persistentObject": {
+    "id": "6b1e34fe-b6a2-4838-a153-9929abc030c8",
+    "name": "AuditLogEntry",
+    "clrType": "SeoTester.Entities.AuditLogEntry",
+    "alias": "audit-log-entry",
+    "breadcrumb": "{Kind} {Origin}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "66cf3745-f9ce-4abe-848f-c12919317133",
+        "name": "AtUtc",
+        "dataType": "datetime",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c4497d7d-d3a8-44ee-bb64-69d7212ac41b",
+        "name": "Detail",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "066bae13-ab2e-4fa2-8dc5-f473c4455dd8",
+        "name": "ExpiresAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "98d2b4f1-0631-4c15-99b9-89b12423e3e5",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "24c1ccdf-b8bd-4b48-93b2-cebde8c601ae",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3e31a00c-b47c-4be8-870b-69af203bc8db",
+        "name": "Origin",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7bd4a414-ce35-447c-8159-f4ea244a723f",
+        "name": "RunId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "query": "GetAuditRuns",
+        "referenceType": "SeoTester.Entities.AuditRun",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8b00013c-7dfb-4002-adda-daa32ff41143",
+        "name": "SiteId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "query": "GetSites",
+        "referenceType": "SeoTester.Entities.Site",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4e18da03-90d5-4688-81a6-b46f38f0d7fc",
+        "name": "UserId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "37e79ec8-371c-43f9-8939-9669a5ae4701",
+        "name": "Verified",
+        "dataType": "boolean",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "2498a0df-9613-4822-8b12-b60a8449c83f",
+      "name": "GetAuditLogEntries",
+      "source": "Database.AuditLogEntries",
+      "alias": "audit-log",
+      "sortColumns": [
+        {
+          "property": "AtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "AuditLogEntry"
+    }
+  ]
+}

@@ -54,8 +54,19 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     /// <summary>Number of live lanes. For tests and diagnostics.</summary>
     internal int LaneCount => lanes.Count;
 
+    /// <summary>
+    /// Starts a lease's worth of routing. Called once per lease held: a host that loses the lease and takes it back
+    /// calls it again, after <see cref="StopAsync"/> has emptied the lanes of the previous lease.
+    /// </summary>
     public void Start(CancellationToken stoppingToken)
-        => lifetime = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+    {
+        // A lifetime left over means StopAsync did not run; cancel it rather than leak its pumps.
+        if (Interlocked.Exchange(ref lifetime, CancellationTokenSource.CreateLinkedTokenSource(stoppingToken)) is { } stale)
+        {
+            stale.Cancel();
+            stale.Dispose();
+        }
+    }
 
     /// <summary>
     /// Routes a claimed message to its queue's lane, creating the lane on first use. Completes when
@@ -118,7 +129,7 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
             {
                 // Claim renewal + HandlerTimeout, shared with the per-queue worker.
                 await ClaimedExecution.RunAsync(
-                    documentStore, Options, logger, messageId,
+                    documentStore, Options, logger, messageId, Options.HandlerTimeoutFor(queueName),
                     token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token),
                     cancellationToken);
             }
@@ -171,8 +182,27 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    /// The failure bound on waiting for cancelled pumps to unwind in <see cref="DisposeAsync"/>. A cancelled
+    /// handler normally ends in milliseconds (its HTTP request or database call is cancelled, the processor records
+    /// the outcome); one that ignores its token is abandoned after this, with a warning.
+    /// </summary>
+    internal static readonly TimeSpan PumpStopTimeout = TimeSpan.FromSeconds(5);
+
+    public ValueTask DisposeAsync() => new(StopAsync());
+
+    /// <summary>
+    /// Cancels the pumps, waits for them (bounded by <see cref="PumpStopTimeout"/>) and drops every lane, so the
+    /// router is empty again. Runs at the end of every messaging teardown, not only at disposal: the lanes'
+    /// channels were completed by <see cref="DrainAsync"/>, and a host that takes the lease back after losing it
+    /// would otherwise route into a completed channel (<c>ChannelClosedException</c>; Q-M11e follow-up,
+    /// docs/seo_analyzer_PRD.md §12). The next <see cref="Start"/> then builds fresh lanes on first use.
+    /// </summary>
+    public async Task StopAsync()
     {
+        // The pumps, taken before ownership: a concurrent disposer clears the lanes.
+        var pumps = lanes.Values.Where(l => l.IsValueCreated).Select(l => l.Value.PumpTask).OfType<Task>().ToArray();
+
         // ⚠️ Take ownership atomically. Disposal happens twice by design (MessageSubscriptionManager.
         // StopAsync and the container that owns this singleton), and a check-then-act across the
         // await let both callers through, so the second dereferenced a field the first had cleared.
@@ -180,6 +210,21 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         if (owned is not null)
         {
             await owned.CancelAsync();
+
+            // Wait for the cancelled pumps to unwind. Without this they ran on after StopAsync returned and
+            // logged their handlers' cancellations into a host that had been disposed meanwhile (Q-M11e,
+            // docs/seo_analyzer_PRD.md §12): no pump may outlive the stop that cancelled it.
+            if (pumps.Length > 0)
+            {
+                await Task.WhenAny(Task.WhenAll(pumps), Task.Delay(PumpStopTimeout));
+                if (!pumps.All(p => p.IsCompleted))
+                {
+                    logger.LogWarning(
+                        "Message pumps did not stop within {Timeout} of being cancelled; a handler is ignoring its "
+                        + "cancellation token, and its message is reclaimed after SparkMessagingOptions.ClaimTtl", PumpStopTimeout);
+                }
+            }
+
             owned.Dispose();
         }
 

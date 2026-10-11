@@ -1,0 +1,329 @@
+name: seotester-deploy
+
+# Deploys apps/SeoTester to seotester.mintplayer.com, on the VPS beside CodeCoverage (docs/seotester/deploy.md).
+# Modelled on code-coverage-deploy.yml: ghcr → SSH → compose, the same repository secrets (VPS_*), the same
+# readiness loop. Three images: the app (ghcr.io/mintplayer/seotester:master), the Chromium container
+# (ghcr.io/mintplayer/seotester-chromium:<Playwright version>, the tag docker-compose.yml pins) and the fetcher
+# (ghcr.io/mintplayer/seotester-fetcher:master, PRD D54).
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/SeoTester/**'
+      # The tests are not in the image.
+      - '!apps/SeoTester/SeoTester.Tests/**'
+      # SeoTester's transitive ProjectReference closure, the same list as the Dockerfile's COPY lines and
+      # seotester-image-check.yml (tools/verify-seotester-deploy.test.mjs keeps the three equal to the csproj graph).
+      - 'libs/attributes/MintPlayer.Spark.Attributes/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
+      - 'libs/cron/MintPlayer.Spark.Cron/**'
+      - 'libs/history/MintPlayer.Spark.History/**'
+      - 'libs/history/MintPlayer.Spark.History.Abstractions/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager.Abstractions/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
+      - 'libs/migrations/MintPlayer.Spark.Migrations/**'
+      - 'libs/model/MintPlayer.Spark.Model/**'
+      - 'libs/notifications/MintPlayer.Spark.Notifications/**'
+      - 'libs/organizations/MintPlayer.Spark.Organizations/**'
+      - 'libs/settings/MintPlayer.Spark.Settings/**'
+      - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
+      - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
+      - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
+      - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
+      - 'libs/webpush/MintPlayer.Spark.WebPush/**'
+      # Angular libraries baked into the image via `nx run @spark-apps/seo-tester:build`.
+      - 'libs/node_packages/ng-spark/**'
+      # Workspace-level files that affect the build.
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
+      - '.github/workflows/seotester-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: mintplayer/seotester
+  CHROMIUM_IMAGE_NAME: mintplayer/seotester-chromium
+  FETCHER_IMAGE_NAME: mintplayer/seotester-fetcher
+
+jobs:
+  build-and-push:
+
+    name: Build and push the SeoTester image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    # No host .NET/Node setup: the Dockerfile's build stage restores, runs `npm ci`, the Nx build and
+    # `dotnet publish` inside the container (--skip-nx-cache: the shipped image is never replayed from a cache).
+    # Like CodeCoverage's deploy, no --spark-verify-model here: the image is built from THIS commit, and the
+    # runtime ModelHashVerifier fails closed in Production.
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Authenticate with GHCR
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Extract tags/labels
+      id: meta-ghcr
+      uses: docker/metadata-action@v6
+      with:
+        github-token: ${{ github.token }}
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+    - name: Build and push Docker image
+      id: push-ghcr
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/SeoTester/SeoTester/Dockerfile
+        push: true
+        tags: ${{ steps.meta-ghcr.outputs.tags }}
+        labels: ${{ steps.meta-ghcr.outputs.labels }}
+        cache-from: type=gha,scope=seotester
+        cache-to: type=gha,mode=max,scope=seotester
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        subject-digest: ${{ steps.push-ghcr.outputs.digest }}
+        push-to-registry: true
+
+    # Best-effort, as CodeCoverage's: the package must be public for the VPS to pull without credentials. Verify in
+    # the package settings after the first run rather than trusting this step.
+    - name: Make the package public
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api --method PATCH -H "Accept: application/vnd.github+json" \
+          "/orgs/${{ github.repository_owner }}/packages/container/seotester" \
+          -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
+
+  build-chromium:
+
+    name: Build and push the Chromium image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    # The tag is the Playwright version of the image's FROM line (= the app's Microsoft.Playwright, which a test
+    # keeps equal), so docker-compose.yml's pinned tag names exactly what this builds.
+    - name: Read the Playwright version
+      id: version
+      run: |
+        version=$(sed -n 's|^FROM mcr.microsoft.com/playwright:v\([0-9.]*\)-.*|\1|p' apps/SeoTester/chromium/Dockerfile)
+        test -n "$version" || { echo "::error::no Playwright version in apps/SeoTester/chromium/Dockerfile"; exit 1; }
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Authenticate with GHCR
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Build and push the Chromium image
+      id: push-chromium
+      uses: docker/build-push-action@v7
+      with:
+        context: ./apps/SeoTester/chromium
+        file: ./apps/SeoTester/chromium/Dockerfile
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.CHROMIUM_IMAGE_NAME }}:${{ steps.version.outputs.version }}
+        cache-from: type=gha,scope=seotester-chromium
+        cache-to: type=gha,mode=max,scope=seotester-chromium
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.CHROMIUM_IMAGE_NAME }}
+        subject-digest: ${{ steps.push-chromium.outputs.digest }}
+        push-to-registry: true
+
+    - name: Make the package public
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api --method PATCH -H "Accept: application/vnd.github+json" \
+          "/orgs/${{ github.repository_owner }}/packages/container/seotester-chromium" \
+          -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
+
+  build-fetcher:
+
+    # The fetcher (docs/seo_analyzer_PRD.md D54): every request to an audited site leaves from this image, which has no
+    # database client. Built from the same commit as the app, tagged like it (master), so the two always match.
+    name: Build and push the fetcher image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Authenticate with GHCR
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Extract tags/labels
+      id: meta-fetcher
+      uses: docker/metadata-action@v6
+      with:
+        github-token: ${{ github.token }}
+        images: ${{ env.REGISTRY }}/${{ env.FETCHER_IMAGE_NAME }}
+
+    - name: Build and push the fetcher image
+      id: push-fetcher
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/SeoTester/SeoTester.Fetcher/Dockerfile
+        push: true
+        tags: ${{ steps.meta-fetcher.outputs.tags }}
+        labels: ${{ steps.meta-fetcher.outputs.labels }}
+        cache-from: type=gha,scope=seotester-fetcher
+        cache-to: type=gha,mode=max,scope=seotester-fetcher
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.FETCHER_IMAGE_NAME }}
+        subject-digest: ${{ steps.push-fetcher.outputs.digest }}
+        push-to-registry: true
+
+    - name: Make the package public
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api --method PATCH -H "Accept: application/vnd.github+json" \
+          "/orgs/${{ github.repository_owner }}/packages/container/seotester-fetcher" \
+          -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
+
+  deploy:
+
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    # Room for pull + restart plus the 360s readiness bound below.
+    timeout-minutes: 20
+    needs: [build-and-push, build-chromium, build-fetcher]
+    if: github.ref == 'refs/heads/master'
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v1.2.5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: ${{ secrets.VPS_PORT }}
+        passphrase: ${{ secrets.VPS_SSH_KEY_PASSPHRASE }}
+        envs: GITHUB_TOKEN
+        script: |
+          # Fail on the FIRST failing command (code-coverage-deploy.yml learned this the hard way).
+          set -e
+
+          mkdir -p /var/www/seotester
+          cd /var/www/seotester
+
+          # .env is server-managed; deploys never write it. Only the compose file is refreshed from the repo.
+          test -f .env || { echo "::error::/var/www/seotester/.env is missing — create it from apps/SeoTester/.env.example (docs/seotester/deploy.md)"; exit 1; }
+          # The fetcher's shared secret (PRD D54): set, and at least 32 characters. Checked by length only; nothing is printed.
+          grep -Eq '^SEO_FETCHER_KEY=.{32,}$' .env || { echo "::error::SEO_FETCHER_KEY is missing or shorter than 32 characters in /var/www/seotester/.env (openssl rand -hex 32, docs/seotester/deploy.md)"; exit 1; }
+          # RavenDB is secured: this app's client certificate and the CA must be on the server (deploy.md §3.0). Presence only.
+          for f in raven-certs/seotester.crt raven-certs/seotester.key raven-certs/ca.crt; do
+            test -s "$f" || { echo "::error::/var/www/seotester/$f is missing — see docs/seotester/deploy.md §3.0"; exit 1; }
+          done
+          # The two backend networks shared with CodeCoverage (seo-raven: coverage-raven + seotester-app; seo-mail: coverage-smtp +
+          # seotester-app). External to every compose project, so they are created here, INTERNAL (no route out), when missing;
+          # idempotent, and a concurrent create by the other deploy is fine (the second inspect finds it). A network of that name
+          # that is not internal is refused rather than used (SeoTester PRD D55). Same block in the other deploy.
+          for net in seo-raven seo-mail; do
+            docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
+            [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
+          done
+          # The database and the mail relay are CodeCoverage's: refuse (before touching the running stack) until its
+          # coverage-raven and coverage-smtp are on the shared networks, i.e. until CodeCoverage was deployed with the compose file that joins them.
+          docker network inspect seo-raven --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q 'coverage-raven' || { echo "::error::coverage-raven is not on the network seo-raven — deploy CodeCoverage first (docs/seotester/deploy.md §3.0)"; exit 1; }
+          docker network inspect seo-mail --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q 'coverage-smtp' || { echo "::error::coverage-smtp is not on the network seo-mail — deploy CodeCoverage first (docs/seotester/deploy.md §3.0)"; exit 1; }
+
+          rm -f docker-compose.yml
+          curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
+            https://raw.githubusercontent.com/${{ github.repository }}/master/apps/SeoTester/docker-compose.yml
+
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          docker compose --env-file .env pull
+          docker compose --env-file .env down --remove-orphans
+          docker compose --env-file .env up -d --remove-orphans
+
+          docker image prune -f
+          docker compose --env-file .env ps
+
+          # Readiness that can fail. The bound is a FAILURE bound (the loop exits on the first 200): seotester-app's
+          # healthcheck start_period (300s) plus one minute, 36 probes 10s apart. Keep the two in step.
+          for i in $(seq 1 36); do
+            sleep 10
+            code=$(docker compose --env-file .env exec -T seotester-app bash -c "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && head -1 <&3" | grep -o '[0-9][0-9][0-9]' | head -1 || echo 000)
+            echo "readiness attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+          done
+          echo "::error::seotester-app did not become ready within 360s — docker compose logs seotester-app"
+          exit 1

@@ -104,8 +104,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "MyAccountRow",
-      "isStreamingQuery": false
+      "entityType": "MyAccountRow"
     }
   ]
 }

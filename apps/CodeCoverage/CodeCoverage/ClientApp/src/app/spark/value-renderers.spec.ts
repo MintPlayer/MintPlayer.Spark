@@ -6,7 +6,7 @@ import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { DateTimeRendererComponent } from './date-time-renderer.component';
 import { ConnectedRendererComponent } from './connected-renderer.component';
 import { CoverageBarRendererComponent } from './coverage-bar-renderer.component';
-import { CoverageDeltaRendererComponent } from './coverage-delta-renderer.component';
+import { SparkDeltaComponent } from '@mintplayer/ng-spark/score-renderers';
 import { CoverageSummaryDetailRendererComponent } from './coverage-summary-detail-renderer.component';
 import { AccountCoverageRendererComponent } from './account-coverage-renderer.component';
 import { BuildSessionsRendererComponent } from './build-sessions-renderer.component';
@@ -130,13 +130,13 @@ describe('CoverageSummaryDetailRendererComponent', () => {
   });
 });
 
-describe('CoverageDeltaRendererComponent', () => {
+describe("'coverage-delta' (ng-spark's SparkDeltaComponent)", () => {
   function span(fixture: ComponentFixture<unknown>): HTMLElement {
     return (fixture.nativeElement as HTMLElement).querySelector('span')!;
   }
 
   it('shows a rise signed and green', () => {
-    const fixture = render(CoverageDeltaRendererComponent, { value: 2.345 });
+    const fixture = render(SparkDeltaComponent, { value: 2.345 });
 
     expect(span(fixture).textContent).toBe('+2.3');
     expect(span(fixture).classList.contains('text-success')).toBe(true);
@@ -144,26 +144,26 @@ describe('CoverageDeltaRendererComponent', () => {
   });
 
   it('shows a drop red', () => {
-    const fixture = render(CoverageDeltaRendererComponent, { value: -1 });
+    const fixture = render(SparkDeltaComponent, { value: -1 });
 
     expect(span(fixture).textContent).toBe('-1.0');
     expect(span(fixture).classList.contains('text-danger')).toBe(true);
   });
 
   it('shows no change as muted 0.0 and no reference as a muted dash', () => {
-    const zero = render(CoverageDeltaRendererComponent, { value: 0 });
+    const zero = render(SparkDeltaComponent, { value: 0 });
     expect(span(zero).textContent).toBe('0.0');
     expect(span(zero).classList.contains('text-muted')).toBe(true);
 
     for (const value of [null, undefined, '', 'n/a']) {
-      const none = render(CoverageDeltaRendererComponent, { value });
+      const none = render(SparkDeltaComponent, { value });
       expect(span(none).textContent).toBe('—');
       expect(span(none).classList.contains('text-muted')).toBe(true);
     }
   });
 
   it('parses a numeric string', () => {
-    expect(span(render(CoverageDeltaRendererComponent, { value: '1.5' })).textContent).toBe('+1.5');
+    expect(span(render(SparkDeltaComponent, { value: '1.5' })).textContent).toBe('+1.5');
   });
 });
 

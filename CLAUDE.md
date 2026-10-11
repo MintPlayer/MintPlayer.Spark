@@ -1,10 +1,14 @@
 # MintPlayer.Spark — repository instructions
 
-## `apps/` holds applications, and one of them is production
+## `apps/` holds applications, and two of them are production
 
 `apps/` (renamed from `Demo/`) holds the five demos **and `apps/CodeCoverage`**, which is not a demo:
 it is the coverage server running at coverage.mintplayer.com, absorbed from `MintPlayer/CodeCoverage`.
 Treat changes to it as production changes. Its docs are in [docs/code-coverage/](docs/code-coverage/README.md).
+
+**`apps/SeoTester`** is production too: the SEO analyzer at seotester.mintplayer.com (#268, https 5013),
+deployed beside CodeCoverage on the same VPS. Treat changes to it as production changes. Its docs are in
+[docs/seotester/](docs/seotester/README.md); its plan and decision log are `docs/seo_analyzer_PRD.md`.
 
 - **`apps/SparkId`** is the demo identity provider (https 5011). HR, Fleet and QnA sign in against it,
   and Fleet validates the machine tokens it issues. Identity-provider work lands there, not in HR

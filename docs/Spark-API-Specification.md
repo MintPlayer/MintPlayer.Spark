@@ -4,7 +4,7 @@ Reference for every HTTP endpoint the Spark framework exposes. All endpoints liv
 
 ## Two things to know before reading the table
 
-**Every persistent-object, query and action path is literal, and every such call is a `POST`.** There are no route variables: the entity type, the object id, paging, sorting and filters all travel in a JSON body. A Raven id contains slashes and nothing validates the character set of a type name or alias, so a scheme that kept either in the path was collision-free only by convention. The one exception is the WebSocket streaming route, whose handshake has no body to move an id into.
+**Every persistent-object, query and action path is literal, and every such call is a `POST`.** There are no route variables: the entity type, the object id, paging, sorting and filters all travel in a JSON body. A Raven id contains slashes and nothing validates the character set of a type name or alias, so a scheme that kept either in the path was collision-free only by convention. The live-updates socket (`/spark/live`) is literal too: its ids travel in the JSON frames it carries.
 
 **A top-level `objectTypeId` is not the same field as `persistentObject.objectTypeId`.** The first is the request parameter: the server resolves it, authorizes against it, and it is read in exactly one place. The second is part of the submitted document — the object declaring what it is — and is overwritten with the resolved type on the way in. A payload naming a different type changes nothing and buys no access. They now sit one line apart in the same document, which is why the distinction is stated here rather than left to be inferred.
 
@@ -244,7 +244,7 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
   - Authorization runs **before** the sort parse, or the parser answers questions on the caller's behalf — an unauthorized caller could otherwise enumerate attribute names by watching 400-vs-404.
   - Parent-not-found returns `404`, not silent empty results, to prevent data leakage.
 
-#### Stream Query (WebSocket)
+#### Distinct Values
 
 **`POST /spark/queries/distinct-values`** — `Endpoints/Queries/DistinctValues.cs`
 
@@ -287,18 +287,19 @@ selection is first made and derives both buckets itself.
 two are deliberately indistinguishable — the difference is a fact about the caller's rights.
 `hasMore` must be honoured: the panel re-queries only when it is set or the search term widens.
 
-**`GET /spark/queries/{id}/stream`** — `Endpoints/Queries/StreamExecuteQuery.cs`
+### Live Updates (WebSocket)
 
-- **Route params**: `{id}` — Guid or alias. ⚠️ **The only route variable left in Spark**, and the only one that cannot be removed: a WebSocket handshake has no body to move an id into. It collides with nothing — its siblings are the single-segment literals `/get` and `/execute`, and this route needs the `/stream` suffix to match at all.
-- **Protocol**: WebSocket upgrade (`Connection: Upgrade`)
-- **WebSocket messages** (JSON, camelCase):
-  - `StreamingMessage` — snapshot or diff patch with items/ops
-  - `ErrorMessage { message }` — on auth failure or invalid use
-- **Non-matching requests**:
-  - `400 Bad Request` if the request isn't a WebSocket upgrade
-  - `400 Bad Request` if the query is not marked `IsStreamingQuery`
-  - `404 Not Found` if the query doesn't exist
-- **Close semantics**: `NormalClosure` on stream end; `InternalServerError` on auth failure (with an error message preceding). Client disconnects are handled silently.
+**`GET|CONNECT /spark/live`** — `Endpoints/Live/LiveSocket.cs`
+
+One multiplexed socket per browser tab for every `"live": true` object and query. It replaces
+`GET /spark/queries/{id}/stream` and `isStreamingQuery`. The full protocol is in
+[guide-live-updates.md](guide-live-updates.md#the-protocol); in short:
+
+- **Protocol**: WebSocket upgrade; `CONNECT` is the HTTP/2 (RFC 8441) form of the same upgrade. Protected by `UseSpark()`'s same-origin check.
+- **Client → server** (one JSON object per text frame): `subscribe`, `update`, `unsubscribe`, each naming its subscription in `sub`. A `po` subscription's body is exactly that of `POST /spark/po/load`; a `query` subscription's is exactly that of `POST /spark/queries/execute`.
+- **Server → client**: `po`, `poPatch`, `gone`, `result`, `patch`, `error` (`unavailable` / `invalid` / `limit` / `failed`), `ping`. Every push re-runs the matching HTTP read under the viewer's principal.
+- **Non-matching requests**: `400 Bad Request` if the request isn't a WebSocket upgrade.
+- **Close codes**: `4401` re-authenticate (ticket expiry or `MaxSocketLifetime`), `4429` too many sockets for this user, `1009` frame too large.
 
 ---
 
@@ -675,7 +676,7 @@ Detail-type attributes (`dataType == "AsDetail"`) carry nested `PersistentObject
   "renderMode": string,                   // SparkQueryRenderMode enum
   "indexName": string?,
   "entityType": string?,                  // result entity type name
-  "isStreamingQuery": bool
+  "live": bool                            // omitted when false; see guide-live-updates.md
 }
 ```
 
@@ -703,7 +704,7 @@ Concurrency conflicts (`409`) follow the standard error shape with a descriptive
 2. **Optimistic concurrency** — Update operations honor the `etag` field (RavenDB change vector). A stale etag returns `409 Conflict`.
 3. **Sort-column allow-listing** — Query execute allow-lists sort properties against the query's declared `SortColumns` plus the entity's attribute set, preventing reflection-based side-channel enumeration.
 4. **Permission leakage mitigation** — `GetQuery` and `GetEntityType` return `404` for unauthorized access rather than `403` to avoid leaking resource existence.
-5. **WebSocket streaming** — Queries marked `IsStreamingQuery: true` can be opened as WebSockets at `/spark/queries/{id}/stream`. The server emits snapshot + incremental diff patches for bandwidth-efficient real-time views.
+5. **Live updates** — Queries and entity types marked `"live": true` are followed over one multiplexed WebSocket, `/spark/live`. The server sends a first state, then patches (`poPatch` / `patch`) only when what the viewer can see changed, re-running the HTTP read path for each push. See [guide-live-updates.md](guide-live-updates.md).
 6. **Anti-forgery on JSON bodies** — Spark's custom middleware validates XSRF tokens on JSON bodies (not just form-encoded), patching a gap in ASP.NET Core's built-in middleware.
 7. **Retry state** — request-scoped `RetryAccessor.AnsweredResults` holds the `retryResults[]` from the current request body, so action handlers can inspect prior prompt answers without re-parsing.
 8. **Content-Type over Content-Length** — the DELETE endpoint detects body presence via `Content-Type: application/json`, which correctly handles chunked transfer-encoding (retry resubmissions on DELETE).

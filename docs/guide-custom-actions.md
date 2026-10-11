@@ -760,8 +760,8 @@ Rarely needed at all now: a readable `Id` of any type narrows without a hook, ma
 
 ### Three shapes fall back to a document load
 
-A query owning its own paging (`SparkQueryPage<T>`) and a streaming query
-cannot be re-run. Those selections are materialized by id instead, and **lose index-computed column
+A query owning its own paging (`SparkQueryPage<T>`) and a live query backed by an app stream
+([live updates](guide-live-updates.md#rows-that-are-not-in-ravendb-app-streams)) cannot be re-run. Those selections are materialized by id instead, and **lose index-computed column
 values** -- the column is present, the value is null.
 
 ### A sub-query's container: `QueryParent`

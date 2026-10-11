@@ -64,8 +64,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "OidcGoLiveReview",
-      "isStreamingQuery": false
+      "entityType": "OidcGoLiveReview"
     }
   ]
 }

@@ -73,8 +73,13 @@ export class SparkLanguageService {
     return ts[lang] ?? ts['en'] ?? Object.values(ts)[0] ?? '';
   }
 
-  t(key: string): string {
+  /**
+   * The text of `key` in the current language. When there is none (unknown key, empty text, or the
+   * translations have not arrived yet) it is `fallback` when given, else the key itself, so
+   * `t('spark.query.unavailable', 'This list is not available.')` never shows a raw key to a user.
+   */
+  t(key: string, fallback?: string): string {
     const ts = this.translationsMap()[key];
-    return this.resolve(ts) || key;
+    return this.resolve(ts) || fallback || key;
   }
 }

@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal, computed } from '@angular/core';
 import { BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent } from '@mintplayer/ng-bootstrap/card';
-import { BsTrendChartComponent } from '@mintplayer/ng-bootstrap/charts/trend';
-import type { TrendSeries } from '@mintplayer/web-components/charts/trend';
+import { SparkTrendChartComponent, SparkTrendOptions, SparkTrendValuePoint } from '@mintplayer/ng-spark/score-renderers';
 import { BrowseService, HistoryPoint } from '../../services/browse.service';
 
 /**
@@ -11,20 +10,14 @@ import { BrowseService, HistoryPoint } from '../../services/browse.service';
  */
 @Component({
   selector: 'app-repo-trend-panel',
-  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsTrendChartComponent],
+  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, SparkTrendChartComponent],
   template: `
-    @if (trendSeries().length > 0) {
+    @if (trendPoints().length > 0) {
       <bs-card class="mt-3 d-block">
         <bs-card-header><i class="bi bi-graph-up"></i> Coverage over time</bs-card-header>
         <bs-card-body>
           <div style="max-width: 640px;">
-            <bs-trend-chart
-              [series]="trendSeries()"
-              [yMin]="0"
-              [yMax]="100"
-              [goal]="80"
-              goalLabel="80% goal"
-              inputLabel="Coverage over time" />
+            <spark-trend-chart [value]="trendPoints()" [options]="trendOptions" />
           </div>
         </bs-card-body>
       </bs-card>
@@ -45,18 +38,30 @@ export class RepoTrendPanelComponent {
   private readonly history = signal<HistoryPoint[]>([]);
 
   /**
+   * ng-spark's trend chart: 0-100 with the 80% goal line, one series. Spelled out
+   * rather than left to the renderer's defaults.
+   */
+  protected readonly trendOptions: SparkTrendOptions = {
+    display: 'chart',
+    yMin: 0,
+    yMax: 100,
+    goal: 80,
+    goalLabel: '80% goal',
+    label: 'Coverage over time',
+    seriesId: 'coverage',
+    seriesLabel: 'Line coverage %',
+    minPoints: 2,
+  };
+
+  /**
    * Dates are only usable as x when every point has one (pre-FirstSeenAtUtc
    * documents may not) — otherwise fall back to the commit index.
    */
-  readonly trendSeries = computed<TrendSeries[]>(() => {
+  readonly trendPoints = computed<SparkTrendValuePoint[]>(() => {
     const history = this.history();
     if (history.length < 2) return [];
     const allDated = history.every((h) => !!h.timestamp);
-    return [{
-      id: 'coverage',
-      label: 'Line coverage %',
-      points: history.map((h, i) => ({ x: allDated ? new Date(h.timestamp!) : i, y: h.percent })),
-    }];
+    return history.map((h, i) => ({ x: allDated ? new Date(h.timestamp!) : i, y: h.percent }));
   });
 
   constructor() {

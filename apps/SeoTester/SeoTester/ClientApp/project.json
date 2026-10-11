@@ -1,0 +1,83 @@
+{
+  "name": "@spark-apps/seo-tester",
+  "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "apps/SeoTester/SeoTester/ClientApp",
+  "sourceRoot": "apps/SeoTester/SeoTester/ClientApp/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": [
+        "{workspaceRoot}/apps/SeoTester/SeoTester/ClientApp/dist/ClientApp"
+      ],
+      "options": {
+        "outputPath": "apps/SeoTester/SeoTester/ClientApp/dist/ClientApp",
+        "browser": "apps/SeoTester/SeoTester/ClientApp/src/main.ts",
+        "tsConfig": "apps/SeoTester/SeoTester/ClientApp/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/SeoTester/SeoTester/ClientApp/public"
+          },
+          {
+            "glob": "bs-theme-preboot.js",
+            "input": "node_modules/@mintplayer/web-components/theming",
+            "output": "/"
+          }
+        ],
+        "styles": [
+          "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+          "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+          "apps/SeoTester/SeoTester/ClientApp/src/styles.scss"
+        ],
+        "loader": {
+          ".svg": "text"
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "1MB",
+              "maximumError": "2MB"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "4kB",
+              "maximumError": "8kB"
+            }
+          ],
+          "outputHashing": "all",
+          "serviceWorker": "apps/SeoTester/SeoTester/ClientApp/ngsw-config.json"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@nx/angular:dev-server",
+      "options": {
+        "hmr": true
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "@spark-apps/seo-tester:build:production"
+        },
+        "development": {
+          "buildTarget": "@spark-apps/seo-tester:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@nx/angular:unit-test"
+    }
+  }
+}

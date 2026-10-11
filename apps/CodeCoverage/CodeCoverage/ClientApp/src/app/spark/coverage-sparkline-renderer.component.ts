@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal, effect } from '@angular/core';
 import type { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
-import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline';
+import { SparkTrendOptions, SparkTrendSparklineComponent } from '@mintplayer/ng-spark/score-renderers';
 import { BrowseService } from '../services/browse.service';
 import { forgeOf } from './forge-of';
 
@@ -18,17 +18,10 @@ export function clearSparklineCacheForTesting(): void { sparklinesByOwner.clear(
 
 @Component({
   selector: 'app-coverage-sparkline-renderer',
-  imports: [BsSparklineComponent],
-  template: `
-    @let p = points();
-    @if (p && p.length > 1) {
-      <bs-sparkline style="width: 90px; height: 24px;" class="d-inline-block"
-                    [points]="p" [yMin]="0" [yMax]="100"
-                    [inputLabel]="'Coverage trend for ' + (value() ?? '')" />
-    } @else {
-      <span class="text-muted small">—</span>
-    }
-  `,
+  imports: [SparkTrendSparklineComponent],
+  // ng-spark's trend sparkline draws the line (and the dash for fewer than two points); this
+  // component only finds the series. Options spelled out, not left to the renderer's defaults.
+  template: `<spark-trend-sparkline [value]="points()" [options]="trendOptions()" />`,
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CoverageSparklineRendererComponent implements SparkAttributeColumnRenderer, SparkAttributeDetailRenderer {
@@ -49,6 +42,16 @@ export class CoverageSparklineRendererComponent implements SparkAttributeColumnR
   item = input<any>();
 
   readonly points = signal<number[] | null>(null);
+
+  protected readonly trendOptions = computed<Record<string, any>>(() => ({
+    display: 'sparkline',
+    yMin: 0,
+    yMax: 100,
+    width: '90px',
+    height: '24px',
+    minPoints: 2,
+    label: 'Coverage trend for ' + (this.value() ?? ''),
+  } satisfies SparkTrendOptions));
 
   private readonly fullName = computed(() => (typeof this.value() === 'string' ? this.value() as string : ''));
 

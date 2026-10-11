@@ -297,9 +297,9 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// Shapes how a query result is <b>presented</b>, per request. Called for every query on this
     /// entity type, whether its source is <c>Database.*</c> or <c>Custom.*</c>.
     /// <para>
-    /// <b>Not called for streaming queries.</b> <c>StreamingQueryExecutor</c> is a separate path
-    /// that never enters <c>ExecuteQueryAsync</c>, and <c>SnapshotMessage</c> carries no
-    /// <c>disabledActions</c> field, so there is nowhere for the answer to travel. Said here
+    /// <b>Not called for app-stream queries.</b> The live engine secures and pages an app stream's rows
+    /// itself and never enters <c>ExecuteQueryAsync</c>, so the pushed result carries no
+    /// <c>disabledActions</c> and there is nowhere for the answer to travel. A live query backed by RavenDB is an ordinary query and is shaped here. Said here
     /// rather than left to be discovered: silently never calling a hook is how the version of
     /// this method that was removed leaked a demo app's entire project list.
     /// </para>
@@ -515,14 +515,8 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </remarks>
     public virtual Task OnDeleteRowAsync(SparkDeleteRowArgs<T> args) => Task.CompletedTask;
 
-    // StreamItems/StreamItem used to be declared here as virtuals that threw. They were never
-    // called by those names: StreamingQueryExecutor resolves the streaming method by the name in the
-    // query's model file, so the base declarations implied a fixed hook that does not exist and
-    // promised a NotSupportedException the executor never reaches — a missing streaming method is
-    // reported by the executor's own "not found" throw, which names the query and the class.
-    //
-    // The shape a streaming method must have is unchanged:
-    //     IAsyncEnumerable<IReadOnlyList<T>> <Name>(StreamingQueryArgs args, CancellationToken ct)
-    // or IAsyncEnumerable<T> for a single-item stream. Declare it with whatever name the query's
-    // source says; it does not override anything.
+    // An app-stream method (a live query whose rows are not in RavenDB) is not declared here: it has
+    // whatever name the query's source says and overrides nothing. Its shape:
+    //     IAsyncEnumerable<IReadOnlyList<T>> <Name>(LiveQueryArgs args, CancellationToken ct)
+    // or IAsyncEnumerable<T> for one row per yield. See docs/guide-live-updates.md.
 }

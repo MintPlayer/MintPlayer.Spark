@@ -259,7 +259,7 @@ Available hooks:
   the result — awaiting I/O inside it is safe.
 - `IsAllowedAsync(string action, T entity)` - the row rule as a per-row predicate: a refinement
   of `GetRowFilterAsync` (both must allow) or a standalone for rules an expression can't capture.
-  Overriding either filters lists, queries and streams as well as single-entity reads, and a
+  Overriding either filters lists, queries and live updates as well as single-entity reads, and a
   denied read is a 404 rather than a 403 so existence is not leaked. **Not memoized** — if it does
   I/O it is an N+1; put I/O-backed rules in `GetRowFilterAsync`.
 - `GetProtectedAttributesAsync(string action, T entity)` - per-viewer, per-row **attribute
@@ -298,7 +298,7 @@ The `MapSpark()` extension creates these REST endpoints:
 | `/spark/queries` | GET | List all queries |
 | `/spark/queries/get` | POST | Get query definition — body: `queryId` |
 | `/spark/queries/execute` | POST | Execute a query — body: `queryId`, `skip`, `take`, `search`, `sortColumns`, `parentId`, `parentType` |
-| `/spark/queries/{id}/stream` | GET | Open a streaming query (WebSocket) |
+| `/spark/live` | GET/CONNECT | Live updates: one multiplexed WebSocket for `"live": true` objects and queries ([docs/guide-live-updates.md](../../../docs/guide-live-updates.md)) |
 | `/spark/po/load` | POST | Get entity — body: `objectTypeId`, `id` |
 | `/spark/po/create` | POST | Create entity — body: `objectTypeId`, `persistentObject` |
 | `/spark/po/update` | POST | Update entity — body: `objectTypeId`, `id`, `persistentObject` |

@@ -90,6 +90,9 @@ public static class SparkMailManagerExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IRecipient<SparkMailCampaignMessage>, SparkMailCampaignHandler>());
 
         builder.Registry.AddMiddleware(app => SparkMailStartup.Validate(app.ApplicationServices));
+        // SparkMailDeliveries/{id} records carry @expires (DeliveryRetentionDays). Declared here rather than
+        // left to Messaging, which happened to enable expiration too: nothing said this library relied on it.
+        builder.Registry.RequireDocumentExpiration("MailManager");
         // The per-library method the Endpoints generator emits for this assembly (AssemblyInfo.cs):
         // /spark/mail/unsubscribe and /spark/mail/bounces (the latter answers 503 unless enabled).
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkMailManagerEndpoints());

@@ -1,0 +1,57 @@
+# Spark security posture: every effective right and the layer it comes from.
+# --spark-synchronize-security writes this file; --spark-verify-security fails when it drifts.
+# Rows: group | effect | resource | key | layer
+
+## Layers: libraries that ship rights (alias | assembly | hash)
+authorization | MintPlayer.Spark.Authorization | 45c4fc153e9d
+notifications | MintPlayer.Spark.Notifications | 0da69183be2b
+organizations | MintPlayer.Spark.Organizations | 3f770bc98628
+settings | MintPlayer.Spark.Settings | 43f5e2626927
+
+## Reachable without signing in (expanded)
+(nothing)
+
+## Granted to @anonymous
+(nothing)
+
+## Rights
+Administrators | grant | EditNewDelete/CheckDefinition | checks-edit | app
+Administrators | grant | QueryRead/AuditLogEntry | audit-log | app
+Administrators | grant | Read/OperatorDashboard | operator-dashboard | app
+Administrators | grant | ResetCheckDefinition/CheckDefinition | checks-reset | app
+Administrators (settings:administrators) | grant | QueryReadEdit/Setting | settings:administrators | settings
+Signed-in users | grant | CancelAudit/AuditRun | runs-cancel | app
+Signed-in users | grant | ExportReport/AuditRun | runs-export | app
+Signed-in users | grant | QueryRead/AuditRun | runs | app
+Signed-in users | grant | QueryRead/CheckDefinition | checks | app
+Signed-in users | grant | QueryRead/PageResult | pages | app
+Signed-in users | grant | QueryReadEditNewDelete/Site | sites | app
+Signed-in users | grant | RevokeShareLink/AuditRun | runs-unshare | app
+Signed-in users | grant | RevokeShareLink/Site | sites-unshare | app
+Signed-in users | grant | ShareBadge/Site | sites-badge | app
+Signed-in users | grant | ShareLink/AuditRun | runs-share | app
+Signed-in users | grant | ShareLink/Site | sites-share | app
+Signed-in users | grant | StartAudit/Site | sites-start-audit | app
+Signed-in users | grant | StartFullCrawl/Site | sites-full-crawl | app
+Signed-in users | grant | VerifySite/Site | sites-verify | app
+Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
+Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization
+Signed-in users (@authenticated) | grant | Read/Passkeys | authorization:passkeys-read | authorization
+Signed-in users (@authenticated) | grant | RemovePasskey/PasskeyRow | authorization:passkey-rows-remove | authorization
+Signed-in users (@authenticated) | grant | RenamePasskey/PasskeyRow | authorization:passkey-rows-rename | authorization
+Signed-in users (notifications:users) | grant | Delete/Notification | notifications:notifications-delete | notifications
+Signed-in users (notifications:users) | grant | Delete/PushSubscription | notifications:devices-delete | notifications
+Signed-in users (notifications:users) | grant | QueryRead/Notification | notifications:notifications | notifications
+Signed-in users (notifications:users) | grant | QueryRead/PushSubscription | notifications:devices | notifications
+Signed-in users (notifications:users) | grant | QueryReadEditNewDelete/NotificationPreference | notifications:preferences | notifications
+Signed-in users (organizations:users) | grant | Delete/OrganizationInvitation | organizations:invitations-delete | organizations
+Signed-in users (organizations:users) | grant | Delete/OrganizationMembership | organizations:memberships-delete | organizations
+Signed-in users (organizations:users) | grant | InviteOrganizationMember/Organization | organizations:invite-action | organizations
+Signed-in users (organizations:users) | grant | LeaveOrganization/Organization | organizations:leave-action | organizations
+Signed-in users (organizations:users) | grant | QueryRead/OrganizationInvitation | organizations:invitations | organizations
+Signed-in users (organizations:users) | grant | QueryReadEdit/OrganizationMembership | organizations:memberships | organizations
+Signed-in users (organizations:users) | grant | QueryReadEditNewDelete/Organization | organizations:organizations | organizations
+Signed-in users (organizations:users) | grant | TransferOrganizationOwnership/OrganizationMembership | organizations:transfer-action | organizations
+
+## Inert: libraries switched off in "libraries"
+(nothing)

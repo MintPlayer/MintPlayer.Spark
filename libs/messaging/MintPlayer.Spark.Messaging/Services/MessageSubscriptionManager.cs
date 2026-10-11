@@ -166,6 +166,35 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     /// </summary>
     private async Task StopMessagingAsync(CancellationToken cancellationToken)
     {
+        // A caller arriving while a teardown runs joins it rather than starting a second drain on a
+        // second timer, which would outlive the first (Q-M11e; see StopAsync). Cleared when done, so a
+        // lease lost again after a re-acquire tears down afresh.
+        var mine = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref teardown, mine.Task, null) is { } running)
+        {
+            await running;
+            return;
+        }
+
+        try
+        {
+            await TearDownMessagingAsync(cancellationToken);
+            Volatile.Write(ref teardown, null);
+            mine.SetResult();
+        }
+        catch (Exception ex)
+        {
+            Volatile.Write(ref teardown, null);
+            mine.SetException(ex);
+            _ = mine.Task.Exception; // Observed: this caller rethrows it; a joiner, if any, does too.
+            throw;
+        }
+    }
+
+    private Task? teardown;
+
+    private async Task TearDownMessagingAsync(CancellationToken cancellationToken)
+    {
         // ⚠ This method has TWO callers that can run at the same time: the lease-lost branch of
         // ExecuteAsync, and StopAsync when the host shuts down. Both used to test a field for null,
         // AWAIT, and then dereference it - so whichever arrived second dereferenced what the first
@@ -212,9 +241,54 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
             await lifetime.CancelAsync();
             lifetime.Dispose();
         }
+
+        // 4. Empty the router. The drain completed every lane's channel; a lane kept past this teardown would take
+        //    the first message after a re-acquired lease and throw ChannelClosedException (Q-M11e follow-up). The
+        //    pumps were cancelled with leaseLifetime above; this waits for them, bounded by PumpStopTimeout.
+        await router.StopAsync();
     }
 
+    /// <summary>The one teardown every <see cref="StopAsync"/> call awaits (see there).</summary>
+    private Task? stopping;
+
+    /// <summary>
+    /// Stops once, however often and however concurrently it is called: every caller awaits the same teardown.
+    /// <para>
+    /// ⚠ A host is routinely stopped twice at once. Under <c>WebApplicationFactory</c> the factory's
+    /// <c>DisposeAsync</c> calls <c>Host.StopAsync</c>, which raises ApplicationStopping, and the app's own
+    /// <c>app.Run()</c> wakes on it and calls <c>Host.StopAsync</c> as well; <c>RunAsync</c>'s <c>finally</c> then
+    /// disposes the host, logger providers included, the moment ITS stop returns. When each call ran its own
+    /// teardown, each drained on its own <c>ClaimTtl</c> timer, so the slower one logged "did not drain" into an
+    /// EventLog the faster one's host had already disposed, and threw <c>ObjectDisposedException</c> out of the stop
+    /// (Q-M11e, <c>docs/seo_analyzer_PRD.md</c> §12). No caller may return while another is still working, so a
+    /// second caller does not give up on its own token either: the teardown it waits for is bounded (the drain by
+    /// <c>ClaimTtl</c>, the pumps by <see cref="MessageQueueRouter.PumpStopTimeout"/>, the release by
+    /// <see cref="MessagingLeaseManager"/>'s own bound).
+    /// </para>
+    /// </summary>
     public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        var mine = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref stopping, mine.Task, null) is { } first)
+        {
+            await first;
+            return;
+        }
+
+        try
+        {
+            await StopOnceAsync(cancellationToken);
+            mine.SetResult();
+        }
+        catch (Exception ex)
+        {
+            mine.SetException(ex);
+            _ = mine.Task.Exception; // Observed: this caller rethrows it; a second caller, if any, does too.
+            throw;
+        }
+    }
+
+    private async Task StopOnceAsync(CancellationToken cancellationToken)
     {
         logger.LogInformation("MessageSubscriptionManager stopping");
 

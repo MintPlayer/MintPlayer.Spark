@@ -64,14 +64,8 @@ public sealed class SparkAuthLinkBuilder : ISparkAuthLinkBuilder
 
     private string BaseUrl(HttpContext context)
     {
-        var configured = links.PublicBaseUrl ?? configuration?["Spark:Auth:PublicBaseUrl"];
-        if (!string.IsNullOrWhiteSpace(configured))
-            return configured.TrimEnd('/');
-
-        if (environment?.IsDevelopment() == true)
-            return $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}";
-
-        throw new InvalidOperationException(
+        return MintPlayer.Spark.Abstractions.SparkPublicBaseUrl.Resolve(links.PublicBaseUrl, configuration, environment, context)
+            ?? throw new InvalidOperationException(
             "Spark cannot build an account-mail link: no public base URL is configured. Set "
             + "'Spark:Auth:PublicBaseUrl' (e.g. https://example.com) or SparkAuthenticationOptions.Links.PublicBaseUrl. "
             + "Outside Development the request's Host header is not used, because on an anonymous endpoint it is "

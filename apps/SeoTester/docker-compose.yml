@@ -1,0 +1,205 @@
+# SeoTester at seotester.mintplayer.com (docs/seo_analyzer_PRD.md §1 "Hosting constraints", D3, D6; runbook:
+# docs/seotester/deploy.md). Runs on the VPS beside CodeCoverage, from /var/www/seotester (compose project
+# "seotester"), and reuses CodeCoverage's RavenDB server and mail relay instead of running its own.
+#
+# Networks (the point of this file):
+#   web                              Traefik's public network (external). Only seotester-app joins it. Also the app's only
+#                                    route out, which it still needs for the sign-in providers' token endpoints and Web
+#                                    Push; no request to an audited site uses it (the app registers no client for them in
+#                                    Production, D54).
+#   seo-raven                        internal: true, external (created by either deploy, removed by neither): this
+#                                    app and CodeCoverage's coverage-raven ONLY (HTTPS with client certificates; the
+#                                    app's certificate may use the database "SeoTester" and nothing else, PRD D56).
+#   seo-mail                         internal: true, external, likewise: this app and coverage-smtp ONLY.
+#                                    RavenDB and the mail relay never share a network (PRD D55).
+#   seo-browser                      internal: true, no egress at all. seotester-app and seo-chromium ONLY. Chromium
+#                                    never fetches anything itself (SeoTester routes and fulfils every request through
+#                                    its SSRF-safe client, PRD §6), so it needs no route anywhere: not to the internet,
+#                                    not to RavenDB, not to the mail relay.
+#   seo-fetch                        internal: true. seotester-app and seo-fetcher ONLY: the app's calls to the
+#                                    fetcher's API (shared secret SEO_FETCHER_KEY), nothing else (PRD D54).
+#   seo-egress                       a plain bridge with a route out. seo-fetcher ONLY: every request to an audited site,
+#                                    a registry or PageSpeed Insights leaves from here, from a container that has no
+#                                    database client and no network to RavenDB, the relay or the app's other services.
+#
+# The deploy (.github/workflows/seotester-deploy.yml) refreshes this file and runs pull / down / up. .env and the
+# volumes are server-managed; deploys never write them. tools/verify-seotester-deploy.test.mjs keeps the rules above.
+
+services:
+
+  seotester-app:
+    # Pull-only (no build block), floating like CodeCoverage's: every push to master that changes the image deploys it.
+    image: ghcr.io/mintplayer/seotester:master
+    # Below Messaging's ClaimTtl (5 min), long enough for a crawl batch (90 s budget) to finish on SIGTERM.
+    stop_grace_period: 120s
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # CodeCoverage's RavenDB server over HTTPS (seo-raven), with this app's own client certificate, registered with
+      # Admin on the database SeoTester only (PRD D56), and the private CA of the server's certificate.
+      - Spark__RavenDb__Urls__0=https://coverage-raven:8080
+      - Spark__RavenDb__Database=SeoTester
+      - Spark__RavenDb__CertificateFile=/run/secrets/raven/seotester.crt
+      - Spark__RavenDb__CertificateKeyFile=/run/secrets/raven/seotester.key
+      - Spark__RavenDb__ServerCertificateAuthorityFile=/run/secrets/raven/ca.crt
+      # Off: creating a database needs the operator; the operator creates SeoTester once (deploy.md §3.0).
+      - Spark__RavenDb__EnsureDatabaseCreated=false
+      # Data Protection key ring on a volume: a redeploy does not sign everyone out.
+      - Spark__DataProtection__KeysPath=/var/lib/seotester/dataprotection-keys
+      # Sign-in providers (PRD §4.1, D2). A provider without a ClientId is not offered; with none the app refuses to start.
+      - Spark__Auth__Providers__MicrosoftAccount__ClientId=${MICROSOFT_CLIENT_ID:-}
+      - Spark__Auth__Providers__MicrosoftAccount__ClientSecret=${MICROSOFT_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__GitHub__ClientId=${GITHUB_CLIENT_ID:-}
+      - Spark__Auth__Providers__GitHub__ClientSecret=${GITHUB_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__Twitter__ClientId=${X_CLIENT_ID:-}
+      - Spark__Auth__Providers__Twitter__ClientSecret=${X_CLIENT_SECRET:-}
+      - Spark__Auth__Providers__Google__ClientId=${GOOGLE_CLIENT_ID:-}
+      - Spark__Auth__Providers__Google__ClientSecret=${GOOGLE_CLIENT_SECRET:-}
+      # Mail through CodeCoverage's relay (required: ConfirmByEmail needs a sender). Security=None: the relay is reachable
+      # from here only on seo-mail (internal) and advertises STARTTLS without a certificate (as CodeCoverage).
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
+      - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
+      - Spark__Mail__Smtp__Security=None
+      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-noreply@seotester.mintplayer.com}
+      - Spark__Mail__From__Name=${MAIL_FROM_NAME:-SeoTester}
+      # Web Push (VAPID). Empty = push off; in-app and mail still work.
+      - Spark__Notifications__WebPush__PublicKey=${VAPID_PUBLIC_KEY:-}
+      - Spark__Notifications__WebPush__PrivateKey=${VAPID_PRIVATE_KEY:-}
+      - Spark__Notifications__WebPush__Subject=${VAPID_SUBJECT:-}
+      # PageSpeed Insights / CrUX. Empty = those checks "not measured".
+      - SeoTester__PageSpeed__ApiKey=${PAGESPEED_API_KEY:-}
+      # The operator's identity on /privacy and /terms (D47). Name, contact e-mail and hosting provider are required (empty =
+      # "[to be completed]" on the pages and a startup warning); address and enterprise number are optional; court has a default.
+      - SeoTester__Legal__OperatorName=${LEGAL_OPERATOR_NAME:-}
+      - SeoTester__Legal__Address=${LEGAL_ADDRESS:-}
+      - SeoTester__Legal__ContactEmail=${LEGAL_CONTACT_EMAIL:-}
+      - SeoTester__Legal__EnterpriseNumber=${LEGAL_ENTERPRISE_NUMBER:-}
+      - SeoTester__Legal__Court=${LEGAL_COURT:-}
+      - SeoTester__Legal__HostingProvider=${LEGAL_HOSTING_PROVIDER:-}
+      # The browser: appsettings.Production.json already says Connect to ws://seo-chromium:3000/.
+      # The fetcher (D54): appsettings.Production.json says Remote at http://seo-fetcher:8080/; this is the shared secret.
+      - SeoTester__Fetcher__Key=${SEO_FETCHER_KEY:?SEO_FETCHER_KEY is required, see docs/seotester/deploy.md}
+    volumes:
+      - dataprotection-keys:/var/lib/seotester/dataprotection-keys
+      # Its RavenDB client certificate and the CA (server-managed, deploy.md §3.0). Only this container mounts them.
+      - ./raven-certs/seotester.crt:/run/secrets/raven/seotester.crt:ro
+      - ./raven-certs/seotester.key:/run/secrets/raven/seotester.key:ro
+      - ./raven-certs/ca.crt:/run/secrets/raven/ca.crt:ro
+    depends_on:
+      seo-chromium:
+        # Started, not waited on: a browser that is slow or broken makes the rendered checks errors, never the site down.
+        condition: service_started
+      seo-fetcher:
+        # Started, not waited on: a fetcher that is down fails the crawl stages (retried by Messaging), never the site.
+        condition: service_started
+    labels:
+      - "traefik.enable=true"
+      # Hard-coded, never interpolated (see apps/CodeCoverage/docker-compose.yml: an empty or CRLF value broke SNI).
+      - "traefik.http.routers.seotester.rule=Host(`seotester.mintplayer.com`)"
+      - "traefik.http.routers.seotester.entrypoints=websecure"
+      - "traefik.http.routers.seotester.tls.certresolver=letsencrypt"
+      - "traefik.http.services.seotester.loadbalancer.server.port=8080"
+      # Five networks: without this Traefik may pick an address it cannot reach (random 504s).
+      - "traefik.docker.network=web"
+      # /spark/live is a WebSocket: Traefik forwards the upgrade by default, no middleware needed. The server pings
+      # after 30 s of silence, under any idle timeout Traefik applies (post-deploy check Q-M5a in the runbook).
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      # Startup runs the migrations and seeds the catalogue before the app listens.
+      start_period: 300s
+    mem_limit: 1g
+    networks:
+      - web
+      - seo-raven
+      - seo-mail
+      - seo-browser
+      - seo-fetch
+    restart: unless-stopped
+
+  seo-fetcher:
+    # apps/SeoTester/SeoTester.Fetcher (PRD D54): the SSRF-safe clients, the TLS probes and DNS behind an internal API.
+    # No database client in the image (a test reads its restore graph), no route to RavenDB or the relay on the network.
+    # Pull-only and floating like the app, built from the same commit by the same deploy.
+    image: ghcr.io/mintplayer/seotester-fetcher:master
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      # The shared secret the app calls with (constant-time compare; at least 32 characters or the fetcher refuses to start).
+      - SeoFetcher__Key=${SEO_FETCHER_KEY:?SEO_FETCHER_KEY is required, see docs/seotester/deploy.md}
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Bodies are capped (16 MB a browser resource, 10 MB a page) and one call ends after 120 s; a first guess, measured
+    # at the first deploy with Chromium's figures (Q-M10b).
+    mem_limit: 512m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # No published port. seo-fetch: only the app reaches it. seo-egress: its way out. Nothing else.
+    networks:
+      - seo-fetch
+      - seo-egress
+    restart: unless-stopped
+
+  seo-chromium:
+    # apps/SeoTester/chromium: Playwright 1.63.0's image + server.mjs. Pinned to EXACTLY the app's Microsoft.Playwright
+    # version (ConnectAsync needs the same major.minor); bump both together, and this tag with them.
+    image: ghcr.io/mintplayer/seotester-chromium:1.63.0
+    # Reaps Chromium's zombie processes.
+    init: true
+    # Chromium's renderers share memory through /dev/shm; Docker's 64 MB default crashes tabs on large pages.
+    shm_size: 512m
+    # One render at a time (SeoTester:Limits:ConcurrentRenders), two viewports a page. Spike S3 measured 160–210 MB of
+    # Chromium processes on small pages (Windows); the Debian figure is measured at the first deploy (Q-M10b).
+    mem_limit: 1g
+    pids_limit: 512
+    # Chromium runs without its own sandbox here (Playwright's default in a container): no capability is needed.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # No published port, no other network: only seotester-app can reach it, and it can reach nothing.
+    networks:
+      - seo-browser
+    restart: unless-stopped
+
+volumes:
+  dataprotection-keys:
+
+networks:
+  web:
+    external: true
+  # Shared with CodeCoverage (apps/CodeCoverage/docker-compose.yml declares them the same way): coverage-raven is
+  # reachable on seo-raven, coverage-smtp on seo-mail, by those names. No compose project owns them, so neither
+  # stack's up/down touches them; both deploys create them, internal, when missing (PRD D55, deploy.md §3.0).
+  seo-raven:
+    external: true
+    name: seo-raven
+  seo-mail:
+    external: true
+    name: seo-mail
+  seo-browser:
+    driver: bridge
+    internal: true
+  # The app ↔ fetcher API (D54): no egress, two members.
+  seo-fetch:
+    driver: bridge
+    internal: true
+  # The fetcher's route out (D54): this compose project's own bridge, joined by the fetcher alone.
+  seo-egress:
+    driver: bridge

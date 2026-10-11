@@ -42,6 +42,11 @@ public static class SparkBuilderMessagingExtensions
         builder.Registry.AddMiddleware(app =>
             SparkMessagingExtensions.CreateSparkMessagingIndexes(app));
 
+        // Terminal messages and their progress sidecars carry @expires (retention). UseSpark() enables
+        // expiration once, at the Community licence's 36 h floor (SparkExpiration.MinimumDeleteFrequency):
+        // a terminal message can linger that long, which nothing depends on.
+        builder.Registry.RequireDocumentExpiration("Messaging");
+
         return builder;
     }
 

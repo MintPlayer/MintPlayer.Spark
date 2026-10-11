@@ -1,0 +1,38 @@
+{
+  "$schema": "../../../../schemas/actions.schema.json",
+  "StartAudit": {
+    "icon": "Play",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "StartFullCrawl": {
+    "icon": "Diagram3",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "VerifySite": {
+    "icon": "PatchCheck",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "CancelAudit": {
+    "icon": "StopCircle",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "ExportReport": {
+    "icon": "FiletypePdf",
+    "showedOn": "detail",
+    "refreshOnCompleted": false
+  },
+  "ResetCheckDefinition": {
+    "icon": "ArrowCounterclockwise",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "ShareBadge": {
+    "icon": "Award",
+    "showedOn": "detail",
+    "refreshOnCompleted": false
+  }
+}

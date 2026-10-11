@@ -70,28 +70,29 @@ public static class ColumnCapabilities
 
     /// <inheritdoc cref="EntityAttributeDefinition.CanFilter"/>
     /// <remarks>
-    /// A streaming query can never be filtered, whatever the model says, and the refusal belongs here
-    /// rather than in a grid template so that the server states it once for every client.
+    /// An app-stream query (<see cref="SparkQuery.IsAppStream"/>) can never be filtered, whatever the
+    /// model says, and the refusal belongs here rather than in a grid template so that the server states
+    /// it once for every client.
     /// <para>
-    /// <c>ExecuteStreamingQueryAsync</c> takes no filters and has nowhere to receive them — the socket
-    /// handshake carries no body — while these flags default to <see langword="true"/>. The result was
-    /// a filter button on every column of every streaming grid, whose panel 500ed (the distincts
-    /// endpoint re-executes the query, and a streaming method's signature is one
-    /// <c>ResolveCustomQueryMethod</c> cannot accept) and whose ticked value did nothing at all.
+    /// The rows come from an <c>IAsyncEnumerable</c> method the distincts endpoint cannot run (its
+    /// signature is one <c>ResolveCustomQueryMethod</c> cannot accept), so a filter panel would 500 and a
+    /// ticked value would do nothing. A live query backed by RavenDB is an ordinary query and keeps its
+    /// filters.
     /// </para>
     /// <para>
-    /// Sorting is deliberately not refused here: the client sorts the accumulated snapshot itself.
+    /// Sorting is deliberately not refused here: the live engine sorts, searches and pages an app
+    /// stream's rows in memory.
     /// </para>
     /// </remarks>
     public static bool CanFilter(EntityAttributeDefinition attribute, SparkQuery? query)
-        => query is not { IsStreamingQuery: true }
+        => query is not { IsAppStream: true }
         && !IsEmbedded(attribute)
         && (FindOverride(query, attribute.Name)?.CanFilter ?? attribute.CanFilter ?? true);
 
     /// <inheritdoc cref="EntityAttributeDefinition.CanListDistincts"/>
-    /// <remarks>Refused for a streaming query for the reasons on <see cref="CanFilter"/>.</remarks>
+    /// <remarks>Refused for an app-stream query for the reasons on <see cref="CanFilter"/>.</remarks>
     public static bool CanListDistincts(EntityAttributeDefinition attribute, SparkQuery? query)
-        => query is not { IsStreamingQuery: true }
+        => query is not { IsAppStream: true }
         && !IsEmbedded(attribute)
         && (FindOverride(query, attribute.Name)?.CanListDistincts ?? attribute.CanListDistincts ?? true);
 

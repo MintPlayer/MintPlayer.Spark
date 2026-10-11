@@ -25,6 +25,7 @@ on:
       # Spark dependency, add it here or a change to that library will not trigger a deploy. Add it
       # to code-coverage-image-check.yml's filter and the Dockerfile's COPY list as well.
       - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.SafeHttp/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
@@ -182,6 +183,36 @@ jobs:
           # file is refreshed from the repo, so service/label changes ship with the push.
           test -f .env || { echo "::error::/var/www/code-coverage/.env is missing — create it from apps/CodeCoverage/.env.example (server-managed, never written by deploys)"; exit 1; }
           test -f github-app.pem || { echo "::error::/var/www/code-coverage/github-app.pem is missing — the GitHub App private key must be placed there (chmod 644)"; exit 1; }
+          # RavenDB runs secured (HTTPS + client certificates): its server certificate, the CA, this app's client certificate and
+          # the operator certificate (for the licence one-shot) must be on the server before compose starts anything. Presence
+          # and non-emptiness only; nothing is printed. Placed once by docs/code-coverage/raven-tls-migration.md.
+          for f in raven-certs/server.pfx raven-certs/ca.crt raven-certs/codecoverage.crt raven-certs/codecoverage.key raven-operator/operator.crt raven-operator/operator.key; do
+            test -s "$f" || { echo "::error::/var/www/code-coverage/$f is missing — RavenDB runs secured, see docs/code-coverage/raven-tls-migration.md"; exit 1; }
+          done
+          for v in RAVEN_SERVER_CERTIFICATE_PASSWORD RAVEN_OPERATOR_THUMBPRINT CERT_ALERT_EMAIL; do
+            grep -q "^$v=." .env || { echo "::error::$v is not set in /var/www/code-coverage/.env — see docs/code-coverage/raven-tls-migration.md"; exit 1; }
+          done
+          # The nightly renewal signs with the private CA, which therefore stays on the server, root-only (runbook R1).
+          # Presence only; the modes are (re)asserted, never relaxed.
+          for f in /root/raven-ca/ca.crt /root/raven-ca/ca.key; do
+            test -s "$f" || { echo "::error::$f is missing — the CA must stay on the server for the renewal, see docs/code-coverage/raven-tls-migration.md §6"; exit 1; }
+          done
+          chown root:root /root/raven-ca /root/raven-ca/ca.key
+          chmod 0700 /root/raven-ca
+          chmod 0400 /root/raven-ca/ca.key
+
+          # The renewal script and its timer (runbook §6, R5/R7), from THIS commit (not a moving branch), into a fresh
+          # private directory (not fixed /tmp names another user could pre-create), installed root-owned.
+          renew_src=$(mktemp -d)
+          for f in raven-cert-renew.sh raven-cert-renew.service raven-cert-renew.timer; do
+            curl -sf -H "Authorization: token $GITHUB_TOKEN" -o "$renew_src/$f" \
+              "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/apps/CodeCoverage/ops/$f"
+          done
+          install -m 0755 -o root -g root "$renew_src/raven-cert-renew.sh" /usr/local/sbin/raven-cert-renew
+          install -m 0644 -o root -g root "$renew_src/raven-cert-renew.service" "$renew_src/raven-cert-renew.timer" /etc/systemd/system/
+          rm -rf "$renew_src"
+          systemctl daemon-reload
+          systemctl enable --now raven-cert-renew.timer
 
           rm -f docker-compose.yml
           curl -sf -H "Authorization: token $GITHUB_TOKEN" -o docker-compose.yml \
@@ -189,8 +220,40 @@ jobs:
 
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+          # The two backend networks shared with SeoTester (seo-raven: coverage-raven + seotester-app; seo-mail: coverage-smtp +
+          # seotester-app). External to every compose project, so they are created here, INTERNAL (no route out), when missing;
+          # idempotent, and a concurrent create by the other deploy is fine (the second inspect finds it). A network of that name
+          # that is not internal is refused rather than used (SeoTester PRD D55). Same block in the other deploy.
+          for net in seo-raven seo-mail; do
+            docker network inspect "$net" > /dev/null 2>&1 || docker network create --internal "$net" > /dev/null 2>&1 || docker network inspect "$net" > /dev/null
+            [ "$(docker network inspect -f '{{.Internal}}' "$net")" = "true" ] || { echo "::error::the network $net exists but is not internal: remove it (docker network rm $net) once nothing uses it, then redeploy"; exit 1; }
+          done
+
           docker compose --env-file .env pull
           docker compose --env-file .env down --remove-orphans
+          # RavenDB first, then the app certificates (re)registered, then the rest: the apps never start against a server
+          # that does not know their certificate. The first deploy after the TLS migration's preparation is the switch
+          # itself (runbook §4.5: an unsecured server refuses registrations, so they can only happen here); on every other
+          # deploy the PUT is idempotent (201 for a certificate already registered, measured on 7.1.10) and costs ~2 s.
+          docker compose --env-file .env up -d --remove-orphans coverage-raven
+          for i in $(seq 1 36); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose --env-file .env ps -q coverage-raven)")" = healthy ] && break
+            sleep 5
+          done
+          [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose --env-file .env ps -q coverage-raven)")" = healthy ] || { echo "::error::coverage-raven did not become healthy within 180s"; exit 1; }
+          register_app_cert() {   # name, database, certificate file; as curl's own user, which owns operator.key
+            b64=$(openssl x509 -in "$3" -outform der | base64 -w0)
+            docker run --rm --network code-coverage_coverage-db \
+              -v "$PWD/raven-operator/operator.crt:/op.crt:ro" -v "$PWD/raven-operator/operator.key:/op.key:ro" -v "$PWD/raven-certs/ca.crt:/ca.crt:ro" \
+              curlimages/curl:8.11.1 -sS -f --retry 10 --retry-delay 2 --retry-connrefused -o /dev/null \
+              --cert /op.crt --key /op.key --cacert /ca.crt -X PUT "https://coverage-raven:8080/admin/certificates" \
+              -H 'Content-Type: application/json' \
+              --data "{\"Name\":\"$1\",\"Certificate\":\"$b64\",\"SecurityClearance\":\"ValidUser\",\"Permissions\":{\"$2\":\"Admin\"}}"
+          }
+          register_app_cert codecoverage Coverage raven-certs/codecoverage.crt
+          if [ -s /var/www/seotester/raven-certs/seotester.crt ]; then
+            register_app_cert seotester SeoTester /var/www/seotester/raven-certs/seotester.crt
+          fi
           docker compose --env-file .env up -d --remove-orphans
 
           docker image prune -f

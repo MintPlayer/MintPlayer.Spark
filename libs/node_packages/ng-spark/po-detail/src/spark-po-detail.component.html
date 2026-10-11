@@ -6,6 +6,14 @@
     </bs-alert>
   } @else if (item(); as currentItem) {
     @if (entityType(); as et) {
+    @if (actionError(); as actionErr) {
+      <bs-alert [type]="colors.danger" class="d-block mt-2 spark-action-error" role="alert">
+        <div class="d-flex align-items-start gap-2">
+          <span class="flex-grow-1">{{ actionErr }}</span>
+          <button type="button" class="btn btn-sm btn-link p-0 text-reset text-decoration-none" [attr.aria-label]="lang.t('common.close', 'Close')" (click)="actionError.set(null)">&times;</button>
+        </div>
+      </bs-alert>
+    }
     <div class="spark-actionbar py-2">
       <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
         <button *bsPriorityNavItem="1" class="btn btn-outline-secondary" (click)="onBack()">
@@ -211,10 +219,10 @@
                 @if (refRoute && (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes())) {
                   <a [routerLink]="refRoute">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) }}</a>
                 } @else {
-                  {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
+                  {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) | orDash }}
                 }
               } @else if (attr.dataType === 'MultiLineString') {
-                <div class="spark-multiline-value">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}</div>
+                <div class="spark-multiline-value">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) | orDash }}</div>
               } @else if (attr.dataType === 'date' || attr.dataType === 'datetime') {
                 <!--
                   Formatted the same way, and in the same timezone, as the grid renders it.
@@ -233,10 +241,10 @@
                 @if (when) {
                   {{ when | date:(attr.dataType === 'date' ? 'mediumDate' : 'short') }}
                 } @else {
-                  {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
+                  {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) | orDash }}
                 }
               } @else {
-                {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
+                {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) | orDash }}
               }
               </dd>
           </ng-template>

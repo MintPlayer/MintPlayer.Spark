@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<!-- OAuth client secrets, VAPID keys and the PageSpeed key live here locally (docs/seotester/README.md). -->
+		<UserSecretsId>seotester-app-5b1e0c7d</UserSecretsId>
+		<SpaRoot>ClientApp\</SpaRoot>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- M10: the headless browser (PRD F12, F14, §6). Production drives the Chromium container over ConnectAsync, whose
+		     run-server must be this exact major.minor (docs/seotester/README.md); Development and the browser tests launch a
+		     local Chromium (pwsh bin/.../playwright.ps1 install chromium). Same version as the E2E tests. -->
+		<PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\SeoTester.Library\SeoTester.Library.csproj" />
+		<!-- D54: every request to a target goes through ISeoFetcher (in process, or the seo-fetcher container in Production). -->
+		<ProjectReference Include="..\SeoTester.Fetching\SeoTester.Fetching.csproj" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
+		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+		<ProjectReference Include="..\..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
+		<ProjectReference Include="..\..\..\libs\settings\MintPlayer.Spark.Settings\MintPlayer.Spark.Settings.csproj" />
+		<ProjectReference Include="..\..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
+		<ProjectReference Include="..\..\..\libs\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- axe-core 4.13.0 (MPL-2.0, unmodified, npm integrity sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==),
+		     injected into the rendered page; and the page scripts of the render stage. -->
+		<EmbeddedResource Include="Rendering\axe.min.js" LogicalName="SeoTester.Rendering.axe.min.js" />
+		<EmbeddedResource Include="Rendering\init.js" LogicalName="SeoTester.Rendering.init.js" />
+		<EmbeddedResource Include="Rendering\collect.js" LogicalName="SeoTester.Rendering.collect.js" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="SeoTester.Tests" />
+	</ItemGroup>
+
+</Project>

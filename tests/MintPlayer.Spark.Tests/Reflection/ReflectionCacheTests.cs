@@ -291,7 +291,7 @@ public class ReflectionCacheTests
     {
         // Framework call sites compose (string Op, Type, string Method)-shape tuple keys
         // when a cache purpose is identified by a label + a runtime Type + an instance
-        // method name (e.g. StreamingQueryExecutor.ResolveStreamingMethod and
+        // method name (e.g. LiveAppStreamMethod.Resolve and
         // QueryExecutor.CustomQueryMethod). Pin the contract: ValueTuple's structural
         // equality + GetHashCode play correctly with the cache's per-TKey-type generic-static
         // specialization, including across the heterogeneous Type-vs-string members.

@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<!--
+	  The seo-fetcher container (docs/seo_analyzer_PRD.md D54): the only process that connects to the websites SeoTester
+	  audits. It has internet egress and NO database: no Spark runtime, no RavenDB client, no mail. SeoTester calls it
+	  over a small internal API on the seo-fetch network, authenticated with a shared secret.
+	  ⚠️ Never reference MintPlayer.Spark, RavenDB.Client or anything that brings them: FetcherIsolationTests reads this
+	  project's restore graph and fails the build's tests if one appears.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>SeoTester.Fetcher</RootNamespace>
+		<!-- An Exe under this repository is a Spark application by default (Directory.Build.targets); this one is not. -->
+		<SparkApplication>false</SparkApplication>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\SeoTester.Fetching\SeoTester.Fetching.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The routes are generator endpoint classes (Endpoints/), as everywhere in this repository. Neither package brings
+		     Spark or RavenDB: the endpoints package depends on ASP.NET Core and its own abstractions only, and the
+		     source generators are build-time analyzers plus their attributes. -->
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="SeoTester.Tests" />
+	</ItemGroup>
+
+</Project>

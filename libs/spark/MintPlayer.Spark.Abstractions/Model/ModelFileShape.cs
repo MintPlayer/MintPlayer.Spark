@@ -221,12 +221,14 @@ public static class ModelFileShape
     /// <remarks>
     /// <c>source</c> and <c>entityType</c> are the security-relevant pair: the first names the
     /// method that produces the rows, the second names the type whose <c>Query</c> right gates the
-    /// request. <c>isStreamingQuery</c> is here because it selects an entirely different execution
-    /// path. Presentation — <c>description</c>, <c>renderMode</c>, <c>sortColumns</c> — is not.
+    /// request. Presentation — <c>description</c>, <c>renderMode</c>, <c>sortColumns</c> — is not, and
+    /// neither is <c>live</c>: a live query is read through the same path and rights as
+    /// <c>/execute</c>, so turning it on opens nothing a deployed model gates (the app-stream method it
+    /// may select is named by <c>source</c>, which is structural).
     /// </remarks>
     private static readonly string[] StructuralQueryFields =
     [
-        "name", "source", "entityType", "indexName", "alias", "isStreamingQuery",
+        "name", "source", "entityType", "indexName", "alias",
     ];
 
     /// <summary>

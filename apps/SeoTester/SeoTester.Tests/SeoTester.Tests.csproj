@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Boots SeoTester's real Program in-process against an embedded RavenDB (docs/seo_analyzer_PRD.md M7): the
+    composition, the administrator-only settings, the /bot page and the route table. One test project per
+    application: Spark composes the library layers from the whole process (see tests/Shared/SparkAppRouteHost.cs).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Transitive MintPlayer.AspNetCore.NodeServices targets default to building a ClientApp\ SPA, which this
+         test project doesn't have (same as CodeCoverage.Tests). -->
+    <EnableSpaBuilder>false</EnableSpaBuilder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.6" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0-rc.1.26425.128" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="MintPlayer.Assertions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\tests\Shared\SparkAppRouteHost.cs" Link="_Shared\SparkAppRouteHost.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- JSON fixtures (users, organizations, memberships), imported with SparkTestDriver.SeedFromJsonAsync. -->
+    <Content Include="Data\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Recorded non-JSON answers (PageSpeed Insights' HTML 429, spike S5). -->
+    <Content Include="Data\**\*.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\MintPlayer.Spark.Testing.csproj" />
+    <ProjectReference Include="..\SeoTester\SeoTester.csproj" />
+    <!-- D54: the fetcher container's host, booted in-process for the remote-fetcher tests. -->
+    <ProjectReference Include="..\SeoTester.Fetcher\SeoTester.Fetcher.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,62 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- INTF001 (MintPlayer.SourceGenerators) flags public members outside an implemented interface: noise on
+		     entities that implement IOrganizationOwned / IExpiring as markers. -->
+		<NoWarn>$(NoWarn);INTF001</NoWarn>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the slot
+		     (organizations:users), the right keys and the model ids the library ships. -->
+		<SparkLibraryAlias>organizations</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Organizations</PackageId>
+		<Version>11.0.0-preview.104</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Organizations for MintPlayer.Spark: an implicit personal organization per user, organizations with Owner/Admin/Member/Viewer memberships, invitations and join requests by mail with an acceptance link, ownership transfer, cascade delete and export hooks, and a row policy that limits any type carrying OrganizationId to the members of its organization.</Description>
+		<PackageTags>organizations;teams;tenancy;membership;invitations;row-security;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<!-- The invitation and join-request mails' default MJML templates (SparkOrganizations/*), read by
+	     MailManager. An app overrides one by placing a file with the same name in its Templates/Mail folder. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- The only package dependency (docs/seo_analyzer_PRD.md D25): SparkUser, the account hooks
+		     (sign-in, deletion, personal data), the public base URL for mailed links and the security slot. -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- Spark's generators (the library layers, attribute descriptions) and analyzers (SPARK045). Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

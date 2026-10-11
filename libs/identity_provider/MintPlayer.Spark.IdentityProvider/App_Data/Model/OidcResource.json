@@ -180,8 +180,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "OidcResource",
-      "isStreamingQuery": false
+      "entityType": "OidcResource"
     }
   ]
 }

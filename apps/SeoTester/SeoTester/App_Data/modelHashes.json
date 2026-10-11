@@ -1,0 +1,98 @@
+{
+  "version": 2,
+  "modelHash": "f6cbefdc3ef28d67728a44fbe8c71dcb99dde421a26d69bb97f0bcb4870f64a2",
+  "contextRoots": "1b8e4efcde47c4e51c1d4c7a9fe86500addac829f98589af212e782f77120d6b",
+  "modelFiles": "0e7cd5325c09de5538645930652af20fd302f8891a913b4eb02fe7f86f955f0d",
+  "files": {
+    "AuditLogEntry.json": "5bb23be7fe5131c9a72f641b7b7cc74b436881e922197cc8378acd4a475789c8",
+    "AuditRun.json": "2b0603eead94854a6ca7e208a8344c49f428327dc743dacd6f9a1ebb3df012f5",
+    "CheckDefinition.json": "9de4dbad54c309304639fd104c54b3d11fb5e7ed1dc893f2ed54dfdffcda5640",
+    "Notification.json": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd",
+    "NotificationPreference.json": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da",
+    "OperatorDashboard.json": "e29f6cd4ba084f2817898867c0c7af9c0044bc716be118bac1681029f13b66ee",
+    "Organization.json": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935",
+    "OrganizationInvitation.json": "8e40cf9b44347a167f5eada49a9adc613ca2b1e913b7d6d4c2d6340508ced115",
+    "OrganizationInvite.json": "6e65251c03be7fb106c8dc45a0aff242b775dc3023fe01a49fc68d5105f53eaa",
+    "OrganizationMembership.json": "bd3c26cf32d9ca0f8e307e283fe2e37492271c66eacd2dbd589069bc88aff4b8",
+    "PageFinding.json": "fe94e2cfbb58e89f90a2671a67ad6fe9a9d266d6a2c947839900523fcddea916",
+    "PageResult.json": "f772d1cb59204ff3f043ad0e41aa7ed8a7f27084a1b00f4b835e0050f117c7dd",
+    "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
+    "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
+    "Passkeys.json": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce",
+    "PushSubscription.json": "e32e2c6c486e62dfbffd5b4e30a2b49bc06b6f045066992220e66e7bc9cd5735",
+    "RunCategoryScore.json": "793a0c2d98213cefef355eb26bd0ab7c943f87b520f13ae53ab4c470f4652e41",
+    "RunCheckResult.json": "a5fab27aa1ea20c59ed131010d533c0e42763dbae02143dfddce5e04ff1907b8",
+    "Setting.json": "e946dbf665e3a615067a3f517d567b4b6cbd754610d04b2017d541d869227834",
+    "Site.json": "22a1632504dbd2762b457c87e1c686fdd696f2c5723e7a88b21b46258f9429ed",
+    "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+  },
+  "entities": {
+    "AuditLogEntry": "9b306515132ab3005df325bf27f191b6b088b9d5e563a463c1d63d048b400d1b",
+    "AuditRun": "759e26a265167e535503f9fcb6d5ad67dd19a196ca62cb0d5433ae5aabb251c2",
+    "CheckDefinition": "0ecc74c4ff9be83dcc9dab2883ac19656fe3019bbf1d7470a54c16120b8b34fb",
+    "RunCategoryScore": "3474f72923c5bf84fd1ac2860be74fca0f76916a2a370fc7eec198cb5e7c47d8",
+    "RunCheckResult": "f99efd17d7df925a5ee5fb6663d11d368fd6d8fbcf7320c0872144cc7899d3b1",
+    "Site": "ed07d323bb46354035b203541af8e4aad63b252c78c457f0895160c4daf86b9e"
+  },
+  "configFiles": {
+    "actions.json": "6becc8ca83b43656498972ca2d035174ac61d75bb41847b095b6afa68ce8c829",
+    "programUnits.json": "bb91235a9e4bdeb2da622ea38afc1d8b195bf99ec49708419f77300d25dbf118"
+  },
+  "libraries": {
+    "authorization": "MintPlayer.Spark.Authorization",
+    "notifications": "MintPlayer.Spark.Notifications",
+    "organizations": "MintPlayer.Spark.Organizations",
+    "settings": "MintPlayer.Spark.Settings",
+    "spark": "MintPlayer.Spark"
+  },
+  "layers": {
+    "Model/Notification.json": {
+      "notifications": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd"
+    },
+    "Model/NotificationPreference.json": {
+      "notifications": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da"
+    },
+    "Model/Organization.json": {
+      "organizations": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935"
+    },
+    "Model/OrganizationInvitation.json": {
+      "organizations": "8e40cf9b44347a167f5eada49a9adc613ca2b1e913b7d6d4c2d6340508ced115"
+    },
+    "Model/OrganizationInvite.json": {
+      "organizations": "6e65251c03be7fb106c8dc45a0aff242b775dc3023fe01a49fc68d5105f53eaa"
+    },
+    "Model/OrganizationMembership.json": {
+      "organizations": "bd3c26cf32d9ca0f8e307e283fe2e37492271c66eacd2dbd589069bc88aff4b8"
+    },
+    "Model/PasskeyRename.json": {
+      "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
+    },
+    "Model/PasskeyRow.json": {
+      "authorization": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33"
+    },
+    "Model/Passkeys.json": {
+      "authorization": "738742f13217adeeb4724f72f968923099f7d7210cee1133dfd6707eb55856ce"
+    },
+    "Model/PushSubscription.json": {
+      "notifications": "e32e2c6c486e62dfbffd5b4e30a2b49bc06b6f045066992220e66e7bc9cd5735"
+    },
+    "Model/Setting.json": {
+      "settings": "e946dbf665e3a615067a3f517d567b4b6cbd754610d04b2017d541d869227834"
+    },
+    "Model/SparkUser.json": {
+      "authorization": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
+    },
+    "actions.json": {
+      "app": "746f2393a4371b769517882474f3ec1376a1760749589014f71e7280fe7747b5",
+      "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
+      "organizations": "254d9fe0f061cf7cbc6fd6de921d9a00cf8e0426052ba5a95e1d7895e70c62f9",
+      "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
+    },
+    "programUnits.json": {
+      "app": "ee83bb83196499c985294ad2a8bc00606012c4ec82b701a62b02614fa517cd94",
+      "notifications": "b962972bc9e43ff5f3ce944c4276dfaa2b713f6dc7c5b64644db81abd4585d19",
+      "organizations": "5a4e33ac1d686d6c1b0e2c07d31cb6c60f19107c1bd6d2d223a74cd09c65e963",
+      "settings": "562d0dfbe0badee24003f1faf8f2b5e088cc18fabd5ad5493db5e7e75f1418c5"
+    }
+  }
+}

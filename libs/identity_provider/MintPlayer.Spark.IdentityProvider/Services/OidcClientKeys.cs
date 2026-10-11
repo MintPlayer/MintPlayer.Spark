@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
 
 namespace MintPlayer.Spark.IdentityProvider.Services;
@@ -30,8 +31,9 @@ internal sealed class OidcClientKeys(IHttpClientFactory httpClientFactory, IMemo
 
         try
         {
-            using var client = httpClientFactory.CreateClient("Spark.IdentityProvider.ClientJwks");
-            client.Timeout = TimeSpan.FromSeconds(10);
+            // The client chose this URI, so the fetch goes through the SSRF-safe client (seo_analyzer_PRD X2):
+            // no loopback, private or metadata address, limits in SparkIdentityProviderExtensions.
+            using var client = httpClientFactory.CreateClient(SparkIdentityProviderExtensions.JwksHttpClient);
             var json = await client.GetStringAsync(uri, ct);
             var set = Parse(json, app.ClientId);
             if (set is not null)

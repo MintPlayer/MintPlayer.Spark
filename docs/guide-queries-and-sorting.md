@@ -14,8 +14,8 @@ There are two types of queries:
 Collection queries return the full entity. Index-based queries return a projection type with only the columns needed for the list view.
 
 **Every query owns its URL.** An alias resolves to exactly one query, and a collision is a startup
-failure — including between a streaming and a non-streaming query, which are not allowed to share
-one. See [one query per URL](guide-aliases.md#one-query-per-url) for why, and for the
+failure — including between a live and a non-live query, which are not allowed to share
+one ([live updates](guide-live-updates.md)). See [one query per URL](guide-aliases.md#one-query-per-url) for why, and for the
 transport-negotiation design that was rejected.
 
 ## What a query returns
@@ -811,8 +811,10 @@ that does have owners, and gets a grid that looks exactly right.
 Two things are refused at `--spark-verify-model` and again when queries load, rather than when
 someone opens the page:
 
-- **Streaming.** Streaming watches a RavenDB collection for changes, and a composed type has none.
-  This used to die at the first `MoveNext` inside an open websocket as `CLR type '' not found`,
+- **`"live": true`.** A live query is re-run when its RavenDB collection changes, or secures an app
+  stream's rows as entities of the type's class, and a composed type has neither
+  ([live updates](guide-live-updates.md)). Under the streaming queries that live updates replaced,
+  this used to die at the first `MoveNext` inside an open websocket as `CLR type '' not found`,
   wrapped in `{"message":"Stream failed"}`.
 - **A query over a type that shows nothing on it.** If every attribute is `"showedOn":
   "PersistentObject"` the grid gets rows and no columns — a blank table that reads as an empty
@@ -851,7 +853,8 @@ return type.
 ⚠️ **One consequence for custom actions.** A selection is normally re-materialized by re-running its
 query narrowed to the selected ids, which is what keeps index-computed columns populated. A
 `SparkQueryPage<T>` cannot be asked for "the page containing these ids", so selections from such a
-query fall back to a document load and **lose index-computed values**. Same for a streaming query.
+query fall back to a document load and **lose index-computed values**. Same for a live query backed by an
+app stream ([live updates](guide-live-updates.md#rows-that-are-not-in-ravendb-app-streams)).
 See [custom actions](guide-custom-actions.md).
 
 ## Searching
@@ -898,10 +901,10 @@ grid renders what it is given and never fetches.
 
 **A host that binds `data` must also bind `columns`** (#327). A projection cannot describe itself,
 and the old fallback — inferring columns from whichever attributes the first row happened to carry —
-is exactly the per-row metadata this design removes. That is the seam streaming uses — the WebSocket
-lives in the page component, not the grid, so a detail page's bundle does not carry it. A streaming
-query also suppresses its own fetch, so binding `data` asynchronously does not cost one wasted
-`/execute` on mount.
+is exactly the per-row metadata this design removes.
+
+A live query needs neither: the grid follows it itself, subscribing through `SparkLiveService` instead
+of calling `/execute` (`[live]` overrides the query's flag). See [live updates](guide-live-updates.md#angular-mintplayerng-spark).
 
 The split mirrors the one `bs-datatable` already draws between `[data]` and `[fetch]`. Binding both
 is not a supported combination.

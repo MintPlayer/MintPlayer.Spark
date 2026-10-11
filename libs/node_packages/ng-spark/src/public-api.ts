@@ -1,7 +1,7 @@
 // Root entry point — bootstrap API only.
 // For other members import from sub-paths:
 //   @mintplayer/ng-spark/models             (PersistentObject, EntityType, SparkQuery, etc. + currentLanguage/resolveTranslation/ShowedOn/ELookupDisplayType)
-//   @mintplayer/ng-spark/services           (SparkService, SparkStreamingService, SparkLanguageService, RetryActionService, SparkIconRegistry)
+//   @mintplayer/ng-spark/services           (SparkService, SparkLiveService, SparkLanguageService, RetryActionService, SparkIconRegistry)
 //   @mintplayer/ng-spark/pipes              (all 22 pipes)
 //   @mintplayer/ng-spark/renderers          (SPARK_ATTRIBUTE_RENDERERS, provideSparkAttributeRenderers, renderer interfaces)
 //   @mintplayer/ng-spark/routes             (sparkRoutes, SparkRouteConfig)

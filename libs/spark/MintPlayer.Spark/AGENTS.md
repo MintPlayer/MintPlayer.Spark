@@ -51,6 +51,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // spark.AddAuthentication<SparkUser>();  spark.AddControllers();  spark.UseControllers();
     // spark.AddMessaging();  spark.AddCron();  spark.AddMigrations();  spark.AddReplication();
     // spark.AddIdentityProvider();  spark.AddRateLimiter();  spark.AddGithubWebhooks();
+    // spark.AddSafeHttp();   // SSRF-safe named HttpClient for user-supplied URLs (SparkBuilderSafeHttpExtensions.ClientName)
+    // spark.AddExpiration(); // only for options in code; IExpiring types need nothing (docs/guide-expiration.md)
 });
 
 // Build-time commands. Each returns true when it handled the invocation and the host should stop.
@@ -171,7 +173,7 @@ The hooks worth knowing:
 | `GetProtectedAttributesAsync` | per-row attribute redaction |
 | `OnRefreshAsync` | reshape the form when a `triggersRefresh` attribute changes |
 | `OnDisableActionsAsync(target, context)` | **the only place** an action is disabled — asked at load and enforced at submit (403) |
-| `StreamItems` / `StreamItem` | streaming queries over WebSocket |
+| a `Custom.*` method `(LiveQueryArgs, CancellationToken) → IAsyncEnumerable<IReadOnlyList<T>>` or `IAsyncEnumerable<T>` | an **app stream**: rows for a `"live": true` query that are not in RavenDB; see `docs/guide-live-updates.md` |
 
 ⚠️ **Disabling an action is one hook (#460, D13).** `OnDisableActionsAsync(IDisablable target,
 DisableActionsContext context)` — call `target.DisableActions("Edit", "MyAction")`. The framework asks
@@ -222,6 +224,14 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
   `/spark/queries/execute` and `/spark/queries/distinct-values` (the mode the **parent** is resolved
   under; honoured for `ViewDeleted/{ParentType}` holders, otherwise the missing-parent 404). Actions
   and delete-many always resolve a live parent, and judge live rows only.
+- **Document expiration is core, not hand-written** — entity implements `IExpiring` (public
+  `DateTime? ExpiresAtUtc`), optional `"expiresAfter": "7.00:00:00"` in the model JSON for new documents.
+  A store-level `OnBeforeStore` mirrors the property into `@expires` (pipeline and raw sessions; not
+  patches/bulk inserts), a row policy hides expired rows on every read path (expired load = 404), and
+  `UseSpark()` enables expiration on the database once, never more often than 36 h (Community floor;
+  startup refuses less on every licence). A library that writes `@expires` itself declares
+  `builder.Registry.RequireDocumentExpiration("Name")`; never send `ConfigureExpirationOperation` by hand.
+  Guide: `docs/guide-expiration.md`.
 - **History / audit is a package** — `MintPlayer.Spark.History`: `spark.AddHistory()`, entity
   implements `IAuditable` (stamped with user **ids**; `CreatedBy` immutable), revisions come from the
   model's `"revisions": { "enabled": true, … }` block (merged into the database at startup — never
@@ -421,7 +431,16 @@ Declared on the entity's model file. `source` is the convention that decides how
 binding on the types. An unregistered projection silently returns null computed fields, with no
 error — if an index-computed field is null in a test but right in the app, suspect that first.
 
-`isStreamingQuery` sends the client to a WebSocket instead of paging over HTTP.
+**Live updates** (`docs/guide-live-updates.md`): `"live": true` on a query, or on an entity type,
+makes grids and detail pages follow the data over one multiplexed WebSocket, `/spark/live`. Every
+push re-runs the HTTP read path (row security, redaction, attribute rights) under the viewer's
+principal, and a change to a row the viewer cannot see sends nothing. A RavenDB-backed live query
+keeps server-side paging, sort, search and filters and is re-run when its collection changes; writes
+the sources cannot see (patches, collections reached only through `LoadDocument`) go through
+`ISparkLiveNotifier`. A live `Custom.*` method taking `LiveQueryArgs` is an app stream: the server
+searches, sorts and pages its yields in memory, offers no filters or distincts, and `/execute`
+answers it with an empty page. Configuration is `Spark:Live`. There is no `isStreamingQuery`,
+`StreamingQueryArgs` or `/spark/queries/{id}/stream` any more.
 
 **Sorting on a searchable text field needs a companion.** A field that is tokenized for search
 cannot be sorted; the pattern is a `{Name}Sort` companion with no `Index()` call. Adding `Exact` to
@@ -482,6 +501,52 @@ through `SendCampaignAsync` (one mail per recipient, never BCC).
 - Test every template with `SparkMailTemplateTester.RenderAllAsync(services, sample, "en", "nl")`.
 
 See `libs/mail/MintPlayer.Spark.MailManager/README.md` and `docs/guide-outgoing-mail.md`.
+
+## Organizations (`spark.AddOrganizations()`, package `MintPlayer.Spark.Organizations`)
+
+Team or tenant data is never a hand-written `OwnerId` filter: implement `IOrganizationOwned`
+(`string? OrganizationId`) and the package's row policy limits every read and write path to members of
+that organization with the role the action needs (`[RequiresOrganizationRole("Delete", OrganizationRole.Admin)]`;
+defaults Viewer reads, Member creates/edits, Admin deletes). Non-members get the missing-row 404.
+
+- Roles are data (`OrganizationMembership`), not `security.json` groups; the app binds the slot
+  `organizations:users` (by group id or name, not by token) to say who may use organizations at all.
+- Raw session queries are not filtered: ask `ISparkOrganizations.GetMembershipsAsync(userId)` and use
+  `.In(ids)`, never `Contains`.
+- App data per organization goes away and is exported through `IOrganizationDataHandler`.
+
+See `libs/organizations/MintPlayer.Spark.Organizations/README.md` and `docs/guide-organizations.md`.
+
+## Notifications (`spark.AddNotifications()`, package `MintPlayer.Spark.Notifications`)
+
+Telling a user something is one call, never a hand-rolled mail plus a socket message:
+`ISparkNotifier.NotifyAsync(new SparkNotification { UserIds = [...], Title, Body, Url = "/runs/42", OrganizationId, Category })`.
+
+- Channels per user and organization (`NotificationPreference`, else the user's default row, else
+  `Spark:Notifications:Defaults`): in-app (a `Notification` document; the type and its queries are
+  `"live": true`, so an open UI gets it over `/spark/live` with no extra code), mail (MailManager, confirmed
+  addresses only) and Web Push.
+- Web Push needs VAPID keys (`Spark:Notifications:WebPush:{PublicKey,PrivateKey,Subject}`, the private key in
+  secrets) and `AddMessaging()`: each push is an outbox message sent through the SSRF-safe client. Never add a
+  third-party Web Push package: `MintPlayer.Spark.WebPush` is the hand-rolled RFC 8291/8292 library (D38).
+- The app binds the slot `notifications:users`. Rows are their user's alone.
+
+See `docs/guide-notifications.md`.
+
+## Quotas (`spark.AddQuotas(typeof(MyQuotas))`, settings package)
+
+A per-user limit on a custom action is `[SparkQuota("name")]` on the action class plus a declared
+`SparkQuota(name, SparkSetting<int> limit, SparkSetting<TimeSpan> window)`: a sliding window, limits changed by an
+administrator at runtime, 429 with `Retry-After`. Not the ASP.NET rate limiter (per IP, before authentication).
+Where code decides what counts, call `ISparkQuotas.TryConsumeAsync` instead. See `docs/guide-quotas.md`.
+
+## Share links (`spark.AddShareLinks(o => o.Share<T>(attributes, queries))`, core)
+
+An anonymous read-only link to one object is `ISparkShareable` on the type plus a declaration of exactly which
+attributes and which of its sub-queries (and which of their columns) a link shows. The built-in actions
+`ShareLink` / `RevokeShareLink` are granted like any custom action (`ShareLink/T`) and row-checked (organizations:
+`[RequiresOrganizationRole("ShareLink", OrganizationRole.Admin)]`). Never put `ShareTokenHash` in the model. See
+`docs/guide-share-links.md`.
 
 ## Moderation (`spark.AddModeration<TUser>()`, package `MintPlayer.Spark.Moderation`)
 

@@ -132,4 +132,34 @@ public class SparkMessagingOptionsBindingTests
         bulk.Interval.Should().Be(TimeSpan.FromMinutes(2), "an unconfigured property keeps the code default");
         bulk.Backoff.Should().Equal([TimeSpan.FromSeconds(10)], "a configured schedule replaces the code one, not appends to it");
     }
+
+    /// <summary>
+    /// X7 (<c>docs/seo_analyzer_PRD.md</c>): a queue has its own <c>HandlerTimeout</c>, configuration over
+    /// code like every per-queue option, and a queue without one keeps the global bound.
+    /// </summary>
+    [Fact]
+    public void A_queue_HandlerTimeout_overrides_the_global_one_and_configuration_overrides_code()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Spark:Messaging:Queues:seo-crawl:HandlerTimeout"] = "00:45:00",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        new MintPlayer.Spark.SparkBuilder(services, configuration).AddMessaging(o =>
+        {
+            o.HandlerTimeout = TimeSpan.FromMinutes(10);
+            o.Queues["seo-crawl"] = new SparkQueueOptions { HandlerTimeout = TimeSpan.FromMinutes(20) };
+            o.Queues["seo-probe"] = new SparkQueueOptions { HandlerTimeout = TimeSpan.FromSeconds(30) };
+            o.Queues["mail-bulk"] = new SparkQueueOptions { MaxPerInterval = 5 };
+        });
+
+        var resolved = services.BuildServiceProvider().GetRequiredService<IOptions<SparkMessagingOptions>>().Value;
+
+        resolved.HandlerTimeoutFor("seo-crawl").Should().Be(TimeSpan.FromMinutes(45), "configuration wins over the code default of the queue");
+        resolved.HandlerTimeoutFor("seo-probe").Should().Be(TimeSpan.FromSeconds(30), "a queue may also be shorter than the global bound");
+        resolved.HandlerTimeoutFor("mail-bulk").Should().Be(TimeSpan.FromMinutes(10), "a queue without its own keeps the global one");
+        resolved.HandlerTimeoutFor("undeclared").Should().Be(TimeSpan.FromMinutes(10));
+    }
 }

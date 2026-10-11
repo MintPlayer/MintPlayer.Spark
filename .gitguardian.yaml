@@ -1,0 +1,8 @@
+# GitGuardian (ggshield and the GitHub check).
+version: 2
+secret:
+  ignored_paths:
+    # SHA-256 hashes of each app's model shape, written by --spark-synchronize-model and compared by
+    # --spark-verify-model (ModelHashVerifier). No credential: they change on every model edit, so each new value reads
+    # as a "Generic High Entropy Secret". Never "fix" it by dropping hashes from the file: the startup gate needs them.
+    - "**/App_Data/modelHashes.json"

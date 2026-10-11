@@ -1,0 +1,77 @@
+@let all = rows();
+@if (all.length === 0) {
+  <p class="text-muted mb-0">{{ 'seoUi.results.none' | t }}</p>
+} @else {
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <div class="d-flex flex-wrap gap-1 seo-filter" role="group" [attr.aria-label]="'seoUi.results.filter' | t">
+      @for (f of filters; track f) {
+        <button type="button" class="btn btn-sm" [class.btn-primary]="filter() === f" [class.btn-outline-primary]="filter() !== f"
+                [attr.aria-pressed]="filter() === f" [attr.data-filter]="f" (click)="filter.set(f)">
+          {{ ('seoUi.results.' + f) | t }} <span class="ms-1 opacity-75">({{ counts()[f] }})</span>
+        </button>
+      }
+    </div>
+    <label class="ms-auto small d-flex align-items-center gap-1 mb-0">
+      <input type="checkbox" [checked]="howToFixOpen()" (change)="setHowToFix($any($event.target).checked)">
+      {{ 'seoUi.results.showHowToFix' | t }}
+    </label>
+  </div>
+
+  @for (group of groups(); track group.category) {
+    <section class="mb-3" [attr.data-category]="group.category">
+      <h4 class="h6 text-uppercase text-body-secondary mb-1">{{ catalogue.categoryLabel(group.category) }} <span class="fw-normal">({{ group.rows.length }})</span></h4>
+      @for (row of group.rows; track row.id) {
+        <div class="seo-check" [attr.data-check]="row.id">
+          <div class="d-flex flex-wrap align-items-start gap-2">
+            <bs-badge class="seo-status" [type]="statusColor(row.status)">{{ statusLabel(row) }}</bs-badge>
+            <div class="seo-check-main">
+              <strong>{{ row.title }}</strong>
+              <bs-badge class="ms-1" [type]="severityColor(row.severity)">{{ catalogue.severityLabel(row.severity) }}</bs-badge>
+              @if (row.delta === 'New') {
+                <bs-badge class="ms-1" [type]="colors.danger" data-delta="New">{{ 'seoUi.delta.New' | t }}</bs-badge>
+              } @else if (row.delta === 'Fixed') {
+                <bs-badge class="ms-1" [type]="colors.success" data-delta="Fixed">{{ 'seoUi.delta.Fixed' | t }}</bs-badge>
+              } @else if (row.delta === 'Unchanged' && row.status !== 'Pass') {
+                <span class="small text-body-secondary ms-1" data-delta="Unchanged">{{ 'seoUi.delta.Unchanged' | t }}</span>
+              }
+              @if (row.affected > 0) {
+                <span class="small text-body-secondary ms-2">{{ row.affected }} {{ (row.affected === 1 ? 'seoUi.results.page' : 'seoUi.results.pages') | t }}</span>
+              }
+              @if (row.summary) { <div class="small">{{ row.summary }}</div> }
+              @if (row.note) { <div class="small text-body-secondary fst-italic" data-note>{{ row.note }}</div> }
+              @if (row.sampleUrls.length > 0) {
+                <ul class="seo-urls list-unstyled mb-0 mt-1">
+                  @for (url of row.sampleUrls; track url) {
+                    <li><a [href]="url" target="_blank" rel="noopener noreferrer nofollow">{{ url }}</a></li>
+                  }
+                </ul>
+              }
+            </div>
+            @if (hasFix(row)) {
+              <button type="button" class="btn btn-link btn-sm p-0" [attr.aria-expanded]="isOpen(row.id)" (click)="toggle(row.id)">
+                {{ (isOpen(row.id) ? 'seoUi.results.hideFix' : 'seoUi.results.howToFix') | t }}
+              </button>
+            }
+          </div>
+          @if (hasFix(row) && isOpen(row.id)) {
+            <div class="mt-2 ms-md-5 ps-md-4" data-howtofix>
+              @if (row.check?.howToFix; as fix) { <p class="mb-2">{{ fix }}</p> }
+              @for (platform of snippetPlatforms(row); track platform.key) {
+                <div class="mb-2">
+                  <div class="small fw-semibold mb-1">{{ platform.label }}</div>
+                  <bs-code-snippet [code]="row.check?.snippets?.[platform.key] ?? ''" [language]="platform.language" [wrap]="true"
+                                   [label]="platform.label" [copyLabel]="'seoUi.copy' | t" />
+                </div>
+              }
+              @if (row.check?.docsUrl; as docs) {
+                <a class="small" [href]="docs" target="_blank" rel="noopener noreferrer">{{ 'seoUi.results.docs' | t }}</a>
+              }
+            </div>
+          }
+        </div>
+      }
+    </section>
+  } @empty {
+    <p class="text-muted mb-0" data-empty>{{ ('seoUi.results.empty.' + filter()) | t }}</p>
+  }
+}

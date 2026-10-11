@@ -47,6 +47,7 @@ GET /spark/auth/me
 POST /spark/auth/passkeys/request-options
 POST /spark/auth/passkeys/sign-in
 GET /spark/culture
+CONNECT,GET /spark/live
 GET /spark/lookupref
 GET /spark/lookupref/{name}
 POST /spark/lookupref/{name} | antiforgery=required
@@ -66,7 +67,8 @@ GET /spark/queries
 POST /spark/queries/distinct-values | antiforgery=not-required
 POST /spark/queries/execute | antiforgery=not-required
 POST /spark/queries/get | antiforgery=not-required
-CONNECT,GET /spark/queries/{id}/stream
+POST /spark/share/load | allow-anonymous | antiforgery=not-required
+POST /spark/share/query | allow-anonymous | antiforgery=not-required
 GET /spark/translations
 GET /spark/types
 GET /spark/types/{id}

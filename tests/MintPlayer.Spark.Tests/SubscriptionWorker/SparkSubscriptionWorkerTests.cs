@@ -28,7 +28,7 @@ public class SparkSubscriptionWorkerTests : SparkTestDriver
     }
 
     private sealed class ProbeWorker(IDocumentStore store, string? database = null)
-        : SparkSubscriptionWorker<ProbeDoc>(NullLoggerFactory.Instance, store)
+        : SparkSubscriptionWorker<ProbeDoc>(store, NullLoggerFactory.Instance)
     {
         public const string Name = "Probe";
 

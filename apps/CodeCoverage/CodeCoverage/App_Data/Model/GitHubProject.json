@@ -186,8 +186,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "GitHubProjects_Overview",
-      "entityType": "GitHubProject",
-      "isStreamingQuery": false
+      "entityType": "GitHubProject"
     },
     {
       "id": "237b1f50-88b8-48e5-a946-98a2f5251772",
@@ -202,8 +201,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "GitHubProjects_Overview",
-      "entityType": "GitHubProject",
-      "isStreamingQuery": false
+      "entityType": "GitHubProject"
     }
   ]
 }

@@ -343,6 +343,37 @@ describe('SparkPoDetailComponent', () => {
     expect(last.querySelector('spark-attribute-description button')).toBeNull();
   });
 
+  it('shows a number 0 as 0 and only a missing value as - (#268 M11: a page at depth 0 read "-")', async () => {
+    const numbersType: EntityType = {
+      ...personType,
+      attributes: [
+        personType.attributes[0],
+        { id: 'a-depth', name: 'Depth', dataType: 'number', isRequired: false, isReadOnly: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-load', name: 'LoadMs', dataType: 'number', isRequired: false, isReadOnly: true, order: 3, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-note', name: 'Note', dataType: 'string', isRequired: false, isReadOnly: true, order: 4, showedOn: ShowedOn.PersistentObject } as any,
+      ],
+    } as any;
+    const item = {
+      ...existingItem,
+      attributes: [
+        ...existingItem.attributes,
+        { id: 'a-depth', name: 'Depth', value: 0 },
+        { id: 'a-load', name: 'LoadMs', value: null },
+        { id: 'a-note', name: 'Note', value: '' },
+      ],
+    } as any;
+    const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([numbersType]), get: vi.fn().mockResolvedValue(item) });
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+
+    const terms: HTMLElement[] = Array.from(harness.routeNativeElement!.querySelectorAll('dt'));
+    const valueOf = (name: string) => (terms.find(t => t.textContent?.includes(name))!.nextElementSibling as HTMLElement).textContent?.trim();
+    expect(valueOf('Depth')).toBe('0');
+    expect(valueOf('LoadMs')).toBe('-');
+    expect(valueOf('Note')).toBe('-');
+  });
+
   it('onEdit emits edited and navigates to the edit route', async () => {
     const { harness } = await setup();
     const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
@@ -530,7 +561,7 @@ describe('SparkPoDetailComponent', () => {
     expect(lastRequest).toBeLessThan((service.get as any).mock.invocationCallOrder[0]);
   });
 
-  it('onCustomAction failure sets errorMessage', async () => {
+  it('onCustomAction failure sets actionError and keeps the page', async () => {
     const { harness } = await setup({
       executeCustomAction: vi.fn().mockRejectedValue(new HttpErrorResponse({ status: 500, error: { error: 'Boom' } })),
     });
@@ -538,8 +569,46 @@ describe('SparkPoDetailComponent', () => {
     await harness.fixture.whenStable();
 
     await c.onCustomAction(customAction);
+    harness.fixture.detectChanges();
 
-    expect(c.errorMessage()).toBe('Boom');
+    expect(c.actionError()).toBe('Boom');
+    // A refused action used to replace the whole page with the alert (seen in SeoTester, M11).
+    expect(c.errorMessage()).toBeNull();
+    const page = harness.routeNativeElement as HTMLElement;
+    expect(page.querySelector('h2')).not.toBeNull();
+    expect(page.querySelector('.spark-action-error')!.textContent).toContain('Boom');
+  });
+
+  // A refused action answers in the envelope (`{ result: { error, retryAfterSeconds }, operations }`): the banner showed
+  // Angular's "Http failure response for …: 429" instead of the server's reason, and never when to try again.
+  it('onCustomAction refused with 429 shows the server reason and when to try again', async () => {
+    const { harness } = await setup({
+      executeCustomAction: vi.fn().mockRejectedValue(new HttpErrorResponse({
+        status: 429, url: '/spark/actions/execute',
+        error: { result: { error: 'example.com was audited recently.', retryAfterSeconds: 2 * 3600 }, operations: [] },
+      })),
+    });
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    await c.onCustomAction(customAction);
+
+    // The spec's language service answers keys: the reason, then spark.tryAgainIn with the wait.
+    expect(c.actionError()).toBe('example.com was audited recently. spark.tryAgainIn');
+    expect(c.actionError()).not.toContain('Http failure');
+  });
+
+  // The action's result (CustomActionArgs.SetResult) reaches the host page, e.g. a PDF's download url.
+  it('customActionExecuted carries the result the action set', async () => {
+    const { harness } = await setup({ executeCustomAction: vi.fn().mockResolvedValue({ url: '/report.pdf', ready: true }) });
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+    const executed = vi.fn();
+    c.customActionExecuted.subscribe(executed);
+
+    await c.onCustomAction(customAction);
+
+    expect(executed).toHaveBeenCalledWith(expect.objectContaining({ action: customAction, result: { url: '/report.pdf', ready: true } }));
   });
 
   describe('renderer inputs (#241/#245)', () => {

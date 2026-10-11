@@ -3,8 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { QueryResultItem } from '@mintplayer/ng-spark/models';
-import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline';
-import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle, StubSparkline } from '../../testing/test-utils';
+import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle, StubSparkline, stubSparkTrendCharts } from '../../testing/test-utils';
 import { clearSparklineCacheForTesting, CoverageSparklineRendererComponent } from './coverage-sparkline-renderer.component';
 
 function row(values: Record<string, unknown>, id = 'items/1'): QueryResultItem {
@@ -36,10 +35,7 @@ describe('CoverageSparklineRendererComponent', () => {
     TestBed.configureTestingModule({
       providers: [provideZonelessChangeDetection(), provideBrowseStub(browse)],
     });
-    TestBed.overrideComponent(CoverageSparklineRendererComponent, {
-      remove: { imports: [BsSparklineComponent] },
-      add: { imports: [StubSparkline] },
-    });
+    stubSparkTrendCharts();
   }
 
   async function render(inputs: Record<string, unknown>): Promise<ComponentFixture<CoverageSparklineRendererComponent>> {

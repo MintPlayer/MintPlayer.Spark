@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, LOCALE_ID, computed, inject, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, LOCALE_ID, computed, inject, output, signal, viewChild } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, formatDate } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -8,7 +9,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
-import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, SparkLiveService, canonicalJson } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import {
@@ -54,6 +55,7 @@ export class SparkPoEditComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+  private readonly live = inject(SparkLiveService);
   private readonly language = inject(SparkLanguageService);
   /** `SparkConfig.conflictDialog.showChangedBy`: whether the conflict notice may name a user at all. */
   private readonly showChangedBy = inject(SPARK_CONFIG, { optional: true })?.conflictDialog?.showChangedBy === true;
@@ -144,11 +146,104 @@ export class SparkPoEditComponent {
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
+    inject(DestroyRef).onDestroy(() => this.stopFollowing());
+  }
+
+  // --- live (X4) ---------------------------------------------------------------------------------
+
+  private liveSubscription: Subscription | null = null;
+  /** The newest version pushed while this form is open; considered whenever the form can take it. */
+  private latestPushed: PersistentObject | null = null;
+  /**
+   * A newer version someone else saved while the user has unsaved edits: the form is left alone and a
+   * banner offers to review it. Null when there is none (or it has been adopted or reviewed).
+   */
+  readonly liveTheirs = signal<PersistentObject | null>(null);
+  protected readonly liveChangedText = computed(() => this.translateOr('common.liveChanged', 'Changed by someone else while you edit.'));
+  protected readonly liveReviewText = computed(() => this.translateOr('common.liveReview', 'Review'));
+
+  /**
+   * Watches the object while the form is open, when its type is live. A newer version (another etag) is
+   * adopted silently while the form is untouched — base and form replaced, so the next save posts the new
+   * etag — and only offered (banner, then the three-way merge) once the user has edited. `gone` reads as a
+   * 409 `deleted`. The 409 on save stays the server-side guarantee; this only brings it forward.
+   */
+  private follow(entityType: EntityType | null): void {
+    this.stopFollowing();
+    if (!entityType?.live || !this.id) return;
+    this.liveSubscription = this.live.watchPersistentObject(entityType.id, this.id).subscribe(event => {
+      if (event.type === 'po') {
+        this.latestPushed = event.po;
+        this.considerLivePush();
+      } else if (event.type === 'gone') {
+        this.liveSubscription = null;
+        this.liveTheirs.set(null);
+        this.validationErrors.set([{
+          attributeName: '',
+          errorMessage: { en: this.language.t('common.deletedByAnotherUser') },
+          ruleType: 'error'
+        }]);
+      } else {
+        this.liveSubscription = null;
+        console.warn(`[spark] live updates stopped for ${entityType.name} ${this.id}: ${event.code}: ${event.message}`);
+      }
+    });
+  }
+
+  private stopFollowing(): void {
+    this.liveSubscription?.unsubscribe();
+    this.liveSubscription = null;
+    this.latestPushed = null;
+    this.liveTheirs.set(null);
+  }
+
+  /** Adopts the latest pushed version when the form is clean, or offers it when the form is dirty. */
+  private considerLivePush(): void {
+    const pushed = this.latestPushed;
+    const current = this.item();
+    // A save in flight: its own write comes back as a push. A failed save looks again (see onSave).
+    // An open conflict dialog is already the review; closing it looks again.
+    if (!pushed || !current || this.isSaving() || this.pendingConflict()) return;
+    if (pushed.etag === current.etag) {
+      this.liveTheirs.set(null);
+      return;
+    }
+    if (!this.isDirty()) {
+      this.item.set(pushed);
+      this.initFormData();
+      this.liveTheirs.set(null);
+      return;
+    }
+    this.liveTheirs.set(pushed);
+  }
+
+  /** Whether the form holds edits: it differs from the object it was built from. */
+  isDirty(): boolean {
+    return canonicalJson(this.formData()) !== canonicalJson(this.formDataFrom(this.item()));
+  }
+
+  /**
+   * The banner's Review: the existing three-way merge of the loaded base, the user's edits and the pushed
+   * version. Nothing conflicts → applied, and their etag adopted; conflicts → the conflict dialog. Nothing
+   * is saved either way.
+   */
+  reviewLiveChange(): void {
+    const theirs = this.liveTheirs();
+    if (!theirs) return;
+    this.liveTheirs.set(null);
+    this.mergeWith(theirs);
+  }
+
+  /** The translation, or `fallback` while the key has none (`t` echoes a missing key). */
+  private translateOr(key: string, fallback: string): string {
+    const text = this.language.t(key);
+    return text && text !== key ? text : fallback;
   }
 
   private async onParamsChange(params: any): Promise<void> {
     this.type = params.get('type') || '';
     this.id = params.get('id') || '';
+    this.stopFollowing();
 
     try {
       const [types, item] = await Promise.all([
@@ -161,6 +256,7 @@ export class SparkPoEditComponent {
       this.allEntityTypes.set(types);
       this.item.set(item);
       this.initFormData();
+      this.follow(entityType);
     } catch (e) {
       const error = e as HttpErrorResponse;
       this.validationErrors.set([{
@@ -400,6 +496,8 @@ export class SparkPoEditComponent {
           ruleType: 'error'
         }]);
       }
+      // A version pushed while the save was in flight was set aside; the form is still open, so look again.
+      this.considerLivePush();
     }
   }
 
@@ -416,14 +514,24 @@ export class SparkPoEditComponent {
    * reviews and saves, and the server's validation and business rules run again on the result.
    */
   private async resolveConcurrencyConflict(): Promise<void> {
-    const base = this.item();
-    if (!base) return;
+    if (!this.item()) return;
     let theirs: PersistentObject;
     try {
       theirs = await this.sparkService.get(this.type, this.id);
     } catch {
       return; // The concurrency message stays; there is nothing to merge against.
     }
+    this.mergeWith(theirs);
+  }
+
+  /**
+   * Merges this form onto `theirs`, three-way against the object as loaded: disjoint edits are applied
+   * and their etag adopted (with a notice); true conflicts open the dialog. Shared by the 409 path and
+   * the live banner's Review.
+   */
+  private mergeWith(theirs: PersistentObject): void {
+    const base = this.item();
+    if (!base) return;
     // Not awaited: the merge and the dialog never wait on, or fail because of, the name.
     // Opt-in: without showChangedBy no History request is made at all.
     this.changedByName.set(null);
@@ -501,11 +609,13 @@ export class SparkPoEditComponent {
     const result = mergeThreeWay(pending.base, pending.mine, pending.theirsForm, pending.schema, choices);
     this.pendingConflict.set(null);
     this.rebase(pending.theirs, result.merged, result.theirChanges, 'common.conflictResolved', result.contributionNotices);
+    this.considerLivePush();
   }
 
   /** Closing the dialog changes nothing: the form keeps its values and the conflict message. */
   onConflictCancelled(): void {
     this.pendingConflict.set(null);
+    this.considerLivePush();
   }
 
   /**

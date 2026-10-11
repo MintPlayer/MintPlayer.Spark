@@ -1,0 +1,46 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "_comment": [
+    "The notifications package's menu fragment (docs/seo_analyzer_PRD.md X10): the caller's notifications, their",
+    "preferences per organization and their push devices, shown to callers holding the queries' rights, i.e. the",
+    "group the application binds to notifications:users. Ids are UUIDv5 of 'notifications:programUnits.…'.",
+    "An application removes a unit with { \"id\": \"…\", \"$remove\": true } in its own programUnits.json."
+  ],
+  "programUnitGroups": [
+    {
+      "id": "4a256cab-07ef-5e90-8a0f-56debcc37f7c",
+      "name": "programUnits.groups.notifications",
+      "icon": "bi-bell",
+      "order": 85,
+      "programUnits": [
+        {
+          "id": "2f674949-d731-54a2-b5ad-ee883e2145bd",
+          "name": "programUnits.notifications",
+          "icon": "bi-bell",
+          "type": "query",
+          "queryId": "7123c201-9aed-50f9-9d9a-ede2491af7f9",
+          "alias": "notifications",
+          "order": 1
+        },
+        {
+          "id": "68b358ba-770e-589d-bd3b-c4cd4777af38",
+          "name": "programUnits.notificationPreferences",
+          "icon": "bi-sliders",
+          "type": "query",
+          "queryId": "8ac1d84a-f922-573f-b31b-2cebea736278",
+          "alias": "notification-preferences",
+          "order": 2
+        },
+        {
+          "id": "7634716c-2724-5b87-bf6e-9cf72648e477",
+          "name": "programUnits.pushDevices",
+          "icon": "bi-phone",
+          "type": "query",
+          "queryId": "2d966c1f-04d8-5ddb-bacc-8d907f4b58ef",
+          "alias": "push-devices",
+          "order": 3
+        }
+      ]
+    }
+  ]
+}

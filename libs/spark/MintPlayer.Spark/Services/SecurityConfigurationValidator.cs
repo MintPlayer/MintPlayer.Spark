@@ -13,7 +13,7 @@ namespace MintPlayer.Spark.Services;
 /// decision an application is entitled to make would be wrong.
 /// </para>
 /// </summary>
-internal static class SecurityConfigurationValidator
+internal static partial class SecurityConfigurationValidator
 {
     /// <summary>The token deleted in preview.60, kept here only so its use can be diagnosed.</summary>
     private const string RemovedEveryoneName = "Everyone";
@@ -168,8 +168,26 @@ internal static class SecurityConfigurationValidator
                     + "actions at once — for example 'QueryReadEditNewDelete/Person' instead of "
                     + "'*/Person' (see SparkCombinedActions).");
             }
+
+            // A run of core verbs that is not a combined action would be taken for a custom action's
+            // name and grant nothing: found as 'QueryReadEditDelete/OrganizationMembership', which left
+            // the type unreachable (404 'Query … not found') while the build and startup accepted it.
+            var action = right.Resource[..slash];
+            if (CoreVerbRun().IsMatch(action)
+                && !SparkCombinedActions.Names.Contains(action, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new SparkSecurityConfigurationException(
+                    $"security.json declares a right with resource '{right.Resource}', whose action '{action}' "
+                    + "is not a combined action: it would be read as a custom action of that name and grant "
+                    + "nothing. The combined actions are " + string.Join(", ", SparkCombinedActions.Names.Order(StringComparer.Ordinal))
+                    + "; state any other combination as two rights (for example 'QueryReadEdit/Person' and 'Delete/Person').");
+            }
         }
     }
+
+    /// <summary>Two or more of the core verbs run together, e.g. <c>QueryReadDelete</c>.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex("^(Query|Read|Edit|New|Delete){2,}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex CoreVerbRun();
 
     /// <summary>
     /// <c>Everyone</c> meant "the public internet", and nothing at the point of writing said so —

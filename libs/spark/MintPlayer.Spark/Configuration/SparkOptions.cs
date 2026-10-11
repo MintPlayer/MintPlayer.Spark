@@ -54,4 +54,29 @@ public class RavenDbOptions
     /// where the database may not exist yet. Default: false.
     /// </summary>
     public bool EnsureDatabaseCreated { get; set; } = false;
+
+    /// <summary>
+    /// The client certificate this app presents to a secured RavenDB server (HTTPS with client
+    /// certificates). Either a PKCS#12 file (<c>.pfx</c>/<c>.p12</c>, with
+    /// <see cref="CertificatePassword"/> when it has one) or a PEM certificate, whose private key is in
+    /// <see cref="CertificateKeyFile"/> or in the same file. Empty (the default) = no certificate: the
+    /// unsecured <c>http://</c> server of local development and the tests. A certificate requires every
+    /// URL in <see cref="Urls"/> to be <c>https://</c>; startup refuses otherwise. Applied by
+    /// <see cref="SparkRavenDbSecurity.Apply"/>.
+    /// </summary>
+    public string? CertificateFile { get; set; }
+
+    /// <summary>The PEM private key of <see cref="CertificateFile"/>, when it is a separate file.</summary>
+    public string? CertificateKeyFile { get; set; }
+
+    /// <summary>The password of a PKCS#12 <see cref="CertificateFile"/> or of an encrypted PEM key.</summary>
+    public string? CertificatePassword { get; set; }
+
+    /// <summary>
+    /// A PEM or DER file holding the certificate authority that issued the RavenDB <em>server's</em>
+    /// certificate, for a server whose certificate is not publicly trusted (a private CA on an internal
+    /// host name). The server's certificate is then accepted when it chains to this authority and its
+    /// name matches the URL; nothing else is relaxed. Empty = the operating system's trust store only.
+    /// </summary>
+    public string? ServerCertificateAuthorityFile { get; set; }
 }

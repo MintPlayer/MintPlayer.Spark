@@ -27,8 +27,8 @@
   <!--
     One datatable, two row sources. `[data]` and `[fetch]` are mutually exclusive in
     ng-bootstrap — binding both makes `[fetch]` win silently — so exactly one is ever non-null
-    here: `fetchFn` is left null whenever `data` is bound. See the class comment for why rows can
-    arrive from outside at all (streaming must not put a websocket in every detail page's bundle).
+    here: `fetchFn` is left null whenever `data` is bound. A live grid still uses `[fetch]`: its pages
+    come from /spark/live instead of /execute (see the class comment).
   -->
   <!--
     The selection bar (#460, M15): the "N selected" chip, only while rows are selected, and part

@@ -14,5 +14,16 @@
     "showedOn": "both",
     "selectionRule": ">0",
     "variant": "danger"
+  },
+  "ShareLink": {
+    "icon": "share",
+    "showedOn": "detail",
+    "selectionRule": "=0"
+  },
+  "RevokeShareLink": {
+    "icon": "x-circle",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "variant": "danger"
   }
 }

@@ -124,7 +124,7 @@ attribute is not in the payload at all — no name, no value, no metadata — fo
 | Refused | Effect |
 |---|---|
 | `Read` | Absent from the persistent object on every presentation: `po/load`, `po/refresh`, `po/new`, a persistent object a custom action returns, and History's revision view. Absent from that caller's `types/{id}` and `types` definition, so the form never draws it (and the M1c conflict dialog, which re-fetches with `po/load`, can never show it). |
-| `Query` | Absent from the query's `columns` and from every row's values, streaming included. Search, sort, column filters and distinct values treat it **as if it did not exist**: a search does not match it, a sort on it is ignored, a filter on it is ignored (silently, like any non-filterable column), its distinct list is empty — so `totalItems` is unaffected by it. |
+| `Query` | Absent from the query's `columns` and from every row's values, live pushes and app streams included ([live updates](guide-live-updates.md)). Search, sort, column filters and distinct values treat it **as if it did not exist**: a search does not match it, a sort on it is ignored, a filter on it is ignored (silently, like any non-filterable column), its distinct list is empty — so `totalItems` is unaffected by it. |
 | `Edit` | Read-only in the caller's definition and on the loaded object. (`New` does the same on `po/new`.) |
 
 Removal is safe to do statically because it does not vary per row: every row of the type lacks the

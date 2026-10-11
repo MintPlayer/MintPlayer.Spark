@@ -84,8 +84,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Person",
-      "isStreamingQuery": false
+      "entityType": "Person"
     }
   ]
 }

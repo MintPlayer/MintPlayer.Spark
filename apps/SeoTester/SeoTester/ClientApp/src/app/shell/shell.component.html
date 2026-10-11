@@ -1,0 +1,19 @@
+<spark-shell title="SeoTester">
+  <!-- The menu is server-driven: Organizations, Notifications and (administrators only) Settings come with their
+       packages. The topbar adds the organization switcher (lists follow it, Q-M11a), the notification bell (live
+       unread count, push opt-in) and the account pages. -->
+  <ng-container *sparkShellTopbarEnd>
+    <spark-language-selector />
+    @if (auth.isAuthenticated()) {
+      <spark-organization-switcher />
+      <spark-notification-bell />
+    }
+    <spark-auth-bar />
+  </ng-container>
+  <router-outlet />
+  <!-- Under every page, the sign-in page included (D47). Plain links: these are the server's pages (Legal/, Bot/), not
+       routes, and the service worker leaves them to the server (ngsw-config.json). -->
+  <footer class="small text-center text-body-secondary my-4" data-legal-links>
+    <a href="/privacy">{{ 'app.privacy' | t }}</a> · <a href="/terms">{{ 'app.terms' | t }}</a> · <a href="/bot">{{ 'app.aboutTheCrawler' | t }}</a>
+  </footer>
+</spark-shell>

@@ -231,6 +231,47 @@ public class MailManagerTests : SparkTestDriver
         rendered.Should().HaveCount(6);
     }
 
+    /// <summary>X11 (<c>docs/seo_analyzer_PRD.md</c> D18): the organizations package's invitation and join-request mails, en + nl.</summary>
+    [Fact]
+    public async Task The_render_helper_renders_every_shipped_organizations_template_in_English_and_Dutch()
+    {
+        using var sp = Build(services: c => c.AddSparkMailTemplates(typeof(MintPlayer.Spark.Organizations.Services.OrganizationMailTemplates).Assembly, "SparkMail/"));
+
+        var rendered = await SparkMailTemplateTester.RenderAllAsync(sp, template => new
+        {
+            link = "https://app.example/organizations/accept/abc?id=OrganizationInvitations%2F1",
+            organization = "Acme",
+            role = "Admin",
+            inviter = "ann",
+            requester = "rex",
+            requester_email = "rex@app.example",
+            valid_for_days = 14,
+        }, "en", "nl");
+
+        rendered.Select(r => r.Subject).Should().Contain("ann invited you to Acme").And.Contain("rex vraagt lid te worden van Acme");
+        rendered.Should().HaveCount(4);
+        rendered.Single(r => r.Subject == "ann nodigt je uit voor Acme").Html.Should().Contain("als beheerder");
+    }
+
+    [Fact]
+    public async Task The_render_helper_renders_the_shipped_notification_template_in_English_and_Dutch()
+    {
+        using var sp = Build(services: c => c.AddSparkMailTemplates(typeof(MintPlayer.Spark.Notifications.SparkNotificationsExtensions).Assembly, "SparkMail/"));
+
+        var rendered = await SparkMailTemplateTester.RenderAllAsync(sp, template => new
+        {
+            title = "Score dropped to 74",
+            body = "example.com lost 17 points.",
+            link = "https://app.example/runs/42",
+            user_name = "ann",
+        }, "en", "nl");
+
+        rendered.Should().HaveCount(2);
+        rendered.Select(r => r.Subject).Distinct().Should().Equal("Score dropped to 74");
+        rendered.Should().AllSatisfy(r => r.Html.Should().Contain("https://app.example/runs/42"));
+        rendered.Select(r => r.Html).Should().Contain(h => h.Contains("Openen"));
+    }
+
     // ---- queueing, protection, suppression -----------------------------------------------------------
 
     [Fact]

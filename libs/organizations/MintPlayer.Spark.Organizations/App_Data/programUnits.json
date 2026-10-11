@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "_comment": [
+    "The organizations package's menu fragment (docs/seo_analyzer_PRD.md X11): one unit, shown to callers",
+    "holding Query/Organization, i.e. the group the application binds to organizations:users. Ids are",
+    "UUIDv5 of 'organizations:programUnits.groups.organizations' and 'organizations:programUnits.organizations'.",
+    "An application removes it with { \"id\": \"…\", \"$remove\": true } in its own programUnits.json."
+  ],
+  "programUnitGroups": [
+    {
+      "id": "81ea68b6-0282-5be4-8874-ea258837409e",
+      "name": "programUnits.groups.organizations",
+      "icon": "bi-people",
+      "order": 90,
+      "programUnits": [
+        {
+          "id": "1978c3df-79cd-5712-ac43-2b9f6e34c064",
+          "name": "programUnits.organizations",
+          "icon": "bi-people",
+          "type": "query",
+          "queryId": "a1f89590-651b-5e70-aedd-0f27ebda695d",
+          "alias": "organizations",
+          "order": 1
+        }
+      ]
+    }
+  ]
+}

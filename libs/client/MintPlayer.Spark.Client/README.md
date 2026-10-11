@@ -304,7 +304,7 @@ is a rewrite.
 
 | Gap | Consequence today |
 |---|---|
-| **No WebSocket streaming** | `/spark/queries/{id}/stream` has no typed client. Deliberate: nothing needs it, and unused public API is a liability. |
+| **No live updates** | The `/spark/live` WebSocket ([live updates](../../../docs/guide-live-updates.md)) has no typed client. Deliberate: nothing needs it, and unused public API is a liability. A live query's rows still come back from `/execute`, except an app stream's, which `/execute` answers with an empty page. |
 | **No external login** | Browser-dependent by construction — a redirect to a third party and back is not something a request/response client can drive. |
 | **No scripting DSL** | C# API only, by decision. |
 

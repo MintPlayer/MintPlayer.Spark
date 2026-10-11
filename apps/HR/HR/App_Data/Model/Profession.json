@@ -45,8 +45,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Profession",
-      "isStreamingQuery": false
+      "entityType": "Profession"
     }
   ]
 }

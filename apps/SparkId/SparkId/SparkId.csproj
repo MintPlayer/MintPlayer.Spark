@@ -9,7 +9,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.1">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
@@ -24,6 +24,11 @@
 		<ProjectReference Include="..\..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- DevelopmentRelyingPartiesTests pins the seeded relying parties. -->
+		<InternalsVisibleTo Include="SparkId.Tests" />
 	</ItemGroup>
 
 </Project>

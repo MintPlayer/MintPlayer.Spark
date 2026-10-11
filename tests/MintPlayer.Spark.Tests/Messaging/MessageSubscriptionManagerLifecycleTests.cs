@@ -288,6 +288,139 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         lease!.NodeId.Should().Be(MessageClaims.NodeId);
     }
 
+    /// <summary>
+    /// Q-M11e (docs/seo_analyzer_PRD.md §12). A <c>WebApplicationFactory</c> host is stopped twice at once: the
+    /// factory's <c>DisposeAsync</c> calls <c>Host.StopAsync</c>, which raises ApplicationStopping, and the app's own
+    /// <c>app.Run()</c> wakes on it and calls <c>Host.StopAsync</c> too; <c>RunAsync</c>'s <c>finally</c> then
+    /// disposes the host (its logger providers, the Windows EventLog among them) as soon as its own stop returns. Each
+    /// call ran its own drain on its own <c>ClaimTtl</c> timer, so whichever finished second logged "did not drain"
+    /// into a disposed EventLog and threw <c>ObjectDisposedException</c> out of the other stop. The pumps cancelled at
+    /// the end of a stop also logged after it had returned. Here the second stop starts a little later, so the order
+    /// is fixed, and the sink is "disposed" the moment the first stop returns, exactly as <c>RunAsync</c> does.
+    /// </summary>
+    [Fact]
+    public async Task A_second_concurrent_stop_does_no_work_after_the_first_one_returns()
+    {
+        var gate = new HoldGate();
+        var sink = new DisposableLogSink();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(sink));
+        services.AddSingleton(Store);
+        services.AddSingleton(gate);
+        services.AddSparkMessaging(o =>
+        {
+            // The drain waits ClaimTtl; renewals keep the held message's claim alive meanwhile.
+            o.ClaimTtl = TimeSpan.FromSeconds(1);
+            o.ClaimRenewInterval = TimeSpan.FromMilliseconds(200);
+        });
+        services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestHold>, TestCancellableHoldRecipient>();
+        var provider = services.BuildServiceProvider();
+        await using var _ = provider;
+        var hosted = provider.GetServices<IHostedService>().OfType<MessageSubscriptionManager>().Single();
+
+        await hosted.StartAsync(CancellationToken.None);
+        await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
+        using (var scope = provider.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>().BroadcastAsync(new TestHold());
+        // A failure bound, not a wait (see A_renewal_falling_due_during_the_drain_does_not_restart_messaging).
+        await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(90));
+
+        var factoryStop = hosted.StopAsync(CancellationToken.None);
+        await Task.Delay(300);
+        var runStop = hosted.StopAsync(CancellationToken.None);
+
+        var first = await Task.WhenAny(factoryStop, runStop);
+        sink.Dispose(); // RunAsync's finally: the host and its logger providers go the moment its own stop returns.
+        await first;
+
+        var second = first == factoryStop ? runStop : factoryStop;
+        var act = () => second.WaitAsync(TimeSpan.FromSeconds(30));
+        await act.Should().NotThrowAsync("the second stop must not log into a host its twin already disposed");
+        sink.LateWrites.Should().BeEmpty("no messaging work may outlive a StopAsync call");
+    }
+
+    /// <summary>
+    /// Q-M11e follow-up (docs/seo_analyzer_PRD.md §12). A lease-lost teardown drains the router, which completes
+    /// every lane's channel, but the router kept those lanes. When the host took the lease back, the feeder routed
+    /// the next message of an already-seen queue into the old, completed channel: <c>ChannelClosedException</c>, the
+    /// claim released, the batch retried, the message never handled. The lease is deleted to make the renewal fail,
+    /// which is what an eviction looks like to the holder; the loop then finds it free and takes it straight back.
+    /// </summary>
+    [Fact]
+    public async Task A_host_that_regains_the_lease_after_losing_it_routes_and_handles_messages_again()
+    {
+        var counter = new PingCounter();
+        var log = new System.Collections.Concurrent.ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(new RecordingLoggerProvider(log)));
+        services.AddSingleton(Store);
+        services.AddSingleton(counter);
+        services.AddSparkMessaging(o => o.SubscriptionMode = ESubscriptionMode.SingleSubscription);
+        services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>, CountingPingRecipient>();
+        var provider = services.BuildServiceProvider();
+        await using var _ = provider;
+        var hosted = provider.GetServices<IHostedService>().OfType<MessageSubscriptionManager>().Single();
+        string Warnings() => string.Join(" | ", log.Where(e => e.Level >= LogLevel.Warning).Select(e => $"{e.Category}: {e.Message}"));
+
+        await hosted.StartAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
+
+            // 1. A message on the queue creates its lane. A failure bound, not a wait (see
+            //    A_renewal_falling_due_during_the_drain_does_not_restart_messaging).
+            using (var scope = provider.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>().BroadcastAsync(new TestPing { Hello = "before" });
+            await AsyncWait.UntilAsync(() => counter.Count >= 1, "the first message to be handled", TimeSpan.FromSeconds(90));
+
+            // 2. Lose the lease: the next renewal fails and ExecuteAsync tears down (drain included).
+            var lease = await Store.Operations.SendAsync(
+                new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader"));
+            await Store.Operations.SendAsync(
+                new Raven.Client.Documents.Operations.CompareExchange.DeleteCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader", lease.Index));
+            await AsyncWait.UntilAsync(
+                () => log.Any(e => e.Message.StartsWith("Lost the messaging lease", StringComparison.Ordinal)),
+                "the renewal to fail and the teardown to start", MessagingLeaseManager.RenewInterval * 3);
+
+            // 3. Regain it: the loop finds the lease free and starts messaging a second time.
+            await AsyncWait.UntilAsync(
+                () => log.Count(e => e.Message.StartsWith("Messaging started", StringComparison.Ordinal)) >= 2,
+                "the manager to take the lease back and restart messaging", MessagingLeaseManager.RenewInterval * 3);
+
+            // 4. The same queue again: it must reach the handler, not a completed channel.
+            using (var scope = provider.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>().BroadcastAsync(new TestPing { Hello = "after" });
+            try { await AsyncWait.UntilAsync(() => counter.Count >= 2, "the message after the re-acquire to be handled", TimeSpan.FromSeconds(60)); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                throw new Xunit.Sdk.XunitException($"{ex.Message} Warnings: {Warnings()}");
+            }
+
+            log.Should().NotContain(e => e.Message.Contains("ChannelClosedException", StringComparison.Ordinal),
+                "a regained lease must route into fresh lanes");
+        }
+        finally
+        {
+            await hosted.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private sealed class PingCounter
+    {
+        private int count;
+        public int Count => Volatile.Read(ref count);
+        public void Increment() => Interlocked.Increment(ref count);
+    }
+
+    private sealed class CountingPingRecipient(PingCounter counter) : MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>
+    {
+        public Task HandleAsync(TestPing message, CancellationToken cancellationToken)
+        {
+            counter.Increment();
+            return Task.CompletedTask;
+        }
+    }
+
     private async Task<MessagingLease?> ReadLeaseAsync()
         => (await Store.Operations.SendAsync(
             new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader")))?.Value;
@@ -353,6 +486,57 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         }
     }
 
+    /// <summary>
+    /// Holds the handler until the stop cancels it, so the drain times out; then takes half a second to unwind, as a
+    /// cancelled HTTP request or database write does. The second stop's drain falls inside that half second.
+    /// </summary>
+    private sealed class TestCancellableHoldRecipient(HoldGate gate) : MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestHold>
+    {
+        public async Task HandleAsync(TestHold message, CancellationToken cancellationToken)
+        {
+            gate.Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), CancellationToken.None);
+                throw;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Behaves like the Windows EventLog provider after its host is disposed: a write throws
+    /// <see cref="ObjectDisposedException"/>. Late writes are also recorded, because a pump that logs after the
+    /// stop throws on a thread nobody observes.
+    /// </summary>
+    private sealed class DisposableLogSink : Microsoft.Extensions.Logging.ILoggerProvider
+    {
+        private volatile bool disposed;
+
+        public System.Collections.Concurrent.ConcurrentQueue<string> LateWrites { get; } = new();
+
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
+
+        /// <summary>Not the container's disposal: the test calls it when the first stop returns.</summary>
+        public void Dispose() => disposed = true;
+
+        private sealed class Logger(DisposableLogSink sink, string category) : Microsoft.Extensions.Logging.ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (!sink.disposed)
+                    return;
+                sink.LateWrites.Enqueue($"{logLevel} {category}: {formatter(state, exception)}");
+                throw new ObjectDisposedException("EventLog");
+            }
+        }
+    }
+
     private sealed class RecordingLoggerProvider(
         System.Collections.Concurrent.ConcurrentQueue<(Microsoft.Extensions.Logging.LogLevel Level, string Category, string Message)> entries)
         : Microsoft.Extensions.Logging.ILoggerProvider
@@ -367,7 +551,16 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
             public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-                => entries.Enqueue((logLevel, category, formatter(state, exception)));
+                => entries.Enqueue((logLevel, category, formatter(state, exception) + ExceptionTypes(exception)));
+
+            // The exception's type chain, so a test can tell what a logged failure was (the formatter drops it).
+            private static string ExceptionTypes(Exception? exception)
+            {
+                var types = new List<string>();
+                for (var e = exception; e is not null; e = e.InnerException)
+                    types.Add(e.GetType().Name);
+                return types.Count == 0 ? "" : $" [{string.Join(" <- ", types)}]";
+            }
         }
     }
 }

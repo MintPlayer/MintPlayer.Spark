@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Extensions;
+using MintPlayer.Spark.Http;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
@@ -16,7 +17,6 @@ using MintPlayer.Spark.IdentityProvider.Indexes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Operations.Expiration;
 
 namespace MintPlayer.Spark.IdentityProvider.Extensions;
 
@@ -98,6 +98,7 @@ public static class SparkIdentityProviderExtensions
 
         // Protocol (PRD D8): client authentication and the clients' own keys.
         builder.Services.AddHttpClient();
+        AddClientRequestClients(builder);
         builder.Services.AddMemoryCache();
         builder.Services.Configure<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>(rl =>
             rl.AddPolicy(RateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
@@ -164,6 +165,12 @@ public static class SparkIdentityProviderExtensions
             OidcUserEndpoints.Map(endpoints, userType);
         });
 
+        // Authorization requests, tokens, sessions and audit events carry @expires, so RavenDB reaps them
+        // itself rather than needing a sweeper. Deletion is housekeeping only: an expired record is refused
+        // on read whether or not the document is still there (OidcExpiry). UseSpark() enables expiration
+        // once, with the shared frequency.
+        builder.Registry.RequireDocumentExpiration("IdentityProvider");
+
         // Register middleware to deploy indexes
         builder.Registry.AddMiddleware(app =>
         {
@@ -215,18 +222,6 @@ public static class SparkIdentityProviderExtensions
             }
 
             new OidcGrants_BySubject().Execute(documentStore);
-
-            // Authorization requests carry @expires, so RavenDB reaps them itself rather than
-            // needing a sweeper. Deletion is housekeeping only — an expired request is refused
-            // on read regardless of whether the document is still there.
-            //
-            // The frequency matches MintPlayer.Spark.Messaging, which configures the same
-            // database-level setting; they must agree or whichever starts last wins.
-            documentStore.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
-            {
-                Disabled = false,
-                DeleteFrequencyInSec = 36 * 60 * 60, // 36 hours (community license minimum)
-            }));
         });
 
         return builder;
@@ -258,4 +253,52 @@ public static class SparkIdentityProviderExtensions
     /// scripts against (token, device polling) a budget of their own that the interactive pages do not share.
     /// </remarks>
     public const string RateLimitPolicy = "SparkIdentityProviderMachine";
+
+    /// <summary>
+    /// The SSRF-safe client (<c>docs/seo_analyzer_PRD.md</c> X2) that fetches a client's <c>jwks_uri</c>:
+    /// 10 s, 1 MiB, up to 5 redirects. The URI is the client's choice, so loopback, private and metadata
+    /// addresses are refused.
+    /// </summary>
+    public const string JwksHttpClient = "Spark.IdentityProvider.ClientJwks";
+
+    /// <summary>
+    /// The SSRF-safe client that POSTs back-channel logout tokens to a client's <c>backchannel_logout_uri</c>:
+    /// 5 s, 64 KiB, up to 3 redirects and only within the origin of the registered URI (D40 of
+    /// <c>docs/seo_analyzer_PRD.md</c>): a cross-origin redirect would re-send the logout token to a URI the
+    /// client never registered, so it is refused; every hop is still SSRF-checked.
+    /// </summary>
+    public const string BackChannelLogoutHttpClient = "Spark.IdentityProvider.BackChannelLogout";
+
+    /// <summary>
+    /// Configuration both client-request clients bind (<see cref="SafeHttpOptions"/>), on top of their defaults;
+    /// a list it names replaces the default list (so <c>AllowedPorts: [ 5001 ]</c> allows 5001 only).
+    /// There is no exception for development by default. A local relying party whose JWKS or logout endpoint
+    /// listens on loopback is allowed by naming it, e.g. in <c>appsettings.Development.json</c>:
+    /// <c>"Spark": { "IdentityProvider": { "ClientRequests": { "AllowedNetworks": [ "127.0.0.1/32", "::1/128" ], "AllowedPorts": [ 5001 ] } } }</c>.
+    /// </summary>
+    public const string ClientRequestsSection = "Spark:IdentityProvider:ClientRequests";
+
+    private static void AddClientRequestClients(ISparkBuilder builder)
+    {
+        var section = builder.Configuration?.GetSection(ClientRequestsSection);
+
+        // Defaults first, so the section and any later services.Configure<SafeHttpOptions>(name, …) win.
+        builder.Services.Configure<SafeHttpOptions>(JwksHttpClient, o =>
+        {
+            o.Timeout = TimeSpan.FromSeconds(10);
+            o.MaxResponseBytes = 1024 * 1024;
+            o.MaxDecompressedBytes = 1024 * 1024;
+        });
+        builder.Services.AddSafeHttpClient(JwksHttpClient, section);
+
+        builder.Services.Configure<SafeHttpOptions>(BackChannelLogoutHttpClient, o =>
+        {
+            o.Timeout = TimeSpan.FromSeconds(5);
+            o.MaxRedirects = 3;
+            o.RedirectsWithinOriginOnly = true;
+            o.MaxResponseBytes = 64 * 1024;
+            o.MaxDecompressedBytes = 64 * 1024;
+        });
+        builder.Services.AddSafeHttpClient(BackChannelLogoutHttpClient, section);
+    }
 }

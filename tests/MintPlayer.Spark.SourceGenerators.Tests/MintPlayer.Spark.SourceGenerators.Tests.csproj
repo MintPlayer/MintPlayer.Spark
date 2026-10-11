@@ -29,7 +29,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.5" />
+    <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.6" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -44,8 +44,8 @@
     compile assets through puts a second ModuleInitializerAttribute in scope and every use becomes
     ambiguous with the one in System.Runtime (CS0433).
     -->
-    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="12.1.1" ExcludeAssets="all" GeneratePathProperty="true" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="13.0.0" ExcludeAssets="all" GeneratePathProperty="true" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

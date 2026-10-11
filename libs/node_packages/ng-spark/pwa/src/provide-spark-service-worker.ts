@@ -1,6 +1,7 @@
 import { EnvironmentProviders, inject, isDevMode, makeEnvironmentProviders, provideAppInitializer } from '@angular/core';
 import { SwRegistrationOptions, provideServiceWorker } from '@angular/service-worker';
 
+import { SparkNotificationClicks } from './spark-notification-clicks';
 import { SparkServiceWorkerUpdates } from './spark-service-worker-updates';
 
 export interface SparkServiceWorkerOptions {
@@ -14,7 +15,8 @@ export interface SparkServiceWorkerOptions {
 
 /**
  * Registers Angular's service worker with Spark's update policy (#464, Q1b); see
- * {@link SparkServiceWorkerUpdates} for what happens when a new version is deployed.
+ * {@link SparkServiceWorkerUpdates} for what happens when a new version is deployed, and
+ * {@link SparkNotificationClicks} for a push notification clicked while the application is open.
  *
  * The application also needs an `ngsw-config.json` with Spark's navigation exclusions and
  * `serviceWorker` in its production build configuration; see `docs/guide-pwa.md`.
@@ -25,6 +27,9 @@ export function provideSparkServiceWorker(options: SparkServiceWorkerOptions = {
       enabled: options.enabled ?? !isDevMode(),
       registrationStrategy: options.registrationStrategy ?? 'registerWhenStable:30000',
     }),
-    provideAppInitializer(() => inject(SparkServiceWorkerUpdates).start()),
+    provideAppInitializer(() => {
+      inject(SparkServiceWorkerUpdates).start();
+      inject(SparkNotificationClicks).start();
+    }),
   ]);
 }

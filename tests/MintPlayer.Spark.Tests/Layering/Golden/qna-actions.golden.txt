@@ -11,6 +11,15 @@ Delete.icon = "trash" @MintPlayer.Spark
 Delete.showedOn = "both" @MintPlayer.Spark
 Delete.selectionRule = ">0" @MintPlayer.Spark
 Delete.variant = "danger" @MintPlayer.Spark
+ShareLink @MintPlayer.Spark
+ShareLink.icon = "share" @MintPlayer.Spark
+ShareLink.showedOn = "detail" @MintPlayer.Spark
+ShareLink.selectionRule = "=0" @MintPlayer.Spark
+RevokeShareLink @MintPlayer.Spark
+RevokeShareLink.icon = "x-circle" @MintPlayer.Spark
+RevokeShareLink.showedOn = "detail" @MintPlayer.Spark
+RevokeShareLink.selectionRule = "=0" @MintPlayer.Spark
+RevokeShareLink.variant = "danger" @MintPlayer.Spark
 CloseQuestion @app
 CloseQuestion.icon = "Lock" @app
 CloseQuestion.showedOn = "detail" @app

@@ -4,7 +4,8 @@ namespace MintPlayer.Spark.Messaging.Services;
 
 /// <summary>
 /// Runs a claimed message under the two guards every delivery path needs: the claim is renewed while
-/// the handlers run, and the run is bounded by <see cref="SparkMessagingOptions.HandlerTimeout"/>.
+/// the handlers run, and the run is bounded by the queue's handler timeout
+/// (<see cref="SparkMessagingOptions.HandlerTimeoutFor"/>: <see cref="SparkQueueOptions.HandlerTimeout"/>, else the global one).
 /// <para>
 /// Extracted from <see cref="MessageQueueRouter"/> so <see cref="MessageSubscriptionWorker"/>
 /// (<see cref="ESubscriptionMode.SubscriptionPerQueue"/>) gets the same guards. It had neither: a
@@ -20,6 +21,7 @@ internal static class ClaimedExecution
         SparkMessagingOptions options,
         ILogger logger,
         string messageId,
+        TimeSpan handlerTimeout,
         Func<CancellationToken, Task> process,
         CancellationToken cancellationToken)
     {
@@ -31,7 +33,7 @@ internal static class ClaimedExecution
         // for ever: one message is in flight at a time, and the claim is renewed while it runs, so
         // the sweeper's reclaim never fires either. This is the only thing that ends that.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(options.HandlerTimeout);
+        timeoutCts.CancelAfter(handlerTimeout);
 
         try
         {
@@ -43,10 +45,10 @@ internal static class ClaimedExecution
             // message if it got that far; if the cancellation unwound past it, the claim lapses and
             // the sweeper reclaims it. Either way the message is not lost and the lane is freed.
             logger.LogError(
-                "Message {MessageId} exceeded SparkMessagingOptions.HandlerTimeout ({Timeout}) and was "
+                "Message {MessageId} exceeded its HandlerTimeout ({Timeout}, per queue or global) and was "
                 + "cancelled to free its queue. If this recurs, either the handler needs a longer "
                 + "timeout or it is not honouring its CancellationToken.",
-                messageId, options.HandlerTimeout);
+                messageId, handlerTimeout);
         }
         finally
         {

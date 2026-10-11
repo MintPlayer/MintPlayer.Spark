@@ -116,12 +116,12 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
         var options = opts ?? DefaultOptions();
 
         // Generated ctor order: own [Inject] fields first (httpClientProvider, moduleDirectory),
-        // then base [Inject] members (loggerFactory field, DocumentStore property).
+        // then base [Inject] members in declaration order (DocumentStore property, loggerFactory field).
         return new SyncActionSubscriptionWorker(
             new StubReplicationHttpClientProvider(handler),
             new ModuleDirectory(Options.Create(options)),
-            NullLoggerFactory.Instance,
-            Store);
+            Store,
+            NullLoggerFactory.Instance);
     }
 
     private async Task<string> SeedSyncActionAsync(string ownerModuleName = OwnerModule)

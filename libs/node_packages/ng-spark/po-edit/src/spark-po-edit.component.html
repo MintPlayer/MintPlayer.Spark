@@ -12,6 +12,16 @@
     </bs-alert>
   }
 
+  <!-- Live (X4): someone else saved while the user has unsaved edits. Non-blocking: the form is untouched. -->
+  @if (liveTheirs()) {
+    <bs-alert [type]="colors.warning" class="mb-3 spark-live-changed">
+      {{ liveChangedText() }}
+      <button type="button" class="btn btn-sm btn-outline-primary ms-2 spark-live-review" (click)="reviewLiveChange()">
+        {{ liveReviewText() }}
+      </button>
+    </bs-alert>
+  }
+
   <spark-po-conflict-dialog
     [conflicts]="pendingConflicts()"
     [referenceLabels]="conflictReferenceLabels()"

@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Names this library's App_Data layers (composition D16). Permanent: it is part of the slot
+		     (settings:administrators), the right keys and the model ids the library ships. -->
+		<SparkLibraryAlias>settings</SparkLibraryAlias>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Settings</PackageId>
+		<Version>11.0.0-preview.104</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Admin-changeable settings for MintPlayer.Spark: settings declared in code (SparkSetting&lt;T&gt;), one Setting document per key, read through ISparkSettings as stored value, else configuration, else the code default. Who may change them is a security.json slot the application binds.</Description>
+		<PackageTags>settings;configuration;feature-flags;admin;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<!-- Who may change settings is a security.json slot (settings:administrators), so the package needs
+		     the Authorization package's groups and bindings (docs/seo_analyzer_PRD.md X9). -->
+		<ProjectReference Include="..\..\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<!-- Spark's generators (the library layers, attribute descriptions) and analyzers (SPARK045). Analyzer ProjectReferences are not transitive. -->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

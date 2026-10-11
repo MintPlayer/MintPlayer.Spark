@@ -1,0 +1,107 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "OrganizationInvitation, a pending invitation or join request (docs/seo_analyzer_PRD.md D18). Shown as the",
+    "organization-invitations sub-query (Admins and up), revoked by deleting it. Created by the",
+    "InviteOrganizationMember action or ISparkOrganizations.RequestToJoinAsync, never by a form. The token",
+    "hash is deliberately not an attribute. expiresAfter is the invitation lifetime (X1): an application",
+    "changes it in its own model layer.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'organizations:OrganizationInvitation[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "0f490455-0e2c-5198-8791-30963ca474a6",
+    "name": "OrganizationInvitation",
+    "clrType": "MintPlayer.Spark.Organizations.Models.OrganizationInvitation",
+    "breadcrumb": "{Email}",
+    "expiresAfter": "14.00:00:00",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "60637105-a213-5cc4-8c7a-7a5eeec0c7c9",
+        "name": "Email",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5d0cf2f4-8971-5e9a-aee0-35cad9d43195",
+        "name": "Kind",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "21b408df-c729-5147-987d-07f8c442aab8",
+        "name": "UserName",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "fb12fd18-91e3-567f-845f-25dc65bb3dc5",
+        "name": "Role",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "lookupReferenceType": "OrganizationRoles",
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0a47d58a-8810-5338-bf4b-207260648ff5",
+        "name": "CreatedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "91a05770-b77f-558f-85b3-e1d27177fc0c",
+        "name": "ExpiresAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "7154846d-2887-5f68-a1b9-78e2190272cf",
+      "name": "OrganizationInvitations",
+      "source": "Custom.OrganizationInvitations",
+      "alias": "organization-invitations",
+      "sortColumns": [
+        {
+          "property": "CreatedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "OrganizationInvitation"
+    }
+  ]
+}

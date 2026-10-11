@@ -1,0 +1,268 @@
+{
+ "kind": "pagespeedonline#result",
+ "id": "https://mintplayer.com/",
+ "loadingExperience": {
+  "initial_url": "https://mintplayer.com/"
+ },
+ "analysisUTCTimestamp": "2026-10-10T17:05:25.426Z",
+ "lighthouseResult": {
+  "lighthouseVersion": "13.5.0",
+  "requestedUrl": "https://mintplayer.com/",
+  "finalUrl": "https://mintplayer.com/",
+  "fetchTime": "2026-10-10T17:05:25.426Z",
+  "configSettings": {
+   "formFactor": "mobile"
+  },
+  "categories": {
+   "performance": {
+    "id": "performance",
+    "title": "Performance",
+    "score": 0.46,
+    "auditRefs": [
+     {
+      "id": "first-contentful-paint",
+      "weight": 10
+     },
+     {
+      "id": "largest-contentful-paint",
+      "weight": 25
+     },
+     {
+      "id": "total-blocking-time",
+      "weight": 30
+     },
+     {
+      "id": "cumulative-layout-shift",
+      "weight": 25
+     },
+     {
+      "id": "speed-index",
+      "weight": 10
+     }
+    ]
+   }
+  },
+  "audits": {
+   "largest-contentful-paint": {
+    "id": "largest-contentful-paint",
+    "title": "Largest Contentful Paint",
+    "score": 0.01,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "9.4 s",
+    "numericValue": 9363.306675402268,
+    "numericUnit": "millisecond"
+   },
+   "lcp-breakdown-insight": {
+    "id": "lcp-breakdown-insight",
+    "title": "LCP breakdown",
+    "score": 1,
+    "scoreDisplayMode": "informative",
+    "metricSavings": {
+     "LCP": 0
+    }
+   },
+   "cls-culprits-insight": {
+    "id": "cls-culprits-insight",
+    "title": "Layout shift culprits",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "metricSavings": {
+     "CLS": 0
+    }
+   },
+   "duplicated-javascript-insight": {
+    "id": "duplicated-javascript-insight",
+    "title": "Duplicated JavaScript",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "lcp-discovery-insight": {
+    "id": "lcp-discovery-insight",
+    "title": "LCP request discovery",
+    "score": null,
+    "scoreDisplayMode": "notApplicable"
+   },
+   "total-byte-weight": {
+    "id": "total-byte-weight",
+    "title": "Avoids enormous network payloads",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "displayValue": "Total size was 2,066 KiB",
+    "numericValue": 2116063,
+    "numericUnit": "byte"
+   },
+   "total-blocking-time": {
+    "id": "total-blocking-time",
+    "title": "Total Blocking Time",
+    "score": 0.54,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "540 ms",
+    "numericValue": 539.2561642323067,
+    "numericUnit": "millisecond"
+   },
+   "viewport-insight": {
+    "id": "viewport-insight",
+    "title": "Optimize viewport for mobile",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "metricSavings": {
+     "INP": 0
+    }
+   },
+   "forced-reflow-insight": {
+    "id": "forced-reflow-insight",
+    "title": "Forced reflow",
+    "score": 0,
+    "scoreDisplayMode": "numeric"
+   },
+   "inp-breakdown-insight": {
+    "id": "inp-breakdown-insight",
+    "title": "INP breakdown",
+    "score": null,
+    "scoreDisplayMode": "notApplicable"
+   },
+   "dom-size-insight": {
+    "id": "dom-size-insight",
+    "title": "Optimize DOM size",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "numericValue": 208,
+    "numericUnit": "element",
+    "metricSavings": {
+     "INP": 0
+    }
+   },
+   "image-delivery-insight": {
+    "id": "image-delivery-insight",
+    "title": "Improve image delivery",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "unused-javascript": {
+    "id": "unused-javascript",
+    "title": "Reduce unused JavaScript",
+    "score": 0,
+    "scoreDisplayMode": "metricSavings",
+    "displayValue": "Est savings of 583 KiB",
+    "numericValue": 2850,
+    "numericUnit": "millisecond",
+    "metricSavings": {
+     "LCP": 2850,
+     "FCP": 1050
+    }
+   },
+   "speed-index": {
+    "id": "speed-index",
+    "title": "Speed Index",
+    "score": 0.37,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "6.6 s",
+    "numericValue": 6621.026467515065,
+    "numericUnit": "millisecond"
+   },
+   "document-latency-insight": {
+    "id": "document-latency-insight",
+    "title": "Document request latency",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "cumulative-layout-shift": {
+    "id": "cumulative-layout-shift",
+    "title": "Cumulative Layout Shift",
+    "score": 1,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "0",
+    "numericValue": 0,
+    "numericUnit": "unitless"
+   },
+   "interactive": {
+    "id": "interactive",
+    "title": "Time to Interactive",
+    "score": 0.24,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "10.4 s",
+    "numericValue": 10437.336043470448,
+    "numericUnit": "millisecond"
+   },
+   "cache-insight": {
+    "id": "cache-insight",
+    "title": "Use efficient cache lifetimes",
+    "score": 0,
+    "scoreDisplayMode": "metricSavings",
+    "displayValue": "Est savings of 145 KiB",
+    "metricSavings": {
+     "LCP": 800,
+     "FCP": 300
+    }
+   },
+   "font-display-insight": {
+    "id": "font-display-insight",
+    "title": "Font display",
+    "score": 0,
+    "scoreDisplayMode": "metricSavings",
+    "displayValue": "Est savings of 80 ms",
+    "metricSavings": {
+     "FCP": 100,
+     "INP": 0
+    }
+   },
+   "legacy-javascript-insight": {
+    "id": "legacy-javascript-insight",
+    "title": "Legacy JavaScript",
+    "score": 1,
+    "scoreDisplayMode": "metricSavings",
+    "metricSavings": {
+     "LCP": 0,
+     "FCP": 0
+    }
+   },
+   "first-contentful-paint": {
+    "id": "first-contentful-paint",
+    "title": "First Contentful Paint",
+    "score": 0.04,
+    "scoreDisplayMode": "numeric",
+    "displayValue": "6.0 s",
+    "numericValue": 6000.692321862435,
+    "numericUnit": "millisecond"
+   },
+   "render-blocking-insight": {
+    "id": "render-blocking-insight",
+    "title": "Render-blocking requests",
+    "score": 0,
+    "scoreDisplayMode": "metricSavings",
+    "displayValue": "Est savings of 800 ms",
+    "metricSavings": {
+     "LCP": 800,
+     "FCP": 800
+    }
+   },
+   "network-dependency-tree-insight": {
+    "id": "network-dependency-tree-insight",
+    "title": "Network dependency tree",
+    "score": 0,
+    "scoreDisplayMode": "numeric",
+    "metricSavings": {
+     "LCP": 0
+    }
+   },
+   "third-parties-insight": {
+    "id": "third-parties-insight",
+    "title": "3rd parties",
+    "score": 1,
+    "scoreDisplayMode": "informative"
+   }
+  }
+ }
+}

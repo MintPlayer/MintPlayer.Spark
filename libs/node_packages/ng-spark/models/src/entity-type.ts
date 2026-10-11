@@ -123,6 +123,12 @@ export interface EntityType {
   canRead?: boolean;
   alias?: string;
   /**
+   * Whether an object of this type is followed over `/spark/live` (X4): `spark-po-detail` replaces the
+   * shown object when it changes and shows the unavailable state when it is deleted, and `spark-po-edit`
+   * adopts a newer version (or offers a merge when the form is dirty). Opt-in per type.
+   */
+  live?: boolean;
+  /**
    * Breadcrumb template: literal text plus `{AttributeName}` placeholders. A scalar placeholder
    * renders its value; a reference placeholder renders the referenced entity's breadcrumb.
    * The server resolves this — clients only read the resulting strings. Example: "{Street}, {City}".

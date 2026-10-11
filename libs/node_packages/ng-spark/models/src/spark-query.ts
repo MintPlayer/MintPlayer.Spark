@@ -21,8 +21,12 @@ export interface SparkQuery {
   indexName?: string;
   /** Optional entity type name (e.g., "Person"). When set, used for entity type resolution. */
   entityType?: string;
-  /** When true, this query uses WebSocket streaming with snapshot + patch updates. */
-  isStreamingQuery?: boolean;
+  /**
+   * Whether grids showing this query follow it over `/spark/live` (X4): the page re-renders when a row in
+   * it changes, appears or disappears, with server-side paging, sort, search and filters intact. Opt-in
+   * per query; a grid's `[live]` input overrides it. See `docs/guide-live-updates.md`.
+   */
+  live?: boolean;
   /**
    * Whether the grid offers row selection (#460, D17). Absent is `'auto'`: derived from the offered
    * actions. A sub-query entry on the parent's type may override it.

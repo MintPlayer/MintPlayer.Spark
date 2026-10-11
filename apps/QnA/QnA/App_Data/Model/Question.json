@@ -231,8 +231,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Question",
-      "isStreamingQuery": false
+      "entityType": "Question"
     }
   ]
 }

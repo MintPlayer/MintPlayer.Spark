@@ -79,8 +79,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "OidcDeveloperRequest",
-      "isStreamingQuery": false
+      "entityType": "OidcDeveloperRequest"
     }
   ]
 }

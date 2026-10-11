@@ -124,6 +124,15 @@ public sealed class RowPolicyContext
     /// </summary>
     public SparkDeletedFilter Deleted { get; init; }
 
+    /// <summary>
+    /// Whether the rows are a sub-query of a parent the request named (<c>parentId</c> on a query, its
+    /// distinct values or a live query): the rows that belong to an object the caller already reached,
+    /// rather than a list of their own. A policy that narrows <em>lists</em> to a viewer's choice (the
+    /// organizations package's current organization) leaves these alone, so a site opened from another
+    /// organization still shows its own audits. Never a reason to show more than a list would.
+    /// </summary>
+    public bool IsSubQuery { get; init; }
+
     /// <summary>Whether the caller is the system (module sync, background work) rather than a viewer.</summary>
     public bool IsSystemContext { get; init; }
 

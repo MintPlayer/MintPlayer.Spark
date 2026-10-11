@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../schemas/programUnits.schema.json",
+  "_comment": [
+    "The settings package's menu fragment (docs/seo_analyzer_PRD.md X9): one unit, shown only to callers",
+    "holding Query/Setting, i.e. the group the application binds to settings:administrators. Ids are",
+    "UUIDv5 of 'settings:programUnits.groups.settings' and 'settings:programUnits.settings'.",
+    "An application removes it with { \"id\": \"…\", \"$remove\": true } in its own programUnits.json."
+  ],
+  "programUnitGroups": [
+    {
+      "id": "cda5b037-6e64-5fc3-8748-b49c9bd34695",
+      "name": "programUnits.groups.settings",
+      "icon": "bi-sliders",
+      "order": 95,
+      "programUnits": [
+        {
+          "id": "e95310bb-0014-5185-a013-0c9029c201bc",
+          "name": "programUnits.settings",
+          "icon": "bi-sliders",
+          "type": "query",
+          "queryId": "9ea40039-d316-5012-8065-eac1f52b21ec",
+          "alias": "settings",
+          "order": 1
+        }
+      ]
+    }
+  ]
+}

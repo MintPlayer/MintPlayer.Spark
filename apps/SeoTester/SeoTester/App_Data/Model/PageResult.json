@@ -1,0 +1,241 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "persistentObject": {
+    "id": "c7e5d8d7-f1c9-4dec-9492-ead5186dd59e",
+    "name": "PageResult",
+    "clrType": "SeoTester.Entities.PageResult",
+    "alias": "page-result",
+    "breadcrumb": "{Url}",
+    "expiresAfter": "7.00:00:00",
+    "tabs": [
+      {
+        "id": "e5d1c3a0-2b7f-4f43-9a6e-0f4b8c1d2e31",
+        "name": "General",
+        "order": 1
+      }
+    ],
+    "groups": [
+      {
+        "id": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62",
+        "name": "Page",
+        "tab": "e5d1c3a0-2b7f-4f43-9a6e-0f4b8c1d2e31",
+        "order": 1
+      },
+      {
+        "id": "b7e2d5c8-04a1-4f39-9c6b-2d8e1f7a3b94",
+        "name": "Previews",
+        "tab": "e5d1c3a0-2b7f-4f43-9a6e-0f4b8c1d2e31",
+        "order": 2
+      },
+      {
+        "id": "c9f3a6d1-75b2-4e80-a1d4-3e9b2c8f5a07",
+        "name": "Findings",
+        "tab": "e5d1c3a0-2b7f-4f43-9a6e-0f4b8c1d2e31",
+        "order": 3
+      }
+    ],
+    "attributes": [
+      {
+        "id": "8e755eb6-baeb-48ac-b627-8173ed01eb8f",
+        "name": "Url",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "74d48322-eb1b-4f37-8771-f7cc09ba2bb0",
+        "name": "StatusCode",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "659c38ce-bf58-4858-af42-3b35e252ec11",
+        "name": "Depth",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "b9624460-8df5-40fa-8a96-0af2982f7b87",
+        "name": "LoadMs",
+        "dataType": "number",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "ac046a30-36db-4988-94d6-b6c111383913",
+        "name": "Title",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "b7e2d5c8-04a1-4f39-9c6b-2d8e1f7a3b94",
+        "renderer": "seo-previews"
+      },
+      {
+        "id": "759afbb8-d60e-4768-9b6c-efac82a87e3f",
+        "name": "Description",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "d66569fe-16c5-44db-8599-ef9f960651fe",
+        "name": "H1",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "5d0b7c3e-8a41-4f6e-9b2d-1c7e4a9f0b31",
+        "name": "OgTitle",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "6e1c8d4f-9b52-4a7f-8c3e-2d8f5b0a1c42",
+        "name": "OgDescription",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "7f2d9e5a-0c63-4b8a-9d4f-3e9a6c1b2d53",
+        "name": "OgImage",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "803eaf6b-1d74-4c9b-8e5a-4fab7d2c3e64",
+        "name": "OgUrl",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "29bbc126-fb88-4b9b-80b0-77a306fd78d4",
+        "name": "Findings",
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 12,
+        "asDetailType": "SeoTester.Entities.PageFinding",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "c9f3a6d1-75b2-4e80-a1d4-3e9b2c8f5a07",
+        "renderer": "seo-page-findings"
+      },
+      {
+        "id": "c2a3b88b-4826-4c1c-a8c7-051104c016e8",
+        "name": "RunId",
+        "dataType": "Reference",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 13,
+        "query": "GetAuditRuns",
+        "referenceType": "SeoTester.Entities.AuditRun",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      },
+      {
+        "id": "211702c0-cfa0-487d-af8c-4d5fc205bbda",
+        "name": "OrganizationId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      },
+      {
+        "id": "966b4f3f-4dc7-4f1a-94c4-3ef3ebb8f766",
+        "name": "ExpiresAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a1c4e9f2-63b8-4d05-8e17-5b2a9c0d4f62"
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "0ba4ef82-a5da-463b-9774-23b97ab61380",
+      "name": "RunPages",
+      "source": "Custom.RunPages",
+      "alias": "run-pages",
+      "sortColumns": [
+        {
+          "property": "Url",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "PageResult"
+    }
+  ]
+}

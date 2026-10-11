@@ -44,7 +44,7 @@ const personType: EntityType = {
 
 const carsQuery = {
   id: 'q-cars', name: 'GetCars', source: 'Database.People', alias: 'cars',
-  entityType: 'Person', sortColumns: [], isStreamingQuery: false,
+  entityType: 'Person', sortColumns: [],
   label: { en: 'All the cars' },
 } as any;
 

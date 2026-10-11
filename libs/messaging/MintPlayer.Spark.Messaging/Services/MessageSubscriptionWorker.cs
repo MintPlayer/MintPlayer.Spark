@@ -42,7 +42,7 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
         IServiceProvider serviceProvider,
         IOptions<SparkMessagingOptions> options,
         ILoggerFactory loggerFactory)
-        : base(loggerFactory, store)
+        : base(store, loggerFactory)
     {
         _queueName = queueName;
         _serviceProvider = serviceProvider;
@@ -113,7 +113,7 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
             // twice, and a hung handler held this queue's subscription for ever.
             var messageId = message.Id!;
             await ClaimedExecution.RunAsync(
-                DocumentStore, _options, Logger, messageId,
+                DocumentStore, _options, Logger, messageId, _options.HandlerTimeoutFor(_queueName),
                 token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token),
                 cancellationToken);
         }

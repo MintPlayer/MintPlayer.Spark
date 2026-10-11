@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The organizations package's rights, shipped as a library layer (docs/seo_analyzer_PRD.md X11, D22). One",
+    "slot the application binds in its own security.json, or startup is refused:",
+    "  \"bindings\": { \"organizations:users\": [ \"Users\" ] }",
+    "These rights say who may use organizations at all. Which organization's rows each user reaches, and",
+    "with which role, is data: the package's row policy (OrganizationRowPolicy) over the memberships.",
+    "Memberships are never created by a form (New is not granted); invitations are created by the",
+    "InviteOrganizationMember action and only listed and revoked here.",
+    "Drop one grant with { \"key\": \"organizations:<key>\", \"$remove\": true }, or all of them with",
+    "\"libraries\": { \"organizations\": false }."
+  ],
+  "rights": [
+    {
+      "key": "organizations",
+      "resource": "QueryReadEditNewDelete/Organization",
+      "groupId": "organizations:users"
+    },
+    {
+      "key": "memberships",
+      "resource": "QueryReadEdit/OrganizationMembership",
+      "groupId": "organizations:users"
+    },
+    {
+      "key": "memberships-delete",
+      "resource": "Delete/OrganizationMembership",
+      "groupId": "organizations:users"
+    },
+    {
+      "key": "invitations",
+      "resource": "QueryRead/OrganizationInvitation",
+      "groupId": "organizations:users"
+    },
+    {
+      "key": "invitations-delete",
+      "resource": "Delete/OrganizationInvitation",
+      "groupId": "organizations:users"
+    },
+    {
+      "key": "invite-action",
+      "resource": "InviteOrganizationMember/Organization",
+      "groupId": "organizations:users"
+    },
+    {
+      "key": "leave-action",
+      "resource": "LeaveOrganization/Organization",
+      "groupId": "organizations:users"
+    },
+    {
+      "key": "transfer-action",
+      "resource": "TransferOrganizationOwnership/OrganizationMembership",
+      "groupId": "organizations:users"
+    }
+  ]
+}

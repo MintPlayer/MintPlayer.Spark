@@ -103,6 +103,7 @@ public class EndpointConventionsTests
         new("SparkPresentation", "reads the per-request presentation caller from HttpContext.Items; no route"),
         new("LookupReferenceBodies", "the shared OnBindFailedAsync refusal of lookup-reference add and update; its services arrive as arguments"),
         new("SparkAntiforgeryMiddleware", "cross-cutting middleware, a PRD §3 non-goal; it runs before endpoint selection"),
+        new("SparkPublicBaseUrl", "the public-origin rule for links that leave the request (#268 M6 dedupe); a pure function of the values its callers pass in, maps no route"),
         new("SparkServiceWorkerCacheHeaders", "cross-cutting middleware (#464 D8) installed by an IStartupFilter ahead of the static files; it only sets Cache-Control on a fixed set of paths and maps no route"),
         // authorization
         new("SparkExternalLoginNonce", "the nonce shape check (#490 D1) shared by the two external-login challenges; Reject turns the value they already bound into the one 400 shape, and reads nothing from the request"),

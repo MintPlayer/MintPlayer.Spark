@@ -13,7 +13,7 @@ public partial class StockActions : DefaultPersistentObjectActions<Stock>, ISpar
         "Demo data, published in full on purpose — see PersonActions. Stock rows are static sample quantities.";
 
     public async IAsyncEnumerable<IReadOnlyList<Stock>> StreamItems(
-        StreamingQueryArgs args,
+        LiveQueryArgs args,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var random = new Random();

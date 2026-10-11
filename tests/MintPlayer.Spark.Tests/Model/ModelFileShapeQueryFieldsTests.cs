@@ -82,13 +82,15 @@ public class ModelFileShapeQueryFieldsTests : IDisposable
     }
 
     [Fact]
-    public void Turning_a_query_into_a_streaming_query_moves_the_hash()
+    public void Turning_a_query_live_does_not_move_the_hash()
     {
+        // X4: a live query is read through the same path and rights as /execute, so "live" gates nothing a
+        // deployed model must pin (the app-stream method it may select is named by "source", which does).
         var before = HashOf(NoIndexName);
         var after = HashOf(NoIndexName.Replace(
-            "\"entityType\": \"Probe\"", "\"entityType\": \"Probe\", \"isStreamingQuery\": true"));
+            "\"entityType\": \"Probe\"", "\"entityType\": \"Probe\", \"live\": true"));
 
-        after.Should().NotBe(before);
+        after.Should().Be(before);
     }
 
     [Fact]

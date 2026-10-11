@@ -9,12 +9,13 @@ import {
 } from '@mintplayer/ng-spark/auth/models';
 import { SparkAuthService } from '@mintplayer/ng-spark/auth/core';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 
 @Component({
   selector: 'spark-auth-bar',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, BsButtonGroupComponent, TranslateKeyPipe],
+  imports: [RouterLink, BsButtonGroupComponent, TranslateKeyPipe, SparkIconComponent],
   templateUrl: './spark-auth-bar.component.html',
   // Outline buttons drawn in the surrounding text colour, not `btn-outline-light`: the bar sits in
   // whatever topbar the app has, and that is no longer guaranteed to be dark (#462). currentColor
@@ -26,6 +27,8 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
       align-items: center;
       flex-wrap: nowrap;
       min-width: 0;
+      /* Never squeezed: its buttons cannot shrink, so a shrinking host only let them spill out of the topbar. */
+      flex-shrink: 0;
     }
 
     .spark-auth-bar-btn {
@@ -37,6 +40,13 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
       --bs-btn-active-color: currentColor;
       --bs-btn-active-bg: color-mix(in srgb, currentColor 25%, transparent);
       --bs-btn-active-border-color: currentColor;
+    }
+
+    /* Labels from the small breakpoint up; on a phone (< 576 px) the icon alone. */
+    .spark-auth-bar-icon { display: none; }
+    @media (max-width: 575.98px) {
+      .spark-auth-bar-icon { display: inline-flex; }
+      .spark-auth-bar-label { display: none; }
     }
   `],
 })

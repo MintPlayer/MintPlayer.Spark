@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "response.no_header",
+      "summary": "No HSTS header",
+      "message": "Response error: No HSTS header is present on the response."
+    },
+    {
+      "code": "server.removable.protected",
+      "summary": "Domain protected",
+      "message": "This domain is currently protected against removal through the hstspreload.org site. Please contact us via email if you want to remove it from the preload list."
+    }
+  ],
+  "warnings": []
+}

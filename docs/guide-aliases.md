@@ -96,11 +96,11 @@ having no server-side target.
 startup failure, naming both.
 
 It has to be, because a name cannot mean two things: the `/query/{alias}` client route, the `queryId`
-field that `/spark/queries/get` and `/spark/queries/execute` take, and the `/spark/queries/{alias}/stream`
-handshake all accept the same alias, and the second query would simply be unreachable by name. That used to be a
+field that `/spark/queries/get` and `/spark/queries/execute` take, and the `queryId` of a live
+subscription on `/spark/live` all accept the same alias, and the second query would simply be unreachable by name. That used to be a
 warning on the console, which is how DemoApp shipped `GetStocks` (`Database.Stocks`, a collection
-nothing ever writes) and `StreamStocks` (its live grid) both under `stocks` — `/query/stocks`
-rendered an empty grid and the streaming query could not be reached at all.
+nothing ever writes) and `StreamStocks` (its live grid, then a streaming query) both under `stocks` — `/query/stocks`
+rendered an empty grid and the live query could not be reached at all.
 
 ⚠️ **Usually only one of the two aliases is written down.** An omitted alias is derived from the
 name, so `GetStocks` silently becomes `stocks` and collides with an alias somebody *did* declare
@@ -114,12 +114,14 @@ or rename the alias.
 
 ##### Rejected: one alias, two transports
 
-A streaming and a non-streaming query sharing an alias was considered, with the request's
-transport choosing between them — `/execute` and `/stream` are already separate paths, so the
-server could resolve each to the matching variant and refuse when there is none.
+A live and a non-live query sharing an alias was considered, with the request's
+transport choosing between them — `/execute` and the live socket are already separate paths, so the
+server could resolve each to the matching variant and refuse when there is none. (This was decided
+for streaming queries, which live updates replaced; see [live updates](guide-live-updates.md). The
+reasoning carries over unchanged.)
 
-It was rejected as too complicated for what it buys. The client learns whether to open a socket
-from `isStreamingQuery` in `POST /spark/queries/get`, which is itself a plain HTTP request — so
+It was rejected as too complicated for what it buys. The client learns whether to subscribe
+from `live` in `POST /spark/queries/get`, which is itself a plain HTTP request — so
 the metadata endpoint would have to answer for both variants at once (a wire-shape change and a
 client change in both grids), or the model would need capability flags per query and a program
 unit would have to state which variant it wants. Either way an alias stops naming one thing.

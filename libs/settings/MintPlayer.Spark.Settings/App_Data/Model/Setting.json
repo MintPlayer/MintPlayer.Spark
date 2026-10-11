@@ -1,0 +1,91 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "Setting, one declared SparkSetting<T> (docs/seo_analyzer_PRD.md X9). Only Value is the administrator's:",
+    "the other columns are written by the startup seeder from the code, so they are read-only here.",
+    "",
+    "HAND-AUTHORED. Ids are UUIDv5 of 'settings:Setting[...]', written by 'npm run stamp:library-model-ids'."
+  ],
+  "persistentObject": {
+    "id": "36751d1c-f4e0-578d-a589-9b32db4edc40",
+    "name": "Setting",
+    "clrType": "MintPlayer.Spark.Settings.Models.Setting",
+    "breadcrumb": "{Key}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "8705567a-7abe-58ac-95ff-66e567669987",
+        "name": "Key",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "47bb78c0-8463-58e9-a931-02490e06d459",
+        "name": "Value",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "785b31c2-c3e1-519c-ad41-4e2bfe1c4f6a",
+        "name": "Default",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "30f1cdd2-1950-5d73-b8ef-60d34ab6ae75",
+        "name": "Type",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a35e2660-1b2a-5911-82d1-a025e8d65cc7",
+        "name": "Description",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "9ea40039-d316-5012-8065-eac1f52b21ec",
+      "name": "Settings",
+      "source": "Custom.Settings",
+      "alias": "settings",
+      "sortColumns": [
+        {
+          "property": "Key",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Setting"
+    }
+  ]
+}

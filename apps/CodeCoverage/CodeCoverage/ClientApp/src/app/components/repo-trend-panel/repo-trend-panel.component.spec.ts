@@ -1,10 +1,9 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { BsTrendChartComponent } from '@mintplayer/ng-bootstrap/charts/trend';
 import { describe, expect, it } from 'vitest';
 import { HistoryPoint } from '../../services/browse.service';
-import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle, StubTrendChart } from '../../../testing/test-utils';
+import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle, StubTrendChart, stubSparkTrendCharts } from '../../../testing/test-utils';
 import { RepoTrendPanelComponent } from './repo-trend-panel.component';
 
 function point(sha: string, percent: number, timestamp?: string): HistoryPoint {
@@ -21,10 +20,7 @@ describe('RepoTrendPanelComponent', () => {
       imports: [RepoTrendPanelComponent],
       providers: [provideZonelessChangeDetection(), provideBrowseStub(browse)],
     });
-    TestBed.overrideComponent(RepoTrendPanelComponent, {
-      remove: { imports: [BsTrendChartComponent] },
-      add: { imports: [StubTrendChart] },
-    });
+    stubSparkTrendCharts();
     fixture = TestBed.createComponent(RepoTrendPanelComponent);
     fixture.componentRef.setInput('provider', 'github');
     fixture.componentRef.setInput('owner', 'acme');

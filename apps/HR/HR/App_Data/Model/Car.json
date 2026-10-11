@@ -103,8 +103,7 @@
         }
       ],
       "renderMode": "Pagination",
-      "entityType": "Car",
-      "isStreamingQuery": false
+      "entityType": "Car"
     }
   ]
 }

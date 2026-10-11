@@ -29,14 +29,8 @@ internal sealed class OidcPortalLinks(
 
     private string BaseUrl(HttpContext context)
     {
-        var configured = authOptions.Value.Links.PublicBaseUrl ?? configuration?["Spark:Auth:PublicBaseUrl"];
-        if (!string.IsNullOrWhiteSpace(configured))
-            return configured.TrimEnd('/');
-
-        if (environment?.IsDevelopment() == true)
-            return $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}";
-
-        throw new InvalidOperationException(
+        return MintPlayer.Spark.Abstractions.SparkPublicBaseUrl.Resolve(authOptions.Value.Links.PublicBaseUrl, configuration, environment, context)
+            ?? throw new InvalidOperationException(
             "The identity provider cannot build a developer-portal link: no public base URL is configured. "
             + "Set 'Spark:Auth:PublicBaseUrl' (e.g. https://id.example.com). Outside Development the request's "
             + "Host header is not used for mailed links.");

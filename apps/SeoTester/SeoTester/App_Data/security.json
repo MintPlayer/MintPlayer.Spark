@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "Two layers (docs/seo_analyzer_PRD.md D22): these rights say who may use a type at all; which site, run or page",
+    "a signed-in user reaches, and with which organization role, is the organizations row policy (IOrganizationOwned",
+    "and [RequiresOrganizationRole] on Site, AuditRun, PageResult). The catalogue is read by every signed-in user",
+    "and edited by Administrators (D32); the abuse log and the operator dashboard are the Administrators' (D28)."
+  ],
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "5e070000-0000-4000-8000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "5e070000-0000-4000-8000-00000000000f": "Signed-in users",
+    "5e070000-0000-4000-8000-000000000001": "Administrators"
+  },
+  "bindings": {
+    "organizations:users": [ "Signed-in users" ],
+    "notifications:users": [ "Signed-in users" ],
+    "settings:administrators": [ "Administrators" ]
+  },
+  "rights": [
+    { "key": "sites", "resource": "QueryReadEditNewDelete/Site", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "sites-start-audit", "resource": "StartAudit/Site", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "sites-full-crawl", "resource": "StartFullCrawl/Site", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "sites-verify", "resource": "VerifySite/Site", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "sites-share", "resource": "ShareLink/Site", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "sites-unshare", "resource": "RevokeShareLink/Site", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "sites-badge", "resource": "ShareBadge/Site", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "runs", "resource": "QueryRead/AuditRun", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "runs-share", "resource": "ShareLink/AuditRun", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "runs-unshare", "resource": "RevokeShareLink/AuditRun", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "runs-cancel", "resource": "CancelAudit/AuditRun", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "runs-export", "resource": "ExportReport/AuditRun", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "pages", "resource": "QueryRead/PageResult", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "checks", "resource": "QueryRead/CheckDefinition", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "checks-edit", "resource": "EditNewDelete/CheckDefinition", "groupId": "5e070000-0000-4000-8000-000000000001" },
+    { "key": "checks-reset", "resource": "ResetCheckDefinition/CheckDefinition", "groupId": "5e070000-0000-4000-8000-000000000001" },
+    { "key": "audit-log", "resource": "QueryRead/AuditLogEntry", "groupId": "5e070000-0000-4000-8000-000000000001" },
+    { "key": "operator-dashboard", "resource": "Read/OperatorDashboard", "groupId": "5e070000-0000-4000-8000-000000000001" }
+  ]
+}

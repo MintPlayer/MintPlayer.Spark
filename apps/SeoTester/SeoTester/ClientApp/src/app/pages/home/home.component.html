@@ -1,0 +1,44 @@
+<div class="seo-home">
+  <section class="seo-hero text-center py-4 px-3" data-hero>
+    <h1 class="display-5 fw-semibold mb-2">{{ 'app.welcomeTitle' | t }}</h1>
+    <p class="lead mb-3">{{ 'app.welcomeSubtitle' | t }}</p>
+    @if (auth.isAuthenticated()) {
+      <div class="d-flex flex-wrap justify-content-center gap-2">
+        <a class="btn btn-primary btn-lg" routerLink="/po/site/new" data-cta="add-site"><i class="bi bi-plus-lg"></i> {{ 'seoUi.home.addSite' | t }}</a>
+        <a class="btn btn-outline-primary btn-lg" routerLink="/query/sites">{{ 'seoUi.home.mySites' | t }}</a>
+      </div>
+    } @else {
+      <a class="btn btn-primary btn-lg" routerLink="/sign-in" data-cta="sign-in">{{ 'seoUi.home.start' | t }}</a>
+      <p class="small text-body-secondary mt-2 mb-0">{{ 'app.signInPrompt' | t }}</p>
+    }
+  </section>
+
+  @if (auth.isAuthenticated()) {
+    <div class="seo-cards px-3">
+      <spark-query-card queryId="sites" [searchable]="false" data-card="sites" />
+      <spark-query-card queryId="audit-runs" [searchable]="false" data-card="audits" />
+    </div>
+  } @else {
+    <section class="px-3" data-features>
+      <h2 class="h4 text-center mb-3">{{ 'seoUi.home.whatTitle' | t }}</h2>
+      <div class="seo-features">
+        @for (f of features; track f.key) {
+          <div class="border rounded p-3">
+            <div class="fs-3 text-primary"><i [class]="'bi ' + f.icon"></i></div>
+            <div class="fw-semibold">{{ ('seoUi.home.feature.' + f.key + '.title') | t }}</div>
+            <div class="small text-body-secondary">{{ ('seoUi.home.feature.' + f.key + '.text') | t }}</div>
+          </div>
+        }
+      </div>
+      <h2 class="h4 text-center mt-4 mb-3">{{ 'seoUi.home.howTitle' | t }}</h2>
+      <ol class="seo-steps">
+        @for (step of steps; track step) {
+          <li class="border rounded p-3"><strong>{{ ('seoUi.home.step.' + step + '.title') | t }}</strong><br><span class="small text-body-secondary">{{ ('seoUi.home.step.' + step + '.text') | t }}</span></li>
+        }
+      </ol>
+    </section>
+  }
+
+  <!-- The server's page (not a route of this app): a full page load, outside the service worker. -->
+  <p class="small text-center text-body-secondary my-4"><a href="/bot">{{ 'app.aboutTheCrawler' | t }}</a></p>
+</div>

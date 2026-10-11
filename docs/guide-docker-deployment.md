@@ -81,6 +81,10 @@ docker compose up -d
 | `Spark__RavenDb__EnsureDatabaseCreated` | Auto-create database if it doesn't exist | `false` |
 | `Spark__RavenDb__MaxConnectionRetries` | Max retry attempts waiting for RavenDB | `30` |
 | `Spark__RavenDb__RetryDelaySeconds` | Seconds between retry attempts | `2` |
+| `Spark__RavenDb__CertificateFile` | Client certificate for a secured RavenDB server: PEM (key in `CertificateKeyFile` or the same file) or PKCS#12. Requires `https://` URLs | unset (unsecured server) |
+| `Spark__RavenDb__CertificateKeyFile` | PEM private key of `CertificateFile` | unset |
+| `Spark__RavenDb__CertificatePassword` | Password of a PKCS#12 file or an encrypted PEM key | unset |
+| `Spark__RavenDb__ServerCertificateAuthorityFile` | CA (PEM/DER) that issued the server's certificate, when it is not publicly trusted; the host name must still match | unset (OS trust store) |
 
 ### Data Protection keys
 
@@ -181,6 +185,40 @@ Copy the ranges from the CDN's published list rather than from this page, and re
 CDN announces changes. Check the trust list Spark logs at startup, then confirm that the client
 address the app sees (`HttpContext.Connection.RemoteIpAddress`) is the visitor's and not an edge
 address: if every visitor shares one address, they all share one rate-limit bucket.
+
+#### WebSockets: live updates (`/spark/live`)
+
+[Live updates](guide-live-updates.md) use one WebSocket per browser tab at `/spark/live`. The proxy
+must pass the upgrade, and must not close a quiet socket before Spark's heartbeat (`Spark:Live:Heartbeat`,
+a `ping` after 30 s of silence) arrives.
+
+**nginx** does not pass the upgrade by default. Add the `map` once (in the `http` block) and a
+`location` for the socket next to the one above:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+location /spark/live {
+    proxy_pass         http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header   Upgrade           $http_upgrade;
+    proxy_set_header   Connection        $connection_upgrade;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Forwarded-For   $remote_addr;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_read_timeout 120s;   # comfortably above the 30 s heartbeat
+}
+```
+
+Keep `Host` forwarded as for every other request: the upgrade is protected by `UseSpark()`'s same-origin
+check.
+
+**Traefik** passes WebSocket upgrades by default; nothing to configure. Its idle timeouts are longer than
+the heartbeat, which keeps an idle socket alive. Lowering `Spark:Live:Heartbeat` is the fix if some other
+hop (a CDN, a load balancer) closes idle connections sooner.
 
 ### Connection Retry
 

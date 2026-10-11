@@ -159,8 +159,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "Company_Cars",
-      "entityType": "Car",
-      "isStreamingQuery": false
+      "entityType": "Car"
     },
     {
       "id": "bc696815-2abb-4e7c-98a1-ac86b4352105",
@@ -174,8 +173,7 @@
       ],
       "renderMode": "Pagination",
       "indexName": "Cars_Overview",
-      "entityType": "Car",
-      "isStreamingQuery": false
+      "entityType": "Car"
     }
   ]
 }

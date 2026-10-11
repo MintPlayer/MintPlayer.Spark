@@ -160,6 +160,24 @@ public sealed class EntityTypeDefinition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public EntityRevisionsDefinition? Revisions { get; set; }
 
+    /// <summary>
+    /// How long a new document of this type lives (JSON: <c>"d.hh:mm:ss"</c>, e.g. <c>"7.00:00:00"</c>) —
+    /// hand-written in the model JSON and preserved by model synchronization. A new document stored without
+    /// an <c>ExpiresAtUtc</c> gets <c>now + expiresAfter</c>; past it the document is hidden from every
+    /// read and RavenDB deletes it at its next sweep. The CLR type must implement <c>IExpiring</c>.
+    /// <see langword="null"/>: documents expire only when code sets <c>ExpiresAtUtc</c>.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public TimeSpan? ExpiresAfter { get; set; }
+
+    /// <summary>
+    /// Live updates (<c>docs/guide-live-updates.md</c>): a detail page of this type subscribes over the one
+    /// <c>/spark/live</c> socket and refreshes when the document changes, through the same read path, row
+    /// security and attribute rights as <c>/spark/po/load</c>. Opt-in per type.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Live { get; set; }
+
     /// <summary>The tabs of the detail page, matched across layers by <c>name</c>.</summary>
     public AttributeTab[] Tabs { get; set; } = [];
 

@@ -85,7 +85,7 @@ internal sealed partial class SparkSelectionResolver : ISparkSelectionResolver
             return null;
 
         IReadOnlyList<QueryResultItem> rows;
-        if (!query.IsStreamingQuery && !queryExecutor.OwnsItsOwnPaging(query))
+        if (!query.IsAppStream && !queryExecutor.OwnsItsOwnPaging(query))
         {
             var result = await queryExecutor.ExecuteQueryAsync(
                 query,
