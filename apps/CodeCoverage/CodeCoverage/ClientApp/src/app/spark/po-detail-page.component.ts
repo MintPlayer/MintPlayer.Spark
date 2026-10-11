@@ -5,6 +5,7 @@ import { valueFor } from '@mintplayer/ng-spark/models';
 import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-badge-panel.component';
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
 import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
+import { RepoCommitGraphPanelComponent } from '../components/repo-commit-graph-panel/repo-commit-graph-panel.component';
 import { AccountDependencyGraphPanelComponent } from '../components/account-dependency-graph-panel/account-dependency-graph-panel.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
 import { forgeOf } from './forge-of';
@@ -34,7 +35,7 @@ import { HomeExtrasComponent } from './home-extras.component';
   selector: 'app-po-detail-page',
   imports: [
     SparkPoDetailComponent,
-    RepoBadgePanelComponent, RepoTrendPanelComponent, RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent,
+    RepoBadgePanelComponent, RepoTrendPanelComponent, RepoCommitGraphPanelComponent, RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent,
     AccountDependencyGraphPanelComponent,
   ],
   template: `
@@ -45,6 +46,7 @@ import { HomeExtrasComponent } from './home-extras.component';
         @if (repoOf(po); as repo) {
           <app-repo-badge-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-trend-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
+          <app-repo-commit-graph-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-setup-panel />
         }
       } @else if (entityType.name === 'Account') {

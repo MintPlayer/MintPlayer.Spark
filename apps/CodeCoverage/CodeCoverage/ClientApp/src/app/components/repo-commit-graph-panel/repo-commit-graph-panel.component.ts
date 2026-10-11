@@ -1,0 +1,680 @@
+import {
+  afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, ElementRef, inject, input, signal,
+  untracked,
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
+import {
+  BsDatatableColumnDirective, BsDatatableComponent, BsRowTemplateDirective, DatatableSettings,
+  type BsDatatableFetch, type BsDatatableRowEvent,
+} from '@mintplayer/ng-bootstrap/datatable';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
+import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
+import { BrowseService, CommitGraphPage, CommitGraphQuery, CommitGraphRef, RepoInfo } from '../../services/browse.service';
+import { isDarkBackground, LANE_PALETTE } from './commit-graph-palette';
+import { derivePage, firstParentPath, GraphRowView, LANE_WIDTH, PathHighlight, pieWedge, ROW_HEIGHT } from './commit-graph-rows';
+
+/** Rows per request: the endpoint's cap (PRD §4.4). */
+export const GRAPH_PAGE_SIZE = 200;
+/** Visible lanes before the graph column clips (D16): desktop, then phone width. */
+export const LANE_CAP = 12;
+export const LANE_CAP_MOBILE = 4;
+/** Syncing polls back off from the first to the last interval, doubling. */
+export const POLL_FIRST_MS = 2000;
+export const POLL_MAX_MS = 30000;
+const SEARCH_DEBOUNCE_MS = 300;
+const NODE_R = 5;
+
+type PanelState = 'loading' | 'ready' | 'empty' | 'syncing' | 'unavailable';
+
+const UNAVAILABLE_REASONS: Record<string, string> = {
+  disabled: 'The commit graph is not enabled on this server.',
+  unsupported: 'The commit graph is not available for this forge.',
+  'no-access': 'The repository could not be read.',
+  'installation-cap': 'Too many repositories are mirrored for this installation.',
+  'too-many-refs': 'The repository has too many branches and tags to mirror.',
+  'too-large': 'The repository is too large to mirror.',
+  'disk-floor': 'The server is low on disk space; try again later.',
+  timeout: 'Mirroring the repository took too long.',
+  auth: 'The forge refused access to the repository.',
+  'not-found': 'The forge does not know this repository.',
+  error: 'The graph could not be loaded.',
+};
+
+/**
+ * The SourceTree-style commit graph of a repository (#504, PRD §4.5): every branch and tag in date order,
+ * one small SVG per row in ng-bootstrap's virtual datatable, coverage drawn on every node.
+ *
+ * - Pages of 200 rows are fetched as the viewer scrolls, all from one server `snapshot`.
+ * - The lane geometry is the pure `commit-graph-rows.ts`; this component only wires it up.
+ * - Lane colours follow the theme: `--cg-lane-{i}` on the host, re-set when `<html>`'s theme flips.
+ */
+@Component({
+  selector: 'app-repo-commit-graph-panel',
+  imports: [
+    FormsModule, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsSelectComponent, BsSelectOption,
+    BsFormComponent, BsFormControlDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective,
+  ],
+  template: `
+    <bs-card class="mt-3 d-block">
+      <bs-card-header><i class="bi bi-diagram-2"></i> Commit graph</bs-card-header>
+      <bs-card-body>
+        <div class="cg-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
+          <bs-select class="cg-ref" [size]="'sm'" [ngModel]="selectedRef()" (ngModelChange)="selectRef($event)"
+                     aria-label="Branches shown">
+            <option [ngValue]="''">All branches and tags</option>
+            @for (b of branches(); track b.name) {
+              <option [ngValue]="b.name">{{ shortRef(b.name) }}{{ isDefault(b.name) ? ' (default)' : '' }}</option>
+            }
+          </bs-select>
+          <button type="button" class="btn btn-sm" [class.btn-secondary]="firstParent()"
+                  [class.btn-outline-secondary]="!firstParent()" [attr.aria-pressed]="firstParent()"
+                  (click)="toggleFirstParent()">First parent only</button>
+          <bs-select class="cg-search-mode" [size]="'sm'" [ngModel]="searchMode()" (ngModelChange)="setSearchMode($event)"
+                     aria-label="Search in">
+            <option [ngValue]="'message'">Message or SHA</option>
+            <option [ngValue]="'author'">Author</option>
+          </bs-select>
+          <bs-form class="cg-search">
+            <input type="search" class="form-control-sm" placeholder="Search commits" aria-label="Search commits"
+                   [ngModel]="searchText()" (ngModelChange)="onSearch($event)" name="cg-search">
+          </bs-form>
+        </div>
+
+        @if (notice(); as n) {
+          <div class="small text-muted mb-2" role="status">{{ n }}</div>
+        }
+
+        @switch (state()) {
+          @case ('loading') {
+            <div class="small text-muted" role="status">Loading the commit graph…</div>
+          }
+          @case ('syncing') {
+            <div class="small text-muted cg-syncing" role="status">
+              Mirroring the repository. The graph appears as soon as the first clone finishes.
+            </div>
+          }
+          @case ('unavailable') {
+            <div class="small text-muted cg-unavailable" role="status">{{ reasonText() }}</div>
+          }
+          @case ('empty') {
+            <div class="small text-muted cg-empty" role="status">
+              {{ listMode() ? 'No commits match the search.' : 'This repository has no commits yet.' }}
+            </div>
+          }
+          @case ('ready') {
+            <div class="cg-table" [class.cg-has-hl]="highlight().size > 0" tabindex="0" role="group"
+                 aria-label="Commit graph; use the arrow keys to move and Enter to open a commit"
+                 (keydown)="onKeydown($event)" (mouseover)="onHover($event)" (mouseleave)="hover.set(null)">
+              <bs-datatable [fetch]="fetchFn()" [virtualScroll]="true" [itemSize]="rowHeight" [virtualBuffer]="6"
+                            [isResponsive]="true" [resizableColumns]="false" [rowKey]="rowKey"
+                            [(settings)]="settings" (rowClick)="onRowClick($event)">
+                <div *bsDatatableColumn="'graph'; sortable: false; label: 'Graph'"><span class="visually-hidden">Graph</span></div>
+                <div *bsDatatableColumn="'subject'; sortable: false">Message</div>
+                <div *bsDatatableColumn="'coverage'; sortable: false">Coverage</div>
+                <div *bsDatatableColumn="'author'; sortable: false">Author</div>
+                <div *bsDatatableColumn="'date'; sortable: false">Date</div>
+                <div *bsDatatableColumn="'sha'; sortable: false">Commit</div>
+
+                <ng-container *bsRowTemplate="let item">
+                  @let v = $any(item);
+                  @if (v) {
+                    @let hl = highlight().get(v.index);
+                    <td class="cg-graph" [style.width.px]="graphWidth()">
+                      <svg [attr.width]="graphWidth()" [attr.height]="rowHeight" aria-hidden="true">
+                        @for (s of v.segments; track s.key) {
+                          <path [attr.d]="s.d" [attr.stroke]="laneVar(s.colour)" [class.hl]="hl?.has(s.key)" />
+                        }
+                        @if (v.isMerge) {
+                          <circle class="cg-merge" [attr.cx]="v.cx" [attr.cy]="v.cy" [attr.r]="nodeR + 2.5" [attr.stroke]="laneVar(v.colour)" />
+                        }
+                        <circle class="cg-node" [class]="nodeClass(v)" [class.hl]="hl?.has('n')" [attr.cx]="v.cx" [attr.cy]="v.cy"
+                                [attr.r]="nodeR" [attr.stroke]="laneVar(v.colour)"><title>{{ nodeTitle(v) }}</title></circle>
+                        @if (pie(v); as p) {
+                          <path class="cg-pie" [attr.d]="p" [attr.fill]="laneVar(v.colour)" />
+                        }
+                        @if (v.width > visibleLanes()) {
+                          <path class="cg-overflow" [attr.d]="overflowMarker()" />
+                        }
+                      </svg>
+                    </td>
+                    <td class="cg-subject" [class.cg-cursor]="cursor() === v.index">
+                      @for (r of v.row.refs; track r) {
+                        <span class="cg-ref-pill" [class.cg-tag]="isTag(r)" [class.cg-default]="isDefault(r)">{{ shortRef(r) }}</span>
+                      }
+                      @if (v.row.sha === latestCoverageSha()) {
+                        <span class="cg-ref-pill cg-latest" title="Latest coverage of the default branch">coverage</span>
+                      }
+                      <span [class.fw-semibold]="v.isMerge">{{ v.row.subject }}</span>
+                    </td>
+                    <td class="cg-coverage">
+                      @if (v.row.coverage?.percent != null) {
+                        {{ v.row.coverage.percent.toFixed(1) }}%
+                        @if (v.row.coverage.deltaVsParent != null && v.row.coverage.deltaVsParent !== 0) {
+                          <small [class.text-success]="v.row.coverage.deltaVsParent > 0" [class.text-danger]="v.row.coverage.deltaVsParent < 0">
+                            {{ v.row.coverage.deltaVsParent > 0 ? '▲' : '▼' }}{{ abs(v.row.coverage.deltaVsParent).toFixed(1) }}
+                          </small>
+                        }
+                      } @else if (v.row.coverage) {
+                        <span class="text-muted">pending</span>
+                      }
+                    </td>
+                    <td class="cg-author">
+                      @if (v.row.avatarKey && !failedAvatars().has(v.row.avatarKey)) {
+                        <img class="cg-avatar" [src]="avatarSrc(v.row.avatarKey)" alt="" width="20" height="20" loading="lazy"
+                             (error)="avatarFailed(v.row.avatarKey)">
+                      } @else {
+                        <span class="cg-avatar cg-initials" aria-hidden="true">{{ initials(v.row.authorName) }}</span>
+                      }
+                      {{ v.row.authorName }}
+                    </td>
+                    <td class="cg-date" [title]="v.row.date">{{ formatDate(v.row.date) }}</td>
+                    <td class="cg-sha"><code>{{ v.row.sha.substring(0, 7) }}</code></td>
+                  } @else {
+                    <td class="cg-graph" [style.width.px]="graphWidth()"></td>
+                    <td class="text-muted">…</td><td></td><td></td><td></td><td></td>
+                  }
+                </ng-container>
+              </bs-datatable>
+            </div>
+          }
+        }
+      </bs-card-body>
+    </bs-card>
+  `,
+  styles: [`
+    :host { display: block; --mp-datatable-virtual-max-height: 560px; }
+    .cg-toolbar .cg-search { flex: 1 1 12rem; max-width: 20rem; }
+    .cg-table:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+    .cg-table td { height: ${ROW_HEIGHT}px; max-height: ${ROW_HEIGHT}px; padding: 0 .5rem; box-sizing: border-box; vertical-align: middle;
+      line-height: ${ROW_HEIGHT - 2}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cg-table td.cg-graph { padding: 0; line-height: 0; }
+    .cg-graph svg { display: block; overflow: hidden; }
+    .cg-graph path { fill: none; stroke-width: 2; }
+    .cg-has-hl .cg-graph path:not(.hl):not(.cg-pie), .cg-has-hl .cg-node:not(.hl) { opacity: .35; }
+    .cg-graph path.hl { stroke-width: 3; }
+    .cg-node { stroke-width: 2; fill: var(--bs-body-bg); }
+    .cg-node.cg-none { fill: none; }
+    .cg-node.cg-pending { stroke: var(--bs-secondary-color) !important; stroke-dasharray: 2 2; }
+    .cg-node.hl { stroke-width: 3; }
+    .cg-merge { fill: none; stroke-width: 1.5; }
+    .cg-overflow { fill: var(--bs-secondary-color); stroke: none !important; }
+    .cg-cursor { box-shadow: inset 3px 0 var(--bs-primary); }
+    .cg-ref-pill { display: inline-block; font-size: .75em; line-height: 1.4; padding: 0 .4em; margin-right: .3em; border-radius: 1em;
+      border: 1px solid var(--bs-border-color); background: var(--bs-secondary-bg); vertical-align: middle; }
+    .cg-ref-pill.cg-default { font-weight: 600; border-color: var(--bs-primary); }
+    .cg-ref-pill.cg-tag { border-radius: .2em; font-style: italic; }
+    .cg-ref-pill.cg-latest { border-style: dashed; }
+    .cg-avatar { width: 20px; height: 20px; border-radius: 50%; vertical-align: middle; margin-right: .3em; display: inline-block; }
+    .cg-initials { background: var(--bs-secondary-bg); font-size: 9px; line-height: 20px; text-align: center; }
+    .cg-sha code { font-size: .8em; }
+  `],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class RepoCommitGraphPanelComponent {
+  private readonly browse = inject(BrowseService);
+  private readonly router = inject(Router);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly destroyRef = inject(DestroyRef);
+
+  provider = input.required<string>();
+  owner = input.required<string>();
+  name = input.required<string>();
+
+  protected readonly rowHeight = ROW_HEIGHT;
+  protected readonly nodeR = NODE_R;
+
+  readonly state = signal<PanelState>('loading');
+  readonly reason = signal<string | null>(null);
+  readonly notice = signal<string | null>(null);
+  readonly totalRows = signal(0);
+  readonly refs = signal<CommitGraphRef[]>([]);
+  readonly repo = signal<RepoInfo | null>(null);
+  readonly selectedRef = signal('');
+  readonly firstParent = signal(false);
+  readonly searchMode = signal<'message' | 'author'>('message');
+  readonly searchText = signal('');
+  /** The debounced search the walk is filtered by. */
+  readonly appliedSearch = signal('');
+  readonly fetchFn = signal<BsDatatableFetch<GraphRowView> | null>(null);
+  readonly hover = signal<number | null>(null);
+  readonly cursor = signal<number | null>(null);
+  readonly failedAvatars = signal<ReadonlySet<string>>(new Set());
+  /** Lanes of the widest row on the first page, capped (D16). */
+  readonly pageLanes = signal(1);
+  readonly mobile = signal(false);
+  /** Bumped whenever rows land in the cache, so derived views recompute. */
+  private readonly cacheVersion = signal(0);
+
+  settings = new DatatableSettings({
+    perPage: { values: [GRAPH_PAGE_SIZE], selected: GRAPH_PAGE_SIZE },
+    page: { values: [1], selected: 1 },
+    sortColumns: [],
+  });
+
+  readonly visibleLanes = computed(() => Math.min(this.pageLanes(), this.mobile() ? LANE_CAP_MOBILE : LANE_CAP));
+  /** Room for the visible lanes plus the overflow marker. */
+  readonly graphWidth = computed(() => this.visibleLanes() * LANE_WIDTH + 8);
+  readonly branches = computed(() => this.refs().filter((r) => r.kind === 'head'));
+  readonly latestCoverageSha = computed(() => this.repo()?.latestCoverageSha ?? null);
+  /** The rows on show are a search's hit list (flat, no lanes), not the graph. */
+  readonly listMode = signal(false);
+  readonly reasonText = computed(() => UNAVAILABLE_REASONS[this.reason() ?? ''] ?? UNAVAILABLE_REASONS['error']);
+
+  /** The first-parent path of the hovered row, else of the keyboard cursor. */
+  readonly highlight = computed<PathHighlight>(() => {
+    this.cacheVersion();
+    const start = this.hover() ?? this.cursor();
+    if (start === null) return new Map();
+    return firstParentPath(start, (i) => this.cache.get(i), (sha) => this.shaIndex.get(sha));
+  });
+
+  /** Rows by absolute index, for the current snapshot. */
+  private cache = new Map<number, GraphRowView>();
+  private shaIndex = new Map<string, number>();
+  private snapshot: string | null = null;
+  private activeQuery: CommitGraphQuery = {};
+  private generation = 0;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollDelay = POLL_FIRST_MS;
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingScroll: number | null = null;
+  /** The commit the next effect-driven restart opens at. */
+  private pendingAt: string | null = null;
+
+  protected readonly rowKey = (row: GraphRowView | undefined, index: number) => row?.row.sha ?? `p-${index}`;
+
+  constructor() {
+    effect(() => {
+      const repo = { provider: this.provider(), owner: this.owner(), name: this.name() };
+      untracked(() => {
+        this.browse.getRepo(repo.provider, repo.owner, repo.name).then((r) => this.repo.set(r), () => this.repo.set(null));
+      });
+    });
+
+    // Any change of repository or view restarts the walk from the top.
+    effect(() => {
+      this.provider(); this.owner(); this.name();
+      this.selectedRef(); this.firstParent(); this.appliedSearch(); this.searchMode();
+      untracked(() => {
+        const at = this.pendingAt ?? undefined;
+        this.pendingAt = null;
+        void this.start(at);
+      });
+    });
+
+    afterNextRender(() => {
+      const applyTheme = () => this.applyPalette();
+      applyTheme();
+      const observer = new MutationObserver(applyTheme);
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme', 'class'] });
+      const dark = window.matchMedia?.('(prefers-color-scheme: dark)');
+      dark?.addEventListener?.('change', applyTheme);
+      const narrow = window.matchMedia?.('(max-width: 575.98px)');
+      const onNarrow = () => this.mobile.set(!!narrow?.matches);
+      onNarrow();
+      narrow?.addEventListener?.('change', onNarrow);
+      this.destroyRef.onDestroy(() => {
+        observer.disconnect();
+        dark?.removeEventListener?.('change', applyTheme);
+        narrow?.removeEventListener?.('change', onNarrow);
+      });
+    });
+
+    this.destroyRef.onDestroy(() => {
+      this.generation++;
+      this.clearTimers();
+      if (this.searchTimer) clearTimeout(this.searchTimer);
+    });
+  }
+
+  // ---- loading ----
+
+  /**
+   * Starts a walk: the first page decides the state; `ready` installs a fresh fetch, which the datatable
+   * pages through as the viewer scrolls. `at` opens the walk at a commit (search hits, stale restarts).
+   */
+  async start(at?: string): Promise<void> {
+    const gen = ++this.generation;
+    this.clearTimers();
+    this.cache = new Map();
+    this.shaIndex = new Map();
+    this.snapshot = null;
+    this.hover.set(null);
+    this.cursor.set(null);
+    if (this.state() !== 'ready') this.state.set('loading');
+
+    const query = this.baseQuery();
+    const sha = !at && this.searchMode() === 'message' && /^[0-9a-f]{7,40}$/i.test(this.appliedSearch().trim())
+      ? this.appliedSearch().trim() : at;
+    if (sha) {
+      // A SHA search jumps to the commit in the unfiltered walk.
+      delete query.grep;
+      query.at = sha;
+    }
+
+    let page: CommitGraphPage;
+    try {
+      page = await this.browse.getCommitGraph(this.provider(), this.owner(), this.name(), { ...query, count: GRAPH_PAGE_SIZE });
+    } catch {
+      if (gen !== this.generation) return;
+      this.reason.set('error');
+      this.state.set('unavailable');
+      return;
+    }
+    if (gen !== this.generation) return;
+
+    switch (page.state) {
+      case 'syncing':
+        this.state.set('syncing');
+        this.pollTimer = setTimeout(() => void this.start(at), this.pollDelay);
+        this.pollDelay = Math.min(this.pollDelay * 2, POLL_MAX_MS);
+        return;
+      case 'unavailable':
+        this.reason.set(page.reason);
+        this.state.set('unavailable');
+        return;
+      case 'not-found':
+        if (sha && sha !== at) {
+          // Not a SHA after all: search messages for it instead.
+          this.notice.set(null);
+          return this.startPlain(gen, true);
+        }
+        this.notice.set('That commit is not in this view; showing the newest commits instead.');
+        return this.startPlain(gen, false);
+      case 'stale':
+        // The repository moved between two requests of this very call; begin again once.
+        return at ? this.startPlain(gen, false) : void this.start();
+    }
+    this.pollDelay = POLL_FIRST_MS;
+    this.install(page, query);
+    if (sha) {
+      const index = this.shaIndex.get(sha) ?? [...this.shaIndex].find(([s]) => s.startsWith(sha.toLowerCase()))?.[1];
+      if (index !== undefined) {
+        this.pendingScroll = index;
+        this.cursor.set(index);
+      }
+    }
+  }
+
+  /** Reload from the top without `at`; `grepFallback` keeps a SHA-looking search as a message search. */
+  private async startPlain(gen: number, grepFallback: boolean): Promise<void> {
+    if (gen !== this.generation) return;
+    const query = this.baseQuery();
+    if (!grepFallback) delete query.grep;
+    const page = await this.browse.getCommitGraph(this.provider(), this.owner(), this.name(), { ...query, count: GRAPH_PAGE_SIZE })
+      .catch(() => null);
+    if (gen !== this.generation) return;
+    if (!page || page.state !== 'ready') {
+      this.reason.set(page?.reason ?? 'error');
+      this.state.set('unavailable');
+      return;
+    }
+    this.install(page, query);
+  }
+
+  private install(page: CommitGraphPage, query: CommitGraphQuery): void {
+    const list = !!(query.grep || query.author);
+    this.listMode.set(list);
+    this.activeQuery = query;
+    this.snapshot = page.snapshotId;
+    this.totalRows.set(page.totalRows);
+    // The first page of a walk carries every ref: the branch selector's options.
+    if (page.from === 0 && !list) this.refs.set(page.refs);
+    else if (this.refs().length === 0) this.refs.set(page.refs);
+    this.pageLanes.set(Math.max(1, page.laneCount));
+    this.store(page);
+    if (page.totalRows === 0) {
+      this.state.set('empty');
+      return;
+    }
+    this.state.set('ready');
+    this.fetchFn.set(this.makeFetch(this.generation));
+  }
+
+  private store(page: CommitGraphPage): void {
+    for (const view of derivePage(page.top, page.rows, page.from)) {
+      this.cache.set(view.index, view);
+      this.shaIndex.set(view.row.sha, view.index);
+    }
+    this.cacheVersion.update((v) => v + 1);
+  }
+
+  private makeFetch(gen: number): BsDatatableFetch<GraphRowView> {
+    return async (req) => {
+      const perPage = req.perPage || GRAPH_PAGE_SIZE;
+      const from = (req.page - 1) * perPage;
+      const total = this.totalRows();
+      const end = Math.min(from + perPage, total);
+      if (!this.hasRange(from, end)) {
+        const page = await this.browse.getCommitGraph(this.provider(), this.owner(), this.name(), {
+          ...this.activeQuery, at: undefined, from, count: perPage, snapshot: this.snapshot ?? undefined,
+        });
+        if (gen !== this.generation) throw new Error('superseded');
+        if (page.state === 'stale') {
+          this.restartAtTop();
+          throw new Error('stale snapshot');
+        }
+        if (page.state !== 'ready') throw new Error(`graph ${page.state}`);
+        this.store(page);
+      }
+      const data: GraphRowView[] = [];
+      for (let i = from; i < end; i++) {
+        const view = this.cache.get(i);
+        if (view) data.push(view);
+      }
+      if (req.page === 1) queueMicrotask(() => this.flushScroll());
+      return { data, totalRecords: total, page: req.page, perPage, totalPages: Math.ceil(total / perPage) };
+    };
+  }
+
+  private hasRange(from: number, end: number): boolean {
+    for (let i = from; i < end; i++) if (!this.cache.has(i)) return false;
+    return true;
+  }
+
+  /** `stale`: the repository moved under the snapshot. Reopen at the first visible commit, best effort. */
+  private restartAtTop(): void {
+    const scroller = this.scroller();
+    const top = scroller ? Math.floor(scroller.scrollTop / ROW_HEIGHT) : 0;
+    const sha = this.cache.get(top)?.row.sha;
+    queueMicrotask(() => void this.start(sha));
+  }
+
+  private baseQuery(): CommitGraphQuery {
+    const search = this.appliedSearch().trim();
+    return {
+      ref: this.selectedRef() || undefined,
+      firstParent: this.firstParent() || undefined,
+      grep: search && this.searchMode() === 'message' ? search : undefined,
+      author: search && this.searchMode() === 'author' ? search : undefined,
+    };
+  }
+
+  private clearTimers(): void {
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+    this.pollTimer = null;
+  }
+
+  // ---- interaction ----
+
+  selectRef(ref: string): void {
+    this.notice.set(null);
+    this.selectedRef.set(ref ?? '');
+  }
+
+  toggleFirstParent(): void {
+    this.notice.set(null);
+    this.firstParent.update((v) => !v);
+  }
+
+  setSearchMode(mode: 'message' | 'author'): void {
+    this.searchMode.set(mode);
+  }
+
+  onSearch(text: string): void {
+    this.searchText.set(text ?? '');
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => {
+      this.searchTimer = null;
+      this.notice.set(null);
+      this.appliedSearch.set(this.searchText());
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  onRowClick(event: BsDatatableRowEvent<GraphRowView>): void {
+    if (event.row) this.open(event.row);
+  }
+
+  /** A graph row opens its commit; a search hit first shows the commit in the graph (D17). */
+  open(view: GraphRowView): void {
+    if (this.listMode()) {
+      // Clearing the search restarts the walk through the effect, which picks up `pendingAt`.
+      this.pendingAt = view.row.sha;
+      this.searchText.set('');
+      if (this.appliedSearch()) this.appliedSearch.set('');
+      else {
+        this.pendingAt = null;
+        void this.start(view.row.sha);
+      }
+      return;
+    }
+    void this.router.navigate(['/', this.provider(), 'r', this.owner(), this.name(), 'c', view.row.sha]);
+  }
+
+  onKeydown(event: KeyboardEvent): void {
+    const total = this.totalRows();
+    if (!total) return;
+    const current = this.cursor() ?? this.hover();
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const next = current === null ? 0 : Math.min(total - 1, Math.max(0, current + (event.key === 'ArrowDown' ? 1 : -1)));
+      this.cursor.set(next);
+      this.hover.set(null);
+      this.scrollIntoView(next);
+    } else if (event.key === 'Enter' && current !== null) {
+      const view = this.cache.get(current);
+      if (view) {
+        event.preventDefault();
+        this.open(view);
+      }
+    }
+  }
+
+  onHover(event: MouseEvent): void {
+    const tr = (event.target as Element | null)?.closest?.('tr[data-row-key]') as HTMLElement | null;
+    const index = tr ? this.shaIndex.get(tr.dataset['rowKey'] ?? '') : undefined;
+    if (index !== undefined && index !== this.hover()) this.hover.set(index);
+  }
+
+  avatarFailed(key: string): void {
+    this.failedAvatars.update((s) => new Set(s).add(key));
+  }
+
+  // ---- rendering helpers ----
+
+  laneVar(colour: number): string {
+    return `var(--cg-lane-${colour})`;
+  }
+
+  nodeClass(v: GraphRowView): string {
+    const c = v.row.coverage;
+    if (!c) return 'cg-node cg-none';
+    if (c.percent == null || c.completeness === 'Partial') return 'cg-node cg-pending';
+    return 'cg-node';
+  }
+
+  /** The node's fill: a wedge as large as the coverage, so it reads without hue. */
+  pie(v: GraphRowView): string | null {
+    const c = v.row.coverage;
+    if (!c || c.percent == null || c.completeness === 'Partial' || c.percent <= 0) return null;
+    if (c.percent >= 100) return `M${v.cx - NODE_R} ${v.cy}a${NODE_R} ${NODE_R} 0 1 0 ${NODE_R * 2} 0a${NODE_R} ${NODE_R} 0 1 0 ${-NODE_R * 2} 0`;
+    return pieWedge(v.cx, v.cy, NODE_R - 1, c.percent / 100);
+  }
+
+  nodeTitle(v: GraphRowView): string {
+    const c = v.row.coverage;
+    const coverage = !c ? 'no coverage report'
+      : c.percent == null ? 'coverage pending'
+        : `${c.percent.toFixed(1)}% covered${c.completeness === 'Partial' ? ' (partial)' : ''}`;
+    return `${v.row.sha.substring(0, 7)}${v.isMerge ? ' (merge)' : ''}: ${coverage}`;
+  }
+
+  overflowMarker(): string {
+    const x = this.visibleLanes() * LANE_WIDTH + 2;
+    const y = ROW_HEIGHT / 2;
+    return `M${x} ${y - 4}L${x + 5} ${y}L${x} ${y + 4}Z`;
+  }
+
+  avatarSrc(key: string): string {
+    return this.browse.avatarUrl(key);
+  }
+
+  initials(name: string): string {
+    const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+    return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
+  }
+
+  shortRef(ref: string): string {
+    return ref.replace(/^refs\/(heads|tags)\//, '');
+  }
+
+  isTag(ref: string): boolean {
+    return ref.startsWith('refs/tags/');
+  }
+
+  isDefault(ref: string): boolean {
+    const branch = this.repo()?.defaultBranch;
+    return !!branch && ref === `refs/heads/${branch}`;
+  }
+
+  formatDate(iso: string): string {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  abs(v: number): number {
+    return Math.abs(v);
+  }
+
+  // ---- DOM ----
+
+  /** Sets `--cg-lane-{i}` on the host from the palette shade that suits the painted background. */
+  applyPalette(): void {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bs-body-bg').trim() || '#ffffff';
+    const dark = isDarkBackground(bg);
+    const style = this.host.nativeElement.style;
+    LANE_PALETTE.forEach((shade, i) => style.setProperty(`--cg-lane-${i}`, dark ? shade.dark : shade.light));
+  }
+
+  private scroller(): HTMLElement | null {
+    return this.host.nativeElement.querySelector('.datatable-scroll');
+  }
+
+  private scrollIntoView(index: number): void {
+    const el = this.scroller();
+    if (!el) return;
+    const header = el.querySelector('thead')?.getBoundingClientRect().height ?? 0;
+    const top = index * ROW_HEIGHT;
+    if (top < el.scrollTop) el.scrollTop = top;
+    else if (top + ROW_HEIGHT > el.scrollTop + el.clientHeight - header) el.scrollTop = top + ROW_HEIGHT - el.clientHeight + header;
+  }
+
+  private flushScroll(): void {
+    const index = this.pendingScroll;
+    if (index === null) return;
+    // The table body exists one render after the first page; try a few frames.
+    let tries = 0;
+    const attempt = () => {
+      const el = this.scroller();
+      if (el && el.scrollHeight > index * ROW_HEIGHT) {
+        this.pendingScroll = null;
+        el.scrollTop = Math.max(0, index * ROW_HEIGHT - el.clientHeight / 3);
+      } else if (tries++ < 20) {
+        requestAnimationFrame(attempt);
+      }
+    };
+    requestAnimationFrame(attempt);
+  }
+}
