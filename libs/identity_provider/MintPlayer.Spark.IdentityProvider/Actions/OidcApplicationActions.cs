@@ -25,9 +25,7 @@ namespace MintPlayer.Spark.IdentityProvider.Actions;
 public partial class OidcApplicationActions : DefaultPersistentObjectActions<OidcApplication>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    // Not named httpContextAccessor: the base declares an optional one of that name, and MintPlayer.SourceGenerators
-    // 12.2.0 then emits the parameter twice (CS0100).
-    [Inject] private readonly IHttpContextAccessor contextAccessor;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly IAccessControl accessControl;
 
     /// <summary>The reserved right that lifts the members-only filter.</summary>
@@ -41,7 +39,7 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
         if (await accessControl.IsAllowedAsync(ManageAllResource))
             return null;
 
-        var userId = contextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
             return app => false;
 

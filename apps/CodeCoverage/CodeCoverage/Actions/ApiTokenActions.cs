@@ -68,9 +68,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     [Inject] private readonly IManager manager;
     // Stamps CreatedByUserId. Same pair DeleteDataAction uses to answer "who is asking".
     [Inject] private readonly UserManager<MintPlayer.Spark.Authorization.Identity.SparkUser> userManager;
-    // Not named httpContextAccessor: the base declares an optional one of that name, and MintPlayer.SourceGenerators
-    // 12.2.0 then emits the parameter twice (CS0100).
-    [Inject] private readonly IHttpContextAccessor contextAccessor;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     /// <summary>
     /// Restricted to the accounts the caller manages, for every action.
@@ -174,7 +172,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         // Stamped, never trusted from the payload: the attribute is read-only in the model, so a
         // posted value is refused by IsWritableBySchema anyway, but the field was previously
         // writable AND stamped by nothing — every token made through the UI carried an empty string.
-        var principal = contextAccessor.HttpContext?.User;
+        var principal = httpContextAccessor.HttpContext?.User;
         var creator = principal is null ? null : await userManager.GetUserAsync(principal);
         entity.CreatedByUserId = creator?.Id ?? string.Empty;
         entity.CreatedAtUtc = DateTime.UtcNow;

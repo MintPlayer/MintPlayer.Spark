@@ -2538,6 +2538,14 @@ shows in earlier full 12.1.1 logs (CS0436 `EndpointContractAttribute` in Identit
 Tests: SourceGenerators.Tests 631/631; Spark.Tests (SubscriptionWorker incl. `SyncActionSubscriptionWorkerE2ETests`,
 Messaging, Settings, Endpoints, Notification, OidcApplication, OidcResource) 733/733; SeoTester.Tests Fetcher 15/15.
 
+**13.0.0 adopted (2026-10-11; supersedes the `contextAccessor` workaround above).** Upstream fixed #196 in
+MintPlayer.Dotnet.Tools PR #197: the `[Inject]` constructor has one parameter per service type (type symbol,
+nullability ignored; required wins), and `base(...)` fills each base slot by type. Moved every `MintPlayer.SourceGenerators*`
+reference 12.2.0 → 13.0.0 and renamed the 7 derived fields back to `httpContextAccessor`; base and derived member now
+share the one, required, parameter. 13.0.0's other break (members of one type share one parameter and one instance) hits
+nothing here: a scan of every `[Inject]` member found no class with two members of the same type under different names.
+The Tools assembly changed no API, so Endpoints 11.4.1-rc.0 (built against 12.2.0) still loads.
+
 ### L6 in the sweep (2026-10-11): a page read before its index caught up was never read again
 
 The third local sweep failed `LiveSpikeTests.L6_…(waitForIndexes: True)` once (passed in the sweep before and alone):

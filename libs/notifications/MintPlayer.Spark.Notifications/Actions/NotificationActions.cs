@@ -17,12 +17,10 @@ namespace MintPlayer.Spark.Notifications.Actions;
 public partial class NotificationActions : DefaultPersistentObjectActions<Notification>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    // Not named httpContextAccessor: the base declares an optional one of that name, and MintPlayer.SourceGenerators
-    // 12.2.0 then emits the parameter twice (CS0100).
-    [Inject] private readonly IHttpContextAccessor contextAccessor;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override Task<Expression<Func<Notification, bool>>?> GetRowFilterAsync(string action)
-        => Task.FromResult<Expression<Func<Notification, bool>>?>(OwnRows.For<Notification>(contextAccessor, n => n.UserId));
+        => Task.FromResult<Expression<Func<Notification, bool>>?>(OwnRows.For<Notification>(httpContextAccessor, n => n.UserId));
 
     /// <summary>The list (<c>"live": true</c>): newest first by the query's sort.</summary>
     public IRavenQueryable<Notification> MyNotifications() => session.Query<Notification>();
@@ -35,12 +33,10 @@ public partial class NotificationActions : DefaultPersistentObjectActions<Notifi
 public partial class PushSubscriptionActions : DefaultPersistentObjectActions<PushSubscription>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    // Not named httpContextAccessor: the base declares an optional one of that name, and MintPlayer.SourceGenerators
-    // 12.2.0 then emits the parameter twice (CS0100).
-    [Inject] private readonly IHttpContextAccessor contextAccessor;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override Task<Expression<Func<PushSubscription, bool>>?> GetRowFilterAsync(string action)
-        => Task.FromResult<Expression<Func<PushSubscription, bool>>?>(OwnRows.For<PushSubscription>(contextAccessor, s => s.UserId));
+        => Task.FromResult<Expression<Func<PushSubscription, bool>>?>(OwnRows.For<PushSubscription>(httpContextAccessor, s => s.UserId));
 
     public IRavenQueryable<PushSubscription> MyPushSubscriptions() => session.Query<PushSubscription>();
 }
@@ -49,12 +45,10 @@ public partial class PushSubscriptionActions : DefaultPersistentObjectActions<Pu
 public partial class NotificationPreferenceActions : DefaultPersistentObjectActions<NotificationPreference>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    // Not named httpContextAccessor: the base declares an optional one of that name, and MintPlayer.SourceGenerators
-    // 12.2.0 then emits the parameter twice (CS0100).
-    [Inject] private readonly IHttpContextAccessor contextAccessor;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     public override Task<Expression<Func<NotificationPreference, bool>>?> GetRowFilterAsync(string action)
-        => Task.FromResult<Expression<Func<NotificationPreference, bool>>?>(OwnRows.For<NotificationPreference>(contextAccessor, p => p.UserId));
+        => Task.FromResult<Expression<Func<NotificationPreference, bool>>?>(OwnRows.For<NotificationPreference>(httpContextAccessor, p => p.UserId));
 
     public IRavenQueryable<NotificationPreference> MyNotificationPreferences() => session.Query<NotificationPreference>();
 }

@@ -18,9 +18,7 @@ namespace MintPlayer.Spark.IdentityProvider.Actions;
 public partial class OidcResourceActions : DefaultPersistentObjectActions<OidcResource>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    // Not named httpContextAccessor: the base declares an optional one of that name, and MintPlayer.SourceGenerators
-    // 12.2.0 then emits the parameter twice (CS0100).
-    [Inject] private readonly IHttpContextAccessor contextAccessor;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly IAccessControl accessControl;
 
     /// <summary>Every resource, narrowed for writes by <see cref="GetRowFilterAsync"/>.</summary>
@@ -36,7 +34,7 @@ public partial class OidcResourceActions : DefaultPersistentObjectActions<OidcRe
         if (action is "Query" or "Read")
             return null;
 
-        var userId = contextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
             return resource => false;
 

@@ -38,11 +38,11 @@
 
 	<ItemGroup>
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.2.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.2.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
 	</ItemGroup>
 
