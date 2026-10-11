@@ -27,7 +27,12 @@ These are decisions, not research. Each changes what gets built.
 | ~~Q1~~ | ~~Disk budget and quotas~~ | **Decided (D7, D8):** numbers set from S2; mirrors on the 10 GB Hetzner volume |
 | ~~Q5~~ | ~~Anonymous clones~~ | **Decided (D6):** anonymous, stricter quotas |
 | ~~Q6~~ | ~~Where the mirrors live~~ | **Decided (D8):** a named volume on the root disk, with a software budget and a free-space floor |
-| Q7 | Confirm D9: no dashboard package; a live virtual `HostMetrics` PO plus a new `Administrators` group in CodeCoverage | Yes |
+| ~~Q7~~ | ~~Dashboard package~~ | **Decided (D11–D14):** a Spark dashboard package built on live virtual POs; SeoTester migrates onto it; RavenDB statistics are a built-in provider; optional time-series history |
+| ~~Q2~~ | ~~`ParentSha`~~ | **Decided (D15):** not a defect; only a stale comment to fix |
+| ~~Q3~~ | ~~Later features~~ | **Decided (D17):** all of them |
+| ~~Q4~~ | ~~Default view~~ | **Decided (D16):** all refs, lanes capped |
+
+The rows below are the original wording, kept for the record.
 | Q2 | `Commit.ParentSha` is the **PR base tip** for PR commits (`ForgeEventsRecipient.cs:82`), so `CoverageDeltaVsParent` is measured against it. Defect or intended? | Leave as is; the graph draws true parents from the mirror regardless |
 | Q3 | Which of the PRD §4.5 "later" features to pull into this PR (hover path, search, first-parent view, sparkline, drop filter) | MVP only |
 | Q4 | Default view: all branches + tags, or default branch + its ancestry with a toggle? | All refs, like SourceTree's "All branches" |
@@ -64,6 +69,8 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
 | S8 claim TTL vs long clone | — | | |
 | S9 per-row SVG scroll, palette contrast | — | | |
 | S10 host-disk accuracy from the container, live virtual PO | — | | |
+| S11 dashboard history on RavenDB time series | — | | |
+| S12 avatars without email leakage | — | | |
 
 ## Milestones
 
@@ -190,10 +197,38 @@ for signed-in with the same body, including while the hidden repository's mirror
 and the states. A manual check through the Playwright MCP on the local app covers this repository's
 graph in both themes.
 
-### M5b — Host metrics for administrators (PRD §9)
+### M5a — The Spark dashboard package (D11–D14)
 
-- An `Administrators` group in CodeCoverage's `security.json`, granted `Read/HostMetrics`. Regenerate
-  the security posture.
+- **NuGet:** `libs/dashboards/MintPlayer.Spark.Dashboards`, shaped like the Settings package:
+  - `net11.0`, version `11.0.0-preview.*`
+  - `App_Data/{Model,programUnits,security,translations}.json`
+  - an `ISparkBuilder` extension `spark.AddDashboards(...)`
+  - the security slot `dashboards:administrators`
+- **Package contents:**
+  - `IDashboardProvider`, which fills a dashboard's attribute values
+  - a hosted notifier pushing through `ISparkLiveNotifier`
+  - a sampler with a compare-exchange lease that writes RavenDB time series to `SparkDashboards/{name}`,
+    with revisions disabled and rollup/retention policies (D14)
+  - a built-in **RavenDB statistics** provider: database size, document count, and per-collection
+    count and size (D13)
+- **npm:** new `@mintplayer/ng-spark` sub-entry points for the dashboard tile layout and the new
+  renderers (meter, stat-with-threshold). `ng-spark` goes up a **22.x minor**.
+- **SeoTester migrates (D13):**
+  - `OperatorDashboard` becomes a package dashboard bound to its Administrators group.
+  - Its custom endpoint and panel are deleted.
+  - Update the route snapshot, `ReportSurfaceTests`, the model, translations, security and posture
+    files, and `docs/seotester/README.md`.
+- **Done when:** S10 (local half) and S11 pass. SeoTester's dashboard shows the same numbers as
+  before the migration. A guide page is added at `docs/guide-dashboards.md`.
+
+### M5b — CodeCoverage host metrics on the package (PRD §9)
+
+> Updated for D11. HostMetrics is now a dashboard *provider* on the package (M5a), not a hand-written
+> live PO.
+
+- An `Administrators` group in CodeCoverage's `security.json`, bound to `dashboards:administrators`.
+  It is seeded by the owner's **stable forge user id**, never by login. Regenerate the security
+  posture.
 - `HostMetrics.json`: virtual, `"live": true`, object `hostmetrics/main`.
 - `HostMetricsActions.OnLoadAsync`: host disk from `DriveInfo("/")`, container CPU and memory, and mirror totals from `RepositoryGraphState`.
 - A notifier `BackgroundService` running every 15 s, with a 5 s read cache.
