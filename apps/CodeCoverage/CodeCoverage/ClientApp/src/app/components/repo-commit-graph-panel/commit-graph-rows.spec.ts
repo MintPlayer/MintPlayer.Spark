@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CommitGraphLane, CommitGraphRow } from '../../services/browse.service';
-import { derivePage, firstParentPath, GraphRowView, lanesBelow, pieWedge } from './commit-graph-rows';
+import { branchCoverageSeries, derivePage, firstParentPath, GraphRowView, lanesBelow, pieWedge } from './commit-graph-rows';
 
 /** A wire row as the server's JoinLeft layout emits it; only the topology fields matter here. */
 function row(sha: string, parents: string[], lane: number, colour: number, up: number[], down: CommitGraphLane[]): CommitGraphRow {
@@ -119,6 +119,30 @@ describe('commit graph rows', () => {
 
     it('is empty for a row that is not loaded', () => {
       expect(firstParentPath(9, () => undefined, () => undefined).size).toBe(0);
+    });
+  });
+
+  describe('branch coverage series', () => {
+    const covered = (percent: number | null, completeness: string | null = 'Complete') =>
+      ({ linesCovered: 0, linesCoverable: 0, percent, deltaVsParent: null, completeness });
+    // m merges c into b; the branch's first-parent chain is m, b, a. c is on the merged-in side.
+    const views = derivePage([], [
+      { ...row('m', ['b', 'c'], 0, 0, [], [[0, 0], [1, 1]]), coverage: covered(80) },
+      { ...row('b', ['a'], 0, 0, [0], [[0, 0]]), coverage: covered(70) },
+      { ...row('c', ['a'], 1, 1, [1], [[0, 0]]), coverage: covered(10) },
+      { ...row('a', ['z'], 0, 0, [0], [[0, 0]]), coverage: covered(60) },
+    ], 0);
+    const index = new Map(views.map((v) => [v.row.sha, v.index]));
+
+    it('follows first parents from the tip, oldest first, past the merged-in side', () => {
+      expect(branchCoverageSeries('m', (i) => views[i], (sha) => index.get(sha))).toEqual([60, 70, 80]);
+    });
+
+    it('skips commits with no complete report and stops at a row that is not loaded', () => {
+      const partial = views.map((v) => (v.row.sha === 'b' ? { ...v, row: { ...v.row, coverage: covered(70, 'Partial') } } : v));
+      expect(branchCoverageSeries('m', (i) => partial[i], (sha) => index.get(sha))).toEqual([60, 80]);
+      expect(branchCoverageSeries('m', (i) => (i === 1 ? undefined : views[i]), (sha) => index.get(sha))).toEqual([80]);
+      expect(branchCoverageSeries('unknown', (i) => views[i], (sha) => index.get(sha))).toEqual([]);
     });
   });
 

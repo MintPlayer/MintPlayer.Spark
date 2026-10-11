@@ -172,6 +172,32 @@ export function firstParentPath(
   return path;
 }
 
+/**
+ * The coverage sparkline along a branch (D17): the percentages of the first-parent chain from the
+ * branch's tip, oldest first, within the rows loaded so far. Commits with no complete report are
+ * skipped rather than drawn as zero; the walk stops at the first parent that is not loaded.
+ */
+export function branchCoverageSeries(
+  tipSha: string,
+  rowAt: (index: number) => GraphRowView | undefined,
+  indexOf: (sha: string) => number | undefined,
+  maxPoints = 200,
+): number[] {
+  const series: number[] = [];
+  let index = indexOf(tipSha);
+  for (let step = 0; index !== undefined && step < 100_000 && series.length < maxPoints; step++) {
+    const view = rowAt(index);
+    if (!view) break;
+    const c = view.row.coverage;
+    if (c && c.percent != null && c.completeness !== 'Partial') series.push(c.percent);
+    const parent = view.row.parents[0];
+    const next = parent ? indexOf(parent) : undefined;
+    if (next === undefined || next <= index) break;
+    index = next;
+  }
+  return series.reverse();
+}
+
 /** A pie wedge from 12 o'clock, clockwise, for a coverage fraction in (0, 1). */
 export function pieWedge(cx: number, cy: number, r: number, fraction: number): string {
   const f = Math.min(Math.max(fraction, 0), 0.9999);

@@ -222,6 +222,95 @@ describe('RepoCommitGraphPanelComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/', 'github', 'r', 'acme', 'widgets', 'c', 'aaaaaaa1']);
   });
 
+  it('draws a coverage sparkline along the default branch, then along the selected one', async () => {
+    const cov = (percent: number) => ({ linesCovered: 1, linesCoverable: 2, percent, deltaVsParent: null, completeness: 'Complete' });
+    const rows = [
+      { ...row('aaaaaaa1', ['bbbbbbb2']), coverage: cov(80) },
+      { ...row('ccccccc3', ['bbbbbbb2']), coverage: cov(20) },
+      { ...row('bbbbbbb2'), coverage: cov(60) },
+    ];
+    const refs = [{ name: 'refs/heads/main', kind: 'head', sha: 'aaaaaaa1' }, { name: 'refs/heads/topic', kind: 'head', sha: 'ccccccc3' }];
+    await create(() => Promise.resolve(page({ totalRows: 3, rows, refs })));
+
+    expect(panel().sparkline()).toEqual([60, 80]);
+    expect(fixture.nativeElement.querySelector('spark-trend-sparkline')).not.toBeNull();
+    panel().selectRef('refs/heads/topic');
+    await settle(fixture);
+    expect(panel().sparkline()).toEqual([60, 20]);
+    expect(panel().sparklineOptions()['label']).toContain('topic');
+  });
+
+  it('lists the commits that dropped coverage, and a drop opens in the graph', async () => {
+    const calls: any[] = [];
+    await create((_p, _o, _n, q) => {
+      calls.push(q);
+      return Promise.resolve(page());
+    });
+    const drop = { sha: 'bbbbbbb2', branch: 'main', message: 'Remove tests', date: '2026-01-01T00:00:00Z', percent: 40, deltaVsParent: -2.5 };
+    browse.getCoverageDrops.mockImplementation(() => Promise.resolve([drop]));
+
+    panel().selectRef('refs/heads/main');
+    await settle(fixture);
+    panel().toggleDrops();
+    await settle(fixture);
+    expect(browse.getCoverageDrops).toHaveBeenLastCalledWith('github', 'acme', 'widgets', 1, 'main');
+    const button = fixture.nativeElement.querySelector('button.cg-drop') as HTMLButtonElement;
+    expect(button.getAttribute('aria-label')).toContain('coverage fell 2.5 points');
+    expect(fixture.nativeElement.querySelector('bs-datatable')).toBeNull();
+
+    // A half-typed threshold keeps the last one; a real one reloads.
+    panel().setDropThreshold('');
+    panel().setDropThreshold('5');
+    await settle(fixture);
+    expect(browse.getCoverageDrops).toHaveBeenLastCalledWith('github', 'acme', 'widgets', 5, 'main');
+
+    browse.getCoverageDrops.mockImplementation(() => Promise.resolve([]));
+    panel().setDropThreshold(50);
+    await settle(fixture);
+    expect(text()).toContain('No commit dropped coverage by more than 50 points');
+
+    browse.getCoverageDrops.mockImplementation(() => Promise.resolve([drop]));
+    panel().setDropThreshold(1);
+    await settle(fixture);
+    (fixture.nativeElement.querySelector('button.cg-drop') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(panel().dropMode()).toBe(false);
+    expect(calls.at(-1)).toEqual(expect.objectContaining({ ref: 'refs/heads/main', at: 'bbbbbbb2' }));
+  });
+
+  it('says the drop list could not be loaded', async () => {
+    await create(() => Promise.resolve(page()));
+    browse.getCoverageDrops.mockImplementation(() => Promise.reject(new Error('boom')));
+    panel().toggleDrops();
+    await settle(fixture);
+    expect(panel().dropsFailed()).toBe(true);
+    expect(text()).toContain('could not be loaded');
+  });
+
+  it('gives every row a labelled button and keeps the graph out of the accessibility tree', async () => {
+    const covered = { linesCovered: 1, linesCoverable: 2, percent: 50, deltaVsParent: -1.5, completeness: 'Complete' };
+    await create(() => Promise.resolve(page({ rows: [{ ...row('aaaaaaa1', ['bbbbbbb2']), coverage: covered }, row('bbbbbbb2')] })));
+    const views = (await panel().fetchFn()!({ page: 1, perPage: GRAPH_PAGE_SIZE, sortColumns: [] })).data as any[];
+    expect(views[0].ui.label).toBe('Open aaaaaaa: 50.0% covered, down 1.5 points; commit aaaaaaa1');
+    expect(views[1].ui.label).toBe('Open bbbbbbb: no coverage report; commit bbbbbbb2');
+
+    // A row button opens its commit without the row click firing a second time.
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const event = new MouseEvent('click');
+    const stop = vi.spyOn(event, 'stopPropagation');
+    panel().openFromButton(event, views[0]);
+    expect(stop).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledTimes(1);
+
+    for (const control of fixture.nativeElement.querySelectorAll('.cg-toolbar button, .cg-toolbar input, .cg-toolbar bs-select')) {
+      const named = control.getAttribute('aria-label') || control.textContent?.trim();
+      expect(named, control.outerHTML).toBeTruthy();
+    }
+    for (const svg of fixture.nativeElement.querySelectorAll('.cg-graph svg')) {
+      expect(svg.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
   it('encodes coverage on the node', async () => {
     await create(() => Promise.resolve(page()));
     const view = (coverage: CommitGraphRow['coverage']) =>

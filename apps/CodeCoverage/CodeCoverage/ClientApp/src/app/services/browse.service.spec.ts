@@ -140,6 +140,19 @@ describe('BrowseService', () => {
     await none;
   });
 
+  it('getCoverageDrops sends the threshold, and the branch only when set', async () => {
+    const drops = [{ sha: 'abc', branch: 'main', message: 'm', date: null, percent: 50, deltaVsParent: -2 }];
+    const onBranch = service.getCoverageDrops(provider, owner, name, 1.5, 'feat/x');
+    const req = answer('GET', `${repoBase}/coverage-drops`, drops);
+    expect(req.params.get('threshold')).toBe('1.5');
+    expect(req.params.get('branch')).toBe('feat/x');
+    expect(await onBranch).toEqual(drops);
+
+    const any = service.getCoverageDrops(provider, owner, name, 0);
+    expect(answer('GET', `${repoBase}/coverage-drops`, []).params.keys()).toEqual(['threshold']);
+    await any;
+  });
+
   it('avatarUrl encodes the opaque key', () => {
     expect(service.avatarUrl('github-ab/cd')).toBe('/api/browse/avatar/github-ab%2Fcd');
   });

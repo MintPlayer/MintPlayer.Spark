@@ -284,6 +284,18 @@ export interface CommitGraphQuery {
   author?: string;
 }
 
+/** A commit whose coverage fell against its parent (`GET …/coverage-drops`, #504 D17). */
+export interface CoverageDrop {
+  sha: string;
+  branch: string | null;
+  message: string | null;
+  date: string | null;
+  /** 0..100; null for 0/0. */
+  percent: number | null;
+  /** Percentage points against the parent; negative. */
+  deltaVsParent: number;
+}
+
 export function coveragePercent(summary?: CoverageSummary | null): number | null {
   if (!summary || summary.linesCoverable === 0) return null;
   return (summary.linesCovered / summary.linesCoverable) * 100;
@@ -366,6 +378,14 @@ export class BrowseService {
     }
     return firstValueFrom(this.http.get<CommitGraphPage>(
       `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/graph`, { params }));
+  }
+
+  /** The newest commits whose coverage fell by more than `threshold` points; `branch` is a bare branch name. */
+  getCoverageDrops(provider: string, owner: string, name: string, threshold: number, branch?: string): Promise<CoverageDrop[]> {
+    let params = new HttpParams().set('threshold', String(threshold));
+    if (branch) params = params.set('branch', branch);
+    return firstValueFrom(this.http.get<CoverageDrop[]>(
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/coverage-drops`, { params }));
   }
 
   /** The image URL for a graph row's `avatarKey` (served and cached by the server). */

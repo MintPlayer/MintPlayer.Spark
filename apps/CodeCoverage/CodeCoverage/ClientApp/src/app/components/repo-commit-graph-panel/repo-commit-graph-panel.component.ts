@@ -11,9 +11,14 @@ import {
 } from '@mintplayer/ng-bootstrap/datatable';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
-import { BrowseService, CommitGraphPage, CommitGraphQuery, CommitGraphRef, RepoInfo } from '../../services/browse.service';
+import { SparkTrendOptions, SparkTrendSparklineComponent } from '@mintplayer/ng-spark/score-renderers';
+import {
+  BrowseService, CommitGraphPage, CommitGraphQuery, CommitGraphRef, CoverageDrop, RepoInfo,
+} from '../../services/browse.service';
 import { isDarkBackground, LANE_PALETTE } from './commit-graph-palette';
-import { derivePage, firstParentPath, GraphRowView, LANE_WIDTH, PathHighlight, pieWedge, ROW_HEIGHT } from './commit-graph-rows';
+import {
+  branchCoverageSeries, derivePage, firstParentPath, GraphRowView, LANE_WIDTH, PathHighlight, pieWedge, ROW_HEIGHT,
+} from './commit-graph-rows';
 
 /** Rows per request: the endpoint's cap (PRD §4.4). */
 export const GRAPH_PAGE_SIZE = 200;
@@ -25,6 +30,8 @@ export const POLL_FIRST_MS = 2000;
 export const POLL_MAX_MS = 30000;
 const SEARCH_DEBOUNCE_MS = 300;
 const NODE_R = 5;
+/** The coverage-drop list's default threshold, percentage points. */
+export const DROP_THRESHOLD_DEFAULT = 1;
 
 type PanelState = 'loading' | 'ready' | 'empty' | 'syncing' | 'unavailable';
 
@@ -43,6 +50,8 @@ interface RowUi {
   initials: string;
   date: string;
   sha: string;
+  /** The row's open button: everything the aria-hidden SVG says, as text. */
+  label: string;
 }
 
 type PanelRow = GraphRowView & { ui: RowUi };
@@ -76,6 +85,7 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
   imports: [
     FormsModule, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsSelectComponent, BsSelectOption,
     BsFormComponent, BsFormControlDirective, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective,
+    SparkTrendSparklineComponent,
   ],
   template: `
     <bs-card class="mt-3 d-block">
@@ -101,12 +111,55 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
             <input type="search" class="form-control-sm" placeholder="Search commits" aria-label="Search commits"
                    [ngModel]="searchText()" (ngModelChange)="onSearch($event)" name="cg-search">
           </bs-form>
+          <button type="button" class="btn btn-sm cg-drops-toggle" [class.btn-secondary]="dropMode()"
+                  [class.btn-outline-secondary]="!dropMode()" [attr.aria-pressed]="dropMode()"
+                  (click)="toggleDrops()">Coverage drops</button>
+          @if (dropMode()) {
+            <bs-form class="cg-threshold">
+              <input type="number" class="form-control-sm" min="0" max="100" step="0.1" name="cg-threshold"
+                     aria-label="Minimum coverage drop, in percentage points" title="Minimum drop, percentage points"
+                     [ngModel]="dropThreshold()" (ngModelChange)="setDropThreshold($event)">
+            </bs-form>
+          }
+          @if (sparkline(); as points) {
+            <span class="cg-spark small text-muted ms-auto">
+              {{ shortRef(sparkRef() ?? '') }}
+              <spark-trend-sparkline [value]="points" [options]="sparklineOptions()" />
+            </span>
+          }
         </div>
 
         @if (notice(); as n) {
           <div class="small text-muted mb-2" role="status">{{ n }}</div>
         }
 
+        @if (dropMode()) {
+          @if (drops(); as list) {
+            @if (list.length) {
+              <ul class="cg-drops list-unstyled mb-0" aria-label="Commits that dropped coverage">
+                @for (d of list; track d.sha) {
+                  <li>
+                    <button type="button" class="cg-drop" (click)="showDrop(d)" [attr.aria-label]="dropLabel(d)">
+                      <code>{{ d.sha.substring(0, 7) }}</code>
+                      <span class="text-danger">▼{{ (-d.deltaVsParent).toFixed(1) }}</span>
+                      @if (d.percent !== null) { <span>{{ d.percent.toFixed(1) }}%</span> }
+                      <span class="cg-drop-msg">{{ d.message }}</span>
+                      <small class="text-muted">{{ d.branch }}{{ d.date ? ' · ' + formatDate(d.date) : '' }}</small>
+                    </button>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <div class="small text-muted cg-empty" role="status">
+                No commit dropped coverage by more than {{ dropThreshold() }} points.
+              </div>
+            }
+          } @else if (dropsFailed()) {
+            <div class="small text-muted" role="status">{{ unavailableText }}</div>
+          } @else {
+            <div class="small text-muted" role="status">Loading the commits that dropped coverage…</div>
+          }
+        } @else {
         @switch (state()) {
           @case ('loading') {
             <div class="small text-muted" role="status">Loading the commit graph…</div>
@@ -177,6 +230,8 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                         }
                       } @else if (v.ui.pending) {
                         <span class="text-muted">pending</span>
+                      } @else {
+                        <span class="visually-hidden">no report</span>
                       }
                     </td>
                     <td class="cg-author">
@@ -189,7 +244,11 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                       {{ v.row.authorName }}
                     </td>
                     <td class="cg-date" [title]="v.row.date">{{ v.ui.date }}</td>
-                    <td class="cg-sha"><code>{{ v.ui.sha }}</code></td>
+                    <td class="cg-sha">
+                      <button type="button" class="cg-open" [attr.aria-label]="v.ui.label" (click)="openFromButton($event, v)">
+                        <code>{{ v.ui.sha }}</code>
+                      </button>
+                    </td>
                   } @else {
                     <td class="cg-graph" [style.width.px]="graphWidth()"></td>
                     <td class="text-muted">…</td><td></td><td></td><td></td><td></td>
@@ -199,12 +258,30 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
             </div>
           }
         }
+        }
       </bs-card-body>
     </bs-card>
   `,
   styles: [`
-    :host { display: block; --mp-datatable-virtual-max-height: 560px; }
+    /* min-width 0: a flex or grid parent must not grow to the table's natural width (no page scroll on phones). */
+    :host { display: block; min-width: 0; max-width: 100%; --mp-datatable-virtual-max-height: 560px; }
+    .cg-toolbar > * { min-width: 0; max-width: 100%; }
     .cg-toolbar .cg-search { flex: 1 1 12rem; max-width: 20rem; }
+    .cg-toolbar .cg-threshold { width: 5.5rem; }
+    .cg-spark { display: inline-flex; align-items: center; gap: .4rem; }
+    .cg-table { max-width: 100%; }
+    .cg-open { border: 0; padding: 0; background: none; color: inherit; line-height: 20px; }
+    .cg-open:focus-visible, .cg-drop:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 1px; }
+    .cg-drops li + li { border-top: 1px solid var(--bs-border-color-translucent); }
+    .cg-drop { display: flex; gap: .5rem; align-items: baseline; width: 100%; min-width: 0; text-align: start; border: 0;
+      background: none; color: inherit; padding: .35rem .25rem; }
+    .cg-drop:hover { background: var(--bs-tertiary-bg); }
+    .cg-drop-msg { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 575.98px) {
+      .cg-toolbar .cg-search { max-width: none; }
+      :host .cg-table td.cg-subject { max-width: 12rem; }
+      .cg-drop small { display: none; }
+    }
     .cg-table:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
     /* Exactly ROW_HEIGHT, no row border: the virtual scroll's itemSize and the SVG lines both depend on it. */
     .cg-table td { height: ${ROW_HEIGHT}px; max-height: ${ROW_HEIGHT}px; padding: 0 .5rem; box-sizing: border-box; vertical-align: middle; border: 0;
@@ -287,6 +364,32 @@ export class RepoCommitGraphPanelComponent {
   /** The rows on show are a search's hit list (flat, no lanes), not the graph. */
   readonly listMode = signal(false);
   readonly reasonText = computed(() => UNAVAILABLE_REASONS[this.reason() ?? ''] ?? UNAVAILABLE_REASONS['error']);
+  protected readonly unavailableText = UNAVAILABLE_REASONS['error'];
+
+  /** The coverage-drop list (D17) replaces the graph while on; the graph's walk stays as it was. */
+  readonly dropMode = signal(false);
+  readonly dropThreshold = signal(DROP_THRESHOLD_DEFAULT);
+  /** Null while loading. */
+  readonly drops = signal<CoverageDrop[] | null>(null);
+  readonly dropsFailed = signal(false);
+  private dropGeneration = 0;
+
+  /** The branch the sparkline follows: the selected one, else the default branch. */
+  readonly sparkRef = computed(() => this.selectedRef() || this.defaultRef());
+  /** Coverage along `sparkRef`'s first parents, over the rows loaded so far (D17); null below two points. */
+  readonly sparkline = computed<number[] | null>(() => {
+    this.cacheVersion();
+    const ref = this.sparkRef();
+    if (!ref || this.listMode() || this.state() !== 'ready') return null;
+    const tip = this.refs().find((r) => r.name === ref)?.sha;
+    if (!tip) return null;
+    const points = branchCoverageSeries(tip, (i) => this.cache.get(i), (sha) => this.shaIndex.get(sha));
+    return points.length >= 2 ? points : null;
+  });
+  readonly sparklineOptions = computed<Record<string, any>>(() => ({
+    display: 'sparkline', yMin: 0, yMax: 100, width: '96px', height: '20px', minPoints: 2,
+    label: `Coverage along ${this.shortRef(this.sparkRef() ?? '')}, oldest to newest`,
+  } satisfies SparkTrendOptions));
 
   /** The first-parent path of the hovered row, else of the keyboard cursor. */
   readonly highlight = computed<PathHighlight>(() => {
@@ -328,6 +431,15 @@ export class RepoCommitGraphPanelComponent {
         this.pendingAt = null;
         void this.start(at);
       });
+    });
+
+    // The drop list follows the repository, the threshold and the selected branch while it is on.
+    effect(() => {
+      if (!this.dropMode()) return;
+      const repo = { provider: this.provider(), owner: this.owner(), name: this.name() };
+      const threshold = this.dropThreshold();
+      const ref = this.selectedRef();
+      untracked(() => void this.loadDrops(repo.provider, repo.owner, repo.name, threshold, ref));
     });
 
     afterNextRender(() => {
@@ -555,17 +667,16 @@ export class RepoCommitGraphPanelComponent {
     if (event.row) this.open(event.row);
   }
 
+  /** The row's own button: the same as a row click, without the datatable's row click firing too. */
+  openFromButton(event: Event, view: GraphRowView): void {
+    event.stopPropagation();
+    this.open(view);
+  }
+
   /** A graph row opens its commit; a search hit first shows the commit in the graph (D17). */
   open(view: GraphRowView): void {
     if (this.listMode()) {
-      // Clearing the search restarts the walk through the effect, which picks up `pendingAt`.
-      this.pendingAt = view.row.sha;
-      this.searchText.set('');
-      if (this.appliedSearch()) this.appliedSearch.set('');
-      else {
-        this.pendingAt = null;
-        void this.start(view.row.sha);
-      }
+      this.showInGraph(view.row.sha);
       return;
     }
     // The commit page exists only for commits the server has a record of; a null overlay means it has none, and the
@@ -578,6 +689,56 @@ export class RepoCommitGraphPanelComponent {
     void this.router.navigate(['/', this.provider(), 'r', this.owner(), this.name(), 'c', view.row.sha]);
   }
 
+  /** Opens the graph at `sha`, leaving a search list or the drop list. */
+  private showInGraph(sha: string): void {
+    this.dropMode.set(false);
+    // Clearing the search restarts the walk through the effect, which picks up `pendingAt`.
+    this.pendingAt = sha;
+    this.searchText.set('');
+    if (this.appliedSearch()) this.appliedSearch.set('');
+    else {
+      this.pendingAt = null;
+      void this.start(sha);
+    }
+  }
+
+  toggleDrops(): void {
+    this.notice.set(null);
+    this.dropMode.update((v) => !v);
+  }
+
+  setDropThreshold(value: number | string | null): void {
+    const n = Number(value);
+    // An empty or half-typed field keeps the last threshold rather than listing every drop.
+    if (value === null || value === '' || !Number.isFinite(n)) return;
+    this.dropThreshold.set(Math.min(100, Math.max(0, n)));
+  }
+
+  /** A drop opens in the graph (`at=`), as a search hit does. */
+  showDrop(drop: CoverageDrop): void {
+    this.notice.set(null);
+    this.showInGraph(drop.sha);
+  }
+
+  dropLabel(d: CoverageDrop): string {
+    const percent = d.percent !== null ? `, now ${d.percent.toFixed(1)}%` : '';
+    return `Show ${d.sha.substring(0, 7)} in the graph: ${d.message ?? 'no message'}; coverage fell ${(-d.deltaVsParent).toFixed(1)} points${percent}`;
+  }
+
+  private async loadDrops(provider: string, owner: string, name: string, threshold: number, ref: string): Promise<void> {
+    const gen = ++this.dropGeneration;
+    this.drops.set(null);
+    this.dropsFailed.set(false);
+    // Commit.Branch is a bare branch name; a tag selection lists the whole repository.
+    const branch = ref.startsWith('refs/heads/') ? ref.substring('refs/heads/'.length) : undefined;
+    try {
+      const list = await this.browse.getCoverageDrops(provider, owner, name, threshold, branch);
+      if (gen === this.dropGeneration) this.drops.set(list);
+    } catch {
+      if (gen === this.dropGeneration) this.dropsFailed.set(true);
+    }
+  }
+
   onKeydown(event: KeyboardEvent): void {
     const total = this.totalRows();
     if (!total) return;
@@ -588,7 +749,8 @@ export class RepoCommitGraphPanelComponent {
       this.cursor.set(next);
       this.hover.set(null);
       this.scrollIntoView(next);
-    } else if (event.key === 'Enter' && current !== null) {
+    } else if (event.key === 'Enter' && current !== null && !(event.target as Element | null)?.closest?.('button')) {
+      // A focused row button handles its own Enter.
       const view = this.cache.get(current);
       if (view) {
         event.preventDefault();
@@ -686,6 +848,7 @@ export class RepoCommitGraphPanelComponent {
       initials: this.initials(v.row.authorName),
       date: this.formatDate(v.row.date),
       sha: v.row.sha.substring(0, 7),
+      label: `${this.listMode() ? 'Show in the graph' : 'Open'} ${this.nodeTitle(v)}${delta === null ? '' : `, ${delta > 0 ? 'up' : 'down'} ${Math.abs(delta).toFixed(1)} points`}; ${v.row.subject}`,
     };
   }
 
