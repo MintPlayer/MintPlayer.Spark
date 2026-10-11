@@ -1,0 +1,398 @@
+# PRD — a SourceTree-style commit graph on the repository page, with coverage on every node
+
+**Status:** Proposed — spikes S1–S9 not yet run ·
+**Date:** 2026-10-11 · **Issue:** [#504](https://github.com/MintPlayer/MintPlayer.Spark/issues/504) ·
+**Plan:** [coverage_commit_graph_plan.md](coverage_commit_graph_plan.md)
+**App:** `apps/CodeCoverage` (production, coverage.mintplayer.com)
+**Origin:** Three-agent investigation, 2026-10-11:
+- the CodeCoverage codebase
+- how a server obtains a commit DAG from GitHub, GitLab and Bitbucket
+- how graph tools lay out and render lanes
+
+Claims about this repository carry a `file:line` pointer (paths relative to `apps/CodeCoverage/`
+unless stated). **[verified]** means read in the source; **[cited]** means taken from the linked
+external page; **[inferred]** means reasoned, not measured. Every inferred number that a decision
+rests on has a spike in §7.
+
+> Written before the work. Where the build disagrees with it, the plan's milestone notes say so.
+
+---
+
+## 1. The question
+
+The issue says, in full: *"Add a web-based git-tree visualizer, just like SourceTree."* The owner added
+one constraint: **the graph lives on the repository page**,
+`/po/repository/Repositories%2Fgithub%2F{id}`, not on a page of its own.
+
+The thing the page must be able to show, for any repository the viewer is allowed to see:
+
+> *Every branch and tag of this repository as a vertical commit list with coloured lanes, merge and
+> branch curves and ref pills, as SourceTree draws it. On every node: whether CI uploaded coverage
+> for that commit, what the coverage was, and how much it moved against its parent.*
+
+The second sentence is the reason to build this here rather than tell users to install a git client.
+SourceTree, GitKraken, GitLens and VS Code Git Graph draw the graph, but none of them knows coverage.
+A graph whose nodes are coloured by coverage, with the drop-causing commit visible at a glance, is
+something only this app can offer.
+
+### 1.1 Premises the investigation corrected
+
+**"We already have the commits, we just need to draw them" — we do not.** CodeCoverage stores only
+commits that received an upload or a webhook:
+
+- The `push` handler keeps the head commit and discards the intermediate ones
+  (`CodeCoverage.GithubIntegration/Recipients/GitHubEventsRecipient.cs:301-327`) **[verified]**.
+- There is no Branch entity: branches exist only as `Commit.Branch` strings
+  (`CodeCoverage/Controllers/BrowseController.cs:266-285`) **[verified]**.
+- Tags are ignored entirely.
+- Parents are a single `Commit.ParentSha` with three writers and two meanings
+  (`CodeCoverage.Library/Entities/Commit.cs:78-93`) **[verified]**:
+  - the PR webhook writes the **PR base tip**, which is not a git parent
+    (`CodeCoverage/Recipients/ForgeEventsRecipient.cs:82`)
+  - the upload writes its claim (`CodeCoverage/Ingestion/UploadIngestor.cs:114-120`)
+  - assembly writes the GitHub API's `parents[0]` (`CodeCoverage/Ingestion/CommitAssembler.cs:411-417`)
+- **Second parents are never stored**, so no merge can be drawn.
+
+`docs/coverage_carryforward_PRD.md:126` already said it: *"Git graph knowledge: none beyond
+`Commit.ParentSha`."* The graph therefore needs a **new source of topology**. That is most of this
+PRD; the drawing is the smaller half.
+
+**"Ask the forge API for the history" — too expensive, and different on every forge.**
+- GitHub lists commits at most 100 per call, so a 100k-commit history is about 1,000 calls **[inferred]**
+  ([REST commits](https://docs.github.com/en/rest/commits/commits#list-commits) **[cited]**).
+- The budget is 5,000–12,500 per hour per installation
+  ([rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) **[cited]**),
+  shared with every check-run and compare call the app already makes.
+- Public repositories without an installation fall back to anonymous calls
+  (`GitHubDiffService.cs:51-52,80-90`) **[verified]**, which allow 60 per hour **[inferred]**.
+- Bitbucket Cloud allows 1,000 commit-listing calls per hour but 60,000 git operations per hour
+  ([Bitbucket limits](https://support.atlassian.com/bitbucket-cloud/docs/api-request-limits/) **[cited]**).
+- Each forge would need its own adapter, and the GitLab and Bitbucket integrations are still empty
+  stubs (`CodeCoverage.GitlabIntegration/Extensions/SparkBuilderExtensions.cs:5-16`) **[verified]**.
+
+**"Push webhooks can maintain the DAG" — they cannot.**
+- `commits[]` is capped at 2,048.
+- No event fires when more than three tags are pushed at once
+  ([push payload](https://docs.github.com/en/webhooks/webhook-events-and-payloads#push) **[cited]**).
+- Bitbucket caps push payloads at 5 commits
+  ([event payloads](https://support.atlassian.com/bitbucket-cloud/docs/event-payloads/) **[cited]**).
+- Payload commits are believed to omit parent SHAs **[inferred]**.
+
+A webhook is good as a **"fetch now" trigger**, not as a source.
+
+**"Reuse a graph library" — none is usable.**
+- VS Code Git Graph's licence is MIT *modified to forbid derivative works*
+  ([LICENSE](https://raw.githubusercontent.com/mhutchie/vscode-git-graph/develop/LICENSE) **[cited]**).
+- GitLens's renderer, `@gitkraken/gitkraken-components`, is proprietary **[cited]**.
+- gitgraph.js was archived on 2024-07-13 and is scripted rather than data-driven **[cited]**.
+- The maintained MIT ones (`commit-graph`, `react-git-log`) require React **[cited]**.
+- d3-dag lays out general DAGs, not one commit per row **[cited]**.
+- `cytoscape` + `dagre`, already in the repo for the dependency graph
+  (`account-dependency-graph-panel.component.ts:16-25`) **[verified]**, is the wrong layout model for
+  the same reason.
+
+We write the lane layout ourselves, from Pierre Vigier's published description of the
+straight-branch algorithm ([article](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) **[cited]**).
+
+---
+
+## 2. Goals and non-goals
+
+**Goals**
+
+- **G1.** A commit graph panel on the repository page, in the Repository branch of
+  `po-detail-page.component.ts:44-48` next to the badge, trend and setup panels **[verified]**.
+- **G2.** Complete topology: all branches and tags, true parent lists including merges, correct after
+  force-pushes and branch deletions.
+- **G3.** Coverage overlay per node:
+  - present / absent / partial
+  - coverage %
+  - `CoverageDeltaVsParent`
+  - PR number
+  - "latest coverage" marker
+
+  All of these exist on `Commit` today (`Commit.cs:26-150`) **[verified]**.
+- **G4.** Scales to 100k-commit repositories: paged, virtual-scrolled, no full-history payload.
+- **G5.** Same pipeline for GitHub, GitLab and Bitbucket, so the stubs gain the graph the day they
+  gain credentials.
+- **G6.** **Zero new visibility surface.** A private repository the viewer may not see is
+  indistinguishable from a missing one, exactly as `/api/browse` does today (§5).
+
+**Non-goals**
+
+- File trees, diffs or blame. The treeless clone (§4.1) deliberately has no trees: a path-scoped walk
+  would lazily download a tree per commit **[cited]**
+  ([partial clone](https://github.blog/open-source/git/get-up-to-speed-with-partial-clone-and-shallow-clone/)).
+  The existing commit page keeps serving files from coverage reports.
+- Any write to the repository: no branch creation and no checkout.
+- Fork branches and `refs/pull/*`. Fork-contributed commits are already excluded from repository-level
+  listings (`BrowseController.cs:139-141,274-276`) **[verified]**. The mirror fetches only
+  `refs/heads/*` and `refs/tags/*`, so fork-only commits never enter it.
+
+---
+
+## 3. Options considered
+
+| | A. Forge REST/GraphQL → Raven docs | B. Webhooks only | **C. Treeless bare mirror + git CLI** |
+|---|---|---|---|
+| Backfill of 100k commits | about 1,000 calls per forge **[inferred]** | impossible | 1 fetch, about 20–50 MB **[inferred → S2]** |
+| Incremental update | compare per pushed ref | lossy (cap, tag storms) | `git fetch --prune` per push |
+| Merges and second parents | yes | no **[inferred]** | yes |
+| Multi-forge | three adapters | three payload shapes | **identical**; only the credential differs |
+| API budget used | high, shared with check-runs | none | negligible |
+| Public repo without installation | 60 calls/h anonymous | n/a | anonymous HTTPS clone, no API |
+| New infrastructure | none | none | `git` in the image, a data volume |
+| Storage | a document per commit (×100k per repository) | Raven | git objects on disk, plus one small state document |
+
+**Decision: C.** It is the only option that is complete, cheap and forge-agnostic. Its cost is
+production infrastructure:
+- the runtime image `mcr.microsoft.com/dotnet/aspnet:11.0` has no `git` (`CodeCoverage/Dockerfile:1-11,75-79`) **[verified]**
+- the only volume is the data-protection key ring (`Dockerfile:6`) **[verified]**
+
+That cost is paid once, and spikes S1–S4 and S7 measure it before any code lands.
+
+**Rejected: a document per commit in RavenDB.** The app already holds about 224k documents
+(`Commit.cs:166-167`) **[verified]**. A second per-commit collection for topology would double that
+for a structure that git, with a commit-graph file, already stores compactly and walks quickly
+([git-commit-graph](https://git-scm.com/docs/git-commit-graph) **[cited]**).
+
+**Rejected: LibGit2Sharp.** libgit2 has no partial-clone support; the issue has been open since 2020
+([libgit2#5564](https://github.com/libgit2/libgit2/issues/5564) **[cited]**). We shell out to the `git` CLI.
+
+---
+
+## 4. Design
+
+### 4.1 The mirror
+
+- **One bare, treeless clone per repository** under a data volume, e.g.
+  `/data/git/{provider}/{repoId}.git`, keyed by the stable repository id rather than the full name
+  (renames are tracked in `PreviousFullNames`, `Repository.cs`).
+- **Initial clone:** `git clone --bare --filter=tree:0` with refspecs limited to
+  `+refs/heads/*:refs/heads/*` and `+refs/tags/*:refs/tags/*`.
+- **Repository config:**
+  - `fetch.writeCommitGraph=true`, so every fetch keeps the commit-graph current
+  - `submodule.recurse=false`
+  - `protocol.file.allow=never`
+- **Process environment:** `GIT_TERMINAL_PROMPT=0`.
+- **Credentials come through the environment, never the command line or `.git/config`.** Use
+  `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` to set an `http.extraHeader` per
+  process.
+  - The project rule forbids printing process command lines because they can carry secrets.
+  - A token in an argument would also show up in any process listing.
+- **New forge capability `GetGitAccessAsync(repository)`** on `IForgeIntegration`
+  (`CodeCoverage.Library/Forge/IForgeIntegration.cs:38-210`) **[verified]**:
+  - returns `(username, token)` or "anonymous" for public repositories
+  - GitHub: `x-access-token` + the installation token from `GitHubInstallationService`
+    (`libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/Services/GitHubInstallationService.cs:43-53`) **[verified]**
+  - GitLab (`oauth2`) and Bitbucket (`x-token-auth`) stubs declare the capability unsupported until
+    they have credentials
+- **Quotas:** a repository above a size or ref-count limit (S7) is refused. It gets a recorded state,
+  not a partial graph.
+- **One process per repository at a time:** a per-repository file lock makes a second fetch wait or
+  skip, because a Spark Messaging claim can expire (TTL 5 min, `docker-compose.yml:184-191`)
+  **[verified]** before a large initial clone finishes (S8).
+
+### 4.2 Keeping it fresh, and deleting it
+
+| Trigger | Action |
+|---|---|
+| `push` webhook (`GitHubEventsRecipient.cs:301-327`) | `BroadcastOnceAsync` with dedupe key `graph-fetch:{repoId}` → `FetchCommitGraphRecipient`, modelled on `RequestManifestScanAsync` → `ScanRepositoryManifestsRecipient` (`:341-353`) **[verified]** |
+| Repository added to an installation | Same message, which performs the initial clone |
+| Panel opened while the mirror is missing or older than N minutes | Same message; the panel shows "syncing" |
+| Cron safety net (hourly) | Fetches mirrors of listed repositories whose last fetch is older than the newest push it knows of; covers dropped tag events |
+| Repository disconnected, uninstalled, `DeleteData`, or made private with no access left | **Delete the mirror directory** — non-negotiable, see §5 |
+
+State lives in one small document per repository, `RepositoryGraphStates/{provider}/{repoId}`. It
+holds the last fetch time, outcome, size on disk, refs hash, and a failure reason when there is one.
+It is additive and never re-keys an existing document.
+
+### 4.3 From the mirror to rows
+
+**This is how SourceTree works (owner, 2026-10-11).** SourceTree does not load or render all commits.
+It pages, through virtual scrolling, over every commit sorted by date, newest first. Each commit is
+drawn in its lane, with the branch lines between rows. The design copies that model:
+
+- **Row order is date order: `git log --date-order`.** Commits come newest first by commit
+  timestamp, with one guarantee: no parent is shown before all of its children. A raw timestamp sort
+  breaks that under clock skew, rebases or imported history. The streaming layout depends on it,
+  because a commit's lane is decided by the children above it.
+  - The order is still essentially "sorted by datetime".
+  - `--topo-order` is rejected. It groups each branch's commits together and moves away from the
+    date order that SourceTree users expect.
+- **Read the DAG** with one commit-only walk:
+  `git log --branches --tags --date-order -z --format=%H%x00%P%x00%an%x00%aI%x00%s`, plus
+  `git for-each-ref` for the ref pills.
+  - Commit-only walks on a treeless clone trigger no lazy fetch **[cited]**; S3 measures it.
+  - `git log` streams its output, so the first rows arrive without walking the whole history.
+- **Lane layout runs on the server, in C#**, as one streaming top-down pass of the straight-branch
+  algorithm.
+  - The lanes of row *i* depend only on rows 0..*i*. So does every branch line passing through row
+    *i*: a line is a lane that expects a not-yet-shown parent.
+  - Layout therefore needs to go only **as far as the viewer has scrolled**. It never has to go to
+    the end of history.
+- **A snapshot is built lazily**, keyed by `(repoId, refsHash, filter)`. It holds:
+  - the rows laid out so far: sha, parents, lane, colour, refs, and the pass-through lanes
+  - a lane-state checkpoint every 500 rows
+  - the open `git log` reader position, or enough to restart from the last checkpoint
+
+  How a request is served:
+  - A request for rows past the laid-out frontier extends the snapshot. It never redoes the rows
+    above.
+  - The first view of a 100k-commit repository costs about the first page, not the whole history.
+  - When the refs hash changes, a new snapshot starts from the top.
+  - **"Jump to SHA"** (`at=`) for a commit far down extends the snapshot up to that commit. That
+    cost is linear and bounded by S5.
+  - Snapshots live in a bounded in-memory cache.
+
+  > **Why the server, not the client.** The rendering research recommended client-side layout, so
+  > that branch filters relayout without a round trip. The acquisition research recommended
+  > server-side. Server-side wins on three counts:
+  > - the panel can open **at any row**: deep-linking from a commit page, or "jump to SHA", without
+  >   first downloading every row above it
+  > - each page is a stateless range read
+  > - the algorithm has one implementation, tested by xUnit golden files
+  >
+  > A branch filter costs one more snapshot, i.e. one more `git log <ref>`, which S3 bounds.
+  > If S5 shows server layout is too slow or too memory-hungry, the fallback is client-side layout
+  > over the same topo-ordered feed, carrying lane state across pages.
+
+### 4.4 The endpoint
+
+`GET /api/browse/repos/{provider}/{owner}/{name}/graph?from={row}&count={n}&ref={optional}&at={sha}`
+in `BrowseController`. It carries the same attributes as its neighbours:
+`[SparkAuthorize("Browse","Coverage")]` and `[EnableRateLimiting("browse")]` (`BrowseController.cs:15-28`) **[verified]**.
+
+- **No new security resource.** A graph read is a browse read, and anonymous users already hold
+  `Browse/Coverage` (`App_Data/securityPosture.txt`) **[verified]**.
+- **Response:**
+  - `snapshotId`, `totalRows`, `laneCount`, `refs[]`
+  - `rows[]`: sha, short message, author, date, lane, parent edges, refs, coverage overlay
+  - a `state` (ready / syncing / unavailable + reason)
+- **`count` cap:** 200, matching `GetCommits` **[verified]**.
+- **Coverage overlay with no query at all:** commit ids are deterministic,
+  `Commits/{provider}/{repoId}/{sha}` (`Commit.cs:172-176`) **[verified]**. The overlay is one
+  `LoadAsync` over the page's ids, so no RQL is built and nothing is spliced (S6).
+
+### 4.5 The panel
+
+`app-repo-commit-graph-panel`, mounted in the Repository branch of `po-detail-page.component.ts:44-48`,
+loads through `services/browse.service.ts` like the trend panel does.
+
+**Layout**
+- Fixed row height.
+- ng-bootstrap's virtual datatable.
+- **One small inline SVG per row**, holding:
+  - the lane segments through the row
+  - the half-row Bézier edges into and out of the node
+  - the node itself
+
+  DOM size stays proportional to visible rows × lanes. One SVG for the whole graph would defeat
+  virtualisation; canvas would lose hover and accessibility. Vigier measured drawing everything at
+  106 ms against 0.58 ms for visible-only **[cited]**.
+- Columns: graph · message with ref pills · coverage % and Δ · author · date · short SHA.
+- **The node encodes coverage:**
+  - fill on a sequential scale
+  - ring for "no report"
+  - hollow grey for "pending or partial"
+  - readable without hue
+- A row click navigates to the existing commit route `/:provider/r/:owner/:repo/c/:sha`
+  (`app.routes.ts:17-74`) **[verified]**.
+
+**MVP features**
+- All refs, or one branch with its ancestry.
+- Ref pills; the default branch and `LatestCoverageSha` are marked.
+- Merge nodes are styled distinctly.
+- Load-more via virtual scroll.
+- Keyboard up/down/Enter.
+- Light and dark lane palettes, read from `--bs-*` variables and restyled through a `MutationObserver`,
+  as the dependency graph panel does (`account-dependency-graph-panel.component.ts:30-44,289-293`) **[verified]**.
+- Empty, syncing and unavailable states.
+
+**Later (not this PR unless the owner says so; see plan Q3)**
+- Hover-highlighting a branch path.
+- Search by message, SHA or author.
+- First-parent-only view.
+- Coverage sparkline along a branch.
+- "Commits that dropped coverage by more than X" filter.
+- Avatars.
+
+---
+
+## 5. Security and privacy
+
+A mirror is a **copy of private source history on our disk**, which is a new kind of data for this app.
+Today the app holds coverage numbers and file paths; with the mirror it holds every commit message
+and author of every connected private repository. Rules:
+
+1. **Reads go through the visibility gate, first.** `GetAllowedOwnerKeysAsync()` runs
+   unconditionally before resolving. Then `ResolveAsync(..., RepositoryVisibility.IsVisible)`. On null,
+   `SparkDenial.Refuse`: 401 for anonymous, 404 for signed-in, one constant body
+   (`BrowseController.cs:607-638`; `Services/RepositoryVisibility.cs`) **[verified]**.
+   - A snapshot is looked up only **after** this gate.
+   - The "syncing" state is not an existence oracle, because it is also only reachable after the gate.
+   - See memory `project_coverage_private_repo_existence_oracle.md` (#453).
+2. **The mirror dies with the access.** Delete the directory on:
+   - disconnect
+   - uninstall (`installation` / `installation_repositories` removed)
+   - the `DeleteData` action
+   - `ReconcileForgeState` (03:20) finding no access
+
+   A test asserts the directory is gone in each case.
+3. **No token at rest, none in arguments, none in logs.** Credentials are per-process environment
+   only (§4.1). Git's stderr is captured and scrubbed of the configured header before it is logged.
+   A test asserts the token is absent from `.git/config` and from captured output; it does not print
+   the value.
+4. **Hostile repositories:**
+   - bare, never checked out
+   - no submodule recursion, `protocol.file.allow=never`
+   - size and ref-count quotas
+   - `git` kept patched through the base image
+
+   Past clone CVEs such as CVE-2024-32002 went through checkout or submodules, which a bare fetch
+   avoids **[inferred]**; S7 tests it.
+5. **Fork isolation:** only `refs/heads/*` and `refs/tags/*` are fetched, so `refs/pull/*` and
+   fork-only branch names never enter the mirror.
+
+---
+
+## 6. What this does not fix, and what it might
+
+`Commit.ParentSha` is written by the PR webhook as the **PR base tip** (`ForgeEventsRecipient.cs:82`)
+**[verified]**. `CoverageDeltaVsParent` is computed against it. Once the mirror exists, the server
+knows the true first parent of every commit. Whether the current behaviour is a defect (the delta of a
+PR head commit measured against the base tip instead of its parent) or intended (the delta against
+the PR base) is **an owner decision** (plan Q2). If it is a defect, its fix belongs in this same PR,
+per the one-PR rule.
+
+---
+
+## 7. Spikes
+
+Each spike has one question, a method, and a falsifiable success criterion. Results are recorded in
+the plan before the milestone that depends on them starts.
+
+| # | Question | Method | Pass |
+|---|---|---|---|
+| **S1** | Does git-over-HTTPS work with an installation token, without leaking it? Does the production App have `contents: read`? | Treeless bare clone of a private test repository with the token in `GIT_CONFIG_*`; read the App's permissions through the API | Clone succeeds. The token occurs **0** times in `.git/config`, in captured stdout/stderr and in argv (checked by a test, never printed). `contents: read` is granted, or the owner approves the permission change. Anonymous clone of a public repository also succeeds. |
+| **S2** | Disk and time of a treeless clone on the VPS | Clone this repository, `dotnet/aspnetcore` and a ~100k-commit repository with `--filter=tree:0`, then write a commit-graph | 100k-commit repository: **≤ 60 MB** on disk and cloned in **< 60 s** on the VPS. Results recorded per repository. |
+| **S3** | Do commit-only walks avoid lazy fetches, and how fast are they? | `GIT_TRACE_PACKET=1 git log --branches --tags --date-order --format=…` on S2's clones, with and without a commit-graph | **0** fetch-pack requests during the walk. 100k rows in **< 2 s** with a commit-graph. The **first 200 rows in < 200 ms** (streaming). A single-branch walk also < 2 s. |
+| **S4** | Is the incremental fetch correct and cheap? | Against a scratch repository: push 1 commit, push 50, force-push a branch, delete a branch, push 5 tags at once; `git fetch --prune` after each | Each fetch **< 3 s**. The DAG and refs are correct in all five cases: the force-pushed branch loses its old tip, the deleted branch disappears, all 5 tags appear. |
+| **S5** | Is server-side lane layout fast, compact, stable and incremental? | C# straight-branch layout over S2's 100k DAG and a synthetic merge-heavy DAG, in `--date-order`; extend page by page versus one full pass | Full layout **< 1 s** using **< 200 MB**. The first page laid out **< 50 ms** after its rows arrive. Paged extension produces lanes **identical** to one full pass for 100% of rows. Lane count **≤** `git log --graph`'s width on the same input. Golden-file output deterministic across runs. If it fails, switch to the client-side fallback (§4.3). |
+| **S6** | Is the page read plus coverage overlay fast? | Endpoint over a 100k-row snapshot: 200-row pages at the top, middle and end; overlay via `LoadAsync` of 200 commit ids | **< 100 ms** server time per page (p95 over 50 reads), with 0 RQL queries in the overlay. |
+| **S7** | Is a hostile repository harmless? | Fetch a scratch repository with a submodule, a `.gitmodules` `file://` URL and 60k refs; one above the size quota | No submodule fetch and no local file access. Quota rejection is recorded in `RepositoryGraphState` with a reason. The process is killed at the timeout with no orphan left. |
+| **S8** | Does a long initial clone survive the messaging claim TTL (5 min)? | Initial clone throttled to exceed 5 min, with a second `FetchCommitGraph` broadcast mid-way | Exactly **one** git process per repository at any time (the file lock holds). The clone completes once. No duplicate or corrupt mirror. |
+| **S9** | Does per-row SVG in the virtual datatable scroll well, in both themes? | Panel prototype over 10k and 100k rows; scripted fast scroll with a performance trace; contrast check of an 8-colour lane palette on light and dark backgrounds | p95 frame **< 16.7 ms**. First rows painted **< 200 ms** after data arrives. **< 2,000** live DOM nodes. Every lane colour **≥ 3:1** against both backgrounds. |
+
+---
+
+## 8. Risks
+
+| Risk | Mitigation |
+|---|---|
+| The VPS disk fills with mirrors | Quotas (S7), a size column in `RepositoryGraphState`, deletion on disconnect (§5.2) |
+| The image grows and gains a CVE surface (`git`) | Install only `git` with `--no-install-recommends` in the runtime stage; rebuilt on base-image updates through the existing grouped Dependabot (#419) |
+| The installation token lacks `contents: read` in production | S1 checks first; a permission change needs the owner to approve it on each installation |
+| Messaging claim expiry causes a double clone | Per-repository file lock (S8) |
+| The production deploy needs a new volume | Add the volume to `docker-compose.yml` and `docs/code-coverage/hosting.md`; plan M8 is the deploy step |
+| A large repository makes the first view slow | The panel renders "syncing" from `RepositoryGraphState`; the mirror is never fetched on the request thread |
