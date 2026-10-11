@@ -42,7 +42,7 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
         IServiceProvider serviceProvider,
         IOptions<SparkMessagingOptions> options,
         ILoggerFactory loggerFactory)
-        : base(loggerFactory, store)
+        : base(store, loggerFactory)
     {
         _queueName = queueName;
         _serviceProvider = serviceProvider;

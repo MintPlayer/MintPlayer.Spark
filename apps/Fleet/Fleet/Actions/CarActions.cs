@@ -18,12 +18,14 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>,
     IBeforeSave<Car>, IAfterSave<Car>, IBeforeDelete<Car>, IAfterDelete<Car>
 {
     [Inject] private readonly IManager manager;
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    // Not named httpContextAccessor: the base declares an optional one of that name, and MintPlayer.SourceGenerators
+    // 12.2.0 then emits the parameter twice (CS0100).
+    [Inject] private readonly IHttpContextAccessor contextAccessor;
     [Inject] private readonly IAsyncDocumentSession session;
 
     private const string AdminRole = "Administrators";
 
-    private ClaimsPrincipal? CurrentUser => httpContextAccessor.HttpContext?.User;
+    private ClaimsPrincipal? CurrentUser => contextAccessor.HttpContext?.User;
     private string? CurrentUserId => CurrentUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
     private bool CurrentUserIsAdmin => CurrentUser?.IsInRole(AdminRole) == true;
 

@@ -70,7 +70,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         IDocumentStore store,
         IOptions<SparkMessagingOptions> options,
         ILoggerFactory loggerFactory)
-        : base(loggerFactory, store)
+        : base(store, loggerFactory)
     {
         this.router = router;
         this.admission = admission;

@@ -2512,3 +2512,27 @@ Kept: the rest is already latest (Microsoft.* on 11.0 rc.1; `RavenDB.Client`/`Te
 only 7.2.7-rc is newer; `Newtonsoft.Json` 13.0.4 stays stable over 14.0.1-beta2). Build 0 errors, no new warnings in
 the changed projects; SourceGenerators.Tests 631/631, Spark.Tests (SubscriptionWorker, Messaging, Settings, Endpoints)
 626/626, SeoTester.Tests Checks 40/40.
+
+**12.2.0 adopted (2026-10-11; supersedes "not adopted yet" above).** Upstream republished Endpoints against Tools 12.2.0
+(MintPlayer.AspNetCore.Tools #42, PR #43, `MintPlayer.AspNetCore.Endpoints`/`.Abstractions`/`.Generator` 11.4.1-rc.0;
+that batch bumped no other package we use: SpaServices and SpaServices.Xsrf stay 11.0.0-rc.3). Moved:
+`MintPlayer.SourceGenerators`, `.Attributes`, `.Tools`, `ValueComparerGenerator`, `.Attributes` 12.1.1 → 12.2.0;
+`MintPlayer.AspNetCore.Endpoints` 11.4.0-rc.0 → 11.4.1-rc.0. *Evidence:* full solution build, 0 errors, no MPSG001,
+and **CS8785 is gone** (`MintPlayer.Spark.Settings` rebuilt, no `GenericMethodSourceGenerator` warning).
+Constructor order, as predicted: the three base-call swaps above, plus a fourth the note missed,
+`SyncActionSubscriptionWorkerE2ETests.cs:120`, which constructs `SyncActionSubscriptionWorker` positionally (CS1503).
+The README of `MintPlayer.Spark.SubscriptionWorker` now states the break. Audit for silent swaps (same-type or `null`
+arguments compile either way): 12.2.0 keeps declaration order, moves optional (nullable) `[Inject]` parameters last
+and puts the auto-injected `IConfiguration` first; the only class mixing `[Inject]` properties and fields with a
+property first is `SparkSubscriptionWorker<T>`, and every positional `null` passed to an `[Inject]` constructor
+(`ReferenceResolver`, `RowSecurity`) still lands on the same parameter. **New generator defect (upstream):** 12.2.0
+de-duplicates a base parameter only when type *and* name match textually, so a derived class declaring
+`[Inject] IHttpContextAccessor httpContextAccessor` over `DefaultPersistentObjectActions<T>`'s optional
+`IHttpContextAccessor? httpContextAccessor` got the parameter twice (CS0100, 7 sites: `ApiTokenActions`, `CarActions`,
+`OidcApplicationActions`, `OidcResourceActions`, the three `NotificationActions` classes). Worked around by renaming
+the derived field `contextAccessor` (both now get the accessor from DI; 12.1.1 passed one to both). Warnings: nothing
+new from the bump; every warning absent from `baseline-build.log` is in a project that log built incrementally and
+shows in earlier full 12.1.1 logs (CS0436 `EndpointContractAttribute` in IdentityProvider, CS0618
+`UseOptimisticConcurrency`, CS8602/CS8618, ASP0014, SPARK024, RS10xx/RS2008 in the generator projects).
+Tests: SourceGenerators.Tests 631/631; Spark.Tests (SubscriptionWorker incl. `SyncActionSubscriptionWorkerE2ETests`,
+Messaging, Settings, Endpoints, Notification, OidcApplication, OidcResource) 733/733; SeoTester.Tests Fetcher 15/15.

@@ -14,9 +14,9 @@
 		     run-server must be this exact major.minor (docs/seotester/README.md); Development and the browser tests launch a
 		     local Chromium (pwsh bin/.../playwright.ps1 install chromium). Same version as the E2E tests. -->
 		<PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
-		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.0-rc.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="11.0.0-rc.3" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.1">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.2.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>

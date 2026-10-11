@@ -79,6 +79,11 @@ public partial class OrderProcessingWorker : SparkSubscriptionWorker<Order>
 }
 ```
 
+> **Breaking change (built with `MintPlayer.SourceGenerators` 12.2.0):** the generated base constructor follows
+> declaration order and is now `SparkSubscriptionWorker<T>(IDocumentStore store, ILoggerFactory loggerFactory)`;
+> it was `(ILoggerFactory, IDocumentStore)`. A subclass that writes its own constructor must swap its base call to
+> `: base(store, loggerFactory)`. Subclasses that leave the constructor to `[Inject]`, as above, need no change.
+
 #### Subscription Naming
 
 By default, the subscription name in RavenDB is derived from the class name by stripping common suffixes:
