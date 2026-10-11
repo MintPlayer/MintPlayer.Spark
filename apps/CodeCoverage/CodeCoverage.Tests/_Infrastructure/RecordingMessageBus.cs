@@ -26,6 +26,12 @@ public sealed class RecordingMessageBus : IMessageBus
     /// <summary>The delays passed to <see cref="DelayBroadcastAsync{TMessage}"/>, in order.</summary>
     public List<TimeSpan> Delays { get; } = [];
 
+    /// <summary>
+    /// Drop a <see cref="BroadcastOnceAsync{TMessage}"/> whose key was seen before, as the real bus
+    /// does while the first message's document exists. Off by default.
+    /// </summary>
+    public bool Deduplicates { get; set; }
+
     public IEnumerable<T> Of<T>() => Messages.OfType<T>();
 
     public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
@@ -33,8 +39,9 @@ public sealed class RecordingMessageBus : IMessageBus
 
     public Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, CancellationToken cancellationToken = default)
     {
+        var duplicate = DeduplicationKeys.Contains(deduplicationKey);
         DeduplicationKeys.Add(deduplicationKey);
-        return Record(message);
+        return Deduplicates && duplicate ? Task.CompletedTask : Record(message);
     }
 
     public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)

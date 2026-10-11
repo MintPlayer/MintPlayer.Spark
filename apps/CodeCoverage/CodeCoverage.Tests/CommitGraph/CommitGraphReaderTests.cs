@@ -198,6 +198,39 @@ public class CommitGraphReaderTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task A_clone_asked_for_twice_in_one_window_is_queued_both_times()
+    {
+        // The bus drops a repeated key, as the real one does. The first view clones; the mirror is then
+        // lost (a wiped volume) a minute later, inside the same view window. The second clone request
+        // must reach the queue, or the state says "syncing" with nothing behind it until the lost bound.
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        kit.Bus.Deduplicates = true;
+        await CommitGraphKit.SeedRepositoryAsync(store, RepoGitHubId);
+        kit.Sidecar.Pages[$"github/{RepoGitHubId}"] = FakeSidecar.Page((ShaA, null));
+        Repository repository;
+        using (var session = store.OpenAsyncSession())
+            repository = (await session.LoadAsync<Repository>(RepoId))!;
+        var reader = () => kit.Get<ICommitGraphReader>().ReadAsync(repository, new CommitGraphRequest());
+
+        (await reader()).State.Should().Be("syncing");
+        await kit.DrainAsync();
+        (await reader()).State.Should().Be("ready");
+
+        kit.Sidecar.Mirrors.Remove($"github/{RepoGitHubId}");
+        kit.Time.Now = kit.Time.Now.AddMinutes(1);
+        (await reader()).State.Should().Be("syncing");
+        kit.Bus.Of<FetchCommitGraphMessage>().Should().ContainSingle().Which.AllowClone.Should().BeTrue();
+
+        // A second viewer while the clone is under way queues nothing more.
+        (await reader()).State.Should().Be("syncing");
+        kit.Bus.Of<FetchCommitGraphMessage>().Should().ContainSingle();
+
+        await kit.DrainAsync();
+        (await reader()).State.Should().Be("ready");
+    }
+
+    [Fact]
     public async Task Without_a_configured_sidecar_the_graph_is_unavailable_and_nothing_is_queued()
     {
         using var store = GetDocumentStore();

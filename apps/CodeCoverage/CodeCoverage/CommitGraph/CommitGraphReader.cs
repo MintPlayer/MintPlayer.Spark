@@ -138,8 +138,7 @@ public partial class CommitGraphReader : ICommitGraphReader
         if (!state.HasMirror)
         {
             // A clone is under way, unless it was asked for so long ago that it must have been lost.
-            var lostAfter = TimeSpan.FromSeconds(Math.Max(o.Installed.TimeoutSeconds, o.Anonymous.TimeoutSeconds)) + TimeSpan.FromMinutes(5);
-            if (state.Syncing && state.SyncingSinceUtc > now.UtcDateTime - lostAfter)
+            if (state.Syncing && state.SyncingSinceUtc > now.UtcDateTime - CloneLostAfter)
                 return CommitGraphResponse.Empty("syncing");
 
             if (state.Outcome is "refused" or "failed"
@@ -270,19 +269,34 @@ public partial class CommitGraphReader : ICommitGraphReader
         }
     }
 
+    /// <summary>How long a clone may stay "syncing" before it counts as lost and is asked for again.</summary>
+    private TimeSpan CloneLostAfter
+        => TimeSpan.FromSeconds(Math.Max(options.Value.Installed.TimeoutSeconds, options.Value.Anonymous.TimeoutSeconds)) + TimeSpan.FromMinutes(5);
+
     /// <summary>Marks the state syncing and queues the one kind of fetch that may create a mirror.</summary>
+    /// <remarks>
+    /// ⚠️ <b>The state says syncing only when a clone message is really queued.</b> The message's key is
+    /// the syncing mark itself (<see cref="CommitGraphTriggers.CloneKey"/>), so it can never be dropped
+    /// as a duplicate of an earlier clone. An earlier version keyed it on the view window: a mirror lost
+    /// minutes after its clone was marked syncing again, the second clone was dropped as a duplicate,
+    /// and the panel showed "syncing" until <see cref="CloneLostAfter"/>. Concurrent readers are
+    /// collapsed by the change-vector write instead: only the one that flips the state queues.
+    /// </remarks>
     private async Task RequestCloneAsync(string repositoryId, DateTimeOffset now, CancellationToken cancellationToken, bool mirrorLost = false)
     {
         var stateId = RepositoryGraphState.ForRepository(repositoryId);
+        var since = now.UtcDateTime;
         for (var attempt = 0; ; attempt++)
         {
             using var writer = store.OpenAsyncSession();
             writer.Advanced.OptimisticConcurrencyMode = Raven.Client.Documents.Session.OptimisticConcurrencyMode.Writes;
             var state = await writer.LoadAsync<RepositoryGraphState>(stateId, cancellationToken);
             if (state is null) return;
+            // Another reader marked it (and queued its clone) since this one looked.
+            if (state.Syncing && state.SyncingSinceUtc > since - CloneLostAfter) return;
             if (mirrorLost) state.HasMirror = false;
             state.Syncing = true;
-            state.SyncingSinceUtc = now.UtcDateTime;
+            state.SyncingSinceUtc = since;
             try
             {
                 await writer.SaveChangesAsync(cancellationToken);
@@ -293,10 +307,9 @@ public partial class CommitGraphReader : ICommitGraphReader
             }
         }
 
-        var window = TimeSpan.FromMinutes(Math.Max(1, options.Value.StaleAfterMinutes));
         await messageBus.BroadcastOnceAsync(
             new FetchCommitGraphMessage { RepositoryId = repositoryId, AllowClone = true },
-            $"{CommitGraphTriggers.ViewKey(repositoryId, now, window)}:clone", cancellationToken);
+            CommitGraphTriggers.CloneKey(repositoryId, since), cancellationToken);
     }
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;

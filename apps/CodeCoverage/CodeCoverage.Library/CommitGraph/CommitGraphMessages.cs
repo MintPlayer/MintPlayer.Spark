@@ -59,6 +59,14 @@ public static class CommitGraphTriggers
     public static string AddedKey(string repositoryId, DateTimeOffset now)
         => $"graph-fetch:{repositoryId}:added:{now.UtcDateTime:yyyy-MM-dd}";
 
+    /// <summary>
+    /// One clone per time the state was marked syncing (<paramref name="syncingSinceUtc"/> is that
+    /// mark). Not a time bucket: a second clone asked for in the same bucket (a mirror lost a minute
+    /// after it was made) would be dropped while the state still said syncing.
+    /// </summary>
+    public static string CloneKey(string repositoryId, DateTime syncingSinceUtc)
+        => $"graph-fetch:{repositoryId}:clone:{syncingSinceUtc.Ticks}";
+
     /// <summary>One fetch per read-triggered window (<paramref name="window"/> is the staleness bound).</summary>
     public static string ViewKey(string repositoryId, DateTimeOffset now, TimeSpan window)
         => $"graph-fetch:{repositoryId}:view:{now.UtcTicks / Math.Max(1, window.Ticks)}";
