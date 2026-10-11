@@ -2,7 +2,7 @@
 
 **Status:** Proposed — spikes S10, S11 not yet run · **Date:** 2026-10-11 ·
 **Origin:** split out of [coverage_commit_graph_PRD.md](coverage_commit_graph_PRD.md) §9, where it began as
-"how do we watch the mirrors' disk usage". **Decisions:** D9 (superseded), D11–D14 and D24 in that PRD's §0 table
+"how do we watch the mirrors' disk usage". **Decisions:** D9 (superseded), D11–D14, D24 and D29 (S11 result: single-valued series) in that PRD's §0 table
 are the decision log for this package; they are not repeated here. **Plan:** milestones M5a (package +
 SeoTester migration) and M5b (CodeCoverage host metrics) in [coverage_commit_graph_plan.md](coverage_commit_graph_plan.md).
 Ships in the **same pull request** as the commit graph (one-PR rule).
