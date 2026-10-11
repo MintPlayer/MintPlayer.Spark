@@ -5,7 +5,7 @@ bare mirror + git CLI, server-side lane layout) ·
 **Issue:** [#504](https://github.com/MintPlayer/MintPlayer.Spark/issues/504) ·
 **Branch:** `feat/504-commit-graph` · **Base:** `master` @ `b0395764` ·
 **Release:** server deploy, plus a new sidecar image `codecoverage-git` (D1), a two-host compose
-network (D4) and the Hetzner volume bind-mounted (D8). No npm or
+network (D4) and a named volume for the mirrors (D8). No npm or
 NuGet version bump, because nothing under `libs/` is published by this work. ·
 **Status:** Proposed — spikes not run
 
@@ -26,7 +26,7 @@ These are decisions, not research. Each changes what gets built.
 |---|---|---|
 | ~~Q1~~ | ~~Disk budget and quotas~~ | **Decided (D7, D8):** numbers set from S2; mirrors on the 10 GB Hetzner volume |
 | ~~Q5~~ | ~~Anonymous clones~~ | **Decided (D6):** anonymous, stricter quotas |
-| Q6 | Confirm D8: mirrors on the dedicated 10 GB Hetzner volume (`/mnt/HC_Volume_105198417`), bind-mounted read-write into the sidecar and read-only into the app | Yes |
+| ~~Q6~~ | ~~Where the mirrors live~~ | **Decided (D8):** a named volume on the root disk, with a software budget and a free-space floor |
 | Q7 | Confirm D9: no dashboard package; a live virtual `HostMetrics` PO plus a new `Administrators` group in CodeCoverage | Yes |
 | Q2 | `Commit.ParentSha` is the **PR base tip** for PR commits (`ForgeEventsRecipient.cs:82`), so `CoverageDeltaVsParent` is measured against it. Defect or intended? | Leave as is; the graph draws true parents from the mirror regardless |
 | Q3 | Which of the PRD §4.5 "later" features to pull into this PR (hover path, search, first-parent view, sparkline, drop filter) | MVP only |
@@ -83,8 +83,9 @@ and revisit PRD §3 before M1. Option A becomes the fallback for GitHub only.
   - Network `git-graph`, holding only `codecoverage` and `codecoverage-git`, with no published
     port. A comment on the network and on both services says it must hold exactly these two hosts
     (D4).
-  - The Hetzner volume bind-mounted read-write at `/data/git` in the sidecar, and read-only in the
-    app (D8).
+  - A named volume `codecoverage-git-data` at `/data/git`, mounted in the sidecar only (D8).
+- `DiskGuard` in the sidecar enforces the total mirror budget and the host free-space floor before
+  every clone and fetch, and measures each repository directory's size after a fetch (D8).
 - Mirror path configurable (`GitMirror:Root`), so tests use a temp directory.
 - Hooks off: clone with an empty `--template=`, and set `core.hooksPath` to an empty read-only
   directory (D5).
@@ -115,7 +116,18 @@ network. The token-absence assertions check without printing.
   - the push handler (`GitHubEventsRecipient.cs:301-327`)
   - repository-added events
   - the endpoint, when the mirror is stale
-- An hourly `ISparkCronJob` safety net.
+- An hourly `ISparkCronJob` safety net, covering **mirrored repositories only**.
+- **D10:**
+  - The endpoint is the only trigger that creates a mirror (lazy-on-view). Repository-added and push
+    events act only when a mirror exists.
+  - `LastViewedAtUtc` is stamped on every graph read.
+  - A daily `EvictCommitGraphMirrorsCronJob` removes mirrors not viewed for N days.
+  - Before a clone, the app evicts least-recently-viewed mirrors until the clone fits the budget,
+    and enforces the per-installation cap.
+  - An eviction counter for HostMetrics.
+- **Tests:** eviction by age; eviction under budget pressure, oldest view first; a capped
+  installation is refused while another installation still clones; an evicted repository re-clones
+  on its next view.
 - Deletion wired into:
   - disconnect
   - `installation` / `installation_repositories` removal
@@ -183,8 +195,7 @@ graph in both themes.
 - An `Administrators` group in CodeCoverage's `security.json`, granted `Read/HostMetrics`. Regenerate
   the security posture.
 - `HostMetrics.json`: virtual, `"live": true`, object `hostmetrics/main`.
-- `HostMetricsActions.OnLoadAsync`: host disk from `DriveInfo("/")`, the mirror volume from its
-  read-only mount, container CPU and memory, and mirror totals from `RepositoryGraphState`.
+- `HostMetricsActions.OnLoadAsync`: host disk from `DriveInfo("/")`, container CPU and memory, and mirror totals from `RepositoryGraphState`.
 - A notifier `BackgroundService` running every 15 s, with a 5 s read cache.
 - A program-unit entry visible to Administrators only, plus a `RepositoryGraphState` query with a
   size column.

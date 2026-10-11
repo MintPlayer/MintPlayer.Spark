@@ -29,7 +29,8 @@ These supersede the text below where they disagree. Superseded passages are mark
 | D5 | **Git hooks are disabled explicitly**: clone with an empty `--template=`, and set `core.hooksPath` to an empty read-only directory. Fetch never runs remote hooks, but git does run *local* hooks such as `reference-transaction` on ref updates. | Owner. S7 adds a planted-hook check. |
 | D6 | **Public repositories without an installation are cloned anonymously, under stricter quotas** than installed ones. | Owner, option C. A clone is already how commits are determined (D3), so anonymous repositories need no other path. |
 | D7 | **The quota numbers are set after S2**, from measurements on the VPS. Until then the placeholders are: installed 2 GB / 50k refs / 10 min; anonymous 500 MB / 10k refs / 3 min. | Owner, option C. VPS on 2026-10-11 (`df -h` on the host): `/` 150 GB with **93 GB free**; an **empty 10 GB Hetzner volume** at `/mnt/HC_Volume_105198417`; 4 cores; 7.6 GB RAM with about 3 GB available **[verified]**. |
-| D8 | **Mirrors live on the dedicated Hetzner block volume**, bind-mounted into the sidecar read-write and into the app read-only (for measuring only). | statfs on a bind-mounted block volume reports that volume exactly. On `/` or a named volume it reports the host root disk, which is shared with Docker and RavenDB **[cited]** (§9). The volume's 10 GB is also a hard total cap. **Pending owner confirmation (Q6).** |
+| D8 | **Mirrors live on a named Docker volume on the root disk** (`codecoverage-git-data`, mounted only into the sidecar). The Hetzner block volume is not used. **Guards enforced in software**, because RavenDB shares this disk: (1) a total mirror budget, the sum of `RepositoryGraphState.SizeBytes`, and (2) a host free-space floor. Below either, the sidecar refuses clones and fetches with `DiskGuard` and the app records it. Each mirror's size is measured by the sidecar per repository directory after each fetch, and the app has no mount. | Owner, option B. statfs on a named volume reports the host root (§9.2 **[cited]**), so it cannot isolate mirror usage and per-repository measurement replaces it. Budget and floor numbers come with D7 after S2; placeholders: 20 GB budget, 15 GB floor. |
+| D10 | **Clone only, mirrored lazily, evicted by LRU under a budget; full history.** <br>• **Source:** GraphQL-first with a clone fallback was considered and rejected. <br>• **Lazy:** a mirror is created only when someone opens the graph panel. Installing the App or pushing never clones, and a push to an unmirrored repository does nothing. <br>• **Eviction:** `RepositoryGraphState.LastViewedAtUtc` is stamped on each graph read. A daily eviction job deletes mirrors not viewed for N days (placeholder 60). When a clone would exceed the total budget (D8), the least-recently-viewed mirrors are evicted first instead of refusing. <br>• **Caps:** per repository (D7) and per installation (placeholder: 25% of the budget). <br>• **Re-clone:** a re-clone after eviction is the same path as a first clone ("syncing", then the graph), so eviction adds only the existing `DELETE`. <br>• **Visibility:** the eviction count is shown on HostMetrics (§9). | Owner, option A, after asking how mirrors are kept from growing with organizations × repositories. GraphQL still has to store the DAG (heavier, as Raven documents) and cannot serve public repositories without an installation (GraphQL requires authentication), Bitbucket (1,000 commit-list calls/h vs 60,000 git operations/h **[cited]**) or the shared check-run budget. Storage now grows with repositories *viewed*: about 0.2–0.5 KB per commit **[inferred → S2]**, so about 1–2.5 GB for 1,000 viewed repositories of 5k commits each. Rejected: a history horizon (`--shallow-since`), held in reserve in case S2 measures much more. |
 | D9 | **No dashboard package now.** Host and mirror metrics are app code in CodeCoverage: a live virtual `HostMetrics` PO (§9). | Two-agent investigation: every building block exists (§9.1), and there is no second consumer. **Pending owner confirmation (Q7).** |
 
 ---
@@ -225,6 +226,13 @@ minted by the app and sent in the request body, never stored:
   **[verified]** before a large initial clone finishes (S8).
 
 ### 4.2 Keeping it fresh, and deleting it
+
+> **[superseded in part by D10]** The triggers below apply **only to repositories that already have a
+> mirror**:
+> - "Repository added to an installation" no longer clones.
+> - The panel-opened row is now the *only* path that creates a mirror.
+> - Push and the cron safety net skip repositories without one.
+> - A daily eviction job joins the deletion triggers.
 
 | Trigger | Action |
 |---|---|
@@ -486,8 +494,7 @@ disk usage should probably be from the host."*
 | Attribute | Source | Measures |
 |---|---|---|
 | Host disk: total / free / used % | `DriveInfo("/")` in the app container | **The host root filesystem** (`/dev/sdb1`, 150 GB). overlay2 reports its backing filesystem, `/var/lib/docker` on the host root **[cited]**. Exception: overlay2 on XFS with `pquota`, which this host does not appear to use **[inferred → S10]**. |
-| Mirror volume: total / free / used % | `DriveInfo` on the read-only bind mount of the Hetzner volume (D8) | **That volume exactly** (10 GB) **[cited]** |
-| Mirror count, total mirror size, largest mirrors | `RepositoryGraphState` documents (size reported by the sidecar per fetch) | App data |
+| Mirror count, total mirror size vs budget, largest mirrors, `DiskGuard` refusals | `RepositoryGraphState` documents (size measured per repository directory by the sidecar after each fetch, D8) | App data. The total is exact as of each repository's last fetch. |
 | App CPU % | `System.Runtime` meter (`process.cpu.time`) over the sampling interval, or ResourceMonitoring `container.cpu.limit.utilization` | **The container** |
 | App memory | cgroup v2 `memory.current` / `memory.max`; GC heap from `GC.GetGCMemoryInfo` | **The container** (`memory.current` includes page cache) |
 | Host RAM / CPU | **Not shown** | A container sees only host totals in `/proc` without its own share. True host-wide figures need the host's `/proc` mounted in, a security cost not worth paying when Hetzner's console already graphs them. |
@@ -507,4 +514,4 @@ No `docker.sock`, no host `/proc`, and no writable host mount in the app.
 
 | # | Question | Method | Pass |
 |---|---|---|---|
-| **S10** | Do the metrics measure what §9.2 claims, and does a live virtual PO stream them? | On the VPS: log `DriveInfo` for `/` and for the bind-mounted volume from inside the container, then compare with `df -B1` on the host. Locally: a virtual `"live": true` PO with no `clrType`, notified every 15 s. | Totals and free bytes within **1%** of the host's `df` for both mounts, and no 0 values. The detail page updates **≥ 3** times in 60 s without a reload. An anonymous user and a signed-in non-admin get Spark's standard denial on both load and live subscribe. |
+| **S10** | Do the metrics measure what §9.2 claims, and does a live virtual PO stream them? | On the VPS: log `DriveInfo` for `/` from inside the app container and for the named volume from inside the sidecar, then compare both with `df -B1 /` on the host. Compare the sidecar's per-repository size with `du -sb` of that directory. Locally: a virtual `"live": true` PO with no `clrType`, notified every 15 s. | Totals and free bytes within **1%** of the host's `df` for both, and no 0 values. Per-repository size within **1%** of `du`. The detail page updates **≥ 3** times in 60 s without a reload. An anonymous user and a signed-in non-admin get Spark's standard denial on both load and live subscribe. |
