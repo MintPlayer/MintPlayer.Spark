@@ -10,6 +10,7 @@ GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha} | authorize(policy
 GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha}/file | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha}/hierarchy | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha}/tree | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
+GET /api/browse/repos/{provider}/{owner}/{name}/coverage-drops | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/graph | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/history | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 POST /api/github/webhooks | antiforgery=not-required

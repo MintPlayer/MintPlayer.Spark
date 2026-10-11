@@ -203,6 +203,50 @@ public class BrowseControllerRemainderTests : CoverageRavenTest
     }
 
     [Fact]
+    public async Task The_coverage_drop_list_holds_the_commits_that_fell_by_more_than_the_threshold()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        var t0 = new DateTimeOffset(2026, 9, 2, 0, 0, 0, TimeSpan.Zero);
+        using (var seed = store.OpenAsyncSession())
+        {
+            foreach (var (sha, branch, delta, hour, fork) in new (string, string, double?, int, bool)[]
+                     {
+                         ("d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1", "main", -3.0, 1, false),
+                         ("d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2", "feature", -0.5, 2, false),
+                         ("d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3", "main", 2.0, 3, false),
+                         ("d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4", "their-branch", -9.0, 4, true),
+                     })
+            {
+                var commit = CommitOf(sha, branch, t0.AddHours(hour), fork: fork);
+                commit.CoverageDeltaVsParent = delta;
+                await seed.StoreAsync(commit, CommitId(sha));
+            }
+            await seed.SaveChangesAsync();
+        }
+        WaitForIndexing(store);
+        using var session = store.OpenAsyncSession();
+        var controller = CreateController(session);
+
+        // Any drop, newest first; a rise, a commit with no delta and a fork's contribution are not drops.
+        var all = Ok(await controller.GetCoverageDrops("github", "acme", "Zeta", threshold: 0)).ToList();
+        all.Select(d => d.Sha[..2]).Should().Equal("d2", "d1");
+        all[1].DeltaVsParent.Should().Be(-3.0);
+        all[1].Percent.Should().Be(50.0);
+        all[1].Branch.Should().Be("main");
+
+        Ok(await controller.GetCoverageDrops("github", "acme", "Zeta", threshold: 1)).Select(d => d.Sha[..2])
+            .Should().Equal("d1");
+        Ok(await controller.GetCoverageDrops("github", "acme", "Zeta", threshold: 0, branch: "feature")).Select(d => d.Sha[..2])
+            .Should().Equal("d2");
+        // Nonsense thresholds are clamped, not spliced or thrown on.
+        Ok(await controller.GetCoverageDrops("github", "acme", "Zeta", threshold: double.NaN)).Should().HaveCount(2);
+        Ok(await controller.GetCoverageDrops("github", "acme", "Zeta", threshold: 500)).Should().BeEmpty();
+
+        (await controller.GetCoverageDrops("github", "acme", "alpha")).Result.Should().BeOfType<JsonResult>();
+    }
+
+    [Fact]
     public async Task A_private_repositorys_commits_are_refused_to_an_anonymous_viewer()
     {
         using var store = GetDocumentStore();

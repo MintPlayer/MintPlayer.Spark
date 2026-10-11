@@ -153,6 +153,46 @@ public partial class BrowseController : ControllerBase
         return Ok(commits.Select(c => new CommitInfo(c.Sha, c.Branch, c.PullRequestNumber, c.Message, c.AuthoredAt, c.Coverage)));
     }
 
+    /// <summary>A commit whose coverage fell against its parent (#504, D17).</summary>
+    /// <param name="Percent">Its coverage, covered over coverable lines × 100; null for 0/0.</param>
+    /// <param name="DeltaVsParent">Percentage points against the parent; always negative here.</param>
+    public sealed record CoverageDrop(string Sha, string? Branch, string? Message, DateTimeOffset? Date, double? Percent, double DeltaVsParent);
+
+    /// <summary>
+    /// The commit graph's coverage-drop list (#504, D17): the newest commits whose coverage fell by
+    /// more than <paramref name="threshold"/> percentage points against their parent.
+    /// </summary>
+    /// <remarks>
+    /// A <b>list</b>, not a graph filter: the graph is the mirror's walk and knows no coverage, so the
+    /// panel shows these flat and opens each in the graph with <c>at=</c>. The threshold reaches the
+    /// query as a parameter (LINQ), never spliced. Fork contributions are excluded, as in every
+    /// repository-level listing.
+    /// </remarks>
+    [HttpGet("repos/{provider}/{owner}/{name}/coverage-drops")]
+    public async Task<ActionResult<IEnumerable<CoverageDrop>>> GetCoverageDrops(
+        string provider, string owner, string name, [FromQuery] double threshold = 0, [FromQuery] string? branch = null,
+        [FromQuery] int take = 100, CancellationToken cancellationToken = default)
+    {
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        if (repository is null) return Refuse();
+
+        var below = -Math.Clamp(double.IsFinite(threshold) ? threshold : 0, 0, 100);
+        var query = session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
+            .Where(c => c.Repository == repository.Id && c.ContributedFromFork != true && c.CoverageDeltaVsParent < below);
+        if (!string.IsNullOrEmpty(branch))
+            query = query.Where(c => c.Branch == branch);
+
+        var commits = await query
+            .OrderByDescending(c => c.Date)
+            .Take(Math.Clamp(take, 1, 200))
+            .OfType<Commit>()
+            .ToListAsync(cancellationToken);
+
+        return Ok(commits.Select(c => new CoverageDrop(c.Sha, c.Branch, c.Message, c.AuthoredAt ?? c.FirstSeenAtUtc,
+            c.Coverage is { LinesCoverable: > 0 } s ? 100.0 * s.LinesCovered / s.LinesCoverable : null,
+            c.CoverageDeltaVsParent ?? 0)));
+    }
+
     public sealed record HistoryPoint(string Sha, DateTimeOffset? Timestamp, int LinesCovered, int LinesCoverable, double Percent);
 
     /// <summary>
