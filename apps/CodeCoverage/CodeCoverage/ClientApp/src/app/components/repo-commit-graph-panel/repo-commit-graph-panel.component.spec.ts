@@ -199,7 +199,8 @@ describe('RepoCommitGraphPanelComponent', () => {
   });
 
   it('opens the commit page on a row click and moves a keyboard cursor', async () => {
-    await create(() => Promise.resolve(page()));
+    const covered = { linesCovered: 1, linesCoverable: 2, percent: 50, deltaVsParent: null, completeness: 'Complete' };
+    await create(() => Promise.resolve(page({ rows: [{ ...row('aaaaaaa1', ['bbbbbbb2']), coverage: covered }, row('bbbbbbb2')] })));
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
@@ -211,6 +212,10 @@ describe('RepoCommitGraphPanelComponent', () => {
     expect(panel().cursor()).toBe(1);
     // The cursor's first-parent path is highlighted.
     expect([...panel().highlight().keys()]).toEqual([1]);
+    // No upload ever reached this commit: there is no commit page to open.
+    keys('Enter');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(panel().notice()).toContain('bbbbbbb');
     keys('ArrowUp');
     expect([...panel().highlight().keys()]).toEqual([0, 1]);
     keys('Enter');

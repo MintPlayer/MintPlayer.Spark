@@ -28,6 +28,27 @@ const NODE_R = 5;
 
 type PanelState = 'loading' | 'ready' | 'empty' | 'syncing' | 'unavailable';
 
+/** The display values of one row, computed when its page lands. */
+interface RowUi {
+  strokes: string[];
+  stroke: string;
+  nodeClass: string;
+  pie: string | null;
+  title: string;
+  refs: { name: string; short: string; tag: boolean }[];
+  percent: string | null;
+  pending: boolean;
+  delta: string | null;
+  up: boolean;
+  initials: string;
+  date: string;
+  sha: string;
+}
+
+type PanelRow = GraphRowView & { ui: RowUi };
+
+const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+
 const UNAVAILABLE_REASONS: Record<string, string> = {
   disabled: 'The commit graph is not enabled on this server.',
   unsupported: 'The commit graph is not available for this forge.',
@@ -123,16 +144,16 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                     @let hl = highlight().get(v.index);
                     <td class="cg-graph" [style.width.px]="graphWidth()">
                       <svg [attr.width]="graphWidth()" [attr.height]="rowHeight" aria-hidden="true">
-                        @for (s of v.segments; track s.key) {
-                          <path [attr.d]="s.d" [attr.stroke]="laneVar(s.colour)" [class.hl]="hl?.has(s.key)" />
+                        @for (s of v.segments; track s.key; let i = $index) {
+                          <path [attr.d]="s.d" [attr.stroke]="v.ui.strokes[i]" [class.hl]="hl?.has(s.key)" />
                         }
                         @if (v.isMerge) {
-                          <circle class="cg-merge" [attr.cx]="v.cx" [attr.cy]="v.cy" [attr.r]="nodeR + 2.5" [attr.stroke]="laneVar(v.colour)" />
+                          <circle class="cg-merge" [attr.cx]="v.cx" [attr.cy]="v.cy" [attr.r]="nodeR + 2.5" [attr.stroke]="v.ui.stroke" />
                         }
-                        <circle class="cg-node" [class]="nodeClass(v)" [class.hl]="hl?.has('n')" [attr.cx]="v.cx" [attr.cy]="v.cy"
-                                [attr.r]="nodeR" [attr.stroke]="laneVar(v.colour)"><title>{{ nodeTitle(v) }}</title></circle>
-                        @if (pie(v); as p) {
-                          <path class="cg-pie" [attr.d]="p" [attr.fill]="laneVar(v.colour)" />
+                        <circle [class]="v.ui.nodeClass" [class.hl]="hl?.has('n')" [attr.cx]="v.cx" [attr.cy]="v.cy"
+                                [attr.r]="nodeR" [attr.stroke]="v.ui.stroke"><title>{{ v.ui.title }}</title></circle>
+                        @if (v.ui.pie) {
+                          <path class="cg-pie" [attr.d]="v.ui.pie" [attr.fill]="v.ui.stroke" />
                         }
                         @if (v.width > visibleLanes()) {
                           <path class="cg-overflow" [attr.d]="overflowMarker()" />
@@ -140,8 +161,8 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                       </svg>
                     </td>
                     <td class="cg-subject" [class.cg-cursor]="cursor() === v.index">
-                      @for (r of v.row.refs; track r) {
-                        <span class="cg-ref-pill" [class.cg-tag]="isTag(r)" [class.cg-default]="isDefault(r)">{{ shortRef(r) }}</span>
+                      @for (r of v.ui.refs; track r.name) {
+                        <span class="cg-ref-pill" [class.cg-tag]="r.tag" [class.cg-default]="r.name === defaultRef()">{{ r.short }}</span>
                       }
                       @if (v.row.sha === latestCoverageSha()) {
                         <span class="cg-ref-pill cg-latest" title="Latest coverage of the default branch">coverage</span>
@@ -149,14 +170,12 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                       <span [class.fw-semibold]="v.isMerge">{{ v.row.subject }}</span>
                     </td>
                     <td class="cg-coverage">
-                      @if (v.row.coverage?.percent != null) {
-                        {{ v.row.coverage.percent.toFixed(1) }}%
-                        @if (v.row.coverage.deltaVsParent != null && v.row.coverage.deltaVsParent !== 0) {
-                          <small [class.text-success]="v.row.coverage.deltaVsParent > 0" [class.text-danger]="v.row.coverage.deltaVsParent < 0">
-                            {{ v.row.coverage.deltaVsParent > 0 ? '▲' : '▼' }}{{ abs(v.row.coverage.deltaVsParent).toFixed(1) }}
-                          </small>
+                      @if (v.ui.percent) {
+                        {{ v.ui.percent }}
+                        @if (v.ui.delta) {
+                          <small [class.text-success]="v.ui.up" [class.text-danger]="!v.ui.up">{{ v.ui.delta }}</small>
                         }
-                      } @else if (v.row.coverage) {
+                      } @else if (v.ui.pending) {
                         <span class="text-muted">pending</span>
                       }
                     </td>
@@ -165,12 +184,12 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
                         <img class="cg-avatar" [src]="avatarSrc(v.row.avatarKey)" alt="" width="20" height="20" loading="lazy"
                              (error)="avatarFailed(v.row.avatarKey)">
                       } @else {
-                        <span class="cg-avatar cg-initials" aria-hidden="true">{{ initials(v.row.authorName) }}</span>
+                        <span class="cg-avatar cg-initials" aria-hidden="true">{{ v.ui.initials }}</span>
                       }
                       {{ v.row.authorName }}
                     </td>
-                    <td class="cg-date" [title]="v.row.date">{{ formatDate(v.row.date) }}</td>
-                    <td class="cg-sha"><code>{{ v.row.sha.substring(0, 7) }}</code></td>
+                    <td class="cg-date" [title]="v.row.date">{{ v.ui.date }}</td>
+                    <td class="cg-sha"><code>{{ v.ui.sha }}</code></td>
                   } @else {
                     <td class="cg-graph" [style.width.px]="graphWidth()"></td>
                     <td class="text-muted">…</td><td></td><td></td><td></td><td></td>
@@ -187,8 +206,11 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
     :host { display: block; --mp-datatable-virtual-max-height: 560px; }
     .cg-toolbar .cg-search { flex: 1 1 12rem; max-width: 20rem; }
     .cg-table:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
-    .cg-table td { height: ${ROW_HEIGHT}px; max-height: ${ROW_HEIGHT}px; padding: 0 .5rem; box-sizing: border-box; vertical-align: middle;
-      line-height: ${ROW_HEIGHT - 2}px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Exactly ROW_HEIGHT, no row border: the virtual scroll's itemSize and the SVG lines both depend on it. */
+    .cg-table td { height: ${ROW_HEIGHT}px; max-height: ${ROW_HEIGHT}px; padding: 0 .5rem; box-sizing: border-box; vertical-align: middle; border: 0;
+      line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Mixed alignments grow the line box past 20px and the row past ROW_HEIGHT. */
+    .cg-table td > * { vertical-align: top; }
     .cg-table td.cg-graph { padding: 0; line-height: 0; }
     .cg-graph svg { display: block; overflow: hidden; }
     .cg-graph path { fill: none; stroke-width: 2; }
@@ -201,14 +223,17 @@ const UNAVAILABLE_REASONS: Record<string, string> = {
     .cg-merge { fill: none; stroke-width: 1.5; }
     .cg-overflow { fill: var(--bs-secondary-color); stroke: none !important; }
     .cg-cursor { box-shadow: inset 3px 0 var(--bs-primary); }
-    .cg-ref-pill { display: inline-block; font-size: .75em; line-height: 1.4; padding: 0 .4em; margin-right: .3em; border-radius: 1em;
-      border: 1px solid var(--bs-border-color); background: var(--bs-secondary-bg); vertical-align: middle; }
+    .cg-ref-pill { display: inline-block; box-sizing: border-box; height: 20px; font-size: .75em; line-height: 18px; padding: 0 .4em; margin-right: .3em; border-radius: 1em;
+      border: 1px solid var(--bs-border-color); background: var(--bs-secondary-bg); vertical-align: top; }
     .cg-ref-pill.cg-default { font-weight: 600; border-color: var(--bs-primary); }
     .cg-ref-pill.cg-tag { border-radius: .2em; font-style: italic; }
     .cg-ref-pill.cg-latest { border-style: dashed; }
-    .cg-avatar { width: 20px; height: 20px; border-radius: 50%; vertical-align: middle; margin-right: .3em; display: inline-block; }
+    .cg-avatar { width: 20px; height: 20px; border-radius: 50%; vertical-align: top; margin-right: .3em; display: inline-block; }
     .cg-initials { background: var(--bs-secondary-bg); font-size: 9px; line-height: 20px; text-align: center; }
     .cg-sha code { font-size: .8em; }
+    /* The datatable sizes columns from their natural width once; cap the message so the rest stays in view. */
+    .cg-table td.cg-subject { max-width: 34rem; }
+    .cg-table td.cg-author { max-width: 12rem; }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -258,6 +283,7 @@ export class RepoCommitGraphPanelComponent {
   readonly graphWidth = computed(() => this.visibleLanes() * LANE_WIDTH + 8);
   readonly branches = computed(() => this.refs().filter((r) => r.kind === 'head'));
   readonly latestCoverageSha = computed(() => this.repo()?.latestCoverageSha ?? null);
+  readonly defaultRef = computed(() => (this.repo()?.defaultBranch ? `refs/heads/${this.repo()!.defaultBranch}` : null));
   /** The rows on show are a search's hit list (flat, no lanes), not the graph. */
   readonly listMode = signal(false);
   readonly reasonText = computed(() => UNAVAILABLE_REASONS[this.reason() ?? ''] ?? UNAVAILABLE_REASONS['error']);
@@ -435,6 +461,8 @@ export class RepoCommitGraphPanelComponent {
 
   private store(page: CommitGraphPage): void {
     for (const view of derivePage(page.top, page.rows, page.from)) {
+      // Everything a row shows is computed once here: the datatable re-checks every visible row on each scroll frame.
+      (view as PanelRow).ui = this.rowUi(view);
       this.cache.set(view.index, view);
       this.shaIndex.set(view.row.sha, view.index);
     }
@@ -540,6 +568,13 @@ export class RepoCommitGraphPanelComponent {
       }
       return;
     }
+    // The commit page exists only for commits the server has a record of; a null overlay means it has none, and the
+    // commit route would bounce to the home page.
+    if (!view.row.coverage) {
+      this.notice.set(`No coverage was uploaded for ${view.row.sha.substring(0, 7)}, so it has no commit page.`);
+      return;
+    }
+    this.notice.set(null);
     void this.router.navigate(['/', this.provider(), 'r', this.owner(), this.name(), 'c', view.row.sha]);
   }
 
@@ -631,12 +666,29 @@ export class RepoCommitGraphPanelComponent {
 
   formatDate(iso: string): string {
     const d = new Date(iso);
-    return isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return isNaN(d.getTime()) ? iso : DATE_FORMAT.format(d);
   }
 
-  abs(v: number): number {
-    return Math.abs(v);
+  private rowUi(v: GraphRowView): RowUi {
+    const c = v.row.coverage;
+    const delta = c?.percent != null && c.deltaVsParent ? c.deltaVsParent : null;
+    return {
+      strokes: v.segments.map((s) => this.laneVar(s.colour)),
+      stroke: this.laneVar(v.colour),
+      nodeClass: this.nodeClass(v),
+      pie: this.pie(v),
+      title: this.nodeTitle(v),
+      refs: v.row.refs.map((name) => ({ name, short: this.shortRef(name), tag: this.isTag(name) })),
+      percent: c?.percent != null ? `${c.percent.toFixed(1)}%` : null,
+      pending: !!c && c.percent == null,
+      delta: delta === null ? null : `${delta > 0 ? '▲' : '▼'}${Math.abs(delta).toFixed(1)}`,
+      up: delta !== null && delta > 0,
+      initials: this.initials(v.row.authorName),
+      date: this.formatDate(v.row.date),
+      sha: v.row.sha.substring(0, 7),
+    };
   }
+
 
   // ---- DOM ----
 
