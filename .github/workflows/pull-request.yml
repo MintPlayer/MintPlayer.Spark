@@ -84,6 +84,10 @@ jobs:
           | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
         echo "version=${version}" >> "$GITHUB_OUTPUT"
         echo "Playwright version: ${version}"
+        # SeoTester's browser tests use the browsers installed for this version (the install step below): one version.
+        seo=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' apps/SeoTester/SeoTester/SeoTester.csproj \
+          | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        [ "$seo" = "$version" ] || { echo "::error::Microsoft.Playwright is ${version} in the E2E tests but ${seo} in SeoTester: keep them equal, the CI installs one set of browsers"; exit 1; }
 
     - name: Cache Playwright browsers
       uses: actions/cache@v6
@@ -92,6 +96,16 @@ jobs:
         key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
         restore-keys: |
           ${{ runner.os }}-playwright-
+
+    # Chromium for every browser test, installed ONCE before any test project starts. The E2E tests install it in
+    # process (PlaywrightInstall), but SeoTester.Tests' render and browser-isolation tests (apps/SeoTester/
+    # SeoTester.Tests/Rendering) only use it, and under nx's parallel run they started before the E2E fixture had
+    # installed it: "Executable doesn't exist at ~/.cache/ms-playwright/chromium_headless_shell-1243/…" (PR #505,
+    # 10 tests, every run since the browser tests landed). Node's Playwright at the SAME version installs the same
+    # builds (1.63.0 → chromium-1243 and chromium_headless_shell-1243, checked with --dry-run). One install, not one per
+    # test process: two concurrent --with-deps installs collide on the apt lock (PlaywrightInstall's remark).
+    - name: Install Playwright's Chromium
+      run: npx --yes playwright@${{ steps.playwright.outputs.version }} install --with-deps chromium
 
     # Run build before tests so Angular-app build failures (e.g., broken
     # imports, type errors, budget overruns) block the PR. The .NET test
