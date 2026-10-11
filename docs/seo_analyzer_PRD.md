@@ -2033,8 +2033,15 @@ audience). The deferred measurements Q-M5a, Q-M6a, Q-M9b and Q-M10b stay open un
     as is, liability (not for intent or gross negligence, nor where the law forbids), ending, Belgian law.
   - **The controller's identity is configuration, never the repository:** `SeoTester:Legal:{OperatorName, Address,
     ContactEmail, EnterpriseNumber, Court, HostingProvider}` (empty in `appsettings.json`; `LEGAL_*` in the server's
-    `.env`, `.env.example` and deploy.md §4.3). An empty value shows **"[to be completed]"** ("[nog in te vullen]");
-    production logs a startup warning naming the keys (`LegalConfigurationCheck`), never a failure.
+    `.env`, `.env.example` and deploy.md §4.3). ~~An empty value shows **"[to be completed]"** ("[nog in te vullen]");
+    production logs a startup warning naming the keys (`LegalConfigurationCheck`), never a failure.~~ **Amended
+    2026-10-11 (owner: "this is not a registered entity anywhere"; the service runs as a private person):** only
+    `OperatorName`, `ContactEmail` and `HostingProvider` are required, and only they show **"[to be completed]"** and
+    count in the startup warning. `Address` and `EnterpriseNumber` are optional and left out of the sentence when empty
+    (GDPR art. 13(1)(a) asks for an identity and contact details; the address and KBO number are Book XII e-commerce
+    duties for paid services). An empty `Court` reads "the competent Belgian courts" / "de bevoegde Belgische
+    rechtbanken" (`LegalPages.DefaultCourtEn/Nl`), one text per language, since a configured value appears in both.
+    Version stays 1: nothing was published yet. *Tests: `LegalPagesTests` (below).*
   - ⚠️ **The texts are a draft written from the code for the owner to review, not legal advice.**
   - *Tests: `LegalPagesTests` (both pages anonymous in English with the retention figures and the marker; Dutch by
     header and by `?lang`; configured values replace the marker, HTML-encoded, mailto link). Red: the three HTTP tests

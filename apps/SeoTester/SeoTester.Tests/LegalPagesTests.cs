@@ -100,6 +100,52 @@ public class LegalPagesTests(SeoTesterHostFixture host)
             terms.Should().Contain("the courts of Example");
         }
         legal.Missing().Should().BeEmpty();
-        new SeoTester.Legal.SeoLegalOptions().Missing().Should().HaveCount(6);
+        // Only the required values count; the address, the enterprise number and the court never do.
+        new SeoTester.Legal.SeoLegalOptions().Missing().Should().BeEquivalentTo(
+            ["SeoTester:Legal:OperatorName", "SeoTester:Legal:ContactEmail", "SeoTester:Legal:HostingProvider"]);
+    }
+
+    [Fact]
+    public void A_private_operator_without_address_or_enterprise_number_reads_cleanly_in_both_languages()
+    {
+        // The owner runs SeoTester as a private person (2026-10-11): no registered enterprise, so no address or KBO number.
+        var legal = new SeoTester.Legal.SeoLegalOptions
+        {
+            OperatorName = "Example Person", ContactEmail = "privacy@example.com", HostingProvider = "Example Hosting, Country",
+        };
+        var facts = new SeoTester.Legal.LegalPages.Facts(TimeSpan.FromDays(365), TimeSpan.FromHours(6));
+
+        var privacyEn = SeoTester.Legal.LegalPages.RenderPrivacy("en", legal, facts);
+        var termsEn = SeoTester.Legal.LegalPages.RenderTerms("en", legal);
+        var privacyNl = SeoTester.Legal.LegalPages.RenderPrivacy("nl", legal, facts);
+        var termsNl = SeoTester.Legal.LegalPages.RenderTerms("nl", legal);
+
+        foreach (var html in new[] { privacyEn, termsEn, privacyNl, termsNl })
+        {
+            html.Should().NotContain("data-to-be-completed", "every required value is set");
+            html.Should().NotContain("enterprise number").And.NotContain("ondernemingsnummer");
+            html.Should().NotContain("Example Person,", "nothing follows the name when the optional parts are empty");
+        }
+        privacyEn.Should().Contain("is operated by Example Person. The operator");
+        termsEn.Should().Contain("It is operated by Example Person; contact:");
+        privacyNl.Should().Contain("wordt uitgebaat door Example Person. De uitbater");
+        termsEn.Should().Contain("disputes go to the competent Belgian courts,");
+        termsNl.Should().Contain("geschillen gaan naar de bevoegde Belgische rechtbanken,");
+        legal.Missing().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_registered_enterprise_shows_its_address_and_number_after_the_name()
+    {
+        var legal = new SeoTester.Legal.SeoLegalOptions
+        {
+            OperatorName = "Example BV", Address = "Street 1, 1000 City", EnterpriseNumber = "0123.456.789",
+            ContactEmail = "privacy@example.com", HostingProvider = "Example Hosting, Country",
+        };
+
+        SeoTester.Legal.LegalPages.RenderTerms("en", legal)
+            .Should().Contain("operated by Example BV, Street 1, 1000 City, enterprise number 0123.456.789; contact:");
+        SeoTester.Legal.LegalPages.RenderTerms("nl", legal)
+            .Should().Contain("uitgebaat door Example BV, Street 1, 1000 City, ondernemingsnummer 0123.456.789; contact:");
     }
 }

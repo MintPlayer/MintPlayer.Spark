@@ -67,7 +67,8 @@ services:
       - Spark__Notifications__WebPush__Subject=${VAPID_SUBJECT:-}
       # PageSpeed Insights / CrUX. Empty = those checks "not measured".
       - SeoTester__PageSpeed__ApiKey=${PAGESPEED_API_KEY:-}
-      # The operator's identity on /privacy and /terms (D47). Empty = "[to be completed]" on the pages and a startup warning.
+      # The operator's identity on /privacy and /terms (D47). Name, contact e-mail and hosting provider are required (empty =
+      # "[to be completed]" on the pages and a startup warning); address and enterprise number are optional; court has a default.
       - SeoTester__Legal__OperatorName=${LEGAL_OPERATOR_NAME:-}
       - SeoTester__Legal__Address=${LEGAL_ADDRESS:-}
       - SeoTester__Legal__ContactEmail=${LEGAL_CONTACT_EMAIL:-}

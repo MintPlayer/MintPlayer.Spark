@@ -26,6 +26,10 @@ public static class LegalPages
     public const string MarkerEn = "[to be completed]";
     public const string MarkerNl = "[nog in te vullen]";
 
+    /// <summary>The court clause when <see cref="SeoLegalOptions.Court"/> is empty: correct without naming a district, and one text per language.</summary>
+    public const string DefaultCourtEn = "the competent Belgian courts";
+    public const string DefaultCourtNl = "de bevoegde Belgische rechtbanken";
+
     /// <summary>The retention periods the policy states that are settings, not constants.</summary>
     public sealed record Facts(TimeSpan AuditLogRetention, TimeSpan TargetCoolDown);
 
@@ -35,8 +39,8 @@ public static class LegalPages
         w.Begin("Privacy policy", "Privacyverklaring");
 
         w.H2("Who is responsible", "Wie is verantwoordelijk");
-        w.P("SeoTester (https://seotester.mintplayer.com) is operated by {op}, {addr}, enterprise number {kbo}. The operator is the controller of the personal data described below. Questions and requests: {mail}.",
-            "SeoTester (https://seotester.mintplayer.com) wordt uitgebaat door {op}, {addr}, ondernemingsnummer {kbo}. De uitbater is de verwerkingsverantwoordelijke voor de persoonsgegevens hieronder. Vragen en verzoeken: {mail}.");
+        w.P("SeoTester (https://seotester.mintplayer.com) is operated by {who}. The operator is the controller of the personal data described below. Questions and requests: {mail}.",
+            "SeoTester (https://seotester.mintplayer.com) wordt uitgebaat door {who}. De uitbater is de verwerkingsverantwoordelijke voor de persoonsgegevens hieronder. Vragen en verzoeken: {mail}.");
 
         w.H2("What is stored, and for how long", "Wat er bewaard wordt, en hoe lang");
         w.List(
@@ -99,8 +103,8 @@ public static class LegalPages
         w.Begin("Terms of use", "Gebruiksvoorwaarden");
 
         w.H2("The service", "De dienst");
-        w.P("SeoTester (https://seotester.mintplayer.com) checks websites for SEO, performance, security, accessibility and social previews. It is operated by {op}, {addr}, enterprise number {kbo}; contact: {mail}. By signing in you accept these terms.",
-            "SeoTester (https://seotester.mintplayer.com) controleert websites op SEO, prestaties, beveiliging, toegankelijkheid en sociale previews. De dienst wordt uitgebaat door {op}, {addr}, ondernemingsnummer {kbo}; contact: {mail}. Door aan te melden aanvaard je deze voorwaarden.");
+        w.P("SeoTester (https://seotester.mintplayer.com) checks websites for SEO, performance, security, accessibility and social previews. It is operated by {who}; contact: {mail}. By signing in you accept these terms.",
+            "SeoTester (https://seotester.mintplayer.com) controleert websites op SEO, prestaties, beveiliging, toegankelijkheid en sociale previews. De dienst wordt uitgebaat door {who}; contact: {mail}. Door aan te melden aanvaard je deze voorwaarden.");
 
         w.H2("Acceptable use", "Aanvaardbaar gebruik");
         w.List(
@@ -172,10 +176,9 @@ public static class LegalPages
         {
             var html = ServerPage.E(text);
             return html
-                .Replace("{op}", Value(legal.OperatorName))
-                .Replace("{addr}", Value(legal.Address))
-                .Replace("{kbo}", Value(legal.EnterpriseNumber))
-                .Replace("{court}", Value(legal.Court))
+                .Replace("{who}", Operator())
+                .Replace("{court}", string.IsNullOrWhiteSpace(legal.Court)
+                    ? ServerPage.E(nl ? DefaultCourtNl : DefaultCourtEn) : ServerPage.E(legal.Court))
                 .Replace("{host}", Value(legal.HostingProvider))
                 .Replace("{mail}", string.IsNullOrWhiteSpace(legal.ContactEmail) ? Marker()
                     : $"<a href=\"mailto:{ServerPage.E(legal.ContactEmail)}\">{ServerPage.E(legal.ContactEmail)}</a>")
@@ -184,6 +187,21 @@ public static class LegalPages
                 .Replace("{bot}", "<a href=\"/bot\">/bot</a>")
                 .Replace("{terms}", $"<a href=\"/terms\">{ServerPage.E(nl ? "gebruiksvoorwaarden" : "terms of use")}</a>")
                 .Replace("{privacy}", $"<a href=\"/privacy\">{ServerPage.E(nl ? "privacyverklaring" : "privacy policy")}</a>");
+        }
+
+        /// <summary>
+        /// The operator's name, then its address and enterprise number only when configured: a private person running the
+        /// service without a registered enterprise has neither, and GDPR art. 13(1)(a) asks for an identity and contact
+        /// details (the e-mail), not a postal address. The name stays required, so it alone falls back to the marker.
+        /// </summary>
+        private string Operator()
+        {
+            var who = new StringBuilder(Value(legal.OperatorName));
+            if (!string.IsNullOrWhiteSpace(legal.Address))
+                who.Append(", ").Append(ServerPage.E(legal.Address));
+            if (!string.IsNullOrWhiteSpace(legal.EnterpriseNumber))
+                who.Append(", ").Append(ServerPage.E(nl ? "ondernemingsnummer " : "enterprise number ")).Append(ServerPage.E(legal.EnterpriseNumber));
+            return who.ToString();
         }
 
         private string Value(string? value) => string.IsNullOrWhiteSpace(value) ? Marker() : ServerPage.E(value);

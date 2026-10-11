@@ -302,4 +302,6 @@ current limits from the settings.
 on top), linked from the SPA's footer under every page, the sign-in page included, and left to the server by the service
 worker. ⚠️ The texts are a draft written from the code for the owner to review, not legal advice. The operator's name,
 address, contact address, enterprise number, court and hosting provider are configuration (`SeoTester:Legal:*`, in
-production `LEGAL_*` in the server's `.env`, [deploy.md](deploy.md) §4.3); an empty one shows "[to be completed]".
+production `LEGAL_*` in the server's `.env`, [deploy.md](deploy.md) §4.3). An empty name, contact address or hosting
+provider shows "[to be completed]"; the address and the enterprise number are optional and left out when empty, and an
+empty court reads "the competent Belgian courts".

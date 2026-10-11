@@ -284,17 +284,24 @@ belong together), so a copy mistake shows at the deploy, not at the first push.
 
 The privacy policy and the terms are server pages (`apps/SeoTester/SeoTester/Legal/`, English and Dutch, version and
 effective date at the top). ⚠️ **The texts are a draft written from the code for you to review, not legal advice.**
-Who operates the service is configuration, never the repository: until a value is set the pages show
+Who operates the service is configuration, never the repository: until a **required** value is set the pages show
 **"[to be completed]"** ("[nog in te vullen]") in its place, and production logs a warning at startup naming the keys.
+Each value appears in both the English and the Dutch text, so prefer names and numbers over translated phrases.
 
-| `.env` | Config key | What |
-|---|---|---|
-| `LEGAL_OPERATOR_NAME` | `SeoTester:Legal:OperatorName` | the controller's legal name (person or company) |
-| `LEGAL_ADDRESS` | `SeoTester:Legal:Address` | postal address, one line |
-| `LEGAL_CONTACT_EMAIL` | `SeoTester:Legal:ContactEmail` | for questions and privacy requests (shown as a mailto link) |
-| `LEGAL_ENTERPRISE_NUMBER` | `SeoTester:Legal:EnterpriseNumber` | KBO/BCE number |
-| `LEGAL_COURT` | `SeoTester:Legal:Court` | completes "disputes go to …" (e.g. "the courts of <district>") |
-| `LEGAL_HOSTING_PROVIDER` | `SeoTester:Legal:HostingProvider` | completes "The server is hosted by …" (provider and country) |
+| `.env` | Config key | Required | What |
+|---|---|---|---|
+| `LEGAL_OPERATOR_NAME` | `SeoTester:Legal:OperatorName` | yes | the controller's legal name (a person or a company) |
+| `LEGAL_CONTACT_EMAIL` | `SeoTester:Legal:ContactEmail` | yes | for questions and privacy requests (shown as a mailto link) |
+| `LEGAL_HOSTING_PROVIDER` | `SeoTester:Legal:HostingProvider` | yes | completes "The server is hosted by …" (provider and country, e.g. `Hetzner Online GmbH, Germany`) |
+| `LEGAL_ADDRESS` | `SeoTester:Legal:Address` | no | postal address, one line; left out when empty |
+| `LEGAL_ENTERPRISE_NUMBER` | `SeoTester:Legal:EnterpriseNumber` | no | KBO/BCE number; left out when empty |
+| `LEGAL_COURT` | `SeoTester:Legal:Court` | no | completes "disputes go to …"; empty reads "the competent Belgian courts" ("de bevoegde Belgische rechtbanken") |
+
+**Run as a private person (owner, 2026-10-11): leave the address and the enterprise number empty.** GDPR art. 13(1)(a)
+asks for the controller's identity and contact details, which the name and the e-mail give. The geographic address and
+the enterprise number come from the e-commerce rules (Book XII WER) for services normally provided for remuneration;
+SeoTester is free and has no registered enterprise behind it. Once it charges, register the enterprise and fill both in.
+Not legal advice.
 
 Google's OAuth consent screen and X's app settings take the two URLs above. When a text changes in substance, raise
 `LegalPages.Version` and `EffectiveDate` in the code.
