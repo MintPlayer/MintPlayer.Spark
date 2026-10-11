@@ -47,6 +47,10 @@ public class ForgeIntegrationConformanceTests
         [
             forge => forge.PublishCommentAsync(SampleRepository, 1, "sha", "body", CancellationToken.None),
         ],
+        [EForgeCapability.GitMirror] =
+        [
+            forge => forge.GetGitAccessAsync(SampleRepository, CancellationToken.None),
+        ],
     };
 
     /// <summary>
@@ -204,6 +208,9 @@ public class ForgeIntegrationConformanceTests
             => throw new NotSupportedException();
 
         public virtual Task PublishCommentAsync(Repository repository, int pullRequestNumber, string sha, string body, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public virtual Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
 
         public Task<ForgeVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default)

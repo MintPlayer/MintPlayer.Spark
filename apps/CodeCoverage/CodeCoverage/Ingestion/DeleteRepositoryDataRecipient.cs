@@ -136,6 +136,10 @@ public partial class DeleteRepositoryDataRecipient : IRecipient<DeleteRepository
         // query. Deleting an id that was never written is a no-op.
         session.Delete(RepositoryManifest.ForRepository(repositoryId));
 
+        // Its commit-graph mirror and state (#504, PRD §5.2). Normally already gone with the
+        // disconnect this action requires; asked again so DeleteData never leaves one behind.
+        await CommitGraph.CommitGraphDeletion.RequestAsync(session, messageBus, [repositoryId], "deleted", cancellationToken);
+
         session.Delete(repository);
         await session.SaveChangesAsync(cancellationToken);
 

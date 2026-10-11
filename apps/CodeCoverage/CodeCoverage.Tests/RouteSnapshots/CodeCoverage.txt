@@ -2,6 +2,7 @@ GET /api/browse/accounts/{provider}/{login} | authorize(policy=MintPlayer.Spark.
 GET /api/browse/accounts/{provider}/{login}/dependency-graph | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/accounts/{provider}/{login}/repos | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/accounts/{provider}/{login}/sparklines | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
+GET /api/browse/avatar/{avatarKey} | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name} | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/branches | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/commits | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
@@ -9,6 +10,7 @@ GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha} | authorize(policy
 GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha}/file | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha}/hierarchy | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/commits/{sha}/tree | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
+GET /api/browse/repos/{provider}/{owner}/{name}/graph | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/repos/{provider}/{owner}/{name}/history | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 POST /api/github/webhooks | antiforgery=not-required
 GET /api/me/accounts | authorize(policy=;roles=;schemes=) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=)

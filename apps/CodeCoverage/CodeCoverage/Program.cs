@@ -55,6 +55,8 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CodeCoverage.Services.ISourceContentCache, CodeCoverage.Services.SourceContentCache>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddCodeCoverage();
+// The commit graph (#504): options, the coverage-git sidecar client and the avatar image client.
+builder.Services.AddCodeCoverageCommitGraph(builder.Configuration);
 // Outgoing mail (#460 M8, D10): MailManager under Spark:Mail. Added only when a relay
 // (Spark:Mail:Smtp:Host) AND a sender (Spark:Mail:From:Address) are configured; compose maps both
 // from MAIL_HOST / MAIL_FROM_ADDRESS, and an unset MAIL_FROM_ADDRESS leaves mail off. Without it the
@@ -232,6 +234,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddCustomActions();
     spark.AddRecipients();
     spark.AddCronJobs();
+    // The commit-graph avatar cache (#504, D28) writes @expires by hand, so the database must reap it.
+    spark.AddExpiration();
 
     // ⚠ The four calls above are source-generated over THIS assembly only, so they do not see
     // anything in CodeCoverage.GithubIntegration. Its own entry point has to be called explicitly,

@@ -145,13 +145,83 @@ jobs:
           "/orgs/${{ github.repository_owner }}/packages/container/codecoverage" \
           -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
 
+  # The commit-graph mirror sidecar (#504): ghcr.io/mintplayer/codecoverage-git, pulled by the compose file's
+  # coverage-git service. Same steps as the app image; its own image name, Dockerfile and package. It lives under
+  # apps/CodeCoverage/, so the push filter above already covers it.
+  build-and-push-git:
+
+    name: Build and push the git sidecar image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+      attestations: write
+
+    env:
+      GIT_IMAGE_NAME: mintplayer/codecoverage-git
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Authenticate with GHCR
+      uses: docker/login-action@v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Extract tags/labels
+      id: meta-ghcr
+      uses: docker/metadata-action@v6
+      with:
+        github-token: ${{ github.token }}
+        images: ${{ env.REGISTRY }}/${{ env.GIT_IMAGE_NAME }}
+
+    - name: Build and push Docker image
+      id: push-ghcr
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/CodeCoverage/CodeCoverage.GitMirror/Dockerfile
+        push: true
+        tags: ${{ steps.meta-ghcr.outputs.tags }}
+        labels: ${{ steps.meta-ghcr.outputs.labels }}
+        # Its own cache scope, so the two images do not evict each other's layers.
+        cache-from: type=gha,scope=codecoverage-git
+        cache-to: type=gha,mode=max,scope=codecoverage-git
+
+    - name: Generate artifact attestation
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.GIT_IMAGE_NAME }}
+        subject-digest: ${{ steps.push-ghcr.outputs.digest }}
+        push-to-registry: true
+
+    # Best-effort, as for the app image: the VPS pulls without credentials.
+    - name: Make the package public
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api --method PATCH -H "Accept: application/vnd.github+json" \
+          "/orgs/${{ github.repository_owner }}/packages/container/codecoverage-git" \
+          -f visibility=public 2>&1 || echo "(skipped — already public, missing, or insufficient token scope)"
+
   deploy:
 
     name: Deploy to VPS
     runs-on: ubuntu-latest
     # Room for pull + restart plus the 660s readiness bound below.
     timeout-minutes: 25
-    needs: build-and-push
+    # Both images: compose pulls coverage-git too, and a deploy against a missing tag would fail at `pull`.
+    needs: [build-and-push, build-and-push-git]
     if: github.ref == 'refs/heads/master'
 
     permissions:

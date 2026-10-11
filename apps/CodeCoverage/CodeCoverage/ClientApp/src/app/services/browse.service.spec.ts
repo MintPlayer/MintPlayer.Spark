@@ -116,6 +116,34 @@ describe('BrowseService', () => {
     await without;
   });
 
+  it('getCommitGraph sends only the parameters that are set', async () => {
+    const page = { state: 'syncing', reason: null, snapshotId: null, totalRows: 0, from: 0, laneCount: 0, top: [], refs: [], rows: [] };
+
+    const all = service.getCommitGraph(provider, owner, name, {
+      from: 200, count: 100, ref: 'refs/heads/feat/x y', at: 'abcdef1', snapshot: 's1', firstParent: true, grep: 'fix #1', author: '-x',
+    });
+    const req = answer('GET', `${repoBase}/graph`, page);
+    expect(req.params.get('from')).toBe('200');
+    expect(req.params.get('count')).toBe('100');
+    expect(req.params.get('ref')).toBe('refs/heads/feat/x y');
+    expect(req.params.get('at')).toBe('abcdef1');
+    expect(req.params.get('snapshot')).toBe('s1');
+    expect(req.params.get('firstParent')).toBe('true');
+    expect(req.params.get('grep')).toBe('fix #1');
+    expect(req.params.get('author')).toBe('-x');
+    expect(req.urlWithParams).toContain('%23');
+    expect(await all).toEqual(page);
+
+    // Defaults are the server's: nothing set sends nothing, and false/'' are not values.
+    const none = service.getCommitGraph(provider, owner, name, { firstParent: false, grep: '' });
+    expect(answer('GET', `${repoBase}/graph`, page).params.keys()).toEqual([]);
+    await none;
+  });
+
+  it('avatarUrl encodes the opaque key', () => {
+    expect(service.avatarUrl('github-ab/cd')).toBe('/api/browse/avatar/github-ab%2Fcd');
+  });
+
   it('getCommit and getHierarchy encode the sha', async () => {
     const commit = service.getCommit(provider, owner, name, sha);
     answer('GET', `${repoBase}/commits/${S}`, { id: 'c1' });
