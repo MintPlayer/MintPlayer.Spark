@@ -48,7 +48,7 @@
           "icon": "bi-speedometer2",
           "type": "persistentObject",
           "persistentObjectId": "458035ba-1fc4-4f98-b24c-de1edbf8214c",
-          "alias": "dashboard",
+          "alias": "operator-dashboard",
           "objectId": "main",
           "order": 0
         },
