@@ -1,10 +1,9 @@
 # RavenDB over TLS with client certificates — design and one-time migration of the live server
 
-> ⚠️ **DRAFT until the Docker spike has run (SeoTester PRD §11, Q-D56a).** The settings, the permission model and every
-> command shape below were **proven on 2026-10-10 against RavenDB 7.1.3** (the `RavenDB.Embedded` server, on Windows,
-> unlicensed and then with the Developer licence; PRD §12 "D56"). They were **not** yet run against the pinned
-> `ravendb/ravendb:7.1.10-ubuntu.22.04-x64` image, in Docker, on the Community licence: Docker Desktop was not running.
-> Do not start §4 before §8 has been run and recorded.
+> **Proven in Docker on 2026-10-11** (§8; SeoTester PRD Q-D56a, §12 "Q-D56a"): the pinned
+> `ravendb/ravendb:7.1.10-ubuntu.22.04-x64` with this page's settings and certificates, both compose files brought up
+> locally with stand-ins for the apps, and §4.2, §4.4, §4.6, §4.7, §4.8 and §4.9 run as written. What could not be
+> measured is said so in §7 and §8.
 
 Owner decision 2026-10-10 (PRD D55, D56): minimal network exposure, and a secured RavenDB server shared by CodeCoverage
 and SeoTester. Files: [`apps/CodeCoverage/docker-compose.yml`](../../apps/CodeCoverage/docker-compose.yml),
@@ -24,6 +23,10 @@ Every backend network is `internal: true` (no route out) and pairwise; RavenDB a
 | `seo-raven` (external, created `--internal` by either deploy) | `coverage-raven`, `seotester-app` | no |
 | `seo-mail` (external, created `--internal` by either deploy) | `coverage-smtp`, `seotester-app` | no |
 | `seo-browser` | `seotester-app`, `seo-chromium` | no |
+
+Measured (§8): every connection the table allows succeeds, every other one fails, both ways. One thing the table
+implies and is worth stating: the two apps can reach each other over `web`, the Traefik network every public stack
+joins; that predates D55 and is not a backend network.
 
 **RavenDB has no egress, on purpose.** Cited from `Raven.Server` 7.1 (`Commercial/LicenseManager`, decompiled from the
 7.1.3 embedded server): activating a licence that is unexpired and of version ≥ 6 calls nothing outside the server
@@ -58,14 +61,18 @@ Directories `0750` root-owned; nothing here is ever in the repository or printed
 
 | File | Owner (uid) | Mode |
 |---|---|---|
-| `/var/www/code-coverage/raven-certs/server.pfx` | RavenDB's container user (uid from `docker run --rm --entrypoint id ravendb/ravendb:7.1.10-ubuntu.22.04-x64`) | `0400` |
+| `/var/www/code-coverage/raven-certs/server.pfx` | RavenDB's container user: **999** (`ravendb`; measured with `docker run --rm --entrypoint id ravendb/ravendb:7.1.10-ubuntu.22.04-x64`) | `0400` |
 | `/var/www/code-coverage/raven-certs/ca.crt`, `codecoverage.crt` | root | `0644` |
-| `/var/www/code-coverage/raven-certs/codecoverage.key` | the app's user (uid from `docker run --rm --entrypoint id ghcr.io/mintplayer/codecoverage:master`; .NET's `app` is 1654) | `0400` |
+| `/var/www/code-coverage/raven-certs/codecoverage.key` | the app's user: **1654** (`app`; measured on `ghcr.io/mintplayer/codecoverage:master`) | `0400` |
 | `/var/www/code-coverage/raven-operator/operator.crt` | root | `0644` |
-| `/var/www/code-coverage/raven-operator/operator.key` | curl's user (uid from `docker run --rm --entrypoint id curlimages/curl:8.11.1`) | `0400` |
+| `/var/www/code-coverage/raven-operator/operator.key` | curl's user: **100** (`curl_user`, group 101; measured on `curlimages/curl:8.11.1`) | `0400` |
 | `/var/www/seotester/raven-certs/ca.crt`, `seotester.crt` | root | `0644` |
-| `/var/www/seotester/raven-certs/seotester.key` | the SeoTester image's user (same check, `ghcr.io/mintplayer/seotester:master`) | `0400` |
+| `/var/www/seotester/raven-certs/seotester.key` | SeoTester's user: 1654 (its Dockerfile says `USER app` on the same .NET base; the image is not published yet, so check it with the same command before installing) | `0400` |
 | `/var/www/code-coverage/.env`: `RAVEN_SERVER_CERTIFICATE_PASSWORD`, `RAVEN_OPERATOR_THUMBPRINT` | (as today) | `0600` |
+
+The relay (`boky/postfix:v4.3.0`) runs as root (measured) and mounts no certificate; its DKIM key stays owned 101:104 as
+the README says. The modes above could not be measured on Docker Desktop for Windows, whose bind mounts ignore host
+ownership; the uids are what the files must be readable by.
 
 The CodeCoverage deploy refuses, before touching the stack, when any of its files is missing or a variable is unset;
 the SeoTester deploy likewise for its three files.
@@ -194,11 +201,11 @@ register codecoverage Coverage  raven-certs/codecoverage.crt
 register seotester    SeoTester /var/www/seotester/raven-certs/seotester.crt
 $OP -X PUT "$R/admin/databases?replicationFactor=1" -H 'Content-Type: application/json' --data '{"DatabaseName":"SeoTester"}'
 
-$OP "$R/admin/certificates" | grep -o '"Name":"[^"]*"'      # operator (well-known), codecoverage, seotester
+$OP "$R/admin/certificates" | grep -o '"Name":"[^"]*"' | sort -u   # codecoverage, seotester, "Server Certificate" (the well-known operator is not listed)
 $OP "$R/databases?namesOnly=true"                           # Coverage, SeoTester
 ```
 
-Each `PUT` answers 201 (re-registering the same certificate also answered 201 in the spike).
+Each `PUT` answers 201 (measured on 7.1.10; re-registering the same certificate also answers 201).
 
 ### 4.7 Start the rest
 
@@ -262,21 +269,55 @@ old one (a second `register` with a new `Name`), swap the files, restart the app
 password or update `.env`) and restart `coverage-raven`; clients trust the CA, not the leaf. The operator: new
 thumbprint in `.env`, restart `coverage-raven`.
 
-## 7. What the Developer licence would refuse
+## 7. Certificate validity and the licence
 
-The spike found that the **Developer** licence refuses activation while the server certificate is valid for more than
-4 months (*"The server certificate total duration is greater than 4 months. This is not allowed when using Developer
-license"*). Production runs the **Community** licence; whether Community has a limit of its own on certificates is
-checked in §8.
+- **Measured (7.1.10, Developer licence):** the licence one-shot, exactly as the compose file runs it, failed (curl exit
+  22, HTTP 500, *"The server certificate total duration is greater than 4 months. This is not allowed when using
+  Developer license"*) while the server certificate was the 825-day one of §4.2, and activated (exit 0;
+  `/license/status` Commercial, Type Developer, not expired) once the server ran a 90-day certificate.
+- **Cited, not measured (no Community licence can be activated outside production):** in `Raven.Server` 7.1
+  (decompiled, `ServerWide/SecretProtection.ValidateExpiration`, both overloads) the only certificate-duration rule is
+  `if (licenseType == LicenseType.Developer && …)`: at most 4 months total and at most 4 months from now. There is no
+  rule for Community or any other type. So production (Community) keeps the 2-year certificates of §4.2.
+- ⚠️ Consequence for anyone testing locally with the Developer licence: issue the server certificate with `-days 90`.
 
-## 8. The spike to run before §4 (Q-D56a)
+## 8. The Docker spike (2026-10-11, Q-D56a)
 
-In Docker, with the pinned image, on a throwaway container and volume, certificates from 4.2 (SAN plus
-`DNS:localhost`), the compose file's RAVEN_* settings: (1) unsecured `http://` and a client without a certificate are
-refused; (2) the operator creates two databases and registers two app certificates; (3) an app certificate lists only
-its own database, reads, writes, deploys an index, configures expiration and receives a subscription batch (TCP 38888)
-through Spark's `SparkRavenDbSecurity`; and is refused reading or writing the other database, creating or deleting a
-database, listing or registering certificates, activating a licence; (4) the operator exports a database; (5) the
-licence one-shot's exact curl command activates the **Community** licence over TLS; (6) the three `id -u` values of
-§4.3; (7) an unsecured restart on the same volume (the rollback of 4.9) serves the data. Remove the container, volume
-and certificates afterwards; record the results in PRD §12 and remove the DRAFT banner.
+Local and throwaway: the committed compose files copied with `web`, `seo-raven` and `seo-mail` renamed `spike-*` (the
+owner's own `web` network was never joined), projects `spike-cc` and `spike-seo`; the apps, the fetcher and Chromium
+replaced by `alpine` listeners on their ports (they need real secrets or are not published); RavenDB, the licence
+one-shot and the relay ran their real images and settings. Certificates from §4.2's commands verbatim. Everything
+(containers, volumes, networks, pulled images, certificates, the licence copy, backups) was removed afterwards.
+
+**Measured:**
+- §4.5–4.7 as written: RavenDB came up secured (`Server available on: https://coverage-raven:8080`, TCP 38888); the
+  operator registered both app certificates and created both databases (201 each); `up -d` started the rest.
+- The scoping, through Spark's `SparkRavenDbSecurity` in a Linux container (the CodeCoverage image's .NET runtime):
+  plain `http://` got no answer, no client certificate got 403; `codecoverage` listed only `Coverage`, wrote, read,
+  deployed an index, configured expiration and received a subscription batch over TLS on 38888; it was refused
+  (`AuthorizationException`) reading or writing `SeoTester`, creating or deleting a database and registering a
+  certificate, and got 403 listing certificates and activating a licence; `seotester` wrote its own database and was
+  refused `Coverage`. §4.8's checks: unsecured `000`, app certificate on `SeoTester` 403, on `Coverage` 200.
+- The README's *Backup* commands in their TLS form: stats and export, exit 0.
+- The licence one-shot: §7.
+- The container uids: §3.
+- The network matrix (TCP connect from inside each container; ✔ = connected):
+
+  | from \ to | raven 8080/38888 | smtp 587 | coverage-app | seotester-app | chromium | fetcher | internet |
+  |---|---|---|---|---|---|---|---|
+  | coverage-raven | (self) | – | ✔ | ✔ | – | – | – |
+  | coverage-raven-license | ✔ | – | ✔ | – | – | – | – |
+  | coverage-smtp | – | (self) | ✔ | ✔ | – | – | ✔ |
+  | coverage-app | ✔ | ✔ | (self) | ✔ (`web`) | – | – | ✔ |
+  | seotester-app | ✔ | ✔ | ✔ (`web`) | (self) | ✔ | ✔ | ✔ |
+  | seo-chromium | – | – | – | ✔ | (self) | – | – |
+  | seo-fetcher | – | – | – | ✔ | – | (self) | ✔ |
+
+- The rollback (§4.9): after running secured, `down`, the cold copy of 4.4, then master's unsecured compose file on the
+  **same volume**: healthy, the document written while secured read back over `http://`, the licence still there. Then
+  the cold copy restored with 4.9's command and the secured file again: the app certificate read the same document
+  (the registrations survived the unsecured interlude and the restore).
+
+**Not measured:** file modes on a Linux host (Docker Desktop ignores host ownership on bind mounts); the Community
+licence (§7, cited); the real app images against the secured server (master's image predates the certificate settings;
+the same code ran in the probe instead).

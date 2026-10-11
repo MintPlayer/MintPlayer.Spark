@@ -35,7 +35,7 @@ Research behind this document:
 | M10 ✅ | 2026-10-10 (§12 "M10"): `seo-render` (a sample per tier, one URL template each, in Chromium over Playwright: launched locally or `ConnectAsync` to the container's `server.mjs`; every browser request fetched by the app through the SSRF-safe client, one redirect hop at a time (core `SafeHttpOptions.FollowRedirects`), robots.txt and the tier's connections, analytics hits answered locally; axe-core 4.13.0 bundled; phone and desktop renders), `seo-psi` (PageSpeed Insights with the key in a header, recorded real answers, 429 deferred then "not measured"), `seo-pdf` (the report printed per language, kept 7 days, members-only download), the aggregate waiting for crawl, render and PSI; **110 of 110 checks**; `RunCheckResult.Note` says why a check was not measured; the Chromium container's image and server script for M12; spikes S3 and S5 measured. Open: Q-M10a–Q-M10f (§11) |
 | M11 ✅ | 2026-10-10 (§12 "M11"): the pages, on ng-spark's generic detail page with SeoTester's renderers and panels: landing page, site (gauge, verification with copy buttons, trend), run report (live progress over `/spark/live`, gauge and category bars, every check with New/Fixed/Unchanged, why not measured, how to fix in en/nl with platform snippets; PDF download), page previews and findings, share page, badge (`ShareBadge`, `/seotester/badge.svg`), operator dashboard (`OperatorDashboard`, `/seotester/admin/dashboard`), public catalogue texts; the notification link fixed to `/po/audit-run/{id}`; refusals say when to try again; ng-spark fixes found in the browser (gauge badge, share page, action errors, language header, notification links). Q-M6d reviewed. Open: Q-M11b, Q-M11c (§11). Q-M11a, Q-M11d answered (D50, D51, §12 Round 14) and built with the phone and light-mode review (§12 "M11 follow-up") |
 | M12 ✅ code-complete, deploy pending the owner | 2026-10-10 (§12 "M12"): scheduled monitoring (`Site.Monitoring` Off/Weekly/Monthly, the 15-minute sweep `MonitoringSweepCronJob`, queue `seo-monitor`, one run per slot started for the member who set the schedule through `AuditStarter`) and alerts (score drop per site or `SeoTester:Alerts:ScoreDrop`, new critical issue, certificate < 14 d, domain < 30 d; every member, through `ISparkNotifier`); `apps/SeoTester/docker-compose.yml` (app + `seo-chromium` on `seo-browser`, `internal: true`; the app on Traefik's `web` and CodeCoverage's `code-coverage_coverage-internal`), `.env.example`, `GET /health`, workflows `seotester-deploy.yml` / `seotester-image-check.yml`, `tools/verify-seotester-deploy.test.mjs`; runbook `docs/seotester/deploy.md` (VPS setup, credentials, post-deploy checklist for Q-M5a, Q-M6a, Q-M9b, Q-M10b). **The owner deploys** (deploy.md §3, §4). Q-M12a–c answered (D47–D49, §12 Round 13): `/privacy` and `/terms`, the shared network `mintplayer-backend` (CodeCoverage's compose and deploy changed), alerts to all members |
-| Shared RavenDB hardening (D55, D56) | ⏳ 2026-10-10 (§12 Round 15): pairwise internal networks in both compose files, RavenDB over TLS with a client certificate per app (Spark's `Spark:RavenDb:CertificateFile` and friends), the deploys' pre-checks, runbook `docs/code-coverage/raven-tls-migration.md`. Code, compose, tests ✅; **the live migration waits for the Docker spike (Q-D56a, §11) and then the owner** |
+| Shared RavenDB hardening (D55, D56) | ✅ code, compose, tests, runbook (2026-10-10, §12 Round 15); ✅ proven in Docker with the pinned image (2026-10-11, §12 "Q-D56a"). **The live migration is the owner's** (`docs/code-coverage/raven-tls-migration.md` §4) |
 | Fetcher container (D54) | ✅ code-complete 2026-10-10 (§12 "D54"): `seo-fetcher` with egress and no database makes every request to a target (`ISeoFetcher`, `SeoTester.Fetching`, `SeoTester.Fetcher`, core `MintPlayer.Spark.SafeHttp`); `seo-fetch` (internal) + `seo-egress`; shared secret `SEO_FETCHER_KEY`; third image in both workflows. Deployed with the rest by the owner. Q-D54a closed: kept as built (§11) |
 | M5 ✅ | 2026-10-10, commits `6162b583` (server, apps, tests, guides) and `e75cf81d` (ng-spark): X4 live updates over `GET|CONNECT /spark/live` in core (`libs/spark/MintPlayer.Spark/Live/`), `"live": true` on types and queries replacing `isStreamingQuery`, `Spark:Live` options, `ISparkLiveNotifier`, app streams (`LiveQueryArgs`), ng-spark `SparkLiveService` / `[live]` grids / po-detail refresh / po-edit merge on push; the five streaming defects fixed; `MintPlayer.Spark.Testing` `preview.103`. Guide `docs/guide-live-updates.md` (§12 "Spike S8"). Open: Q-M5a (§11) |
 
@@ -505,7 +505,9 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 - ~~**Q-M12a (from M12): SeoTester has no privacy policy or terms of service.**~~ **Closed by D47** (§12 Round 13): option (a), and the owner asked for the texts to be written: `/privacy` and `/terms` are built. ~~X's OAuth 2.0 app settings require a  privacy policy URL and a terms URL before "Request email from users" can be switched on, and Google's consent screen  asks for a privacy policy link to leave testing mode; the app also processes personal data (accounts, addresses,  audit logs for a year, D37). Nothing in the PRD names these pages. Options: (a) the owner writes the texts (en + nl)  and the app serves them server-rendered at `/privacy` and `/terms`, like `/bot`; (b) link to a MintPlayer-wide policy  elsewhere; (c) leave X without "request email" (its users then confirm an address by mail). **Recommendation: (a)**:  the texts are the owner's (legal), the pages are an hour's work once they exist. Proceeding without them: the runbook  says where the URLs go.~~
 - ~~**Q-M12b (from M12): SeoTester shares CodeCoverage's RavenDB server and mail relay.**~~ **Closed by D48** (§12 Round 13): option (b), a separate shared network `mintplayer-backend`. ~~§1 says "joins the existing  RavenDB network". Built: the app joins `code-coverage_coverage-internal` as an external network (database `SeoTester` on  `coverage-raven`, mail through `coverage-smtp`, which then needs `seotester.mintplayer.com` in its allowed sender  domains and a DKIM key, deploy.md §3.2). Consequences: SeoTester starts only when CodeCoverage's stack is up (the deploy  checks), and CodeCoverage's `docker compose down` meets a network still in use (Compose reports it and reuses it on  `up`; to confirm at the first CodeCoverage deploy after SeoTester's, deploy.md §5). Options: (a) as built; (b) a  network both stacks declare `external` (created once by hand), which changes CodeCoverage's compose file; (c) a  RavenDB server and relay of SeoTester's own (a second licence activation, DKIM, PTR and memory on the same VPS).  **Recommendation: (a)**, and (b) if the CodeCoverage deploy check shows a failure.~~
 - ~~**Q-M12c (from M12): who receives a monitored site's alerts.**~~ **Closed by D49** (§12 Round 13): option (a), as built. ~~F10 says alerts reach "the user". Built: every member of  the site's organization, Viewers included, each through their per-organization preferences (D44: in-app, mail, push  per organization); a skipped scheduled run is told to the member who set the schedule (or the Admins when that  member left). Options: (a) as built; (b) Admins and Owners only; (c) an opt-in per member and site. **Recommendation:  (a)**: a member who reads the site wants to know it broke, and D44's preferences already let anyone turn a channel off  for that organization.~~
-- **Q-D56a (from D56): the Docker spike of the secured RavenDB, before the live migration.** The owner asked for a local
+- ~~**Q-D56a (from D56): the Docker spike of the secured RavenDB, before the live migration.**~~ **Closed** (§12
+  "Q-D56a", 2026-10-11): option (a), the owner started Docker and the spike ran with the pinned image; everything held,
+  the runbook's DRAFT banner is gone. ~~The owner asked for a local
   spike in Docker with the pinned image before the migration steps are written as fact. Docker Desktop was not running
   on the build machine (`docker version`: no daemon), and it was not started. What ran instead (§12 Round 15, "Spike"):
   the same settings on RavenDB **7.1.3** (the `RavenDB.Embedded` server, Windows), unlicensed and with the Developer
@@ -516,7 +518,7 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
   owner starts Docker Desktop and the spike of runbook §8 runs here (Community licence from the VPS copy, never
   printed); (b) run §8 on the VPS against a throwaway container and volume; (c) migrate on the 7.1.3 evidence.
   **Recommendation: (a)**, then remove the runbook's DRAFT banner. Until then `docs/code-coverage/raven-tls-migration.md` is a draft and the PR must not be
-  merged before the migration (the CodeCoverage deploy refuses without the certificate files anyway).
+  merged before the migration (the CodeCoverage deploy refuses without the certificate files anyway).~~
 - **Q-D54a: closed 2026-10-11, owner answer "Keep as built"** (option (a): Web Push stays in the app behind the
   push-service allow-list and the SSRF-safe client; no egress proxy). Original question kept below for the record.
 - ~~**Q-D54a (from D54): the app container still has a general route out.**~~ With the fetcher, the app makes no request to
@@ -2261,7 +2263,7 @@ two take D55 and D56 so no number is shared.
     never forgiven. PEM keys go through PKCS#12 (SChannel refuses an ephemeral key). `MintPlayer.Spark` is already at
     `11.0.0-preview.104` on this branch: no version change. Not changed: the Replication package's own
     `SparkModules` store (`ModuleDirectory`), which has its own options and no secured deployment.
-  - Runbook `docs/code-coverage/raven-tls-migration.md` (DRAFT until Q-D56a): certificates, VPS paths, owners and modes, the migration with exact commands
+  - Runbook `docs/code-coverage/raven-tls-migration.md` (~~DRAFT until Q-D56a~~ proven 2026-10-11): certificates, VPS paths, owners and modes, the migration with exact commands
     (hot backup, openssl, files, cold copy, the new compose file staged by hand before the merge, registration, start,
     verification, rollback), expected downtime ~5 min plus the cold copy, renewal.
   - *Tests: `SparkRavenDbSecurityTests` (9; certificates made in the test; a real TLS handshake against a Kestrel
@@ -2451,3 +2453,44 @@ The server, its data, logs and every certificate were deleted afterwards; no key
     fixture became a real 1×1 PNG.
   - *Runs (in a worktree):* the new tests and `OpenGraphCardTests` green; **the full SeoTester.Tests 210/210** (3 min
     53 s, on `3f246566`); Spark.Tests `SafeHttp*` 122/122.
+
+### Q-D56a (2026-10-11): the Docker spike of the secured RavenDB
+
+Closes Q-D56a. The owner started Docker Engine (29.8.1); the spike of `docs/code-coverage/raven-tls-migration.md` §8 ran on this machine, local and
+throwaway: the committed compose files copied with their global network names prefixed `spike-` (the owner's `web`
+was never joined), RavenDB `7.1.10-ubuntu.22.04-x64`, the licence one-shot (`curlimages/curl:8.11.1`) and the relay
+(`boky/postfix:v4.3.0`) with their real settings, the apps, fetcher and Chromium as `alpine` listeners. Certificates
+from the runbook's §4.2 commands verbatim. Afterwards every `spike-*` container, volume and network, the two images
+pulled for it, the certificates, the licence copy and the backups were removed; nothing else of the owner's was touched.
+
+**Measured:**
+- **Scoping on 7.1.10** (Spark's `SparkRavenDbSecurity` in a Linux container): unsecured `http://` no answer, no
+  client certificate 403; `codecoverage` (Admin on `Coverage`) listed only `Coverage`, wrote, read, deployed an
+  index, configured expiration, received a subscription batch over TLS (TCP 38888); refused reading or writing
+  `SeoTester`, creating or deleting a database, registering a certificate (`AuthorizationException`), listing
+  certificates and activating a licence (403); `seotester` refused on `Coverage`. The runbook's §4.8 curl checks:
+  `000`, 403, 200.
+- **The runbook steps** §4.5 (secured start: `Server available on: https://coverage-raven:8080`), §4.6 (four PUTs, 201
+  each; the listing shows `codecoverage`, `seotester` and "Server Certificate", not the well-known operator, so the
+  runbook comment was corrected), §4.7, the README's TLS backup commands (stats and export, exit 0), §4.4's cold copy.
+- **The licence one-shot, exactly as composed:** with the 825-day server certificate the **Developer** licence was
+  refused (curl exit 22, HTTP 500, "server certificate total duration is greater than 4 months"); with a 90-day one,
+  exit 0 and `/license/status` Commercial / Developer / not expired. The licence file was only mounted, never printed.
+- **Container uids:** RavenDB 999 (`ravendb`), curl 100 (`curl_user`, group 101), the relay root (mounts no
+  certificate), the CodeCoverage app 1654 (`app`). The runbook's §3 now states them.
+- **Rollback:** after running secured, master's unsecured compose file on the same volume came up healthy, read the
+  document written while secured over `http://`, and kept the licence; restoring the cold copy with §4.9's command and
+  going secured again, the app certificate still read it (registrations survive both).
+- **Network matrix** (TCP from inside each container): exactly D55's table. RavenDB reaches only the two apps and
+  itself and has no internet; the licence one-shot reaches only RavenDB and coverage-app; the relay reaches the apps
+  and the internet, never RavenDB; Chromium reaches only seotester-app; the fetcher reaches only seotester-app and the
+  internet; coverage-app never reaches Chromium or the fetcher. Found, not new: the two apps reach each other over
+  `web` (Traefik's network, shared by every public stack, older than D55); recorded in the runbook §1.
+
+**Cited, not measured:** the Community licence's certificate rules. `Raven.Server` 7.1's
+`SecretProtection.ValidateExpiration` (decompiled, both overloads) limits server-certificate duration only when
+`licenseType == LicenseType.Developer`; nothing applies to Community, so production keeps the 2-year certificates.
+Also not measured: host file modes (Docker Desktop for Windows ignores bind-mount ownership).
+
+**Runbook changes:** DRAFT banner removed; §1 the measured matrix note; §3 the measured uids and the relay; §4.6 the
+listing and 201s; §7 rewritten (measured vs cited); §8 replaced by these results.
