@@ -155,6 +155,20 @@ As built in the PRD decision log ("Agent principals carry the cookie's role and 
 - Tests: three setups in `McpAgentPrincipalTests` (the cookie's claims, the role removed, no other stored claim
   copied), Fleet's administrator against the cookie in `McpEmbeddedServerTests`.
 
+### IdP surface for MCP-only apps — done (2026-10-12)
+Owner decision of 2026-10-12; as built, with its evidence, in the PRD decision log ("IdP surface for MCP-only apps").
+- IdentityProvider: `Flows` (`SparkIdentityProviderFlows`) and `Endpoints` (`SparkIdentityProviderEndpoints`) flags,
+  default `All` (no change for SparkId or any existing provider), bindable as `Spark:IdentityProvider:Flows`/`Endpoints`.
+  What is left out is unmapped, refused at `/connect/token` and absent from both discovery documents. Startup refuses
+  a combination that cannot work, naming the dependency.
+- `idp.ForMcp().AgentsOnly()`: discovery and RFC 8414 documents, JWKS, authorize with sign-in and consent, the token
+  endpoint for code and refresh, anonymous loopback registration with metadata documents, revocation. Everything else
+  answers 404, userinfo and end-session included, because no MCP client calls them.
+- Fleet uses it; SparkId keeps everything. CodeCoverage and SeoTester, whose embedded servers M6 and M5 added with
+  `ForMcp()`, move to `idp.ForMcp().AgentsOnly()` next.
+- Tests: `McpAgentsOnlyProviderTests`, `OidcSurfaceTests`, Fleet's `McpEmbeddedServerTests` (404s, metadata,
+  refresh), and Fleet's route snapshot.
+
 ### M5 — SeoTester — done (2026-10-12), except the live S6 run
 As built, with the deviations, in the PRD decision log ("M5 implementation"); S7 and the S6 runbook in
 [spark_mcp_spikes.md](spark_mcp_spikes.md).

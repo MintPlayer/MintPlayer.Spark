@@ -145,7 +145,7 @@ If setups 2 and 3 are both wired, the metadata lists the embedded server first; 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.AddAuthentication<SparkUser>(...);            // the app's existing sign-in
-    spark.AddIdentityProvider(idp => idp.ForMcp());      // setup 3 only
+    spark.AddIdentityProvider(idp => idp.ForMcp().AgentsOnly()); // setup 3 only; the provider serves agents only
     spark.AddMcp(mcp =>
     {
         mcp.ServerName = "SeoTester";                    // ToolPrefix defaults to "seotester_"
@@ -405,7 +405,8 @@ Pending: none. SeoTester's items (M5) are in the table since its merge; the live
 
 ## 7. Risks
 
-- **OAuth server in production apps** (setup 3): only the MCP preset is on.
+- **OAuth server in production apps** (setup 3): only the agents' surface is mapped (`idp.ForMcp().AgentsOnly()`,
+  decision log "IdP surface for MCP-only apps").
 - **Spec churn**: the SDK absorbs transport changes.
 - **Three setups**: three test paths; the adversarial list is the guard.
 - **Gemini without CIMD**: if loopback DCR is ever turned off, Gemini users need a personal token.
@@ -866,7 +867,8 @@ None. Q18 was resolved in round 3 (§10, D22).
   - **Open for M5/M6 (production apps):** hosting the provider for agents maps its whole surface, not only the MCP
     preset §7 assumed: device authorization, PAR, introspection, the developer-portal and key-admin APIs (Fleet's route
     snapshot). Inert without registrations and rights, but an agents-only mapping would be the tighter design for
-    SeoTester and CodeCoverage.
+    SeoTester and CodeCoverage. *Resolved 2026-10-12: `idp.ForMcp().AgentsOnly()`, and Fleet uses it ("IdP surface for
+    MCP-only apps" below).*
   - **Live run (owner, M7 checklist), Claude Code; not run yet:** RavenDB on `localhost:8080`; Node trusting the dev
     certificate (`dotnet dev-certs https --export-path <file>.pem --format pem`, `NODE_EXTRA_CA_CERTS=<file>.pem`).
     *HR via SparkId:* `dotnet run --project apps/SparkId/SparkId --launch-profile https` (5011) and
@@ -1014,6 +1016,98 @@ None. Q18 was resolved in round 3 (§10, D22).
   (contributions PRD, M8 item 11). Fixed the same way: the case waits for indexing before the replay, pinning what it
   tests (a chain the index can see is torn down); the production code is unchanged. Evidence: the same filter (`Mcp`,
   `IdentityProvider`, library route snapshots) 748/749 before the wait, 749/749 after it.
+- **IdP surface for MCP-only apps (2026-10-12).** Owner decision of 2026-10-12: apps that host the identity provider only to
+  sign agents in (Fleet now; SeoTester and CodeCoverage in M5/M6, all with `ForMcp()`) expose only what agents need, and the
+  provider's registration gives developers granular control over flows and endpoints; a full provider like SparkId keeps
+  everything. Commits 702f1deb (flows, endpoints, `AgentsOnly()`, Fleet), 52a34d2c (the disable cascade), bbd2609d
+  (tests), rebased onto `feat/spark-mcp` at ca0577b0: M5, the M6 merge and agent role parity above, the role-name casing
+  fix and the M5 follow-ups below (made after this entry, merged first). Decisions taken while building, with their
+  evidence:
+  - **The API: two flags enums on the options, defaults `All`, and one preset.** `idp.Flows` (`SparkIdentityProviderFlows`:
+    `AuthorizationCode`, `RefreshToken`, `ClientCredentials`, `DeviceCode`, `TokenExchange`) and `idp.Endpoints`
+    (`SparkIdentityProviderEndpoints`: `UserInfo`, `EndSession`, `Introspection`, `Revocation`, `PushedAuthorization`,
+    `DeveloperRegistration`, `DeveloperPortal`, `ConnectedApplications`, `Administration`), bindable as
+    `Spark:IdentityProvider:Flows`/`Endpoints` ("AuthorizationCode, RefreshToken"). `idp.ForMcp().AgentsOnly()` sets
+    `AuthorizationCode | RefreshToken` and `Revocation`. Flags over a fluent `Flows(f => …)` builder because the options are
+    bound from configuration first, as everywhere in Spark (`SparkSignInIdentifiers` is the precedent), and a lambda builder
+    cannot be. Two enums, not one: grant types and endpoints are different questions with different failure modes
+    (`unsupported_grant_type` against 404). The defaults are today's surface, so SparkId and every existing provider are
+    unchanged: the library route snapshots (`auth-*-all-options`), SparkId's snapshot and
+    `The_default_provider_keeps_every_flow_and_endpoint` are green without a fixture change.
+  - **One decision, read in three places.** `OidcSurface` (internal singleton, built once in `AddIdentityProvider`) answers
+    every endpoint's `IEndpointBase.IsEnabled` (`MintPlayer.AspNetCore.Endpoints` 11.4: evaluated once at map time, also for
+    the user-generic endpoints `MapEndpoint<T>` closes), the token endpoint's grant switch, and both metadata documents, so
+    a route that is not mapped is never advertised and a grant that is not advertised is never honoured. Without
+    `RefreshToken` no refresh token is issued at all (authorization code and device grants), not just refused later. The
+    flows' pages follow their flow: authorize and consent with `AuthorizationCode`, the device pages with `DeviceCode`, the
+    sign-in, two-factor and error pages with either.
+  - **Registration splits by who registers.** `DeveloperRegistration` is RFC 7591 with an initial access token plus RFC 7592
+    management; agents' anonymous loopback registration stays the agent server's own switch (`DynamicRegistration`), so
+    `AgentsOnly()` keeps `POST /connect/register` for agents while a developer's valid initial access token there answers
+    401 (test seeds one through `OidcClientRegistration.IssueInitialAccessTokenAsync` for an approved developer).
+    RFC 7592 is unmapped: anonymous registrations get no registration access token.
+  - **Startup refuses what cannot work, naming the dependency** (`OidcSurface.For`, every broken rule listed):
+    `RefreshToken`, `UserInfo`, `EndSession`, `ConnectedApplications` need `AuthorizationCode` or `DeviceCode`;
+    `PushedAuthorization` needs `AuthorizationCode`; `DeveloperRegistration` needs `DeveloperPortal` (the initial access tokens
+    come from `POST /spark/identity-provider/developer/registration-token`); `ForMcp()`/`ForMcpResource()` need
+    `AuthorizationCode`; `Flows = None` is refused. **`ForMcpResource()` needs `UserInfo`**: D22 makes the provider that
+    application's sign-in (its users link their login here), and Spark's OpenID Connect sign-in sets
+    `GetClaimsFromUserInfoEndpoint = true` [verified `SparkExternalProviderExtensions.cs:244`]. So `AgentsOnly()` beside
+    `ForMcpResource` refuses to start instead of breaking that application's sign-in. End-session is not required there:
+    Spark's logout signs out the application cookie only [verified `Authorization/Endpoints/Logout.cs:20`].
+  - **What agents need, and why userinfo and end-session are out.** Kept: the OpenID discovery document beside RFC 8414
+    (the MCP authorization spec has clients try RFC 8414, then OpenID discovery; rmcp's order is exactly that
+    [verified, `generate_discovery_urls` in modelcontextprotocol/rust-sdk `crates/rmcp/src/transport/auth.rs`, read
+    2026-10-12]), JWKS, authorize with the sign-in, two-factor, consent and error pages, the token endpoint for code and
+    refresh, registration, revocation (RFC 7009; public clients may revoke their own tokens). Left out, because no MCP client
+    calls them: userinfo and end-session [source search 2026-10-12: no `userinfo_endpoint`/`end_session_endpoint` use in
+    openai/codex or modelcontextprotocol/rust-sdk; Gemini CLI declares `revocation_endpoint` only in its metadata type
+    (`packages/core/src/mcp/oauth-utils.ts`) and calls none of them; VS Code's `extHostAuthentication.ts` reads only the
+    authorization, token and registration endpoints and takes the account label from the token's claims; Claude Code is
+    closed source, so [inferred] from S3: it requests the advertised `mcp:*` scopes plus `offline_access`]. Agent tokens never
+    carry `openid` (the RFC 8414 `scopes_supported` is `mcp:read mcp:write offline_access`; S3: Codex and Gemini request what
+    is advertised), so there is no OpenID sign-in to describe or end. Also out: device grant, client credentials, token
+    exchange, PAR, introspection, developer registration and portal, the provider's connected-applications pages (the user
+    manages agents on the application's account page, which the provider's `ISparkConnectedApplicationSource` still feeds),
+    key administration.
+  - **The consent pages' links follow the surface.** "Not you?" pointed at `/connect/logout` and "manage" at
+    `/connect/applications`; on a provider without them the links would 404, so they are rendered only where mapped. In
+    setup 3 the provider is the application, whose own sign-out serves the wrong-account case.
+  - **Fleet** uses `idp.ForMcp().AgentsOnly()`; its route snapshot lost 22 routes (device ×3, PAR, introspection,
+    userinfo ×2, logout, `/connect/applications` ×3, RFC 7592 ×3, portal ×8 incl. admin ×2) and nothing else changed.
+    SeoTester's and CodeCoverage's, which M5 and M6 added with `ForMcp()` before this work was rebased onto them, move
+    to `AgentsOnly()` next.
+  - **Bug found: the disable cascade gave up on a stale index.** `OidcDisableCascade` sent its patch-by-query without a
+    `StaleTimeout`, and RavenDB then refuses at once when the index is stale (`QueryOperationOptions.StaleTimeout`: "null
+    by default - throw immediately if index is stale" [verified, Raven.Client 7.2.6 docs]): a token issued moments before
+    an application was disabled, or an agent client pruned, left the patch undone and the exception escaping. Found as
+    `McpEmbeddedAuthorizationServerTests.An_unused_dynamic_registration_is_pruned_with_its_grants` failing with "Cannot
+    perform bulk operation. Index is stale." in the batched run (it passed when the class ran alone). The patch now waits
+    for the index, bounded by the cascade's existing 30 s. Red → green:
+    `OidcOperationsTests.Disabling_revokes_a_token_its_index_has_not_caught_up_with` holds indexing back for a second; it
+    failed with exactly that exception without the timeout and passes with it.
+  - **Test race: `Reusing_a_refresh_token_revokes_the_whole_family`, the one recorded above.** The family sweep reads an
+    auto-index, best-effort by design (`Token.cs`, `RevokeAuthorizationChainAsync`'s remarks). When the class's earlier
+    cases had already created that index (`OidcGrantWithdrawal` queries the same two fields), the replay, one request after
+    the rotation, ran before the index held the rotated token. It failed in 2 of 2 class runs with the surface change,
+    passed alone and in 1 class run on the base; the surface change does not touch that path for a full provider. This
+    work fixed it as `feat/spark-mcp` did in 19a0b123 (a wait for indexing before the replay, as the provider's own
+    `Reused_refresh_token_is_refused_and_revokes_the_chain` does); the rebase kept that one fix and its comment.
+    **Open for the owner:** RFC 9700 §4.14.2 expects the active refresh token revoked. A bounded wait in the sweep would
+    make that exact; every caller of the sweep is refusing the request anyway, so the wait would delay no token.
+  - **Evidence:** red first. `McpAgentsOnlyProviderTests` and `OidcSurfaceTests` against the API with nothing reading it: 15 of
+    17 failed for the intended reasons (the routes answered 401/302/200 instead of 404, the documents listed 5 grant types,
+    other grants answered `invalid_client`, no startup refusal, the consent links present, a developer's initial access
+    token registered a client: 201). The two that passed guard what must not change: the default provider keeps every
+    flow and endpoint, and the configuration binding. Fleet's `McpEmbeddedServerTests` before `AgentsOnly()`: 2 of 3 failed
+    (the 404s; the consent links), and the registration case passed. Then green: the `IdentityProvider` namespace, the
+    `Mcp` classes using the embedded and remote hosts (`McpAgentsOnlyProviderTests`, `McpEmbeddedAuthorizationServerTests`,
+    `McpRemoteResourceTests`, `McpAgentPrincipalTests`, `McpSignInChallengeTests`) and the library route snapshots, 638/638.
+    Fleet's `McpEmbeddedServerTests` and route snapshot: 4/4. SparkId's route snapshot: 1/1, fixture unchanged. The
+    solution builds with 0 errors. Mutation runs (guard removed → red, restored → green): refresh tokens issued without the
+    flow → `Without_the_refresh_flow_…` (a refresh token came back); the developer gate in `/connect/register` off →
+    `An_agent_registers_anonymously_…` (201 Created); userinfo always advertised →
+    `Its_metadata_documents_advertise_only_what_it_maps`.
 - **Role names keep their declared casing (2026-10-12, found along the way).** The observation above, fixed. Decisions,
   with their evidence:
   - **Root cause:** `UserManager.AddToRoleAsync` normalizes the name before it calls `IUserRoleStore.AddToRoleAsync`

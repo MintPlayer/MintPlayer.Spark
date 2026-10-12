@@ -58,7 +58,7 @@ dotnet add package MintPlayer.Spark.IdentityProvider --prerelease   # embedded s
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.AddAuthentication<SparkUser>(auth => { /* your existing sign-in */ });
-    spark.AddIdentityProvider(idp => idp.ForMcp());          // embedded setup only
+    spark.AddIdentityProvider(idp => idp.ForMcp().AgentsOnly()); // embedded setup only; see below
 
     spark.AddMcp(mcp =>
     {
@@ -85,7 +85,7 @@ audience and what users paste into their agent, so treat it as permanent. To ser
 through your proxy, set `Spark:Mcp:CanonicalUrl` to that URL. The app fails to start if `/mcp` is already
 mapped; an Angular route named `mcp` isn't detected, so don't create one.
 
-`ForMcp()` turns on only what MCP needs: authorization code with PKCE, refresh tokens with rotation,
+`ForMcp()` adds what MCP needs: authorization code with PKCE, refresh tokens with rotation,
 revocation, the RFC 8414 metadata, Client ID Metadata Documents, and anonymous registration restricted to
 loopback redirect URIs (and VS Code's own). It needs `AddMcp` and a canonical URL (`Spark:Mcp:CanonicalUrl`
 or `Spark:Auth:PublicBaseUrl`): every agent token is addressed to that URL and to nothing else, so the app
@@ -94,6 +94,16 @@ and every 401 on `/mcp` carries `WWW-Authenticate: Bearer resource_metadata="…
 With an OAuth setup wired, an anonymous call that is refused answers a real HTTP 401 (with a JSON-RPC error
 telling the agent how to start its own sign-in) instead of a tool error, because an HTTP 401 is what makes an
 agent offer to sign in. See the [identity provider README](../libs/identity_provider/MintPlayer.Spark.IdentityProvider/README.md).
+
+`ForMcp()` adds the agents' side and leaves the rest of the identity provider mapped: device grant, PAR,
+introspection, userinfo, end-session, the developer portal and key administration. If the provider is in your app
+**only** for its agents, add `AgentsOnly()`. It maps the discovery and RFC 8414 documents, the JWKS, authorize with
+your sign-in and the consent page, the token endpoint for code and refresh, anonymous registration, and revocation;
+everything else answers 404 and is not advertised. Users manage their agents under Connected applications on your
+account page. Switch the provider's management types off in `security.json`
+(`"libraries": { "identity-provider": false }`). An app that is also a full identity provider, like `apps/SparkId`,
+leaves `AgentsOnly()` out, or picks flows and endpoints one by one
+([Choosing flows and endpoints](../libs/identity_provider/MintPlayer.Spark.IdentityProvider/README.md#choosing-flows-and-endpoints)).
 
 ## Choose what agents can see and do
 
@@ -407,6 +417,8 @@ is the other application's canonical URL, exactly. The provider then publishes t
 metadata-document clients and anonymous loopback registration, and mints tokens whose only audience is that URL, with
 `mcp:read`, `mcp:write` only when the user allowed changes, and the user's id as `sub`. `idp.ForMcp()` stays the call
 for the provider's own `/mcp`; both can be combined, and an agent then names the endpoint it wants in `resource`.
+Such a provider is also the other application's sign-in, which reads userinfo, so it keeps its OpenID Connect
+surface: `AgentsOnly()` beside `ForMcpResource` refuses to start.
 
 **On the application**, accept the provider as its external server, bound to the sign-in its users already link:
 

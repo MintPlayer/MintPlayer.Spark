@@ -72,6 +72,14 @@ It adds, and changes nothing else:
 Without `ForMcp()` the provider also contributes its sign-ins at other websites to the account page's
 **Connected applications** (`ISparkConnectedApplicationSource`).
 
+`ForMcp()` leaves the rest of the provider mapped: the device grant, PAR, introspection, userinfo, end-session, the
+developer portal and key administration. An application that hosts the provider **only** for its agents adds
+`AgentsOnly()`, which maps what agents use and nothing else ([below](#only-what-agents-need-agentsonly)):
+
+```csharp
+spark.AddIdentityProvider(idp => idp.ForMcp().AgentsOnly());
+```
+
 ## AI agents for another application: `ForMcpResource(url)`
 
 The provider can also sign agents in for **another** application's MCP endpoint, which accepts its tokens as its external
@@ -150,6 +158,8 @@ The layer's `security.json` grants rights to two slots. The host binds them to i
 | `/connect/login`, `/connect/two-factor`, `/connect/consent`, `/connect/logout`, `/connect/applications`, `/connect/error` | Server-rendered pages, localized (`ui_locales`, the `spark-lang` cookie, `Accept-Language`), light/dark |
 | `/spark/identity-provider/*` | The SPA's API: developer status, invitations, connected applications, admin keys |
 
+All of them are mapped by default; [Choosing flows and endpoints](#choosing-flows-and-endpoints) leaves some out.
+
 Client authentication: `client_secret_basic`, `client_secret_post`, `private_key_jwt` (RFC 7523),
 `tls_client_auth`, `self_signed_tls_client_auth` (RFC 8705), or none for a public client. A client
 registered with a method may use only that one. Failures answer a uniform `invalid_client`.
@@ -161,11 +171,102 @@ Tokens:
 - id_tokens carry `azp`, `amr`, `acr`, `sid`, `at_hash`, `auth_time`, and can be encrypted
   (`RSA-OAEP` with `A128CBC-HS256`/`A256CBC-HS512`).
 
+## Choosing flows and endpoints
+
+By default the provider offers every flow and maps every endpoint. `Flows` and `Endpoints` choose fewer. What is left
+out is not mapped (404), refused at `/connect/token` (`unsupported_grant_type`), and absent from both discovery
+documents, which list only what is mapped.
+
+```csharp
+spark.AddIdentityProvider(idp =>
+{
+    idp.Flows = SparkIdentityProviderFlows.AuthorizationCode | SparkIdentityProviderFlows.RefreshToken;
+    idp.Endpoints = SparkIdentityProviderEndpoints.Revocation | SparkIdentityProviderEndpoints.UserInfo;
+});
+```
+
+or in configuration, as comma-separated names:
+
+```json
+{ "Spark": { "IdentityProvider": { "Flows": "AuthorizationCode, RefreshToken", "Endpoints": "Revocation, UserInfo" } } }
+```
+
+| `Flows` | Maps |
+|---|---|
+| `AuthorizationCode` | `/connect/authorize` (GET and POST), `/connect/consent`, the `authorization_code` grant |
+| `RefreshToken` | the `refresh_token` grant; without it no refresh token is issued |
+| `ClientCredentials` | the `client_credentials` grant |
+| `DeviceCode` | `/connect/device_authorization`, `/connect/device`, the device grant |
+| `TokenExchange` | the token-exchange grant (RFC 8693) |
+
+With `AuthorizationCode` or `DeviceCode` the sign-in pages (`/connect/login`, `/connect/two-factor`) and
+`/connect/error` are mapped too. `/connect/token`, `/.well-known/openid-configuration` and `/.well-known/jwks` always are.
+
+| `Endpoints` | Maps |
+|---|---|
+| `UserInfo` | `/connect/userinfo` (GET and POST) |
+| `EndSession` | `/connect/logout`: RP-initiated, back- and front-channel logout, and the consent pages' "Not you?" link |
+| `Introspection` | `/connect/introspect` |
+| `Revocation` | `/connect/revoke` |
+| `PushedAuthorization` | `/connect/par` |
+| `DeveloperRegistration` | `POST /connect/register` with an initial access token, `/connect/register/{clientId}` (RFC 7592), and `POST /spark/identity-provider/developer/registration-token`, which issues those tokens |
+| `DeveloperPortal` | `/spark/identity-provider/developer` (GET and POST) and `…/invitations/accept` |
+| `ConnectedApplications` | `/connect/applications` and its two revoke forms, `/spark/identity-provider/applications[/withdraw]`, and the consent pages' link to them |
+| `Administration` | `/spark/identity-provider/admin/keys[/rotate]` |
+
+Anonymous registration of AI agents is the agent server's own switch (`ForMcp(m => m.DynamicRegistration = …)`, default
+on): it maps `POST /connect/register` without `DeveloperRegistration`, and a request there carrying an initial access
+token is then refused (401), because developer registration is off.
+
+Startup refuses a combination that cannot work, and the message names the dependency:
+
+- `RefreshToken`, `UserInfo`, `EndSession` and `ConnectedApplications` need `AuthorizationCode` or `DeviceCode`;
+- `PushedAuthorization` needs `AuthorizationCode`;
+- `DeveloperRegistration` needs `DeveloperPortal`, where developers get their initial access tokens;
+- `ForMcp()` and `ForMcpResource()` need `AuthorizationCode`;
+- `ForMcpResource()` needs `UserInfo`: that application's users sign in here to link their login, and Spark's OpenID
+  Connect sign-in reads userinfo;
+- `Flows = None` would issue no tokens.
+
+### Only what agents need: `AgentsOnly()`
+
+For an application that hosts the provider only to sign AI agents in to its own `/mcp` (Fleet in the demo):
+
+```csharp
+spark.AddIdentityProvider(idp => idp.ForMcp().AgentsOnly());
+```
+
+It sets `Flows = AuthorizationCode | RefreshToken` and `Endpoints = Revocation`; a later assignment wins. Mapped:
+
+- the discovery document, the RFC 8414 document and the JWKS;
+- `/connect/authorize`, with the sign-in, two-factor, consent and error pages;
+- `/connect/token` for `authorization_code` and `refresh_token`;
+- `/connect/register` for anonymous loopback registration, and Client ID Metadata Documents;
+- `/connect/revoke`.
+
+Everything else answers 404. The consent page then shows no "Not you?" link and no link to `/connect/applications`.
+Users see and revoke their agents on the application's account page (Connected applications), which the provider still
+feeds. Why userinfo and end-session are left out:
+
+- No MCP client calls them. The MCP authorization spec defines discovery, registration, authorization code with PKCE
+  and `resource`, and refresh. Source read on 2026-10-12: Codex and rmcp, Gemini CLI and VS Code reference neither
+  endpoint.
+- Agent tokens carry `mcp:read`, `mcp:write` and `offline_access`, never `openid`, so there is no OpenID sign-in to
+  describe or end.
+
+The provider's management types belong to its library layer, which `AgentsOnly()` does not change. Switch them off in
+the application's `security.json` (`"libraries": { "identity-provider": false }`), as Fleet does, or bind its slots.
+
+`AgentsOnly()` is not for a provider that also signs agents in for another application's endpoint (`ForMcpResource`).
+That application's users sign in here to link their login, and Spark's OpenID Connect sign-in reads userinfo, so
+startup refuses the combination.
+
 ## Configuration (`Spark:IdentityProvider`)
 
 | Key | Default | Meaning |
 |---|---|---|
 | `Issuer` | request origin in Development | The `iss` of every token |
+| `Flows` / `Endpoints` | `All` / `All` | What the provider offers and maps ([Choosing flows and endpoints](#choosing-flows-and-endpoints)) |
 | `SigningKeyPath` | | A legacy key file, imported once into the key ring |
 | `Developers:RequireApproval` / `TermsVersion` / `TermsUrl` | `true` / `1` / none | Becoming a developer |
 | `Apps:RequireReviewToGoLive` / `MaxRedirectUris` / `InvitationLifetime` | `false` / `20` / 7 days | Applications |
@@ -230,7 +331,7 @@ Authorization codes live 5 minutes and are single-use.
 
 ## Login page and federation
 
-`/connect/login` is always mapped. It shows:
+`/connect/login` is mapped whenever a flow signs users in (`AuthorizationCode` or `DeviceCode`, so by default). It shows:
 
 - The password form, unless `LocalCredentials` is `Disabled`. In that case the POST and
   `/connect/two-factor` are unmapped.
@@ -243,7 +344,7 @@ Authorization codes live 5 minutes and are single-use.
 ## Sessions and logout
 
 - Each interactive sign-in starts a provider session, whose `sid` appears in id_tokens.
-- `GET /connect/logout` ends it:
+- `GET /connect/logout` (`Endpoints.EndSession`) ends it:
   - It sends back-channel logout tokens to the clients' `BackChannelLogoutUri`.
   - It renders front-channel iframes for their `FrontChannelLogoutUri`.
   - It revokes the session's refresh tokens.
@@ -264,8 +365,9 @@ be the audience.
 
 ## The demo
 
-`apps/SparkId` is the provider (`https://localhost:5011`). QnA (5009), HR (5005) and Fleet (5003) are its
-relying parties. In Development, SparkId's migrations seed:
+`apps/SparkId` is the provider (`https://localhost:5011`), with every flow and endpoint. QnA (5009), HR (5005) and
+Fleet (5003) are its relying parties. Fleet also hosts a provider of its own, for its AI agents only
+(`idp.ForMcp().AgentsOnly()`). In Development, SparkId's migrations seed:
 - the identity scopes;
 - the `qna`, `hr` and `fleet` clients, with published development-only secrets;
 - the `fleet` API resource with `fleet.read`, which HR requests and passes to Fleet's

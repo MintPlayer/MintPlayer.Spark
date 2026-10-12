@@ -586,6 +586,10 @@ sparkAuthRoutes(
 
 Everything is advertised in discovery.
 
+*Amended 2026-10-12: an application may offer fewer flows and endpoints (`Flows`, `Endpoints`, `AgentsOnly()` for a
+provider that serves only AI agents); what it leaves out is unmapped, and discovery advertises exactly what is mapped
+([spark_mcp_PRD.md](spark_mcp_PRD.md) decision log, "IdP surface for MCP-only apps"). The default is everything, as above.*
+
 ### D9: Operations
 
 - **Audit** (`OidcAuditEvents`, Q6): each event records time, actor, app, subject, kind, details and
