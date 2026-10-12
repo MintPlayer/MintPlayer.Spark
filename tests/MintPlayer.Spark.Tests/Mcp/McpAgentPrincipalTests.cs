@@ -127,17 +127,18 @@ public class McpAgentPrincipalTests(SparkSharedDatabase database)
     }
 
     /// <summary>
-    /// The agent's role and group claims are the cookie's, and <c>User.IsInRole</c> answers alike; removing the role
-    /// (no security-stamp change, so the token stays valid) takes it off the very next call.
+    /// The agent's role and group claims are the cookie's, and <c>User.IsInRole</c> answers alike, by the name the group
+    /// is declared under although <c>UserManager</c> handed the store the normalized one; removing the role (no
+    /// security-stamp change, so the token stays valid) takes it off the very next call.
     /// </summary>
     private static async Task RolesFollowTheStoreAsync(SparkEndpointFactory<GuardedContext> factory, SparkUser user, string token)
     {
-        // The role as Identity stored it (UserManager hands the store the normalized name).
-        var role = user.Roles.Single();
+        const string role = McpAccountHost.Developers;
 
         var before = await RolesAsync(factory.CreateClient(), token, role);
         before.Status.Should().Be(HttpStatusCode.OK);
         before.ToolText.Should().Be($"inrole=True;claims={await CookieClaimsAsync(factory, user.Id!)}", "the agent carries the roles and groups the user's cookie carries");
+        before.ToolText.Should().Contain($"{ClaimTypes.Role}={role}", "the role claim is the declared name");
         before.ToolText.Should().Contain("group=" + Reviewers);
 
         await McpAccountHost.ChangeUserAsync(factory, user.Id!, (users, u) => users.RemoveFromRoleAsync(u, McpAccountHost.Developers));

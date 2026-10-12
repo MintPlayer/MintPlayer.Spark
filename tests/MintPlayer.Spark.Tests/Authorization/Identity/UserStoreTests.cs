@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Testing;
+using NSubstitute;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Authorization.Identity;
@@ -305,6 +307,35 @@ public class UserStoreTests : SparkTestDriver
 
         (await store.GetRolesAsync(user, CancellationToken.None)).Should().BeEmpty();
         (await store.IsInRoleAsync(user, "admins", CancellationToken.None)).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A role is kept, and read, by the name <c>security.json</c> declares for its group: <c>UserManager</c> hands the store
+    /// the normalized name, and <c>IsInRole</c> compares ordinally. A document holding another casing reads by it too, once;
+    /// a name no group declares stays as the store was handed it.
+    /// </summary>
+    [Fact]
+    public async Task A_role_is_kept_and_read_by_the_name_its_group_is_declared_under()
+    {
+        var loader = Substitute.For<ISecurityConfigurationLoader>();
+        loader.GetConfiguration().Returns(new SecurityConfiguration
+        {
+            Groups =
+            {
+                ["a1b2c3d4-0000-0000-0000-000000000001"] = "Administrators",
+                ["a1b2c3d4-0000-0000-0000-000000000002"] = "Fleet managers",
+            },
+        });
+        using var store = new UserStore<SparkUser>(Store, dataProtection, securityConfiguration: loader);
+        var user = new SparkUser { Roles = ["fleet MANAGERS", "Fleet managers"] };
+
+        await store.AddToRoleAsync(user, "ADMINISTRATORS", CancellationToken.None);
+        await store.AddToRoleAsync(user, "UNDECLARED", CancellationToken.None);
+        await store.AddToRoleAsync(user, "FLEET MANAGERS", CancellationToken.None); // held already, in another casing
+
+        user.Roles.Should().Equal("fleet MANAGERS", "Fleet managers", "Administrators", "UNDECLARED");
+        (await store.GetRolesAsync(user, CancellationToken.None)).Should().Equal("Fleet managers", "Administrators", "UNDECLARED");
+        (await store.IsInRoleAsync(user, "administrators", CancellationToken.None)).Should().BeTrue();
     }
 
     [Fact]

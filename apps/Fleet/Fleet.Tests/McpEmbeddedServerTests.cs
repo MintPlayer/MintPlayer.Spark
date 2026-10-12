@@ -115,7 +115,7 @@ public class McpEmbeddedServerTests : SparkTestDriver
         const string clientId = "https://agent.example/fleet/admin.json";
         await using var host = new FleetAgentHost(Store, new DocumentServer().Serve(clientId, Document(clientId)));
         var userId = await CreateViewerAsync(host, "admin@fleet.test");
-        await AddRoleToDocumentAsync(userId, Administrators);
+        await ChangeRolesAsync(host, userId, (users, user) => users.AddToRoleAsync(user, Administrators));
         await SeedCarsAsync(userId);
         var browser = host.Browser();
         var agent = new Agent(browser, host.CreateClient(), clientId);
@@ -133,11 +133,7 @@ public class McpEmbeddedServerTests : SparkTestDriver
         cars.Status.Should().Be(HttpStatusCode.OK);
         cars.Text.Should().Contain("1-AGT-001").And.Contain("1-AGT-002", "the agent carries the cookie's roles, so it sees the cookie's cars");
 
-        using (var scope = host.Services.CreateScope())
-        {
-            var users = scope.ServiceProvider.GetRequiredService<UserManager<SparkUser>>();
-            (await users.RemoveFromRoleAsync((await users.FindByIdAsync(userId))!, Administrators)).Succeeded.Should().BeTrue();
-        }
+        await ChangeRolesAsync(host, userId, (users, user) => users.RemoveFromRoleAsync(user, Administrators));
 
         var narrowed = await Mcp.CallAsync(host.CreateClient(), "fleet_query", new { query = "cars" }, access);
         narrowed.Status.Should().Be(HttpStatusCode.OK, "a role change is no security-stamp change: the agent stays signed in, as a Viewer");
@@ -146,16 +142,15 @@ public class McpEmbeddedServerTests : SparkTestDriver
     }
 
     /// <summary>
-    /// The role as Fleet's administrators hold it: the group's name written on the user document, as the E2E seed writes
-    /// it. <c>CarActions</c> compares <c>IsInRole("Administrators")</c> exactly, and <c>UserManager.AddToRoleAsync</c>
-    /// stores the normalized name.
+    /// Changes the user's roles through <see cref="UserManager{TUser}"/>, as the application would. <c>CarActions</c>
+    /// compares <c>IsInRole("Administrators")</c> ordinally; the store keeps the name <c>security.json</c> declares,
+    /// though <c>UserManager</c> hands it the normalized one.
     /// </summary>
-    private async Task AddRoleToDocumentAsync(string userId, string role)
+    private static async Task ChangeRolesAsync(FleetAgentHost host, string userId, Func<UserManager<SparkUser>, SparkUser, Task<IdentityResult>> change)
     {
-        using var session = Store.OpenAsyncSession();
-        var user = await session.LoadAsync<SparkUser>(userId);
-        user.Roles.Add(role);
-        await session.SaveChangesAsync();
+        using var scope = host.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<SparkUser>>();
+        (await change(users, (await users.FindByIdAsync(userId))!)).Succeeded.Should().BeTrue();
     }
 
     private static async Task<string> CreateViewerAsync(FleetAgentHost host, string email)
