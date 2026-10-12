@@ -41,6 +41,8 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+		<!-- The MCP tools call the same internal read, save and action paths as the HTTP endpoints (MCP PRD D9). -->
+		<InternalsVisibleTo Include="MintPlayer.Spark.Mcp" />
 		<!-- Allows NSubstitute (Castle DynamicProxy) to mock internal interfaces -->
 		<InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
 	</ItemGroup>

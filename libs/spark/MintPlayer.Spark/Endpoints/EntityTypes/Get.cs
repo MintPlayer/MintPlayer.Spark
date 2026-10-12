@@ -15,39 +15,19 @@ internal sealed partial class GetEntityType : IGetEndpoint
     /// <summary><c>?for=new|edit|read</c>: which form the type is shaped for (#264).</summary>
     [QueryParam("for")] public string? Purpose { get; set; }
 
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IPermissionService permissionService;
-    [Inject] private readonly IQueryLoader queryLoader;
-    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
-    [Inject] private readonly ILogger<GetEntityType> logger;
+    // The check and the per-caller shaping live in the catalogue, shared with the MCP tools (MCP PRD D9).
+    [Inject] private readonly ISparkCatalogue catalogue;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var id = Id;
-        var entityType = modelLoader.ResolveEntityType(id);
 
-        if (entityType is null)
-            return Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404);
-
-        // 404 rather than 403 — so existence isn't leaked to callers without Query rights.
-        // (A Read grant passes too: Read implies Query at rights-expansion time, #324.)
-        if (!await permissionService.IsAllowedAsync("Query", entityType.Name, httpContext.RequestAborted))
-            return Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404);
-
-        var pruned = await SubQueryPruner.PruneAsync(
-            entityType, queryLoader, permissionService, logger, httpContext.RequestAborted);
-
-        // Same reason as List.cs: the row types an AsDetail attribute names are usually absent from
-        // the catalogue, so the client cannot resolve their columns from it (#385).
-        // Per caller (contributions M2c-2a): Read-denied attributes absent, Edit-denied read-only, on
-        // the type and on each embedded detail type by its own rights. Always a copy when it changes
-        // anything — the loader's definitions are shared process-wide.
-        // `?for=new` shapes it for the create form instead (#264, G1/G2): New-denied attributes absent
-        // too, and no Edit deny applied. It only ever narrows what is seen: Read-denied stays absent.
-        return Results.Json(await attributeRights.ForFormAsync(
-            SubQueryPruner.EmbedDetailTypes(pruned, modelLoader),
-            FormVerb(Purpose ?? string.Empty),
-            httpContext.RequestAborted));
+        // 404 rather than 403 for a type the caller may not query — so existence isn't leaked: the
+        // catalogue answers both with null. `?for=new` shapes it for the create form (#264, G1/G2).
+        var shaped = await catalogue.GetEntityTypeAsync(id, FormVerb(Purpose ?? string.Empty), httpContext.RequestAborted);
+        return shaped is null
+            ? Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404)
+            : Results.Json(shaped);
     }
 
     /// <summary><c>new</c>, <c>edit</c> or <c>read</c>; anything else is the edit shape, the default.</summary>

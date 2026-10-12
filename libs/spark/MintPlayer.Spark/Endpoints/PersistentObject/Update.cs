@@ -20,12 +20,9 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint<PersistentO
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
-    [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly ISaveValidation saveValidation;
+    [Inject] private readonly IPersistentObjectSavePath savePath;
     [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
-    [Inject] private readonly ISaveResponsePresenter saveResponse;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
@@ -56,52 +53,10 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint<PersistentO
 
         try
         {
-            // No UnescapeDataString: the id is a JSON string now, not a path segment, so it arrives
-            // exactly as the client wrote it. Unescaping it here would corrupt any id that legitimately
-            // contains a '%'.
-            var existingObj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
-
-            // The caller loaded this object (it holds an etag) and it is gone — deleted, soft-deleted,
-            // or no longer theirs to see: "deleted by another user" (#467, D15), never a resurrection.
-            // One answer for all three, so it tells nothing a 404 would not (M-3).
-            if (existingObj is null)
-            {
-                return ClientResult.ConcurrencyConflict(clientAccessor, SparkConcurrencyException.DeletedSinceLoaded(obj.Etag));
-            }
-
-            RetryScope.Accept(retryAccessor, request);
-
-            obj.Id = existingObj.Id;
-            obj.ObjectTypeId = entityType.Id;
-            // Only a create resolves a parent (from a sub-query's New); a Parent in this body is the
-            // caller's claim and must never reach a save hook as context.
-            obj.Parent = null;
-
-            // Authorize before validating — see the note in Create.cs (N23).
-            await databaseAccess.EnsureSaveAuthorizedAsync(obj);
-
-            // Validated inside the save, right after the write shield (contributions M2d): against the
-            // object as the refresh hook shapes it, not as the model declares it (a hook that makes a
-            // field required changed the contract, and re-deriving it server-side is what stops a
-            // client escaping the hook by never calling /refresh) — and only on the attributes the
-            // caller may write, since the others keep their stored value whatever was posted.
-            saveValidation.Request(obj, httpContext.RequestAborted);
-
-            Abstractions.PersistentObject result;
-            try
-            {
-                result = await databaseAccess.SavePersistentObjectAsync(obj);
-            }
-            catch (SparkCancelException)
-            {
-                // An interceptor cancelled the save (#482): nothing was written, so the answer is the object as
-                // stored — a 200, never an error.
-                result = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id) ?? existingObj;
-            }
-
-            // Re-presented as a load presents it (contributions M2c-2b, leak 2): never the posted
-            // object, which is the client's values plus whatever the save hooks wrote into it.
-            var presented = await saveResponse.PresentAsync(entityType, result, isNew: false, httpContext.RequestAborted);
+            // Load, authorize, validate, save and present: the shared sequence the MCP tools run too (MCP
+            // PRD D9). A row that is gone — deleted, soft-deleted, or no longer the caller's to see —
+            // is "deleted by another user" (#467, D15), raised as the concurrency conflict below.
+            var presented = await savePath.UpdateAsync(entityType, request.Id, obj, request, httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, presented, 200);
         }
         catch (SparkConcurrencyException ex)

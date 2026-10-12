@@ -25,9 +25,8 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
     // No antiforgery metadata, deliberately: the verb changed, what the endpoint does did not. See
     // the note in PersistentObject/Get.cs.
 
-    [Inject] private readonly IQueryLoader queryLoader;
-    [Inject] private readonly IPermissionService permissionService;
-    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
+    // The check and the metadata shaping live in the catalogue, shared with the MCP tools (MCP PRD D9).
+    [Inject] private readonly ISparkCatalogue catalogue;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
@@ -44,20 +43,11 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
         if (string.IsNullOrEmpty(id))
             return Results.Json(new { error = "Query not found" }, statusCode: 404);
 
-        var query = queryLoader.ResolveQuery(id);
-
-        if (query is null)
-            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
-
-        // Return 404 (not 403) when the caller isn't authorized — so existence isn't leaked.
-        if (query.EntityType is null ||
-            !await permissionService.IsAllowedAsync("Query", query.EntityType, httpContext.RequestAborted))
-        {
-            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
-        }
-
-        // Sort columns, column overrides and the parent reference name attributes of the row type; one
-        // the caller may not query is left out, so the metadata does not say it exists (S7).
-        return Results.Json(await attributeRights.ForQueryMetadataAsync(query, httpContext.RequestAborted));
+        // Return 404 (not 403) when the caller isn't authorized — so existence isn't leaked: the
+        // catalogue answers an unknown query and a refused one with the same null.
+        var query = await catalogue.GetQueryAsync(id, httpContext.RequestAborted);
+        return query is null
+            ? Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404)
+            : Results.Json(query);
     }
 }

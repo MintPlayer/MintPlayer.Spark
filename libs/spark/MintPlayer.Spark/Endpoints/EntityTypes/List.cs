@@ -1,7 +1,5 @@
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
-using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.EntityTypes;
@@ -11,53 +9,9 @@ internal sealed partial class ListEntityTypes : IGetEndpoint
 {
     public static string Path => "/";
 
-    [Inject] private readonly IModelLoader modelLoader;
-    [Inject] private readonly IPermissionService permissionService;
-    [Inject] private readonly IQueryLoader queryLoader;
-    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
-    [Inject] private readonly ILogger<ListEntityTypes> logger;
+    // The filtering and per-caller shaping live in the catalogue, shared with the MCP tools (MCP PRD D9).
+    [Inject] private readonly ISparkCatalogue catalogue;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
-    {
-        var entityTypes = modelLoader.GetEntityTypes();
-        var visible = new List<EntityTypeDefinition>(entityTypes.Count());
-        foreach (var entityType in entityTypes)
-        {
-            // The catalogue is list-scoped: Query gates it, deliberately NOT Read. A type the
-            // caller may only Read (a virtual start page, a Read-without-Query grant) is absent
-            // here and resolved individually via GET /spark/types/{id}, which Read unlocks —
-            // single-object metadata belongs to the single-object right.
-            if (!await permissionService.IsAllowedAsync("Query", entityType.Name, httpContext.RequestAborted))
-                continue;
-
-            // This is the load-bearing one for sub-query pruning: spark-po-detail reads the array
-            // from here and never calls getEntityType(id).
-            var pruned = await SubQueryPruner.PruneAsync(
-                entityType, queryLoader, permissionService, logger, httpContext.RequestAborted);
-
-            // Row-type definitions, so an AsDetail table can render its columns even when the row
-            // type is absent from this catalogue — which is the common case, since a row edited
-            // through its parent rarely has a Query grant of its own (#385).
-            pruned = SubQueryPruner.EmbedDetailTypes(pruned, modelLoader);
-
-            // Per-caller attribute rights (M2c-2a), as in Get.cs. Returns the same reference when it
-            // changes nothing, which the copy below still accounts for.
-            pruned = await attributeRights.ForFormAsync(pruned, cancellationToken: httpContext.RequestAborted);
-
-            // ⚠️ Copy if neither step did. Both return the SAME reference when they change nothing
-            // — that is their documented contract, and the reason they are safe — so the comment
-            // that used to sit here ("PruneAsync already copied the definition") was false for
-            // every type with no sub-queries. Writing the per-caller CanRead onto that reference
-            // mutated ModelLoader's singleton graph process-wide, so two concurrent callers with
-            // different rights could each serialize the other's answer.
-            if (ReferenceEquals(pruned, entityType))
-                pruned = entityType.ShallowCopy();
-
-            pruned.CanRead = await permissionService.IsAllowedAsync(
-                "Read", entityType.Name, httpContext.RequestAborted);
-
-            visible.Add(pruned);
-        }
-        return Results.Json(visible);
-    }
+        => Results.Json(await catalogue.ListEntityTypesAsync(httpContext.RequestAborted));
 }
