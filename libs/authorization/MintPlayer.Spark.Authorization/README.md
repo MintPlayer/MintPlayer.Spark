@@ -754,6 +754,12 @@ The corresponding `security.json`:
 floor under the other groups. A Manager who is also meant to read Companies needs their own
 grant, which is why one appears on every role above.
 
+A user's roles (`SparkUser.Roles`) are these groups by name. `UserManager.AddToRoleAsync(user, "viewers")`
+stores the name the group is declared under (`Viewers`), and the role claims of the cookie and of an
+agent carry it, so `User.IsInRole("Viewers")`, which compares ordinally, holds. A role stored in another
+casing reads by the declared name too, and `IsInRoleAsync`, `RemoveFromRoleAsync` and `GetUsersInRoleAsync`
+ignore case. A name no group declares is kept as the store receives it: Identity's normalized form (`VIEWERS`).
+
 ## Complete Example
 
 See the demo apps for working authorization setups:

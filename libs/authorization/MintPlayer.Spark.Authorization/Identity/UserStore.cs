@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authorization;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
 using Raven.Client.Documents.Session;
@@ -39,6 +40,9 @@ public partial class UserStore<TUser> :
     [Inject] private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? dataProtectionProvider;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<UserStore<TUser>>? logger;
     [Inject] private readonly TimeProvider? timeProvider;
+    // The groups security.json declares, whose names roles keep (see IUserRoleStore below). Absent without core's loader
+    // (a bare AddSparkAuthentication, the store's unit tests): a role then keeps the name the store was handed.
+    [Inject] private readonly ISecurityConfigurationLoader? securityConfiguration;
     private IAsyncDocumentSession? session;
     private bool disposed;
 
@@ -308,11 +312,18 @@ public partial class UserStore<TUser> :
 
     #region IUserRoleStore
 
+    // A role is a security.json group: core reads role claims as group names, matched case-insensitively
+    // (SecurityFileAccessControl). UserManager hands this store the NORMALIZED name ("ADMINISTRATORS"); kept as given, it
+    // became the role claim, and ClaimsPrincipal.IsInRole compares ordinally, so IsInRole("Administrators") was false for
+    // the cookie and for an agent alike (both come from Identity's claims factory, which reads GetRolesAsync). So a role
+    // is kept and read by the name its group is declared under; reading maps too, so a document holding another casing
+    // (written before, or patched by hand) answers by the declared name, and nothing is rewritten. Membership ignores case.
+
     public Task AddToRoleAsync(TUser user, string roleName, CancellationToken cancellationToken)
     {
         if (!user.Roles.Contains(roleName, StringComparer.OrdinalIgnoreCase))
         {
-            user.Roles.Add(roleName);
+            user.Roles.Add(DeclaredRoleName(roleName));
         }
         return Task.CompletedTask;
     }
@@ -324,7 +335,10 @@ public partial class UserStore<TUser> :
     }
 
     public Task<IList<string>> GetRolesAsync(TUser user, CancellationToken cancellationToken)
-        => Task.FromResult<IList<string>>(user.Roles);
+        => Task.FromResult<IList<string>>(user.Roles
+            .Select(DeclaredRoleName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList());
 
     public Task<bool> IsInRoleAsync(TUser user, string roleName, CancellationToken cancellationToken)
         => Task.FromResult(user.Roles.Contains(roleName, StringComparer.OrdinalIgnoreCase));
@@ -334,10 +348,21 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
+        // Ignores case: RavenDB matches an equality on an auto-index field case-insensitively, so the normalized name
+        // UserManager passes finds a role stored in any casing (UserRoleNameTests).
         return await Session.Query<TUser>()
             .Where(u => u.Roles.Contains(roleName))
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// <paramref name="roleName"/> as <c>security.json</c> declares the group it names, found as core finds a role
+    /// claim's group (case-insensitively, the first match); a name no group declares is returned as given.
+    /// </summary>
+    private string DeclaredRoleName(string roleName)
+        => securityConfiguration?.GetConfiguration().Groups.Values
+               .FirstOrDefault(name => string.Equals(name, roleName, StringComparison.OrdinalIgnoreCase))
+           ?? roleName;
 
     #endregion
 
