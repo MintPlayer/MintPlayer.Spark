@@ -102,6 +102,8 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     // Optional so the test sites that construct the resolver by hand keep compiling; DI always
     // supplies it, and without it no token is blanked by a static attribute right.
     [Inject] private readonly IAttributeRightsEnforcement? attributeRights = null;
+    // The TARGET type's Read right (MCP PRD D19). Optional for the same reason; DI always supplies it.
+    [Inject] private readonly Abstractions.Authorization.IPermissionService? permissionService = null;
 
     /// <summary>A blanking-set entry meaning "every field token": an unverifiable row shows none.</summary>
     private const string AllTokens = "*";
@@ -207,14 +209,21 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                     ? docType
                     : SparkTypeResolver.ResolveClrType(declaredClrType) ?? docType;
 
-                if (!await rowSecurity.IsAllowedAsync(securityType, "Read", doc))
+                var refDef = runtimeDef
+                    ?? (declaredClrType is null ? null : modelLoader.GetEntityTypeByClrType(declaredClrType));
+
+                // The target TYPE's Read right first (MCP PRD D19): a caller who may not read people
+                // must not learn a person's name through a car's Driver. Row rules only ever answered
+                // "this row", and a type with no row rule answered yes. The id stays — it is the
+                // referencing row's own value — and the label becomes the placeholder.
+                if ((refDef is not null && !await IsTypeReadableAsync(refDef, ct))
+                    || !await rowSecurity.IsAllowedAsync(securityType, "Read", doc))
                 {
                     denied.Add(refId); // surfaced as the redacted placeholder where it appears
                     continue;
                 }
                 renderEntity[refId] = doc;
-                defById[refId] = runtimeDef
-                    ?? (declaredClrType is null ? null : modelLoader.GetEntityTypeByClrType(declaredClrType));
+                defById[refId] = refDef;
                 next.Add(refId);
             }
             frontier = next;
@@ -242,6 +251,14 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
             BlankedTokensById = blankedById.Count == 0 ? null : blankedById,
         };
     }
+
+    /// <summary>
+    /// Whether the caller holds <c>Read</c> on a referenced document's type. The permission service
+    /// memoises per request, so a page of rows referencing one type asks once.
+    /// </summary>
+    private async Task<bool> IsTypeReadableAsync(EntityTypeDefinition definition, CancellationToken ct)
+        => permissionService is null
+           || await permissionService.IsAllowedAsync("Read", definition.Name, ct);
 
     /// <summary>
     /// The statically refused attributes per definition that can appear in this render: the roots'
