@@ -78,7 +78,7 @@ public class OidcTokenEndpointGuardTests(OidcSharedHost host) : OidcTestHost(hos
         OidcApplication app, string subject, string status = "valid", TimeSpan? expiresIn = null, params string[] scopes)
     {
         var value = OidcTokenReference.GenerateValue();
-        await SeedAsync(session => session.StoreAsync(new OidcToken
+        await SeedAsync(session => StoreInFamilyAsync(session, new OidcToken
         {
             Id = OidcTokenReference.DocumentId(value),
             ApplicationId = app.Id!,

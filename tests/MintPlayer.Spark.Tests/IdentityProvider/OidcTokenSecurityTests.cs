@@ -311,9 +311,8 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
 
         var rotated = (await BodyAsync(await TokenAsync(form))).GetProperty("refresh_token").GetString()!;
 
-        // The successor is found through an index, best-effort by design — see the same wait in
-        // Replayed_code_is_refused_and_revokes_the_issued_tokens.
-        await Store.WaitForIndexingAsync();
+        // No wait for indexing: the successor is refused through its family's document, loaded by
+        // id (OidcRefreshTokenFamilyTests holds indexing back to prove it).
         var reuse = await TokenAsync(form);
 
         reuse.StatusCode.Should().Be(HttpStatusCode.BadRequest);

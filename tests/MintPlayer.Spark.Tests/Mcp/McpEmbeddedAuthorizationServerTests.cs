@@ -267,12 +267,8 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
         var secondAccess = second["access_token"]!.GetValue<string>();
         (await WhoAmIAsync(factory.CreateClient(), secondAccess)).Status.Should().Be(HttpStatusCode.OK);
 
-        // The teardown finds the successor through an index, best-effort by design (Token.RevokeAuthorizationChainAsync),
-        // so a token issued moments before the replay may be missed: on the class's shared database the index carries
-        // every earlier case's tokens, and the race showed (the successor refreshed, 200, in a run beside the
-        // IdentityProvider namespace, 2026-10-12). The wait pins what this case is about, as OidcTokenSecurityTests' do:
-        // a chain the index can see is torn down.
-        await Store.WaitForIndexingAsync();
+        // No wait for indexing: the family's document decides, loaded by id (MCP PRD decision log, "Refresh-token families
+        // exact"). The wait this case needed while an index query was the teardown is gone with it.
         (await agent.RefreshAsync(first)).Status.Should().Be(HttpStatusCode.BadRequest, "a redeemed refresh token presented again is a theft signal");
         (await agent.RefreshAsync(secondRefresh)).Status.Should().Be(HttpStatusCode.BadRequest, "the reuse revoked the whole family");
         (await WhoAmIAsync(factory.CreateClient(), secondAccess)).Status.Should().Be(HttpStatusCode.Unauthorized, "and its access tokens");

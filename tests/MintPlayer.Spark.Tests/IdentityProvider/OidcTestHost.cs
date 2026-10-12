@@ -282,6 +282,28 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     private async Task<List<OidcToken>> CaseRecordsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
         => [.. (await session.Query<OidcToken>().ToListAsync()).Where(t => seededApplicationIds.Contains(t.ApplicationId))];
 
+    /// <summary>
+    /// Stores a seeded refresh token in the family every refresh token is issued into (MCP PRD decision log, "Refresh-token
+    /// families exact"). Without one the token endpoint and introspection refuse it before the check a case is about.
+    /// </summary>
+    protected static async Task StoreInFamilyAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session, OidcToken refreshToken)
+    {
+        var family = new OidcRefreshFamily
+        {
+            Id = OidcRefreshFamilies.DocumentId(refreshToken.Id!),
+            ApplicationId = refreshToken.ApplicationId,
+            AuthorizationId = refreshToken.AuthorizationId,
+            Subject = refreshToken.Subject,
+            Generation = 1,
+            CreatedAt = refreshToken.CreatedAt,
+            ExpiresAt = refreshToken.ExpiresAt,
+        };
+        refreshToken.FamilyId = family.Id;
+        refreshToken.Generation = family.Generation;
+        await session.StoreAsync(family);
+        await session.StoreAsync(refreshToken);
+    }
+
     protected const string Password = "Aa1!test-password";
 
     /// <summary>
