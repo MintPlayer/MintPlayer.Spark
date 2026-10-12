@@ -243,6 +243,8 @@ public class PageChecksTests
         var findings = PageChecks.Evaluate(Page(head + Body())).ToDictionary(f => f.CheckId);
 
         findings["seo.canonical"].Status.Should().Be(CheckStatus.Warn);
+        // The summary reads "points to {target}: {status}"; it said "which returns relative" before.
+        findings["seo.canonical"].Detail!["status"].Should().Be("a relative URL");
         findings["social.open-graph"].Status.Should().NotBe(CheckStatus.Pass);
     }
 }

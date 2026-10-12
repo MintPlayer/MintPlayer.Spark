@@ -214,11 +214,11 @@ public static partial class PageChecks
         var elements = html.Links("canonical").Where(l => !string.IsNullOrWhiteSpace(l.GetAttribute("href"))).ToList();
         var canonicals = elements.Select(l => l.GetAttribute("href")).ToList();
         if (canonicals.Count == 0)
-            return Finding.Warn("seo.canonical", ("url", url), ("target", "(none)"), ("status", "missing"));
+            return Finding.Warn("seo.canonical", ("url", url), ("target", "(none)"), ("status", "no canonical link"));
         if (canonicals.Distinct(StringComparer.Ordinal).Count() > 1)
-            return Finding.Fail("seo.canonical", ("url", url), ("target", string.Join(" | ", canonicals)), ("status", "several")).With(elements);
+            return Finding.Fail("seo.canonical", ("url", url), ("target", string.Join(" | ", canonicals)), ("status", "more than one canonical link")).With(elements);
         if (!IsHttpUrl(canonicals[0]!))
-            return Finding.Warn("seo.canonical", ("url", url), ("target", canonicals[0]), ("status", "relative")).With(elements.Take(1));
+            return Finding.Warn("seo.canonical", ("url", url), ("target", canonicals[0]), ("status", "a relative URL")).With(elements.Take(1));
         return Finding.Pass("seo.canonical", ("target", canonicals[0]));
     }
 
