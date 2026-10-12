@@ -112,7 +112,10 @@ public sealed class SeoTools(
     }
 
     [McpServerTool(Name = "run_summary", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("A scan of one of your sites: its score and grade per category, and every check with its rule id, severity, status (Fail, Warn, Pass), number of affected pages and whether it is New, Fixed or Unchanged since the previous scan. Without a scan id: the latest finished scan.")]
+    // The scan's checks are the scan's: the catalogue's titles and severities are read as part of it, so a grant of the
+    // scan without the catalogue answers (it threw the SDK's generic error before; plan M7a).
+    [McpReadsThrough(nameof(CheckDefinition), nameof(AuditRun))]
+    [Description("A scan of one of your sites: its score and grade per category, and every check with its rule id, severity, status (Fail, Warn, Pass), number of affected pages and whether it is New, Fixed or Unchanged since the previous scan, with sample URLs while they fit. Without a scan id: the latest finished scan.")]
     public async Task<CallToolResult> RunSummaryAsync(
         [Description("The site: its id from seotester_list_sites (Sites/…) or its address (example.com).")] string site,
         [Description("A scan id (AuditRuns/…) of that site; empty for the latest finished scan.")] string? run = null,
@@ -126,6 +129,7 @@ public sealed class SeoTools(
 
         var catalogue = await CatalogueAsync(cancellationToken);
         var checks = new JsonArray();
+        var samplesOf = new List<(JsonObject Check, JsonArray Samples)>();
         foreach (var result in Rows(scan, nameof(AuditRun.CheckResults))
                      .Select(r => (Row: r, Check: Str(Value(r, nameof(RunCheckResult.CheckId))) ?? string.Empty))
                      .OrderBy(r => StatusRank(Str(Value(r.Row, nameof(RunCheckResult.Status)))))
@@ -147,7 +151,7 @@ public sealed class SeoTools(
             if (Str(Value(result.Row, nameof(RunCheckResult.Note))) is { Length: > 0 } note)
                 check["note"] = note;
             if (Strings(Value(result.Row, nameof(RunCheckResult.SampleUrls))) is { Count: > 0 } samples)
-                check["sampleUrls"] = new JsonArray([.. samples.Select(s => (JsonNode?)s)]);
+                samplesOf.Add((check, new JsonArray([.. samples.Select(s => (JsonNode?)s)])));
             checks.Add(check);
         }
 
@@ -166,13 +170,33 @@ public sealed class SeoTools(
         var body = Header(target);
         body["categories"] = categories;
         body["checks"] = checks;
-        return SparkMcpResult.Json(
-            PageRetentionNote(target) + " Per-page findings: seotester_list_findings. How to fix a rule: seotester_explain_check.",
-            body);
+
+        // Every check always; their sample URLs (up to 5 each, up to 2,048 characters each) while the answer stays within
+        // the output limit, failures first, as the checks are ordered. Spike S9 (plan M7): a catalogue's worth of checks
+        // with their samples came to 40,567 characters, past the limit, so the fenced JSON was cut and no longer parsed.
+        var used = Measure(body);
+        var withoutSamples = 0;
+        foreach (var (check, samples) in samplesOf)
+        {
+            var size = Measure(samples) + "\"sampleUrls\":,".Length;
+            if (used + size > Budget)
+            {
+                withoutSamples++;
+                continue;
+            }
+            check["sampleUrls"] = samples;
+            used += size;
+        }
+
+        var summaryNote = PageRetentionNote(target) + " Per-page findings: seotester_list_findings. How to fix a rule: seotester_explain_check.";
+        if (withoutSamples > 0)
+            summaryNote += $" Sample URLs were left out for {withoutSamples} checks to stay within the output limit: seotester_list_findings lists their pages.";
+        return SparkMcpResult.Json(summaryNote, body);
     }
 
     [McpServerTool(Name = "list_findings", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [McpReadsThrough(nameof(PageResult), nameof(AuditRun))]
+    [McpReadsThrough(nameof(CheckDefinition), nameof(AuditRun))]
     [Description("The failing and warning checks of a scan, page by page and grouped by rule: the page URL, what is wrong, and where known the elements (CSS selectors). Reads the scan's pages in URL order, 'take' pages per call; page with skip/nextSkip. Filter by severity, category, rule or URL prefix.")]
     public async Task<CallToolResult> ListFindingsAsync(
         [Description("The site: its id from seotester_list_sites (Sites/…) or its address (example.com).")] string site,
@@ -225,7 +249,9 @@ public sealed class SeoTools(
         var runPages = Query("RunPages");
         var summaries = await SummariesAsync(flagged.Keys, cancellationToken);
         var groups = new Dictionary<string, JsonArray>(StringComparer.Ordinal);
-        var used = 0;
+        // The body's own fields count against the budget, and so does every rule's header the first time a page brings
+        // the rule in: spike S9 (plan M7) measured 40,558 characters for a default page that counted the entries only.
+        var used = Measure(body);
         var read = 0;
         var total = 0;
         var truncated = false;
@@ -258,8 +284,10 @@ public sealed class SeoTools(
                     .Where(f => flagged.ContainsKey(f.Check) && f.Status is nameof(CheckStatus.Fail) or nameof(CheckStatus.Warn))
                     .Select(f => (f.Check, Entry: FindingEntry(url, f, summaries)))
                     .ToList();
-                var size = entries.Sum(e => Measure(e.Entry) + 1);
-                if (used + size > Budget && used > 0)
+                var size = entries.Sum(e => Measure(e.Entry) + 1)
+                    + entries.Select(e => e.Check).Distinct(StringComparer.Ordinal).Where(c => !groups.ContainsKey(c))
+                        .Sum(c => Measure(RuleHeader(c)) + 1);
+                if (used + size > Budget && groups.Count > 0)
                 {
                     truncated = true;
                     break;
@@ -289,19 +317,25 @@ public sealed class SeoTools(
             return SparkMcpResult.Json(NoPagesNote(target), body);
         }
 
-        var rules = new JsonArray();
-        foreach (var (check, findings) in groups.OrderBy(g => SeverityRank(catalogue.Get(g.Key)?.Severity)).ThenBy(g => g.Key, StringComparer.Ordinal))
+        JsonObject RuleHeader(string check)
         {
             var definition = catalogue.Get(check);
-            rules.Add(new JsonObject
+            return new JsonObject
             {
                 ["check"] = check,
                 ["title"] = definition?.Title,
                 ["severity"] = definition?.Severity,
                 ["category"] = definition?.Category,
                 ["affectedInScan"] = Int(Value(flagged[check], nameof(RunCheckResult.Affected))),
-                ["pages"] = findings,
-            });
+            };
+        }
+
+        var rules = new JsonArray();
+        foreach (var (check, findings) in groups.OrderBy(g => SeverityRank(catalogue.Get(g.Key)?.Severity)).ThenBy(g => g.Key, StringComparer.Ordinal))
+        {
+            var rule = RuleHeader(check);
+            rule["pages"] = findings;
+            rules.Add(rule);
         }
 
         body["totalPages"] = total;
@@ -323,6 +357,7 @@ public sealed class SeoTools(
 
     [McpServerTool(Name = "get_page", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [McpReadsThrough(nameof(PageResult), nameof(AuditRun))]
+    [McpReadsThrough(nameof(CheckDefinition), nameof(AuditRun))]
     [Description("One scanned page's latest result (SeoTester keeps one per page): status code, load time, title, meta description, H1, Open Graph tags, and its failing and warning checks with the element where known, and the scan that checked it.")]
     public async Task<CallToolResult> GetPageAsync(
         [Description("The site: its id from seotester_list_sites (Sites/…) or its address (example.com).")] string site,

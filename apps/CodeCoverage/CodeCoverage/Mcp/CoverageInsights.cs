@@ -2,6 +2,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -318,6 +319,10 @@ public partial class CoverageInsights : ICoverageInsights
             .Take(take)
             .ToList();
 
+        // Each drop reads its parent, both commits' coverage sources and both trees, five requests: at the documented
+        // maximum (take 10) that passed RavenDB's 30-request session budget and the tool threw (spike S9, plan M7). The
+        // budget is lifted for this loop only, bounded by take, and a run past the expectation is logged.
+        using var _ = session.IgnoreMaxRequests(expectedMaximumRequests: 2 + drops.Count * 6);
         var reports = new List<CoverageDropReport>(drops.Count);
         foreach (var commit in drops)
         {
