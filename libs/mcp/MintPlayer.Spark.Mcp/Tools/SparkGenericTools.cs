@@ -193,7 +193,7 @@ internal sealed class SparkGenericTools(
     /// <see cref="MaxDetailCharacters"/> (<c>omitted</c> says how many more there are). The web carries detail rows in
     /// <c>object</c>/<c>objects</c>, not <c>value</c>: an agent saw <c>null</c> for them until the S9 run (plan M7).
     /// </summary>
-    private static JsonObject Attributes(JsonObject node, HashSet<string> included, ref int rows, ref int budget, JsonObject? into = null)
+    internal static JsonObject Attributes(JsonObject node, HashSet<string> included, ref int rows, ref int budget, JsonObject? into = null)
     {
         var attributes = into ?? new JsonObject();
         if (node["attributes"] is not JsonArray array)

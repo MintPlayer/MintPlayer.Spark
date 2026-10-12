@@ -61,9 +61,7 @@ public static class SparkMcpResult
             {
                 id = item.Id,
                 breadcrumb = item.Breadcrumb,
-                values = item.Values.ToDictionary(
-                    v => v.Key,
-                    v => v.ObjectId is null ? v.Value : new { id = v.ObjectId, breadcrumb = v.Breadcrumb ?? v.Value?.ToString() }),
+                values = item.Values.ToDictionary(v => v.Key, v => CellValue(v, options)),
             };
             budget -= JsonSerializer.Serialize(row, options).Length + 1;
             if (budget < 0 && rows.Count > 0)
@@ -83,6 +81,26 @@ public static class SparkMcpResult
             columns,
             rows,
         });
+    }
+
+    /// <summary>
+    /// One cell for an agent. A single AsDetail cell holds the nested persistent object, because the web grid hands it
+    /// to a custom renderer (#329); serialized whole, that is every attribute's labels in each language and its
+    /// validation rules, per row (MCP live checks, round 1: HR's people query, <c>Person.Address</c>). An agent gets
+    /// its values only, as <c>get</c> shows a detail object inline (through the same redaction net first); the
+    /// metadata is <c>describe</c>'s.
+    /// </summary>
+    private static object? CellValue(QueryResultItemValue value, JsonSerializerOptions options)
+    {
+        if (value.ObjectId is not null)
+            return new { id = value.ObjectId, breadcrumb = value.Breadcrumb ?? value.Value?.ToString() };
+        if (value.Value is PersistentObject detail
+            && JsonSerializer.SerializeToNode(detail, options) is System.Text.Json.Nodes.JsonObject node)
+        {
+            int rows = 0, budget = int.MaxValue;
+            return Tools.SparkGenericTools.Attributes(node, [], ref rows, ref budget);
+        }
+        return value.Value;
     }
 
     /// <summary>
