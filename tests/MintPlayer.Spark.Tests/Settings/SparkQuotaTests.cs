@@ -140,6 +140,32 @@ public class SparkQuotaTests : SparkTestDriver
         (await ProbeAsync("SparkUsers/ann")).Status.Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    /// MCP PRD D4: an AI agent's bearer principal carries the local user id as <c>sub</c> only, which
+    /// <see cref="MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser"/> reads. Keyed by address instead, an agent
+    /// would spend a quota of its own beside its user's (red before the fix: <c>ip:…</c>).
+    /// </summary>
+    [Fact]
+    public void An_agents_bearer_caller_spends_its_users_quota_not_one_per_address()
+    {
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection()
+                .AddSingleton<MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser>(new BearerUser("SparkUsers/ann"))
+                .BuildServiceProvider(),
+            User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+                [new System.Security.Claims.Claim("sub", "SparkUsers/ann")], "AgentBearer")),
+        };
+
+        ISparkQuotas.KeyFor(context).Should().Be("SparkUsers/ann");
+    }
+
+    private sealed class BearerUser(string id) : MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser
+    {
+        public string? Id => id;
+        public bool IsAuthenticated => true;
+    }
+
     [Fact]
     public void Startup_refuses_an_action_naming_an_undeclared_quota()
     {

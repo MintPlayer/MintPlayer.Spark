@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Security.Claims;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Organizations.Models;
 using Raven.Client.Documents.Linq;
@@ -30,8 +31,13 @@ namespace MintPlayer.Spark.Organizations.Services;
 /// <see cref="Organization"/> is not row-limited (the creator becomes its Owner); who may create one at all
 /// is the type right <c>New/Organization</c>. The system context (background work) is not limited.
 /// </para>
+/// <para>
+/// <b>Who the caller is.</b> The sign-in cookie's <c>NameIdentifier</c>, else <see cref="ISparkCurrentUser.Id"/>: an AI
+/// agent's bearer token carries the local user id as <c>sub</c> only (MCP PRD D4, §4.6), and reading the cookie's claim
+/// alone refused an agent every row of its own user's organizations.
+/// </para>
 /// </remarks>
-internal sealed class OrganizationRowPolicy(OrganizationMembershipReader memberships, CurrentOrganization current) : IRowFilterPolicy
+internal sealed class OrganizationRowPolicy(OrganizationMembershipReader memberships, CurrentOrganization current, ISparkCurrentUser currentUser) : IRowFilterPolicy
 {
     /// <summary>An organization id no document holds: random per process, never written anywhere.</summary>
     internal static readonly string[] NoOrganization = ["Organizations/none/" + Guid.NewGuid().ToString("N")];
@@ -82,7 +88,10 @@ internal sealed class OrganizationRowPolicy(OrganizationMembershipReader members
     /// <summary>The organizations in which <paramref name="user"/> may perform <paramref name="action"/> on <paramref name="entityType"/>.</summary>
     private async Task<string[]> AllowedOrganizationIdsAsync(ClaimsPrincipal? user, Type entityType, string action)
     {
-        if (user?.FindFirstValue(ClaimTypes.NameIdentifier) is not { Length: > 0 } userId)
+        var userId = user?.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } id ? id
+            : user?.Identity?.IsAuthenticated == true ? currentUser.Id
+            : null;
+        if (string.IsNullOrEmpty(userId))
             return [];
 
         var required = RequiresOrganizationRoleAttribute.For(entityType, action);

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Actions;
 using Raven.Client.Documents;
 using Raven.Client.Exceptions;
@@ -24,11 +26,24 @@ public interface ISparkQuotas
     /// <summary>Uses counted in the current window, without counting one.</summary>
     Task<int> GetUsedAsync(SparkQuota quota, string key, CancellationToken cancellationToken = default);
 
-    /// <summary>The default key of a caller: the signed-in user's id, else <c>ip:{address}</c>.</summary>
+    /// <summary>
+    /// The default key of a caller: the signed-in user's id, else <c>ip:{address}</c>. The id is the cookie's
+    /// <c>NameIdentifier</c>, else <c>ISparkCurrentUser.Id</c>, which reads an AI agent's bearer <c>sub</c> (MCP PRD D4):
+    /// a user's agent spends the user's quota, never a separate one per address.
+    /// </summary>
     static string KeyFor(HttpContext context)
-        => context.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } userId
+        => UserIdOf(context) is { Length: > 0 } userId
             ? userId
             : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+
+    private static string? UserIdOf(HttpContext context)
+    {
+        if (context.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } id)
+            return id;
+        return context.User.Identity?.IsAuthenticated == true
+            ? context.RequestServices?.GetService<ISparkCurrentUser>()?.Id
+            : null;
+    }
 }
 
 internal sealed class SparkQuotas(IDocumentStore store, ISparkSettings settings, SparkQuotaCatalog catalog, TimeProvider timeProvider, ILogger<SparkQuotas> logger) : ISparkQuotas
