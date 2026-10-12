@@ -237,10 +237,15 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // The signing keys live in the database (OidcKeys), their private halves protected by the Data Protection key ring:
     // nothing to configure and nothing on disk. ⚠️ Losing the key ring now also makes the keys unreadable, and startup
     // then refuses rather than minting new ones silently (docs/code-coverage/hosting.md, "AI agents (MCP)").
+    //
+    // The provider serves agents only: AgentsOnly() maps what agents use (metadata, sign-in and consent, code and
+    // refresh, loopback registration, revocation) and nothing else of the provider (no device grant, PAR, introspection,
+    // userinfo, end-session, developer portal or key administration), and its management types stay off (security.json
+    // "libraries"). Users manage their agents under Account → Connected applications.
     spark.AddIdentityProvider(idp =>
     {
         idp.Issuer ??= publicOrigin;
-        idp.ForMcp();
+        idp.ForMcp().AgentsOnly();
     });
 
     spark.AddMcp(mcp =>

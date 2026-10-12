@@ -83,6 +83,54 @@ public partial class CoverageMcpSignInTests(CoverageMcpHostFixture fixture)
         github.Headers.Location!.ToString().Should().StartWith("https://github.com/login/oauth/authorize");
     }
 
+    /// <summary>
+    /// CodeCoverage hosts the provider only for its agents (<c>idp.ForMcp().AgentsOnly()</c>): what a full provider maps
+    /// beside the agents' surface answers 404, and both metadata documents advertise only what is mapped (MCP PRD decision
+    /// log, "IdP surface for MCP-only apps").
+    /// </summary>
+    [Fact]
+    public async Task CodeCoverage_maps_only_what_its_agents_need()
+    {
+        using var client = Client();
+
+        var mapped = new List<string>();
+        foreach (var (method, path) in NotForAgents)
+        {
+            using var request = new HttpRequestMessage(new HttpMethod(method), path);
+            if (method is "POST" or "PUT")
+                request.Content = new FormUrlEncodedContent([]);
+            using var response = await client.SendAsync(request);
+            if (response.StatusCode != HttpStatusCode.NotFound)
+                mapped.Add($"{method} {path} answered {(int)response.StatusCode}");
+        }
+        mapped.Should().BeEmpty("CodeCoverage's provider serves agents only");
+
+        var server = (await client.GetFromJsonAsync<JsonObject>("/.well-known/oauth-authorization-server"))!;
+        server["grant_types_supported"]!.AsArray().Select(g => g!.GetValue<string>()).Should().Equal("authorization_code", "refresh_token");
+        server["registration_endpoint"]!.GetValue<string>().Should().Be(Origin + "/connect/register");
+        server["revocation_endpoint"]!.GetValue<string>().Should().Be(Origin + "/connect/revoke");
+
+        var discovery = (await client.GetFromJsonAsync<JsonObject>("/.well-known/openid-configuration"))!;
+        discovery["grant_types_supported"]!.AsArray().Select(g => g!.GetValue<string>()).Should().Equal("authorization_code", "refresh_token");
+        discovery.Select(p => p.Key).Should().NotIntersectWith([
+            "userinfo_endpoint", "end_session_endpoint", "introspection_endpoint", "pushed_authorization_request_endpoint",
+            "device_authorization_endpoint", "backchannel_logout_supported",
+        ]);
+    }
+
+    /// <summary>What a full provider maps beside the agents' surface.</summary>
+    private static readonly (string Method, string Path)[] NotForAgents =
+    [
+        ("POST", "/connect/device_authorization"), ("GET", "/connect/device"), ("POST", "/connect/device"), ("POST", "/connect/par"),
+        ("POST", "/connect/introspect"), ("GET", "/connect/userinfo"), ("POST", "/connect/userinfo"), ("GET", "/connect/logout"),
+        ("GET", "/connect/applications"), ("POST", "/connect/applications/revoke"), ("POST", "/connect/applications/revoke-scope"),
+        ("GET", "/connect/register/some-client"), ("PUT", "/connect/register/some-client"), ("DELETE", "/connect/register/some-client"),
+        ("GET", "/spark/identity-provider/developer"), ("POST", "/spark/identity-provider/developer"),
+        ("POST", "/spark/identity-provider/developer/registration-token"), ("POST", "/spark/identity-provider/invitations/accept"),
+        ("GET", "/spark/identity-provider/applications"), ("POST", "/spark/identity-provider/applications/withdraw"),
+        ("GET", "/spark/identity-provider/admin/keys"), ("POST", "/spark/identity-provider/admin/keys/rotate"),
+    ];
+
     private HttpClient Client() => fixture.Factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
     [GeneratedRegex("<a class=\"btn btn-external\" href=\"(?<href>[^\"]+)\"")]

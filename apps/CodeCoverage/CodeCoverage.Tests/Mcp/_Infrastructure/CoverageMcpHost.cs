@@ -36,7 +36,7 @@ public sealed class CoverageMcpHostCollection : ICollectionFixture<CoverageMcpHo
 }
 
 /// <summary>
-/// The real application (<c>Program</c>: Spark, the identity provider with <c>ForMcp()</c>, the MCP server) with GitHub
+/// The real application (<c>Program</c>: Spark, the identity provider with <c>ForMcp().AgentsOnly()</c>, the MCP server) with GitHub
 /// replaced <b>only where it would leave the process</b>: the user-token store and GitHub's HTTP API. Everything above
 /// (<c>ForgeIntegrationResolver</c>, <c>GitHubAccessService</c>, the resolver, the scope) is the app's own registration,
 /// so a request takes the production path, as <see cref="StubbedGitHubWebHostFixture"/> does for the installation side.
