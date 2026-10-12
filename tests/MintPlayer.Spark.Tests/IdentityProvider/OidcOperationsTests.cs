@@ -161,6 +161,60 @@ public class OidcOperationsTests(OidcSharedHost host) : OidcTestHost(host), ICla
         (await GrantAsync(bystander))!.Status.Should().Be("valid");
     }
 
+    /// <summary>
+    /// The cascade waits for its index instead of failing on it. A token written a moment before the disable is in no
+    /// index yet, and RavenDB refuses a patch-by-query on a stale index at once unless the operation may wait ("Cannot
+    /// perform bulk operation. Index is stale."): nothing was revoked, and the exception escaped the cascade. Found as
+    /// <c>McpEmbeddedAuthorizationServerTests.An_unused_dynamic_registration_is_pruned_with_its_grants</c> failing with that
+    /// message in a batched run; reproduced here by holding indexing back.
+    /// </summary>
+    [Fact]
+    public async Task Disabling_revokes_a_token_its_index_has_not_caught_up_with()
+    {
+        var issued = await IssueAsync("stale-index", ["openid", "offline_access"]);
+
+        // The cascade's index exists and is up to date, as in any running provider ...
+        using (var session = Store.OpenAsyncSession())
+        {
+            await session.Query<OidcToken>()
+                .Customize(x => x.WaitForNonStaleResults())
+                .Where(t => t.ApplicationId == issued.App.Id && t.Status == "valid")
+                .ToListAsync();
+        }
+
+        // ... then falls behind: a token is written while the database is not indexing.
+        var lateToken = OidcTokenReference.DocumentId(OidcTokenReference.GenerateValue());
+        await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexingOperation());
+        try
+        {
+            using (var session = Store.OpenAsyncSession())
+            {
+                await session.StoreAsync(new OidcToken
+                {
+                    Id = lateToken, ApplicationId = issued.App.Id!, Subject = issued.User.Id!, Type = OidcTokenTypes.AccessToken,
+                    Status = "valid", CreatedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(1),
+                });
+                await session.SaveChangesAsync();
+            }
+
+            var resume = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1));
+                await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexingOperation());
+            });
+            await OidcDisableCascade.RevokeApplicationAsync(Store, issued.App.Id!);
+            await resume;
+        }
+        finally
+        {
+            await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexingOperation());
+        }
+
+        using (var session = Store.OpenAsyncSession())
+            (await session.LoadAsync<OidcToken>(lateToken))!.Status.Should().Be("revoked", "the cascade waited for the index");
+        (await TokensOfAsync(issued.App)).Should().OnlyContain(t => t.Status == "revoked");
+    }
+
     [Fact]
     public async Task Saving_an_application_that_was_already_disabled_patches_nothing()
     {
