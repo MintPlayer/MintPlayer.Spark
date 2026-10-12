@@ -166,8 +166,12 @@ public partial class CommitGraphMirrors : ICommitGraphMirrors
             s.Syncing = false;
             s.SyncingSinceUtc = null;
             // A failed or refused clone leaves no directory behind (contract); a failed fetch of an
-            // existing mirror leaves the mirror as it was.
-            s.HasMirror = result.Succeeded || !cloning;
+            // existing mirror leaves the mirror as it was. ⚠️ Except a fetch that pushed the mirror
+            // over a quota: the sidecar removes it then. Left marked as a mirror, it kept its size
+            // in the budget and the hourly net kept asking for a fetch, which the sidecar runs as a
+            // full clone of a mirror it no longer has, only to refuse it again, every hour.
+            s.HasMirror = result.Succeeded || (!cloning && !RemovedBySidecar(result));
+            if (!s.HasMirror) s.SizeBytes = 0;
             if (result.Succeeded)
             {
                 s.SizeBytes = result.SizeBytes;
@@ -190,6 +194,13 @@ public partial class CommitGraphMirrors : ICommitGraphMirrors
         if (result.Outcome == "refused") await BumpMetricsAsync(m => m.Refusals++, cancellationToken);
         if (cloning && result.Succeeded) await TrimToBudgetAsync(stateId, beforeClone: false, cancellationToken);
     }
+
+    /// <summary>
+    /// Whether the sidecar removed an existing mirror (contract: a fetch that leaves it over the size or
+    /// ref quota). A refusal at the disk floor happens before the mirror is touched, so it stays.
+    /// </summary>
+    private static bool RemovedBySidecar(SidecarFetchResult result)
+        => result.Outcome == "refused" && result.Reason is "too-large" or "too-many-refs";
 
     public async Task DeleteAsync(string repositoryId, string reason, bool eviction = false, CancellationToken cancellationToken = default)
     {

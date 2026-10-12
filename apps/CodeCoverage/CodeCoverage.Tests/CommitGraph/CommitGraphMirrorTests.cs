@@ -163,6 +163,52 @@ public class CommitGraphMirrorTests : CoverageRavenTest
         kit.Bus.DeduplicationKeys.Should().ContainSingle().Which.Should().Contain(":hourly:");
     }
 
+    [Theory]
+    [InlineData("too-large")]
+    [InlineData("too-many-refs")]
+    public async Task A_mirror_that_outgrew_its_quota_on_a_fetch_is_recorded_as_gone_and_not_recloned_hourly(string reason)
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await CommitGraphKit.SeedMirrorAsync(store, kit.Sidecar, 1, 100, Now, fetchedAtUtc: Now.AddHours(-3));
+        // The sidecar's contract: a fetch that pushes an existing mirror over a quota removes it and answers refused.
+        kit.Sidecar.OnFetch = mirror =>
+        {
+            kit.Sidecar.Mirrors.Remove(mirror);
+            return new SidecarFetchResult("refused", reason, 0, null, 0, 1_000_000, 5);
+        };
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: false);
+
+        var state = (await StateAsync(store, 1))!;
+        state.HasMirror.Should().BeFalse("the sidecar removed the mirror, so nothing is left to refresh or count");
+        state.SizeBytes.Should().Be(0);
+        state.Outcome.Should().Be("refused");
+        state.Reason.Should().Be(reason);
+
+        // Otherwise the hourly net would ask for a fetch, which the sidecar runs as a full clone of a mirror it no
+        // longer has, only to refuse it again: every hour, for ever.
+        kit.Time.Now = kit.Time.Now.AddHours(2);
+        (await kit.Get<ICommitGraphMirrors>().QueueRefreshesAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_fetch_refused_at_the_disk_floor_keeps_the_existing_mirror()
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await CommitGraphKit.SeedMirrorAsync(store, kit.Sidecar, 1, 100, Now, fetchedAtUtc: Now.AddHours(-3));
+        kit.Sidecar.OnFetch = _ => new SidecarFetchResult("refused", "disk-floor", 0, null, 0, 1, 5);
+
+        await kit.Get<ICommitGraphMirrors>().FetchAsync(RepoId(1), allowClone: false);
+
+        var state = (await StateAsync(store, 1))!;
+        state.HasMirror.Should().BeTrue("the floor refuses the fetch before touching the mirror");
+        state.SizeBytes.Should().Be(100);
+    }
+
     [Fact]
     public async Task A_fetch_hands_the_credential_to_the_sidecar_and_stores_none_of_it()
     {
