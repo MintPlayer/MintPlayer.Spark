@@ -249,13 +249,19 @@ repository already.
 |---|---|
 | `codecoverage_list_repositories` | Repositories the caller may read, with coverage. Public ones work anonymously. |
 | `codecoverage_summary(repo, branch?)` | Totals, 30-commit trend, largest drops. |
-| `codecoverage_hotspots(repo, branch?, pathPrefix?, take)` | Files ranked by expected gain per unit of effort (§4.8.1). |
+| `codecoverage_hotspots(repo, branch?, pathPrefix?, take)` | Files ranked by uncovered lines, most first; covered % and the number of uncovered ranges as columns (§4.8.1). ~~"ranked by expected gain per unit of effort"~~ superseded by S8. |
 | `codecoverage_file(repo, path, commit?)` | Uncovered line ranges and partly covered branches. Line numbers only. |
 | `codecoverage_patch(repo, pullRequest)` | Patch coverage and uncovered changed lines. |
 | `codecoverage_drops(repo, since?)` | Commits that lowered coverage, with the files responsible. |
 
-**4.8.1 Ranking.** Score = uncovered lines × ease; ease is higher for files that already have some coverage
-and for files whose uncovered lines sit in few ranges. Heuristic until S8.
+**4.8.1 Ranking.** Files are ranked by **uncovered lines, descending** (ties by path), and the tool description says
+exactly that, with no "expected gain / effort" claim. The covered percentage and the number of uncovered line ranges
+are returned as columns for the agent to weigh; they never enter the order. ~~Score = uncovered lines × ease; ease is
+higher for files that already have some coverage and for files whose uncovered lines sit in few ranges. Heuristic until
+S8.~~ Superseded 2026-10-12 by **S8 (FAIL)**: replaying the last 60 test-adding master commits, the ease score reached
+0.03–0.42× of the uncovered-lines baseline's gain per added test line (never the 1.5× the spike required; P(≥ 1.5) ≤
+0.008 in every variant); the fewer-ranges term pushed it toward small single-gap files that rarely gain
+[spark_mcp_spikes.md S8].
 
 **4.8.2 Authorization.** Repository scoping moves out of `BrowseController` methods [verified
 `Controllers/BrowseController.cs:22-34`] into a service shared with the tools (D9). Unknown and forbidden
@@ -316,6 +322,8 @@ instead of DemoApp, which has no Authorization; MCP Inspector not run; plain `St
 S2 PARTIAL live (flow PASS, `sub` = local id; parity FAILS until store groups + id mapping exist). S4 FAIL
 as-is, PASS with the store-provider prototype. S3 source-read only, live sign-ins with Codex ≥ 0.148 and
 Gemini 0.63 pending. S11 FAIL by source reading → 401 text + `RequireSignIn` (D17); live check pending.
+**S8 FAIL (2026-10-12, plan M6):** the ease score never beat "most uncovered lines" (0.03–0.42× of it) → §4.8.1 ranks
+by uncovered lines [spark_mcp_spikes.md S8].
 
 ### 6.2 Required adversarial tests (red first)
 
@@ -646,6 +654,78 @@ None. Q18 was resolved in round 3 (§10, D22).
     no MCP test, and only the object it runs on carries an etag (selected rows are re-materialized at apply, as on the
     web); SeoTester's `seotester_start_scan` is its own tool, not a plan. `apply_changes` through an external (M3c) token
     and the parity suite's write half are M7's. HR's MCP wiring builds but has not been run against the live app.
+- **M6 implementation (2026-10-12).** CodeCoverage adopts the MCP server on the embedded setup. Commits ff8d72b7 (Mcp
+  package), c7af03f6 (scoping service, agent identification), fd4febd1 (tools and wiring), b937b351 (tests). Decisions
+  taken while building, with their evidence:
+  - **S8 FAIL → §4.8.1 rewritten.** `codecoverage_hotspots` ranks by uncovered lines, ties by path; covered percentage and
+    uncovered ranges (S8's run rule: a non-coverable line does not split a run, a partial line counts as covered) are
+    columns. Evidence: [spark_mcp_spikes.md S8](spark_mcp_spikes.md#s8--does-the-hotspot-ranking-predict-cheap-gains);
+    `CoverageToolsTests.Hotspots_rank_by_uncovered_lines_…` on a fixture where the old ease score orders differently.
+  - **One gate, `IRepositoryScope`.** `BrowseController`'s scoping (owner keys before resolving and unconditionally, an
+    unknown forge resolving to nothing, the listing rule, the repository's own commits without fork contributions, its
+    branches) moved into a scoped service both surfaces call; where a commit's tree and files live (`CoverageSources`)
+    too. The tools resolve every repository through it and refuse every null alike. Evidence: the existing browse classes
+    unchanged and green (`BrowseControllerTests`, `…AssemblyTests`, `…RemainderTests`, `RepositoryExistenceParityTests`,
+    `CommitGraphVisibilityTests`, `DependencyGraphEndpointTests`); `CoverageMcpScopingParityTests` compares MCP and browse
+    per caller (anonymous over HTTP; signed in, the controller in the host under a cookie principal) for a public
+    repository, the caller's private one (also by a former name), another organisation's, a missing one, an unknown owner
+    and an unknown forge: anonymous answers are byte-identical HTTP 401s with the challenge, signed-in ones byte-identical
+    "Not found." (browse: 401/404 alike).
+  - **Bug found: agents were invisible to CodeCoverage's owner check.** `ForgeIntegrationResolver` and `GitHubAccessService`
+    found the viewer with `UserManager.GetUserAsync(principal)` (the cookie's NameIdentifier); an agent token carries `sub`,
+    so an agent signed in as an owner saw public repositories only (core's `ISparkCurrentUser` had been fixed in M1, this
+    app read the principal itself). Both ask `ISparkCurrentUser.Id` now. Evidence, red → green: before the fix the parity
+    case for acme-dev's own organisation answered "Not found."; `GitHubAccessServiceRefreshTests.An_agent_caller_without_a_NameIdentifier_claim_…`
+    is new. Each fix is needed on its own (mutation runs, file restored from the commit): the old `ForgeIntegrationResolver`
+    alone fails 3 tests (acme-dev's private repository, the list parity, the personal token opening `/mcp`), the old
+    `GitHubAccessService` alone fails those 3 and the new unit test. The guide now says to identify users through
+    `ISparkCurrentUser.Id`.
+  - **Bug found in the package: a `Spark:Mcp` section made `Authentication` explicit.** .NET's binder assigns every settable
+    property its current value when the section exists, so any key (the test host's `Quota`, a deployment's `CanonicalUrl`)
+    set the explicit flag and startup refused for setups never named. ~~`AddMcp` now sets the flag from the presence of the
+    `Authentication` key.~~ *Reconciled at the rebase onto `feat/spark-mcp` (2026-10-12): the demo-app work found the same
+    bug independently ("Demo apps" below) and fixed it in `SparkMcpOptions.Create`, which also un-pins `ToolPrefix`. That
+    one implementation stays; M6's line in `AddMcp` is gone, both sides' tests stay (M6's through `AddMcp`, the other's
+    through `Create`).* Evidence: the CodeCoverage MCP host failed to boot (all 27 of its tests failed at fixture start with
+    "mcp.Authentication names setups that are not wired up: ExternalAuthorizationServer …") until the fix; `McpServerTests.A_Spark_Mcp_section_without_an_Authentication_key_…`
+    and `An_Authentication_key_in_configuration_is_explicit` (with the fixing line removed, the first fails: "found true").
+    The Spark MCP namespace stays green: 146/146 after the rebase onto `feat/spark-mcp` (102/102 before it).
+  - **Tools.** The six of §4.8, all `ReadOnly`; the app layer is `Read` for every agent (D24). A repository is named
+    `forge/owner/name` (the website's URL segments; no forge is defaulted, an unknown one answers like a missing
+    repository). Each tool asks `IPermissionService` for the rights it reads (`Query`/`Read` on `Repository`, `Read`/`Query` on
+    `Commit`), so a grant without the type refuses it (test). Malformed arguments answer `SparkMcpResult.Invalid` (made
+    public, with `Track`), everything else the uniform `Refuse`. The default commit is the one the repository's headline shows
+    (`LatestCoverageSha`) on the default branch, else the branch's newest complete, else newest. `patch` includes fork
+    contributions (the pull request is their context) and reads the added lines from the forge's comparison (cached 5 min),
+    matched as the patch number was. `drops` compares the commit's and its parent's tree summaries. Lists are bounded (≤ 50
+    rows, ≤ 400 ranges, ≤ 200 partial branches, ≤ 30 × 40 patch ranges, ≤ 10 drops × 5 files) with omitted counts, so the
+    40k-character cap never cuts an answer (test: 3000 ranges, 50 long paths). Reads live in `ICoverageInsights`; the tool
+    class holds no session (SPARK050 quiet in the build log).
+  - **Prompt.** `mcp.AddPrompts<T>()` added to the package, prefixed like the tools (D21); a prompt reads no data, so it is
+    listed to everyone. `codecoverage_raise_coverage(repository, branch?)`; a test checks it names only listed tools.
+  - **The embedded server inside CodeCoverage.** `AddIdentityProvider(idp => { idp.Issuer ??= origin; idp.ForMcp(); })` and
+    `mcp.CanonicalUrl ??= origin + "/mcp"`, origin = `Spark:Auth:PublicBaseUrl`, else `Coverage:BaseUrl`. The app signs in
+    with GitHub only (local credentials off), so `/connect/login` shows the GitHub button and resumes the authorization after
+    it. Evidence: `CoverageMcpSignInTests` (RFC 9728/8414 documents; an anonymous loopback client's authorize → `/connect/login`
+    → `/spark/auth/external-login?provider=GitHub` → github.com). Personal access tokens: `withConnectedAgents()` in the SPA.
+  - **Deviation: no signing-key secret.** The IdP keeps its keys in RavenDB (`OidcKeys`), the private halves protected by Data
+    Protection, generated at first start (I10); `SigningKeyPath` only imports a legacy file. M9 therefore adds no secret and no
+    configuration; the Data Protection volume now also guards the signing keys, and losing it refuses startup
+    (`docs/code-coverage/hosting.md` "AI agents (MCP)", compose comment corrected).
+  - **Decision for the owner: the IdP's own rights are switched off** (`"libraries": { "identity-provider": false }`). The MCP
+    preset needs none of them, the anonymous surface is unchanged (`securityPosture.txt`: the layer "switched off", 46 inert
+    grants), and binding the slots needs a developers group of its own (bound to `Administrators`, every approved developer
+    would become one). The IdP still maps its whole endpoint set (route snapshot +42: device, PAR, introspection, the portal
+    API); only agent clients exist, and the portal's admin endpoints refuse without the rights. Whether `ForMcp()` should unmap
+    the non-MCP endpoints is open (§7 "only the MCP preset is on" holds per client, not per route).
+  - **D23** needed no code: the gate refuses every credential no agent setup accepts. Evidence: `CoverageMcpCredentialTests`
+    shows a `covt_` token and a GitHub Actions token, each accepted by its own scheme in the same host, get 401
+    `invalid_token` on `/mcp` while the same call without any credential succeeds. Mutation: with the gate's refusal of an
+    unaccepted credential disabled, the `covt_` call answers 200 as anonymous and the test fails.
+  - **Totals:** the 27 new CodeCoverage MCP tests, and every touched or host-booting CodeCoverage class (browse, route
+    snapshot, registration inventory, surface tests, the end-to-end classes): 155/155 green.
+  - **For M7:** the live run (Claude Code against `https://coverage.mintplayer.com/mcp`); the SPA route spec was not run here (no
+    `node_modules` in the agent's worktree).
 - **Demo apps: HR on SparkId (setup 2), Fleet embedded (setup 3); remote resources; stamp-bound external grants
   (2026-10-12).** Owner decisions of 2026-10-12: (1) a Spark identity provider can be the external authorization server
   of *another* application's `/mcp`; (2) HR uses SparkId that way, beside personal tokens; (3) Fleet hosts its own
@@ -704,7 +784,8 @@ None. Q18 was resolved in round 3 (§10, D22).
   - **Bug found: binding `Spark:Mcp` marked `Authentication` explicit.** The configuration binder calls every public
     setter with the getter's value when the key is absent, so any `Spark:Mcp` key (here `CanonicalUrl`) made all three
     setups mandatory (Fleet refused to start without setup 2), and pinned `ToolPrefix` to the default server name's slug.
-    `SparkMcpOptions.Create` undoes both for keys the section does not hold.
+    `SparkMcpOptions.Create` undoes both for keys the section does not hold. (M6 had found the `Authentication` half in
+    parallel; at its rebase this became the one fix, see "M6 implementation".)
   - **Deviation (D6 wording):** `mcp.AgentPermissions` is a `Func`; "a plain value converts implicitly" never compiled
     (`mcp.AgentPermissions = EAgentPermission.Read` is CS0029). The guide now writes `_ => EAgentPermission.Read`.
   - **HR:** `AddExternalAgentAuthorizationServer(<SparkId authority>, loginProvider: "SparkId")` only where the SparkId

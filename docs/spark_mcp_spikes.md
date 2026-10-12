@@ -1,11 +1,14 @@
-# Spark MCP — spike results S1, S2, S4 (live) and S3, S11 (source-read)
+# Spark MCP — spike results S1, S2, S4, S8 (live) and S3, S11 (source-read)
 
 **Date:** 2026-10-12 · **Branch:** `spike/spark-mcp` (local only, never pushed) · **PRD:** `docs/spark_mcp_PRD.md` §0, §4, §6.1, decision log round 4
 Throwaway evidence, not production code. Logs quoted below were captured to files and filtered afterwards.
 
 - **S1, S2, S4** were run live against SparkId (sections below).
 - **S3, S11** were answered by reading client source code and documentation only. The live sign-ins with
-  Codex ≥ 0.148 and Gemini CLI 0.63 are still pending (owner); see [the last section](#s3--s11-source-read-live-confirmation-pending).
+  Codex ≥ 0.148 and Gemini CLI 0.63 are still pending (owner); see [S3 / S11](#s3--s11-source-read-live-confirmation-pending).
+- **S8** (the hotspot ranking, plan M6) was run against coverage.mintplayer.com's public data; see
+  [S8](#s8--does-the-hotspot-ranking-predict-cheap-gains). It FAILED, and `codecoverage_hotspots` ranks by uncovered
+  lines.
 
 ## Environment and versions
 
@@ -321,3 +324,79 @@ No client opens a sign-in on a mid-session 401 when it holds no token. Two measu
    clients handle at connect time.
 
 Step-up on 403 (`insufficient_scope`) works only in Claude Code.
+
+## S8 — does the hotspot ranking predict cheap gains?
+
+**Verdict: FAIL** (2026-10-12, plan M6). The §4.8.1 heuristic (uncovered × ease) never beat plain "most uncovered
+lines" by 1.5×, and in every variant it was at or below the baseline. `codecoverage_hotspots` therefore ranks by
+uncovered lines and says so in its description (PRD §4.8.1, decision log "M6 implementation").
+
+### Question
+
+PRD §6.1 S8 asks whether, before a commit that adds tests, the top 10 files by the §4.8.1 score gain ≥ 1.5× more
+coverage per added test line than the top 10 files by uncovered lines.
+
+### Data source and its limits
+
+- The data comes from coverage.mintplayer.com's public `/api/browse` API, read anonymously with GET requests only.
+  Nothing was authenticated and nothing was written. The calls used were `commits?withCoverageOnly`,
+  `commits/{sha}/hierarchy` (per-file covered and coverable lines) and `commits/{sha}/file` (line status, used to count
+  uncovered runs).
+- 488 commits have coverage totals, but **per-file data survives only on master**: branch commits answer 404 with
+  `latestBuildId: null`. So the proxy is **one data point per merged PR**: the 60 most recent master squash commits that
+  added test code (2026-08-21 → 2026-10-12), each compared with the nearest earlier master commit that has data. 57 of
+  those comparisons span one commit and 3 span 2–3 commits.
+- A commit counts as adding tests when it adds lines to a path matching `tests/`, `*.spec.ts`, `*Tests.cs` or
+  `*.Tests/`. Together these commits add 182,816 test lines.
+- Per-file covered lines are derived from `colorValue`, which is rounded to 0.1 %. A change of ±0.05 % of a file's
+  coverable lines or less is treated as zero.
+- Each `/file` call makes production fetch the source from GitHub. The calls were kept to 683, spaced 0.6 s apart.
+  The exact H1 top 10 was reached for 55 of the 60 commits.
+- This is observational. Nobody steered these commits by either ranking. The test only checks where test-driven gains
+  actually landed.
+
+### Method
+
+For each pair of commits, the files were ranked on the parent's per-file data:
+- **B**: uncovered lines.
+- **H0_frac**: uncovered × covered fraction.
+- **H0_some**: uncovered, halved for files with zero coverage.
+- **H1** (the full PRD formula): uncovered × max(covered fraction, 0.05) / number of uncovered line runs. The top 10 is
+  exact, using H0 as an upper bound to prune.
+
+An **uncovered line run** is a maximal sequence of uncovered coverable lines: a line the report does not list (blank,
+comment) does not split it, and a partly covered line counts as covered. `codecoverage_hotspots` and
+`codecoverage_file` count ranges by exactly this rule (`LineRanges.Uncovered`).
+
+**Gain** is the rise in a file's covered lines. Main variant: only files whose source the PR did not touch, so the gain
+comes from tests alone. Sensitivity variant: all files.
+
+The comparison metric is Σ top-10 gain / Σ added test lines, expressed as a ratio to B. The 95 % confidence intervals
+come from a 4000-sample bootstrap over commits.
+
+### Numbers (ratio to B, with 95 % CI)
+
+| Ranker | Untouched files, 60 PRs | All files, 60 PRs | Untouched, exact H1 (55) |
+|---|---|---|---|
+| B: gain per 100 test lines | 0.63 | 1.85 | 0.29 |
+| H0_frac | 0.62 [0.11–0.75] | 0.95 [0.77–1.25] | 0.26 |
+| H0_some | 0.84 [0.48–1.00] | 0.98 [0.91–1.06] | 0.69 |
+| **H1 (PRD)** | **0.42 [0.00–0.55]** | **0.38 [0.13–0.53]** | **0.03 [0.00–0.14]** |
+
+The probability that the ratio reaches 1.5 was at most 0.008 in every variant. H1 lost to B on 35 commits and won on 3
+(all-files variant).
+
+The fewer-runs term is the main reason H1 does badly: it pushes the ranking toward small files with a single gap, and
+those files rarely gain. Gains are also concentrated in a few commits. bd217fcb, the "~1,100 new tests" PR, accounts
+for about 25 % of the gain across all files.
+
+### Consequence for `codecoverage_*`
+
+`codecoverage_hotspots` sorts by **uncovered lines, descending** (ties by path), and its tool description says exactly
+that, with no "expected gain / effort" claim. Covered percentage and uncovered-range count are returned as columns for
+the agent to weigh, not folded into the score. PRD §4.8.1 was changed to match. Test:
+`CoverageToolsTests.Hotspots_rank_by_uncovered_lines_and_give_covered_percent_and_ranges_as_columns`, on a fixture
+where the H1 order differs.
+
+The spike's scripts and data (`pairs.py`, `master_pairs.py`, `fetch_ranges.py`, `analyze.py`, `bootstrap.py`, `data/`
+and their logs) stayed in the session's scratch folder; they are not committed.

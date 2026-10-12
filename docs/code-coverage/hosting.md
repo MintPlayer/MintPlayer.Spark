@@ -232,7 +232,7 @@ takes the framework default. Sources are under `libs/`.
 | Key | Default | App value | Meaning |
 |---|---|---|---|
 | `ApplicationName` | entry assembly name | `CodeCoverage` (appsettings) | ⚠️ Changing it invalidates every cookie issued before. |
-| `KeysPath` | unset | `/var/lib/codecoverage/dataprotection-keys` (compose) | Key ring as XML files. Only as durable as the volume behind it. |
+| `KeysPath` | unset | `/var/lib/codecoverage/dataprotection-keys` (compose) | Key ring as XML files. Only as durable as the volume behind it. ⚠️ Since the MCP server (plan M6) it also protects the identity provider's signing keys: see [AI agents (MCP)](#ai-agents-mcp). |
 | `Storage` | unset | unset | `RavenDb` keeps the ring as `DataProtectionKeys/` documents instead. ⚠️ Setting **both** `KeysPath` and `Storage` refuses startup; so does **neither** outside Development. |
 
 **`Spark:ForwardedHeaders`** — `libs/spark/MintPlayer.Spark/Configuration/SparkForwardedHeadersOptions.cs`.
@@ -303,6 +303,36 @@ so startup refuses it on every licence.
 | Key | Default | Meaning |
 |---|---|---|
 | `CookieName` | `spark-timezone` | Cookie read when the `X-Spark-Timezone` header is absent. Empty disables the cookie. Not set by the app. |
+
+### AI agents (MCP)
+
+The app serves an MCP server at `/mcp` (`libs/mcp/MintPlayer.Spark.Mcp`) and its own authorization server for it
+(`libs/identity_provider`, `ForMcp()`), wired in `Program.cs` (plan M6, [mcp.md](mcp.md)). **Nothing new has to be
+configured, and there is no new secret:**
+
+| Key | Default | App value | Meaning |
+|---|---|---|---|
+| `Spark:IdentityProvider:Issuer` | — | the public origin (`Program.cs`) | The `iss` of every token. Set in code from `Spark:Auth:PublicBaseUrl`, else `Coverage:BaseUrl`; a configured value wins. Required outside Development. |
+| `Spark:Mcp:CanonicalUrl` | — | public origin + `/mcp` (`Program.cs`) | The token audience and the address users give their agent: `https://coverage.mintplayer.com/mcp`. ⚠️ Changing it disconnects every agent. |
+| `Spark:Mcp:Quota:SignedInPerMinute` / `AnonymousPerMinute` | `120` / `30` | — | Calls per user / per address. |
+| `Spark:IdentityProvider:SigningKeyPath` | unset | unset | Only to import an existing RSA key once; not needed. |
+
+- **Signing keys** are generated on the first start into the `Coverage` database (`OidcKeys/*`), their private halves
+  protected by the Data Protection key ring, and rotated every 90 days (`Spark:IdentityProvider:Keys:*`). The key ring
+  volume (`dataprotection-keys`) is therefore the secret that protects them. ⚠️ **Losing the volume is no longer
+  harmless:** the app then refuses to start, because it cannot read its signing keys, rather than minting new ones
+  silently. To recover, delete the `OidcKeys/` documents (new keys are created at the next start; every agent has to sign
+  in again). Back the volume up with the database.
+- **New collections** in `Coverage`: `OidcKeys`, `OidcApplications` (agent clients registered through metadata documents
+  or anonymous loopback registration, pruned after 30 days unused), `OidcResources` (`OidcResources/mcp`), `OidcGrants`,
+  `OidcTokens`, `OidcAuditEvents` (180 days) and `AgentGrants`; tokens and audit events carry `@expires`.
+- **Rights.** The identity provider's own administration (applications, developer portal, audit pages) is switched off
+  in `App_Data/security.json` (`"libraries": { "identity-provider": false }`): the MCP preset needs none of it. Binding
+  its two slots (`identity-provider:administrators`, `identity-provider:developers`, the latter to a group of its own,
+  never `Administrators`) would turn it on.
+- **Proxy.** Traefik routes the whole host, so `/mcp`, `/connect/*` and `/.well-known/*` already reach the app. Do not add
+  a buffering middleware: the server sends `X-Accel-Buffering: no` for the event stream.
+- `covt_` upload tokens and GitHub Actions tokens are refused on `/mcp` (401); they keep working on `/api/uploads`.
 
 ## 6. GitHub App
 

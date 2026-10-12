@@ -151,9 +151,20 @@ Owner decisions of 2026-10-12; as built, with the deviations, in the PRD decisio
   anonymous `QueryRead/CheckDefinition` in security.json.
 - Element evidence after S7; expired-page wording; one "fix my SEO findings" prompt; S6.
 
-### M6 — CodeCoverage
-- Repository scoping out of `BrowseController` into a shared service.
-- `CoverageTools` (PRD §4.8), ranking after S8; `covt_`/OIDC rejected on `/mcp` (D23); one prompt.
+### M6 — CodeCoverage — done (2026-10-12), except the live run (M7/M9)
+As built, with the deviations, in the PRD decision log ("M6 implementation").
+- Repository scoping out of `BrowseController` into `IRepositoryScope` (`apps/CodeCoverage/.../Services/RepositoryScope.cs`),
+  shared with the tools; `CoverageSources` shared too. Browse answers unchanged.
+- `CoverageTools` (PRD §4.8): `list_repositories`, `summary`, `hotspots`, `file`, `patch`, `drops`, read-only, through the
+  scope and `IPermissionService`; reads in `ICoverageInsights` (SPARK050 quiet). Hotspots rank by uncovered lines (S8 FAIL,
+  [spikes](spark_mcp_spikes.md#s8--does-the-hotspot-ranking-predict-cheap-gains)).
+- Embedded setup in the app (`ForMcp()`, issuer and canonical URL from the public origin) plus personal tokens
+  (`withConnectedAgents()` in the SPA); `covt_`/OIDC rejected on `/mcp` (D23, test); one prompt
+  (`codecoverage_raise_coverage`, new `mcp.AddPrompts<T>()`).
+- Found and fixed on the way: agents were invisible to CodeCoverage's owner check (`ISparkCurrentUser.Id` now); any
+  `Spark:Mcp` key made `Authentication` explicit (package).
+- For M9: no new secret or configuration; the Data Protection volume now guards the signing keys
+  ([hosting.md](code-coverage/hosting.md#ai-agents-mcp)).
 
 ### M7 — Tests
 - Parity suite (S5) over HR, SeoTester and CodeCoverage fixtures (no personal data).
@@ -178,5 +189,9 @@ Owner decisions of 2026-10-12; as built, with the deviations, in the PRD decisio
 
 ### M9 — Deploy (production)
 - SeoTester and CodeCoverage: signing key for the embedded server in deployment secrets, public origin,
-  `/mcp`, `/connect/*` and `/.well-known/*` through the proxy without SSE buffering.
+  `/mcp`, `/connect/*` and `/.well-known/*` through the proxy without SSE buffering. *CodeCoverage (M6):* no signing-key
+  secret exists — the IdP generates its keys into `OidcKeys`, protected by the Data Protection key ring, so the
+  `dataprotection-keys` volume must persist and be backed up; the issuer and `/mcp` URL follow `Coverage:BaseUrl` /
+  `Spark:Auth:PublicBaseUrl` (already set); Traefik routes the whole host (nothing to add)
+  ([hosting.md](code-coverage/hosting.md#ai-agents-mcp)).
 - Connect Claude Code to both production servers; run each documented example once.

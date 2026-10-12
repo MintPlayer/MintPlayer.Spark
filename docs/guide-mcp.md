@@ -200,12 +200,26 @@ Rules:
 2. **`ReadOnly = true` means the tool needs `Read`; otherwise it needs `Write`.** Forgetting the flag makes
    the tool less available, never more. Write tools aren't even listed for an agent without `Write`.
 3. **Return through `SparkMcpResult`**: Spark serialization (redaction included), paging and fencing.
-4. **Keep results small.** Return ids and the fields needed; aim below 10k tokens per call.
+   `SparkMcpResult.Refuse()` for "not found" and "not allowed" alike (the uniform answer, see below);
+   `SparkMcpResult.Invalid(message)` only for arguments that are malformed whatever the data (a bad page size, a
+   malformed name), so its message can say what is wrong; `SparkMcpResult.Track(rows)` to put the row count in the
+   call's audit event when you answer with `Json` or `Text`.
+4. **Keep results small.** Return ids and the fields needed; aim below 10k tokens per call. Bound every list yourself
+   (and say how many were left out): the cap cuts an oversized answer mid-document.
+5. **Check the types you read.** An app tool that reads an entity type outside the generic read paths asks
+   `IPermissionService.IsAllowedAsync("Read", "<Type>")` (or `Query`) first, so the type's `agentPermissions` and the
+   user's grant narrow it like every generic tool.
 
-The caller is available as a `ClaimsPrincipal user` parameter or through `ISparkCurrentUser`. An agent's principal
-carries the local user id as `sub` and as `ClaimTypes.NameIdentifier`, so code that reads the id from the claim, as from
-the sign-in cookie, works unchanged. It carries no role claims: its groups come from the user store on every call and
-reach security.json, not `User.IsInRole`. Code that tests roles that way treats an agent as having none.
+The caller is available as a `ClaimsPrincipal user` parameter or through `ISparkCurrentUser`; identify the user
+through `ISparkCurrentUser.Id`. An agent's principal carries the local user id as `sub` and as
+`ClaimTypes.NameIdentifier`, so code that reads the id from the claim (or `UserManager.GetUserAsync(principal)`), as
+from the sign-in cookie, works unchanged; before that, CodeCoverage's owner lookups missed every agent (plan M6). It
+carries no role claims: its groups come from the user store on every call and reach security.json, not
+`User.IsInRole`. Code that tests roles that way treats an agent as having none.
+
+**Prompts.** `mcp.AddPrompts<TPrompts>()` adds `[McpServerPrompt]` methods of a `[McpServerPromptType]` class, prefixed
+like the tools. A prompt is a message template the user picks in the agent (one per app is plenty, PRD §9); it reads no
+data, so every caller sees it.
 
 ## Anonymous and signed-in callers
 

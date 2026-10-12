@@ -46,8 +46,8 @@ public sealed partial class CoverageTools
     [Inject] private readonly IPermissionService permissions;
 
     [McpServerTool(Name = "list_repositories", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Repositories with coverage that this user can see: public ones for everyone, private ones only when signed in with access to their owner. "
-        + "Each with its line and branch coverage on the default branch. Pass a row's 'repository' (forge/owner/name) to the other tools.")]
+    [Description("Repositories this user can see: public ones for everyone, private ones only when signed in with access to their owner. "
+        + "Each with its line and branch coverage on the default branch (null before the first upload). Pass a row's 'repository' (forge/owner/name) to the other tools.")]
     public async Task<CallToolResult> ListRepositoriesAsync(
         [Description("Only repositories whose owner/name contains this text.")] string? search = null,
         [Description("Repositories to skip, for paging (use nextSkip from the previous page).")] int skip = 0,
