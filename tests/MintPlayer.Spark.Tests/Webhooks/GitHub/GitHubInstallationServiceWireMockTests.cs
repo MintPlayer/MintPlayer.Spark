@@ -99,6 +99,23 @@ public class GitHubInstallationServiceWireMockTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_token_short_of_minRemaining_is_replaced_by_one_fresh_mint_that_later_callers_share()
+    {
+        // Fresh for the default 60 s window, too short for a clone that may run 10 minutes.
+        GetTokenCache(_service)[InstallationId] = new AccessToken("ghs_short", DateTimeOffset.UtcNow.AddMinutes(5));
+        StubAccessTokenResponse(_server, "ghs_long", DateTimeOffset.UtcNow.AddHours(1));
+
+        var token = await _service.GetInstallationTokenAsync(InstallationId, TimeSpan.FromMinutes(15), CancellationToken.None);
+        var later = await _service.GetInstallationTokenAsync(InstallationId, CancellationToken.None);
+
+        token.Should().Be("ghs_long");
+        later.Should().Be("ghs_long");
+        var mintCalls = _server.FindLogEntries(
+            Request.Create().WithPath($"/api/v3/app/installations/{InstallationId}/access_tokens").UsingPost());
+        mintCalls.Count.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Fast_path_hit_does_not_mint_a_fresh_token()
     {
         GetTokenCache(_service)[InstallationId] = new AccessToken("ghs_cached", DateTimeOffset.UtcNow.AddHours(1));

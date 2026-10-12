@@ -172,9 +172,10 @@ public interface IForgeIntegration
     /// <remarks>
     /// <para>
     /// ⚠️ <b>The credential is never stored.</b> It is handed to the mirror sidecar in the body of
-    /// one request and dropped; the sidecar does not persist it either (PRD §4.1, D3). An
-    /// installation token outlives any fetch quota (about an hour against at most minutes), so the
-    /// caller mints one per fetch rather than caching it.
+    /// one request and dropped; the sidecar does not persist it either (PRD §4.1, D3). It is asked
+    /// for once per fetch, but an implementation may serve it from a shared token cache (GitHub's
+    /// installation tokens are cached for their hour); it must then guarantee the token outlives the
+    /// fetch quota, as GitHub's does by asking the cache for at least 15 minutes of remaining life.
     /// </para>
     /// <para>
     /// An anonymous answer (<see cref="ForgeGitAccess.IsAnonymous"/>) is for a public repository

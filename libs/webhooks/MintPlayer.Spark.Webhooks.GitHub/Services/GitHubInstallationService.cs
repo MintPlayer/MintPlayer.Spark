@@ -32,15 +32,28 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
     private readonly SemaphoreSlim _signingKeyGate = new(1, 1);
     private bool _disposed;
 
+    /// <summary>The remaining lifetime below which a cached token is refreshed when the caller asks for none.</summary>
+    internal static readonly TimeSpan DefaultMinRemaining = TimeSpan.FromSeconds(60);
+
     /// <summary>
     /// Returns a cached installation token if it has &gt; 60s remaining, otherwise mints a fresh one
     /// (under <see cref="_refreshGate"/> to ensure only one concurrent refresh per installation).
     /// </summary>
-    internal async Task<AccessToken> GetOrCreateInstallationTokenAsync(long installationId, CancellationToken cancellationToken)
+    internal Task<AccessToken> GetOrCreateInstallationTokenAsync(long installationId, CancellationToken cancellationToken)
+        => GetOrCreateInstallationTokenAsync(installationId, DefaultMinRemaining, cancellationToken);
+
+    /// <summary>
+    /// As above, but a cached token must have more than <paramref name="minRemaining"/> left (never less than
+    /// the default 60 s); otherwise a fresh one is minted and replaces it in the cache. A fresh token is returned
+    /// even when GitHub's fixed lifetime (an hour) is shorter than asked.
+    /// </summary>
+    internal async Task<AccessToken> GetOrCreateInstallationTokenAsync(long installationId, TimeSpan minRemaining, CancellationToken cancellationToken)
     {
+        if (minRemaining < DefaultMinRemaining) minRemaining = DefaultMinRemaining;
+
         // Fast path — lock-free read of a still-fresh token
         if (_installationTokens.TryGetValue(installationId, out var cached)
-            && DateTimeOffset.UtcNow.AddSeconds(60) < cached.ExpiresAt)
+            && DateTimeOffset.UtcNow.Add(minRemaining) < cached.ExpiresAt)
         {
             return cached;
         }
@@ -50,7 +63,7 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
         {
             // Re-check inside the gate (another caller may have refreshed)
             if (_installationTokens.TryGetValue(installationId, out cached)
-                && DateTimeOffset.UtcNow.AddSeconds(60) < cached.ExpiresAt)
+                && DateTimeOffset.UtcNow.Add(minRemaining) < cached.ExpiresAt)
             {
                 return cached;
             }
@@ -121,6 +134,9 @@ internal partial class GitHubInstallationService : IGitHubInstallationService, I
 
     public async Task<string> GetInstallationTokenAsync(long installationId, CancellationToken cancellationToken = default)
         => (await GetOrCreateInstallationTokenAsync(installationId, cancellationToken)).Token;
+
+    public async Task<string> GetInstallationTokenAsync(long installationId, TimeSpan minRemaining, CancellationToken cancellationToken = default)
+        => (await GetOrCreateInstallationTokenAsync(installationId, minRemaining, cancellationToken)).Token;
 
     public Task<IGitHubClient> CreateInstallationClientAsync(long installationId)
         => Task.FromResult(_installationClients.GetOrAdd(installationId, BuildInstallationClient));

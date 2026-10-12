@@ -185,6 +185,13 @@ public partial class GitHubForgeClient : IForgeClient
     /// written by something else can never steer the clone at another host or path.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The least lifetime a token handed to a git process must have left: the installed fetch quota
+    /// (<c>CommitGraph:Installed:TimeoutSeconds</c>, 600 s) plus the 60 s call margin, with room to spare.
+    /// GitHub issues tokens for an hour, so a quota raised past ~45 minutes cannot be covered.
+    /// </summary>
+    internal static readonly TimeSpan GitAccessMinLifetime = TimeSpan.FromMinutes(15);
+
     public async Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(repository);
@@ -193,7 +200,9 @@ public partial class GitHubForgeClient : IForgeClient
         var cloneUrl = $"https://github.com/{repository.FullName}.git";
         if (await ResolveInstallationAsync(repository, cancellationToken) is { } installationId)
         {
-            var token = await installationService.GetInstallationTokenAsync(installationId, cancellationToken);
+            // The token comes from the shared cache, which by default serves one with only 60 s left; the
+            // sidecar holds it for the whole clone. Ask for enough life to outlast the installed quota.
+            var token = await installationService.GetInstallationTokenAsync(installationId, GitAccessMinLifetime, cancellationToken);
             return new ForgeGitAccess(cloneUrl, "x-access-token", token, $"github:{installationId}");
         }
 

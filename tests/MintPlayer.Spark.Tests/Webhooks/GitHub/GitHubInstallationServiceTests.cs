@@ -70,6 +70,41 @@ public class GitHubInstallationServiceTests
     }
 
     [Fact]
+    public async Task A_cached_token_with_less_than_minRemaining_left_is_refreshed()
+    {
+        using var service = NewService(); // no ClientId / no private key — refresh must throw
+        SeedToken(service, InstallationId, DateTimeOffset.UtcNow.AddMinutes(5));
+
+        // Fresh enough for the default 60 s, not for a 15-minute clone: the throw is the refresh.
+        var act = async () => await service.GetInstallationTokenAsync(InstallationId, TimeSpan.FromMinutes(15), CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*PrivateKeyPem*");
+    }
+
+    [Fact]
+    public async Task Control_the_same_cached_token_is_served_without_minRemaining_and_when_it_has_enough_left()
+    {
+        using var service = NewService();
+        SeedToken(service, InstallationId, DateTimeOffset.UtcNow.AddMinutes(5));
+
+        (await service.GetInstallationTokenAsync(InstallationId, CancellationToken.None)).Should().Be("seeded-12345");
+        (await service.GetInstallationTokenAsync(InstallationId, TimeSpan.FromMinutes(4), CancellationToken.None)).Should().Be("seeded-12345");
+    }
+
+    [Fact]
+    public async Task A_minRemaining_below_60s_still_refreshes_a_token_inside_the_default_window()
+    {
+        using var service = NewService();
+        SeedToken(service, InstallationId, DateTimeOffset.UtcNow.AddSeconds(30));
+
+        var act = async () => await service.GetInstallationTokenAsync(InstallationId, TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*PrivateKeyPem*");
+    }
+
+    [Fact]
     public void InvalidateInstallation_removes_the_cached_entry()
     {
         using var service = NewService();
