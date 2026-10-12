@@ -20,14 +20,27 @@ app. It never gets your password.
 
 ## Add the server to your agent
 
+| Agent | Minimum version | How to sign in |
+|---|---|---|
+| Claude Code | 2.1.296 (tested) | `claude mcp login <name>` in a terminal, or `/mcp` → **Authenticate** in a session |
+| OpenAI Codex CLI | **0.148** (first version with client metadata documents; older versions fall back to dynamic registration) | `codex mcp add <name> --url …` signs in automatically; later `codex mcp login <name>` |
+| Gemini CLI | 0.63 | `/mcp auth <name>` in a session |
+
+**Sign in before you need it.** None of the agents opens the browser by itself halfway through a
+session. If the agent connected without signing in and then reports that sign-in is required, run the
+sign-in command from the table yourself (Codex: then reconnect, for example by restarting the session).
+Signing in to the app's website in your browser does not sign the agent in.
+
 ### Claude Code
 
 ```powershell
 claude mcp add --transport http seotester https://seotester.mintplayer.com/mcp
+claude mcp login seotester
 ```
 
 Add `--scope project` to share it with your team through `.mcp.json` in the repository (only the address
-is stored there, never a token). Then, in a Claude Code session:
+is stored there, never a token). Instead of `claude mcp login`, you can sign in from a Claude Code
+session:
 
 ```
 /mcp
@@ -37,12 +50,19 @@ Select the server and choose **Authenticate**. Your browser opens; sign in to th
 
 ### OpenAI Codex CLI
 
+Version 0.148 or later.
+
 ```powershell
 codex mcp add seotester --url https://seotester.mintplayer.com/mcp
+```
+
+`codex mcp add` opens the browser to sign in right away. To sign in again later:
+
+```powershell
 codex mcp login seotester
 ```
 
-Or in `~/.codex/config.toml`:
+Or in `~/.codex/config.toml` (then run `codex mcp login seotester`):
 
 ```toml
 [mcp_servers.seotester]
@@ -61,14 +81,15 @@ In `~/.gemini/settings.json` (or `.gemini/settings.json` in the project):
 }
 ```
 
-Then, in a session: `/mcp auth seotester`.
+Then, in a session: `/mcp auth seotester`. Gemini CLI 0.63 or later.
 
 ## Signing in
 
-Without signing in, the agent sees only what the app shows to anonymous visitors. As soon as it needs
-more:
+Without signing in, the agent sees only what the app shows to anonymous visitors. Some apps require
+sign-in for everything; there the agent signs you in as soon as it connects. Elsewhere, sign in with the
+command for your agent (table above) when it needs more:
 
-1. The agent opens your browser.
+1. Your browser opens.
 2. Sign in the way you always do in that app (GitHub, Microsoft, passkey...).
 3. The app shows which agent asks for access, whether it could verify the agent (an agent marked
    **unverified** may not be who it says it is), and lets you choose:
@@ -127,6 +148,7 @@ A configured token replaces the browser sign-in, so don't set one if you want to
 |---|---|
 | The browser never opens | Remove any `Authorization` header from the agent's configuration, then authenticate again. |
 | "Not found" for something you can see in the app | You excluded it for this agent (check Connected applications), or the app doesn't make that data available to agents. |
-| The browser never opens, but answers are incomplete | You're not signed in, so the agent sees only public data. In Claude Code run `/mcp` → Authenticate; in Codex `codex mcp login <name>`; in Gemini `/mcp auth <name>`. |
+| The browser never opens, but answers are incomplete | You're not signed in, so the agent sees only public data, and agents don't start sign-in by themselves mid-session. In Claude Code run `claude mcp login <name>` or `/mcp` → Authenticate; in Codex `codex mcp login <name>`, then reconnect; in Gemini `/mcp auth <name>`. |
+| You signed in on the website, the agent still isn't | The website sign-in is for your browser only. Sign the agent in with its own command (see above). |
 | The agent says it isn't allowed to change data | Turn on changes for it under Connected applications. If the option isn't offered, the app doesn't allow changes by this agent. |
 | Everything worked yesterday, now 401 | Your access was revoked (password change, disconnect). Authenticate again. |

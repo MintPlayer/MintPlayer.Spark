@@ -63,6 +63,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         mcp.ServerName = "Contracts";                        // tools become contracts_query, ...
         mcp.Instructions = "Contracts, customers and invoices of the signed-in user.";
         mcp.AgentPermissions = EAgentPermission.Read;        // see below
+        mcp.RequireSignIn = false;                           // default; see "Anonymous and signed-in callers"
         mcp.AddTools<ContractTools>();                       // optional
     });
 });
@@ -206,6 +207,25 @@ MCP follows security.json exactly, like the web app:
   agent knows to sign the user in.
 - A signed-in caller who is denied gets the same "not found" as for something that doesn't exist.
 
+**Agents don't sign in by themselves halfway through a session.** Claude Code, Codex and Gemini start
+their OAuth sign-in when they connect, not when a later tool call answers 401. So the 401 (and 403) tool
+error text tells the agent how to start the client's own sign-in:
+
+| Client | What the error tells the agent |
+|---|---|
+| Claude Code | Call the authenticate tool, or run `claude mcp login <name>` (the user can also use `/mcp` → Authenticate). |
+| Codex | Run `codex mcp login <name>`, then reconnect. |
+| Gemini CLI | Ask the user to run `/mcp auth <name>`. |
+
+Sending the user to your website's sign-in page doesn't help: that gives the browser a cookie, and
+`/mcp` ignores cookies. The token has to come through the agent's own sign-in. Only Claude Code asks for
+more access by itself when a call answers 403 `insufficient_scope`.
+
+**`RequireSignIn`.** If your app has nothing useful for anonymous agents, set `mcp.RequireSignIn = true`
+(default `false`). Every request without a token, including the first `initialize`, then gets 401 with the
+sign-in challenge, so every agent signs the user in as soon as it connects. It needs setup 2 or 3: with
+personal tokens only, the 401 carries no challenge.
+
 ## Grants and personal access tokens
 
 Every connected agent has a grant (`AgentGrant`, stored by the Authorization package): which types, read or
@@ -282,8 +302,9 @@ tool that mirrors an endpoint, add a parity test: same user, same data, same row
 
 | Symptom | Cause |
 |---|---|
-| Agent says "401" and never opens a browser | A static `Authorization` header in the agent's config replaces OAuth; or only the personal-token setup is wired. |
+| Agent says "401" and never opens a browser | A static `Authorization` header in the agent's config replaces OAuth; or only the personal-token setup is wired; or the agent connected anonymously and doesn't sign in mid-session (see [Anonymous and signed-in callers](#anonymous-and-signed-in-callers), or set `RequireSignIn`). |
 | Sign-in completes, then every call is 401 | Audience mismatch: the canonical URL differs from what the user configured (trailing slash, `http`, `www`). |
 | External setup: always 401 | The user never signed in to the website through that provider, or the issuer configured for the provider differs from the token's `iss`. |
 | A tool the user expects is missing | It needs `Write` and some layer gives only `Read`; or the type's `agentPermissions` is `None`; or the user lacks `Query` on it. |
+| Local development: Claude Code fails with `UNABLE_TO_VERIFY_LEAF_SIGNATURE` on `https://localhost` | Node doesn't trust the ASP.NET development certificate. Use the app's `http` profile locally, or point `NODE_EXTRA_CA_CERTS` at the exported dev certificate. |
 | Results end with "truncated" | The page cap was reached; the agent should page with `skip`. |

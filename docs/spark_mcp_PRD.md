@@ -1,6 +1,8 @@
 # PRD — MintPlayer.Spark.Mcp: an MCP server inside a Spark app, acting as the user
 
-**Status:** designed; owner grill done and consistency-reviewed (2026-10-12, §10); no open questions. No code yet.
+**Status:** designed; owner grill done and consistency-reviewed (2026-10-12, §10); no open questions.
+Spikes S1, S2 and S4 done live; S3 and S11 answered by source reading, live sign-ins pending (round 4,
+[spark_mcp_spikes.md](spark_mcp_spikes.md)). Implementation started (M1).
 **Date:** 2026-10-12
 **Origin:** owner request (2026-10-12). App developers host a Spark website and let its users connect AI
 agents (Claude Code, Codex, Gemini) to their data. SeoTester: agents fix the SEO findings in the site's
@@ -25,10 +27,10 @@ Where §0 and the body disagree, §0 wins and the body is fixed.
 | # | Decision | Evidence / reason |
 |---|---|---|
 | D1 | One new package, `MintPlayer.Spark.Mcp` (`libs/mcp/`), registered with `spark.AddMcp(...)` and mapped through `Registry.AddEndpoints`. | The `ISparkBuilder` + `Registry.AddEndpoints` pattern [verified `SparkModuleRegistry.cs:141`, `SparkDashboardsExtensions.cs:41-72`]. |
-| D2 | Built on the official C# SDK `ModelContextProtocol.AspNetCore` **2.2.x**, stateless HTTP, hybrid mode for 2025-11-25 clients. | 2.2.0 stable 2026-08-13, spec 2026-07-28, targets net10 [cited nuget.org/packages/ModelContextProtocol.AspNetCore]. Hybrid on net11 → S1. |
-| D3 | `/mcp` accepts bearer tokens only. Cookies are ignored on it; `Origin` is validated. A call **without** a token runs as `anonymous` (D17). | Spec: token only in `Authorization`, audience = canonical URI, no passthrough, Origin MUST [cited modelcontextprotocol.io/specification/2026-07-28/basic/authorization]. No ambient credential → no CSRF surface; bearer requests are antiforgery-exempt [verified `SparkAntiforgeryMiddleware.cs:56-70,155-164`]. |
-| D4 | **Three setups, flags `EAgentAuthentication { PersonalAccessToken, ExternalAuthorizationServer, EmbeddedAuthorizationServer }`, default all.** Effective = flags ∩ what is wired up; an explicitly set flag without its wiring fails at startup. See §4.2. **owner** (R1-Q16) | Only an OAuth server that speaks MCP's OAuth (PKCE, `resource`, CIMD/DCR) can give an agent browser sign-in; GitHub/Google/personal Microsoft can't, so CodeCoverage and SeoTester need the embedded one. The resource server and external-login links are already in the Authorization package [verified `libs/authorization/.../ResourceServer/SparkResourceServerExtensions.cs`, `Endpoints/ExternalLogin/ExternalLoginCallback.cs`]. |
-| D5 | Client registration (embedded setup): **Client ID Metadata Documents from any HTTPS host** with SSRF guards (public addresses only, size cap, timeout, cache), **plus anonymous DCR limited to loopback redirect URIs**, rate-limited per IP, pruned after 30 days unused. The consent screen shows client name and redirect host; DCR clients are labelled **unverified**. **owner** (R1-Q8) | Spec 2026-07-28: CIMD SHOULD, DCR deprecated but kept [cited …/authorization/client-registration]. Claude Code and Codex do both, Gemini CLI only DCR [cited code.claude.com/docs/en/mcp, learn.chatgpt.com/docs/extend/mcp.md, geminicli.com/docs/tools/mcp-server]. Today's DCR needs an initial access token [verified `Endpoints/Register.cs:13-41`]. → S3. |
+| D2 | Built on the official C# SDK `ModelContextProtocol.AspNetCore`, **pinned to 2.2.0**, plain **`Stateless`** HTTP mode, which serves 2025-11-25 clients too (they `initialize` without a session). **No hybrid mode, no session affinity.** ~~"2.2.x, stateless HTTP, hybrid mode for 2025-11-25 clients"~~ superseded in round 4 (S1). | 2.2.0 stable 2026-08-13, spec 2026-07-28, targets net10 [cited nuget.org/packages/ModelContextProtocol.AspNetCore]. **S1 [verified live]:** 2.2.0 runs on net11; in `Stateless` a 2025-11-25 client initializes, gets no `Mcp-Session-Id`, 405 on GET, and calls tools; 2026-07-28 uses `server/discover`. The SDK's hybrid (`StatefulForInitializeClients`) gives old clients real sessions and needs session affinity [spark_mcp_spikes.md S1a]. |
+| D3 | `/mcp` accepts bearer tokens only. Cookies are ignored on it; `Origin` is validated. A call **without** a token runs as `anonymous` (D17). **Mechanism (round 4, S1):** `AddMcp` builds the bearer-only endpoint authorization policy itself (only the bearer scheme(s), lets every caller through, so `HttpContext.User` becomes the bearer principal or an empty one; cookies ignored). After the policy swaps the user, `AddMcp` **resets the composite's `ISparkAuthenticatedSchemeFeature`**, which otherwise still names the cookie scheme. It must not trip analyzer **SPARK020**: fix its false positive on named policies (M1). The **Origin check is our own code**, not the SDK's. | Spec: token only in `Authorization`, audience = canonical URI, no passthrough, Origin MUST [cited modelcontextprotocol.io/specification/2026-07-28/basic/authorization]. No ambient credential → no CSRF surface; bearer requests are antiforgery-exempt [verified `SparkAntiforgeryMiddleware.cs:56-70,155-164`]. **S1 [verified live]:** without the policy a cookie-only `/mcp` call runs as the signed-in user, and with bearer + cookie **the cookie wins** (composite order); with the policy, cookie-only is anonymous and bearer + cookie is the bearer. The stale feature: `SparkCompositeAuthenticationHandler.cs:63-69`. SPARK020 fired although the app-registered policy ran on every call. The SDK's Origin handling was not probed, so we do not rely on it [spark_mcp_spikes.md S1b, S1 findings]. |
+| D4 | **Three setups, flags `EAgentAuthentication { PersonalAccessToken, ExternalAuthorizationServer, EmbeddedAuthorizationServer }`, default all.** Effective = flags ∩ what is wired up; an explicitly set flag without its wiring fails at startup. See §4.2. **owner** (R1-Q16). **Prerequisite for every setup (round 4, S2/S4):** agent bearer callers get their groups **from the user store, per request** (a store-backed `IGroupMembershipProvider`, active for bearer principals only) and `ISparkCurrentUser.Id` maps the bearer's `sub` to the local user id. Without it a signed-in bearer caller has only the authenticated group and a null user id. See §4.6. | Only an OAuth server that speaks MCP's OAuth (PKCE, `resource`, CIMD/DCR) can give an agent browser sign-in; GitHub/Google/personal Microsoft can't, so CodeCoverage and SeoTester need the embedded one. The resource server and external-login links are already in the Authorization package [verified `libs/authorization/.../ResourceServer/SparkResourceServerExtensions.cs`, `Endpoints/ExternalLogin/ExternalLoginCallback.cs`]. **S2 [verified live]:** setup 3 works end to end beside the app's own cookie sign-in (code + PKCE S256, public client, `at+jwt`, `aud` = canonical URI, RFC 9207 `iss`, `sub` = local id), but the bearer got no named group: groups come only from claims (`ClaimsGroupMembershipProvider.cs:19-43`), tokens carry none by design (`OidcTokenGenerator.cs:139-164`), and `HttpContextSparkCurrentUser.cs:25-27` reads `NameIdentifier`, absent on the bearer (`MapInboundClaims=false`). **S4 [verified live]:** a per-request store provider prototype restores parity and denies the next call after a role removal [spark_mcp_spikes.md S2, S4]. |
+| D5 | Client registration (embedded setup): **Client ID Metadata Documents from any HTTPS host** with SSRF guards (public addresses only, size cap, timeout, cache), **plus anonymous DCR limited to loopback redirect URIs**, rate-limited per IP, pruned after 30 days unused. The consent screen shows client name and redirect host; DCR clients are labelled **unverified**. **owner** (R1-Q8). **Round 4 (S2, S3):** loopback redirect matching accepts both `localhost` and `127.0.0.1`, **any port** (RFC 8252 §7.3) and **any path**, for anonymous DCR and for CIMD documents that list portless loopback URIs. The AS metadata advertises `client_id_metadata_document_supported: true`, `token_endpoint_auth_methods_supported` including `none`, and `authorization_response_iss_parameter_supported: true`. The IdP gaps S2 found are M3b work items: RFC 8414 metadata; RFC 9728 PRM + `WWW-Authenticate: Bearer resource_metadata=…`; CIMD; anonymous loopback DCR (today needs an initial access token); any-port loopback matching; RFC 8707 `resource` → `aud` for `/mcp` with **no fallback to `client_id`** for the MCP resource (today an unknown `resource` silently yields `aud` = `client_id`); scopes `mcp:read`/`mcp:write` expressible (today a scope's resource is the text before its first dot); refresh tokens issued to MCP clients (today only with `offline_access`: **advertise `offline_access`**, Claude Code appends it when advertised); pairwise `sub` off for MCP clients. | Spec 2026-07-28: CIMD SHOULD, DCR deprecated but kept [cited …/authorization/client-registration]. Claude Code and Codex do both, Gemini CLI only DCR [cited code.claude.com/docs/en/mcp, learn.chatgpt.com/docs/extend/mcp.md, geminicli.com/docs/tools/mcp-server]. Today's DCR needs an initial access token [verified `Endpoints/Register.cs:13-41`]. **S2 gap list G1–G11 [verified, file:line]** and **S3 redirect URIs per client [inferred, source-read]**: Claude Code `http://localhost:<port>/callback`, Codex `http://127.0.0.1:<port>/callback/<id>`, Gemini `http://localhost:<port>/oauth/callback`; Codex uses CIMD only when the metadata advertises it with `none` [spark_mcp_spikes.md S2 gap list, S3]. |
 | D6 | **One `[Flags] EAgentPermission { None, Read, Write }` at every layer.** Effective = **app(agent) ∩ type ∩ grant ∩ security.json rights**. App: `mcp.AgentPermissions` is a `Func<AgentInformation, EAgentPermission>` (a plain value converts implicitly), evaluated per call, synchronous. Type: model JSON `"agentPermissions"` (default `None` = not exposed; **replaces `exposeToAgents`**). Grant: chosen by the user per type. `Write` without `Read` on a type fails at startup. **The grant, not the token's scope, decides**: a token's `mcp:read`/`mcp:write` scope is never a cap, so a grant edited upward applies without a new sign-in (R1-Q2). Scopes exist only so a missing `Write` can answer 403 `insufficient_scope`, whose re-consent updates the grant. **owner** (R1-Q11, Q12) | Same enum convention as `EShowedOn` [verified `libs/model/MintPlayer.Spark.Model/EShowedOn.cs:9`]. |
 | D7 | `AgentInformation` carries only what can be trusted, named accordingly: `Kind` (`EAgentKind`: `Anonymous`, `PersonalAccessToken`, `ExternalAuthorizationServer`, `MetadataDocument`, `DynamicRegistration`, `PreRegistered`), `ClientId`, `VerifiedHost` (CIMD only), `UnverifiedName`, `User`. **owner** (R1-Q12) | Client names are self-declared; a CIMD client id's host was fetched over HTTPS. |
 | D8 | Generic tools `query`, `get`, `discover`, `describe`, `propose_changes`, `apply_changes`. Writes are **propose → apply** with plans in an **`McpPlans` collection**, native document `@expires` 10 min, one-shot via optimistic concurrency. `apply_changes(planId, changes)` **must echo the readable diff** so the host's approval prompt shows what will run; the server checks it matches. Applied plans lose their 10-min expiry and are kept `Spark:Mcp:PlanRetention` (default 1 year) as the write audit. **Proposing requires a signed-in caller**: an anonymous propose would let anyone write plan documents. **owner** (R1-Q6; anonymous rule from consistency review R2) | The approval prompt shows call arguments; an opaque id alone would hide the change. |
@@ -40,7 +42,7 @@ Where §0 and the body disagree, §0 wins and the body is fixed.
 | D14 | A **Connected applications** section in the Authorization package's account area (all setups) lists each grant: agent, kind, verified/unverified, allowed types, read/changes, created, last used, token expiry; edit, revoke, create token. Linked from `/account` through `SPARK_ACCOUNT_OVERVIEW_LINKS`. The IdentityProvider references the Authorization package, not the reverse, so the section has an **extension point** through which the IdentityProvider contributes its non-agent OAuth grants (sign-in at other websites); its server-rendered `/connect/applications` stays. **owner** (R1-Q4, Q5) | Account page link mechanism [verified `ng-spark/auth/models/src/auth-route-config.ts:56-71`]; the IdP's existing SPA page [verified `Endpoints/Portal/ConnectedApplicationEndpoints.cs:37,82`] becomes such a contribution. |
 | D15 | Audit: one structured log event per call (user, client id, grant id, tool, arguments **hash**, row count, outcome, duration) + `AgentGrant.LastUsedAt` written at most once a minute. Writes are audited by the kept plans (D8). **owner** (R1-Q7) | Arguments are hashed because search terms can be personal data. |
 | D16 | Rate limits per user for signed-in calls, per IP for anonymous calls, with the existing quota mechanism. | [verified `docs/guide-quotas.md`]. |
-| D17 | **Anonymous and signed-in follow security.json exactly**, narrowed by `agentPermissions`. Denials copy the web's map: anonymous caller, target not permitted **or unknown** → uniform **401**, carrying the OAuth challenge when setup 2 or 3 is wired (the cue to sign in) and a plain 401 in setup 1; signed-in caller denied or unknown → uniform not-found. **Anonymous calls are read-only**: whatever `AgentPermissions` returns for `EAgentKind.Anonymous` is clamped to `Read`, and `propose_changes` is refused (D8). **owner** (R1-Q10) | Web map: `SparkDenial.Refuse` 401s anonymous before loading, so no existence oracle [verified `Endpoints/SparkDenial.cs:22-34,72-78`]; ng-spark redirects any 401 to sign-in [verified `ng-spark/auth/interceptors/src/spark-auth.interceptor.ts:14-28`]. Mid-session 401 handling by clients → S11. |
+| D17 | **Anonymous and signed-in follow security.json exactly**, narrowed by `agentPermissions`. Denials copy the web's map: anonymous caller, target not permitted **or unknown** → uniform **401**, carrying the OAuth challenge when setup 2 or 3 is wired (the cue to sign in) and a plain 401 in setup 1; signed-in caller denied or unknown → uniform not-found. **Anonymous calls are read-only**: whatever `AgentPermissions` returns for `EAgentKind.Anonymous` is clamped to `Read`, and `propose_changes` is refused (D8). **owner** (R1-Q10). **Round 4:** "signed-in follows security.json" holds only once D4's store-backed groups and user-id mapping exist (S2/S4). **S11 failed** (source-read), so two measures: (a) the 401/403 tool error text tells the agent how to start **the client's own** sign-in, per client — Claude Code: call the authenticate tool or run `claude mcp login <name>`; Codex: run `codex mcp login <name>`, then reconnect; Gemini: ask the user to run `/mcp auth <name>` (owner idea 2026-10-12, live test pending). Sending the user to the site's login page does **not** help (it yields a cookie, ignored on `/mcp`, D3), and URL-mode elicitation is not for authorizing the client to the server. (b) A per-app **`RequireSignIn`** option (default **off**): when on, every unauthenticated `/mcp` request, `initialize` included, answers 401 with the challenge. Gemini requests every `scopes_supported` entry; harmless, because the grant decides (D6). Step-up on 403 works only in Claude Code. ~~"Mid-session 401 handling by clients → S11"~~ superseded by this. | Web map: `SparkDenial.Refuse` 401s anonymous before loading, so no existence oracle [verified `Endpoints/SparkDenial.cs:22-34,72-78`]; ng-spark redirects any 401 to sign-in [verified `ng-spark/auth/interceptors/src/spark-auth.interceptor.ts:14-28`]. **S1 [verified live]:** a cookie-only `/mcp` call is anonymous with the bearer-only policy. **S11 [inferred, source-read]:** no client opens sign-in on a mid-session 401 without a token (Claude Code marks the server "needs auth", Codex errors "Authentication required", Gemini errors naming `/mcp auth`); only Claude Code steps up on 403 [spark_mcp_spikes.md S3 / S11]. |
 | D18 | **Web alignment in this PR:** query execute answers an anonymous caller **401** (uniform, existing or not) instead of 404, like persistent objects. Release-notes line. **owner** (R1-Q10) | Today query execute 404s everyone [verified `QueryReadPath.cs:78-85,193-199`], so an anonymous visitor on a protected query page is never sent to sign in. |
 | D19 | **Web fix in this PR:** a reference whose **target type** the caller may not `Read` keeps its id and shows the redacted placeholder, for web and MCP alike. Red test first; audit every app's security.json for affected references; release-notes line. **owner** (R1-Q3) | `BreadcrumbResolver` consults only row security and attribute rights, never `IPermissionService` [verified `BreadcrumbResolver.cs:98-104`, `RowSecurity.cs:254-258`, `EntityMapper.cs:359-380`]. |
 | D20 | **Endpoint `/mcp`**, configurable; `Spark:Mcp:CanonicalUrl` override (default `PublicOrigin` + path) for a subdomain behind a proxy. Startup fails if the path is already mapped. **owner** (R1-Q9) | Outside `/spark` the endpoint doesn't inherit Spark's default CORS and ambient-credential antiforgery [verified `docs/guide-cors.md:32,55-57`]. |
@@ -159,9 +161,14 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
 - `ForMcp()` turns on code+PKCE, refresh rotation with family revocation, revocation, RFC 8414, RFC 9207
   `iss`, CIMD, loopback DCR, the `mcp:read`/`mcp:write` scopes and an API resource whose audience is the
-  canonical URI. Device, client-credentials and token-exchange stay off.
-- `AddMcp` registers the SDK (`AddMcpServer().WithHttpTransport()`), a `Spark:Mcp` bearer scheme per
-  wired setup, the RFC 9728 document and challenge, the Origin check, and maps the endpoint.
+  canonical URI. Device, client-credentials and token-exchange stay off. Round 4 adds the D5 list: AS
+  metadata flags, any-port/any-path loopback matching for `localhost` and `127.0.0.1`, `offline_access`
+  advertised and refresh tokens for MCP clients, no `client_id` audience fallback, public (not pairwise)
+  `sub`.
+- `AddMcp` registers the SDK (`AddMcpServer().WithHttpTransport()`, `Stateless`), a `Spark:Mcp` bearer
+  scheme per wired setup, the bearer-only endpoint policy and the authenticated-scheme feature reset (D3),
+  the RFC 9728 document and challenge, the Origin check, the `RequireSignIn` option (D17), and maps the
+  endpoint.
 - The canonical URI never comes from the request's `Host` header.
 
 ### 4.4 Generic tools (names shown without prefix)
@@ -188,7 +195,24 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
 - Embedded and personal-token setups: `sub` is the local user id. External setup: D22's mapping.
 - Groups are resolved **per request from the user store**, never from token claims, so a removed
-  membership applies on the next call [inferred → S4].
+  membership applies on the next call. ~~[inferred → S4]~~ **Round 4: this does not exist today and must
+  be built** [verified live, spark_mcp_spikes.md S2, S4]:
+  - Tokens carry no groups (`OidcTokenGenerator.cs:139-164`), and today's only provider reads claims
+    (`ClaimsGroupMembershipProvider.cs:19-43`), so a bearer caller gets only the authenticated group.
+  - New: a store-backed `IGroupMembershipProvider` that loads `SparkUser.Roles` by the token's `sub` per
+    request, **for bearer principals only** (composition is a union, so it can't remove a stale cookie
+    claim). It lives in the Authorization package, which owns `SparkUser`; core already has the seam
+    (`AddGroupMembershipProvider`). The S4 prototype cost one `LoadAsync<SparkUser>` per request and
+    denied the next call after a role removal, with no new sign-in.
+  - New: `ISparkCurrentUser.Id` maps a bearer principal's `sub` to the local user id (today it reads
+    `NameIdentifier`, which the resource server doesn't set: `HttpContextSparkCurrentUser.cs:25-27`).
+    Without it row security keyed on the user id fails closed for every agent.
+  - Setup 2 (D22) uses the same provider after the linked-login mapping.
+- **The cookie path is unchanged (existing behaviour, recorded, not changed by this PR):** cookie role
+  claims are baked in at sign-in, `RemoveFromRoleAsync` doesn't change the security stamp, and the claims
+  refresh at Identity's default 30-minute `SecurityStampValidator` interval. After a membership change the
+  web can be more permissive than the agent for up to 30 minutes; the agent is the stricter side. Parity
+  tests seed the cookie after setting memberships.
 - The grant (D12) is read per call and applied inside `IPermissionService` (D13).
 - Consent screen (setup 3) and token creation (setup 1) offer: "everything this app makes available to
   agents" (preselected, includes types exposed later) or a chosen list of types with their queries shown
@@ -242,11 +266,13 @@ per-file coverage documents stay `None`.
 
 | Client | Registration | Sign-in | Static token |
 |---|---|---|---|
-| Claude Code | CIMD or DCR | `/mcp` → Authenticate, or `claude mcp login <name>` | `--header "Authorization: Bearer ${SPARK_PAT}"` |
-| Codex CLI | `auto`: CIMD on loopback, else DCR | `codex mcp login <name>` | `bearer_token_env_var = "SPARK_PAT"` |
-| Gemini CLI | DCR | `/mcp auth <name>` | `headers` in `settings.json` |
+| Claude Code (2.1.296) | CIMD or DCR | `/mcp` → Authenticate, or `claude mcp login <name>`; steps up on 403 | `--header "Authorization: Bearer ${SPARK_PAT}"` |
+| Codex CLI (≥ 0.148 for CIMD) | CIMD when the AS metadata advertises it with `none`, else DCR | `codex mcp login <name>`; `codex mcp add <name> --url …` signs in automatically when the PRM exists | `bearer_token_env_var = "SPARK_PAT"` |
+| Gemini CLI (0.63) | DCR (no CIMD) | `/mcp auth <name>` | `headers` in `settings.json` |
 
-Loopback redirects on any port, `localhost` and `127.0.0.1`, native clients only (RFC 8252).
+Loopback redirects on any port and any path, `localhost` and `127.0.0.1`, native clients only (RFC 8252).
+No client starts sign-in on a mid-session 401 without a token (S11, source-read); the 401 text and
+`RequireSignIn` cover it (D17). Columns per client: [spark_mcp_spikes.md S3 / S11](spark_mcp_spikes.md).
 
 ## 5. Security
 
@@ -284,6 +310,12 @@ Loopback redirects on any port, `localhost` and `127.0.0.1`, native clients only
 
 (S10, compare-exchange expiry, was dropped when plans moved to a collection.)
 
+**Results (round 4, 2026-10-12, [spark_mcp_spikes.md](spark_mcp_spikes.md)):** S1 PASS live (SparkId
+instead of DemoApp, which has no Authorization; MCP Inspector not run; plain `Stateless`, not hybrid).
+S2 PARTIAL live (flow PASS, `sub` = local id; parity FAILS until store groups + id mapping exist). S4 FAIL
+as-is, PASS with the store-provider prototype. S3 source-read only, live sign-ins with Codex ≥ 0.148 and
+Gemini 0.63 pending. S11 FAIL by source reading → 401 text + `RequireSignIn` (D17); live check pending.
+
 ### 6.2 Required adversarial tests (red first)
 
 External setup (D22): wrong audience · wrong issuer · `sub` linked under a different provider · same `sub`
@@ -295,7 +327,10 @@ All setups: grant revoke from either side (AgentGrant ↔ OidcGrant) blocks the 
 restriction blocks generic and app tools · grant edit applies without re-sign-in · `apply_changes` with a
 tampered `changes` fails · plan replay fails · plan of another user fails · expired plan fails · anonymous
 write refused · anonymous uniform 401 for existing and unknown names · signed-in uniform not-found ·
-cookie on `/mcp` ignored · bad `Origin` 403 · `covt_` and GitHub OIDC rejected · personal token past
+cookie on `/mcp` ignored · bearer + cookie runs as the bearer · authenticated-scheme feature reset on
+`/mcp` · group removal denies the bearer's next call (S4) · bearer `ISparkCurrentUser.Id` = local id ·
+`RequireSignIn` 401s an unauthenticated `initialize` · unknown `resource` never yields `aud` = `client_id` ·
+bad `Origin` 403 · `covt_` and GitHub OIDC rejected · personal token past
 expiry rejected · security-stamp change revokes all · CIMD to a private address refused · DCR with a
 non-loopback redirect refused · unreferenced-type reference shows the placeholder (D19) · query execute
 401s anonymous (D18).
@@ -359,3 +394,23 @@ None. Q18 was resolved in round 3 (§10, D22).
   - Q18 opened: the shadow grant's first-use permissions in the external setup.
 - **Round 3 (owner, 2026-10-12):** Q18 as recommended: shadow grant starts "everything exposed", `Read`;
   `Write` needs the user's toggle and `mcp:write` in the external token → D22.
+- **Round 4 — spikes S1–S4, S11 (2026-10-12).** Evidence in [spark_mcp_spikes.md](spark_mcp_spikes.md);
+  S1, S2, S4 run live against SparkId on branch `spike/spark-mcp` (local, never pushed); S3, S11 by
+  reading client source, live confirmation pending (owner, Codex ≥ 0.148 and Gemini 0.63).
+  - **S1 PASS** (§S1a–c): SDK 2.2.0 on net11; plain `Stateless` serves 2025-11-25 (initialize, no
+    session, 405 on GET) and 2026-07-28 clients; Claude Code 2.1.296 connected. Without a policy a cookie
+    authenticates `/mcp` and beats a bearer; a bearer-only endpoint policy makes cookie-only anonymous.
+    Findings: stale `ISparkAuthenticatedSchemeFeature`, SPARK020 false positive, Origin not probed.
+    → **D2** reworded (pin 2.2.0, `Stateless`, no hybrid/affinity), **D3** mechanism specified.
+  - **S2 PARTIAL** (§S2): code + PKCE S256 with a public client gives an `at+jwt` with `aud` = canonical
+    URI, RFC 9207 `iss`, `sub` = local id. Parity fails: the bearer has no named groups and a null
+    `ISparkCurrentUser.Id`. Gap list G1–G11. → **D4** prerequisite, **D5** gap items (M3b).
+  - **S4 FAIL as-is, PASS with the prototype** (§S4): a per-request store provider denies the next
+    bearer call after a role removal, no new sign-in. The cookie stays stale up to Identity's 30-minute
+    stamp validation — existing behaviour, recorded, unchanged. → **§4.6** rewritten (to be built).
+  - **S3 source-read** (§S3 / S11): redirect URIs, CIMD support (Codex needs the metadata flags, Gemini
+    none), scope behaviour per client. → **D5** loopback matching for `localhost`/`127.0.0.1`, any port
+    and path; metadata flags; advertise `offline_access`.
+  - **S11 FAIL by source reading** (§S3 / S11): no client opens sign-in on a mid-session 401 without a
+    token. → **D17**: per-client sign-in instructions in the 401/403 error text (owner idea; live test
+    pending) and per-app `RequireSignIn` (default off). Step-up on 403 only in Claude Code.

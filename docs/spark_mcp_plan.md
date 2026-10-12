@@ -1,6 +1,6 @@
 # Plan — MintPlayer.Spark.Mcp
 
-PRD: [spark_mcp_PRD.md](spark_mcp_PRD.md) (decisions D1–D24, grill round 1). One branch, one PR,
+PRD: [spark_mcp_PRD.md](spark_mcp_PRD.md) (decisions D1–D24, rounds 1–4). One branch, one PR,
 including both production adopters (D24). Tests run once, after M8 (batched sweep), except where a spike
 needs its own run. Red tests for D18, D19 and the §6.2 adversarial list are written before their fixes.
 
@@ -13,11 +13,14 @@ spikes S1–S4, S11 → M1 → M2 → M3a ─┬→ M3b → M4 ─┬→ M5 SeoT
 ```
 
 S1–S4 and S11 first: they can change D2, D4, D5 and D17. A failing S11 adds the `RequireSignIn` switch.
+(It did, by source reading: PRD round 4.)
 
 ## Milestones
 
-### M0 — Spikes S1–S4, S11
-Throwaway branch. Results go into the PRD decision log with evidence.
+### M0 — Spikes S1–S4, S11 — done (2026-10-12), except the live S3/S11 run
+Throwaway branch `spike/spark-mcp`. Results in [spark_mcp_spikes.md](spark_mcp_spikes.md) and the PRD
+decision log, round 4. S1, S2, S4 ran live. S3 and S11 were answered by source reading; their live
+sign-ins (Codex ≥ 0.148, Gemini 0.63, Claude Code) moved to the M7 manual checklist.
 
 ### M1 — Core: shared paths and the two web fixes
 - Move endpoint-only checks into internal services (D9): type/query list filtering; the save sequence
@@ -30,17 +33,36 @@ Throwaway branch. Results go into the PRD decision log with evidence.
 - Hook in `IPermissionService` for an agent-request restriction provider (D13); no-op without Mcp.
 - `agentPermissions` (`EAgentPermission`) in the model JSON, JSON schema, `--spark-describe`, and the
   `Write`-without-`Read` startup check.
+- Analyzer SPARK020: fix the false positive on `RequireAuthorization("<name>")` for a policy the app (or a
+  Spark package such as Mcp) registers itself (`AuthorizeAttributeAnalyzer.cs`); red test first (PRD D3,
+  spikes S1 finding 2).
+- `ISparkCurrentUser.Id` for bearer principals: map the token's `sub` to the local user id
+  (`HttpContextSparkCurrentUser.cs:25-27` reads only `NameIdentifier`). Core, because the class is in
+  `MintPlayer.Spark` (PRD D4, §4.6).
 
 ### M2 — Mcp package and read tools
 - `libs/mcp/MintPlayer.Spark.Mcp`: `AddMcp`, options (`ServerName`, `ToolPrefix`, `Instructions`,
-  `Authentication`, `AgentPermissions` with `AgentInformation`, `Path`, `CanonicalUrl`, quotas), SDK 2.2,
-  Origin check, cookies ignored, path-collision startup check.
+  `Authentication`, `AgentPermissions` with `AgentInformation`, `Path`, `CanonicalUrl`, `RequireSignIn`,
+  quotas), SDK pinned to 2.2.0 in `Stateless` mode (no hybrid), our own Origin check, path-collision
+  startup check.
+- Cookies ignored (PRD D3): `AddMcp` builds the bearer-only endpoint policy itself, then resets
+  `ISparkAuthenticatedSchemeFeature` after the policy swaps the user; must not trip SPARK020.
+- `RequireSignIn` (default off): every unauthenticated `/mcp` request, `initialize` included, 401s with
+  the challenge (PRD D17, S11).
+- The 401/403 tool error text names each client's own sign-in: Claude Code authenticate tool or
+  `claude mcp login <name>`; `codex mcp login <name>` then reconnect; Gemini `/mcp auth <name>` (PRD D17).
 - Generic `discover`, `describe`, `query`, `get`; `SparkMcpResult` (Spark `JsonOptions`, fencing, paging);
   prefixing; ReadOnly → Read / else Write filter; anonymous handling with uniform 401 (D17); per-user and
   per-IP limits; audit log events.
 - Analyzer SPARK05x for raw sessions / unchecked calls in tool classes.
 
 ### M3a — Authorization package: grants and personal tokens (setup 1)
+- Store-backed groups for agent bearer callers (PRD D4, §4.6): an `IGroupMembershipProvider` loading
+  `SparkUser.Roles` by `sub` per request, bearer principals only, registered through core's
+  `AddGroupMembershipProvider`. Here, not in core: `ClaimsGroupMembershipProvider` lives in core
+  (`libs/spark/MintPlayer.Spark/Services/`), but the store provider needs `SparkUser`, which the
+  Authorization package owns. Used by setups 1–3 (setup 2 after the linked-login mapping). Test: a role
+  removal denies the bearer's next call (S4).
 - `AgentGrant` collection with natural ids (D12), per-call read with short cache and invalidation.
 - Personal access tokens (`spat_`, hash, expiry, security-stamp revocation) and their bearer scheme.
 - Connected applications section (ng-spark) linked from `/account`: list, edit types and read/changes,
@@ -51,6 +73,21 @@ Throwaway branch. Results go into the PRD decision log with evidence.
 - IdentityProvider `ForMcp()`: RFC 8414, RFC 9207 `iss`, CIMD with SSRF guards, loopback-only anonymous
   DCR with rate limit and 30-day pruning, `mcp:read`/`mcp:write`, audience = canonical URI, refresh
   family revocation.
+- S2 gap list (PRD D5, spikes G1–G11), each with a test:
+  - RFC 8414 `/.well-known/oauth-authorization-server` (G1), advertising
+    `client_id_metadata_document_supported: true`, `token_endpoint_auth_methods_supported` incl. `none`,
+    `authorization_response_iss_parameter_supported: true`, and `offline_access` in `scopes_supported`.
+  - RFC 9728 `/.well-known/oauth-protected-resource[/mcp]` + `WWW-Authenticate: Bearer resource_metadata=…`
+    (G2; served by Mcp, pointing at the embedded server).
+  - CIMD lookup path beside the exact `ClientId` query in `OidcAuthorizationFlow` (G5).
+  - Anonymous loopback DCR without an initial access token (G6).
+  - Loopback redirect matching: `localhost` and `127.0.0.1`, any port, any path, for DCR and for CIMD
+    documents with portless loopback URIs (G6, S3).
+  - RFC 8707 `resource` → `aud` for `/mcp`, no fallback to `client_id` for the MCP resource (G4).
+  - `mcp:read`/`mcp:write` expressible: explicit scope → resource link on `OidcApiScope` instead of
+    "text before the first dot" (G11).
+  - Refresh tokens issued to MCP clients (G8).
+  - Public (not pairwise) `sub` for MCP clients (G10).
 - Consent screen: client name, verified/unverified, redirect host, type choice, read/changes limited by
   `AgentPermissions(agent)`.
 - `OidcGrant` ↔ `AgentGrant` linking; revoke in either revokes both.
@@ -77,6 +114,11 @@ Throwaway branch. Results go into the PRD decision log with evidence.
 - Parity suite (S5) over HR, SeoTester and CodeCoverage fixtures (no personal data).
 - The full adversarial list of PRD §6.2.
 - E2E: the OAuth dance with a scripted client against `SparkAppTestHost`; personal-token flow; S9 budgets.
+- Manual checklist, live S3/S11 (owner, moved from M0): Claude Code, Codex ≥ 0.148 and Gemini 0.63 each
+  sign in without a hand-registered client (record the registration path taken) and call a tool; with
+  anonymous access, a protected call's 401 text leads the model to start the client's sign-in; with
+  `RequireSignIn` on, `initialize` 401s and the client signs in at connect. Results into
+  `spark_mcp_spikes.md` and the PRD log.
 
 ### M8 — Documentation
 - Bring `guide-mcp.md`, `guide-mcp-agents.md`, `seotester/mcp.md`, `code-coverage/mcp.md` in line with what
