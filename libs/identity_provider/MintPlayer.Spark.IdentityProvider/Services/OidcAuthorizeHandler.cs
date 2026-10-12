@@ -28,7 +28,7 @@ internal sealed class OidcAuthorizeHandler(
     OidcIssuer oidcIssuer,
     OidcRequestObjects requestObjects,
     OidcKeyRing signingKeys,
-    Mcp.OidcMcpResource mcpResource,
+    Mcp.OidcMcpResources mcpResources,
     Mcp.OidcClientMetadataDocuments metadataDocuments)
 {
     /// <summary>The external-login outcome code the Authorization package appends on a refused sign-in (#490 M6).</summary>
@@ -64,7 +64,7 @@ internal sealed class OidcAuthorizeHandler(
 
         // MCP PRD D5 (G5): a client id that is an https URL is a Client ID Metadata Document, fetched (or taken from the
         // freshness cache) before anything else is decided about the client. Without ForMcp() it is just an unknown id.
-        if (mcpResource.IsEnabled && Mcp.OidcClientMetadataDocuments.IsDocumentClientId(p.ClientId))
+        if (mcpResources.IsEnabled && Mcp.OidcClientMetadataDocuments.IsDocumentClientId(p.ClientId))
         {
             var (_, documentError) = await metadataDocuments.ResolveAsync(p.ClientId, context.Connection.RemoteIpAddress?.ToString(), ct);
             if (documentError is not null)
@@ -128,7 +128,21 @@ internal sealed class OidcAuthorizeHandler(
         // from the issued token's `scope` claim. Rejecting here makes the disagreement surface at the
         // point of request instead.
         var requestedScopes = p.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-        var definedScopes = await OidcScopeCatalog.LoadAsync(session, requestedScopes, ct);
+
+        // MCP PRD D5 (G4): a request for the MCP scopes is a request for one MCP endpoint and nothing else: this
+        // application's own, or another application's this server signs agents in for (ForMcpResource). Its resource is
+        // that endpoint's canonical URL (named, or implied when the client names none and only one can be meant), never
+        // another API, and its token carries no other API's scopes: a token valid at /mcp and elsewhere is the
+        // passthrough the MCP spec forbids. The endpoint is chosen first, because it owns the MCP scopes' definitions.
+        var mcpEndpoint = default(Mcp.OidcMcpEndpoint);
+        if (mcpResources.IsEnabled && Mcp.OidcMcpResources.AsksForMcp(requestedScopes))
+        {
+            mcpEndpoint = mcpResources.Select(p.Resources, out var targetError);
+            if (mcpEndpoint is null)
+                return Error("invalid_target", targetError);
+        }
+
+        var definedScopes = await OidcScopeCatalog.LoadAsync(session, requestedScopes, mcpEndpoint?.ResourceId, ct);
         foreach (var s in requestedScopes)
         {
             if (!app.ScopeNames().Contains(s, StringComparer.OrdinalIgnoreCase))
@@ -137,17 +151,12 @@ internal sealed class OidcAuthorizeHandler(
                 return Error("invalid_scope", $"Scope '{s}' is not available.");
         }
 
-        // MCP PRD D5 (G4): a request for the MCP scopes is a request for the MCP endpoint and nothing else. Its resource
-        // is the canonical URL (named, or implied when the client names none), never another API, and its token carries
-        // no other API's scopes: a token valid at /mcp and elsewhere is the passthrough the MCP spec forbids.
-        var mcpRequest = mcpResource.IsEnabled && Mcp.OidcMcpResource.AsksForMcp(requestedScopes);
-        if (mcpRequest)
+        var mcpRequest = mcpEndpoint is not null;
+        if (mcpEndpoint is not null)
         {
-            if (p.Resources.Any(r => !string.Equals(r, mcpResource.Audience, StringComparison.Ordinal)))
-                return Error("invalid_target", $"Agent tokens are issued for {mcpResource.Audience} only.");
-            if (definedScopes.Any(d => d.Audience is { } aud && !string.Equals(aud, mcpResource.Audience, StringComparison.Ordinal)))
+            if (definedScopes.Any(d => d.Audience is { } aud && !string.Equals(aud, mcpEndpoint.Audience, StringComparison.Ordinal)))
                 return Error("invalid_scope", "An agent token cannot carry another API's scopes.");
-            p = p with { Resources = [mcpResource.Audience!] };
+            p = p with { Resources = [mcpEndpoint.Audience] };
         }
 
         // RFC 8707: each resource names an API whose scopes the request carries. The access token is
@@ -387,7 +396,7 @@ internal sealed class OidcAuthorizeHandler(
     }
 
     private static bool OidcMcpScopesIn(string? scope)
-        => Mcp.OidcMcpResource.AsksForMcp((scope ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        => Mcp.OidcMcpResources.AsksForMcp((scope ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     private static IResult Json(string error, string description)
         => Results.Json(new { error, error_description = description }, statusCode: StatusCodes.Status400BadRequest);

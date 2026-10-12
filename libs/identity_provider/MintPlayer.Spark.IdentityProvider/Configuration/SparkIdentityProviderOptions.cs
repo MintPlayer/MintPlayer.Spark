@@ -50,8 +50,10 @@ public class SparkIdentityProviderOptions
     public SparkIdentityProviderRateLimitOptions RateLimits { get; set; } = new();
 
     /// <summary>
-    /// The embedded authorization server for AI agents (MCP PRD D4 setup 3), <see langword="null"/> when off. Turned on by
-    /// <see cref="ForMcp"/> or by a <c>Spark:IdentityProvider:Mcp</c> section. Needs <c>spark.AddMcp(...)</c>.
+    /// The authorization server for AI agents (MCP PRD D4), <see langword="null"/> when off. Turned on by
+    /// <see cref="ForMcp"/> (this application's own MCP endpoint, setup 3, needs <c>spark.AddMcp(...)</c>), by
+    /// <see cref="ForMcpResource"/> (another application's MCP endpoint, that application's setup 2), or by a
+    /// <c>Spark:IdentityProvider:Mcp</c> section.
     /// </summary>
     public SparkIdentityProviderMcpOptions? Mcp { get; set; }
 
@@ -63,7 +65,30 @@ public class SparkIdentityProviderOptions
     public SparkIdentityProviderOptions ForMcp(Action<SparkIdentityProviderMcpOptions>? configure = null)
     {
         Mcp ??= new SparkIdentityProviderMcpOptions();
+        Mcp.LocalEndpoint = true;
         configure?.Invoke(Mcp);
+        return this;
+    }
+
+    /// <summary>
+    /// Lets AI agents sign users in here for <b>another</b> application's MCP endpoint, which accepts this server's tokens
+    /// as its external authorization server (that application's <c>AddExternalAgentAuthorizationServer</c>, MCP PRD D22).
+    /// The same agent server as <see cref="ForMcp"/> (RFC 8414 metadata, metadata documents, loopback registration,
+    /// refresh rotation, the consent screen), with an API resource whose audience is <paramref name="canonicalUrl"/> and
+    /// the scopes <c>mcp:read</c> and <c>mcp:write</c>. Call once per endpoint; needs no MCP endpoint in this application.
+    /// </summary>
+    /// <param name="canonicalUrl">That endpoint's canonical URL exactly as it publishes it (its <c>Spark:Mcp:CanonicalUrl</c>).</param>
+    /// <remarks>
+    /// The consent screen cannot see what that application exposes, so it offers read or read + changes only; which
+    /// types the agent may use, and whether changes are on, the user decides in that application (its Connected
+    /// applications page), where the agent's grant lives.
+    /// </remarks>
+    public SparkIdentityProviderOptions ForMcpResource(string canonicalUrl, Action<SparkIdentityProviderMcpResource>? configure = null)
+    {
+        Mcp ??= new SparkIdentityProviderMcpOptions();
+        var resource = new SparkIdentityProviderMcpResource { Url = canonicalUrl };
+        configure?.Invoke(resource);
+        Mcp.Resources.Add(resource);
         return this;
     }
 

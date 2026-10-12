@@ -13,20 +13,29 @@ using static MintPlayer.Spark.IdentityProvider.Endpoints.ConnectPage;
 namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 
 /// <summary>
-/// The consent screen of an AI agent's sign-in (<c>idp.ForMcp()</c>; MCP PRD §4.6, D5, D6, D12): instead of scope
-/// checkboxes, the user chooses which types the agent may use and whether it may make changes, limited by what the
-/// application allows this agent (<c>AgentPermissions(agent)</c>) and each type's <c>agentPermissions</c> (both from
-/// <see cref="IAgentExposure"/>). Allowing writes the agent grant, linked to the OAuth grant (D12).
+/// The consent screen of an AI agent's sign-in (<c>idp.ForMcp()</c>, <c>idp.ForMcpResource(…)</c>; MCP PRD §4.6, D5,
+/// D6, D12, D22): instead of scope checkboxes, the user chooses what the agent may do.
+/// <list type="bullet">
+/// <item><b>This application's own endpoint</b>: which types the agent may use and whether it may make changes, limited
+/// by what the application allows this agent (<c>AgentPermissions(agent)</c>) and each type's <c>agentPermissions</c>
+/// (both from <see cref="IAgentExposure"/>). Allowing writes the agent grant, linked to the OAuth grant (D12).</item>
+/// <item><b>Another application's endpoint</b> (remote resources): only read or read + changes, limited by that endpoint's
+/// configured <see cref="OidcMcpEndpoint.Permissions"/>. This server cannot see what that application exposes, or the
+/// user's rights there, so it offers no types and writes no agent grant: the agent's grant lives in that application
+/// (its shadow grant, D22), where the user chooses types and turns changes on under Connected applications. Allowing
+/// grants <c>mcp:write</c> only with changes chosen, the cap that application applies beside its own toggle.</item>
+/// </list>
 /// </summary>
 /// <remarks>
 /// Server-rendered like every <c>/connect</c> page, so it inherits their framing protection
 /// (<c>frame-ancestors 'none'</c>, <c>X-Frame-Options: DENY</c>), antiforgery and localisation. It shows what can be
 /// trusted as such: the host a metadata document was fetched from is "verified"; a self-chosen name is labelled
-/// unverified; a loopback client is said to run on the user's computer.
+/// unverified; a loopback client is said to run on the user's computer; another application's endpoint is named with
+/// its host.
 /// </remarks>
 internal static class AgentConsent
 {
-    /// <summary>Whether the stored authorization request is an agent's request for the MCP resource.</summary>
+    /// <summary>Whether the stored authorization request is an agent's request for an MCP endpoint.</summary>
     public static bool Applies(OidcToken request) => request.Properties.ContainsKey(OidcAgentClients.RequestProperty);
 
     /// <summary>The user behind the consent may answer it: they exist and are not locked out ("disabled or locked accounts refused").</summary>
@@ -36,7 +45,11 @@ internal static class AgentConsent
         return user is null || AgentRequestUser.IsLockedOut(user, DateTimeOffset.UtcNow) ? null : user;
     }
 
-    /// <summary>What may be offered: the app layer for this agent and the exposed types the user may see.</summary>
+    /// <summary>The endpoint the request is for; <see langword="null"/> once it is no longer configured.</summary>
+    private static OidcMcpEndpoint? EndpointOf(HttpContext context, OidcToken request)
+        => context.RequestServices.GetRequiredService<OidcMcpResources>().Of(request);
+
+    /// <summary>What may be offered for this application's own endpoint: the app layer for this agent and the exposed types the user may see.</summary>
     private static async Task<(EAgentPermission Max, IReadOnlyList<AgentExposedType> Types)> OfferAsync(HttpContext context, OidcApplication app)
     {
         if (context.RequestServices.GetService<IAgentExposure>() is not { } exposure)
@@ -52,12 +65,38 @@ internal static class AgentConsent
         HttpContext context, ConnectText text, SparkIdentityProviderOptions options, IAntiforgery antiforgery,
         OidcApplication app, OidcToken request, string requestId)
     {
-        var (max, types) = await OfferAsync(context, app);
+        if (EndpointOf(context, request) is not { } endpoint)
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorRequestExpired");
+
+        var sb = new StringBuilder();
+        await AppendIntroAsync(sb, context, text, options, app, request, endpoint);
+
+        sb.Append("<form method=\"post\">");
+        AppendAntiforgery(sb, antiforgery, context);
+        AppendHidden(sb, "request_id", requestId);
+
+        var canAllow = endpoint.IsLocal
+            ? await AppendLocalChoiceAsync(sb, context, text, app)
+            : AppendRemoteChoice(sb, text, endpoint);
+
+        sb.Append("<div class=\"buttons\">");
+        if (canAllow)
+            sb.Append("<button type=\"submit\" name=\"decision\" value=\"allow\" class=\"btn btn-allow\">").Append(Encode(text["consentAllow"])).Append("</button>");
+        sb.Append("<button type=\"submit\" name=\"decision\" value=\"deny\" class=\"btn btn-deny\">").Append(Encode(text["consentDeny"])).Append("</button>");
+        sb.Append("</div></form>");
+        sb.Append("<p style=\"margin-top:24px;font-size:13px\"><a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a></p>");
+        sb.Append("</body></html>");
+        return ConnectResults.Html(sb.ToString());
+    }
+
+    /// <summary>The page head, the agent's trust line, the loopback notice or redirect host, the endpoint (another application's), and who is signed in.</summary>
+    private static async Task AppendIntroAsync(
+        StringBuilder sb, HttpContext context, ConnectText text, SparkIdentityProviderOptions options, OidcApplication app, OidcToken request, OidcMcpEndpoint endpoint)
+    {
         var account = await context.GetInteractiveUserNameAsync() ?? "";
         var redirectHost = Uri.TryCreate(request.RedirectUri, UriKind.Absolute, out var redirect) ? redirect.Host : "";
         var verifiedHost = OidcAgentClients.VerifiedHostOf(app);
 
-        var sb = new StringBuilder();
         ConnectPageTheme.AppendDocumentStart(sb, context, text["consentTitle", app.DisplayName], text.Culture, options.Branding);
         sb.Append("body{max-width:520px;margin:60px auto;padding:0 20px}");
         sb.Append(".muted{color:var(--idp-muted);font-size:13px}");
@@ -78,49 +117,65 @@ internal static class AgentConsent
             sb.Append("<p class=\"notice\" data-agent-loopback>").Append(Encode(text["consentAgentLoopback"])).Append("</p>");
         else if (redirectHost.Length > 0)
             sb.Append("<p class=\"muted\">").Append(Encode(text["consentRedirect", redirectHost])).Append("</p>");
+        if (!endpoint.IsLocal)
+        {
+            // Which application the agent will act in: the token is valid there and nowhere else (aud = this URL).
+            sb.Append("<p data-agent-resource=\"").Append(Encode(endpoint.Audience)).Append("\"><strong>")
+              .Append(Encode(text["consentAgentResource", endpoint.DisplayName ?? endpoint.Audience, new Uri(endpoint.Audience).Authority]))
+              .Append("</strong></p>");
+        }
         sb.Append("<p class=\"muted\">").Append(Encode(text["consentSignedInAs", account])).Append(' ')
           .Append("<a href=\"/connect/logout\">").Append(Encode(text["consentNotYou"])).Append("</a></p>");
+    }
 
-        sb.Append("<form method=\"post\">");
-        AppendAntiforgery(sb, antiforgery, context);
-        AppendHidden(sb, "request_id", requestId);
-
+    /// <summary>This application's own endpoint: the types and read/changes. Answers whether anything can be allowed.</summary>
+    private static async Task<bool> AppendLocalChoiceAsync(StringBuilder sb, HttpContext context, ConnectText text, OidcApplication app)
+    {
+        var (max, types) = await OfferAsync(context, app);
         if (types.Count == 0)
         {
             sb.Append("<p class=\"notice\">").Append(Encode(text["consentAgentNothing"])).Append("</p>");
+            return false;
         }
-        else
+
+        sb.Append("<fieldset><legend>").Append(Encode(text["consentAgentTypes"])).Append("</legend>");
+        sb.Append("<label><input type=\"radio\" name=\"types_mode\" value=\"all\" checked> ").Append(Encode(text["consentAgentTypesAll"])).Append("</label>");
+        sb.Append("<label><input type=\"radio\" name=\"types_mode\" value=\"chosen\"> ").Append(Encode(text["consentAgentTypesChosen"])).Append("</label>");
+        sb.Append("<div class=\"types\">");
+        foreach (var type in types)
         {
-            sb.Append("<fieldset><legend>").Append(Encode(text["consentAgentTypes"])).Append("</legend>");
-            sb.Append("<label><input type=\"radio\" name=\"types_mode\" value=\"all\" checked> ").Append(Encode(text["consentAgentTypesAll"])).Append("</label>");
-            sb.Append("<label><input type=\"radio\" name=\"types_mode\" value=\"chosen\"> ").Append(Encode(text["consentAgentTypesChosen"])).Append("</label>");
-            sb.Append("<div class=\"types\">");
-            foreach (var type in types)
-            {
-                sb.Append("<label><input type=\"checkbox\" name=\"types\" value=\"").Append(Encode(type.Name)).Append("\"> <strong>")
-                  .Append(Encode(type.Label)).Append("</strong>");
-                if (type.Queries.Count > 0)
-                    sb.Append(" <span class=\"muted\">").Append(Encode(text["consentAgentQueries", string.Join(", ", type.Queries)])).Append("</span>");
-                sb.Append("</label>");
-            }
-            sb.Append("</div></fieldset>");
-
-            sb.Append("<fieldset><legend>").Append(Encode(text["consentAgentPermission"])).Append("</legend>");
-            sb.Append("<label><input type=\"radio\" name=\"permission\" value=\"read\" checked> ").Append(Encode(text["consentAgentRead"])).Append("</label>");
-            if ((max & EAgentPermission.Write) != 0 && types.Any(t => (t.Permissions & EAgentPermission.Write) != 0))
-                sb.Append("<label><input type=\"radio\" name=\"permission\" value=\"write\"> ").Append(Encode(text["consentAgentWrite"])).Append("</label>");
-            sb.Append("</fieldset>");
-            sb.Append("<p class=\"muted\">").Append(Encode(text["consentAgentRights"])).Append("</p>");
+            sb.Append("<label><input type=\"checkbox\" name=\"types\" value=\"").Append(Encode(type.Name)).Append("\"> <strong>")
+              .Append(Encode(type.Label)).Append("</strong>");
+            if (type.Queries.Count > 0)
+                sb.Append(" <span class=\"muted\">").Append(Encode(text["consentAgentQueries", string.Join(", ", type.Queries)])).Append("</span>");
+            sb.Append("</label>");
         }
+        sb.Append("</div></fieldset>");
 
-        sb.Append("<div class=\"buttons\">");
-        if (types.Count > 0)
-            sb.Append("<button type=\"submit\" name=\"decision\" value=\"allow\" class=\"btn btn-allow\">").Append(Encode(text["consentAllow"])).Append("</button>");
-        sb.Append("<button type=\"submit\" name=\"decision\" value=\"deny\" class=\"btn btn-deny\">").Append(Encode(text["consentDeny"])).Append("</button>");
-        sb.Append("</div></form>");
-        sb.Append("<p style=\"margin-top:24px;font-size:13px\"><a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a></p>");
-        sb.Append("</body></html>");
-        return ConnectResults.Html(sb.ToString());
+        sb.Append("<fieldset><legend>").Append(Encode(text["consentAgentPermission"])).Append("</legend>");
+        sb.Append("<label><input type=\"radio\" name=\"permission\" value=\"read\" checked> ").Append(Encode(text["consentAgentRead"])).Append("</label>");
+        if ((max & EAgentPermission.Write) != 0 && types.Any(t => (t.Permissions & EAgentPermission.Write) != 0))
+            sb.Append("<label><input type=\"radio\" name=\"permission\" value=\"write\"> ").Append(Encode(text["consentAgentWrite"])).Append("</label>");
+        sb.Append("</fieldset>");
+        sb.Append("<p class=\"muted\">").Append(Encode(text["consentAgentRights"])).Append("</p>");
+        return true;
+    }
+
+    /// <summary>
+    /// Another application's endpoint: read or read + changes only, and where the rest is decided. No types: this server
+    /// cannot see what that application exposes or what the user may see there.
+    /// </summary>
+    private static bool AppendRemoteChoice(StringBuilder sb, ConnectText text, OidcMcpEndpoint endpoint)
+    {
+        var name = endpoint.DisplayName ?? endpoint.Audience;
+        sb.Append("<fieldset><legend>").Append(Encode(text["consentAgentPermission"])).Append("</legend>");
+        sb.Append("<label><input type=\"radio\" name=\"permission\" value=\"read\" checked> ").Append(Encode(text["consentAgentRead"])).Append("</label>");
+        if ((endpoint.Permissions & EAgentPermission.Write) != 0)
+            sb.Append("<label><input type=\"radio\" name=\"permission\" value=\"write\"> ").Append(Encode(text["consentAgentRemoteWrite", name])).Append("</label>");
+        sb.Append("</fieldset>");
+        sb.Append("<p class=\"muted\" data-agent-remote-grant>").Append(Encode(text["consentAgentRemoteManage", name])).Append("</p>");
+        sb.Append("<p class=\"muted\">").Append(Encode(text["consentAgentRights"])).Append("</p>");
+        return true;
     }
 
     /// <summary>The choice as posted.</summary>
@@ -128,38 +183,51 @@ internal static class AgentConsent
 
     /// <summary>
     /// Records an "allow": validates the choice against what may be offered (a forged POST cannot widen it), writes
-    /// the OAuth grant and the agent grant, and answers the code. <see langword="null"/> grant = refused choice.
+    /// the OAuth grant (and, for this application's own endpoint, the agent grant), and answers the code.
     /// </summary>
     public static async Task<IResult> AllowAsync(
         HttpContext context, IAsyncDocumentSession session, ConnectText text, SparkIdentityProviderOptions options, OidcAudit audit,
         string issuer, OidcApplication app, OidcToken request, Authorization.Identity.SparkUser user, Choice choice, CancellationToken ct)
     {
-        var (max, offered) = await OfferAsync(context, app);
-        var permissions = choice.Permission == "write" ? EAgentPermission.Read | EAgentPermission.Write : EAgentPermission.Read;
-        if (offered.Count == 0 || (permissions & max) != permissions)
-            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
+        if (EndpointOf(context, request) is not { } endpoint)
+            return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorRequestExpired");
 
+        var permissions = choice.Permission == "write" ? EAgentPermission.Read | EAgentPermission.Write : EAgentPermission.Read;
         List<AgentGrantType>? types = null;
-        if (choice.TypesMode == "chosen")
+        if (endpoint.IsLocal)
         {
-            var exposed = offered.ToDictionary(t => t.Name, StringComparer.Ordinal);
-            types = [];
-            foreach (var name in choice.Types.Distinct(StringComparer.Ordinal))
-            {
-                if (!exposed.TryGetValue(name, out var type))
-                    return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
-                types.Add(new AgentGrantType { Name = name, Permissions = (type.Permissions & permissions) | EAgentPermission.Read });
-            }
-            if (types.Count == 0)
+            var (max, offered) = await OfferAsync(context, app);
+            if (offered.Count == 0 || (permissions & max) != permissions)
                 return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
+
+            if (choice.TypesMode == "chosen")
+            {
+                var exposed = offered.ToDictionary(t => t.Name, StringComparer.Ordinal);
+                types = [];
+                foreach (var name in choice.Types.Distinct(StringComparer.Ordinal))
+                {
+                    if (!exposed.TryGetValue(name, out var type))
+                        return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
+                    types.Add(new AgentGrantType { Name = name, Permissions = (type.Permissions & permissions) | EAgentPermission.Read });
+                }
+                if (types.Count == 0)
+                    return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
+            }
+            else if (choice.TypesMode != "all")
+            {
+                return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
+            }
         }
-        else if (choice.TypesMode != "all")
+        else if ((permissions & endpoint.Permissions) != permissions || choice.TypesMode is not (null or "all") || choice.Types.Length > 0)
         {
+            // Another application's endpoint offers no types (its grant lives there) and changes only where configured: a
+            // forged choice is refused, not trimmed.
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorAgentChoice");
         }
 
         // The token's scopes say what was granted; mcp:write only with changes allowed, so a token without it can be
-        // answered with insufficient_scope (D6). The grant, read on every call, still decides.
+        // answered with insufficient_scope (D6), and another application's endpoint caps changes by it (D22). For this
+        // application's own endpoint the grant, read on every call, still decides.
         var scopes = request.Scopes
             .Where(s => s != OidcAgentClients.WriteScope || permissions.HasFlag(EAgentPermission.Write))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -167,13 +235,17 @@ internal static class AgentConsent
 
         request.Scopes = scopes;
         request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, user.Id!, scopes, remember: false, ct);
-        await context.RequestServices.GetRequiredService<OidcAgentGrants>()
-            .GrantAsync(user.Id!, user.SecurityStamp, app, request.AuthorizationId, permissions, types, ct);
+        if (endpoint.IsLocal)
+        {
+            await context.RequestServices.GetRequiredService<OidcAgentGrants>()
+                .GrantAsync(user.Id!, user.SecurityStamp, app, request.AuthorizationId, permissions, types, ct);
+        }
         await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, user.Id, app.Id, user.Id, context.Connection.RemoteIpAddress?.ToString(),
             new Dictionary<string, string>
             {
                 ["scopes"] = string.Join(' ', scopes),
                 ["agent"] = OidcAgentClients.KindOf(app).ToString(),
+                ["resource"] = endpoint.Audience,
                 ["permissions"] = permissions.ToString(),
                 ["types"] = types is null ? "*" : string.Join(',', types.Select(t => t.Name)),
             }, ct);

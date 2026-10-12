@@ -69,6 +69,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly OidcJwe jwe;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcAudit audit;
+    [Inject] private readonly Mcp.OidcMcpResources mcpResources;
 
     /// <summary>The posted form, kept from <see cref="BindRequestAsync"/>: client authentication reads more of it than the bound record carries.</summary>
     private IFormCollection form = null!;
@@ -229,7 +230,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         }
 
         // Load scope definitions from DB
-        var grantedScopes = await Token.LoadScopesAsync(session, codeToken.Scopes, ct);
+        var grantedScopes = await LoadScopesAsync(session, codeToken, codeToken.Scopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
         if (IsMcp(codeToken) && !grantedScopes.Any(s => s.Audience is not null))
             return McpResourceUnavailable();
@@ -408,6 +409,21 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             : Results.Json(new { error = "invalid_target", error_description = "This grant is not for that resource." }, statusCode: 400);
     }
 
+    /// <summary>
+    /// The definitions of <paramref name="names"/> for the token chain <paramref name="token"/> belongs to. An agent's
+    /// chain resolves its MCP scopes in the resource of the endpoint it was authorized for (its recorded
+    /// <c>resource</c>), so a token for another application's endpoint keeps that audience; an endpoint no longer
+    /// configured leaves them undefined, and the caller answers <see cref="McpResourceUnavailable"/>.
+    /// </summary>
+    private Task<List<OidcScopeDefinition>> LoadScopesAsync(IAsyncDocumentSession session, OidcToken token, List<string> names, CancellationToken ct)
+    {
+        if (!IsMcp(token))
+            return Token.LoadScopesAsync(session, names, ct);
+        return mcpResources.Of(token) is { } endpoint
+            ? OidcScopeCatalog.LoadAsync(session, names, endpoint.ResourceId, ct)
+            : OidcScopeCatalog.LoadAsync(session, names.Where(n => !Mcp.OidcMcpResources.AsksForMcp([n])), ct);
+    }
+
     /// <summary>The MCP resource or its scopes were disabled after the grant: no token, rather than one addressed elsewhere.</summary>
     private static IResult McpResourceUnavailable()
         => Results.Json(new { error = "invalid_scope", error_description = "The MCP resource is not available." }, statusCode: 400);
@@ -544,7 +560,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         }
 
         // Load scope definitions from DB
-        var grantedScopes = await Token.LoadScopesAsync(session, permittedScopes, ct);
+        var grantedScopes = await LoadScopesAsync(session, refreshTokenDoc, permittedScopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
         if (IsMcp(refreshTokenDoc) && !grantedScopes.Any(s => s.Audience is not null))
             return McpResourceUnavailable();

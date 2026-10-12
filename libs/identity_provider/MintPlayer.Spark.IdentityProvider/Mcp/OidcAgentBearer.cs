@@ -68,7 +68,7 @@ internal sealed partial class OidcAgentBearerHandler(
     IDocumentStore store,
     OidcKeyRing keys,
     OidcIssuer issuer,
-    OidcMcpResource resource,
+    OidcMcpResources resources,
     AgentGrantStore grants,
     AgentRequestUser users,
     TimeProvider time)
@@ -94,7 +94,7 @@ internal sealed partial class OidcAgentBearerHandler(
             return Refuse("not an access token");
         if (!resolved.IsActive)
             return Refuse("expired, revoked or withdrawn");
-        if (resource.Audience is not { } audience || resolved.Audiences.Count != 1 || !string.Equals(resolved.Audiences[0], audience, StringComparison.Ordinal))
+        if (resources.Local?.Audience is not { } audience || resolved.Audiences.Count != 1 || !string.Equals(resolved.Audiences[0], audience, StringComparison.Ordinal))
             return Refuse("audience is not this MCP endpoint");
         if (resolved.ConfirmationJkt is not null || resolved.ConfirmationX5t is not null)
             return Refuse("sender-constrained token");
@@ -119,6 +119,8 @@ internal sealed partial class OidcAgentBearerHandler(
         var identity = new ClaimsIdentity(
             [
                 new Claim("sub", userId),
+                // The local id under the name application code reads too (Actions, row policies, quotas), as a cookie carries it.
+                new Claim(ClaimTypes.NameIdentifier, userId),
                 new Claim("name", user.UserName ?? userId),
                 new Claim("client_id", clientId),
                 new Claim("scope", resolved.Scope ?? string.Empty),

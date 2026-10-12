@@ -72,6 +72,51 @@ It adds, and changes nothing else:
 Without `ForMcp()` the provider also contributes its sign-ins at other websites to the account page's
 **Connected applications** (`ISparkConnectedApplicationSource`).
 
+## AI agents for another application: `ForMcpResource(url)`
+
+The provider can also sign agents in for **another** application's MCP endpoint, which accepts its tokens as its external
+authorization server (that application's `spark.AddExternalAgentAuthorizationServer(issuer, loginProvider)`, setup 2 of
+the PRD). It needs no MCP endpoint of its own, and nothing else changes:
+
+```csharp
+spark.AddIdentityProvider(idp => idp.ForMcpResource("https://hr.example.com/mcp", r =>
+{
+    r.DisplayName = "HR";                                          // the consent screen; default: the URL's host
+    r.Permissions = EAgentPermission.Read | EAgentPermission.Write; // default; Read alone never grants mcp:write
+}));
+```
+
+or in configuration, one entry per endpoint:
+
+```json
+{ "Spark": { "IdentityProvider": { "Mcp": { "Resources": [ { "Url": "https://hr.example.com/mcp", "DisplayName": "HR" } ] } } } }
+```
+
+- Each endpoint is an API resource `OidcResources/mcp-{sha256(url)[..32]}` whose `Audience` is the URL, with the scopes
+  `mcp:read` and `mcp:write`. The agent names the endpoint in `resource` (RFC 8707); the token's only audience is that
+  URL and its `sub` is the user's id here (public, never pairwise). The token and refresh endpoints resolve the scopes
+  for the endpoint the chain was authorized for; one that is no longer configured gets no token (`invalid_scope`).
+- Everything else is `ForMcp()`'s: the RFC 8414 document, metadata documents, anonymous loopback registration with VS
+  Code's redirects, refresh rotation with family revocation, the audit events.
+- **The consent screen** names the application and its host, and offers read, or read + changes when `Permissions`
+  allows them. It cannot see what that application exposes, so it offers no types: the agent's grant lives in that
+  application, created on its first call, and the user picks types and turns changes on there (Connected applications).
+  Changes chosen here put `mcp:write` in the token, which that application requires beside its own toggle. No agent
+  grant is written here; the `OidcGrant` keeps the OAuth bookkeeping, revocable at `/connect/applications`.
+- **Choosing the endpoint:** one `resource`, an endpoint listed here (another, or two at once, is `invalid_target`). A
+  request without one means this application's own endpoint (`ForMcp()`), else the only endpoint there is, else it is
+  refused.
+- The URL must be exactly the canonical URL that application publishes (`Spark:Mcp:CanonicalUrl`): https (http only
+  on a loopback host), no query, fragment or user info; a trailing `/` is dropped. A malformed or duplicate URL stops
+  startup.
+- `Mcp:LocalEndpoint`: `ForMcp()` sets it. Left unset, a `Spark:IdentityProvider:Mcp` section serves this
+  application's own `/mcp` only when it lists no `Resources`; the `/mcp` bearer scheme is registered only then.
+- That application's users link this provider's account by signing in to it here (its `loginProvider`); the linked
+  login's key is the `sub` this provider gave that sign-in client. Keep that client on public subjects (the default):
+  agent tokens carry the public user id, and a pairwise key would not match (the agent gets 401).
+- One OAuth grant per user and agent client: a client signed in for two endpoints shares it, and revoking it ends the
+  client's sign-ins for both.
+
 ## The host's part: two groups
 
 The layer's `security.json` grants rights to two slots. The host binds them to its own groups in its

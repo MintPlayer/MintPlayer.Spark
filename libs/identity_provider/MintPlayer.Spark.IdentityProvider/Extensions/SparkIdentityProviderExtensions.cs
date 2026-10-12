@@ -226,10 +226,11 @@ public static class SparkIdentityProviderExtensions
 
             new OidcGrants_BySubject().Execute(documentStore);
 
-            // ForMcp(): the MCP resource with the canonical URL as its audience, before the first request (startup
-            // fails here, with the reason, without spark.AddMcp or a canonical URL).
+            // ForMcp() / ForMcpResource(): one MCP resource per endpoint, its canonical URL as its audience, before the
+            // first request (startup fails here, with the reason: ForMcp() without spark.AddMcp or a canonical URL, a
+            // malformed or duplicate endpoint URL).
             if (options.Mcp is not null)
-                app.ApplicationServices.GetRequiredService<Mcp.OidcMcpResource>().InitializeAsync(app.ApplicationServices, documentStore).GetAwaiter().GetResult();
+                app.ApplicationServices.GetRequiredService<Mcp.OidcMcpResources>().InitializeAsync(app.ApplicationServices, documentStore).GetAwaiter().GetResult();
         });
 
         return builder;
@@ -238,12 +239,14 @@ public static class SparkIdentityProviderExtensions
     /// <summary>
     /// The agent side (MCP PRD D4 setup 3, D12, D14). The Connected-applications contribution and the grant link are
     /// always registered: a provider's sign-ins at other websites belong on the account page with or without agents.
-    /// The rest exists only with <see cref="SparkIdentityProviderOptions.ForMcp"/>.
+    /// The rest exists only with <see cref="SparkIdentityProviderOptions.ForMcp"/> or
+    /// <see cref="SparkIdentityProviderOptions.ForMcpResource"/>; the <c>/mcp</c> bearer scheme only for this
+    /// application's own endpoint.
     /// </summary>
     private static void AddAgents(ISparkBuilder builder, SparkIdentityProviderOptions options)
     {
         var services = builder.Services;
-        services.AddSingleton<Mcp.OidcMcpResource>();
+        services.AddSingleton<Mcp.OidcMcpResources>();
         services.AddSingleton<Mcp.OidcAgentRegistrationLimiter>();
         services.AddSingleton<Mcp.OidcClientMetadataDocuments>();
         services.AddSingleton<Mcp.OidcAgentDynamicRegistration>();
@@ -269,13 +272,17 @@ public static class SparkIdentityProviderExtensions
             o.MaxDecompressedBytes = mcp.MetadataDocumentMaxBytes;
         });
         services.AddSafeHttpClient(Mcp.OidcClientMetadataDocuments.HttpClientName);
+        services.AddHostedService<Mcp.OidcAgentClientCleanupService>();
 
-        // The agent token on /mcp only: registered with ASP.NET Core, never as a Spark (web) credential. The Mcp package
-        // finds it through IAgentCredentialScheme (M3a seam).
+        // The agent token on this application's /mcp only: registered with ASP.NET Core, never as a Spark (web)
+        // credential. The Mcp package finds it through IAgentCredentialScheme (M3a seam). A provider that signs agents in
+        // only for other applications' endpoints has no /mcp of its own to accept them on, and advertising itself in this
+        // application's protected-resource metadata would send agents for a token it cannot mint.
+        if (!mcp.ServesLocalEndpoint)
+            return;
         services.AddAuthentication().AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, Mcp.OidcAgentBearerHandler>(
             Mcp.OidcAgentCredentialScheme.SchemeName, _ => { });
         services.TryAddEnumerable(ServiceDescriptor.Singleton<MintPlayer.Spark.Abstractions.IAgentCredentialScheme, Mcp.OidcAgentCredentialScheme>());
-        services.AddHostedService<Mcp.OidcAgentClientCleanupService>();
     }
 
     /// <summary>
