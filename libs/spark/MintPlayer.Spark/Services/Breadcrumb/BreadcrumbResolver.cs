@@ -287,7 +287,9 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
             if (depth > options.Breadcrumb.MaxDepth || !visited.Add(definition.Id))
                 return;
 
-            var refused = await attributeRights.GetDeniedAsync(definition, verb, ct);
+            // Attribute rights only: a token naming a hidden reference (its target type unreadable,
+            // D19) is not blanked here but rendered as the placeholder when its target is resolved.
+            var refused = await attributeRights.GetDeniedByAttributeRightsAsync(definition, verb, ct);
             if (refused.Count > 0)
                 result[definition.Id] = refused;
 

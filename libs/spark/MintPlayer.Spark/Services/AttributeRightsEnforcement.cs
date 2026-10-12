@@ -35,10 +35,27 @@ internal interface IAttributeRightsEnforcement
 {
     /// <summary>
     /// The attributes of <paramref name="definition"/> the caller is refused for
-    /// <paramref name="verb"/>, in the model's spelling, compared case-insensitively. Empty in
-    /// system context and when no attribute right mentions the type.
+    /// <paramref name="verb"/>, in the model's spelling, compared case-insensitively: the attribute
+    /// rights' denials plus, for every verb, the <see cref="GetHiddenReferencesAsync">hidden
+    /// references</see>. Empty in system context and when neither applies.
     /// </summary>
     Task<IReadOnlySet<string>> GetDeniedAsync(EntityTypeDefinition definition, string verb, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Only what attribute rights deny, without the hidden references. For the breadcrumb resolver: a
+    /// template token naming a hidden reference renders the redacted placeholder (its target is
+    /// unreadable), where a token naming a denied attribute renders empty.
+    /// </summary>
+    Task<IReadOnlySet<string>> GetDeniedByAttributeRightsAsync(EntityTypeDefinition definition, string verb, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The reference attributes (single and array, <c>DataType</c> <c>Reference</c>) of
+    /// <paramref name="definition"/> whose target type the caller may not <c>Read</c> (MCP PRD D19,
+    /// owner decision 2026-10-12). They are treated exactly as an attribute-level denial for every verb:
+    /// absent from metadata, rows, sort, filter and distincts, and a save keeps the stored value.
+    /// Empty in system context, outside an HTTP request, and for a target type the model does not declare.
+    /// </summary>
+    Task<IReadOnlySet<string>> GetHiddenReferencesAsync(EntityTypeDefinition definition, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The caller's query surface: <paramref name="definition"/> without its <c>Query</c>-denied
@@ -97,6 +114,8 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IHttpContextAccessor? httpContextAccessor;
+    [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly Configuration.SparkOptions options;
 
     private static readonly IReadOnlySet<string> None = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -104,11 +123,31 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
     private const int MaxDepth = 8;
 
     private readonly Dictionary<(Guid Type, string Verb), IReadOnlySet<string>> denied = [];
+    private readonly Dictionary<(Guid Type, string Verb), IReadOnlySet<string>> deniedByRights = [];
+    private readonly Dictionary<Guid, IReadOnlySet<string>> hiddenReferences = [];
 
     public async Task<IReadOnlySet<string>> GetDeniedAsync(
         EntityTypeDefinition definition, string verb, CancellationToken cancellationToken = default)
     {
         if (denied.TryGetValue((definition.Id, verb), out var cached))
+            return cached;
+
+        var byRights = await GetDeniedByAttributeRightsAsync(definition, verb, cancellationToken);
+        var hidden = await GetHiddenReferencesAsync(definition, cancellationToken);
+        IReadOnlySet<string> result = hidden.Count == 0
+            ? byRights
+            : byRights.Count == 0
+                ? hidden
+                : new HashSet<string>([.. byRights, .. hidden], StringComparer.OrdinalIgnoreCase);
+
+        denied[(definition.Id, verb)] = result;
+        return result;
+    }
+
+    public async Task<IReadOnlySet<string>> GetDeniedByAttributeRightsAsync(
+        EntityTypeDefinition definition, string verb, CancellationToken cancellationToken = default)
+    {
+        if (deniedByRights.TryGetValue((definition.Id, verb), out var cached))
             return cached;
 
         var rights = await attributeRights.GetEffectiveAsync(definition, verb, cancellationToken);
@@ -117,7 +156,48 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
             : rights.DeniedAttributes.ToHashSet(StringComparer.OrdinalIgnoreCase);
         IReadOnlySet<string> result = set.Count == 0 ? None : set;
 
-        denied[(definition.Id, verb)] = result;
+        deniedByRights[(definition.Id, verb)] = result;
+        return result;
+    }
+
+    /// <remarks>
+    /// <para>
+    /// Before (D19 as first shipped) only the breadcrumb label became the placeholder; the attribute and
+    /// the target id were still sent, so a caller without <c>Read/Person</c> learned which person a car
+    /// points at and could sort, filter and count by it. A static right on the target type does not vary
+    /// per row, so removing the attribute discloses nothing a row could not — the same argument as for
+    /// an attribute-level denial, whose machinery this reuses.
+    /// </para>
+    /// <para>
+    /// No HTTP caller is the system here, as in <see cref="PresentAsync"/>: nothing reaches a client,
+    /// and a job saving a car must not lose its driver because "nobody" may not read people.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlySet<string>> GetHiddenReferencesAsync(
+        EntityTypeDefinition definition, CancellationToken cancellationToken = default)
+    {
+        if (hiddenReferences.TryGetValue(definition.Id, out var cached))
+            return cached;
+
+        HashSet<string>? set = null;
+        if (httpContextAccessor?.HttpContext is not null
+            && !Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+        {
+            foreach (var attribute in definition.Attributes)
+            {
+                if (attribute.DataType != "Reference" || string.IsNullOrEmpty(attribute.ReferenceType)
+                    || modelLoader.GetEntityTypeByClrType(attribute.ReferenceType) is not { } target)
+                {
+                    continue;
+                }
+
+                if (!await permissionService.IsAllowedAsync(SparkCoreActions.Read, target.Name, cancellationToken))
+                    (set ??= new(StringComparer.OrdinalIgnoreCase)).Add(attribute.Name);
+            }
+        }
+
+        IReadOnlySet<string> result = set ?? None;
+        hiddenReferences[definition.Id] = result;
         return result;
     }
 
@@ -133,7 +213,8 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
         copy.Attributes = [.. definition.Attributes
             .Where(a => !refused.Contains(a.Name))
             .Select(a => WithoutRefusedOptions(a, refused))];
-        copy.Breadcrumb = WithoutRefusedTokens(definition.Breadcrumb, refused, unreadable);
+        copy.Breadcrumb = WithoutRefusedTokens(definition.Breadcrumb, refused, unreadable,
+            await GetHiddenReferencesAsync(definition, cancellationToken), options.Breadcrumb.RedactedPlaceholder);
         return copy;
     }
 
@@ -198,7 +279,8 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
         // The client renders the type's breadcrumb template itself (S7): a token naming a removed
         // attribute would say the attribute exists. The server renders a refused token empty, so
         // dropping it here gives the client the same output.
-        copy.Breadcrumb = WithoutRefusedTokens(definition.Breadcrumb, unreadable, uncreatable);
+        copy.Breadcrumb = WithoutRefusedTokens(definition.Breadcrumb, unreadable, uncreatable,
+            await GetHiddenReferencesAsync(definition, cancellationToken), options.Breadcrumb.RedactedPlaceholder);
         copy.Queries = subQueries;
         return copy;
     }
@@ -288,7 +370,14 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
     /// <paramref name="template"/> without the <c>{tokens}</c> in either set, literals kept and
     /// re-escaped. The same string when no token is refused.
     /// </summary>
-    internal static string? WithoutRefusedTokens(string? template, IReadOnlySet<string> refused, IReadOnlySet<string> alsoRefused)
+    /// <remarks>
+    /// A token in <paramref name="placeholdered"/> (a hidden reference, MCP PRD D19) becomes the literal
+    /// <paramref name="placeholder"/> instead of disappearing, so a template the client renders says what
+    /// the server-rendered breadcrumb says.
+    /// </remarks>
+    internal static string? WithoutRefusedTokens(
+        string? template, IReadOnlySet<string> refused, IReadOnlySet<string> alsoRefused,
+        IReadOnlySet<string>? placeholdered = null, string? placeholder = null)
     {
         if (string.IsNullOrEmpty(template) || (refused.Count == 0 && alsoRefused.Count == 0))
             return template;
@@ -314,6 +403,9 @@ internal sealed partial class AttributeRightsEnforcement : IAttributeRightsEnfor
             {
                 case Breadcrumb.LiteralToken literal:
                     sb.Append(literal.Text.Replace("{", "{{").Replace("}", "}}"));
+                    break;
+                case Breadcrumb.FieldToken field when placeholdered?.Contains(field.AttributeName) == true:
+                    sb.Append((placeholder ?? string.Empty).Replace("{", "{{").Replace("}", "}}"));
                     break;
                 case Breadcrumb.FieldToken field when !refused.Contains(field.AttributeName) && !alsoRefused.Contains(field.AttributeName):
                     sb.Append('{').Append(field.AttributeName).Append('}');

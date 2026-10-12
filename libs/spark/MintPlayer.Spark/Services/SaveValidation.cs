@@ -59,6 +59,8 @@ internal sealed partial class SaveValidation : ISaveValidation
 {
     [Inject] private readonly IRefreshInvoker refreshInvoker;
     [Inject] private readonly IValidationService validationService;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
+    [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IEntityMapper entityMapper;
 
     private PersistentObject? requested;
@@ -112,7 +114,64 @@ internal sealed partial class SaveValidation : ISaveValidation
         effective.RetainAttributes(a => !unwritable.Contains(a.Name));
 
         var result = validationService.ValidateEffective(effective);
+        await AddHiddenRequiredReferenceErrorsAsync(result, definition, storedObject);
         if (!result.IsValid)
             throw new SparkSaveValidationException(result);
     }
+
+    /// <summary>
+    /// A <b>required</b> reference the caller cannot see because they may not <c>Read</c> its target type
+    /// (MCP PRD D19, owner decision 2026-10-12) and whose kept value is empty: the caller could open the
+    /// form but never fill the field, and the save would silently store the row without it. It fails
+    /// here instead, naming the attribute and the type the caller needs <c>Read</c> on.
+    /// </summary>
+    /// <remarks>
+    /// Chosen over a startup check: rights are granted per group and a caller's groups combine, so no
+    /// static check on <c>security.json</c> can tell whether some caller holds <c>New</c> on the type
+    /// without <c>Read</c> on the target. The message names only what the model declares about a type the
+    /// caller may already create or edit — never a value. A read-only attribute is the server's to fill
+    /// and is not judged; a kept non-empty value (an edit of a row that has one) passes.
+    /// </remarks>
+    private async Task AddHiddenRequiredReferenceErrorsAsync(
+        ValidationResult result, EntityTypeDefinition definition, PersistentObject? storedObject)
+    {
+        var hidden = await attributeRights.GetHiddenReferencesAsync(definition, requestAborted);
+        if (hidden.Count == 0)
+            return;
+
+        foreach (var attribute in definition.Attributes)
+        {
+            if (!attribute.IsRequired || attribute.IsReadOnly || !hidden.Contains(attribute.Name)
+                || result.Errors.Any(e => string.Equals(e.AttributeName, attribute.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var kept = storedObject?.Attributes.FirstOrDefault(a => a.Name == attribute.Name)?.Value;
+            if (!IsEmpty(kept))
+                continue;
+
+            var target = modelLoader.GetEntityTypeByClrType(attribute.ReferenceType!)?.Name ?? attribute.ReferenceType;
+            result.Errors.Add(new ValidationError
+            {
+                AttributeName = attribute.Name,
+                RuleType = "referenceTargetUnreadable",
+                ErrorMessage = TranslatedString.Create(
+                    $"{attribute.Name} is required, but it refers to {target}, which you may not read. Ask an administrator for Read on {target}.",
+                    $"{attribute.Name} est obligatoire, mais fait référence à {target}, que vous ne pouvez pas lire. Demandez à un administrateur le droit Read sur {target}.",
+                    $"{attribute.Name} is verplicht, maar verwijst naar {target}, dat u niet mag lezen. Vraag een beheerder om Read op {target}."),
+            });
+        }
+    }
+
+    private static bool IsEmpty(object? value) => value switch
+    {
+        null => true,
+        string s => string.IsNullOrWhiteSpace(s),
+        System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Null or System.Text.Json.JsonValueKind.Undefined } => true,
+        System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } e => string.IsNullOrWhiteSpace(e.GetString()),
+        System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Array } e => e.GetArrayLength() == 0,
+        System.Collections.IEnumerable items => !items.Cast<object?>().Any(),
+        _ => false,
+    };
 }
