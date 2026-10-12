@@ -25,6 +25,7 @@ app. It never gets your password.
 | Claude Code | 2.1.296 (tested) | `claude mcp login <name>` in a terminal, or `/mcp` → **Authenticate** in a session |
 | OpenAI Codex CLI | **0.148** (first version with client metadata documents; older versions fall back to dynamic registration) | `codex mcp add <name> --url …` signs in automatically; later `codex mcp login <name>` |
 | Gemini CLI | 0.63 | `/mcp auth <name>` in a session |
+| VS Code (GitHub Copilot agent mode) | current (sign-in path read from its source, not yet tried live) | VS Code asks to sign in when the server requires it |
 
 **Sign in before you need it.** None of the agents opens the browser by itself halfway through a
 session. If the agent connected without signing in and then reports that sign-in is required, run the
@@ -82,6 +83,22 @@ In `~/.gemini/settings.json` (or `.gemini/settings.json` in the project):
 ```
 
 Then, in a session: `/mcp auth seotester`. Gemini CLI 0.63 or later.
+
+### VS Code (GitHub Copilot agent mode)
+
+In `.vscode/mcp.json` in the project (or through the **MCP: Add Server** command):
+
+```json
+{
+  "servers": {
+    "seotester": { "type": "http", "url": "https://seotester.mintplayer.com/mcp" }
+  }
+}
+```
+
+When the server asks for sign-in, VS Code offers to sign you in. It opens your browser, and after you
+approve, the browser may pass through `vscode.dev/redirect` on its way back to VS Code. That page belongs
+to VS Code; the app accepts it for VS Code only.
 
 ## Signing in
 

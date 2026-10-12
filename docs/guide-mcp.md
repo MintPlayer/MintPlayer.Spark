@@ -85,7 +85,13 @@ mapped; an Angular route named `mcp` isn't detected, so don't create one.
 
 `ForMcp()` turns on only what MCP needs: authorization code with PKCE, refresh tokens with rotation,
 revocation, the RFC 8414 metadata, Client ID Metadata Documents, and anonymous registration restricted to
-loopback redirect URIs. See the [identity provider README](../libs/identity_provider/MintPlayer.Spark.IdentityProvider/README.md).
+loopback redirect URIs (and VS Code's own). It needs `AddMcp` and a canonical URL (`Spark:Mcp:CanonicalUrl`
+or `Spark:Auth:PublicBaseUrl`): every agent token is addressed to that URL and to nothing else, so the app
+refuses to start without one. The MCP package then publishes `/.well-known/oauth-protected-resource/mcp`,
+and every 401 on `/mcp` carries `WWW-Authenticate: Bearer resource_metadata="…", scope="mcp:read mcp:write"`.
+With an OAuth setup wired, an anonymous call that is refused answers a real HTTP 401 (with a JSON-RPC error
+telling the agent how to start its own sign-in) instead of a tool error, because an HTTP 401 is what makes an
+agent offer to sign in. See the [identity provider README](../libs/identity_provider/MintPlayer.Spark.IdentityProvider/README.md).
 
 ## Choose what agents can see and do
 

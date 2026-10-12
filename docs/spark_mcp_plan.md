@@ -69,7 +69,11 @@ sign-ins (Codex ≥ 0.148, Gemini 0.63, Claude Code) moved to the M7 manual chec
   revoke, create token, last used. An extension point through which the IdentityProvider contributes its
   non-agent OAuth grants (its SPA portal page becomes that contribution).
 
-### M3b — Embedded authorization server (setup 3)
+### M3b — Embedded authorization server (setup 3) — done (2026-10-12)
+As built, with the deviations, in the PRD decision log ("M3b implementation"): RFC 9728 served by Mcp through
+`IAgentCredentialScheme.AuthorizationServer`; G11 via scope prefix before `.` or `:` plus `OidcResource.Audience`;
+the consent screen is a server-rendered `/connect` page (not Angular); VS Code's built-in list is the two https
+redirects only (`vscode://` is never a `redirect_uri`); an anonymous refusal is an HTTP 401 when OAuth is wired.
 - IdentityProvider `ForMcp()`: RFC 8414, RFC 9207 `iss`, CIMD with SSRF guards, loopback-only anonymous
   DCR with rate limit and 30-day pruning, `mcp:read`/`mcp:write`, audience = canonical URI, refresh
   family revocation.

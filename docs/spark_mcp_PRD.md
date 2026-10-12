@@ -269,6 +269,7 @@ per-file coverage documents stay `None`.
 | Claude Code (2.1.296) | CIMD or DCR | `/mcp` → Authenticate, or `claude mcp login <name>`; steps up on 403 | `--header "Authorization: Bearer ${SPARK_PAT}"` |
 | Codex CLI (≥ 0.148 for CIMD) | CIMD when the AS metadata advertises it with `none`, else DCR | `codex mcp login <name>`; `codex mcp add <name> --url …` signs in automatically when the PRM exists | `bearer_token_env_var = "SPARK_PAT"` |
 | Gemini CLI (0.63) | DCR (no CIMD) | `/mcp auth <name>` | `headers` in `settings.json` |
+| VS Code (Copilot agent mode; source-read at 42bad02a) | CIMD (`https://vscode.dev/oauth/client-metadata.json`) when advertised, else DCR | prompted when the server asks; loopback `http://127.0.0.1:33418/` (or a random port) or `https://vscode.dev/redirect` | `headers` in `mcp.json` |
 
 Loopback redirects on any port and any path, `localhost` and `127.0.0.1`, native clients only (RFC 8252).
 No client starts sign-in on a mid-session 401 without a token (S11, source-read); the 401 text and
@@ -460,3 +461,77 @@ None. Q18 was resolved in round 3 (§10, D22).
     loads `AgentGrants/{userId}/app/{clientId}` via `AgentGrantStore` (internal, IVT to the IdP exists); its
     `/connect/applications` contribution is an `ISparkConnectedApplicationSource`; OidcGrant ↔ AgentGrant
     revocation uses `AgentGrant.OidcGrantId` (no hook yet: revoking an AgentGrant does not touch OidcGrant).
+- **M3b implementation (2026-10-12).** The embedded authorization server (`idp.ForMcp()`), the RFC 9728 side in
+  Mcp, and the D17 HTTP 401. Decisions taken while building, with their evidence:
+  - **Who serves RFC 9728: the Mcp package.** The document describes the resource (`/mcp`, its canonical URL),
+    and the server that signs agents in may be the embedded one or an external one (M3c), so each OAuth setup
+    names its issuer through two new default members of `IAgentCredentialScheme`: `AuthorizationServer(requestOrigin)`
+    and `ScopesSupported`. Mapped at `/.well-known/oauth-protected-resource/mcp` and the bare well-known path,
+    only when a setup offers OAuth; the embedded server is listed first (§4.2). The challenge is
+    `Bearer resource_metadata="…", scope="mcp:read mcp:write"` (+ `error="invalid_token"` for a refused token);
+    with personal tokens alone it stays a plain `Bearer` and no document exists. The canonical URL reaches the
+    IdentityProvider through `IAgentExposure.ResourceUrl` (new); `ForMcp()` without `AddMcp` or without a canonical
+    URL refuses startup, because an audience guessed from `Host` is the passthrough hole.
+  - **G11: scope ownership is "before the first `.` or `:`"**, and `OidcResource.Audience` (new, optional) separates
+    the audience from the name. `OidcResources/mcp` (name `mcp`, audience = canonical URL) owns `mcp:read`/`mcp:write`;
+    identity scopes still resolve first, so no existing scope changes meaning. Chosen over a scope→resource link
+    collection (owner prefers no new collections) and keeps every lookup a point load.
+  - **G4: an MCP request names only the canonical URL.** A request for an `mcp:*` scope may name no other `resource`
+    and carry no other API's scope (`invalid_target` / `invalid_scope`); no `resource` implies the canonical URL. The
+    token endpoint checks a named `resource` against the grant's (Codex always sends one). The generator's
+    `client_id` audience fallback is kept for non-MCP clients (existing behaviour) and is an exception for MCP
+    tokens. `/mcp` accepts a token whose `aud` is exactly `[canonical]`, `typ` `at+jwt`, a live record and grant,
+    and no `cnf` (sender-constrained tokens cannot be checked there). Evidence: mutation run below.
+  - **CIMD clients are materialised** as `OidcApplications/agent-{sha256(clientId)[..32]}` and the client id is
+    reserved, so the token, revocation and introspection endpoints find them like any client, by a point load
+    added in front of the index lookup (consistent the instant the client exists). Refetched after
+    `MetadataDocumentCacheFor` (1 h). A pre-registered client with the same id wins. Fetch guards: the existing
+    SSRF-safe client (one resolution for check and connect), port 443, no redirects, 5 KiB, 5 s; URL with a path
+    and no user info, query, fragment, dot segments (also `%2e`) or trailing `/` (a RavenDB id ending in `/` asks for
+    generation, and the grant id ends with the client id); optional host allow-list; the document must name its own
+    URL, be public (`none`, no secret) and list https or loopback redirects. Fetches and anonymous registrations
+    share an always-on per-address budget (20/h), independent of the app's rate-limiter middleware.
+  - **Anonymous DCR** answers only a request without `Authorization`; one with an initial access token is still a
+    developer's registration. Loopback or VS Code redirects only, public, no registration access token, client id
+    `mcp_…`, pruned after 30 days without use by `OidcAgentClientCleanupService` (every 6 h; bounded index waits).
+    Expired codes and tokens need no job: they carry `@expires` (existing).
+  - **VS Code [verified, source-read]:** microsoft/vscode at 42bad02a, `src/vs/base/common/oauth.ts:946-972` registers
+    `https://insiders.vscode.dev/redirect`, `https://vscode.dev/redirect`, `http://127.0.0.1/`, `http://127.0.0.1:33418/`
+    (`token_endpoint_auth_method: none`); `workbench/api/node/loopbackServer.ts:106-158` listens on 33418 or a random
+    port; `workbench/api/common/extHostAuthentication.ts:750` sends `https://vscode.dev/redirect` for every product,
+    the `vscode://`/`vscode-insiders://` return target travels in `state` and is **never a `redirect_uri`**. Its
+    CIMD documents (`https://vscode.dev/oauth/client-metadata.json`, insiders likewise) list `http://127.0.0.1:33418/`
+    and the product's own redirect. So the built-in exact list is the two https URIs only, beside the loopback rule;
+    no custom scheme is accepted.
+  - **Refresh tokens for agents regardless of `offline_access`** (G8), rotating with family revocation (existing
+    code), and not tied to the browser session, so signing out of the website does not sign the agent out. `sub` is
+    the local id for every MCP token whatever the client's subject type (G10).
+  - **Deviation: the consent screen is server-rendered, not Angular.** Every `/connect` page is server-rendered
+    (localised, themed, antiforgery, and the `/connect` middleware's `frame-ancestors 'none'` + `X-Frame-Options:
+    DENY`); an Angular page would need a second API and lose those for free. `AgentConsent` replaces the scope
+    checkboxes for MCP requests: verified host or "unverified", loopback notice, all types or chosen types (with
+    their queries), read or read + changes, limited by `IAgentExposure.AppPermissions(agent)` and each type's
+    `agentPermissions`; a forged POST beyond that is refused, not trimmed. A locked account gets 403. Every agent
+    sign-in shows it (no remembered or implicit consent): it is where the grant is chosen.
+  - **D12 links:** consent writes `AgentGrants/{userId}/app/{clientId}` with `OidcGrantId` and the user's security
+    stamp (a stamp change refuses the token on `/mcp`, as for personal tokens). Withdrawing the `OidcGrant` deletes
+    the agent grant (`OidcGrantWithdrawal`); revoking the agent grant on Connected applications withdraws the
+    `OidcGrant` through a new internal `IAgentGrantLink` (Authorization, IVT to the IdP). The IdP's sign-ins at
+    other websites are an `ISparkConnectedApplicationSource` (registered with or without `ForMcp()`; agent clients
+    excluded, they are listed as agent grants).
+  - **D17 as HTTP 401.** With an OAuth setup wired, `SparkMcpResult.Refuse()` for an anonymous caller marks the
+    request; the gate buffers anonymous responses on such a server and replaces the tool result with HTTP 401, the
+    challenge, and a JSON-RPC error (code -32001, the call's id, `McpSignInText`). `RequireSignIn` and refused tokens
+    answer the same body (id read from the request). Without OAuth the tool-error text stays. Uniform for exposed,
+    unexposed and unknown types and queries (test).
+  - **Audit:** `registration.dynamic` (agent flag), `registration.metadata-document`, `registration.pruned`,
+    `token.issued` (MCP tokens), `token.revoked`, `token.pkce.failed`.
+  - **Evidence:** `McpEmbeddedAuthorizationServerTests` (18 cases), `McpSignInChallengeTests` (6),
+    `OidcClientMetadataDocumentTests` (28 cases), 52/52 green. Mutation run (red with the guard removed, green
+    restored): audience check off → `A_token_for_another_resource_is_refused_on_mcp` fails; loopback rule off → 5
+    `Anonymous_registration_refuses_a_non_loopback_redirect` cases fail; self-naming check off →
+    `A_document_that_names_another_client_id_is_refused` fails; the 401 swap off →
+    `Anonymous_refusals_are_one_uniform_http_401_with_the_challenge` fails.
+  - **For M3c:** register the external setup's `IAgentCredentialScheme` with `AuthorizationServer` = the external
+    issuer and its scopes; the PRM and challenge then list it after the embedded server with no Mcp change. The
+    D17 401 applies to it unchanged. The `ext/` grant and the linked-login mapping remain M3c's.
