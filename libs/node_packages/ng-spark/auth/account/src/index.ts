@@ -5,3 +5,4 @@ export * from './spark-change-password.component';
 export * from './spark-two-factor-setup.component';
 export * from './spark-external-logins.component';
 export * from './spark-personal-data.component';
+export * from './spark-connected-agents.component';

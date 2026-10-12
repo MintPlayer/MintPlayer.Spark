@@ -41,6 +41,11 @@ export interface SparkAuthRouteEntries {
    * `withIdentityProvider(withConnectedApplications())` from `@mintplayer/ng-spark/identity-provider`.
    */
   connectedApplications?: SparkAuthRouteEntry;
+  /**
+   * The AI agents and personal access tokens the user connected (MCP), mounted by `withConnectedAgents()`.
+   * Needs the server's `MintPlayer.Spark.Mcp` package.
+   */
+  agents?: SparkAuthRouteEntry;
   /** The developer portal's landing page (`withIdentityProvider(withDeveloperRoutes())`). */
   developers?: SparkAuthRouteEntry;
   /** The identity provider's management page (`withIdentityProvider(withManagementRoutes())`). */

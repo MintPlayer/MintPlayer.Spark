@@ -575,6 +575,41 @@
         "en": "The request was not valid.",
         "fr": "La demande n'était pas valide.",
         "nl": "Het verzoek was niet geldig."
+      },
+      "agent_tokens_unavailable": {
+        "en": "This application does not accept personal access tokens.",
+        "fr": "Cette application n'accepte pas les jetons d'accès personnels.",
+        "nl": "Deze toepassing aanvaardt geen persoonlijke toegangstokens."
+      },
+      "agent_invalid_name": {
+        "en": "Enter a name of at most 100 characters.",
+        "fr": "Saisissez un nom de 100 caractères maximum.",
+        "nl": "Voer een naam van maximaal 100 tekens in."
+      },
+      "agent_invalid_lifetime": {
+        "en": "A token is valid for 1 to 365 days.",
+        "fr": "Un jeton est valide de 1 à 365 jours.",
+        "nl": "Een token is 1 tot 365 dagen geldig."
+      },
+      "agent_unknown_user": {
+        "en": "Your account could not be found.",
+        "fr": "Votre compte est introuvable.",
+        "nl": "Uw account werd niet gevonden."
+      },
+      "agent_permission_not_offered": {
+        "en": "This application does not allow that for this agent.",
+        "fr": "Cette application ne l'autorise pas pour cet agent.",
+        "nl": "Deze toepassing staat dat voor deze agent niet toe."
+      },
+      "agent_no_types": {
+        "en": "Choose at least one item, or everything.",
+        "fr": "Choisissez au moins un élément, ou tout.",
+        "nl": "Kies minstens één onderdeel, of alles."
+      },
+      "agent_unknown_type": {
+        "en": "One of the chosen items is not available to agents.",
+        "fr": "Un des éléments choisis n'est pas disponible pour les agents.",
+        "nl": "Een van de gekozen onderdelen is niet beschikbaar voor agents."
       }
     },
     "externalLoginError": {
@@ -715,6 +750,185 @@
       "en": "Your external account then protects this account on its own. Turning this on needs a code from your authenticator app.",
       "fr": "Votre compte externe protège alors seul ce compte. L'activer demande un code de votre application d'authentification.",
       "nl": "Je externe account beschermt dit account dan alleen. Dit inschakelen vraagt een code uit je authenticator-app."
+    },
+    "agentsTitle": {
+      "en": "Connected applications",
+      "fr": "Applications connectées",
+      "nl": "Gekoppelde toepassingen"
+    },
+    "agentsDescription": {
+      "en": "AI agents you connected to this application, and your personal access tokens. An agent sees only what your account sees, and only the parts you allow it. Changes apply to its next request.",
+      "fr": "Les agents IA que vous avez connectés à cette application, et vos jetons d'accès personnels. Un agent ne voit que ce que voit votre compte, et uniquement ce que vous lui autorisez. Les modifications s'appliquent à sa prochaine requête.",
+      "nl": "AI-agents die u met deze toepassing hebt verbonden, en uw persoonlijke toegangstokens. Een agent ziet alleen wat uw account ziet, en alleen wat u toestaat. Wijzigingen gelden vanaf zijn volgende verzoek."
+    },
+    "agentsNone": {
+      "en": "No agents are connected.",
+      "fr": "Aucun agent n'est connecté.",
+      "nl": "Er zijn geen agents verbonden."
+    },
+    "agentKind": {
+      "PersonalAccessToken": {
+        "en": "Personal access token",
+        "fr": "Jeton d'accès personnel",
+        "nl": "Persoonlijk toegangstoken"
+      },
+      "ExternalAuthorizationServer": {
+        "en": "Organization sign-in",
+        "fr": "Connexion de l'organisation",
+        "nl": "Aanmelding van de organisatie"
+      },
+      "MetadataDocument": {
+        "en": "Agent",
+        "fr": "Agent",
+        "nl": "Agent"
+      },
+      "DynamicRegistration": {
+        "en": "Agent",
+        "fr": "Agent",
+        "nl": "Agent"
+      },
+      "PreRegistered": {
+        "en": "Registered application",
+        "fr": "Application enregistrée",
+        "nl": "Geregistreerde toepassing"
+      }
+    },
+    "agentUnverified": {
+      "en": "unverified",
+      "fr": "non vérifié",
+      "nl": "niet geverifieerd"
+    },
+    "agentStatus": {
+      "expired": {
+        "en": "expired",
+        "fr": "expiré",
+        "nl": "verlopen"
+      },
+      "revoked": {
+        "en": "revoked: your password or sign-in methods changed",
+        "fr": "révoqué : votre mot de passe ou vos méthodes de connexion ont changé",
+        "nl": "ingetrokken: uw wachtwoord of aanmeldmethoden zijn gewijzigd"
+      }
+    },
+    "agentCreated": {
+      "en": "Created",
+      "fr": "Créé le",
+      "nl": "Aangemaakt"
+    },
+    "agentLastUsed": {
+      "en": "last used",
+      "fr": "dernière utilisation",
+      "nl": "laatst gebruikt"
+    },
+    "agentNeverUsed": {
+      "en": "never used",
+      "fr": "jamais utilisé",
+      "nl": "nooit gebruikt"
+    },
+    "agentExpires": {
+      "en": "expires",
+      "fr": "expire le",
+      "nl": "verloopt"
+    },
+    "agentReadOnly": {
+      "en": "May read",
+      "fr": "Peut lire",
+      "nl": "Mag lezen"
+    },
+    "agentReadAndChanges": {
+      "en": "May read and make changes (each change needs your approval in the agent)",
+      "fr": "Peut lire et apporter des modifications (chaque modification requiert votre approbation dans l’agent)",
+      "nl": "Mag lezen en wijzigingen aanbrengen (elke wijziging vraagt uw goedkeuring in de agent)"
+    },
+    "agentEverything": {
+      "en": "Everything this application makes available to agents",
+      "fr": "Tout ce que cette application met à la disposition des agents",
+      "nl": "Alles wat deze toepassing beschikbaar stelt aan agents"
+    },
+    "agentNoTypes": {
+      "en": "Nothing is available to choose.",
+      "fr": "Rien n'est disponible.",
+      "nl": "Er is niets om uit te kiezen."
+    },
+    "agentAllowChanges": {
+      "en": "Allow changes",
+      "fr": "Autoriser les modifications",
+      "nl": "Wijzigingen toestaan"
+    },
+    "agentEdit": {
+      "en": "Change",
+      "fr": "Modifier",
+      "nl": "Wijzigen"
+    },
+    "agentSave": {
+      "en": "Save",
+      "fr": "Enregistrer",
+      "nl": "Opslaan"
+    },
+    "agentCancel": {
+      "en": "Cancel",
+      "fr": "Annuler",
+      "nl": "Annuleren"
+    },
+    "agentDisconnect": {
+      "en": "Disconnect",
+      "fr": "Déconnecter",
+      "nl": "Loskoppelen"
+    },
+    "agentRevokeToken": {
+      "en": "Revoke",
+      "fr": "Révoquer",
+      "nl": "Intrekken"
+    },
+    "agentConfirmRevoke": {
+      "en": "Disconnect this agent? Its access stops immediately.",
+      "fr": "Déconnecter cet agent ? Son accès cesse immédiatement.",
+      "nl": "Deze agent loskoppelen? De toegang stopt onmiddellijk."
+    },
+    "agentTokenTitle": {
+      "en": "Personal access tokens",
+      "fr": "Jetons d'accès personnels",
+      "nl": "Persoonlijke toegangstokens"
+    },
+    "agentTokenDescription": {
+      "en": "For agents that cannot open a browser, such as CI jobs. Configure the token as an \"Authorization: Bearer\" header. Store it as a secret, never in a repository.",
+      "fr": "Pour les agents qui ne peuvent pas ouvrir de navigateur, comme les tâches CI. Configurez le jeton comme en-tête « Authorization: Bearer ». Conservez-le comme un secret, jamais dans un dépôt.",
+      "nl": "Voor agents die geen browser kunnen openen, zoals CI-taken. Stel het token in als header \"Authorization: Bearer\". Bewaar het als geheim, nooit in een repository."
+    },
+    "agentTokenNew": {
+      "en": "Create token",
+      "fr": "Créer un jeton",
+      "nl": "Token aanmaken"
+    },
+    "agentTokenCreate": {
+      "en": "Create",
+      "fr": "Créer",
+      "nl": "Aanmaken"
+    },
+    "agentTokenName": {
+      "en": "Name",
+      "fr": "Nom",
+      "nl": "Naam"
+    },
+    "agentTokenDays": {
+      "en": "Valid for (days)",
+      "fr": "Valide pendant (jours)",
+      "nl": "Geldig gedurende (dagen)"
+    },
+    "agentTokenShownOnce": {
+      "en": "Copy your token now. It is shown only once.",
+      "fr": "Copiez votre jeton maintenant. Il ne sera affiché qu’une seule fois.",
+      "nl": "Kopieer uw token nu. Het wordt maar één keer getoond."
+    },
+    "agentTokenCopy": {
+      "en": "Copy",
+      "fr": "Copier",
+      "nl": "Kopiëren"
+    },
+    "agentApplicationsTitle": {
+      "en": "Other applications",
+      "fr": "Autres applications",
+      "nl": "Andere toepassingen"
     }
   },
   "actions": {

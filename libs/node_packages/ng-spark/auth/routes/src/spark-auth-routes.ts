@@ -317,6 +317,38 @@ export function withAccount(options?: SparkAccountRouteOptions): SparkAuthRoutes
   return { paths, children };
 }
 
+/** Options for {@link withConnectedAgents}. */
+export type SparkConnectedAgentsRouteOptions = Pick<SparkAuthRouteEntries, 'agents'> & {
+  /** Guards the page. Defaults to `[sparkAuthGuard]`; pass `[]` under a guarded parent route. */
+  canActivate?: CanActivateFn[];
+};
+
+/**
+ * Mounts **Connected applications** (MCP PRD D14) at `account/agents` (`SparkConnectedAgentsComponent`): the AI
+ * agents the user connected and their personal access tokens — what each may see, whether it may make changes,
+ * when it was last used — with edit, disconnect and "create token"; then what other packages contribute. Adds a
+ * link to the account overview (`SPARK_ACCOUNT_OVERVIEW_LINKS`).
+ *
+ * Opt-in, because the page needs the server's `MintPlayer.Spark.Mcp` package: without it
+ * `/spark/auth/manage/agents` is not mapped.
+ */
+export function withConnectedAgents(options?: SparkConnectedAgentsRouteOptions): SparkAuthRoutesFeature {
+  const guard = options?.canActivate ?? [sparkAuthGuard];
+  const path = entryPath(options?.agents, 'account/agents');
+  const route = child(options?.agents, path,
+    () => import('@mintplayer/ng-spark/auth/account').then(m => m.SparkConnectedAgentsComponent));
+
+  return {
+    paths: { agents: '/' + path },
+    children: [guard.length ? { ...route, canActivate: guard } : route],
+    accountLinks: [{
+      key: 'agents',
+      path: '/' + path,
+      label: { en: 'Connected applications', fr: 'Applications connectées', nl: 'Gekoppelde toepassingen' },
+    }],
+  };
+}
+
 export function externalProvider(
   scheme: string,
   presentation?: Omit<SparkExternalProviderPresentation, 'scheme'>,
