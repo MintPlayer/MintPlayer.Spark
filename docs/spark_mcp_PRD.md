@@ -535,3 +535,51 @@ None. Q18 was resolved in round 3 (§10, D22).
   - **For M3c:** register the external setup's `IAgentCredentialScheme` with `AuthorizationServer` = the external
     issuer and its scopes; the PRM and challenge then list it after the embedded server with no Mcp change. The
     D17 401 applies to it unchanged. The `ext/` grant and the linked-login mapping remain M3c's.
+- **M3c implementation (2026-10-12).** Setup 2: `spark.AddExternalAgentAuthorizationServer(issuer, loginProvider, o => …)`
+  in the Authorization package (`ResourceServer` namespace). Decisions taken while building, with their evidence:
+  - **Validation reuses the resource server, under its own scheme.** `AddSparkResourceServer`'s scheme registration
+    became the internal `AddTokenScheme(services, scheme, options)`; setup 2 registers it as
+    `Spark.Agent.External.Token` (JWT bearer, or `SparkIntrospectionHandler` with `UseIntrospection`) and does **not**
+    declare it a Spark credential, so the token opens `/mcp` only (as personal tokens, M3a). Calling
+    `AddSparkResourceServer` itself was rejected: it registers the app's one `SparkJwtBearerExtensions.Scheme` as a web
+    credential, which an app may already use for its own API (Fleet), and a web credential would act without the agent
+    layers. Issuer pinned (= discovery authority), signature from its published keys, lifetime, `at+jwt` unless
+    `RequireAccessTokenType = false`; a `cnf`-bound token is refused (as in M3b).
+  - **Introspection: supported, opt-in** (`UseIntrospection`), because the resource server already speaks RFC 7662 and
+    D22 requires it for opaque tokens; every token then goes through introspection (the resource server's model: one
+    mode per scheme). The answer's `aud` must include and its `iss` equal the configured values (existing handler).
+  - **The audience is the MCP canonical URL, not configurable.** Filled at startup from `IAgentExposure.ResourceUrl` into
+    the shared options, which the scheme reads on first use; startup fails without `AddMcp` or a canonical URL. JWT
+    validation accepts a token whose `aud` contains the canonical URL (JwtBearer semantics; external servers may add
+    audiences), unlike the embedded server's exactly-one rule, which governs tokens we mint.
+  - **The mapping lives inside the scheme, so `SubjectIsLocalUserId` is true.** The outer handler
+    (`Spark.Agent.External`) authenticates the inner scheme, then finds the user through Identity's
+    `FindByLoginAsync(loginProvider, token[SubjectClaim])` (new internal `IAgentLinkedLogins`, generic over `TUser`) and
+    emits a principal whose `sub` is the **local** id. Core's `ISparkCurrentUser.Id` and the store-backed groups (M3a)
+    then work unchanged; the external subject never reaches them. Never by email; the issuer is pinned before the
+    lookup, so another issuer's equal `sub` never reaches it; `SubjectClaim` (default `sub`) exists for servers whose
+    access-token `sub` differs from the sign-in's login key (Entra: `oid`). Startup fails when `loginProvider` is not a
+    registered remote scheme (D22 "configured as one of the app's sign-in providers").
+  - **Shadow grant:** created on first use with `CreateIfMissingAsync` (empty change vector, so concurrent first calls
+    cannot overwrite each other or a user's edit), `Kind = ExternalAuthorizationServer`, client id from `azp` else
+    `client_id` (a token with neither is refused: the grant id needs it), `Issuer` (new field, shown on Connected
+    applications as a badge), no verified host, everything exposed, `Read`.
+  - **D22 write cap** in `ExternalAgentServerScheme.ScopeOf`: the grant scope's `Permissions` lose `Write` unless the
+    token's `scope`/`scp` contains `WriteScope` (default `mcp:write`, ordinal); `AgentGrantScope.For` caps chosen types by
+    `Permissions`, so the cap reaches every type. M4's write tools go through the same `IPermissionService` layer.
+  - **Deviation: revoking an external grant keeps it as disconnected** (`AgentGrant.RevokedAt`, status `disconnected`)
+    instead of deleting it. The external server keeps issuing tokens (refresh tokens included), so a deleted shadow grant
+    would be recreated by the agent's next call and the revocation would last one call. A disconnected grant refuses
+    every call until the user edits it (`update` clears `RevokedAt`). Unlinking the login, lockout and deletion of the
+    user refuse the next call too. No security-stamp check for `ext/` grants: the user never consented to a stamp, and
+    removing the login (which changes the stamp) already unmaps the token.
+  - **Evidence:** `McpExternalAuthorizationServerTests` (29 cases, in-memory RSA issuer and an RFC 7662 stub), green,
+    with `McpPersonalAccessTokenTests`, `McpEmbeddedAuthorizationServerTests`, `SparkResourceServerTests`,
+    `McpSignInChallengeTests`, `McpServerTests` (102/102). Mutation runs (red with the guard removed, green restored):
+    audience validation off → "another audience" and "no audience" fail; write cap off →
+    `Changes_need_mcp_write_in_the_token_even_with_the_users_toggle` and `The_write_cap_is_the_intersection_…` fail;
+    the `RevokedAt` checks off → `A_disconnected_grant_refuses_the_next_call_…` fails; the lookup widened to another
+    provider → `A_subject_linked_under_another_provider_is_not_mapped` fails.
+  - **For M7:** the §6.2 external list is covered except "token for another resource" beyond the audience cases and a
+    live run against a real Entra/Keycloak/Auth0 tenant (none tried); `apply_changes` through an external token once M4
+    lands (the cap is already enforced in `IPermissionService`, tested through the write tool `acme_touch`).

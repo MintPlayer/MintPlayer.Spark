@@ -405,6 +405,34 @@ of the MCP server ([guide](../../../docs/guide-mcp.md#grants-and-personal-access
 - **Client**: `sparkAuthRoutes(…, withConnectedAgents())` mounts `account/agents`
   (`SparkConnectedAgentsComponent`) and links it from the account overview.
 
+#### AI agents: an external authorization server (MCP setup 2)
+
+`spark.AddExternalAgentAuthorizationServer(issuer, loginProvider, o => …)` (namespace
+`MintPlayer.Spark.Authorization.ResourceServer`) lets agents sign in at your organization's OAuth server
+and call `/mcp` with its access tokens ([guide](../../../docs/guide-mcp.md#using-an-external-authorization-server),
+`docs/spark_mcp_PRD.md` D22). Call it after `AddAuthentication<TUser>()` and after the sign-in provider
+for the same server; it needs `spark.AddMcp(...)` with a canonical URL.
+
+```csharp
+spark.AddOpenIdConnect("Corp", "Corp sign-in", o => { /* the website's sign-in at the same server */ });
+spark.AddExternalAgentAuthorizationServer("https://login.corp.example/realms/acme", loginProvider: "Corp");
+```
+
+- **Validation** is `AddSparkResourceServer`'s (signature from the issuer's keys, pinned issuer, lifetime,
+  `at+jwt` unless `RequireAccessTokenType = false`; `UseIntrospection` for opaque tokens), under its own
+  scheme, which is **not** a Spark web credential: the token opens `/mcp` only. The audience is always
+  the MCP canonical URL. A sender-constrained token (`cnf`) is refused.
+- **Mapping**: only through a login of `loginProvider` whose key equals the token's `SubjectClaim`
+  (`sub`; `oid` for Entra), via Identity's `FindByLoginAsync`. Never by email. Unmapped → 401.
+  `ISparkCurrentUser.Id` is the local id; groups come from the store, never from the token.
+- **Shadow grant** `AgentGrants/{userId}/ext/{sha256(issuer|clientId)[..32]}`, created on the agent's first
+  call (client id from `azp`, else `client_id`): everything exposed, read only. Changes need the user's
+  toggle on the account page **and** `WriteScope` (`mcp:write`) in the token. Revoking it keeps it as
+  *disconnected* (status `disconnected`), because the external server keeps issuing tokens; an edit allows
+  the agent again. Unlinking the login, locking or deleting the user also refuse the next call.
+- Startup fails when `loginProvider` is not a registered remote scheme, without the Mcp package, or
+  without a canonical URL.
+
 ### XSRF/Antiforgery Protection
 
 When using cookie-based authentication, mutation endpoints (POST, PUT, DELETE) are protected with

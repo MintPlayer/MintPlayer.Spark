@@ -107,9 +107,14 @@ redirects only (`vscode://` is never a `redirect_uri`); an anonymous refusal is 
   callbacks it uses (built-in list next to the loopback rule, never "any https"; PKCE makes the relay safe). Add
   VS Code to the client matrix (§4.9) and to guide-mcp-agents.md.
 
-### M3c — External authorization server (setup 2)
+### M3c — External authorization server (setup 2) — done (2026-10-12)
+As built, with the deviations, in the PRD decision log ("M3c implementation"): `spark.AddExternalAgentAuthorizationServer(issuer,
+loginProvider)` in the Authorization package; validation shares `AddSparkResourceServer`'s scheme code under an `/mcp`-only
+scheme (introspection opt-in); the mapping happens inside the scheme, so its `sub` is the local id; revoking keeps the
+grant as *disconnected* (a deleted shadow grant would come back on the next call).
 - Mcp wiring over `AddSparkResourceServer` (+ introspection), RFC 9728 pointing at the external server.
 - Mapping through linked external logins only, issuer-bound; unmapped → 401; groups local; shadow grant.
+- Tests: `McpExternalAuthorizationServerTests` (29), with mutation runs.
 
 ### M4 — Writes
 - `McpPlans` collection with document `@expires`; `propose_changes`, `apply_changes(planId, changes)` with

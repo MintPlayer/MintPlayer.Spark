@@ -273,17 +273,42 @@ other access a user should see on the same page registers an `ISparkConnectedApp
 To have agents sign in at your organization's OAuth server:
 
 1. Configure it as one of the app's **sign-in providers**, so users can sign in to the website with it.
-2. Configure it as the MCP authorization server; Spark validates its access tokens (audience = your
-   canonical URL, `at+jwt`, signature, lifetime; introspection for opaque tokens).
+2. Configure it as the MCP authorization server, bound to that provider:
+
+   ```csharp
+   spark.AddAuthentication<SparkUser>();
+   spark.AddOpenIdConnect("Corp", "Corp sign-in", o => { /* authority, client id, secret */ });
+   spark.AddExternalAgentAuthorizationServer("https://login.corp.example/realms/acme", loginProvider: "Corp");
+   spark.AddMcp(mcp => { /* … */ }); // with Spark:Mcp:CanonicalUrl or Spark:Auth:PublicBaseUrl set
+   ```
+
+   Spark validates its access tokens (signature from the issuer's published keys, the issuer, audience =
+   your canonical URL, `at+jwt`, lifetime). For a server that hands out opaque tokens, set
+   `o.UseIntrospection = true` with this app's `IntrospectionClientId`/`IntrospectionClientSecret`.
+   Register an API at the server whose tokens carry the canonical URL as `aud`, with the scopes
+   `mcp:read` and `mcp:write`; if the server names scopes differently, list its names in
+   `o.ScopesSupported` and set `o.WriteScope`. For a server that types its access tokens `JWT` rather than
+   `at+jwt`, set `o.RequireAccessTokenType = false` (an ID token is still refused: its audience is the
+   client). If the access token's `sub` differs from the login key the website's sign-in stores (Entra's
+   `sub` is per application), set `o.SubjectClaim` to the claim both share (`oid`). Not yet tried against a
+   real Entra, Keycloak or Auth0 tenant.
 3. A token maps to a local user **only** if that user has signed in to the website through that provider:
-   the token's issuer must match the provider and its `sub` must match the linked login. There is no
-   mapping by email.
+   the token's issuer must be the configured one and its `sub` must equal the key of that provider's
+   linked login. There is no mapping by email.
 4. An unmapped token gets 401, never anonymous access. Groups and rights come from the local user, never
    from roles in the token.
 
-Users must therefore sign in to the website once with that provider before their agent works. The agent starts with read access to everything exposed; changes need both the user turning them on and `mcp:write` in the token. Its
-grant appears on their account page after its first call; revoking it there blocks the agent even though
-the external server keeps issuing tokens.
+The RFC 9728 document then lists the external server (after the embedded one, if both are wired), so an
+agent's 401 sends it there to sign in. Startup fails if the provider isn't registered, without the Mcp
+package, or without a canonical URL; an explicit `mcp.Authentication` flag
+`ExternalAuthorizationServer` without this call fails too.
+
+Users must therefore sign in to the website once with that provider before their agent works. The agent
+starts with read access to everything exposed; changes need both the user turning them on and `mcp:write`
+in the token (in this setup only, the token's scope is a cap: the user can't be stepped up through another
+server's consent). Its grant appears on their account page after its first call, with the server's issuer;
+revoking it there marks it *disconnected* and blocks the agent even though the external server keeps
+issuing tokens. Editing it allows the agent again. Unlinking the login from the account also blocks it.
 
 ## Changes: propose, then apply
 
@@ -335,7 +360,7 @@ tool that mirrors an endpoint, add a parity test: same user, same data, same row
 |---|---|
 | Agent says "401" and never opens a browser | A static `Authorization` header in the agent's config replaces OAuth; or only the personal-token setup is wired; or the agent connected anonymously and doesn't sign in mid-session (see [Anonymous and signed-in callers](#anonymous-and-signed-in-callers), or set `RequireSignIn`). |
 | Sign-in completes, then every call is 401 | Audience mismatch: the canonical URL differs from what the user configured (trailing slash, `http`, `www`). |
-| External setup: always 401 | The user never signed in to the website through that provider, or the issuer configured for the provider differs from the token's `iss`. |
+| External setup: always 401 | The user never signed in to the website through that provider, the configured issuer differs from the token's `iss`, the token's `aud` is not the canonical URL, it carries no `azp`/`client_id`, or the user disconnected the agent on the account page. The server log names the reason (event `SparkExternalAgentTokenRefused`). |
 | A tool the user expects is missing | It needs `Write` and some layer gives only `Read`; or the type's `agentPermissions` is `None`; or the user lacks `Query` on it. |
 | Local development: Claude Code fails with `UNABLE_TO_VERIFY_LEAF_SIGNATURE` on `https://localhost` | Node doesn't trust the ASP.NET development certificate. Use the app's `http` profile locally, or point `NODE_EXTRA_CA_CERTS` at the exported dev certificate. |
 | Results end with "truncated" | The page cap was reached; the agent should page with `skip`. |
