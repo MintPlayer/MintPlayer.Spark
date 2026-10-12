@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Microsoft.IdentityModel.Tokens;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Agents;
+using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Mcp;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
@@ -323,6 +324,45 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
         using var allow = await browser.SendAsync(HttpMethod.Post, "/spark/auth/manage/agents/update", new { key, permissions = "Read", types = (object?)null });
         allow.StatusCode.Should().Be(HttpStatusCode.OK);
         (await WhoAmIAsync(client, token)).ToolText.Should().Contain($"id={userId};", "an edit allows the agent again");
+    }
+
+    [Fact]
+    public async Task A_security_stamp_change_disconnects_the_agent_until_the_user_allows_it_again_which_stamps_the_grant_anew()
+    {
+        var (factory, userId, subject) = await StartAsync("stamp");
+        await using var _f = factory;
+        var client = factory.CreateClient();
+        var token = issuer.Token(subject);
+        (await WhoAmIAsync(client, token)).Status.Should().Be(HttpStatusCode.OK);
+        using (var session = Store.OpenAsyncSession())
+        {
+            (await session.LoadAsync<AgentGrant>(GrantId(userId)))!.SecurityStamp
+                .Should().Be((await session.LoadAsync<SparkUser>(userId))!.SecurityStamp, "the shadow grant is stamped when it is made");
+        }
+
+        // What a password change, a removed sign-in method or an administrator's reset does.
+        await McpAccountHost.ChangeUserAsync(factory, userId, (users, user) => users.UpdateSecurityStampAsync(user));
+
+        var refused = await WhoAmIAsync(client, token);
+        var fresh = await WhoAmIAsync(client, issuer.Token(subject));
+        refused.Status.Should().Be(HttpStatusCode.Unauthorized, "the external server still vouches for the token; the stamp no longer matches");
+        fresh.Status.Should().Be(HttpStatusCode.Unauthorized, "and a new token from it does not bring the agent back");
+
+        var browser = await McpBrowser.SignInAsync(factory.CreateClient(), Name("stamp"));
+        var listed = (await browser.AgentsAsync())["grants"]!.AsArray().Single()!;
+        listed["status"]!.GetValue<string>().Should().Be("disconnected", "it counts as disconnected until the user allows it again");
+
+        using var allow = await browser.SendAsync(HttpMethod.Post, "/spark/auth/manage/agents/update",
+            new { key = listed["key"]!.GetValue<string>(), permissions = "Read", types = (object?)null });
+        allow.StatusCode.Should().Be(HttpStatusCode.OK, await allow.Content.ReadAsStringAsync());
+
+        (await WhoAmIAsync(client, token)).ToolText.Should().Contain($"id={userId};", "allowing it again stamps the grant anew");
+        using (var session = Store.OpenAsyncSession())
+        {
+            (await session.LoadAsync<AgentGrant>(GrantId(userId)))!.SecurityStamp
+                .Should().Be((await session.LoadAsync<SparkUser>(userId))!.SecurityStamp);
+        }
+        (await browser.AgentsAsync())["grants"]!.AsArray().Single()!["status"]!.GetValue<string>().Should().Be("active");
     }
 
     [Fact]
