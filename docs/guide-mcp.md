@@ -223,6 +223,46 @@ other stored claims).
 like the tools. A prompt is a message template the user picks in the agent (one per app is plenty, PRD §9); it reads no
 data, so every caller sees it.
 
+**Reaching past the type layer, on purpose.** A type's `agentPermissions` governs every tool, so a tool cannot read a
+`None` type or run an action on a `Read` type. Two attributes on the tool method lift exactly that, for that tool's calls
+only (SeoTester's tools are the example):
+
+```csharp
+[McpServerTool(Name = "list_findings", ReadOnly = true)]
+[McpReadsThrough("PageResult", "AuditRun")]        // a run's pages, read as part of the run
+public async Task<CallToolResult> ListFindingsAsync(...) { ... }
+
+[McpServerTool(Name = "start_scan")]                // not ReadOnly: a write
+[McpRunsAction("Site", "StartAudit")]               // this one action on a type agents may only read
+public async Task<CallToolResult> StartScanAsync(string site, CancellationToken ct)
+{
+    var outcome = await actions.RunAsync("Site", "StartAudit", siteId, ct);   // ISparkMcpActions
+    return outcome.Status switch
+    {
+        SparkMcpActionStatus.Executed => SparkMcpResult.Json("Scan started.", outcome.Result),
+        SparkMcpActionStatus.Refused => SparkMcpResult.Refuse(),
+        _ => /* Invalid, Disabled, Throttled, Failed: outcome.Message, outcome.RetryAfter */,
+    };
+}
+```
+
+- `[McpReadsThrough(type, through)]` judges **reading** `type` by `through`'s `agentPermissions` and the user's choice of
+  types; writing `type` still follows its own (none). Use it for rows that belong to an exposed parent.
+- `[McpRunsAction(type, action)]` lets that one custom action need only `Read` from the type and the grant's choice of
+  types. It still needs `Write` from `mcp.AgentPermissions` and the grant's read/changes, so the tool is listed only to
+  agents allowed changes. A `ReadOnly` tool that declares it refuses startup.
+- Neither touches `security.json` or row security, and the generic tools keep the type layer.
+- `ISparkMcpActions.RunAsync(type, action, id)` runs a custom action through the same gates as the button
+  (`POST /spark/actions/execute`): the right, the row rule for the action, disabled actions, quotas. Never call the action
+  class or its service directly: that would be a second, unchecked path.
+
+**The application's own words outside the fence.** `SparkMcpResult.Json(note, value)` puts `note` before the fenced
+JSON: say what the data is and what to call next there, and never put a value a user typed or a crawler fetched in it.
+
+**Prompts.** `mcp.AddPrompts<TPrompts>()` registers a class of `[McpServerPrompt]` methods (MCP SDK). They are not
+prefixed (clients show them under the server's name, e.g. `/mcp__seotester__fix_seo_findings` in Claude Code); name the
+tools they mention with the prefix, and put no data in them.
+
 ## Anonymous and signed-in callers
 
 MCP follows security.json exactly, like the web app:

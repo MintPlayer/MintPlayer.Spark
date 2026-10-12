@@ -155,10 +155,22 @@ As built in the PRD decision log ("Agent principals carry the cookie's role and 
 - Tests: three setups in `McpAgentPrincipalTests` (the cookie's claims, the role removed, no other stored claim
   copied), Fleet's administrator against the cookie in `McpEmbeddedServerTests`.
 
-### M5 — SeoTester
-- Embedded setup; `SeoTools` (PRD §4.7); `agentPermissions` on `Site`/`AuditRun`/`CheckDefinition`;
-  anonymous `QueryRead/CheckDefinition` in security.json.
-- Element evidence after S7; expired-page wording; one "fix my SEO findings" prompt; S6.
+### M5 — SeoTester — done (2026-10-12), except the live S6 run
+As built, with the deviations, in the PRD decision log ("M5 implementation"); S7 and the S6 runbook in
+[spark_mcp_spikes.md](spark_mcp_spikes.md).
+- Embedded setup (`idp.ForMcp()`, issuer = the public URL, no key in configuration) and personal access tokens;
+  `SeoTools` (PRD §4.7); `agentPermissions: "Read"` on `Site`/`AuditRun`/`CheckDefinition`; anonymous
+  `QueryRead/CheckDefinition` in security.json; the identity provider's portal rights off.
+- Mcp: `[McpReadsThrough]` (a run's pages through the run) and `[McpRunsAction]` (`StartAudit` on a `Read` type) per tool;
+  `ISparkMcpActions` (custom actions through the web's gates); prompts through M6's `AddPrompts<T>()`.
+- An agent sees its user's organizations' rows and spends its user's quota (Organizations, Settings): since the rebase
+  onto `feat/spark-mcp`, through `NameIdentifier` on every agent principal (8a43aea2, cb543b7b); M5's own `sub`
+  fallback in both packages was dropped as redundant (decision log, "M5 follow-ups").
+- Element evidence: selectors only (S7: excerpts +40.7 % > 25 %, and they stored body text); expired-page wording; the
+  `seotester_fix_seo_findings` prompt; Connected applications in SeoTester's SPA.
+- S6: fixture site `apps/SeoTester/tools/s6-injection-site/`, server-side dry run, runbook. **Live run: owner.**
+- Tests: `SeoToolsTests` (12), `McpToolReachTests` (5), evidence cases in `PageChecksTests`, quota key in
+  `SparkQuotaTests`; mutation runs recorded in the decision log.
 
 ### M6 — CodeCoverage — done (2026-10-12), except the live run (M7/M9)
 As built, with the deviations, in the PRD decision log ("M6 implementation").

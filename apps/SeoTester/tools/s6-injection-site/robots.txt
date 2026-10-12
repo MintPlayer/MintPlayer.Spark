@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: http://s6.localtest.me:8123/sitemap.xml

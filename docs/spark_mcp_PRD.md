@@ -235,9 +235,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
 Gaps closed in this PR:
 
-1. **Element evidence**: up to 5 CSS selectors and an outer-HTML excerpt of at most 300 characters per
+1. **Element evidence**: up to 5 CSS selectors ~~and an outer-HTML excerpt of at most 300 characters~~ per
    finding; today axe keeps only id, impact, node count, help [verified
-   `SeoTester.Library/Rendering/RenderFacts.cs:46`]. Size → S7.
+   `SeoTester.Library/Rendering/RenderFacts.cs:46`]. Size → S7. *M5: selectors only* — S7 measured +40.7 % page-result
+   growth with excerpts (limit 25 %), +20.4 % with selectors only; an excerpt also stored body text, which SeoTester never
+   keeps (decision log "M5 implementation").
 2. **Expired page results** (7 days): the tools say so and suggest a re-scan; never an empty "clean" list.
 3. **Untrusted text**: crawled titles, descriptions, H1s, URLs and excerpts are always fenced (D10); they
    are already cut to 200 characters [verified `CheckFinding.cs:15,48-58`].
@@ -327,6 +329,9 @@ as-is, PASS with the store-provider prototype. S3 source-read only, live sign-in
 Gemini 0.63 pending. S11 FAIL by source reading → 401 text + `RequireSignIn` (D17); live check pending.
 **S8 FAIL (2026-10-12, plan M6):** the ease score never beat "most uncovered lines" (0.03–0.42× of it) → §4.8.1 ranks
 by uncovered lines [spark_mcp_spikes.md S8].
+**M5 (2026-10-12):** S7 live — p99 8.9 KB (PASS), page-result growth +40.7 % with excerpts (FAIL), +20.4 % with
+selectors only → selectors only. S6 prepared (fixture site, server-side dry run: every injected instruction stayed
+inside the fence); the live Claude Code run is the owner's.
 
 ### 6.2 Required adversarial tests (red first)
 
@@ -840,6 +845,57 @@ None. Q18 was resolved in round 3 (§10, D22).
     back to the implied endpoint → `The_resource_names_the_endpoint_…`; the own `/mcp` audience check off →
     `A_token_for_the_other_endpoint_is_refused_by_the_providers_own_mcp` (200, the shared OAuth grant makes it reachable);
     the binding reset off → `A_canonical_url_from_configuration_…`; the component's `disconnected` Edit off → the spec case.
+- **M5 implementation (2026-10-12).** SeoTester adopts the MCP server (§4.7, D24): commits 21b01a8c (Mcp), 6ce592b8
+  (Organizations, Settings), 801ea1ca (SeoTester), 56842722 (S7 outcome). Decisions taken while building, with their
+  evidence:
+  - **An application tool declares what it reaches beyond the type layer.** As built in M2 the restriction refused both
+    things §4.7 and D24 ask for: `PageResult` is `None` yet "reached through the tools", and `seotester_start_scan` runs
+    `StartAudit` on `Site`, whose type is `Read` (a custom action needs `Write` at the type). New, on the tool method, for
+    that call only: `[McpReadsThrough("PageResult", "AuditRun")]` judges reading the first type by the second's layers
+    (type and the grant's choice), never writing it; `[McpRunsAction("Site", "StartAudit")]` lets that one action need
+    `Read` from the type and the grant's choice of types, while `Write` is still required from the app layer and the
+    grant's cap (checked first, as for every write); a `ReadOnly` tool declaring an action refuses startup. The generic
+    tools keep the type layer (`seotester_get` on a `PageResult` is refused). Chosen over making `PageResult` `Read`
+    (contradicts §4.7) or `Site` `Read, Write` (opens generic writes, contradicts D24). Evidence: `McpToolReachTests` (5);
+    mutation runs: the read-through branch off → 2 of them and 3 `SeoToolsTests` red; the action branch off → 1 and 2 red.
+  - **`ISparkMcpActions`** runs a custom action from an app tool through `ICustomActionExecution`, the web's own sequence
+    (right, catalogue, row-gated parent, the row rule for the action, disabled actions, quota gates), mapped to
+    Executed/Refused/Invalid/Disabled/Throttled. `seotester_start_scan` is `StartAudit` through it, so quota, cool-down,
+    joining and the Member role are `AuditStarter`'s, never a second path (test: the quota refusal is logged by the same
+    `AuditStarter`). M4's `apply_changes` may want to share the mapping.
+  - **An agent's bearer `sub` is the user in two more packages.** `OrganizationRowPolicy` and `ISparkQuotas.KeyFor` read
+    only the cookie's `NameIdentifier`: an agent got no row of its own organizations (fails closed) and a quota keyed by
+    address. Both fall back to `ISparkCurrentUser.Id` (D4). SeoTester's `StartAudit`, `StartFullCrawl`, `VerifySite` take
+    the user from `ISparkCurrentUser` too. Evidence: fallback off → 8 `SeoToolsTests` red ("Not found." for the user's own
+    site); `KeyFor` red with `ip:unknown`.
+  - **Element evidence: selectors only (S7).** p99 8.9 KB passes; page-result growth +40.7 % with excerpts fails the 25 %
+    bound, +20.4 % with selectors only passes ([spark_mcp_spikes.md](spark_mcp_spikes.md) S7). The excerpt also broke
+    SeoTester's owner-requested "Nothing crawled is stored" (`docs/seo_analyzer_PRD.md` §12): `CrawledContentTests` found
+    its body marker in an axe excerpt; green with selectors only. Selectors carry ids and, from axe, attribute fragments
+    (`a[href$="about"]`), never text. **Owner to confirm** that ids in selectors are "facts about a page".
+  - **`seotester_explain_check` says an unknown rule plainly** instead of D17's uniform 401: the catalogue is public
+    (`GET /seotester/catalogue`), so there is nothing to hide and signing in would not help. Sites, scans and pages follow
+    D17 exactly (one uniform 401 for anonymous, existing or not; "Not found." for another organization's).
+  - **`list_findings` pages over pages**, not findings: `skip`/`take` (≤ 200) count the scan's pages in URL order, so a
+    call's cost is bounded whatever the filters; the answer stops before about 38k characters and names `nextSkip`
+    (mutation: budget off → the cap test red). The run's totals answer when the pages expired (§4.7 gap 2).
+  - **No signing key in configuration.** The IdentityProvider generates its keys into `OidcKeys`, protected with Data
+    Protection; SeoTester's issuer defaults to `Spark:Auth:PublicBaseUrl` and its canonical URL to that + `/mcp`, so
+    production needs no new secret (deploy.md §4.4: the Data Protection volume becomes critical). Development uses the
+    package's mechanism (issuer = request origin) and `Spark:Mcp:CanonicalUrl` `http://localhost:5014/mcp`.
+  - **The identity provider's portal rights are off in SeoTester** (`"libraries": { "identity-provider": false }`): it is
+    only the agents' authorization server. Its routes are still mapped (42 new routes in the snapshot, including
+    `/spark/identity-provider/*` and `/connect/register` with an initial access token), now without any right behind them.
+    **Owner decision:** whether `ForMcp()` should map only the agent endpoints.
+  - **Prompts:** `mcp.AddPrompts<T>()`, unprefixed (clients namespace prompts per server); SeoTester's
+    `fix_seo_findings`. A `List<Type>` bound to the SDK's `WithPrompts<T>(T target)` overload and registered nothing
+    (`prompts/list` "not available"): passed as `IEnumerable<Type>`.
+  - **SeoTester's SPA mounts `withConnectedAgents()`**: without it a user could not create a personal access token or
+    revoke an agent there.
+  - **S6 prepared, not run:** fixture site `apps/SeoTester/tools/s6-injection-site/`, a server-side dry run (every
+    injected instruction stayed inside the fence) and the runbook in [spark_mcp_spikes.md](spark_mcp_spikes.md).
+  - **For M6:** if CodeCoverage's per-file coverage documents are model types, its tools need `[McpReadsThrough]` too.
+    **For the PR:** the per-project version gate needs bumps for Organizations and Settings (and Mcp, Spark if not yet).
 - **M6 merged into `feat/spark-mcp` (2026-10-12).** Rebased onto the demo-app commits, then fast-forwarded. One conflict
   in code: both sides had fixed the `Spark:Mcp` binding bug; the demo-app side's `SparkMcpOptions.Create` stays (it also
   un-pins `ToolPrefix`), M6's own line in `AddMcp` went, both sides' tests stay ("M6 implementation" amended). The guide's

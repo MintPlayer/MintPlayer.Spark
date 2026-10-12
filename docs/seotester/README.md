@@ -48,6 +48,9 @@ runbook.
 4. **Share** (Owners and Admins): a read-only link to a site or a run, governed by `SeoTester:Features:Sharing`
    (`VerifiedOnly` hides unverified sites' links until they verify).
 5. **Passkeys** (account page): after the first external sign-in a user can add a passkey and sign in with it.
+6. **Connect an AI agent** (MCP, [mcp.md](mcp.md)): the agent reads the findings of the user's sites at `/mcp` and can
+   start a scan, as the user. Account → Connected applications lists the connected agents and makes personal access
+   tokens. Not deployed yet (spark MCP plan M9).
 
 ## The pages (M11)
 
