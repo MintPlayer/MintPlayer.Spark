@@ -116,7 +116,12 @@ grant as *disconnected* (a deleted shadow grant would come back on the next call
 - Mapping through linked external logins only, issuer-bound; unmapped → 401; groups local; shadow grant.
 - Tests: `McpExternalAuthorizationServerTests` (29), with mutation runs.
 
-### M4 — Writes
+### M4 — Writes — done (2026-10-12)
+As built, with the deviations, in the PRD decision log ("M4 implementation"): both tools need `Write` (propose too);
+check-only runs of the real save/delete/custom-action paths; one RavenDB commit per plan via `ISparkWriteUnit`, with
+the plan's applied record in it (single-node transaction); a custom action is always a plan of its own; apply re-renders
+the diff and refuses if it changed; the plan is claimed before it runs (at most once). HR's contracts are `CarreerJob`
+rows on `Person`; HR is wired for personal access tokens.
 - `McpPlans` collection with document `@expires`; `propose_changes`, `apply_changes(planId, changes)` with
   diff echo check, one-shot, user and grant binding, re-validation, 409 handling, retention after apply.
 - HR: contracts `"agentPermissions": "Read, Write"`, app `Read | Write`.

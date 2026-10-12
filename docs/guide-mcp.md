@@ -162,8 +162,8 @@ users have allow-listed.
 | `describe` | Read | Readable attributes of a type: names, labels, descriptions, types, references. |
 | `query` | Read | Run a query with search, filters, sort and paging. |
 | `get` | Read | One object as presented, with its available actions. |
-| `propose_changes` | Read, signed in | Validate and store a set of changes; returns `planId` and a readable diff. |
-| `apply_changes` | Write | Run a stored plan. |
+| `propose_changes` | Write, signed in | Validate and store a set of changes; returns `planId` and a readable diff. |
+| `apply_changes` | Write, signed in | Run a stored plan. |
 
 "Give me a list of all contracts" becomes `contracts_discover` → `contracts_query`, returning exactly the
 rows the user's row security lets through.
@@ -312,17 +312,47 @@ issuing tokens. Editing it allows the agent again. Unlinking the login from the 
 
 ## Changes: propose, then apply
 
-1. `propose_changes` validates every operation (rights, business rules, concurrency etags) and stores a
-   plan. It returns `planId` and a readable diff, `changes`. Nothing changes. At most 50 operations.
+1. `propose_changes(summary, operations)` validates every operation and stores a plan. It returns `planId`
+   and a readable diff, `changes`: one entry per operation, `Field: before -> after`. Nothing changes. At most
+   50 operations. An operation is `{ kind, type, id?, etag?, values?, action?, query?, ids? }` with `kind`
+   `create`, `update`, `delete` or `action` (a custom action); `values` sets attributes by name, the rest
+   keep their value.
 2. The agent calls `apply_changes(planId, changes)`, passing the diff back. The agent's approval prompt
    therefore shows the user exactly what will run, and the server refuses if `changes` differs from the
    plan.
-3. `apply_changes` checks everything again and runs it. A plan is single-use, belongs to the user and
-   agent that proposed it, and expires after 10 minutes. If a record changed in between, the whole plan
-   fails with the conflict.
+3. `apply_changes` checks everything again and runs it. A plan runs once, belongs to the user, the agent
+   and the grant that proposed it (anyone else gets the uniform not-found), and expires after 10 minutes.
 
-Applied plans are kept (`Spark:Mcp:PlanRetention`, default one year) as the record of what agents changed.
-Custom actions are operations too and go through the same gates as the button.
+What "validates" means: the operation goes through the same write path as the web pages, without the write
+— the type and attribute rights, the row gates, the disabled-action hook, the validation rules, and the
+version of the object (the etag). An attribute the caller cannot set (read-only, denied, or a reference to a
+type they may not read) is refused by name, the same answer a misspelled name gets; on the web the save
+would drop it silently, which in a plan would make the diff wrong. The application's interceptors, its
+Actions `MapAsync` and WITH CHECK run only at apply time, with the real save.
+
+**What is guaranteed at apply time:**
+
+- Every operation is prepared again as the caller sees the object *now*, its diff rendered again, and the
+  plan refused if the rendering changed (other rights, other data). Then every check runs again before
+  anything is written.
+- The saves and deletes of a plan, and the plan's own "applied" record, commit in **one RavenDB
+  `SaveChanges`**: one request, which the node that takes it applies as one transaction. Each write carries
+  the etag captured at propose time, so a record changed by anyone in between — even during the apply —
+  fails the whole request: the answer starts with `Conflict (409)` and nothing is saved. This is RavenDB's
+  single-node transaction, as every Spark save is, not a cluster-wide one.
+- Not covered: a write your interceptor or Actions class commits on its own (its own `SaveChangesAsync` or
+  session) is outside the transaction.
+- A **custom action** runs your code, which may commit by itself, so it cannot share a transaction: it is
+  always a plan of its own (one operation). It goes through the same gates as the button; its check at
+  propose time stops before the quota gates, which count only the real run.
+- A create that an interceptor cancels fails the plan: on the web a cancel means "nothing happened", in a
+  plan it would be a smaller change than the one approved.
+
+Applied plans, and plans whose apply failed, are kept in the `McpPlans` collection
+(`Spark:Mcp:PlanRetention`, default one year) as the record of what agents changed or tried to: user,
+client, grant, summary, operations, the diff, and the ids creates were given. Proposed plans that are never
+applied carry a 10-minute `@expires`; the database needs document expiration, which `UseSpark()` turns on
+because `AddMcp` asks for it.
 
 ## Untrusted text and prompt injection
 

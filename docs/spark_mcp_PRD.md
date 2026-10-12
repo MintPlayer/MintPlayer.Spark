@@ -179,8 +179,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 | `describe(type)` | Read | Readable attributes: names, labels, descriptions, data types, references. Schema only. |
 | `query(query, search?, filters?, sort?, skip, take)` | Read | Runs a query through the shared query read path. Compact table + object ids. |
 | `get(type, id, include?)` | Read | One object as presented: readable attributes, available actions, detail rows on request. |
-| `propose_changes(summary, operations[])` | Read, signed in | Validates create/update/delete/custom-action operations against rights, rules and etags; stores a plan; returns `planId` + readable `changes`. Changes nothing. At most 50 operations. |
-| `apply_changes(planId, changes)` | Write | Checks that `changes` equals the plan's rendering, re-authorizes, re-validates and runs. One-shot; user-bound; expires after 10 min; a stale etag fails the whole plan. |
+| `propose_changes(summary, operations[])` | Write, signed in (M4: was "Read") | Validates create/update/delete/custom-action operations against rights, rules and etags; stores a plan; returns `planId` + readable `changes`. Changes nothing. At most 50 operations. |
+| `apply_changes(planId, changes)` | Write, signed in | Checks that `changes` equals the plan's rendering, re-authorizes, re-validates and runs. One-shot; user-bound; expires after 10 min; a stale etag fails the whole plan. |
 
 ### 4.5 App-specific tools
 
@@ -583,3 +583,56 @@ None. Q18 was resolved in round 3 (§10, D22).
   - **For M7:** the §6.2 external list is covered except "token for another resource" beyond the audience cases and a
     live run against a real Entra/Keycloak/Auth0 tenant (none tried); `apply_changes` through an external token once M4
     lands (the cap is already enforced in `IPermissionService`, tested through the write tool `acme_touch`).
+- **M4 implementation (2026-10-12).** Writes: `propose_changes` → `apply_changes` over `McpPlans`, and HR as the demo.
+  Decisions taken while building, with their evidence:
+  - **Both tools need `Write`** (neither is `ReadOnly`), so §4.4's "propose needs Read, signed in" became "Write, signed
+    in": a plan that can never be applied is noise, and every operation's check goes through `IPermissionService`,
+    where Edit/New/Delete/custom actions need `Write` anyway (`McpAgentRestriction.Needs`). An anonymous caller (clamped
+    to `Read`, D17) therefore never sees them; a direct call answers the SDK's "Unknown tool", and the planner refuses an
+    anonymous owner with `SparkMcpResult.Refuse()` as a second line. `apply_changes` is annotated `Destructive`.
+  - **Check without writing is the write path itself.** `DatabaseAccess` runs its save and delete sequences with a
+    `checkOnly` flag that returns after the last gate and the validation (rights, natural-id probe, row gates, collection
+    guard, version, disabled action, write shield, `ISaveValidation`); `PersistentObjectSavePath` gained
+    `CheckCreateAsync`/`CheckUpdateAsync`/`CheckDeleteAsync` and a shared `DeleteAsync` (the `/spark/po/delete` endpoint
+    now calls it, D9); `CustomActionExecution.CheckAsync` stops before the quota gates (a check is never counted).
+    Interceptors, `MapAsync` and WITH CHECK run only at apply, with the real save.
+  - **Operations are built as the web client posts them:** the object loaded through `IPersistentObjectReadPath` (a create
+    scaffolded as `/spark/po/new` does, `OnNewAsync` included), through Spark's JSON and back, then the agent's values set.
+    An attribute absent for the caller (denied, a hidden reference per D19, or nonexistent) or read-only is refused by name
+    with one message for all of them; one the write shield would drop silently is refused the same way, because a silent
+    drop would make the shown diff false. One operation per object; at most 50; at most 30,000 characters of diff.
+  - **The echo:** `changes` is one string per operation (`Field: before -> after`, compact JSON values); the propose answer
+    fences `{planId, changes}` as data and keeps the instruction outside the fence. Apply compares the echo with the stored
+    rendering (line endings and trailing spaces normalised), then **re-prepares every operation as the caller sees it now
+    and refuses if its rendering changed**, then runs every check again before any write.
+  - **Binding and one-shot:** the plan stores user id, client id and grant id; any mismatch, a malformed id (`McpPlans/`
+    + 32 hex, so no other document can be loaded as a plan) and an unknown plan answer the uniform not-found and do not
+    use the plan up. The first apply that passes binding, status, expiry and echo **claims** the plan (status
+    `Applying`, saved with optimistic concurrency in its own session), so two racing applies run it at most once. A
+    mistyped echo does not claim. Expiry is checked on read (`ExpiresAt`), never left to the sweep; `AddMcp` calls
+    `RequireDocumentExpiration("Mcp")` as the IdentityProvider, Messaging and MailManager do.
+  - **Atomicity (the honest guarantee):** a new internal `ISparkWriteUnit` (`DatabaseAccess.WriteUnit.cs`) runs a plan's
+    saves and deletes through the unchanged save path but defers the commit: one `SaveChangesAsync` carries every write,
+    each with the change vector captured at propose time, **plus the plan's `Applied` record**. RavenDB applies one batch
+    request as one transaction on the node that takes it, so a document changed by anyone — even during the apply —
+    fails the whole request: `Conflict (409)…`, nothing written, plan `Failed`. Single-node, like every Spark save, not
+    cluster-wide. After-save/after-delete interceptors run after that commit; a failed batch clears the request session
+    (a deferred delete cannot be withdrawn otherwise); a framework path that commits on its own (bulk delete)
+    refuses to run inside a batch instead of committing early. **Not covered:** a write an interceptor or Actions class
+    commits itself. **A custom action is always a plan of its own** (it runs code that may commit), executed through
+    `CustomActionExecution` with its etag checked at prepare; its plan record is written after it, separately. A create
+    an interceptor cancels fails the whole plan.
+  - **Retention:** applied and failed plans keep `PlanRetention` (`Spark:Mcp:PlanRetention`, default 365 days, must be
+    positive) as `@expires`; the record holds user, client, kind, grant, summary, operations, the diff, created ids, error.
+  - **HR:** `AddMcp` (prefix `hr`, app `Read | Write`, anonymous `Read`); the contracts are `CarreerJob` rows (an
+    `AsDetail` of `Person`), so `Person` and `CarreerJob` are `"Read, Write"` and `Profession`/`Company` `"Read"` (their
+    references would otherwise be hidden, D19). HR signs in against SparkId, so the setup wired is personal access tokens
+    (account page); setup 2 against SparkId is possible with M3c's `AddExternalAgentAuthorizationServer` but not wired.
+  - **Evidence:** `McpPlanTests` 18/18 green. Mutation runs (guard removed → red, restored → green): binding check off →
+    the 3 `A_plan_is_bound_to_the_user_agent_and_grant…` cases fail; echo check off → `An_echo_that_differs…` fails;
+    status check off → `A_plan_runs_once` fails; expiry check off → `An_expired_plan_is_refused` fails; one-commit batching
+    off (each save commits) → `A_write_racing_the_apply_fails_the_whole_commit` fails. The apply-time re-check removed
+    stays green: the real save refuses a revoked right too (the re-check only moves the refusal before any write).
+  - **For M5/M7:** custom-action plans have no test yet (needs an actions catalogue fixture; SeoTester's
+    `seotester_start_scan` is its own tool, not a plan); `apply_changes` through an external (M3c) token and the parity
+    suite's write half are M7's; HR's MCP wiring has not been run against the live app.
