@@ -87,6 +87,7 @@ public static class SparkMcpExtensions
         builder.Registry.RequireDocumentExpiration("Mcp");
 
         McpToolRegistration.Register(services, options.ToolPrefix, [typeof(SparkGenericTools), typeof(SparkWriteTools), .. options.ToolTypes]);
+        McpPromptRegistration.Register(services, options.ToolPrefix, options.PromptTypes);
 
         // UseSpark(), after authentication and authorization: resolve the setups (an explicit flag without its
         // wiring fails here, at startup), then gate every request the MCP endpoint will serve.

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Configuration;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Mcp;
 using MintPlayer.Spark.Testing;
@@ -304,6 +305,42 @@ public class McpServerTests(SparkSharedDatabase database)
         var act = () => McpTestHost.Create(Store, SparkTestSecurity.Permissive, mcp => mcp.Authentication = EAgentAuthentication.EmbeddedAuthorizationServer);
 
         act.Should().Throw<Exception>().Which.ToString().Should().Contain("EmbeddedAuthorizationServer");
+    }
+
+    /// <summary>
+    /// The configuration binder assigns every settable property its current value whenever the section exists, which used
+    /// to make <c>Authentication</c> explicit for any <c>Spark:Mcp</c> key: a host that set only the canonical URL (as the
+    /// guide advises behind a proxy) refused to start for setups it never named (found adopting CodeCoverage, plan M6).
+    /// </summary>
+    [Fact]
+    public void A_Spark_Mcp_section_without_an_Authentication_key_leaves_the_setups_implicit()
+    {
+        var options = McpOptionsFrom(new Dictionary<string, string?>
+        {
+            ["Spark:Mcp:CanonicalUrl"] = McpTestHost.CanonicalUrl,
+            ["Spark:Mcp:Quota:AnonymousPerMinute"] = "0",
+        });
+
+        options.CanonicalUrl.Should().Be(McpTestHost.CanonicalUrl, "the section is bound");
+        options.Quota.AnonymousPerMinute.Should().Be(0);
+        options.AuthenticationIsExplicit.Should().BeFalse("no Authentication key: the setups that are wired are used");
+    }
+
+    [Fact]
+    public void An_Authentication_key_in_configuration_is_explicit()
+    {
+        var options = McpOptionsFrom(new Dictionary<string, string?> { ["Spark:Mcp:Authentication"] = "EmbeddedAuthorizationServer" });
+
+        options.Authentication.Should().Be(EAgentAuthentication.EmbeddedAuthorizationServer);
+        options.AuthenticationIsExplicit.Should().BeTrue();
+    }
+
+    private static SparkMcpOptions McpOptionsFrom(Dictionary<string, string?> settings)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddSpark(configuration, spark => spark.AddMcp());
+        return (SparkMcpOptions)services.Single(d => d.ServiceType == typeof(SparkMcpOptions)).ImplementationInstance!;
     }
 
     [Fact]

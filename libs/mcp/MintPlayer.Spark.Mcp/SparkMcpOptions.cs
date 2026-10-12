@@ -50,7 +50,10 @@ public sealed class SparkMcpOptions
         }
     }
 
-    /// <summary>Whether <see cref="Authentication"/> was set by the application rather than left at its default.</summary>
+    /// <summary>
+    /// Whether <see cref="Authentication"/> was set by the application (its configuration key, or code) rather than left
+    /// at its default. <see cref="Create"/> resets it after binding the configuration: see there.
+    /// </summary>
     internal bool AuthenticationIsExplicit { get; private set; }
 
     /// <summary>
@@ -62,7 +65,8 @@ public sealed class SparkMcpOptions
     /// setter can adjust it). Binding any <c>Spark:Mcp</c> key therefore marked <see cref="Authentication"/> explicit, so an
     /// application that configured only <c>Spark:Mcp:CanonicalUrl</c> had to wire all three setups or not start; and it
     /// pinned <see cref="ToolPrefix"/> to the slug of the default <see cref="ServerName"/> before the callback named the
-    /// server. Both are undone here for keys the section does not hold (found wiring Fleet and HR, 2026-10-12).
+    /// server. Both are undone here for keys the section does not hold (found twice on 2026-10-12, adopting CodeCoverage
+    /// in plan M6 and wiring Fleet and HR; the two fixes are this one).
     /// </remarks>
     internal static SparkMcpOptions Create(IConfiguration? configuration, Action<SparkMcpOptions>? configure)
     {
@@ -127,6 +131,21 @@ public sealed class SparkMcpOptions
     {
         if (!ToolTypes.Contains(typeof(TTools)))
             ToolTypes.Add(typeof(TTools));
+        return this;
+    }
+
+    /// <summary>The application's own prompt classes, registered prefixed like the tools.</summary>
+    internal List<Type> PromptTypes { get; } = [];
+
+    /// <summary>
+    /// Adds the prompts of <typeparamref name="TPrompts"/>: its <see cref="McpServerPromptAttribute"/> methods, written
+    /// without the prefix (<c>raise_coverage</c> becomes <c>codecoverage_raise_coverage</c>). A prompt is a message
+    /// template the user picks in the agent; it reads no data, so every caller sees it.
+    /// </summary>
+    public SparkMcpOptions AddPrompts<TPrompts>() where TPrompts : class
+    {
+        if (!PromptTypes.Contains(typeof(TPrompts)))
+            PromptTypes.Add(typeof(TPrompts));
         return this;
     }
 

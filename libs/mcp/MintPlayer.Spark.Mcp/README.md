@@ -45,6 +45,11 @@ Generic tools: `discover`, `describe`, `query`, `get`, and the writes `propose_c
 `UseSpark()`). A plan's saves and deletes commit in one RavenDB transaction or not at all; a custom action is a plan
 of its own. Your own tools use checked services only
 (`IDatabaseAccess` without its `…UncheckedAsync` methods, `IQueryExecutor`, `IPermissionService`; analyzer
-SPARK050 flags a raw RavenDB session) and answer through `SparkMcpResult`.
+SPARK050 flags a raw RavenDB session) and answer through `SparkMcpResult` (`Json`, `Rows`, `Text`, `Untrusted`, the
+uniform `Refuse`, `Invalid` for malformed arguments, `Track` for the audit row count). `mcp.AddPrompts<T>()` adds
+`[McpServerPrompt]` templates, prefixed like the tools.
+
+Every `Spark:Mcp` key binds the options; `Authentication` counts as explicit only when its own key is set (or code
+assigns it), so a deployment that sets just `Spark:Mcp:CanonicalUrl` keeps using whatever setups are wired.
 
 The full guide is [docs/guide-mcp.md](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-mcp.md).

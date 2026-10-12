@@ -141,14 +141,22 @@ public static class SparkMcpResult
     /// <summary><paramref name="value"/> as JSON through Spark's HTTP options (the redaction net), unfenced: fence it with <see cref="Untrusted"/>.</summary>
     internal static string Serialize(object? value) => JsonSerializer.Serialize(value, SerializerOptions());
 
-    /// <summary>A refusal of the arguments themselves (a bad page size, an unknown sort direction).</summary>
-    internal static CallToolResult Invalid(string message)
+    /// <summary>
+    /// A refusal of the arguments themselves (a bad page size, an unknown sort direction, a malformed name). The
+    /// message may say what is wrong: it depends on the arguments only, never on data, so it reveals nothing that
+    /// <see cref="Refuse"/> keeps uniform. Never use it for "not found" or "not allowed".
+    /// </summary>
+    public static CallToolResult Invalid(string message)
         => new() { IsError = true, Content = [new TextContentBlock { Text = message }] };
 
     internal static string? Label(TranslatedString? label)
         => label?.GetValue(System.Globalization.CultureInfo.CurrentUICulture.Name);
 
-    internal static void Track(int rows)
+    /// <summary>
+    /// Adds <paramref name="rows"/> to the row count of this call's audit event (MCP PRD D15). <see cref="Rows"/> counts
+    /// itself; a tool answering through <see cref="Json"/> or <see cref="Text"/> says how many rows it returned here.
+    /// </summary>
+    public static void Track(int rows)
     {
         if (State() is { } state)
             state.RowCount = (state.RowCount ?? 0) + rows;
