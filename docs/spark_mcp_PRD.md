@@ -1428,3 +1428,15 @@ None. Q18 was resolved in round 3 (§10, D22).
     callback doesn't log why creating the account failed; query rows carry the full metadata of AsDetail values;
     the unlinked-user 401 doesn't say what to do. The agent itself pointed out the oversized rows and data gaps
     (people without a name, an empty Person) in the demo data.
+  - **Fixed (b377bf36):** `UserStore.DeleteAsync` removes the user and its own `emails/` reservation in one cluster-wide
+    transaction; create/update never leave a reservation behind on a failed save; creation takes over a reservation
+    whose user document is gone (compare-exchange index), never one whose user exists. Red→green: `UserStoreTests` (3 new).
+  - **Fixed (8e48d460):** the callback logs provider, step and `IdentityResult` error *codes* (descriptions echo the
+    address, so they are left out). Red→green: `ExternalLoginCallbackTests.Callback_logs_why_…` (both steps).
+  - **Fixed (24b780b2):** MCP rows compact a single AsDetail value to its attribute values (through the redaction net,
+    as `get` does); the web projection keeps the object, which a custom renderer receives (#329). Red→green:
+    `McpQueryRowShapeTests`.
+  - **Fixed (0b1c88c5):** a validly signed token with no linked login gets a 401 whose JSON-RPC message and
+    `error_description` say "sign in to <app> once with <provider> to link it, then reconnect"; every other refusal is
+    unchanged. Red→green: `McpExternalAuthorizationServerTests.An_unlinked_subject_is_a_401_not_anonymous`; the refused-token
+    theory asserts no advice.

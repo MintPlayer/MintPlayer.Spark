@@ -235,13 +235,13 @@ S9 in the spikes doc.
     added afterwards took effect on the next call (PRD log "Live checks, round 1").
   - **Still to run:** Fleet (setup 3) with Claude Code, Codex 0.162.1, Gemini CLI 0.63.0 and VS Code; S11
     (anonymous first, then a protected call).
-- Found during the live checks, to fix in this PR:
-  - A deleted user's email reservation (`emails/<address>` compare-exchange) outlives the user, so the address can never
+- Found during the live checks, fixed in this PR (2026-10-12):
+  - [x] (b377bf36) A deleted user's email reservation (`emails/<address>` compare-exchange) outlives the user, so the address can never
     be used again and an external sign-in fails with "account could not be created".
-  - `ExternalLoginCallback` returns `account_creation_failed` without logging the `IdentityResult` errors.
-  - A query row carries the full attribute metadata of an AsDetail value (HR `Person.Address`: labels in three languages
+  - [x] (8e48d460) `ExternalLoginCallback` returns `account_creation_failed` without logging the `IdentityResult` errors.
+  - [x] (24b780b2) A query row carries the full attribute metadata of an AsDetail value (HR `Person.Address`: labels in three languages
     and validation rules on every row); rows should carry the value or its breadcrumb only.
-  - The 401 for an unlinked external-AS user doesn't tell the agent the user must sign in to the app once with that
+  - [x] (0b1c88c5) The 401 for an unlinked external-AS user doesn't tell the agent the user must sign in to the app once with that
     provider.
 
 ### M8 — Documentation
