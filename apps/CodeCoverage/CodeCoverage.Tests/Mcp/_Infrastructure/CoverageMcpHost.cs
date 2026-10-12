@@ -93,7 +93,7 @@ public sealed class CoverageMcpHostFixture : CoverageRavenTest, IAsyncLifetime
     }
 
     /// <summary>The same three independent, non-throwing teardown steps as <see cref="CoverageWebHostFixture"/>.</summary>
-    public new async Task DisposeAsync()
+    public async Task DisposeAsync()
     {
         try { await Factory.DisposeAsync(); }
         catch (Exception ex) { Console.WriteLine($"[CoverageMcpHostFixture] host disposal faulted: {ex}"); }
