@@ -231,6 +231,18 @@ S9 in the spikes doc.
   anonymous access, a protected call's 401 text leads the model to start the client's sign-in; with
   `RequireSignIn` on, `initialize` 401s and the client signs in at connect. Results into
   `spark_mcp_spikes.md` and the PRD log.
+  - **2026-10-12, done:** Claude Code 2.1.296 against HR via SparkId (setup 2): CIMD sign-in, consent, a group
+    added afterwards took effect on the next call (PRD log "Live checks, round 1").
+  - **Still to run:** Fleet (setup 3) with Claude Code, Codex 0.162.1, Gemini CLI 0.63.0 and VS Code; S11
+    (anonymous first, then a protected call).
+- Found during the live checks, to fix in this PR:
+  - A deleted user's email reservation (`emails/<address>` compare-exchange) outlives the user, so the address can never
+    be used again and an external sign-in fails with "account could not be created".
+  - `ExternalLoginCallback` returns `account_creation_failed` without logging the `IdentityResult` errors.
+  - A query row carries the full attribute metadata of an AsDetail value (HR `Person.Address`: labels in three languages
+    and validation rules on every row); rows should carry the value or its breadcrumb only.
+  - The 401 for an unlinked external-AS user doesn't tell the agent the user must sign in to the app once with that
+    provider.
 
 ### M8 — Documentation
 - Bring `guide-mcp.md`, `guide-mcp-agents.md`, `seotester/mcp.md`, `code-coverage/mcp.md` in line with what

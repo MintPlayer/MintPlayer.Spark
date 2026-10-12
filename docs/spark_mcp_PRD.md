@@ -1,6 +1,7 @@
 # PRD — MintPlayer.Spark.Mcp: an MCP server inside a Spark app, acting as the user
 
-**Status:** designed; owner grill done and consistency-reviewed (2026-10-12, §10); no open questions.
+**Status:** built (M1–M7a, PR #509); live checks in progress — Claude Code via setup 2 passed, the other clients
+pending; fixes found during the live checks listed in the plan's M7. No open design questions.
 Spikes S1, S2 and S4 done live; S3 and S11 answered by source reading, live sign-ins pending (round 4,
 [spark_mcp_spikes.md](spark_mcp_spikes.md)). Implementation started (M1).
 **Date:** 2026-10-12
@@ -1409,3 +1410,21 @@ None. Q18 was resolved in round 3 (§10, D22).
   on to its sign-in step. Owner's scope: a simple link; the email-confirmation mail does not carry the `returnUrl`.
   Evidence: `OidcLocalCredentialModeTests.Login_page_links_to_registration_with_the_local_return_url_only_when_registration_is_on`
   red before the change, green after; the register spec's returnUrl case.
+- **Live checks, round 1 (2026-10-12).** Claude Code 2.1.296 against HR (setup 2, SparkId as the external server), owner at
+  the keyboard. Evidence and decisions:
+  - **S3 for Claude Code: PASS.** It registered through CIMD (`client_id=https://claude.ai/oauth/claude-code-client-metadata`,
+    redirect `http://localhost:<port>/callback`), asked `mcp:read mcp:write offline_access` with
+    `resource=https://localhost:5005/mcp`, signed in at SparkId, consented, and reconnected.
+  - **Setup 2 mapping held:** before the owner had signed in to HR with Spark Identity, HR refused the valid token
+    (`External agent access token refused on /mcp (no linked login)`, D22). After that sign-in, the agent connected.
+  - **Groups per request (S4) held live:** the new HR user first saw only Company and Profession (Signed-in users);
+    after adding it to *HR managers* in the database, the next question listed 4 people, with no new sign-in.
+  - **Local TLS:** Claude Code rejects the ASP.NET development certificate even through `NODE_EXTRA_CA_CERTS` (not a
+    CA), ignores `NODE_USE_SYSTEM_CA`, and refuses IP names under a name-constrained CA (`UNSUPPORTED_CONSTRAINT_TYPE`).
+    A localhost-only test CA with a DNS-only certificate worked; guide-mcp.md troubleshooting says so.
+  - **Sign-in page:** owner request, a "Create an account" link carrying `returnUrl` on `/connect/login` (entry above);
+    after registering, ng-spark's register page returns to `/connect/login` for a pending `/connect/` request.
+  - **Found, to fix in this PR** (plan M7): a deleted user's email reservation outlives the user; the external-login
+    callback doesn't log why creating the account failed; query rows carry the full metadata of AsDetail values;
+    the unlinked-user 401 doesn't say what to do. The agent itself pointed out the oversized rows and data gaps
+    (people without a name, an empty Person) in the demo data.

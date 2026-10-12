@@ -281,6 +281,10 @@ AFTER  (11:20:45)  cookie: true   bearer /spike: false  bearer /mcp: false
 
 ## S3 / S11 (source-read, live confirmation pending)
 
+> **Live, 2026-10-12 (round 1):** Claude Code 2.1.296 signed in to HR through SparkId (setup 2) without a
+> hand-registered client, via CIMD, with `resource` and `offline_access`, and called tools. Fleet (setup 3) with all four
+> clients and S11 are still to run. Details: PRD decision log "Live checks, round 1".
+
 > **Source-read only.** Nothing in this section was run against a server. It comes from reading client
 > source and documentation on 2026-10-12. The owner will run the live sign-ins with Codex ≥ 0.148 and
 > Gemini CLI 0.63 (plan M7, manual checklist); until then every row is **[inferred]**, not verified.
