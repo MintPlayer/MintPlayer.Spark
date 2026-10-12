@@ -67,6 +67,12 @@ export class SparkRegisterComponent {
 
     try {
       await this.authService.register(email!, password!, userName!.trim());
+      // A pending identity-provider request (/connect/authorize, …) is a server route the router
+      // can't reach: go back to the provider's own sign-in page, which continues it.
+      if (this.returnUrl && isSafeReturnUrl(this.returnUrl) && this.returnUrl.startsWith('/connect/')) {
+        window.location.assign(`/connect/login?returnUrl=${encodeURIComponent(this.returnUrl)}`);
+        return;
+      }
       // An app can mount registration without the password form (external-only sign-in with
       // self-service account creation). Landing on the site root beats navigating to `undefined`,
       // which the router resolves to the current route — leaving the user on a form they just
