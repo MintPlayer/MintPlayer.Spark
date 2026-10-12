@@ -208,7 +208,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
     public Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
         => SavePersistentObjectAsync(persistentObject, PersistentObjectOperation.Save);
 
-    public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject, PersistentObjectOperation operation)
+    public Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject, PersistentObjectOperation operation)
+        => SaveCoreAsync(persistentObject, operation, checkOnly: false);
+
+    /// <summary>
+    /// The save sequence. With <paramref name="checkOnly"/> it stops after the last gate and the validation —
+    /// every decision about whether the save may happen — and writes nothing (MCP <c>propose_changes</c>,
+    /// <see cref="ISparkWriteUnit.CheckSaveAsync"/>); the mapping, the interceptors, WITH CHECK and the write run
+    /// only on the real save.
+    /// </summary>
+    private async Task<PersistentObject> SaveCoreAsync(PersistentObject persistentObject, PersistentObjectOperation operation, bool checkOnly)
     {
         if (operation is PersistentObjectOperation.Delete or PersistentObjectOperation.Purge)
             throw new ArgumentOutOfRangeException(nameof(operation), operation, "A save cannot be a delete or a purge.");
@@ -378,6 +387,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // the caller may not write, after every gate and before anything hooks, intercepts or writes.
         await saveValidation.ValidateAsync(persistentObject, entityTypeDefinition, before, shield.Unwritable);
 
+        if (checkOnly)
+            return persistentObject;
+
         // The framework owns the write (#482): interceptors only ever see a save the caller was allowed to make,
         // and nothing an Actions class or an interceptor does can skip WITH CHECK, the expected change vector or
         // the single commit. Everything the request session tracks before the interceptors run is recorded, so
@@ -387,7 +399,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         try
         {
             saveContext = await WriteSaveAsync(entityType, persistentObject, operation, before, unwritable);
-            await CommitAsync();
+            // Inside a write batch the batch commits, once, for every operation (ISparkWriteUnit).
+            if (batch is null)
+                await CommitAsync();
         }
         catch (Exception ex)
         {
@@ -414,23 +428,41 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         persistentObject.Id = generatedId;
         saveContext.Id = generatedId;
-        // Return the fresh change vector so the client can round-trip it to the next update.
-        persistentObject.Etag = session.Advanced.GetChangeVectorFor(savedEntity);
 
-        await interceptors.RunIsolatedAsync(interceptors.For<IAfterSave>(entityType, operation), interceptor => interceptor.OnAfterSaveAsync(saveContext), entityType, generatedId);
+        async Task AfterCommitAsync()
+        {
+            // Return the fresh change vector so the client can round-trip it to the next update.
+            persistentObject.Etag = session.Advanced.GetChangeVectorFor(savedEntity);
+            await interceptors.RunIsolatedAsync(interceptors.For<IAfterSave>(entityType, operation), interceptor => interceptor.OnAfterSaveAsync(saveContext), entityType, generatedId);
+        }
+
+        // In a batch, after-save work waits for the batch's commit: an after-save interceptor must only ever see
+        // a save that happened. The store already assigned the id.
+        if (batch is not null)
+            batch.AfterCommit.Add(AfterCommitAsync);
+        else
+            await AfterCommitAsync();
         return persistentObject;
     }
 
     public Task DeletePersistentObjectAsync(Guid objectTypeId, string id)
         => DeletePersistentObjectAsync(objectTypeId, id, PersistentObjectOperation.Delete);
 
-    public async Task DeletePersistentObjectAsync(Guid objectTypeId, string id, PersistentObjectOperation operation, string? etag = null)
+    public Task DeletePersistentObjectAsync(Guid objectTypeId, string id, PersistentObjectOperation operation, string? etag = null)
+        => DeleteCoreAsync(objectTypeId, id, operation, etag, checkOnly: false);
+
+    /// <summary>
+    /// The delete sequence. With <paramref name="checkOnly"/> it stops after the last gate (rights, row gate,
+    /// disabled action, the version the caller saw) and deletes nothing (MCP <c>propose_changes</c>,
+    /// <see cref="ISparkWriteUnit.CheckDeleteAsync"/>). Answers whether there was a row to delete.
+    /// </summary>
+    private async Task<bool> DeleteCoreAsync(Guid objectTypeId, string id, PersistentObjectOperation operation, string? etag, bool checkOnly)
     {
         if (operation is not (PersistentObjectOperation.Delete or PersistentObjectOperation.Purge or PersistentObjectOperation.Sync))
             throw new ArgumentOutOfRangeException(nameof(operation), operation, "A delete is a Delete, a Purge or a Sync.");
 
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
-        if (entityTypeDefinition == null) return;
+        if (entityTypeDefinition == null) return false;
 
         // A purge is its own right (Purge/T) and its own row-gate action, so a row policy can confine
         // it to rows that are already soft-deleted while Delete keeps hiding them (#460, SoftDelete).
@@ -439,7 +471,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = typeResolver.Resolve(clrType);
-        if (entityType == null) return;
+        if (entityType == null) return false;
 
         // Row-level Delete gate (R2-H2): the same shape as the Edit gate in
         // SavePersistentObjectAsync — load the entity in a side session and ask the Actions class.
@@ -454,12 +486,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
         using (var checkSession = documentStore.OpenAsyncSession())
         {
             var existing = await LoadEntityAsync(checkSession, entityType, id);
-            if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
+            if (existing is null) return false; // Nothing to delete; preserves 404-on-missing semantics.
 
             // Id-to-type binding (security sweep C1/H1): don't let a Delete on one type erase a
             // document of another by naming its id. A foreign-collection document is "not found".
             if (!collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
-                return;
+                return false;
 
             if (!await rowSecurity.IsAllowedAsync(entityType, deleteAction, existing))
                 throw new SparkRowLevelAccessDeniedException($"{deleteAction}/{entityTypeDefinition.Name}");
@@ -478,11 +510,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
             }
         }
 
+        if (checkOnly)
+            return true;
+
         // Everything the request session tracks before any delete interceptor runs, so a refusal can take back
         // what the interceptors wrote besides the target (contributions F6).
         var sessionBefore = SessionWriteSnapshot.Take(session);
         var entity = await LoadEntityAsync(session, entityType, id);
-        if (entity is null) return;
+        if (entity is null) return false;
         // The write must still find the version the caller saw (#467, D14) — or, for an internal caller,
         // the version loaded here — or a concurrent edit that landed after the gate is lost (F7).
         var expectedChangeVector = string.IsNullOrEmpty(etag) ? session.Advanced.GetChangeVectorFor(entity) : etag;
@@ -491,7 +526,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         try
         {
             context = await WriteDeleteAsync(entityType, id, entity, operation, reason: null, expectedChangeVector!);
-            await CommitAsync();
+            // Inside a write batch the batch commits, once, for every operation (ISparkWriteUnit).
+            if (batch is null)
+                await CommitAsync();
         }
         catch (Exception ex)
         {
@@ -505,7 +542,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
             throw;
         }
 
-        await interceptors.RunIsolatedAsync(interceptors.For<IAfterDelete>(entityType, operation), interceptor => interceptor.OnAfterDeleteAsync(context), entityType, id);
+        Task AfterCommitAsync() => interceptors.RunIsolatedAsync(interceptors.For<IAfterDelete>(entityType, operation), interceptor => interceptor.OnAfterDeleteAsync(context), entityType, id);
+        if (batch is not null)
+            batch.AfterCommit.Add(AfterCommitAsync);
+        else
+            await AfterCommitAsync();
+        return true;
     }
 
     /// <summary>
@@ -933,6 +975,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// </remarks>
     private async Task CommitAsync(Type? deletedById = null)
     {
+        EnsureNotInsideBatch();
         if (httpContextAccessor?.HttpContext is not { } httpContext)
         {
             await session.SaveChangesAsync();

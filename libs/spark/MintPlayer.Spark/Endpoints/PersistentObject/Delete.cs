@@ -20,7 +20,7 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint<PersistentO
         builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
     }
 
-    [Inject] private readonly IDatabaseAccess databaseAccess;
+    [Inject] private readonly IPersistentObjectSavePath savePath;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
@@ -52,16 +52,12 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint<PersistentO
 
         try
         {
-            // No UnescapeDataString: see the note in Update.
-            var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
-
-            if (obj is null)
+            // No UnescapeDataString: see the note in Update. The sequence is shared with the MCP tools (D9).
+            if (!await savePath.DeleteAsync(entityType, request.Id, request.Etag, cancellationToken))
             {
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
-            await databaseAccess.DeletePersistentObjectAsync(
-                entityType.Id, request.Id, Abstractions.Interceptors.PersistentObjectOperation.Delete, request.Etag);
             return ClientResult.Envelope(clientAccessor, null, 204);
         }
         catch (SparkCancelException)

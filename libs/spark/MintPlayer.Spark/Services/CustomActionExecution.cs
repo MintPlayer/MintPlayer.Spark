@@ -38,6 +38,11 @@ internal enum CustomActionOutcomeKind
     Invalid,
     /// <summary>The action is disabled on one of its targets (#460, D13).</summary>
     Disabled,
+    /// <summary>
+    /// Every gate passed and the action was not run: <see cref="ICustomActionExecution.CheckAsync"/> (MCP
+    /// <c>propose_changes</c>). The last gates (quotas) are not consulted, so a check is never counted.
+    /// </summary>
+    Checked,
 }
 
 /// <summary>The outcome of <see cref="ICustomActionExecution.ExecuteAsync"/>.</summary>
@@ -62,6 +67,12 @@ internal sealed record CustomActionOutcome(CustomActionOutcomeKind Kind, object?
 internal interface ICustomActionExecution
 {
     Task<CustomActionOutcome> ExecuteAsync(EntityTypeDefinition entityType, CustomActionInvocation invocation, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The gates of <see cref="ExecuteAsync"/> up to the last gates (quotas), in its order, without running the
+    /// action: <see cref="CustomActionOutcomeKind.Checked"/> when it would run.
+    /// </summary>
+    Task<CustomActionOutcome> CheckAsync(EntityTypeDefinition entityType, CustomActionInvocation invocation, CancellationToken cancellationToken = default);
 }
 
 [Register(typeof(ICustomActionExecution), ServiceLifetime.Scoped)]
@@ -98,7 +109,13 @@ internal sealed partial class CustomActionExecution : ICustomActionExecution
     // X3: the last gates before an action runs (per-user quotas). Optional for the same reason.
     [Inject] private readonly IEnumerable<ISparkCustomActionGate>? gates;
 
-    public async Task<CustomActionOutcome> ExecuteAsync(EntityTypeDefinition entityType, CustomActionInvocation invocation, CancellationToken cancellationToken = default)
+    public Task<CustomActionOutcome> ExecuteAsync(EntityTypeDefinition entityType, CustomActionInvocation invocation, CancellationToken cancellationToken = default)
+        => RunAsync(entityType, invocation, checkOnly: false, cancellationToken);
+
+    public Task<CustomActionOutcome> CheckAsync(EntityTypeDefinition entityType, CustomActionInvocation invocation, CancellationToken cancellationToken = default)
+        => RunAsync(entityType, invocation, checkOnly: true, cancellationToken);
+
+    private async Task<CustomActionOutcome> RunAsync(EntityTypeDefinition entityType, CustomActionInvocation invocation, bool checkOnly, CancellationToken cancellationToken)
     {
         var actionName = invocation.ActionName;
         var typeName = entityType.Name;
@@ -345,6 +362,11 @@ internal sealed partial class CustomActionExecution : ICustomActionExecution
         if (disabled.Contains(actionName))
         {
             return new(CustomActionOutcomeKind.Disabled);
+        }
+
+        if (checkOnly)
+        {
+            return new(CustomActionOutcomeKind.Checked);
         }
 
         var args = new CustomActionArgs

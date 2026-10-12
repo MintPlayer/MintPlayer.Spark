@@ -124,6 +124,11 @@ public static class SparkExtensions
         // Register the Spark services
         services.AddSparkServices();
 
+        // The batch and check-only half of the write path (MCP propose/apply) is the request's own DatabaseAccess,
+        // so a batch sees and commits the same session the saves use.
+        services.AddScoped<Services.ISparkWriteUnit>(sp => sp.GetRequiredService<IDatabaseAccess>() as Services.DatabaseAccess
+            ?? throw new InvalidOperationException("ISparkWriteUnit needs Spark's own IDatabaseAccess; it was replaced."));
+
         // Open generics are skipped by the [Register] generator, so the row-rule facade is wired
         // here. It is the seam an application reaches for to apply an entity's row rule from its own
         // controllers and jobs (#301).

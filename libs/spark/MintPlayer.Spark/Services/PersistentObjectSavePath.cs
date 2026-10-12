@@ -39,6 +39,29 @@ internal interface IPersistentObjectSavePath
     /// </summary>
     /// <param name="retry">The request whose retry answers are accepted once the row is known to exist, as the endpoint always did; <see langword="null"/> for a first attempt.</param>
     Task<PersistentObject> UpdateAsync(EntityTypeDefinition entityType, string id, PersistentObject obj, IRetryableRequest? retry = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the stored <paramref name="id"/> at the version <paramref name="etag"/> names: the sequence of
+    /// <c>/spark/po/delete</c>. <see langword="false"/> when the row is missing or not the caller's to see (one
+    /// answer, M-3).
+    /// </summary>
+    Task<bool> DeleteAsync(EntityTypeDefinition entityType, string id, string etag, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Everything <see cref="CreateAsync"/> decides — the rights, the gates, the validation — and no write
+    /// (MCP <c>propose_changes</c>). Throws what the create would throw. <paramref name="obj"/> is left as the
+    /// create would save it: values the caller may not set are dropped.
+    /// </summary>
+    Task CheckCreateAsync(EntityTypeDefinition entityType, PersistentObject obj, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Everything <see cref="UpdateAsync"/> decides — the version, the rights, the row gates, the validation —
+    /// and no write (MCP <c>propose_changes</c>). Throws what the update would throw.
+    /// </summary>
+    Task CheckUpdateAsync(EntityTypeDefinition entityType, string id, PersistentObject obj, CancellationToken cancellationToken = default);
+
+    /// <summary>Everything <see cref="DeleteAsync"/> decides, and no delete. <see langword="false"/> as there.</summary>
+    Task<bool> CheckDeleteAsync(EntityTypeDefinition entityType, string id, string etag, CancellationToken cancellationToken = default);
 }
 
 [Register(typeof(IPersistentObjectSavePath), ServiceLifetime.Scoped)]
@@ -49,6 +72,7 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly ISaveResponsePresenter saveResponse;
     [Inject] private readonly IRetryAccessor retryAccessor;
+    [Inject] private readonly ISparkWriteUnit writeUnit;
 
     public async Task<PersistentObject?> CreateAsync(EntityTypeDefinition entityType, PersistentObject obj, PersistentObject? parent, CancellationToken cancellationToken = default)
     {
@@ -148,5 +172,52 @@ internal sealed partial class PersistentObjectSavePath : IPersistentObjectSavePa
         // Re-presented as a load presents it (contributions M2c-2b, leak 2): never the posted
         // object, which is the client's values plus whatever the save hooks wrote into it.
         return await saveResponse.PresentAsync(entityType, result, isNew: false, cancellationToken);
+    }
+
+    public async Task<bool> DeleteAsync(EntityTypeDefinition entityType, string id, string etag, CancellationToken cancellationToken = default)
+    {
+        // The row-gated read first, as the endpoint always did: a row the caller may not see is missing.
+        if (await databaseAccess.GetPersistentObjectAsync(entityType.Id, id) is null)
+            return false;
+
+        await databaseAccess.DeletePersistentObjectAsync(entityType.Id, id, Abstractions.Interceptors.PersistentObjectOperation.Delete, etag);
+        return true;
+    }
+
+    public async Task CheckCreateAsync(EntityTypeDefinition entityType, PersistentObject obj, CancellationToken cancellationToken = default)
+    {
+        // CreateAsync's sequence up to the write, in its order (N23: authorize before validating).
+        await permissionService.EnsureAuthorizedAsync("New", entityType.Name);
+        obj.ObjectTypeId = entityType.Id;
+        obj.Id = null;
+        obj.Parent = null;
+        await databaseAccess.EnsureSaveAuthorizedAsync(obj);
+        saveValidation.Request(obj, cancellationToken);
+        await writeUnit.CheckSaveAsync(obj);
+    }
+
+    public async Task CheckUpdateAsync(EntityTypeDefinition entityType, string id, PersistentObject obj, CancellationToken cancellationToken = default)
+    {
+        // UpdateAsync's sequence up to the write, in its order.
+        if (string.IsNullOrEmpty(obj.Etag))
+            throw new ArgumentException("An update must carry the etag of the version it edits.", nameof(obj));
+
+        var existingObj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, id)
+            ?? throw SparkConcurrencyException.DeletedSinceLoaded(obj.Etag);
+
+        obj.Id = existingObj.Id;
+        obj.ObjectTypeId = entityType.Id;
+        obj.Parent = null;
+        await databaseAccess.EnsureSaveAuthorizedAsync(obj);
+        saveValidation.Request(obj, cancellationToken);
+        await writeUnit.CheckSaveAsync(obj);
+    }
+
+    public async Task<bool> CheckDeleteAsync(EntityTypeDefinition entityType, string id, string etag, CancellationToken cancellationToken = default)
+    {
+        if (await databaseAccess.GetPersistentObjectAsync(entityType.Id, id) is null)
+            return false;
+
+        return await writeUnit.CheckDeleteAsync(entityType.Id, id, etag);
     }
 }
