@@ -138,6 +138,14 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         mcp.AddTools<SeoTools>();
         mcp.AddPrompts<SeoPrompts>();
     });
+
+    // Rate limiting (owner decision 2026-10-12): the identity provider's budgets on its machine endpoints (token, PAR, device,
+    // revocation, userinfo and client registration, where anonymous agents register: Spark:IdentityProvider:RateLimits) are
+    // endpoint policies, which act only when the application runs ASP.NET's rate-limiting middleware. This registers it, at
+    // the BeforeAuthentication stage so a flood is refused before any credential is checked, with Spark's per-address budget
+    // on /spark and /connect (the defaults; Spark:RateLimiter). No app.UseRateLimiter() below: a second registration would
+    // take two leases per request and halve every budget.
+    spark.AddRateLimiter();
 });
 
 builder.Services.AddScoped<ISparkShareGate, SharingSwitch>();

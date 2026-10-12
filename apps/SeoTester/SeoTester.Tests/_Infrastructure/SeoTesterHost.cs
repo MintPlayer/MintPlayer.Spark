@@ -50,6 +50,11 @@ public sealed class SeoTesterWebAppFactory(IDocumentStore store, IReadOnlyDictio
             builder.UseSetting($"Spark:Auth:Providers:{provider}:ClientId", $"integration-test-{provider.ToLowerInvariant()}");
             builder.UseSetting($"Spark:Auth:Providers:{provider}:ClientSecret", "integration-test-secret");
         }
+        // The app runs the rate limiter (Program.cs), and every test request is one partition (the test server has no remote
+        // address): a shared host would spend Spark's per-address budget and the identity provider's across unrelated tests,
+        // as the E2E host found. Roomy here; a fixture's settings override it (RateLimitTests lowers the provider's on purpose).
+        builder.UseSetting("Spark:RateLimiter:PermitLimit", "100000");
+        builder.UseSetting("Spark:IdentityProvider:RateLimits:PermitLimit", "100000");
         foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
             builder.UseSetting(key, value);
 
