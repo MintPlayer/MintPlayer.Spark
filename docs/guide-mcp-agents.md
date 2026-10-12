@@ -1,7 +1,8 @@
 # Connect an AI agent to a Spark app
 
-> **Draft.** Describes the planned feature in [spark_mcp_PRD.md](spark_mcp_PRD.md). Commands were taken
-> from each agent's documentation on 2026-10-12 and still have to be run against a live server.
+> **Draft.** The feature is built ([spark_mcp_PRD.md](spark_mcp_PRD.md)). The commands below come from each agent's
+> documentation and source code (checked 2026-10-12: Claude Code 2.1.296, Codex 0.162.1, Gemini CLI 0.63.0) and still
+> have to be run against a live server; this banner goes once they have.
 
 Some Spark apps, such as [SeoTester](seotester/mcp.md) and [CodeCoverage](code-coverage/mcp.md), let you
 connect an AI coding agent: Claude Code, OpenAI Codex or Gemini. The agent can then answer questions and

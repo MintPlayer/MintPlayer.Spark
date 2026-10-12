@@ -1,8 +1,8 @@
 # MCP server (developers)
 
-> **Draft.** This guide describes the design in [spark_mcp_PRD.md](spark_mcp_PRD.md). The package does
-> not exist yet; names may change during implementation. Remove this banner once every snippet below has
-> been run against a real app.
+> **Draft.** The package is built ([spark_mcp_PRD.md](spark_mcp_PRD.md), plan M1–M7) and its flows are covered by
+> tests, including an end-to-end sign-in against Fleet. The sign-ins with real agents (Claude Code, Codex, Gemini CLI,
+> VS Code) still have to run against a live app; this banner goes once they have.
 
 `MintPlayer.Spark.Mcp` gives a Spark app a [Model Context Protocol](https://modelcontextprotocol.io)
 server. AI agents such as Claude Code, OpenAI Codex and Gemini connect to it and read (and, if you allow

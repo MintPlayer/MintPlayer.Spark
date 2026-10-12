@@ -423,6 +423,9 @@ None. Q18 was resolved in round 3 (§10, D22).
 - MCP resources and prompts beyond one prompt per adopter ("fix my SEO findings", "raise coverage of this
   repository").
 - Service accounts (a non-human user per organization for CI). Personal tokens act as their creator.
+- How the identity provider's own roles (client administration, developer approval) map to in-app roles per registered
+  OAuth application. Apps that host the provider only for agents keep those rights switched off (owner, 2026-10-12);
+  the design is tracked in [#508](https://github.com/MintPlayer/MintPlayer.Spark/issues/508).
 
 ## 10. Decision log
 
