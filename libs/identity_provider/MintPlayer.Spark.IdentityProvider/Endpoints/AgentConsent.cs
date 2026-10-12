@@ -32,27 +32,31 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 /// trusted as such: the host a metadata document was fetched from is "verified"; a self-chosen name is labelled
 /// unverified; a loopback client is said to run on the user's computer; another application's endpoint is named with
 /// its host.
+/// <para>
+/// A scoped service the two consent endpoints inject (no service location, EndpointConventionsTests R1/R2);
+/// <see cref="IAgentExposure"/> is optional, present only with <c>spark.AddMcp</c>.
+/// </para>
 /// </remarks>
-internal static class AgentConsent
+internal sealed class AgentConsent(
+    AgentRequestUser users, OidcMcpResources resources, OidcAgentGrants grants, OidcSurface surface, IAgentExposure? exposure = null)
 {
     /// <summary>Whether the stored authorization request is an agent's request for an MCP endpoint.</summary>
     public static bool Applies(OidcToken request) => request.Properties.ContainsKey(OidcAgentClients.RequestProperty);
 
     /// <summary>The user behind the consent may answer it: they exist and are not locked out ("disabled or locked accounts refused").</summary>
-    public static async Task<Authorization.Identity.SparkUser?> UsableUserAsync(HttpContext context, string userId)
+    public async Task<Authorization.Identity.SparkUser?> UsableUserAsync(string userId, CancellationToken ct)
     {
-        var user = await context.RequestServices.GetRequiredService<AgentRequestUser>().GetAsync(userId, context.RequestAborted);
+        var user = await users.GetAsync(userId, ct);
         return user is null || AgentRequestUser.IsLockedOut(user, DateTimeOffset.UtcNow) ? null : user;
     }
 
     /// <summary>The endpoint the request is for; <see langword="null"/> once it is no longer configured.</summary>
-    private static OidcMcpEndpoint? EndpointOf(HttpContext context, OidcToken request)
-        => context.RequestServices.GetRequiredService<OidcMcpResources>().Of(request);
+    private OidcMcpEndpoint? EndpointOf(OidcToken request) => resources.Of(request);
 
     /// <summary>What may be offered for this application's own endpoint: the app layer for this agent and the exposed types the user may see.</summary>
-    private static async Task<(EAgentPermission Max, IReadOnlyList<AgentExposedType> Types)> OfferAsync(HttpContext context, OidcApplication app)
+    private async Task<(EAgentPermission Max, IReadOnlyList<AgentExposedType> Types)> OfferAsync(HttpContext context, OidcApplication app)
     {
-        if (context.RequestServices.GetService<IAgentExposure>() is not { } exposure)
+        if (exposure is null)
             return (EAgentPermission.None, []);
 
         var agent = new AgentInformation(OidcAgentClients.KindOf(app), app.ClientId, OidcAgentClients.VerifiedHostOf(app), app.DisplayName, context.User);
@@ -61,11 +65,11 @@ internal static class AgentConsent
         return (max, types);
     }
 
-    public static async Task<IResult> RenderAsync(
+    public async Task<IResult> RenderAsync(
         HttpContext context, ConnectText text, SparkIdentityProviderOptions options, IAntiforgery antiforgery,
         OidcApplication app, OidcToken request, string requestId)
     {
-        if (EndpointOf(context, request) is not { } endpoint)
+        if (EndpointOf(request) is not { } endpoint)
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorRequestExpired");
 
         var sb = new StringBuilder();
@@ -86,14 +90,14 @@ internal static class AgentConsent
         sb.Append("</div></form>");
         // Only where the provider's connected-applications page is mapped; an agents-only provider leaves agents to the
         // application's account page (Connected applications).
-        if (OidcSurface.Of(context.RequestServices).ConnectedApplications)
+        if (surface.ConnectedApplications)
             sb.Append("<p style=\"margin-top:24px;font-size:13px\"><a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a></p>");
         sb.Append("</body></html>");
         return ConnectResults.Html(sb.ToString());
     }
 
     /// <summary>The page head, the agent's trust line, the loopback notice or redirect host, the endpoint (another application's), and who is signed in.</summary>
-    private static async Task AppendIntroAsync(
+    private async Task AppendIntroAsync(
         StringBuilder sb, HttpContext context, ConnectText text, SparkIdentityProviderOptions options, OidcApplication app, OidcToken request, OidcMcpEndpoint endpoint)
     {
         var account = await context.GetInteractiveUserNameAsync() ?? "";
@@ -130,13 +134,13 @@ internal static class AgentConsent
         // "Not you?" ends the session, so it is offered only where the end-session endpoint is mapped. On an agents-only
         // provider the application is the provider (setup 3), and its own sign-out serves the wrong account.
         sb.Append("<p class=\"muted\">").Append(Encode(text["consentSignedInAs", account]));
-        if (OidcSurface.Of(context.RequestServices).EndSession)
+        if (surface.EndSession)
             sb.Append(' ').Append("<a href=\"/connect/logout\">").Append(Encode(text["consentNotYou"])).Append("</a>");
         sb.Append("</p>");
     }
 
     /// <summary>This application's own endpoint: the types and read/changes. Answers whether anything can be allowed.</summary>
-    private static async Task<bool> AppendLocalChoiceAsync(StringBuilder sb, HttpContext context, ConnectText text, OidcApplication app)
+    private async Task<bool> AppendLocalChoiceAsync(StringBuilder sb, HttpContext context, ConnectText text, OidcApplication app)
     {
         var (max, types) = await OfferAsync(context, app);
         if (types.Count == 0)
@@ -192,11 +196,11 @@ internal static class AgentConsent
     /// Records an "allow": validates the choice against what may be offered (a forged POST cannot widen it), writes
     /// the OAuth grant (and, for this application's own endpoint, the agent grant), and answers the code.
     /// </summary>
-    public static async Task<IResult> AllowAsync(
+    public async Task<IResult> AllowAsync(
         HttpContext context, IAsyncDocumentSession session, ConnectText text, SparkIdentityProviderOptions options, OidcAudit audit,
         string issuer, OidcApplication app, OidcToken request, Authorization.Identity.SparkUser user, Choice choice, CancellationToken ct)
     {
-        if (EndpointOf(context, request) is not { } endpoint)
+        if (EndpointOf(request) is not { } endpoint)
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorRequestExpired");
 
         var permissions = choice.Permission == "write" ? EAgentPermission.Read | EAgentPermission.Write : EAgentPermission.Read;
@@ -244,7 +248,7 @@ internal static class AgentConsent
         request.AuthorizationId = await OidcAuthorizationFlow.EnsureAuthorizationAsync(session, app, user.Id!, scopes, remember: false, ct);
         if (endpoint.IsLocal)
         {
-            await context.RequestServices.GetRequiredService<OidcAgentGrants>()
+            await grants
                 .GrantAsync(user.Id!, user.SecurityStamp, app, request.AuthorizationId, permissions, types, ct);
         }
         await audit.RecordAsync(session, OidcAuditKinds.ConsentGranted, user.Id, app.Id, user.Id, context.Connection.RemoteIpAddress?.ToString(),

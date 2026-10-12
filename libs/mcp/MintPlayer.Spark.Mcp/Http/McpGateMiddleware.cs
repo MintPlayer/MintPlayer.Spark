@@ -173,7 +173,7 @@ internal sealed class McpGateMiddleware(
     {
         id ??= await ReadJsonRpcIdAsync(context);
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        context.Response.Headers.WWWAuthenticate = McpProtectedResource.Challenge(context, options, authentication, invalidToken);
+        context.Response.Headers.WWWAuthenticate = McpProtectedResource.Challenge(context, options, authentication, configuration, environment, invalidToken);
         await context.Response.WriteAsJsonAsync(new JsonObject
         {
             ["jsonrpc"] = "2.0",

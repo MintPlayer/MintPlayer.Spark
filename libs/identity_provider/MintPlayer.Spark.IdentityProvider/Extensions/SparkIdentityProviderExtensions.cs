@@ -257,6 +257,8 @@ public static class SparkIdentityProviderExtensions
     {
         var services = builder.Services;
         services.AddSingleton<Mcp.OidcMcpResources>();
+        // A factory for the same reason as the grants below; the consent endpoints inject it.
+        services.AddScoped(sp => ActivatorUtilities.CreateInstance<Endpoints.AgentConsent>(sp));
         services.AddSingleton<Mcp.OidcAgentRegistrationLimiter>();
         services.AddSingleton<Mcp.OidcClientMetadataDocuments>();
         services.AddSingleton<Mcp.OidcAgentDynamicRegistration>();

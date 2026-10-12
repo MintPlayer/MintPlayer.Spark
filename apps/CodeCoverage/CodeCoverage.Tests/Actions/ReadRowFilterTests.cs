@@ -188,7 +188,10 @@ public class ReadRowFilterTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var actions = CreateActions<CommitActions>(VisibilityFor(session), session);
 
-        await new Func<Task>(() => actions.Repository_Commits(ParentArgs("Account", "Accounts/github/1"))).Should().ThrowExactlyAsync<InvalidOperationException>();
+        // The same client error as a missing parent: the query read paths answer it 400 with this message, never 500.
+        await new Func<Task>(() => actions.Repository_Commits(ParentArgs("Account", "Accounts/github/1")))
+            .Should().ThrowExactlyAsync<SparkQueryParentRequiredException>()
+            .WithMessage("*expects parent of type 'Repository', got 'Account'*");
     }
 
     private static Build BuildOf(string? commitId) => new() { Commit = commitId };

@@ -36,6 +36,7 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly ConnectText text;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly AgentConsent agentConsent;
     [Inject] private readonly OidcSurface surface;
 
     public override async Task<IResult> HandleAsync(CancellationToken ct)
@@ -68,9 +69,9 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
         // gives no application access.
         if (AgentConsent.Applies(request))
         {
-            if (await AgentConsent.UsableUserAsync(context, userId) is null)
+            if (await agentConsent.UsableUserAsync(userId, ct) is null)
                 return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status403Forbidden, "errorAccountLocked");
-            return await AgentConsent.RenderAsync(context, text, options, antiforgery, app, request, requestId);
+            return await agentConsent.RenderAsync(context, text, options, antiforgery, app, request, requestId);
         }
 
         // Load scope definitions
@@ -229,6 +230,7 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly ConnectText text;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly AgentConsent agentConsent;
 
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8); the endpoint is created per request.</summary>
     private HttpContext context = null!;
@@ -289,9 +291,9 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
 
         if (AgentConsent.Applies(request))
         {
-            if (await AgentConsent.UsableUserAsync(context, userId) is not { } user)
+            if (await agentConsent.UsableUserAsync(userId, ct) is not { } user)
                 return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status403Forbidden, "errorAccountLocked");
-            return await AgentConsent.AllowAsync(context, session, text, options, audit, oidcIssuer.Resolve(context.Request), app, request, user,
+            return await agentConsent.AllowAsync(context, session, text, options, audit, oidcIssuer.Resolve(context.Request), app, request, user,
                 new AgentConsent.Choice(submission.TypesMode, submission.Types, submission.Permission), ct);
         }
 

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Mcp.Authentication;
 
@@ -21,6 +20,11 @@ namespace MintPlayer.Spark.Mcp.Http;
 /// Published only when a setup offers OAuth: with personal tokens alone there is nowhere to sign in, and a 401 stays
 /// a plain <c>Bearer</c> (PRD §4.2, setup 1).
 /// </para>
+/// <para>
+/// The rules only: the document's two routes are the generator endpoints <see cref="McpProtectedResourceDocument"/>
+/// and <see cref="McpProtectedResourceRootDocument"/>, the challenge is the gate middleware's, and both hand their
+/// services in, as <see cref="McpOrigin"/> takes them.
+/// </para>
 /// </remarks>
 internal static class McpProtectedResource
 {
@@ -31,12 +35,11 @@ internal static class McpProtectedResource
     /// The canonical URL (<c>mcp.CanonicalUrl</c>, else the public base URL + the path). Only in Development, with
     /// neither configured, the request's own origin, as the embedded server's issuer does; never elsewhere.
     /// </summary>
-    public static string? ResourceUrl(HttpContext context, SparkMcpOptions options)
+    public static string? ResourceUrl(HttpContext context, SparkMcpOptions options, IConfiguration configuration, IHostEnvironment environment)
     {
-        var services = context.RequestServices;
-        if (McpOrigin.CanonicalUrl(options, services.GetRequiredService<IConfiguration>()) is { } canonical)
+        if (McpOrigin.CanonicalUrl(options, configuration) is { } canonical)
             return canonical;
-        return services.GetRequiredService<IHostEnvironment>().IsDevelopment()
+        return environment.IsDevelopment()
             ? Origin(context) + options.NormalizedPath
             : null;
     }
@@ -57,13 +60,15 @@ internal static class McpProtectedResource
     /// (<c>Bearer resource_metadata="…", scope="…"</c>), else a plain <c>Bearer</c>; with
     /// <c>error="invalid_token"</c> when a presented token was refused.
     /// </summary>
-    public static string Challenge(HttpContext context, SparkMcpOptions options, McpAuthentication authentication, bool invalidToken)
+    public static string Challenge(
+        HttpContext context, SparkMcpOptions options, McpAuthentication authentication, IConfiguration configuration, IHostEnvironment environment,
+        bool invalidToken)
     {
         var parameters = new List<string>();
         if (invalidToken)
             parameters.Add("error=\"invalid_token\"");
 
-        if (authentication.OffersOAuth && ResourceUrl(context, options) is { } resource)
+        if (authentication.OffersOAuth && ResourceUrl(context, options, configuration, environment) is { } resource)
         {
             parameters.Add($"resource_metadata=\"{MetadataUrl(resource)}\"");
             if (Scopes(authentication) is { Count: > 0 } scopes)
@@ -74,11 +79,10 @@ internal static class McpProtectedResource
     }
 
     /// <summary>The document (RFC 9728 §2), or 404 when no OAuth setup is wired or the resource URL is unknown.</summary>
-    public static IResult Document(HttpContext context)
+    public static IResult Document(
+        HttpContext context, SparkMcpOptions options, McpAuthentication authentication, IConfiguration configuration, IHostEnvironment environment)
     {
-        var options = context.RequestServices.GetRequiredService<SparkMcpOptions>();
-        var authentication = context.RequestServices.GetRequiredService<McpAuthentication>();
-        if (!authentication.OffersOAuth || ResourceUrl(context, options) is not { } resource)
+        if (!authentication.OffersOAuth || ResourceUrl(context, options, configuration, environment) is not { } resource)
             return Results.NotFound();
 
         var origin = Origin(context);

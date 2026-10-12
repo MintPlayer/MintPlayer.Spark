@@ -27,6 +27,13 @@
 	<ItemGroup>
 		<!-- MCP PRD D2: pinned. 2.2.0 is the version spike S1 ran on net11 in plain Stateless mode. -->
 		<PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+		<!-- The RFC 9728 metadata routes are generator endpoint classes; /mcp itself is the SDK's MapMcp. -->
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" GeneratePathProperty="true" />
 	</ItemGroup>
 
 	<ItemGroup>
