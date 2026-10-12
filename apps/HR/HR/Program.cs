@@ -7,6 +7,7 @@ using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Authorization.ResourceServer;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Mcp;
@@ -52,10 +53,18 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         oidc.SaveTokens = true;
     }));
 
+    // Agents sign in at SparkId too (setup 2, docs/guide-mcp.md "A Spark identity provider as the external server"):
+    // SparkId lists HR's /mcp as a resource it signs agents in for (idp.ForMcpResource, its appsettings.Development.json),
+    // and HR accepts SparkId's tokens for its canonical URL (Spark:Mcp:CanonicalUrl), mapped to the HR user who linked
+    // that SparkId account (the "SparkId" sign-in above), never by email. Only where the SparkId sign-in is configured.
+    if (builder.Configuration["Spark:Auth:Providers:OpenIdConnect:SparkId:Authority"] is { Length: > 0 } sparkId)
+        spark.AddExternalAgentAuthorizationServer(sparkId, loginProvider: "SparkId");
+
     // MCP server (docs/guide-mcp.md, PRD D24): agents read and, through propose_changes → apply_changes, change
     // people and their jobs (the contracts: CarreerJob rows, "agentPermissions": "Read, Write" in the model, with
     // Person, which owns them). Professions and companies are readable so a job's references stay visible.
-    // HR has no embedded authorization server, so the setup that is wired is personal access tokens (account page).
+    // Setups: personal access tokens (account page, Connected applications) everywhere, and SparkId's agent tokens
+    // where the SparkId sign-in is configured (above).
     spark.AddMcp(mcp =>
     {
         mcp.ServerName = "HR";

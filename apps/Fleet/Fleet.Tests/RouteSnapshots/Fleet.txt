@@ -1,4 +1,36 @@
+GET /.well-known/jwks
+GET /.well-known/oauth-authorization-server
+GET /.well-known/oauth-protected-resource | allow-anonymous
+GET /.well-known/oauth-protected-resource/mcp | allow-anonymous
+GET /.well-known/openid-configuration
 GET /api/fleet/cars | authorize(policy=;roles=;schemes=Spark:JwtBearer)
+GET /connect/applications
+POST /connect/applications/revoke | antiforgery=required
+POST /connect/applications/revoke-scope | antiforgery=required
+GET /connect/authorize
+POST /connect/authorize | antiforgery=not-required
+GET /connect/consent
+POST /connect/consent | antiforgery=required
+GET /connect/device
+POST /connect/device | antiforgery=required
+POST /connect/device_authorization | rate-limit=policy:SparkIdentityProviderMachine
+GET /connect/error
+POST /connect/introspect
+GET /connect/login
+POST /connect/login | antiforgery=required
+GET /connect/logout
+POST /connect/par | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/register | rate-limit=policy:SparkIdentityProviderMachine
+DELETE /connect/register/{clientId}
+GET /connect/register/{clientId}
+PUT /connect/register/{clientId}
+POST /connect/revoke | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/token | rate-limit=policy:SparkIdentityProviderMachine
+GET /connect/two-factor
+POST /connect/two-factor | antiforgery=required
+GET /connect/userinfo | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/userinfo | antiforgery=not-required | rate-limit=policy:SparkIdentityProviderMachine
+POST /mcp | accepts(application/json) | authorize(policy=;roles=;schemes=) | authorize-policy(requirements=Handler assertion should evaluate to true.;schemes=Spark.IdentityProvider.Agent,SparkPersonalAccessToken)
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required
@@ -18,6 +50,11 @@ POST /spark/auth/logout | antiforgery=required
 POST /spark/auth/manage/2fa | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/2fa/authenticator-uri | authorize(policy=;roles=;schemes=)
 DELETE /spark/auth/manage/account | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/auth/manage/agents | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/applications/revoke | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/revoke | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/tokens | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/update | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/info | authorize(policy=;roles=;schemes=)
 POST /spark/auth/manage/info | antiforgery=required | authorize(policy=;roles=;schemes=)
 POST /spark/auth/manage/password | antiforgery=required | authorize(policy=;roles=;schemes=)
@@ -33,6 +70,14 @@ POST /spark/auth/resendConfirmationEmail | antiforgery=required
 POST /spark/auth/resetPassword | antiforgery=required
 GET /spark/culture
 POST /spark/etl/deploy
+GET /spark/identity-provider/admin/keys | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/admin/keys/rotate | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/identity-provider/applications | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/applications/withdraw | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/identity-provider/developer | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/developer | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/developer/registration-token | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/identity-provider/invitations/accept | antiforgery=required | authorize(policy=;roles=;schemes=)
 CONNECT,GET /spark/live
 GET /spark/lookupref
 GET /spark/lookupref/{name}

@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { oidcProvider, sparkAuthRoutes, withAccount, withExternalLogin, withLocalLogin, withRegistration } from '@mintplayer/ng-spark/auth/routes';
+import { oidcProvider, sparkAuthRoutes, withAccount, withConnectedAgents, withExternalLogin, withLocalLogin, withRegistration } from '@mintplayer/ng-spark/auth/routes';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
 import { ShellComponent } from './shell/shell.component';
 
@@ -15,6 +15,8 @@ export const routes: Routes = [
         withLocalLogin(),
         withRegistration(),
         withAccount(),
+        // Connected applications (account/agents): the AI agents connected to this app's /mcp and personal access tokens.
+        withConnectedAgents(),
       ),
       { path: '', redirectTo: 'home', pathMatch: 'full' },
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },

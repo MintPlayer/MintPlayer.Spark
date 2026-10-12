@@ -170,5 +170,8 @@
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     }
-  ]
+  ],
+  "libraries": {
+    "identity-provider": false
+  }
 }

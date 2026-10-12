@@ -10,6 +10,9 @@ using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Replication.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.ResourceServer;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.IdentityProvider.Extensions;
+using MintPlayer.Spark.Mcp;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -88,6 +91,26 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // registers it as the OpenID Connect scheme "SparkId", and SparkId seeds the "fleet" client.
         spark.AddExternalProviders(builder.Configuration);
 
+        // MCP server (docs/guide-mcp.md): agents read cars, their service history, their managers and companies as the
+        // signed-in user sees them (Car, ServiceEntry, Person and Company are "agentPermissions": "Read"), and never
+        // change anything. Personal access tokens (account page, Connected applications) work everywhere.
+        spark.AddMcp(mcp =>
+        {
+            mcp.ServerName = "Fleet";
+            mcp.ToolPrefix = "fleet";
+            mcp.Instructions = "Cars, their service history, the people who manage them and companies in the Fleet demo, as the signed-in user sees them. Read only.";
+            mcp.AgentPermissions = _ => EAgentPermission.Read;
+        });
+
+        // Fleet is also its agents' authorization server (setup 3): an agent signs the user in here, with Fleet's own
+        // sign-in (password, passkey or SparkId), and gets a token for Fleet's /mcp and nothing else. The provider beside
+        // the SparkId sign-in serves agents only: its management types stay off (security.json "libraries"). It needs
+        // a pinned issuer and the MCP canonical URL (appsettings.Development.json; a deployment also sets the signing
+        // key, Spark:IdentityProvider:SigningKeyPath, from its secrets). Without an issuer /mcp takes personal access
+        // tokens only, as in the E2E host.
+        if (builder.Configuration["Spark:IdentityProvider:Issuer"] is { Length: > 0 })
+            spark.AddIdentityProvider(idp => idp.ForMcp());
+
         // Fleet is a resource server: SparkId issues machine tokens, Fleet validates them. Fleet used
         // to host an issuer of its own for this round trip; since SparkId exists the topology is the
         // real one (docs/identity_provider_platform_PRD.md R1), and Spark:JwtBearer:Authority names
@@ -164,8 +187,12 @@ app.UseEndpoints(endpoints =>
     MintPlayer.AspNetCore.Endpoints.Generated.FleetEndpointsExtensions.MapFleetEndpoints(endpoints);
 });
 
+// /connect/* and /.well-known/* (the agents' authorization server) are server-rendered or JSON, as on SparkId: an
+// unknown path there answers 404, never the SPA's index.html, which an agent probing for metadata would misread.
 app.UseWhen(
-    context => !context.Request.Path.StartsWithSegments("/spark"),
+    context => !context.Request.Path.StartsWithSegments("/spark")
+        && !context.Request.Path.StartsWithSegments("/connect")
+        && !context.Request.Path.StartsWithSegments("/.well-known"),
     appBuilder =>
     {
         appBuilder.UseSpaImproved(spa =>
