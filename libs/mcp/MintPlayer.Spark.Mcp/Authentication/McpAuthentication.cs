@@ -1,64 +1,54 @@
-using System.Security.Claims;
+using Microsoft.Extensions.DependencyInjection;
+using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.Mcp.Authentication;
 
 /// <summary>
-/// One wired-up way for agents to present a token on <c>/mcp</c> (MCP PRD D4): the bearer scheme that
-/// validates it and what the call learns about the agent from the principal it produces.
+/// One wired-up way for agents to present a token on <c>/mcp</c> (MCP PRD D4): the registered
+/// <see cref="IAgentCredentialScheme"/> and the challenge its 401 carries.
 /// </summary>
-/// <param name="Setup">Which of the three setups this is.</param>
-/// <param name="Scheme">The ASP.NET Core authentication scheme that validates the token. Only these run on <c>/mcp</c>; cookies never do.</param>
-/// <param name="Describe">The agent behind a principal this scheme produced: kind, client id, verified host.</param>
-/// <param name="SubjectIsLocalUserId">Whether the token's <c>sub</c> is the local user id (setups 1 and 3; setup 2 maps through a linked login first).</param>
+/// <param name="Source">The package's registration: the scheme that validates the token and describes the agent behind it.</param>
 /// <param name="Challenge">The <c>WWW-Authenticate</c> value a 401 carries, e.g. <c>Bearer resource_metadata="…"</c>; <see langword="null"/> for a setup that offers no OAuth (personal tokens), whose 401 is plain.</param>
-internal sealed record McpAuthenticationSetup(
-    EAgentAuthentication Setup,
-    string Scheme,
-    Func<ClaimsPrincipal, AgentInformation> Describe,
-    bool SubjectIsLocalUserId,
-    string? Challenge);
-
-/// <summary>
-/// Recognises whether <see cref="Setup"/> is wired up in the built application, and if so how.
-/// </summary>
-/// <param name="Setup">The setup recognised.</param>
-/// <param name="Requirement">What the application must add for it, named in the startup failure for an explicit flag without it.</param>
-/// <param name="Detect">The setup when wired, else <see langword="null"/>. Runs once, at startup, against the built container.</param>
-internal sealed record McpAuthenticationDetector(
-    EAgentAuthentication Setup,
-    string Requirement,
-    Func<IServiceProvider, McpAuthenticationSetup?> Detect)
+internal sealed record McpAuthenticationSetup(IAgentCredentialScheme Source, string? Challenge)
 {
-    /// <summary>
-    /// The three setups, none of which exists yet: personal tokens arrive with the Authorization package's
-    /// grants (plan M3a), the embedded server with <c>ForMcp()</c> (M3b), the external server with the resource
-    /// server wiring (M3c). Until then every call runs as <c>anonymous</c>, and an explicit flag refuses startup.
-    /// </summary>
-    public static readonly IReadOnlyList<McpAuthenticationDetector> BuiltIn =
-    [
-        new(EAgentAuthentication.PersonalAccessToken,
-            "personal access tokens from MintPlayer.Spark.Authorization (not available yet)",
-            static _ => null),
-        new(EAgentAuthentication.ExternalAuthorizationServer,
-            "an external authorization server configured as a sign-in provider (not available yet)",
-            static _ => null),
-        new(EAgentAuthentication.EmbeddedAuthorizationServer,
-            "MintPlayer.Spark.IdentityProvider with idp.ForMcp() (not available yet)",
-            static _ => null),
-    ];
+    /// <summary>Which of the three setups this is.</summary>
+    public EAgentAuthentication Setup => Source.Setup;
+
+    /// <summary>The ASP.NET Core authentication scheme that validates the token. Only these run on <c>/mcp</c>; cookies never do.</summary>
+    public string Scheme => Source.Scheme;
+
+    /// <summary>Whether the token's <c>sub</c> is the local user id (setups 1 and 3; setup 2 maps through a linked login first).</summary>
+    public bool SubjectIsLocalUserId => Source.SubjectIsLocalUserId;
 }
 
 /// <summary>
 /// The setups in effect: the configured flags ∩ what is wired (MCP PRD D4). Resolved once at startup.
 /// </summary>
+/// <remarks>
+/// <b>What "wired" means.</b> A package that authenticates agents registers an <see cref="IAgentCredentialScheme"/>
+/// for its setup (the Authorization package for personal access tokens; the IdentityProvider's <c>ForMcp()</c>
+/// for the embedded server, plan M3b; the external server's wiring, M3c). The registrations are the only
+/// evidence: no package is recognised by its assembly name.
+/// </remarks>
 internal sealed class McpAuthentication
 {
+    /// <summary>What an application adds for each setup, named in the startup failure for an explicit flag without it.</summary>
+    private static readonly IReadOnlyDictionary<EAgentAuthentication, string> Requirements = new Dictionary<EAgentAuthentication, string>
+    {
+        [EAgentAuthentication.PersonalAccessToken] = "MintPlayer.Spark.Authorization (spark.AddAuthentication<TUser>()), which issues personal access tokens",
+        [EAgentAuthentication.ExternalAuthorizationServer] = "an external authorization server configured as a sign-in provider (not available yet)",
+        [EAgentAuthentication.EmbeddedAuthorizationServer] = "MintPlayer.Spark.IdentityProvider with idp.ForMcp() (not available yet)",
+    };
+
     private readonly object gate = new();
     private IReadOnlyList<McpAuthenticationSetup>? setups;
 
     /// <summary>The effective setups, in the order of <see cref="EAgentAuthentication"/>'s flags.</summary>
     public IReadOnlyList<McpAuthenticationSetup> Setups
         => setups ?? throw new InvalidOperationException("The MCP authentication setups are resolved by UseSpark(); it has not run.");
+
+    /// <summary>The effective setups as flags.</summary>
+    public EAgentAuthentication Effective => Setups.Aggregate(EAgentAuthentication.None, (all, s) => all | s.Setup);
 
     /// <summary>Whether a 401 can lead the agent to an OAuth sign-in (setup 2 or 3 wired).</summary>
     public bool OffersOAuth => Setups.Any(s => s.Challenge is not null && s.Setup != EAgentAuthentication.PersonalAccessToken);
@@ -75,6 +65,7 @@ internal sealed class McpAuthentication
             if (setups is not null)
                 return setups;
 
+            var registered = services.GetServices<IAgentCredentialScheme>().ToList();
             var resolved = new List<McpAuthenticationSetup>();
             var missing = new List<string>();
             foreach (var flag in new[] { EAgentAuthentication.PersonalAccessToken, EAgentAuthentication.ExternalAuthorizationServer, EAgentAuthentication.EmbeddedAuthorizationServer })
@@ -82,12 +73,11 @@ internal sealed class McpAuthentication
                 if (!options.Authentication.HasFlag(flag))
                     continue;
 
-                var detectors = options.AuthenticationDetectors.Where(d => d.Setup == flag).ToList();
-                var setup = detectors.Select(d => d.Detect(services)).FirstOrDefault(s => s is not null);
-                if (setup is not null)
-                    resolved.Add(setup);
+                var schemes = registered.Where(s => s.Setup == flag).ToList();
+                if (schemes.Count > 0)
+                    resolved.AddRange(schemes.Select(s => new McpAuthenticationSetup(s, ChallengeFor(s))));
                 else if (options.AuthenticationIsExplicit)
-                    missing.Add($"{flag} needs {string.Join(" or ", detectors.Select(d => d.Requirement).Distinct())}");
+                    missing.Add($"{flag} needs {Requirements[flag]}");
             }
 
             if (missing.Count > 0)
@@ -100,4 +90,11 @@ internal sealed class McpAuthentication
             return setups = resolved;
         }
     }
+
+    /// <summary>
+    /// Personal tokens offer no OAuth, so their 401 is a plain <c>Bearer</c> (PRD §4.2). The OAuth setups' RFC 9728
+    /// challenge arrives with them (plan M3b, M3c).
+    /// </summary>
+    private static string? ChallengeFor(IAgentCredentialScheme scheme)
+        => scheme.Setup == EAgentAuthentication.PersonalAccessToken ? null : "Bearer";
 }

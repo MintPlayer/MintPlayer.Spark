@@ -14,7 +14,6 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Mcp;
-using MintPlayer.Spark.Mcp.Authentication;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using ModelContextProtocol.Protocol;
@@ -79,6 +78,7 @@ internal static class McpTestHost
             {
                 spark.AddCredentialScheme<AuthenticationSchemeOptions, StubCookieHandler>(CookieScheme, isAmbient: true);
                 spark.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, StubBearerHandler>(BearerScheme, _ => { });
+                spark.Services.AddSingleton<IAgentCredentialScheme, StubAgentScheme>();
                 spark.AddMcp(mcp =>
                 {
                     mcp.ServerName = "Acme Test";
@@ -86,15 +86,6 @@ internal static class McpTestHost
                     mcp.CanonicalUrl = CanonicalUrl;
                     mcp.AgentPermissions = _ => EAgentPermission.Read | EAgentPermission.Write;
                     mcp.AddTools<AcmeTestTools>();
-                    mcp.AuthenticationDetectors.Add(new McpAuthenticationDetector(
-                        EAgentAuthentication.PersonalAccessToken,
-                        "the test bearer scheme",
-                        _ => new McpAuthenticationSetup(
-                            EAgentAuthentication.PersonalAccessToken,
-                            BearerScheme,
-                            principal => new AgentInformation(EAgentKind.PersonalAccessToken, "stub-client", null, null, principal),
-                            SubjectIsLocalUserId: true,
-                            Challenge: null)));
                     configure?.Invoke(mcp);
                 });
                 configureSpark?.Invoke(spark);
@@ -113,6 +104,22 @@ internal static class McpTestHost
             var identity = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "users/cookie-" + user), new Claim(ClaimTypes.Name, user.ToString())], CookieScheme);
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), CookieScheme)));
         }
+    }
+
+    /// <summary>
+    /// The stub token's registration, as the Authorization package registers its personal access tokens: setup 1,
+    /// local subject, and a grant of everything exposed with read + changes, so only the other layers decide.
+    /// </summary>
+    public sealed class StubAgentScheme : IAgentCredentialScheme
+    {
+        public EAgentAuthentication Setup => EAgentAuthentication.PersonalAccessToken;
+        public string Scheme => BearerScheme;
+        public bool SubjectIsLocalUserId => true;
+
+        public ValueTask<AgentCredential?> DescribeAsync(ClaimsPrincipal principal, CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<AgentCredential?>(new(
+                new AgentInformation(EAgentKind.PersonalAccessToken, "stub-client", null, null, principal),
+                new AgentGrantScope("AgentGrants/stub", EAgentPermission.Read | EAgentPermission.Write, Types: null)));
     }
 
     /// <summary>The agent token: <c>Bearer stub-{user}</c> authenticates with <c>sub = users/{user}</c> only.</summary>

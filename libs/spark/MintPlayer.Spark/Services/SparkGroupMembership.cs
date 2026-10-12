@@ -5,26 +5,6 @@ using MintPlayer.Spark.Abstractions.Authorization;
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
-/// An additional <see cref="IGroupMembershipProvider"/>, registered by
-/// <c>AddGroupMembershipProvider&lt;T&gt;()</c>. Its answers are merged with the primary provider's.
-/// </summary>
-internal interface IComposedGroupMembershipProvider
-{
-    IGroupMembershipProvider Provider { get; }
-}
-
-/// <inheritdoc cref="IComposedGroupMembershipProvider"/>
-/// <remarks>
-/// Generic so a registration is identifiable by its implementation type — which is what lets
-/// <c>AddGroupMembershipProvider&lt;T&gt;()</c> refuse to add the same provider twice.
-/// </remarks>
-internal sealed class ComposedGroupMembershipProvider<TProvider>(TProvider provider) : IComposedGroupMembershipProvider
-    where TProvider : class, IGroupMembershipProvider
-{
-    public IGroupMembershipProvider Provider => provider;
-}
-
-/// <summary>
 /// What every group-membership provider says about the current caller, asked once per request.
 /// </summary>
 /// <param name="Names">Group names from every provider, in provider order, duplicates removed.</param>

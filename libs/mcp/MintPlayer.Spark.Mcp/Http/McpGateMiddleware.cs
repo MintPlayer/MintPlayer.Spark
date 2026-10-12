@@ -63,6 +63,17 @@ internal sealed class McpGateMiddleware(
         }
 
         var setup = await AuthenticateAsync(context);
+
+        // The agent and the user's grant, read now (D12): a grant revoked since the token was issued refuses the
+        // call like a token nobody accepts.
+        var credential = setup is null ? null : await setup.Source.DescribeAsync(context.User, context.RequestAborted);
+        if (setup is not null && credential is null)
+        {
+            setup = null;
+            context.User = new ClaimsPrincipal(new ClaimsIdentity());
+            context.Features.Set<ISparkAuthenticatedSchemeFeature>(null);
+        }
+
         if (setup is null && context.Request.Headers.Authorization.Count > 0)
         {
             // A credential was presented and nothing accepted it: say so, never fall back to anonymous (F7). This
@@ -86,12 +97,10 @@ internal sealed class McpGateMiddleware(
             return;
         }
 
-        var agent = setup is null ? AgentInformation.Anonymous(context.User) : setup.Describe(context.User);
-        var app = options.AgentPermissions(agent);
-        if (agent.Kind == EAgentKind.Anonymous)
-            app &= EAgentPermission.Read; // MCP PRD D17: anonymous calls are always read-only.
+        var agent = credential?.Agent ?? AgentInformation.Anonymous(context.User);
+        var app = McpAgentExposure.AppPermissions(options, agent);
 
-        context.Features.Set(new McpRequestState { Agent = agent, Setup = setup, AppPermissions = app });
+        context.Features.Set(new McpRequestState { Agent = agent, Setup = setup, Grant = credential?.Grant, AppPermissions = app });
 
         // Proxies must not buffer the SSE response (guide-mcp.md "Deployment").
         context.Response.Headers["X-Accel-Buffering"] = "no";

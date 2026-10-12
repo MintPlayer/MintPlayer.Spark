@@ -1,6 +1,5 @@
 using System.Text;
 using MintPlayer.Spark.Abstractions;
-using MintPlayer.Spark.Mcp.Authentication;
 using ModelContextProtocol.Server;
 
 namespace MintPlayer.Spark.Mcp;
@@ -86,12 +85,6 @@ public sealed class SparkMcpOptions
 
     /// <summary>The application's own tool classes, registered unprefixed and prefixed here.</summary>
     internal List<Type> ToolTypes { get; } = [];
-
-    /// <summary>
-    /// How each setup is recognised as wired. The packages that provide a setup (M3a personal tokens, M3b the
-    /// embedded server, M3c an external server) plug in here; tests add their own.
-    /// </summary>
-    internal List<McpAuthenticationDetector> AuthenticationDetectors { get; } = [.. McpAuthenticationDetector.BuiltIn];
 
     /// <summary>
     /// Adds the tools of <typeparamref name="TTools"/>: its <see cref="McpServerToolAttribute"/> methods, written

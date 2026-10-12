@@ -62,6 +62,9 @@ public static class SparkMcpExtensions
         // D13: the agent layers narrow every rights decision of an /mcp request, generic tool or not.
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IAgentRequestRestriction, McpAgentRestriction>());
 
+        // What the account page and the consent screen may offer a user to grant (Abstractions seam, decision log M3a).
+        services.AddScoped<MintPlayer.Spark.Abstractions.IAgentExposure, McpAgentExposure>();
+
         services.AddMcpServer(server =>
             {
                 server.ServerInfo = new Implementation

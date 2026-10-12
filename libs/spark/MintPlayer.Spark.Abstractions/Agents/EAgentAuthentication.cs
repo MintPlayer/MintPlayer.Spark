@@ -1,4 +1,4 @@
-namespace MintPlayer.Spark.Mcp;
+namespace MintPlayer.Spark.Abstractions;
 
 /// <summary>
 /// How agents may obtain a token for <c>/mcp</c> (MCP PRD D4, §4.2). Flags: the effective set is the

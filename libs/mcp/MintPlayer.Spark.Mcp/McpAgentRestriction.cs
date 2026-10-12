@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Mcp;
 
 /// <summary>
 /// The agent layers of the effective permission, applied inside <c>IPermissionService</c> (MCP PRD D6, D13):
-/// app(agent) ∩ the type's <c>agentPermissions</c>. Asked only about a resource <c>security.json</c> already
+/// app(agent) ∩ the type's <c>agentPermissions</c> ∩ the user's grant. Asked only about a resource <c>security.json</c> already
 /// allows, so it narrows and never widens; every tool, generic or app-written, and every framework path they
 /// call (references, sub-queries, the catalogue) honours it without asking.
 /// </summary>
@@ -24,8 +24,11 @@ namespace MintPlayer.Spark.Mcp;
 /// application resource) is governed by the application layer and <c>security.json</c> alone.
 /// </para>
 /// <para>
-/// The user's grant (D12) is a further <c>IAgentRequestRestriction</c> the Authorization package registers
-/// (plan M3a); <c>IPermissionService</c> requires every registered restriction to allow.
+/// <b>The user's grant (D12, D13)</b> is applied here too: its read/changes cap on every target, and its type
+/// choice on entity types. The package that issued the token reads the grant for the request
+/// (<c>IAgentCredentialScheme.DescribeAsync</c>, Abstractions) and the gate keeps it on the request state; only this
+/// package knows which targets are entity types, so the grant's semantics (<c>AgentGrantScope.For</c>) and the
+/// type test meet here (decision log, M3a seam).
 /// </para>
 /// </remarks>
 internal sealed class McpAgentRestriction(IHttpContextAccessor httpContextAccessor, IModelLoader modelLoader) : IAgentRequestRestriction
@@ -37,13 +40,18 @@ internal sealed class McpAgentRestriction(IHttpContextAccessor httpContextAccess
             return ValueTask.FromResult(true); // not an agent request: the web is untouched
 
         var needed = Needs(action);
-        if ((state.AppPermissions & needed) != needed)
-            return ValueTask.FromResult(false);
+        if ((state.Permissions & needed) != needed)
+            return ValueTask.FromResult(false); // app layer ∩ the grant's read/changes
 
         var slash = target.IndexOf('/');
         var typeName = slash < 0 ? target : target[..slash];
         var type = modelLoader.GetEntityTypeByName(typeName);
-        return ValueTask.FromResult(type is null || (type.AgentPermissions & needed) == needed);
+        if (type is null)
+            return ValueTask.FromResult(true); // an application resource: app layer and security.json only
+
+        return ValueTask.FromResult(
+            (type.AgentPermissions & needed) == needed
+            && (state.Grant is null || (state.Grant.For(type.Name) & needed) == needed));
     }
 
     /// <summary>The agent permission an action needs.</summary>

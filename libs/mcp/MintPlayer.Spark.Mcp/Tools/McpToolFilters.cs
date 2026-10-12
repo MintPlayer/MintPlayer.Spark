@@ -27,7 +27,7 @@ internal static partial class McpToolFilters
         {
             var result = await next(request, cancellationToken);
             var state = McpRequestState.Of(HttpContextOf(request));
-            var granted = state?.AppPermissions ?? Abstractions.EAgentPermission.None;
+            var granted = state?.Permissions ?? Abstractions.EAgentPermission.None;
 
             foreach (var tool in result.Tools.ToList())
             {
@@ -47,7 +47,7 @@ internal static partial class McpToolFilters
             if (request.MatchedPrimitive is McpServerTool tool)
             {
                 var needs = McpToolRegistration.Needs(tool.ProtocolTool);
-                if (state is null || (state.AppPermissions & needs) != needs)
+                if (state is null || (state.Permissions & needs) != needs)
                 {
                     // Byte-identical to the SDK's answer for a name it does not know: a tool the agent may not use
                     // is not there, rather than "there, but forbidden".
@@ -81,7 +81,7 @@ internal static partial class McpToolFilters
             services!.GetService<ISparkCurrentUser>()?.Id,
             state?.Agent.ClientId,
             state?.Agent.Kind.ToString() ?? "unknown",
-            grantId: null, // the user's grant arrives with the Authorization package (plan M3a)
+            state?.Agent.GrantId,
             HashArguments(request.Params?.Arguments),
             state?.RowCount,
             outcome,
