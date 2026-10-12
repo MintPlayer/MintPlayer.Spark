@@ -93,6 +93,40 @@ public class SparkIdentityProviderOptions
     }
 
     /// <summary>
+    /// The grants the provider issues tokens by (<c>Spark:IdentityProvider:Flows</c>, e.g. <c>"AuthorizationCode, RefreshToken"</c>).
+    /// Default <see cref="SparkIdentityProviderFlows.All"/>. A flow left out is not mapped, is refused at the token endpoint and
+    /// is not advertised. Checked at startup against <see cref="Endpoints"/> and the agent server: a combination that cannot
+    /// work refuses to start, naming the dependency (README, "Choosing flows and endpoints").
+    /// </summary>
+    public SparkIdentityProviderFlows Flows { get; set; } = SparkIdentityProviderFlows.All;
+
+    /// <summary>
+    /// The endpoints beyond the flows' own (<c>Spark:IdentityProvider:Endpoints</c>, e.g. <c>"Revocation, UserInfo"</c>).
+    /// Default <see cref="SparkIdentityProviderEndpoints.All"/>. An endpoint left out is not mapped (404) and not advertised.
+    /// </summary>
+    public SparkIdentityProviderEndpoints Endpoints { get; set; } = SparkIdentityProviderEndpoints.All;
+
+    /// <summary>
+    /// Maps only what AI agents need, for an application that hosts the provider just to sign agents in to its own MCP
+    /// endpoint (<see cref="ForMcp"/>): the authorization code flow (sign-in, consent) with refresh tokens, revocation, the
+    /// discovery documents and JWKS, and the agent server's Client ID Metadata Documents and anonymous loopback registration.
+    /// The device grant, client credentials, token exchange, PAR, introspection, userinfo, end-session, developer
+    /// registration and portal, the provider's connected-applications pages and key administration are not mapped.
+    /// </summary>
+    /// <remarks>
+    /// It sets <see cref="Flows"/> and <see cref="Endpoints"/>; a later assignment wins. Users manage their agents on the
+    /// application's account page (Connected applications), not at the provider. Not for a provider that also signs agents in
+    /// for another application's endpoint (<see cref="ForMcpResource"/>): that application's users sign in here to link their
+    /// login, and its sign-in reads userinfo, so startup refuses the combination.
+    /// </remarks>
+    public SparkIdentityProviderOptions AgentsOnly()
+    {
+        Flows = SparkIdentityProviderFlows.AuthorizationCode | SparkIdentityProviderFlows.RefreshToken;
+        Endpoints = SparkIdentityProviderEndpoints.Revocation;
+        return this;
+    }
+
+    /// <summary>
     /// Opt in to cross-origin access on the OIDC protocol endpoints. <b>Off by default.</b>
     /// </summary>
     /// <remarks>

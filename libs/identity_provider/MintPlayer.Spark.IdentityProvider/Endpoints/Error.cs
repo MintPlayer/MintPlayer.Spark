@@ -24,6 +24,8 @@ internal sealed partial class OidcErrorPage : IGetEndpoint<string>
 {
     public static string Path => "/error";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Interactive;
+
     /// <summary>A longer description is cut: it is a detail line, not a place for a page of text.</summary>
     private const int MaxDescriptionLength = 300;
 

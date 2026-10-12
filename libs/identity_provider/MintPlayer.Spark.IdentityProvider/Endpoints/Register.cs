@@ -14,10 +14,17 @@ namespace MintPlayer.Spark.IdentityProvider.Endpoints;
 /// is a developer's, from the portal, and the developer must still be approved: registration is the
 /// developer portal by protocol, not a back door around it.
 /// </summary>
+/// <remarks>
+/// Mapped when someone may register here: a developer (<c>Endpoints.DeveloperRegistration</c>) or an AI agent, anonymously
+/// with loopback redirects (the agent server's <c>DynamicRegistration</c>). The RFC 7592 endpoints below are the developer's
+/// only: an anonymous registration gets no registration access token.
+/// </remarks>
 [MemberOf<OidcConnectGroup>]
 internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetadata>
 {
     public static string Path => "/register";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Registration;
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcClientRegistration registration;
@@ -27,6 +34,7 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
     [Inject] private readonly Mcp.OidcAgentDynamicRegistration agentRegistration;
+    [Inject] private readonly OidcSurface surface;
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
         => new(Results.Json(new { error = "invalid_client_metadata", error_description = failure?.Message }, statusCode: 400));
@@ -49,7 +57,11 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
             return await agentRegistration.RegisterAsync(metadata, http.Connection.RemoteIpAddress?.ToString(), ct);
         }
 
-        var initial = await OidcClientRegistration.ResolveBearerAsync(session, http.Request, "initial", ct);
+        // A provider without developer registration (Endpoints.DeveloperRegistration, e.g. AgentsOnly()) maps this endpoint
+        // for agents only: an initial access token, even a valid one issued before, registers nothing here.
+        var initial = surface.DeveloperRegistration
+            ? await OidcClientRegistration.ResolveBearerAsync(session, http.Request, "initial", ct)
+            : null;
         if (initial is null || !developers.IsActive(await developers.GetAsync(initial.Subject, ct)))
         {
             http.Response.Headers.WWWAuthenticate = "Bearer error=\"invalid_token\"";
@@ -121,6 +133,8 @@ internal sealed partial class OidcReadClientRegistration : IGetEndpoint
 {
     public static string Path => "/register/{clientId}";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeveloperRegistration;
+
     [RouteParam] public string ClientId { get; set; } = "";
 
     [Inject] private readonly IDocumentStore store;
@@ -140,6 +154,8 @@ internal sealed partial class OidcReadClientRegistration : IGetEndpoint
 internal sealed partial class OidcUpdateClientRegistration : IPutEndpoint<OidcClientMetadata>
 {
     public static string Path => "/register/{clientId}";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeveloperRegistration;
 
     [RouteParam] public string ClientId { get; set; } = "";
 
@@ -173,6 +189,8 @@ internal sealed partial class OidcUpdateClientRegistration : IPutEndpoint<OidcCl
 internal sealed partial class OidcDeleteClientRegistration : IDeleteEndpoint
 {
     public static string Path => "/register/{clientId}";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeveloperRegistration;
 
     [RouteParam] public string ClientId { get; set; } = "";
 

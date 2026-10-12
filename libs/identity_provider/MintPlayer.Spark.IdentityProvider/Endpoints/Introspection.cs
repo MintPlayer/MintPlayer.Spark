@@ -25,6 +25,8 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
 {
     public static string Path => "/introspect";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Introspection;
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;

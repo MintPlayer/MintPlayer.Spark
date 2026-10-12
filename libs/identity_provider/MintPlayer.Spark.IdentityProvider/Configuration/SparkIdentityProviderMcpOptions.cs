@@ -48,7 +48,9 @@ public sealed class SparkIdentityProviderMcpOptions
 
     /// <summary>
     /// Anonymous dynamic registration (RFC 7591 without an initial access token) for clients whose redirect URIs are
-    /// all loopback (or VS Code's own). Default on: Gemini CLI registers only this way (MCP PRD D5, §4.9).
+    /// all loopback (or VS Code's own). Default on: Gemini CLI registers only this way (MCP PRD D5, §4.9). It maps
+    /// <c>POST /connect/register</c> by itself; a developer's registration there is
+    /// <see cref="SparkIdentityProviderEndpoints.DeveloperRegistration"/>, which <c>AgentsOnly()</c> leaves out.
     /// </summary>
     public bool DynamicRegistration { get; set; } = true;
 

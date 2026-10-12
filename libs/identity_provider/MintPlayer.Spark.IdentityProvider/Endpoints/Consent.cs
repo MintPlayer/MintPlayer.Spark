@@ -26,6 +26,8 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
 {
     public static string Path => "/consent";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).AuthorizationCode;
+
     // Optional: a missing handle is this page's own 400, not the binder's.
     [QueryParam("request_id")] public string? RequestId { get; set; }
 
@@ -34,6 +36,7 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly ConnectText text;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly OidcSurface surface;
 
     public override async Task<IResult> HandleAsync(CancellationToken ct)
     {
@@ -109,9 +112,11 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
         if (redirectHost.Length > 0)
             sb.Append("<p class=\"muted\">").Append(Encode(text["consentRedirect", redirectHost])).Append("</p>");
 
-        // As whom: the signed-in account, with a way out when it is the wrong one.
-        sb.Append("<p class=\"muted\">").Append(Encode(text["consentSignedInAs", account])).Append(' ')
-          .Append("<a href=\"/connect/logout\">").Append(Encode(text["consentNotYou"])).Append("</a></p>");
+        // As whom: the signed-in account, with a way out when it is the wrong one (where the end-session endpoint is mapped).
+        sb.Append("<p class=\"muted\">").Append(Encode(text["consentSignedInAs", account]));
+        if (surface.EndSession)
+            sb.Append(' ').Append("<a href=\"/connect/logout\">").Append(Encode(text["consentNotYou"])).Append("</a>");
+        sb.Append("</p>");
 
         sb.Append("<p>").Append(Encode(text["consentIntro"])).Append("</p>");
         sb.Append("<form method=\"post\">");
@@ -179,10 +184,14 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
 
         // The consent screen is the only place a user is reliably told this decision exists, so it
         // is the only place they will think to look for undoing it. A withdrawal page nothing
-        // links to is a withdrawal page nobody finds.
-        sb.Append("<p style=\"margin-top:24px;font-size:13px\">")
-          .Append("<a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a>")
-          .Append("</p>");
+        // links to is a withdrawal page nobody finds; a link to a page that is not mapped
+        // (Endpoints.ConnectedApplications) finds nothing either.
+        if (surface.ConnectedApplications)
+        {
+            sb.Append("<p style=\"margin-top:24px;font-size:13px\">")
+              .Append("<a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a>")
+              .Append("</p>");
+        }
 
         sb.Append("</body></html>");
 
@@ -212,6 +221,8 @@ internal sealed record OidcConsentSubmission(string? RequestId, string? Decision
 internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmission>
 {
     public static string Path => "/consent";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).AuthorizationCode;
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcAudit audit;

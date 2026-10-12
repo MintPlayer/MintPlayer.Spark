@@ -1,6 +1,5 @@
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
-using MintPlayer.Spark.IdentityProvider.Configuration;
 using MintPlayer.Spark.IdentityProvider.Endpoints.Oidc;
 using MintPlayer.Spark.IdentityProvider.Mcp;
 using MintPlayer.Spark.IdentityProvider.Services;
@@ -25,29 +24,36 @@ internal sealed partial class OidcAuthorizationServerMetadata : IGetEndpoint
     public static string Path => "/oauth-authorization-server";
 
     [Inject] private readonly OidcIssuer oidcIssuer;
-    [Inject] private readonly SparkIdentityProviderOptions options;
+    [Inject] private readonly OidcSurface surface;
 
     public Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var issuer = oidcIssuer.Resolve(httpContext.Request);
+        // Only what this provider maps (its surface): the agent server always has the authorization code flow (startup
+        // refuses it otherwise), refresh and revocation only when they are offered.
         var document = new Dictionary<string, object?>
         {
             ["issuer"] = issuer,
             ["authorization_endpoint"] = $"{issuer}/connect/authorize",
             ["token_endpoint"] = $"{issuer}/connect/token",
-            ["revocation_endpoint"] = $"{issuer}/connect/revoke",
-            ["jwks_uri"] = $"{issuer}/.well-known/jwks",
-            ["response_types_supported"] = new[] { "code" },
-            ["response_modes_supported"] = OidcAuthorizationResponse.Supported,
-            ["grant_types_supported"] = new[] { "authorization_code", "refresh_token" },
-            ["code_challenge_methods_supported"] = new[] { "S256" },
-            ["token_endpoint_auth_methods_supported"] = OidcClientAuthMethods.All,
-            ["revocation_endpoint_auth_methods_supported"] = OidcClientAuthMethods.All,
-            ["scopes_supported"] = OidcAgentClients.Scopes,
-            ["client_id_metadata_document_supported"] = true,
-            ["authorization_response_iss_parameter_supported"] = true,
         };
-        if (options.Mcp is { DynamicRegistration: true })
+        if (surface.Revocation)
+            document["revocation_endpoint"] = $"{issuer}/connect/revoke";
+        document["jwks_uri"] = $"{issuer}/.well-known/jwks";
+        document["response_types_supported"] = new[] { "code" };
+        document["response_modes_supported"] = OidcAuthorizationResponse.Supported;
+        document["grant_types_supported"] = surface.RefreshToken ? new[] { "authorization_code", "refresh_token" } : new[] { "authorization_code" };
+        document["code_challenge_methods_supported"] = new[] { "S256" };
+        document["token_endpoint_auth_methods_supported"] = OidcClientAuthMethods.All;
+        if (surface.Revocation)
+            document["revocation_endpoint_auth_methods_supported"] = OidcClientAuthMethods.All;
+        // offline_access asks for a refresh token (Claude Code adds it when listed): not listed when none is issued.
+        document["scopes_supported"] = surface.RefreshToken
+            ? OidcAgentClients.Scopes
+            : OidcAgentClients.Scopes.Where(s => s != OidcAgentClients.OfflineAccess).ToArray();
+        document["client_id_metadata_document_supported"] = true;
+        document["authorization_response_iss_parameter_supported"] = true;
+        if (surface.AgentRegistration)
             document["registration_endpoint"] = $"{issuer}/connect/register";
 
         httpContext.Response.Headers.CacheControl = "public, max-age=300";

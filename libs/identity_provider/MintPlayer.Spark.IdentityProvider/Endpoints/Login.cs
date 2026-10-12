@@ -43,6 +43,8 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
 {
     public static string Path => "/login";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Interactive;
+
     [QueryParam("returnUrl")] public string? ReturnUrl { get; set; }
     [QueryParam("error")] public string? Error { get; set; }
     [QueryParam("sparkExternalLogin")] public string? ExternalLoginError { get; set; }
@@ -207,6 +209,8 @@ internal sealed partial class OidcLoginSubmit<TUser> : IPostEndpoint<OidcLoginSu
     where TUser : SparkUser, new()
 {
     public static string Path => "/login";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Interactive;
 
     [Inject] private readonly SignInManager<TUser> signInManager;
 

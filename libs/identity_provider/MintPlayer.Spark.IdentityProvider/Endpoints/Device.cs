@@ -20,6 +20,8 @@ internal sealed partial class OidcDevicePage : IGetEndpoint<string>
 {
     public static string Path => "/device";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeviceCode;
+
     [QueryParam("user_code")] public string? UserCode { get; set; }
     [QueryParam("status")] public string? Status { get; set; }
 
@@ -100,6 +102,8 @@ internal sealed record OidcDeviceDecision(string? UserCode, string? Decision);
 internal sealed partial class OidcDeviceSubmit : IPostEndpoint<OidcDeviceDecision>
 {
     public static string Path => "/device";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeviceCode;
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcAudit audit;

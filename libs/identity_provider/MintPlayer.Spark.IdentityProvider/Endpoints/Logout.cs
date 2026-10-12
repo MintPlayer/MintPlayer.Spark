@@ -21,6 +21,8 @@ internal sealed partial class OidcLogout<TUser> : IGetEndpoint<string>
 {
     public static string Path => "/logout";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).EndSession;
+
     [QueryParam("post_logout_redirect_uri")] public string? PostLogoutRedirectUri { get; set; }
     [QueryParam("state")] public string? State { get; set; }
     [QueryParam("client_id")] public string? ClientId { get; set; }

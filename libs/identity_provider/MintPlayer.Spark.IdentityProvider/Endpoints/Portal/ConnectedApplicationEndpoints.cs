@@ -36,6 +36,8 @@ internal sealed partial class GetConnectedApplications : IGetEndpoint
 {
     public static string Path => "/applications";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).ConnectedApplications;
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly ConnectText text;
 
@@ -80,6 +82,8 @@ internal sealed partial class GetConnectedApplications : IGetEndpoint
 internal sealed partial class WithdrawApplicationAccess : IPostEndpoint<WithdrawAccessBody>
 {
     public static string Path => "/applications/withdraw";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).ConnectedApplications;
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));

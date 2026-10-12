@@ -84,7 +84,10 @@ internal static class AgentConsent
             sb.Append("<button type=\"submit\" name=\"decision\" value=\"allow\" class=\"btn btn-allow\">").Append(Encode(text["consentAllow"])).Append("</button>");
         sb.Append("<button type=\"submit\" name=\"decision\" value=\"deny\" class=\"btn btn-deny\">").Append(Encode(text["consentDeny"])).Append("</button>");
         sb.Append("</div></form>");
-        sb.Append("<p style=\"margin-top:24px;font-size:13px\"><a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a></p>");
+        // Only where the provider's connected-applications page is mapped; an agents-only provider leaves agents to the
+        // application's account page (Connected applications).
+        if (OidcSurface.Of(context.RequestServices).ConnectedApplications)
+            sb.Append("<p style=\"margin-top:24px;font-size:13px\"><a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a></p>");
         sb.Append("</body></html>");
         return ConnectResults.Html(sb.ToString());
     }
@@ -124,8 +127,12 @@ internal static class AgentConsent
               .Append(Encode(text["consentAgentResource", endpoint.DisplayName ?? endpoint.Audience, new Uri(endpoint.Audience).Authority]))
               .Append("</strong></p>");
         }
-        sb.Append("<p class=\"muted\">").Append(Encode(text["consentSignedInAs", account])).Append(' ')
-          .Append("<a href=\"/connect/logout\">").Append(Encode(text["consentNotYou"])).Append("</a></p>");
+        // "Not you?" ends the session, so it is offered only where the end-session endpoint is mapped. On an agents-only
+        // provider the application is the provider (setup 3), and its own sign-out serves the wrong account.
+        sb.Append("<p class=\"muted\">").Append(Encode(text["consentSignedInAs", account]));
+        if (OidcSurface.Of(context.RequestServices).EndSession)
+            sb.Append(' ').Append("<a href=\"/connect/logout\">").Append(Encode(text["consentNotYou"])).Append("</a>");
+        sb.Append("</p>");
     }
 
     /// <summary>This application's own endpoint: the types and read/changes. Answers whether anything can be allowed.</summary>

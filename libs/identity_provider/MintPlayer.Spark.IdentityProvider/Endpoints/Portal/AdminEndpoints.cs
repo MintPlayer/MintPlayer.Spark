@@ -20,6 +20,8 @@ internal sealed partial class ListSigningKeys : IGetEndpoint
 {
     public static string Path => "/admin/keys";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Administration;
+
     [Inject] private readonly OidcPortalAccess access;
     [Inject] private readonly IAsyncDocumentSession session;
 
@@ -45,6 +47,8 @@ internal sealed partial class ListSigningKeys : IGetEndpoint
 internal sealed partial class RotateSigningKeys : IPostEndpoint
 {
     public static string Path => "/admin/keys/rotate";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Administration;
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));

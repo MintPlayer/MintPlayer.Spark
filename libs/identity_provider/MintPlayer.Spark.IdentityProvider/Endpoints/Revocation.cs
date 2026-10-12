@@ -50,6 +50,8 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
 {
     public static string Path => "/revoke";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Revocation;
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;

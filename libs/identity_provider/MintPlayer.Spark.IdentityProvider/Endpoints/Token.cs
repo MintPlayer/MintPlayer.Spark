@@ -70,6 +70,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly Mcp.OidcMcpResources mcpResources;
+    [Inject] private readonly OidcSurface surface;
 
     /// <summary>The posted form, kept from <see cref="BindRequestAsync"/>: client authentication reads more of it than the bound record carries.</summary>
     private IFormCollection form = null!;
@@ -105,14 +106,16 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             ? Results.Json(new { error = "invalid_request" }, statusCode: StatusCodes.Status400BadRequest)
             : Results.Json(new { error = "invalid_request", error_description = failure.Message }, statusCode: failure.StatusCode));
 
+    // A grant whose flow this provider does not offer (SparkIdentityProviderOptions.Flows) is unsupported, whatever the
+    // client is registered for: the discovery documents do not list it either.
     public override Task<IResult> HandleAsync(OidcTokenRequest request, CancellationToken ct)
         => request.GrantType switch
         {
-            "authorization_code" => HandleAuthorizationCodeGrant(request, ct),
-            "refresh_token" => HandleRefreshTokenGrant(request, ct),
-            "client_credentials" => HandleClientCredentialsGrant(request, ct),
-            OidcDeviceCodes.GrantType => HandleDeviceCodeGrant(ct),
-            TokenExchangeGrantType => HandleTokenExchangeGrant(ct),
+            "authorization_code" when surface.AuthorizationCode => HandleAuthorizationCodeGrant(request, ct),
+            "refresh_token" when surface.RefreshToken => HandleRefreshTokenGrant(request, ct),
+            "client_credentials" when surface.ClientCredentials => HandleClientCredentialsGrant(request, ct),
+            OidcDeviceCodes.GrantType when surface.DeviceCode => HandleDeviceCodeGrant(ct),
+            TokenExchangeGrantType when surface.TokenExchange => HandleTokenExchangeGrant(ct),
             _ => Task.FromResult(Results.Json(new { error = "unsupported_grant_type" }, statusCode: 400)),
         };
 
@@ -447,8 +450,9 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         await bookkeeping.SaveChangesAsync(ct);
     }
 
-    private static bool AllowsRefreshTokens(OidcApplication app)
-        => app.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase);
+    /// <summary>Whether <paramref name="app"/> gets refresh tokens: this provider offers the flow, and the client is registered for it.</summary>
+    private bool AllowsRefreshTokens(OidcApplication app)
+        => surface.RefreshToken && app.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Whether an authentication assertion was actually asked for.</summary>
     private static bool GrantsOpenId(List<string> scopes)

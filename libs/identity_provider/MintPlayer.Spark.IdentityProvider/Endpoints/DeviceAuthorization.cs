@@ -19,6 +19,8 @@ internal sealed partial class OidcDeviceAuthorization : IPostEndpoint<OidcDevice
 {
     public static string Path => "/device_authorization";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeviceCode;
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
     [Inject] private readonly OidcIssuer oidcIssuer;

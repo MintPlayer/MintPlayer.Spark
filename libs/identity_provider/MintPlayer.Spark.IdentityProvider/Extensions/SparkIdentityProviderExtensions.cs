@@ -38,6 +38,11 @@ public static class SparkIdentityProviderExtensions
     /// Registers OIDC endpoints, signing key service, token generator,
     /// and token cleanup background service.
     /// </summary>
+    /// <remarks>
+    /// Every flow and endpoint by default; <see cref="SparkIdentityProviderOptions.Flows"/>,
+    /// <see cref="SparkIdentityProviderOptions.Endpoints"/> and <see cref="SparkIdentityProviderOptions.AgentsOnly"/> choose fewer.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The chosen flows and endpoints do not fit together (the message names the dependency).</exception>
     public static ISparkBuilder AddIdentityProvider(
         this ISparkBuilder builder,
         Action<SparkIdentityProviderOptions>? configure = null)
@@ -47,6 +52,11 @@ public static class SparkIdentityProviderExtensions
         builder.Configuration?.GetSection("Spark:IdentityProvider").Bind(options);
         configure?.Invoke(options);
         builder.Services.AddSingleton(options);
+
+        // What is mapped and advertised (Flows, Endpoints, the agent server), decided here once: every endpoint's IsEnabled,
+        // the token endpoint and the metadata documents read it. A combination that cannot work stops startup now, naming
+        // the dependency, rather than mapping something half-usable.
+        builder.Services.AddSingleton(OidcSurface.For(options));
 
         // Register services
         // I10: the signing keys live in OidcKeys, protected with Data Protection; a key file named by

@@ -104,12 +104,13 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
 
         // Fleet is also its agents' authorization server (setup 3): an agent signs the user in here, with Fleet's own
         // sign-in (password, passkey or SparkId), and gets a token for Fleet's /mcp and nothing else. The provider beside
-        // the SparkId sign-in serves agents only: its management types stay off (security.json "libraries"). It needs
-        // a pinned issuer and the MCP canonical URL (appsettings.Development.json; a deployment also sets the signing
-        // key, Spark:IdentityProvider:SigningKeyPath, from its secrets). Without an issuer /mcp takes personal access
-        // tokens only, as in the E2E host.
+        // the SparkId sign-in serves agents only: AgentsOnly() maps what agents use (metadata, sign-in and consent, code
+        // and refresh, loopback registration, revocation) and nothing else of the provider, and its management types stay
+        // off (security.json "libraries"). It needs a pinned issuer and the MCP canonical URL (appsettings.Development.json;
+        // a deployment also sets the signing key, Spark:IdentityProvider:SigningKeyPath, from its secrets). Without an
+        // issuer /mcp takes personal access tokens only, as in the E2E host.
         if (builder.Configuration["Spark:IdentityProvider:Issuer"] is { Length: > 0 })
-            spark.AddIdentityProvider(idp => idp.ForMcp());
+            spark.AddIdentityProvider(idp => idp.ForMcp().AgentsOnly());
 
         // Fleet is a resource server: SparkId issues machine tokens, Fleet validates them. Fleet used
         // to host an issuer of its own for this round trip; since SparkId exists the topology is the

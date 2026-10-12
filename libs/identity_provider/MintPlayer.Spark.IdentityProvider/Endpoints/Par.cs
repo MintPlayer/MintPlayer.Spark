@@ -22,6 +22,8 @@ internal sealed partial class OidcPushedAuthorization : IPostEndpoint<OidcAuthor
 {
     public static string Path => "/par";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).PushedAuthorization;
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
     [Inject] private readonly OidcRequestObjects requestObjects;
