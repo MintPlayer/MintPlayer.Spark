@@ -52,7 +52,7 @@ describe('app routes: declaration order', () => {
 
     const authGroup = literal.find(({ route }) => route.path === '');
     expect(authGroup).toBeDefined();
-    expect(authGroup!.route.children!.map(c => c.path)).toEqual(expect.arrayContaining(['sign-in', 'account', 'account/passkeys']));
+    expect(authGroup!.route.children!.map(c => c.path)).toEqual(expect.arrayContaining(['sign-in', 'account', 'account/passkeys', 'account/agents']));
 
     for (const { route, index } of literal) {
       expect(index, `route '${route.path}' must precede the :provider routes`).toBeLessThan(firstParam);

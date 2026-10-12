@@ -120,7 +120,11 @@ public class RegistrationInventoryTests : CoverageRavenTest
     public void The_application_services_are_registered() => AssertRegistered(
         typeof(IMyAccountsService),
         typeof(global::CodeCoverage.Dependencies.IRepositoryManifestScanner),
-        typeof(global::CodeCoverage.Dependencies.IManifestScanScheduler));
+        typeof(global::CodeCoverage.Dependencies.IManifestScanScheduler),
+        // The browse API's and the MCP tools' shared repository gate, and the tools' reads (plan M6). Without them every
+        // /api/browse request and every codecoverage_* call fails at activation.
+        typeof(IRepositoryScope),
+        typeof(global::CodeCoverage.Mcp.ICoverageInsights));
 
     /// <summary>
     /// Message handlers. A wire type whose handler is missing is <b>dropped silently</b> — the

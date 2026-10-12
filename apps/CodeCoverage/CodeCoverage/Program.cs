@@ -16,7 +16,9 @@ using MintPlayer.Spark.Dashboards;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.MailManager;
+using MintPlayer.Spark.Mcp;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
 
@@ -216,6 +218,48 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // stay valid only on endpoints that name the scheme explicitly.
     spark.AddCredentialScheme<AuthenticationSchemeOptions, ApiTokenAuthenticationHandler>(
         ApiTokenAuthenticationHandler.SchemeName);
+
+    // AI agents (MCP PRD §4.8, D24, plan M6): an MCP server at /mcp, read-only, and the app's own authorization server
+    // for it. GitHub cannot sign an agent in (it speaks no MCP OAuth), so the embedded server does, through the app's own
+    // sign-in: /connect/login offers the GitHub button and resumes the agent's authorization after it. Personal access
+    // tokens (spat_, Account → Connected applications) work too, wired by AddAuthentication above.
+    //
+    // ⚠️ covt_ upload tokens and GitHub Actions workflow tokens are NOT agent credentials (D23): neither scheme is an
+    // agent setup, and /mcp answers any credential no agent setup accepts with a 401, never as anonymous.
+    //
+    // The issuer and the canonical MCP URL are this deployment's public origin, never the request's Host: every agent
+    // token is addressed to the canonical URL and to nothing else. Configuration may set either explicitly
+    // (Spark:IdentityProvider:Issuer, Spark:Mcp:CanonicalUrl); otherwise both follow the public origin.
+    var publicOrigin = (builder.Configuration["Spark:Auth:PublicBaseUrl"] is { Length: > 0 } sparkOrigin
+        ? sparkOrigin
+        : builder.Configuration["Coverage:BaseUrl"] ?? "https://localhost:5200").TrimEnd('/');
+
+    // The signing keys live in the database (OidcKeys), their private halves protected by the Data Protection key ring:
+    // nothing to configure and nothing on disk. ⚠️ Losing the key ring now also makes the keys unreadable, and startup
+    // then refuses rather than minting new ones silently (docs/code-coverage/hosting.md, "AI agents (MCP)").
+    spark.AddIdentityProvider(idp =>
+    {
+        idp.Issuer ??= publicOrigin;
+        idp.ForMcp();
+    });
+
+    spark.AddMcp(mcp =>
+    {
+        mcp.ServerName = "CodeCoverage";
+        // Explicit, not the default slug: users allow-list tools by name, so renaming the server must not rename them.
+        mcp.ToolPrefix = "codecoverage";
+        mcp.CanonicalUrl ??= publicOrigin + "/mcp";
+        mcp.Instructions =
+            "Code coverage of the repositories on this CodeCoverage server: public ones for everyone, private ones for a "
+            + "signed-in user with access to the owner on GitHub. Name a repository as forge/owner/name, e.g. "
+            + "github/octo-org/octo-repo (codecoverage_list_repositories lists them). Start with codecoverage_summary, then "
+            + "codecoverage_hotspots and codecoverage_file. Answers give line numbers only, at the commit they name: read the "
+            + "source in your local checkout.";
+        // Read-only for every agent (D24): the app has no write an agent should make.
+        mcp.AgentPermissions = _ => MintPlayer.Spark.Abstractions.EAgentPermission.Read;
+        mcp.AddTools<CodeCoverage.Mcp.CoverageTools>();
+        mcp.AddPrompts<CodeCoverage.Mcp.CoveragePrompts>();
+    });
 
     // Meters /spark (Spark's generic query API — a second anonymous read surface
     // over the same documents as /api/browse) and /api/browse itself, one bucket
@@ -539,10 +583,15 @@ app.UseEndpoints(endpoints =>
     endpoints.MapCodeCoverageEndpoints();
 });
 
+// /connect/* (the authorization server's pages), /.well-known/* (its metadata) and /mcp are server-rendered or JSON:
+// an unknown path under them is a 404, never the SPA's index.
 app.UseWhen(
     context => !context.Request.Path.StartsWithSegments("/spark")
         && !context.Request.Path.StartsWithSegments("/api")
-        && !context.Request.Path.StartsWithSegments("/badge"),
+        && !context.Request.Path.StartsWithSegments("/badge")
+        && !context.Request.Path.StartsWithSegments("/connect")
+        && !context.Request.Path.StartsWithSegments("/.well-known")
+        && !context.Request.Path.StartsWithSegments("/mcp"),
     appBuilder =>
     {
         appBuilder.UseSpaImproved(spa =>
