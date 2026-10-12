@@ -40,7 +40,7 @@ public class CrawlResumeTests(SeoRestartHostFixture host)
             await Task.Delay(50);
         await Task.Delay(300);
         using (var session = host.Database.OpenAsyncSession())
-            (await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(runId), pageSize: 100)).Should().HaveCount(1, "only the home page (the probe's) is committed");
+            (await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(site.Id!), pageSize: 100)).Should().HaveCount(1, "only the home page (the probe's) is committed");
 
         await host.RestartHostAsync();
         host.Web.Html(origin + "/k5", FakeSite.Page("Resumable /k5"), delay: TimeSpan.FromMilliseconds(100));
@@ -50,7 +50,7 @@ public class CrawlResumeTests(SeoRestartHostFixture host)
         run.PagesDone.Should().Be(21);
         using (var session = host.Database.OpenAsyncSession())
         {
-            var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(runId), pageSize: 100);
+            var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(site.Id!), pageSize: 100);
             pages.Select(p => p.Url).Should().OnlyHaveUniqueItems();
             pages.Should().HaveCount(21);
         }

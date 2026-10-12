@@ -4,9 +4,11 @@ using MintPlayer.Spark.Organizations;
 namespace SeoTester.Entities;
 
 /// <summary>
-/// One crawled page of a run (<c>docs/seo_analyzer_PRD.md</c> F6, §4.2): expires 7 days after it was written (D8,
-/// <c>expiresAfter</c> in the model; X1 hides it from every read the moment it is due, before RavenDB's sweep). Its
-/// id is <c>{runId}/pages/{urlHash}</c>, so re-crawling a page overwrites it (M9). Shown as a sub-query of its run.
+/// The latest result of one page of a site (<c>docs/seo_analyzer_PRD.md</c> F6, §4.2): expires 7 days after it was written
+/// (D8, <c>expiresAfter</c> in the model; X1 hides it from every read the moment it is due, before RavenDB's sweep). Its id
+/// is <c>{siteId}/pages/{urlHash}</c>, so a scan's fetch of the page replaces the result an earlier scan wrote instead of
+/// adding a copy per scan (owner decision 2026-10-12); <see cref="RunId"/> names the scan that wrote it. Shown as a
+/// sub-query of that scan; what each scan measured stays on its <see cref="AuditRun"/> (totals, samples, the delta).
 /// </summary>
 public class PageResult : IOrganizationOwned, IExpiring
 {
@@ -80,12 +82,19 @@ public class PageResult : IOrganizationOwned, IExpiring
     [IgnoreProperty]
     public string? Fingerprint { get; set; }
 
-    /// <summary>The prefix every page id of <paramref name="runId"/> starts with (read by prefix, no index).</summary>
-    public static string PrefixFor(string runId) => $"{runId}/pages/";
+    /// <summary>
+    /// Whose pages a run writes: its site's, one result per page (<see cref="IdFor"/>). A run without a site keeps its own.
+    /// The site, never its origin: the same origin can be a site of several organizations, and the page is read under its
+    /// site's organization.
+    /// </summary>
+    public static string OwnerOf(AuditRun run) => run.SiteId ?? run.Id!;
 
-    /// <summary>The id of the page <paramref name="url"/> of run <paramref name="runId"/>: a hash, so any URL makes a valid id.</summary>
-    public static string IdFor(string runId, string url)
-        => $"{runId}/pages/{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)))[..32]}";
+    /// <summary>The prefix every page id of <paramref name="owner"/> (<see cref="OwnerOf"/>) starts with (read by prefix, no index).</summary>
+    public static string PrefixFor(string owner) => $"{owner}/pages/";
+
+    /// <summary>The id of the page <paramref name="url"/> of <paramref name="owner"/> (<see cref="OwnerOf"/>): a hash, so any URL makes a valid id.</summary>
+    public static string IdFor(string owner, string url)
+        => $"{owner}/pages/{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(url)))[..32]}";
 }
 
 /// <summary>A check's result on one page. Texts are rendered from the catalogue and <see cref="Detail"/>, never stored.</summary>

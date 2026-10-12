@@ -81,6 +81,7 @@ public partial class SiteProbeRecipient : IRecipient<SiteProbeMessage>
             ExpiresAtUtc = now + TimeSpan.FromDays(2),
         };
         frontier.Seen.Add(CrawlUrl.Hash(home.Result.Url));
+        frontier.Stored.Add(CrawlUrl.Hash(home.Result.Url));
         CrawlFrontiers.Extend(frontier, home, maxQueued: run.MaxPages, maxExternal: run.DeepCrawl ? pipeline.Options.MaxExternalLinks : 0);
         foreach (var url in outcome.SitemapUrls)
             if (frontier.Seen.Add(CrawlUrl.Hash(url)) && CrawlFrontiers.LooksLikePage(url))

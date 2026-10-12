@@ -40,7 +40,8 @@ namespace SeoTester.Mcp;
 /// <para>
 /// <b>Page results</b> (<see cref="PageResult"/>) are not exposed to agents as a type (<c>agentPermissions</c> None: large,
 /// expiring); the tools read them as part of their scan (<see cref="McpReadsThroughAttribute"/>), and say so when the
-/// 7-day retention has removed them, never answering an empty "clean" list (§4.7 gap 2).
+/// 7-day retention has removed them or a later scan replaced them (a site keeps one result per page, the latest), never
+/// answering an empty "clean" list (§4.7 gap 2).
 /// </para>
 /// </remarks>
 [McpServerToolType]
@@ -279,6 +280,15 @@ public sealed class SeoTools(
                 break;
         }
 
+        // A site keeps one result per page, the latest (owner decision 2026-10-12): a page a later scan fetched again holds
+        // that scan's result now. With none of this scan's left, its own totals answer, never an empty list that reads as clean.
+        var scanned = Int(Value(scan, nameof(AuditRun.PagesDone))) ?? 0;
+        if (total == 0)
+        {
+            body["rules"] = RuleTotals(flagged, catalogue);
+            return SparkMcpResult.Json(NoPagesNote(target), body);
+        }
+
         var rules = new JsonArray();
         foreach (var (check, findings) in groups.OrderBy(g => SeverityRank(catalogue.Get(g.Key)?.Severity)).ThenBy(g => g.Key, StringComparer.Ordinal))
         {
@@ -303,6 +313,9 @@ public sealed class SeoTools(
             : "Findings of the pages read, grouped by rule.";
         if (position < total)
             note += $" Pages {skip + 1}–{position} of {total} were read: call again with skip={position} for the next ones.";
+        if (target.Later is { } later && total < scanned)
+            note += $" {scanned - total} of this scan's {scanned} pages were checked again by a later scan ({later}): SeoTester keeps one "
+                + "result per page, the latest, so they are listed under that scan, not here.";
         note += " Some rules (headers, TLS, DNS, sitemap) are judged once for the site: seotester_run_summary lists them. "
             + "How to fix a rule: seotester_explain_check.";
         return SparkMcpResult.Json(note, body);
@@ -310,7 +323,7 @@ public sealed class SeoTools(
 
     [McpServerTool(Name = "get_page", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [McpReadsThrough(nameof(PageResult), nameof(AuditRun))]
-    [Description("One scanned page: status code, load time, title, meta description, H1, Open Graph tags, and its failing and warning checks with the element where known.")]
+    [Description("One scanned page's latest result (SeoTester keeps one per page): status code, load time, title, meta description, H1, Open Graph tags, and its failing and warning checks with the element where known, and the scan that checked it.")]
     public async Task<CallToolResult> GetPageAsync(
         [Description("The site: its id from seotester_list_sites (Sites/…) or its address (example.com).")] string site,
         [Description("The page's URL, as seotester_list_findings shows it.")] string url,
@@ -325,21 +338,25 @@ public sealed class SeoTools(
             return refusal;
         if (target.Run is not { } scan)
             return SparkMcpResult.Json(NoScanNote(target), Header(target));
-        if (target.PagesExpired)
-            return SparkMcpResult.Json(PageRetentionNote(target), Header(target));
 
-        // The stored id hashes the crawl's URL; the agent may pass it as shown or as typed.
+        // The site's one result for the page, the latest, whichever scan wrote it (owner decision 2026-10-12). The stored id
+        // hashes the crawl's URL; the agent may pass it as shown or as typed.
         PersistentObject? page = null;
         foreach (var candidate in new[] { url.Trim(), Uri.TryCreate(url.Trim(), UriKind.Absolute, out var parsed) ? CrawlUrl.Normalize(parsed).AbsoluteUri : null }.Distinct())
         {
             if (candidate is null)
                 continue;
-            page = await database.GetPersistentObjectAsync(Type(nameof(PageResult)), PageResult.IdFor(scan.Id!, candidate));
+            page = await database.GetPersistentObjectAsync(Type(nameof(PageResult)), PageResult.IdFor(target.Site!.Id!, candidate));
             if (page is not null)
                 break;
         }
         if (page is null)
-            return Error("This scan has no page with that URL. seotester_list_findings lists the scanned pages with their URLs as stored.");
+            return target.PagesExpired
+                ? SparkMcpResult.Json(PageRetentionNote(target), Header(target))
+                : Error("SeoTester has no result for that URL of this site: a page's result is kept 7 days after it was checked. "
+                    + "seotester_list_findings lists the scanned pages with their URLs as stored.");
+        // The scan that wrote it: an id of this application, never text of the site.
+        var pageScan = Str(Value(page, nameof(PageResult.RunId))) is { } written && IsId(written, "AuditRuns/") ? written : null;
 
         var catalogue = await CatalogueAsync(cancellationToken);
         var findings = Findings(page).ToList();
@@ -351,6 +368,7 @@ public sealed class SeoTools(
         body["page"] = new JsonObject
         {
             ["url"] = pageUrl,
+            ["scan"] = pageScan,
             ["statusCode"] = Int(Value(page, nameof(PageResult.StatusCode))),
             ["depth"] = Int(Value(page, nameof(PageResult.Depth))),
             ["loadMs"] = Int(Value(page, nameof(PageResult.LoadMs))),
@@ -377,7 +395,10 @@ public sealed class SeoTools(
                     return (JsonNode)entry;
                 })]),
         };
-        return SparkMcpResult.Json("One page of the scan. How to fix a rule: seotester_explain_check.", body);
+        var note = string.Equals(pageScan, scan.Id, StringComparison.OrdinalIgnoreCase)
+            ? "One page of the scan."
+            : $"This page's latest result is from scan {pageScan ?? "unknown"}, not from the scan asked for: SeoTester keeps one result per page, the latest.";
+        return SparkMcpResult.Json(note + " How to fix a rule: seotester_explain_check.", body);
     }
 
     [McpServerTool(Name = "explain_check", ReadOnly = true, Idempotent = true, OpenWorld = false)]
@@ -505,8 +526,11 @@ public sealed class SeoTools(
 
     private sealed record SiteLookup(PersistentObject? Site, CallToolResult? Refusal);
 
-    /// <summary>The scan a tool reads: the site, the run (null when there is none yet) and how long its pages are kept.</summary>
-    private sealed record ScanTarget(PersistentObject? Site, PersistentObject? Run, PersistentObject? Running, DateTime? PagesKeptUntil, bool PagesExpired, CallToolResult? Refusal);
+    /// <summary>
+    /// The scan a tool reads: the site, the run (null when there is none yet), how long its pages are kept, and the site's
+    /// newest scan started after it (<see cref="Later"/>), whose fetches replace this scan's page results (one per page).
+    /// </summary>
+    private sealed record ScanTarget(PersistentObject? Site, PersistentObject? Run, PersistentObject? Running, DateTime? PagesKeptUntil, bool PagesExpired, CallToolResult? Refusal, string? Later = null);
 
     /// <summary>
     /// The caller's site by id or address, through the row-gated read: another organization's site, an unknown one and a
@@ -559,6 +583,8 @@ public sealed class SeoTools(
         {
             PersistentObject? scan = null;
             PersistentObject? running = null;
+            // The site's scans, newest first (Custom.SiteRuns).
+            var recent = await queries.ExecuteQueryAsync(Query("SiteRuns"), siteObject, take: 20, cancellationToken: cancellationToken);
             if (!string.IsNullOrWhiteSpace(run))
             {
                 // A scan of another site, or one the caller may not see, is refused like an unknown one.
@@ -568,8 +594,7 @@ public sealed class SeoTools(
             }
             else
             {
-                // The site's scans, newest first (Custom.SiteRuns): the newest finished one, and one still running if any.
-                var recent = await queries.ExecuteQueryAsync(Query("SiteRuns"), siteObject, take: 20, cancellationToken: cancellationToken);
+                // The newest finished scan, and one still running if any.
                 var newestRunning = recent.Items.FirstOrDefault(i => Str(Cell(i, nameof(AuditRun.Status))) is { } s && AuditRunStatus.InProgress.Contains(s));
                 var newestFinished = recent.Items.FirstOrDefault(i => Str(Cell(i, nameof(AuditRun.Status))) == AuditRunStatus.Completed)
                     ?? recent.Items.FirstOrDefault(i => Str(Cell(i, nameof(AuditRun.Status))) is { } s && AuditRunStatus.Finished.Contains(s));
@@ -587,7 +612,16 @@ public sealed class SeoTools(
             var ended = DateValue(Value(scan, nameof(AuditRun.CompletedAtUtc))) ?? DateValue(Value(scan, nameof(AuditRun.StartedAtUtc)));
             DateTime? keptUntil = ended is { } e ? e + Crawler.PageAnalyzer.Retention : null;
             var expired = keptUntil is { } until && until <= time.GetUtcNow().UtcDateTime;
-            return new(siteObject, scan, running, keptUntil, expired, null);
+
+            // A site keeps one result per page, the latest: the newest scan started after this one replaces the results of
+            // the pages it fetches again (the query is newest first, so only its first row can be later).
+            var started = DateValue(Value(scan, nameof(AuditRun.StartedAtUtc)));
+            var newest = recent.Items.FirstOrDefault();
+            var later = newest is not null && !string.Equals(newest.Id, scan.Id, StringComparison.OrdinalIgnoreCase)
+                        && DateValue(Cell(newest, nameof(AuditRun.StartedAtUtc))) is { } newestStarted && started is { } s && newestStarted > s
+                ? newest.Id
+                : null;
+            return new(siteObject, scan, running, keptUntil, expired, null, later);
         }
         catch (SparkAccessDeniedException)
         {
@@ -641,11 +675,23 @@ public sealed class SeoTools(
         var until = target.PagesKeptUntil?.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
         var running = target.Running is not null ? " A newer scan is running: follow it with seotester_scan_status." : string.Empty;
         return target.PagesExpired
-            ? $"The per-page findings of this scan expired on {until}: SeoTester keeps page results for 7 days after a scan. "
+            ? $"The per-page findings of this scan expired on {until}: SeoTester keeps a page's latest result for 7 days after it was checked. "
               + "The totals per rule remain (affected pages and up to five sample URLs) and are not a clean result. "
               + "Start a new scan with seotester_start_scan for page-level findings." + running
-            : $"Per-page findings of this scan are kept until {until} (7 days after the scan)." + running;
+            : $"Per-page findings of this scan are kept until {until} (7 days after the scan), unless a later scan checks the page "
+              + "again: SeoTester keeps one result per page, the latest." + running;
     }
+
+    /// <summary>
+    /// A scan none of whose page results is left (§4.7 gap 2, owner decision 2026-10-12): a later scan fetched its pages again,
+    /// or none was stored. Its totals answer; the note never reads as a clean result.
+    /// </summary>
+    private static string NoPagesNote(ScanTarget target)
+        => (target.Later is { } later
+               ? $"The per-page findings of this scan were replaced: SeoTester keeps one result per page, the latest, and a later scan "
+                 + $"({later}) checked these pages again. Read that scan with seotester_list_findings (run = {later}). "
+               : "No page result of this scan is stored. ")
+           + "The totals per rule remain (affected pages and up to five sample URLs) and are not a clean result.";
 
     // ---- Findings ------------------------------------------------------------------------------------------------------
 

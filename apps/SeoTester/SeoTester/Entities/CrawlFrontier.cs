@@ -27,6 +27,13 @@ public class CrawlFrontier : IExpiring
     /// <summary><see cref="CrawlUrl.Hash"/> of every URL some crawled page links to.</summary>
     public HashSet<string> Linked { get; set; } = [];
 
+    /// <summary>
+    /// <see cref="CrawlUrl.Hash"/> of every page this run stored. A site keeps one result per page (<see cref="PageResult.OwnerOf"/>),
+    /// so the run's pages are these, read by the site's prefix: a page an earlier scan left is not the run's, and one a
+    /// concurrent scan of the same site fetched again after it still is (<c>RunPipeline.LoadRunPagesAsync</c>).
+    /// </summary>
+    public HashSet<string> Stored { get; set; } = [];
+
     /// <summary>The sitemap's same-site URLs the crawl kept (at most the page limit), for the orphan check.</summary>
     public List<string> SitemapUrls { get; set; } = [];
 
@@ -52,6 +59,12 @@ public class CrawlFrontier : IExpiring
 
     /// <summary>The probe's site-level findings, scored by the aggregate.</summary>
     public List<StoredFinding> SiteFindings { get; set; } = [];
+
+    /// <summary>
+    /// The render and PageSpeed findings of the sampled pages, with their URLs, scored by the aggregate. They are on the pages
+    /// too, but a page holds only its latest result: a concurrent scan's fetch of it would take this run's findings with it.
+    /// </summary>
+    public List<StoredFinding> SampledFindings { get; set; } = [];
 
     /// <summary>Why the crawl stopped before the frontier was empty (page limit, wall time, the server asked to back off).</summary>
     public string? StopReason { get; set; }

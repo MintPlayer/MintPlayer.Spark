@@ -45,7 +45,10 @@ public partial class PsiRecipient : IRecipient<PsiMessage>
     {
         var pages = new Dictionary<string, List<PageFinding>>(StringComparer.Ordinal);
         var site = new List<StoredFinding>();
-        var sample = await RenderSample.PickAsync(session, run.Id!, run.PsiSample, cancellationToken);
+        var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id!), cancellationToken);
+        if (frontier is not null)
+            session.Advanced.Evict(frontier);
+        var sample = await RenderSample.PickAsync(session, run, frontier, run.PsiSample, cancellationToken);
         if (!client.Configured)
             NotMeasured(site, "PageSpeed Insights is not configured");
         else if (sample.Count == 0)
@@ -66,16 +69,16 @@ public partial class PsiRecipient : IRecipient<PsiMessage>
                         await session.SaveChangesAsync(cancellationToken);
                         return;
                     }
-                    pages[page.Id!] = [.. PsiChecks.Ids.Select(id => Stored(PsiChecks.NotMeasured(id, "the PageSpeed Insights quota is exhausted")))];
+                    pages[page.Url] = [.. PsiChecks.Ids.Select(id => Stored(PsiChecks.NotMeasured(id, "the PageSpeed Insights quota is exhausted")))];
                     continue;
                 }
-                pages[page.Id!] = outcome.Summary is { } summary
+                pages[page.Url] = outcome.Summary is { } summary
                     ? [.. PsiChecks.Evaluate(summary with { Url = page.Url }).Select(Stored)]
                     : [.. PsiChecks.Ids.Select(id => Stored(Finding.Error(id, "PageSpeed Insights could not test the page: " + outcome.Reason)))];
             }
         }
 
-        RunPipeline.AddFindings(session, run.Id!, pages, site);
+        RunPipeline.AddFindings(session, run, pages, site);
         await pipeline.FinishStageAsync(session, outbox, run.Id!, PipelineStages.Psi, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }

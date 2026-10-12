@@ -12,16 +12,9 @@ namespace SeoTester.Rendering;
 /// </summary>
 public static partial class RenderSample
 {
-    public static async Task<List<PageResult>> PickAsync(IAsyncDocumentSession session, string runId, int count, CancellationToken cancellationToken)
-    {
-        if (count <= 0)
-            return [];
-        var pages = new List<PageResult>();
-        await using (var stream = await session.Advanced.StreamAsync<PageResult>(PageResult.PrefixFor(runId), token: cancellationToken))
-            while (await stream.MoveNextAsync())
-                pages.Add(stream.Current.Document);
-        return Pick(pages, count);
-    }
+    /// <summary>The sample among the pages <paramref name=run/> stored (<see cref="Crawler.RunPipeline.LoadRunPagesAsync"/>).</summary>
+    public static async Task<List<PageResult>> PickAsync(IAsyncDocumentSession session, AuditRun run, CrawlFrontier? frontier, int count, CancellationToken cancellationToken)
+        => count <= 0 ? [] : Pick(await Crawler.RunPipeline.LoadRunPagesAsync(session, run, frontier, cancellationToken), count);
 
     public static List<PageResult> Pick(IEnumerable<PageResult> pages, int count)
     {

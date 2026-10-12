@@ -19,8 +19,8 @@ namespace SeoTester.Crawler;
 /// coverage, depth, near-duplicates, hreflang return links), scores them with the snapshot the run started with
 /// (D32), compares each check with the site's previous completed run (New / Fixed / Unchanged), and in one commit
 /// finishes the run, updates the site's latest score and deletes the frontier. Then the participants are notified
-/// (X10), and a monitored site's members alerted (F10, <c>SiteAlerter</c>). Pages are read by id prefix, not through an
-/// index: complete and never stale.
+/// (X10), and a monitored site's members alerted (F10, <c>SiteAlerter</c>). Pages are the ones this run stored, read by the
+/// site's id prefix, not through an index: complete and never stale (<see cref="RunPipeline.LoadRunPagesAsync"/>).
 /// </summary>
 public partial class AggregateRecipient : IRecipient<AggregateMessage>
 {
@@ -43,16 +43,17 @@ public partial class AggregateRecipient : IRecipient<AggregateMessage>
     private async Task AggregateAsync(AuditRun run, CancellationToken cancellationToken)
     {
         var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id!), cancellationToken);
-        var pages = new List<PageResult>();
-        await using (var stream = await session.Advanced.StreamAsync<PageResult>(PageResult.PrefixFor(run.Id!), token: cancellationToken))
-            while (await stream.MoveNextAsync())
-                pages.Add(stream.Current.Document);
+        // The pages this run stored, of the site's latest results (one per page): never one an earlier scan left behind.
+        var pages = await RunPipeline.LoadRunPagesAsync(session, run, frontier, cancellationToken);
 
         var tally = new RunTally();
         foreach (var page in pages)
             foreach (var finding in page.Findings)
                 tally.Add(page.Url, new CheckFinding(finding.CheckId, Enum.TryParse<CheckStatus>(finding.Status, out var s) ? s : CheckStatus.Error, CheckFinding.ParseDetail(finding.Detail)));
         foreach (var stored in frontier?.SiteFindings ?? [])
+            tally.Add(stored.Url, stored.ToFinding());
+        // This run's render and PageSpeed findings, also when a concurrent scan's fetch has replaced the page they were added to.
+        foreach (var stored in frontier?.SampledFindings ?? [])
             tally.Add(stored.Url, stored.ToFinding());
 
         var linked = frontier?.Linked ?? [];

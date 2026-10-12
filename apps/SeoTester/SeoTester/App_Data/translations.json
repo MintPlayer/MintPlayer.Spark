@@ -1687,6 +1687,10 @@
       "en": "Page details are kept for 7 days and this audit's have expired. Its scores and results above are kept.",
       "nl": "Paginadetails worden 7 dagen bewaard en die van deze audit zijn verlopen. De scores en resultaten hierboven blijven bewaard."
     },
+    "pagesLatestOnly": {
+      "en": "Each page keeps only its latest result, for 7 days: a page a later audit checked again is listed under that audit. This audit's scores and results above are kept.",
+      "nl": "Elke pagina bewaart alleen haar laatste resultaat, 7 dagen lang: een pagina die een latere audit opnieuw controleerde, staat bij die audit. De scores en resultaten van deze audit hierboven blijven bewaard."
+    },
     "runStatus": {
       "Queued": {
         "en": "Queued",

@@ -9,9 +9,10 @@ namespace SeoTester.Html;
 /// <remarks>
 /// <b>Selectors only, no HTML excerpt</b> (spike S7, <c>docs/spark_mcp_spikes.md</c>): an excerpt of at most 300 characters
 /// grew the stored page results by 40.7 % against 20.4 % for selectors alone, past the 25 % the PRD allows, and it would
-/// store the page's body, which SeoTester never keeps (<c>docs/seo_analyzer_PRD.md</c> §12, "Nothing crawled is stored").
-/// A selector names an element by its tag, position and id: structure, not content. It is still the page's own markup and
-/// is fenced as data wherever an agent reads it.
+/// store the page's body, which SeoTester never keeps (<c>docs/seo_analyzer_PRD.md</c> §12: no crawled text or markup is
+/// stored; element selectors are kept with the latest page result, owner decision 2026-10-12). A selector names an element
+/// by its tag, position and id: structure, not content. It is still the page's own markup and is fenced as data wherever an
+/// agent reads it.
 /// </remarks>
 /// <param name="Selectors">The elements' selectors, at most <see cref="MaxSelectors"/>, each at most <see cref="MaxSelectorLength"/> characters.</param>
 public sealed record ElementEvidence(IReadOnlyList<string> Selectors)

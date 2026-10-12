@@ -228,6 +228,62 @@ public class SeoToolsTests(SeoTesterHostFixture host)
         tool.Data["page"]!["url"]!.GetValue<string>().Should().Be(page.Url);
     }
 
+    // ---- One result per page and site, the latest (owner decision 2026-10-12) ------------------------------------------------
+
+    [Fact]
+    public async Task A_page_a_later_scan_checked_again_answers_its_latest_result_and_names_that_scan()
+    {
+        var site = await SeedSiteAsync(host, Acme);
+        var older = await SeedRunAsync(site, DateTime.UtcNow.AddHours(-3), ("seo.single-h1", "Warn", 1, [site.Origin + "/a"]));
+        var newer = await SeedRunAsync(site, DateTime.UtcNow.AddHours(-1), ("seo.single-h1", "Pass", 0, []));
+        await SeedPageAsync(older, site.Origin + "/a", "Two headings", new PageFinding { CheckId = "seo.single-h1", Status = "Warn" });
+        await SeedPageAsync(newer, site.Origin + "/a", "One heading", new PageFinding { CheckId = "seo.single-h1", Status = "Pass" });
+        var token = await SeoMcp.TokenAsync(host, Ann);
+        using var client = host.CreateClient();
+
+        var reply = await SeoMcp.CallAsync(client, "seotester_get_page", new { site = site.Id, url = site.Origin + "/a", run = older.Id }, token);
+
+        reply.IsToolError.Should().BeFalse(reply.ToolText);
+        reply.Data["scan"]!["id"]!.GetValue<string>().Should().Be(older.Id, "the scan asked for");
+        reply.Data["page"]!["title"]!.GetValue<string>().Should().Be("One heading", "the page's one stored result: the newer scan's fetch replaced the older one's");
+        reply.Data["page"]!["scan"]!.GetValue<string>().Should().Be(newer.Id);
+        reply.Note.Should().Contain(newer.Id!).And.Contain("latest result");
+    }
+
+    [Fact]
+    public async Task A_scan_whose_pages_a_later_scan_checked_again_says_so_and_never_answers_a_clean_list()
+    {
+        // Every page of the older scan was checked again: its own totals answer, with where the pages went.
+        var site = await SeedSiteAsync(host, Acme);
+        var older = await SeedRunAsync(site, DateTime.UtcNow.AddHours(-3), ("seo.single-h1", "Warn", 2, [site.Origin + "/a", site.Origin + "/b"]));
+        var newer = await SeedRunAsync(site, DateTime.UtcNow.AddHours(-1), ("seo.single-h1", "Warn", 1, [site.Origin + "/a"]));
+        await SeedPageAsync(newer, site.Origin + "/a", "A", new PageFinding { CheckId = "seo.single-h1", Status = "Warn" });
+        await SeedPageAsync(newer, site.Origin + "/b", "B", new PageFinding { CheckId = "seo.single-h1", Status = "Pass" });
+
+        // Partly: one page still holds the older scan's result, the other the newer scan's.
+        var other = await SeedSiteAsync(host, Acme);
+        var partly = await SeedRunAsync(other, DateTime.UtcNow.AddHours(-3), ("seo.single-h1", "Warn", 2, [other.Origin + "/c", other.Origin + "/d"]));
+        var later = await SeedRunAsync(other, DateTime.UtcNow.AddHours(-1), ("seo.single-h1", "Pass", 0, []));
+        await SeedPageAsync(partly, other.Origin + "/c", "C", new PageFinding { CheckId = "seo.single-h1", Status = "Warn" });
+        await SeedPageAsync(later, other.Origin + "/d", "D", new PageFinding { CheckId = "seo.single-h1", Status = "Pass" });
+        var token = await SeoMcp.TokenAsync(host, Ann);
+        using var client = host.CreateClient();
+
+        var replaced = await CallSettledAsync(client, "seotester_list_findings", new { site = site.Id, run = older.Id }, token);
+        var partial = await CallSettledAsync(client, "seotester_list_findings", new { site = other.Id, run = partly.Id }, token);
+
+        replaced.IsToolError.Should().BeFalse(replaced.ToolText);
+        replaced.Note.Should().Contain(newer.Id!).And.Contain("not a clean result");
+        var rule = replaced.Data["rules"]![0]!;
+        rule["check"]!.GetValue<string>().Should().Be("seo.single-h1");
+        rule["affectedPages"]!.GetValue<int>().Should().Be(2, "the older scan's own totals");
+
+        partial.IsToolError.Should().BeFalse(partial.ToolText);
+        partial.Data["totalPages"]!.GetValue<int>().Should().Be(1, "the page whose latest result is still this scan's");
+        partial.Data["rules"]![0]!["pages"]!.AsArray().Select(p => p!["url"]!.GetValue<string>()).Should().Equal(other.Origin + "/c");
+        partial.Note.Should().Contain(later.Id!).And.Contain("1 of this scan's 2 pages");
+    }
+
     // ---- The one write: seotester_start_scan (D24) ------------------------------------------------------------------------
 
     [Fact]
@@ -351,11 +407,12 @@ public class SeoToolsTests(SeoTesterHostFixture host)
         return run;
     }
 
+    /// <summary>The page's one result for the run's site (one per page and site, the latest): a later seed of the same URL replaces it.</summary>
     private async Task<PageResult> SeedPageAsync(AuditRun run, string url, string? title, params PageFinding[] findings)
     {
         var page = new PageResult
         {
-            Id = PageResult.IdFor(run.Id!, url),
+            Id = PageResult.IdFor(run.SiteId!, url),
             RunId = run.Id,
             OrganizationId = run.OrganizationId,
             Url = url,
