@@ -38,7 +38,8 @@ public class ExternalLoginCallbackTests : SparkTestDriver
     private UserManager<SparkUser> _userManager = null!;
 
     private async Task<TestServer> StartHostAsync(
-        Action<SignInManager<SparkUser>, UserManager<SparkUser>> configureStubs)
+        Action<SignInManager<SparkUser>, UserManager<SparkUser>> configureStubs,
+        ILoggerProvider? logs = null)
     {
         _userManager = NewUserManagerStub();
         _signInManager = NewSignInManagerStub(_userManager);
@@ -50,6 +51,8 @@ public class ExternalLoginCallbackTests : SparkTestDriver
                 .ConfigureServices(services =>
                 {
                     services.AddSingleton<IDocumentStore>(Store);
+                    if (logs is not null)
+                        services.AddLogging(b => b.AddProvider(logs));
                     services.AddSparkAuthentication<SparkUser>();
                     // The mode MapSparkIdentityApi's former parameter defaulted to.
                     services.Configure<MintPlayer.Spark.Authorization.Configuration.SparkAuthenticationOptions>(
@@ -304,6 +307,51 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         // the browser, and the flow still stops before AddLogin/SignIn.
         body.Should().NotContain("boom");
         await _signInManager.DidNotReceive().SignInAsync(Arg.Any<SparkUser>(), Arg.Any<bool>(), Arg.Any<string?>());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Callback_logs_why_an_account_could_not_be_created_without_the_email_address(bool failAtLink)
+    {
+        // MCP live checks, round 1: "account could not be created" with nothing in the log to say why.
+        var info = NewLoginInfo(email: "carol@test.org", name: "carol", tokens: null);
+        var failure = IdentityResult.Failed(new IdentityError { Code = "DuplicateEmail", Description = "Email 'carol@test.org' is already taken." });
+        var logs = new CapturingLoggerProvider();
+
+        using var server = await StartHostAsync((sim, um) =>
+        {
+            sim.GetExternalLoginInfoAsync().Returns(info);
+            sim.ExternalLoginSignInAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<bool>())
+                .Returns(SignInResult.Failed);
+            um.SetUserNameAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
+            um.SetEmailAsync(Arg.Any<SparkUser>(), Arg.Any<string?>()).Returns(IdentityResult.Success);
+            um.CreateAsync(Arg.Any<SparkUser>()).Returns(failAtLink ? IdentityResult.Success : failure);
+            um.AddLoginAsync(Arg.Any<SparkUser>(), Arg.Any<UserLoginInfo>()).Returns(failure);
+            um.DeleteAsync(Arg.Any<SparkUser>()).Returns(IdentityResult.Success);
+        }, logs);
+        using var client = server.CreateClient();
+
+        await client.GetAsync("/spark/auth/external-login-callback?popup=1&returnUrl=%2Foops");
+
+        var line = logs.Messages.Should().ContainSingle(m => m.Contains("DuplicateEmail")).Which;
+        line.Should().Contain("TestProvider").And.Contain("DuplicateEmail");
+        line.Should().NotContain("carol@test.org").And.NotContain("carol");
+    }
+
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<string> Messages { get; } = new();
+        public ILogger CreateLogger(string categoryName) => new Logger(this);
+        public void Dispose() { }
+
+        private sealed class Logger(CapturingLoggerProvider owner) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+                => owner.Messages.Enqueue(formatter(state, exception));
+        }
     }
 
     // --- helpers --------------------------------------------------------

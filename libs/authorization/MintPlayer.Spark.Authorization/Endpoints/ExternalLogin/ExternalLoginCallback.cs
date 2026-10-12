@@ -46,6 +46,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
     [Inject] private readonly SparkAccountMail<TUser> accountMail;
     [Inject] private readonly IEnumerable<SparkExternalProviderRegistration> providerRegistrations;
     [Inject] private readonly Microsoft.Extensions.Configuration.IConfiguration? configuration;
+    [Inject] private readonly Microsoft.Extensions.Logging.ILogger<ExternalLoginCallback<TUser>>? logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -173,7 +174,10 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
 
             var createResult = await userManager.CreateAsync(user);
             if (!createResult.Succeeded)
+            {
+                LogAccountCreationFailed(info.LoginProvider, "create the account", createResult);
                 return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, ExternalLoginErrors.AccountCreationFailed);
+            }
 
             // ⚠️ 4h: both results were discarded. A failed AddLoginAsync leaves an account with no
             // credential attached — unreachable by anyone, and holding the email reservation so the
@@ -183,6 +187,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
             var linkResult = await userManager.AddLoginAsync(user, info);
             if (!linkResult.Succeeded)
             {
+                LogAccountCreationFailed(info.LoginProvider, "link the login", linkResult);
                 await userManager.DeleteAsync(user);
                 return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, ExternalLoginErrors.AccountCreationFailed);
             }
@@ -220,6 +225,16 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
         // non-popup branch is now a standard server redirect that the framework HTML-encodes for us.
         return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, error: null);
     }
+
+    /// <summary>
+    /// Why an external sign-in answered "account could not be created". Error <em>codes</em> only:
+    /// Identity's descriptions echo the address or user name (DuplicateEmail: "Email 'x' is already
+    /// taken."), and this line must carry no personal data.
+    /// </summary>
+    private void LogAccountCreationFailed(string provider, string step, IdentityResult result)
+        => Microsoft.Extensions.Logging.LoggerExtensions.LogWarning((Microsoft.Extensions.Logging.ILogger?)logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            "External sign-in with {Provider} could not {Step}: {ErrorCodes}",
+            provider, step, string.Join(", ", result.Errors.Select(e => e.Code)));
 
     private static string? NotAnEmail(string? name)
         => string.IsNullOrWhiteSpace(name) || name.Contains('@') ? null : name;
