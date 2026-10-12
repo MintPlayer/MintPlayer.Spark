@@ -482,6 +482,10 @@ public static class SparkExtensions
 
         VerifySparkReservedActions();
 
+        // MCP PRD D6: a type's "agentPermissions" must not grant Write without Read. Checked whether or not
+        // the MCP package is installed, so a model is valid before the package that reads it arrives.
+        AgentPermissionsCheck.Verify(app.ApplicationServices.GetRequiredService<IModelLoader>());
+
         // Compose the action catalogue now (#467, D7): an invalid actions.json layer refuses startup
         // in its own words, and a conflict between two libraries is logged, instead of either
         // surfacing on the first request that lists actions.

@@ -92,6 +92,9 @@ internal static class SparkDescribeCommand
                     var composition = type.Entry.Composition
                         ?? SparkLayers.Compose([SparkLayer.Parse(type.FileName, type.Json, isLibrary: false)], SparkKinds.Model);
                     Render(output, composition, name: null, layers, LayerName);
+                    // MCP PRD D6: said outright, because the default is an absent key and absent reads as
+                    // nothing to an operator checking what agents can reach.
+                    output.AppendLine($"agentPermissions: {AgentPermissionsOf(type.Json)}");
                     output.AppendLine();
                 }
                 break;
@@ -192,6 +195,17 @@ internal static class SparkDescribeCommand
         foreach (var problem in composed.Problems)
             output.AppendLine("problem " + problem);
     }
+
+    /// <summary>A composed model type's <c>agentPermissions</c> as written, or <c>None (not exposed to agents)</c> when absent.</summary>
+    internal static string AgentPermissionsOf(string json)
+        => System.Text.Json.Nodes.JsonNode.Parse(json, documentOptions: new()
+            {
+                CommentHandling = System.Text.Json.JsonCommentHandling.Skip,
+                AllowTrailingCommas = true,
+            })?["persistentObject"]?["agentPermissions"] is System.Text.Json.Nodes.JsonValue value
+           && value.TryGetValue<string>(out var text) && !string.IsNullOrWhiteSpace(text)
+            ? text
+            : "None (not exposed to agents)";
 
     private static void Header(StringBuilder output, string what, IEnumerable<string> stack, Func<string, string> layerName)
     {

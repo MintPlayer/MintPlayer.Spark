@@ -178,6 +178,16 @@ public sealed class EntityTypeDefinition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool Live { get; set; }
 
+    /// <summary>
+    /// What AI agents connected through MCP may do with this type (MCP PRD D6), as <c>"Read"</c> or
+    /// <c>"Read, Write"</c> — hand-written in the model JSON and preserved by model synchronization. The
+    /// default, <see cref="EAgentPermission.None"/>, keeps the type away from agents altogether. It narrows
+    /// and never widens: an agent still needs the user's own <c>security.json</c> rights, the application's
+    /// agent permissions and the user's grant. <c>Write</c> without <c>Read</c> refuses startup.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public EAgentPermission AgentPermissions { get; set; }
+
     /// <summary>The tabs of the detail page, matched across layers by <c>name</c>.</summary>
     public AttributeTab[] Tabs { get; set; } = [];
 
