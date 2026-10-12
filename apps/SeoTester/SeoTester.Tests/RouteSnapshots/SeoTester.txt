@@ -4,29 +4,15 @@ GET /.well-known/oauth-protected-resource | allow-anonymous
 GET /.well-known/oauth-protected-resource/mcp | allow-anonymous
 GET /.well-known/openid-configuration
 GET /bot
-GET /connect/applications
-POST /connect/applications/revoke | antiforgery=required
-POST /connect/applications/revoke-scope | antiforgery=required
 GET /connect/authorize
 POST /connect/authorize | antiforgery=not-required
 GET /connect/consent
 POST /connect/consent | antiforgery=required
-GET /connect/device
-POST /connect/device | antiforgery=required
-POST /connect/device_authorization | rate-limit=policy:SparkIdentityProviderMachine
 GET /connect/error
-POST /connect/introspect
 GET /connect/login
-GET /connect/logout
-POST /connect/par | rate-limit=policy:SparkIdentityProviderMachine
 POST /connect/register | rate-limit=policy:SparkIdentityProviderMachine
-DELETE /connect/register/{clientId}
-GET /connect/register/{clientId}
-PUT /connect/register/{clientId}
 POST /connect/revoke | rate-limit=policy:SparkIdentityProviderMachine
 POST /connect/token | rate-limit=policy:SparkIdentityProviderMachine
-GET /connect/userinfo | rate-limit=policy:SparkIdentityProviderMachine
-POST /connect/userinfo | antiforgery=not-required | rate-limit=policy:SparkIdentityProviderMachine
 GET /health
 POST /mcp | accepts(application/json) | authorize(policy=;roles=;schemes=) | authorize-policy(requirements=Handler assertion should evaluate to true.;schemes=Spark.IdentityProvider.Agent,SparkPersonalAccessToken)
 GET /privacy
@@ -66,14 +52,6 @@ GET /spark/auth/me
 POST /spark/auth/passkeys/request-options
 POST /spark/auth/passkeys/sign-in
 GET /spark/culture
-GET /spark/identity-provider/admin/keys | authorize(policy=;roles=;schemes=)
-POST /spark/identity-provider/admin/keys/rotate | antiforgery=required | authorize(policy=;roles=;schemes=)
-GET /spark/identity-provider/applications | authorize(policy=;roles=;schemes=)
-POST /spark/identity-provider/applications/withdraw | antiforgery=required | authorize(policy=;roles=;schemes=)
-GET /spark/identity-provider/developer | authorize(policy=;roles=;schemes=)
-POST /spark/identity-provider/developer | antiforgery=required | authorize(policy=;roles=;schemes=)
-POST /spark/identity-provider/developer/registration-token | antiforgery=required | authorize(policy=;roles=;schemes=)
-POST /spark/identity-provider/invitations/accept | antiforgery=required | authorize(policy=;roles=;schemes=)
 CONNECT,GET /spark/live
 GET /spark/lookupref
 GET /spark/lookupref/{name}

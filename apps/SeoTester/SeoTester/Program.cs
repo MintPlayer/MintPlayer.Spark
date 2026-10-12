@@ -116,12 +116,17 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // authorization server (setup 3) with the website's own sign-in; personal access tokens (setup 1) come with
     // AddAuthentication above. Signing keys are generated into the OidcKeys collection, protected with this app's Data
     // Protection key ring (Spark:DataProtection): no key in configuration (docs/seotester/deploy.md, "MCP server").
+    //
+    // The provider serves agents only: AgentsOnly() maps what agents use (metadata, sign-in and consent, code and refresh,
+    // loopback registration, revocation) and nothing else of the provider (no device grant, PAR, introspection, userinfo,
+    // end-session, developer portal or key administration), and its management types stay off (security.json
+    // "libraries"). Users manage their agents under Account → Connected applications.
     spark.AddIdentityProvider(idp =>
     {
         // The tokens' issuer: Spark:IdentityProvider:Issuer, else the public URL. Development, which has neither, uses the
         // request's origin (the package's development mechanism); anywhere else an unset issuer refuses to serve tokens.
         idp.Issuer ??= builder.Configuration["Spark:Auth:PublicBaseUrl"]?.TrimEnd('/');
-        idp.ForMcp();
+        idp.ForMcp().AgentsOnly();
     });
     spark.AddMcp(mcp =>
     {
@@ -204,8 +209,13 @@ app.UseEndpoints(endpoints =>
     endpoints.MapSeoTesterEndpoints();
 });
 
+// /connect/* (the authorization server's pages), /.well-known/* (its metadata) and /mcp are server-rendered or JSON:
+// an unknown path under them is a 404, never the SPA's index.
 app.UseWhen(
-    context => !context.Request.Path.StartsWithSegments("/spark"),
+    context => !context.Request.Path.StartsWithSegments("/spark")
+        && !context.Request.Path.StartsWithSegments("/connect")
+        && !context.Request.Path.StartsWithSegments("/.well-known")
+        && !context.Request.Path.StartsWithSegments("/mcp"),
     appBuilder =>
     {
         appBuilder.UseSpaImproved(spa =>
