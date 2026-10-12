@@ -97,6 +97,8 @@ public static class SparkBuilderAuthorizationExtensions
         builder.AddAgentAccess();
         // Setup 2's mapping (MCP PRD D22): Identity's login lookup for this user type.
         builder.Services.TryAddScoped<IAgentLinkedLogins, AgentLinkedLogins<TUser>>();
+        // Every agent principal's roles and groups (§4.6): Identity's claims factory for this user type, as for the cookie.
+        builder.Services.TryAddScoped<IAgentRoleClaimsProvider, AgentRoleClaimsProvider<TUser>>();
 
         // Register middleware and endpoint callbacks
         builder.Registry.AddEndpoints(endpoints =>

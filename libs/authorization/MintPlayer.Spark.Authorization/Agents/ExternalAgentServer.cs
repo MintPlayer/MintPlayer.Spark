@@ -94,8 +94,9 @@ internal sealed class ExternalAgentServerScheme(SparkExternalAgentServerOptions 
 /// without a subject or a client, a subject no user linked under that provider, a deleted or locked-out user, a grant
 /// the user disconnected, and a grant stamped with a security stamp the user no longer has (it counts as disconnected
 /// until the user allows the agent again). A refusal never says which check failed, and nothing here logs the token. The principal carries
-/// the local user id as <c>sub</c>, the grant id, the client id and the token's scopes: groups and rights come from the
-/// local user, never from the token's role or group claims.
+/// the local user id as <c>sub</c>, the grant id, the client id, the token's scopes and the role and group claims of the
+/// local user's cookie (<see cref="IAgentRoleClaimsProvider"/>): groups, roles and rights come from the local user, never
+/// from the token's role or group claims.
 /// </remarks>
 internal sealed partial class ExternalAgentTokenHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> schemeOptions,
@@ -105,6 +106,7 @@ internal sealed partial class ExternalAgentTokenHandler(
     IAgentLinkedLogins logins,
     AgentGrantStore grants,
     AgentRequestUser users,
+    IAgentRoleClaimsProvider roleClaims,
     TimeProvider time)
     : AuthenticationHandler<AuthenticationSchemeOptions>(schemeOptions, loggerFactory, encoder)
 {
@@ -171,6 +173,8 @@ internal sealed partial class ExternalAgentTokenHandler(
 
         await grants.TouchAsync(grant, Context.RequestAborted);
 
+        // The local user's roles and groups as their sign-in cookie carries them, made now (never the token's claims).
+        var roles = await roleClaims.GetAsync(user, Context.RequestAborted);
         var identity = new ClaimsIdentity(
             [
                 new Claim("sub", userId),
@@ -180,8 +184,9 @@ internal sealed partial class ExternalAgentTokenHandler(
                 new Claim("client_id", clientId),
                 new Claim("scope", string.Join(' ', ExternalAgentServer.ScopesOf(token))),
                 new Claim(ExternalAgentServer.GrantClaim, grant.Id!),
+                .. roles.Claims,
             ],
-            Scheme.Name, "name", "role");
+            Scheme.Name, "name", roles.RoleClaimType);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }
 

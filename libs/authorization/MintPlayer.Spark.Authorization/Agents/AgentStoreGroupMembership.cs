@@ -19,13 +19,15 @@ namespace MintPlayer.Spark.Authorization.Agents;
 /// <para>
 /// The same groups the cookie would carry: <see cref="Identity.SparkUser.Roles"/> and the user's stored claims
 /// of a group type (the claim types core's claims provider reads). Cached per request only (core asks once).
+/// The agent's principal carries the same claims too (<see cref="IAgentRoleClaimsProvider"/>, for application code
+/// that tests <c>User.IsInRole</c>), made from the user the scheme read for its token check.
 /// </para>
 /// </remarks>
 internal sealed class AgentStoreGroupMembership(IHttpContextAccessor accessor, ISparkCurrentUser currentUser, AgentRequestUser users)
     : IGroupMembershipProvider
 {
-    /// <summary>The claim types core's <c>ClaimsGroupMembershipProvider</c> reads groups from.</summary>
-    private static readonly string[] GroupClaimTypes =
+    /// <summary>The claim types core's <c>ClaimsGroupMembershipProvider</c> reads groups from (and <see cref="IAgentRoleClaimsProvider"/> copies).</summary>
+    internal static readonly string[] GroupClaimTypes =
     [
         "group",
         "groups",

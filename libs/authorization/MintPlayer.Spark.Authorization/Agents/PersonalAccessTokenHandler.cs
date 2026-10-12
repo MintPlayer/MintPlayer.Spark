@@ -15,8 +15,9 @@ namespace MintPlayer.Spark.Authorization.Agents;
 /// A token is accepted only when its grant exists (revocation is deletion), the hash matches, it has not expired,
 /// its user exists and is not locked out, and the user's security stamp is the one the token was created under
 /// (a password change or a removed sign-in method revokes every token). The principal carries the local user id
-/// as <c>sub</c> and as <see cref="ClaimTypes.NameIdentifier"/> (what application code reads, as from a cookie), and
-/// the grant id, nothing else: groups come from the store per request (§4.6), never the token.
+/// as <c>sub</c> and as <see cref="ClaimTypes.NameIdentifier"/> (what application code reads, as from a cookie),
+/// the grant id, and the role and group claims of the user's cookie (<see cref="IAgentRoleClaimsProvider"/>), nothing
+/// else: groups and roles come from the store per request (§4.6), never the token.
 /// A refusal never says which check failed, and nothing here logs the token.
 /// </remarks>
 internal sealed partial class PersonalAccessTokenHandler(
@@ -25,6 +26,7 @@ internal sealed partial class PersonalAccessTokenHandler(
     UrlEncoder encoder,
     AgentGrantStore grants,
     AgentRequestUser users,
+    IAgentRoleClaimsProvider roleClaims,
     TimeProvider time)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
@@ -62,6 +64,9 @@ internal sealed partial class PersonalAccessTokenHandler(
 
         await grants.TouchAsync(grant, Context.RequestAborted);
 
+        // The roles and groups the user's sign-in cookie carries, made now: application code that tests User.IsInRole
+        // treats the agent as the user, and a removed role is gone on the next call.
+        var roles = await roleClaims.GetAsync(user, Context.RequestAborted);
         var identity = new ClaimsIdentity(
             [
                 new Claim("sub", grant.UserId),
@@ -69,8 +74,9 @@ internal sealed partial class PersonalAccessTokenHandler(
                 new Claim(ClaimTypes.NameIdentifier, grant.UserId),
                 new Claim("name", user.UserName ?? grant.UserId),
                 new Claim(PersonalAccessTokens.GrantClaim, grant.Id!),
+                .. roles.Claims,
             ],
-            Scheme.Name, "name", "role");
+            Scheme.Name, "name", roles.RoleClaimType);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }
 

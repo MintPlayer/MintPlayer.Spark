@@ -59,7 +59,8 @@ internal sealed class OidcAgentCredentialScheme(
 /// <c>at+jwt</c>, lifetime, a live token record and OAuth grant (revocation is immediate), audience exactly the MCP
 /// canonical URL (a token for another resource is refused, D5 G4), no proof-of-possession binding (which <c>/mcp</c>
 /// cannot check), a user who exists and is not locked out, and an agent grant linked to that OAuth grant with the
-/// user's current security stamp (D11, D12).
+/// user's current security stamp (D11, D12). The principal carries the role and group claims of the user's cookie
+/// (<see cref="IAgentRoleClaimsProvider"/>), made per request.
 /// </summary>
 internal sealed partial class OidcAgentBearerHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> schemeOptions,
@@ -71,6 +72,7 @@ internal sealed partial class OidcAgentBearerHandler(
     OidcMcpResources resources,
     AgentGrantStore grants,
     AgentRequestUser users,
+    IAgentRoleClaimsProvider roleClaims,
     TimeProvider time)
     : AuthenticationHandler<AuthenticationSchemeOptions>(schemeOptions, loggerFactory, encoder)
 {
@@ -116,6 +118,9 @@ internal sealed partial class OidcAgentBearerHandler(
 
         await grants.TouchAsync(grant, Context.RequestAborted);
 
+        // The roles and groups the user's sign-in cookie carries, made now: application code that tests User.IsInRole
+        // treats the agent as the user, and a removed role is gone on the next call.
+        var roles = await roleClaims.GetAsync(user, Context.RequestAborted);
         var identity = new ClaimsIdentity(
             [
                 new Claim("sub", userId),
@@ -125,8 +130,9 @@ internal sealed partial class OidcAgentBearerHandler(
                 new Claim("client_id", clientId),
                 new Claim("scope", resolved.Scope ?? string.Empty),
                 new Claim(OidcAgentCredentialScheme.GrantClaim, grant.Id!),
+                .. roles.Claims,
             ],
-            Scheme.Name, "name", "role");
+            Scheme.Name, "name", roles.RoleClaimType);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }
 
