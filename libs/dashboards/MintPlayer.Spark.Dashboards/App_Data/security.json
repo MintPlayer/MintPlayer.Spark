@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../schemas/security.schema.json",
+  "_comment": [
+    "The dashboards package's rights, shipped as a library layer (D11). One slot the application binds in its own",
+    "security.json, or startup is refused:",
+    "  \"bindings\": { \"dashboards:administrators\": [ \"Administrators\" ] }",
+    "Read only: a dashboard is a page, never a list, and nobody edits it. The application's own dashboards grant their",
+    "Read to the same slot in its file: { \"key\": \"…\", \"resource\": \"Read/OperatorDashboard\", \"groupId\": \"dashboards:administrators\" }.",
+    "Drop the grant with { \"key\": \"dashboards:administrators\", \"$remove\": true }, or every grant of the",
+    "package with \"libraries\": { \"dashboards\": false }."
+  ],
+  "rights": [
+    {
+      "key": "administrators",
+      "resource": "Read/DatabaseStatistics",
+      "groupId": "dashboards:administrators"
+    }
+  ]
+}

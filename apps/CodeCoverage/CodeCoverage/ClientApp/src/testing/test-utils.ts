@@ -38,7 +38,7 @@ export type BrowseServiceStub = { [K in keyof BrowseService]: ReturnType<typeof 
 export function createBrowseStub(overrides: Partial<Record<keyof BrowseService, (...args: any[]) => any>> = {}): BrowseServiceStub {
   const methods: (keyof BrowseService)[] = [
     'getAccount', 'getAccountRepos', 'getDependencyGraph', 'getRepo', 'getHistory', 'getSparklines', 'getBranches',
-    'getCommits', 'getCommit', 'getTree', 'getHierarchy', 'getFile', 'rotateBadgeToken',
+    'getCommits', 'getCommit', 'getTree', 'getHierarchy', 'getFile', 'rotateBadgeToken', 'getCommitGraph', 'getCoverageDrops', 'avatarUrl',
   ];
   const stub = {} as BrowseServiceStub;
   for (const name of methods) {

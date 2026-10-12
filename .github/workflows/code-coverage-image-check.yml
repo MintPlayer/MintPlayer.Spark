@@ -23,6 +23,7 @@ on:
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
       - 'libs/controllers/MintPlayer.Spark.Controllers/**'
       - 'libs/cron/MintPlayer.Spark.Cron/**'
+      - 'libs/dashboards/MintPlayer.Spark.Dashboards/**'
       - 'libs/messaging/MintPlayer.Spark.Messaging/**'
       - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
       - 'libs/mail/MintPlayer.Spark.MailManager/**'
@@ -72,3 +73,25 @@ jobs:
         file: ./apps/CodeCoverage/CodeCoverage/Dockerfile
         push: false
         cache-from: type=gha
+
+  # The commit-graph sidecar image (#504), built the same way so a broken sidecar Dockerfile surfaces here, not as a
+  # failed deploy.
+  build-git-image:
+    name: Build the git sidecar image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    - name: Build the image
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/CodeCoverage/CodeCoverage.GitMirror/Dockerfile
+        push: false
+        cache-from: type=gha,scope=codecoverage-git

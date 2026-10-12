@@ -92,4 +92,7 @@ public interface IForgeClient
     /// </para>
     /// </remarks>
     Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default);
+
+    /// <summary>See <see cref="IForgeIntegration.GetGitAccessAsync"/>.</summary>
+    Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default);
 }

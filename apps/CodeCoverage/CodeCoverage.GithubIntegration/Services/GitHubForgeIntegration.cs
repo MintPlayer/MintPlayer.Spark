@@ -44,7 +44,7 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     /// cannot express it honestly — whatever lands must be per call, not per implementation.
     /// </para>
     /// </remarks>
-    public EForgeCapability[] Capabilities => [EForgeCapability.Statuses, EForgeCapability.Comments];
+    public EForgeCapability[] Capabilities => [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror];
 
     public Task<ForgeVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default)
         => access.GetVisibilityAsync(cancellationToken);
@@ -78,6 +78,9 @@ public partial class GitHubForgeIntegration : IForgeIntegration
 
     public Task ReconcileAsync(Account account, CancellationToken cancellationToken = default)
         => reconciler.ReconcileAsync(account, cancellationToken);
+
+    public Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default)
+        => client.GetGitAccessAsync(repository, cancellationToken);
 
     public Task<long> PublishStatusAsync(Repository repository, string sha, string name, ForgeVerdict verdict, long? existingId, CancellationToken cancellationToken = default)
         => feedback.PublishStatusAsync(repository, sha, name, verdict, existingId, cancellationToken);

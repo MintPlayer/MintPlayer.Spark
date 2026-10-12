@@ -1,4 +1,4 @@
-import { Component, effect, input } from '@angular/core';
+import { Component, effect, input, Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Routes } from '@angular/router';
@@ -12,7 +12,7 @@ import { SparkPoDetailComponent } from './spark-po-detail.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
-import { SparkDetailContext, provideSparkDetailActions, provideSparkDetailPanels } from '@mintplayer/ng-spark/panels';
+import { SparkDetailContext, provideSparkDetailActions, provideSparkDetailLayouts, provideSparkDetailPanels } from '@mintplayer/ng-spark/panels';
 import { SparkQueryCardComponent } from '@mintplayer/ng-spark/grid';
 import { settle, StubComponent } from '../../src/test-utils';
 
@@ -47,7 +47,7 @@ const routes: Routes = [
   { path: '', component: StubComponent },
 ];
 
-async function setup(permissions: Record<string, boolean> = {}) {
+async function setup(permissions: Record<string, boolean> = {}, extra: Provider[] = []) {
   seen.length = 0;
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
@@ -72,6 +72,7 @@ async function setup(permissions: Record<string, boolean> = {}) {
       { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
       provideSparkDetailPanels({ id: 'test-panel', component: TestPanel }),
       provideSparkDetailActions({ id: 'test-action', component: TestAction }),
+      ...extra,
     ],
   });
   const harness = await RouterTestingHarness.create();
@@ -136,6 +137,32 @@ describe('SparkPoDetailComponent — SPARK_DETAIL_PANELS / SPARK_DETAIL_ACTIONS 
     await settle(harness.fixture);
     expect(service.get).toHaveBeenCalledWith('person', 'people/1');
     expect(service.get.mock.calls.every((call: unknown[]) => call.length === 2)).toBe(true);
+  });
+
+  it('draws a matching SPARK_DETAIL_LAYOUTS layout instead of the attribute cards, and keeps the panels (#504)', async () => {
+    @Component({ selector: 'test-layout', standalone: true, template: '<div class="test-layout">layout {{ context().item.name }}</div>' })
+    class TestLayout {
+      context = input.required<SparkDetailContext>();
+    }
+    const { harness } = await setup({}, provideSparkDetailLayouts(
+      { id: 'never', component: TestPanel, matches: () => false },
+      { id: 'test-layout', component: TestLayout, matches: po => po.name === 'Alice' },
+    ));
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await settle(harness.fixture);
+
+    const el: HTMLElement = harness.routeNativeElement!;
+    expect(el.querySelector('.test-layout')?.textContent).toContain('layout Alice');
+    expect(el.querySelector('bs-tab-control')).toBeNull();
+    expect(el.querySelector('.test-panel')).not.toBeNull();
+  });
+
+  it('keeps the attribute cards when no layout matches', async () => {
+    const { harness } = await setup({}, provideSparkDetailLayouts({ id: 'never', component: TestPanel, matches: () => false }));
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await settle(harness.fixture);
+
+    expect(harness.routeNativeElement!.querySelector('bs-tab-control')).not.toBeNull();
   });
 
   it('context.reload() re-reads the object with the same mode', async () => {

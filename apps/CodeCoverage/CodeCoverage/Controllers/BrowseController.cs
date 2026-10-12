@@ -153,6 +153,46 @@ public partial class BrowseController : ControllerBase
         return Ok(commits.Select(c => new CommitInfo(c.Sha, c.Branch, c.PullRequestNumber, c.Message, c.AuthoredAt, c.Coverage)));
     }
 
+    /// <summary>A commit whose coverage fell against its parent (#504, D17).</summary>
+    /// <param name="Percent">Its coverage, covered over coverable lines × 100; null for 0/0.</param>
+    /// <param name="DeltaVsParent">Percentage points against the parent; always negative here.</param>
+    public sealed record CoverageDrop(string Sha, string? Branch, string? Message, DateTimeOffset? Date, double? Percent, double DeltaVsParent);
+
+    /// <summary>
+    /// The commit graph's coverage-drop list (#504, D17): the newest commits whose coverage fell by
+    /// more than <paramref name="threshold"/> percentage points against their parent.
+    /// </summary>
+    /// <remarks>
+    /// A <b>list</b>, not a graph filter: the graph is the mirror's walk and knows no coverage, so the
+    /// panel shows these flat and opens each in the graph with <c>at=</c>. The threshold reaches the
+    /// query as a parameter (LINQ), never spliced. Fork contributions are excluded, as in every
+    /// repository-level listing.
+    /// </remarks>
+    [HttpGet("repos/{provider}/{owner}/{name}/coverage-drops")]
+    public async Task<ActionResult<IEnumerable<CoverageDrop>>> GetCoverageDrops(
+        string provider, string owner, string name, [FromQuery] double threshold = 0, [FromQuery] string? branch = null,
+        [FromQuery] int take = 100, CancellationToken cancellationToken = default)
+    {
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        if (repository is null) return Refuse();
+
+        var below = -Math.Clamp(double.IsFinite(threshold) ? threshold : 0, 0, 100);
+        var query = session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
+            .Where(c => c.Repository == repository.Id && c.ContributedFromFork != true && c.CoverageDeltaVsParent < below);
+        if (!string.IsNullOrEmpty(branch))
+            query = query.Where(c => c.Branch == branch);
+
+        var commits = await query
+            .OrderByDescending(c => c.Date)
+            .Take(Math.Clamp(take, 1, 200))
+            .OfType<Commit>()
+            .ToListAsync(cancellationToken);
+
+        return Ok(commits.Select(c => new CoverageDrop(c.Sha, c.Branch, c.Message, c.AuthoredAt ?? c.FirstSeenAtUtc,
+            c.Coverage is { LinesCoverable: > 0 } s ? 100.0 * s.LinesCovered / s.LinesCoverable : null,
+            c.CoverageDeltaVsParent ?? 0)));
+    }
+
     public sealed record HistoryPoint(string Sha, DateTimeOffset? Timestamp, int LinesCovered, int LinesCoverable, double Percent);
 
     /// <summary>
@@ -221,6 +261,60 @@ public partial class BrowseController : ControllerBase
     /// acceptable for a sparkline, and better than a line that mixes branches.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// One page of the SourceTree-style commit graph with coverage on every node (#504, PRD §4.4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>The gate comes first, exactly as in every neighbour</b> (PRD §5.1): owners, then
+    /// <c>ResolveAsync(…IsVisible)</c>, then <see cref="Refuse"/>. A hidden private repository, a
+    /// missing one and an unknown forge therefore answer identically, and the mirror's state
+    /// (syncing, unavailable) is only ever looked up for a repository the caller may see — so it
+    /// is not an existence oracle either.
+    /// </para>
+    /// <para>
+    /// The reader is taken per action rather than injected, so the many tests that build this
+    /// controller for its other actions need not register the commit-graph services.
+    /// </para>
+    /// </remarks>
+    [HttpGet("repos/{provider}/{owner}/{name}/graph")]
+    public async Task<ActionResult<CommitGraph.CommitGraphResponse>> GetGraph(
+        string provider, string owner, string name,
+        [FromServices] CommitGraph.ICommitGraphReader graph,
+        [FromQuery] int from = 0, [FromQuery] int count = 100, [FromQuery(Name = "ref")] string? @ref = null,
+        [FromQuery] string? at = null, [FromQuery] string? snapshot = null, [FromQuery] bool firstParent = false,
+        [FromQuery] string? grep = null, [FromQuery] string? author = null,
+        CancellationToken cancellationToken = default)
+    {
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        if (repository is null) return Refuse();
+
+        return Ok(await graph.ReadAsync(repository,
+            new CommitGraph.CommitGraphRequest(from, Math.Min(count, CommitGraph.CommitGraphRequest.MaxCount), @ref, at, snapshot, firstParent, grep, author),
+            cancellationToken));
+    }
+
+    /// <summary>
+    /// A commit author's avatar, by the opaque key a graph row carries (D28). Served from the
+    /// server's cache; the browser never learns the email or the image's origin.
+    /// </summary>
+    /// <remarks>
+    /// The key is an HMAC under a server secret, so it can only have come from a graph page the
+    /// caller was allowed to read, and a GitHub avatar is public anyway. Rate-limited with the rest of
+    /// browse. Any miss is a bare 404.
+    /// </remarks>
+    [HttpGet("avatar/{avatarKey}")]
+    public async Task<IActionResult> GetAvatar(
+        string avatarKey, [FromServices] CommitGraph.ICommitGraphAvatars avatars, CancellationToken cancellationToken)
+    {
+        var image = await avatars.GetImageAsync(avatarKey, cancellationToken);
+        if (image is null) return NotFound();
+
+        Response.Headers.CacheControl = "public, max-age=86400";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(image.Bytes, image.ContentType);
+    }
+
     [HttpGet("accounts/{provider}/{login}/sparklines")]
     public async Task<ActionResult<Dictionary<string, double[]>>> GetSparklines(string provider, string login, CancellationToken cancellationToken)
     {

@@ -78,7 +78,24 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     /// </summary>
     public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
 
-    public EForgeCapability[] Capabilities => [EForgeCapability.Statuses, EForgeCapability.Comments];
+    public EForgeCapability[] Capabilities => [EForgeCapability.Statuses, EForgeCapability.Comments, EForgeCapability.GitMirror];
+
+    /// <summary>
+    /// What <see cref="GetGitAccessAsync"/> answers, per repository document id; a repository not
+    /// listed gets anonymous access to a made-up clone URL. Null in the map means "no path".
+    /// </summary>
+    public Dictionary<string, ForgeGitAccess?> GitAccess { get; } = [];
+
+    /// <summary>How many times git access was asked for.</summary>
+    public int GitAccessCalls { get; private set; }
+
+    public Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default)
+    {
+        GitAccessCalls++;
+        return Task.FromResult(repository.Id is not null && GitAccess.TryGetValue(repository.Id, out var access)
+            ? access
+            : ForgeGitAccess.Anonymous($"https://forge.example.invalid/{repository.FullName}.git"));
+    }
 
     // ── IForgeIntegrationResolver: one forge, so every lookup is the same object ─────────────────
 

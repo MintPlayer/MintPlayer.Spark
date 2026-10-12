@@ -162,6 +162,28 @@ public interface IForgeIntegration
     /// </remarks>
     Task ReconcileAsync(Account account, CancellationToken cancellationToken = default);
 
+    // ── Git access (commit graph, #504) ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// How a <c>git</c> process may clone or fetch <paramref name="repository"/>: the https clone
+    /// URL and, when one is needed, a credential minted for this one call. Null when there is no
+    /// path at all (a private repository with no credential behind it).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>The credential is never stored.</b> It is handed to the mirror sidecar in the body of
+    /// one request and dropped; the sidecar does not persist it either (PRD §4.1, D3). It is asked
+    /// for once per fetch, but an implementation may serve it from a shared token cache (GitHub's
+    /// installation tokens are cached for their hour); it must then guarantee the token outlives the
+    /// fetch quota, as GitHub's does by asking the cache for at least 15 minutes of remaining life.
+    /// </para>
+    /// <para>
+    /// An anonymous answer (<see cref="ForgeGitAccess.IsAnonymous"/>) is for a public repository
+    /// with no credential (D6). The caller applies the stricter anonymous quota to it.
+    /// </para>
+    /// </remarks>
+    Task<ForgeGitAccess?> GetGitAccessAsync(Repository repository, CancellationToken cancellationToken = default);
+
     // ── Writes ───────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -242,6 +264,34 @@ public enum EForgeCapability
     /// GitHub never mints one for a pull request from a fork, which is what D6f is about.
     /// </summary>
     CiIdentity,
+
+    /// <summary>
+    /// A git clone URL and a credential for the commit-graph mirror
+    /// (<see cref="IForgeIntegration.GetGitAccessAsync"/>, #504). GitLab (<c>oauth2</c>) and
+    /// Bitbucket (<c>x-token-auth</c>) declare it once they hold a credential to hand out.
+    /// </summary>
+    GitMirror,
+}
+
+/// <summary>How a git process reaches one repository (<see cref="IForgeIntegration.GetGitAccessAsync"/>).</summary>
+/// <param name="CloneUrl">The https clone URL. Never carries a credential.</param>
+/// <param name="Username">The credential's user name (<c>x-access-token</c> on GitHub), or null when anonymous.</param>
+/// <param name="Password">The credential itself, or null when anonymous. ⚠️ Never log or store it.</param>
+/// <param name="InstallationKey">
+/// What the credential belongs to (on GitHub, the App installation), so the mirror budget can be
+/// capped per installation (D10). Null when anonymous. Opaque to the caller.
+/// </param>
+public sealed record ForgeGitAccess(string CloneUrl, string? Username, string? Password, string? InstallationKey)
+{
+    /// <summary>A public repository cloned without a credential (D6).</summary>
+    public bool IsAnonymous => Password is null;
+
+    /// <summary>Anonymous access to a public repository.</summary>
+    public static ForgeGitAccess Anonymous(string cloneUrl) => new(cloneUrl, null, null, null);
+
+    /// <summary>Redacted: a record prints every member, and this one carries a credential.</summary>
+    public override string ToString()
+        => $"ForgeGitAccess {{ CloneUrl = {CloneUrl}, Anonymous = {IsAnonymous}, InstallationKey = {InstallationKey} }}";
 }
 
 /// <summary>What the viewer may see on one forge, and whether the answer can be trusted as complete.</summary>

@@ -1,0 +1,44 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. The host metrics dashboard (#504, plan M5b, docs/spark_dashboards_PRD.md §9) is a",
+    "dashboards-package dashboard: virtual (no clrType, no documents) and live, filled by the package's host metrics and",
+    "RavenDB statistics and by CommitGraphFigures (CommitGraph/HostMetricsDashboard.cs), pushed every 15 s and drawn as",
+    "tiles by @mintplayer/ng-spark/dashboards. The object id is 'main'. Read/HostMetrics is dashboards:administrators'",
+    "(security.json binds it to Administrators), which also hides its menu entry from everyone else. Labels are fixed",
+    "strings: no mount path, device name or exception text ever reaches a value (§9.3)."
+  ],
+  "persistentObject": {
+    "id": "c0e5da5b-0000-4000-8000-000000000001",
+    "name": "HostMetrics",
+    "alias": "host-metrics",
+    "live": true,
+    "tabs": [],
+    "groups": [
+      { "id": "c0e5da5b-0000-4000-8000-0000000000a1", "name": "Host", "order": 1 },
+      { "id": "c0e5da5b-0000-4000-8000-0000000000a2", "name": "Mirrors", "order": 2 },
+      { "id": "c0e5da5b-0000-4000-8000-0000000000a3", "name": "Database", "order": 3 }
+    ],
+    "attributes": [
+      { "id": "c0e5da5b-0000-4000-8000-000000000010", "name": "HostDisk", "dataType": "string", "isReadOnly": true, "order": 1, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a1", "renderer": "spark-meter", "rendererOptions": { "format": "bytes" } },
+      { "id": "c0e5da5b-0000-4000-8000-000000000011", "name": "HostDiskFree", "dataType": "number", "isReadOnly": true, "order": 2, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat", "rendererOptions": { "format": "bytes" } },
+      { "id": "c0e5da5b-0000-4000-8000-000000000012", "name": "HostDiskUsedPercent", "dataType": "number", "isReadOnly": true, "order": 3, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat", "rendererOptions": { "format": "percent", "decimals": 1, "warning": 75, "danger": 90 } },
+      {
+        "id": "c0e5da5b-0000-4000-8000-000000000013", "name": "HostDiskUsedPercentHistory", "dataType": "string", "isReadOnly": true, "order": 4, "showedOn": "PersistentObject", "rules": [],
+        "group": "c0e5da5b-0000-4000-8000-0000000000a1", "columnSpan": 2, "renderer": "spark-trend",
+        "rendererOptions": { "width": "100%", "height": "48px", "label": "Host disk used, last 7 days" }
+      },
+      { "id": "c0e5da5b-0000-4000-8000-000000000014", "name": "Memory", "dataType": "string", "isReadOnly": true, "order": 5, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a1", "renderer": "spark-meter", "rendererOptions": { "format": "bytes" } },
+      { "id": "c0e5da5b-0000-4000-8000-000000000015", "name": "Cpu", "dataType": "number", "isReadOnly": true, "order": 6, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a1", "renderer": "spark-stat", "rendererOptions": { "format": "percent", "decimals": 1, "warning": 75, "danger": 90 } },
+      { "id": "c0e5da5b-0000-4000-8000-000000000020", "name": "MirrorCount", "dataType": "number", "isReadOnly": true, "order": 7, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a2", "renderer": "spark-stat" },
+      { "id": "c0e5da5b-0000-4000-8000-000000000021", "name": "MirrorBytes", "dataType": "number", "isReadOnly": true, "order": 8, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a2", "renderer": "spark-stat", "rendererOptions": { "format": "bytes" } },
+      { "id": "c0e5da5b-0000-4000-8000-000000000022", "name": "MirrorVolume", "dataType": "string", "isReadOnly": true, "order": 9, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a2", "renderer": "spark-meter", "rendererOptions": { "format": "bytes" } },
+      { "id": "c0e5da5b-0000-4000-8000-000000000023", "name": "MirrorVolumeFree", "dataType": "number", "isReadOnly": true, "order": 10, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a2", "renderer": "spark-stat", "rendererOptions": { "format": "bytes" } },
+      { "id": "c0e5da5b-0000-4000-8000-000000000024", "name": "MirrorEvictions", "dataType": "number", "isReadOnly": true, "order": 11, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a2", "renderer": "spark-stat" },
+      { "id": "c0e5da5b-0000-4000-8000-000000000025", "name": "MirrorRefusals", "dataType": "number", "isReadOnly": true, "order": 12, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a2", "renderer": "spark-stat" },
+      { "id": "c0e5da5b-0000-4000-8000-000000000030", "name": "DatabaseSize", "dataType": "number", "isReadOnly": true, "order": 13, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a3", "renderer": "spark-stat", "rendererOptions": { "format": "bytes" } },
+      { "id": "c0e5da5b-0000-4000-8000-000000000031", "name": "DocumentCount", "dataType": "number", "isReadOnly": true, "order": 14, "showedOn": "PersistentObject", "rules": [], "group": "c0e5da5b-0000-4000-8000-0000000000a3", "renderer": "spark-stat" }
+    ],
+    "queries": []
+  }
+}

@@ -1,15 +1,16 @@
 {
   "version": 2,
-  "modelHash": "f6cbefdc3ef28d67728a44fbe8c71dcb99dde421a26d69bb97f0bcb4870f64a2",
+  "modelHash": "6e98fc66923fc81fa514ce2ca102553cedf694ee8fb30174b4c28286f17bfb9f",
   "contextRoots": "1b8e4efcde47c4e51c1d4c7a9fe86500addac829f98589af212e782f77120d6b",
-  "modelFiles": "0e7cd5325c09de5538645930652af20fd302f8891a913b4eb02fe7f86f955f0d",
+  "modelFiles": "08dfba404a71c2fcf84357744287b8401290535392a97ed39ee1f880559dea41",
   "files": {
     "AuditLogEntry.json": "5bb23be7fe5131c9a72f641b7b7cc74b436881e922197cc8378acd4a475789c8",
     "AuditRun.json": "2b0603eead94854a6ca7e208a8344c49f428327dc743dacd6f9a1ebb3df012f5",
     "CheckDefinition.json": "9de4dbad54c309304639fd104c54b3d11fb5e7ed1dc893f2ed54dfdffcda5640",
+    "DatabaseStatistics.json": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84",
     "Notification.json": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd",
     "NotificationPreference.json": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da",
-    "OperatorDashboard.json": "e29f6cd4ba084f2817898867c0c7af9c0044bc716be118bac1681029f13b66ee",
+    "OperatorDashboard.json": "79a4978c7f3ef374c556889e7bcfcc12b048e4681d369b9159803bb54944e226",
     "Organization.json": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935",
     "OrganizationInvitation.json": "8e40cf9b44347a167f5eada49a9adc613ca2b1e913b7d6d4c2d6340508ced115",
     "OrganizationInvite.json": "6e65251c03be7fb106c8dc45a0aff242b775dc3023fe01a49fc68d5105f53eaa",
@@ -36,16 +37,20 @@
   },
   "configFiles": {
     "actions.json": "6becc8ca83b43656498972ca2d035174ac61d75bb41847b095b6afa68ce8c829",
-    "programUnits.json": "bb91235a9e4bdeb2da622ea38afc1d8b195bf99ec49708419f77300d25dbf118"
+    "programUnits.json": "7f9110340640491869b7769df947603d0455cc461080b46c7a1b643d23b69d97"
   },
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",
+    "dashboards": "MintPlayer.Spark.Dashboards",
     "notifications": "MintPlayer.Spark.Notifications",
     "organizations": "MintPlayer.Spark.Organizations",
     "settings": "MintPlayer.Spark.Settings",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
+    "Model/DatabaseStatistics.json": {
+      "dashboards": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84"
+    },
     "Model/Notification.json": {
       "notifications": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd"
     },
@@ -90,6 +95,7 @@
     },
     "programUnits.json": {
       "app": "ee83bb83196499c985294ad2a8bc00606012c4ec82b701a62b02614fa517cd94",
+      "dashboards": "9f3065ae4c6256c4d047737c3d55d3b2c32a18a186d17896f965321205d98e8d",
       "notifications": "b962972bc9e43ff5f3ce944c4276dfaa2b713f6dc7c5b64644db81abd4585d19",
       "organizations": "5a4e33ac1d686d6c1b0e2c07d31cb6c60f19107c1bd6d2d223a74cd09c65e963",
       "settings": "562d0dfbe0badee24003f1faf8f2b5e088cc18fabd5ad5493db5e7e75f1418c5"

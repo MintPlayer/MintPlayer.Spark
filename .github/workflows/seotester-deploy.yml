@@ -20,6 +20,7 @@ on:
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization.Abstractions/**'
       - 'libs/cron/MintPlayer.Spark.Cron/**'
+      - 'libs/dashboards/MintPlayer.Spark.Dashboards/**'
       - 'libs/history/MintPlayer.Spark.History/**'
       - 'libs/history/MintPlayer.Spark.History.Abstractions/**'
       - 'libs/mail/MintPlayer.Spark.MailManager/**'

@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "modelHash": "8ec52fe7e89fc760f75e22bd0a0fb9b150037d63d124a0169529a657b9f8d910",
-  "contextRoots": "0b63ccaa50b7c8046d4c299e3b79b34eb3c9d7b64da1040fb50071a67c8c0568",
-  "modelFiles": "0eea1c0cc6bcba1540f630474e4210dc1294ab8a8f63b2b12a47842e2c186a3c",
+  "modelHash": "0805b9798efc4976eed6bf8d02b84bce6622a3d31b31af581a82ceb0a9d26fa5",
+  "contextRoots": "e7473dd70a94a2fc49b39eebefb5cda4fbbacd83e7edb4ef632fb605c716fa84",
+  "modelFiles": "bd0f7a648f5324dfce520d3d5ad76aee6dab75ee44e2f00915b3408a3ad300f0",
   "files": {
     "Account.json": "1219033eb578731772017f84518e4d8a8f26db4d5c6c510c4f4c814ec7031897",
     "ApiToken.json": "335fbf2468044559073c832ed0da7b73e1a8b4447f95d3e66df1c16815933619",
@@ -11,12 +11,14 @@
     "BuildSession.json": "8df719d4a5ca795af9b9d36da4576d46864369ae640d8a4247350abc3e782b81",
     "Commit.json": "dd05e6dc4b3c3b7778f9fca7ef8c4ae01567095ffb0d9fdfc729738a0988ae80",
     "CoverageSummary.json": "ae8fc0e1669186618f6ec8ef7114b7fd6ea91c94b61e50db1e0221f84950c699",
+    "DatabaseStatistics.json": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84",
     "EventColumnMapping.json": "f36b5c67ab777791d11672add3c82ae81b9a55607d8a1a50401ce273a97614ab",
     "ForgeAccounts.json": "04f7d8499b56100bed5f963239b28cd2296027d4ac3842aa2bf2e36ec9b2aac9",
     "ForkUploadBudget.json": "bc9e36b65ae5f3bbe46683a728657a8f5b807333e618170f6f1384c7e5ac08b1",
     "GateSettings.json": "4b9b7b7f266fc36321f8bb68285259e48afae4b145d4983370a9cd4cc40a1bb4",
     "GitHubProject.json": "a42b4aadba21f1ef06e21834d7bbc3f75e76d21d97b93389f7896f24d603d6a5",
     "Home.json": "70bf0a1daa7fe4bab1cedc56c425db8655581eb574d51e47d2b58b9707cc8ef3",
+    "HostMetrics.json": "86c52e73e41f7d80ae581c69c1b8cb5984ac099534d922bb3f2c522683ef12fb",
     "MyAccountRow.json": "57e03d0c983b0b1583d289dc3400e2840f2b1ad6d20b92e91e2016c9dfc0959c",
     "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
     "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
@@ -25,6 +27,7 @@
     "ProjectColumn.json": "0cf0f8a943163b86996690acb306a125960fd07b9cdd25633019b78a9ff02b3f",
     "ReportIngestOutcome.json": "914923e139ff8209050f9899f0972b18e25ce2f849b765062e979bee1fe3ee5e",
     "Repository.json": "b4699187bd26d7236d8054325ce8c963e45ef08b16710a513fccc13f9df60110",
+    "RepositoryGraphState.json": "72dfae99f343bf8336ec4c601d5d6b3b9b5e507829405d6d23b73d86190326a5",
     "SparkUser.json": "81d5e4fe403e329fc20404f35c3b9944aa11c17374981df5a4073ddf08fcdb69"
   },
   "entities": {
@@ -42,17 +45,22 @@
     "PatchCoverage": "160cecb4211c4165f1bb16f6576e43706f87987e9f87f1552e89efcf36d68836",
     "ProjectColumn": "d27cc267eafe9be5f4d77a8b15999efdcbc9be6eb86cf0cc908946c29735a428",
     "ReportIngestOutcome": "71e01c538ad858e42fc98362327225428d724d5cbd82f084091863fc53fe9bba",
-    "Repository": "31d41b6b7bf16810af6479a5cbebbe1cd32f7bd29acca3fa0354c217885a44e7"
+    "Repository": "31d41b6b7bf16810af6479a5cbebbe1cd32f7bd29acca3fa0354c217885a44e7",
+    "RepositoryGraphState": "189fb39a223286408abfa8d6fa097598b0b63f4af387084a5d178f96b7600ecc"
   },
   "configFiles": {
     "actions.json": "2fccd9dbf93facd0eb9e4a959cf06d030ffc4bfe91515d37ea5b7dd66f228e88",
-    "programUnits.json": "e8cb6afdaabb25013adec5c04dbfd7713bff8ea8b35ebf022fc60a8ecb4d63a3"
+    "programUnits.json": "76e87278bce495a393902ad1e6016b8db511b906441b38f827bf4449c2aca4fe"
   },
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",
+    "dashboards": "MintPlayer.Spark.Dashboards",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
+    "Model/DatabaseStatistics.json": {
+      "dashboards": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84"
+    },
     "Model/PasskeyRename.json": {
       "authorization": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e"
     },
@@ -69,6 +77,10 @@
       "app": "59be4284817de9343194fd0917d695d2ed4cf609f3c7890790c2df927360eb23",
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
+    },
+    "programUnits.json": {
+      "app": "1fb63254833855c0be8deb15adab43bb9b21d463706bd39386c353b0acac814c",
+      "dashboards": "9f3065ae4c6256c4d047737c3d55d3b2c32a18a186d17896f965321205d98e8d"
     }
   }
 }

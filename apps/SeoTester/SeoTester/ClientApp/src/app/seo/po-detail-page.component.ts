@@ -4,8 +4,8 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import type { CustomActionDefinition, PersistentObject } from '@mintplayer/ng-spark/models';
 import { valueFor } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+import { SparkQueryCardComponent } from '@mintplayer/ng-spark/grid';
 import { SparkPoDetailComponent } from '@mintplayer/ng-spark/po-detail';
-import { SeoOperatorDashboardPanelComponent } from './panels/operator-dashboard-panel.component';
 import { SeoSiteTrendPanelComponent } from './panels/site-trend-panel.component';
 
 /** Page details (PageResult) are kept this long after the run (PRD D8). */
@@ -33,12 +33,13 @@ export function downloadUrlOf(action: string, result: unknown): string | null {
 /**
  * The app's poDetail route (`sparkRoutes({ poDetail })`): the generic detail page for every type, with SeoTester's
  * panels where an attribute renderer does not fit (PRD §4.5): a site's score trend, the note that a run's page details
- * expired, and the operator dashboard's figures. The report itself (progress, scores, results with how-to-fix) is the
- * run's own attributes, drawn by the app's renderers (seo/renderers.ts).
+ * expired, and the abuse log under the operator dashboard (whose figures are the dashboards package's tiles, #504). The
+ * report itself (progress, scores, results with how-to-fix) is the run's own attributes, drawn by the app's renderers
+ * (seo/renderers.ts).
  */
 @Component({
   selector: 'app-po-detail-page',
-  imports: [SparkPoDetailComponent, SeoSiteTrendPanelComponent, SeoOperatorDashboardPanelComponent, BsAlertComponent, TranslateKeyPipe],
+  imports: [SparkPoDetailComponent, SeoSiteTrendPanelComponent, SparkQueryCardComponent, BsAlertComponent, TranslateKeyPipe],
   template: `
     <spark-po-detail [extraContentTemplate]="extras" (customActionExecuted)="onAction($event)" />
 
@@ -53,7 +54,8 @@ export function downloadUrlOf(action: string, result: unknown): string | null {
           }
         }
         @case ('OperatorDashboard') {
-          <app-seo-operator-dashboard-panel />
+          <!-- The abuse log (D28): every start, join and refusal; Administrators only (the query's own right). -->
+          <div class="m-3" data-abuse-log><spark-query-card queryId="audit-log" /></div>
         }
       }
     </ng-template>

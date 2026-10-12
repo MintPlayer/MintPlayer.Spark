@@ -177,6 +177,33 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # The commit-graph mirror sidecar (#504, docs/coverage_commit_graph_PRD.md D1, D3, D4, D18, D24): git, bare
+  # treeless mirrors of the repositories whose graph someone opened, lane layout. It holds no GitHub App key, no
+  # RavenDB certificate and no stored credential; the app hands it a token per fetch.
+  #
+  # ⚠️ Its API has NO authentication: the network is the boundary (D4). It must stay on exactly these two networks:
+  #   coverage-git         (internal) shared with coverage-app ONLY. Adding any other container to it exposes the
+  #                        private commit history of every mirrored repository to that container.
+  #   coverage-git-egress  its own way out to the forges, shared with NOTHING (D18).
+  # Never on coverage-db, seo-raven or web (D24): no network carries both RavenDB and this sidecar.
+  coverage-git:
+    # Pull-only, like the app; built and pushed by code-coverage-deploy.yml.
+    image: ghcr.io/mintplayer/codecoverage-git:master
+    environment:
+      - GitMirror__Root=/data/git
+      # The host free-space floor (D8, D20): below it every clone and fetch is refused. The named volume lives on the
+      # root disk RavenDB shares, so this guards the database's disk. 15 GB placeholder until S2's numbers (D7).
+      - GitMirror__MinFreeBytes=${GIT_MIRROR_MIN_FREE_BYTES:-16106127360}
+    volumes:
+      # Mirrors only, mounted into this container only (D8). The app has no mount; it learns sizes from the sidecar.
+      - codecoverage-git-data:/data/git
+    # D22: the VPS has about 3 GB available, and lazy snapshots must not take RavenDB's share.
+    mem_limit: 1g
+    networks:
+      - coverage-git
+      - coverage-git-egress
+    restart: unless-stopped
+
   coverage-app:
     # Pull-only: no build block, so `docker compose up -d` on the VPS can
     # never fall back to building from source — deploys are pull + restart.
@@ -195,6 +222,9 @@ services:
       # Started, not waited on: mail is not on the critical path for serving coverage, and
       # a relay that is slow to come up must not hold back the whole deployment.
       coverage-smtp:
+        condition: service_started
+      # Started, not waited on, for the same reason: the commit graph answers "unavailable" without it.
+      coverage-git:
         condition: service_started
     environment:
       # Explicit: Program.cs derives the GitHub__{env}__* config prefix from
@@ -250,6 +280,9 @@ services:
       # Disabled | WhenSignedIn | ConfirmByEmail. Left at the Spark default (Disabled)
       # until there is a second forge worth linking to.
       - Spark__Auth__ExternalLoginLinking=${EXTERNAL_LOGIN_LINKING:-Disabled}
+      # The commit-graph mirror sidecar (#504), reachable only over the internal coverage-git network. Unset turns the
+      # graph off ("unavailable"). The rest of CommitGraph:* (budget, quotas, eviction) keeps its in-code placeholders.
+      - CommitGraph__SidecarUrl=http://coverage-git:8080
     volumes:
       # GitHub App private key, downloaded from the App settings page; see
       # .env.example for the expected location.
@@ -272,8 +305,8 @@ services:
       - "traefik.http.routers.coverage.tls.certresolver=letsencrypt"
       # Pin the upstream port explicitly so Traefik never guesses.
       - "traefik.http.services.coverage.loadbalancer.server.port=8080"
-      # The app sits on three networks; without this Traefik may resolve the
-      # container's address on coverage-db or coverage-mail, which it can't reach (random 504s).
+      # The app sits on four networks; without this Traefik may resolve the
+      # container's address on coverage-db, coverage-mail or coverage-git, which it can't reach (random 504s).
       - "traefik.docker.network=web"
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
@@ -295,23 +328,29 @@ services:
       - web
       - coverage-db
       - coverage-mail
+      # ⚠️ Shared with coverage-git ONLY (D4): the sidecar's API is unauthenticated, and this network is its boundary.
+      - coverage-git
     restart: unless-stopped
 
 volumes:
   raven-data:
   smtp-queue:
   dataprotection-keys:
+  # Commit-graph mirrors (D8); mounted into coverage-git only. Deleting it costs re-clones on the next view, nothing else.
+  codecoverage-git-data:
 
 networks:
   web:
     external: true
   # Pairwise and internal (SeoTester PRD D55): each backend service is reachable only by the app that uses it, and no
-  # network carries both RavenDB and the mail relay. internal: true = no route out; only coverage-smtp-egress has one.
+  # network carries both RavenDB and the mail relay. internal: true = no route out; only coverage-smtp-egress and coverage-git-egress have one.
   # tools/verify-backend-networks.test.mjs checks the members of each network in both stacks.
   #
   #   coverage-db           coverage-app, coverage-raven, coverage-raven-license
   #   coverage-mail         coverage-app, coverage-smtp
   #   coverage-smtp-egress  coverage-smtp (its way to the recipients' MX)
+  #   coverage-git          coverage-app, coverage-git (the commit-graph sidecar's unauthenticated API, #504 D4/D24)
+  #   coverage-git-egress   coverage-git (its way to the forges, D18)
   #   seo-raven  (external) coverage-raven + SeoTester's app
   #   seo-mail   (external) coverage-smtp  + SeoTester's app
   coverage-db:
@@ -321,6 +360,15 @@ networks:
     driver: bridge
     internal: true
   coverage-smtp-egress:
+    driver: bridge
+  # ⚠️ EXACTLY coverage-app and coverage-git (D4). The sidecar's API has no authentication: any other container added
+  # here could read the private commit history of every mirrored repository, or delete and clone at will.
+  coverage-git:
+    driver: bridge
+    internal: true
+  # ⚠️ coverage-git ALONE (D18): its outbound route for clones. Nothing else may join it, or that container could
+  # reach the sidecar's API from a network that is not internal.
+  coverage-git-egress:
     driver: bridge
   # Shared with SeoTester. They belong to no compose project, so neither stack's `down` removes them; both deploy
   # workflows create them, internal, when missing (`docker network create --internal seo-raven`).

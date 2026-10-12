@@ -143,4 +143,28 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<global::CodeCoverage.Feedback.PublishPullRequestCommentMessage>),
         typeof(IRecipient<global::CodeCoverage.Feedback.OpenPullRequestCommentMessage>),
         typeof(IRecipient<global::CodeCoverage.Dependencies.ScanRepositoryManifestsMessage>));
+
+    /// <summary>
+    /// The commit graph (#504). A missing deletion recipient is the dangerous one: a disconnect
+    /// would queue the deletion and nothing would ever remove the private history it mirrors.
+    /// The avatar resolver lives in the GitHub project, so it drops off the same way a moved
+    /// GitHub service would.
+    /// </summary>
+    [Fact]
+    public void The_commit_graph_services_are_registered() => AssertRegistered(
+        typeof(global::CodeCoverage.CommitGraph.ICommitGraphSidecar),
+        typeof(global::CodeCoverage.CommitGraph.ICommitGraphMirrors),
+        typeof(global::CodeCoverage.CommitGraph.ICommitGraphReader),
+        typeof(global::CodeCoverage.CommitGraph.ICommitGraphAvatars),
+        typeof(global::CodeCoverage.CommitGraph.IForgeAvatarResolver),
+        typeof(IRecipient<global::CodeCoverage.CommitGraph.FetchCommitGraphMessage>),
+        typeof(IRecipient<global::CodeCoverage.CommitGraph.DeleteCommitGraphMirrorMessage>));
+
+    /// <summary>
+    /// The Administrators group (#504, M5b). Without its membership provider the app still starts and the group still
+    /// exists, but nobody is in it: the host metrics dashboard and the mirrors list go dark with no error.
+    /// </summary>
+    [Fact]
+    public void The_administrators_membership_is_registered() => AssertRegistered(
+        typeof(CoverageAdministrators));
 }

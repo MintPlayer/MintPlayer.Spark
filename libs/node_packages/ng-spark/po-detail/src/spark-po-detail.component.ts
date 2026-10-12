@@ -54,6 +54,7 @@ import {
 } from '@mintplayer/ng-spark/models';
 import {
   SPARK_DETAIL_ACTIONS,
+  SPARK_DETAIL_LAYOUTS,
   SPARK_DETAIL_PANELS,
   SparkDetailContext,
   orderSparkExtensions,
@@ -87,6 +88,7 @@ export class SparkPoDetailComponent {
    */
   protected readonly detailPanels = orderSparkExtensions(inject(SPARK_DETAIL_PANELS, { optional: true }), p => p.order);
   protected readonly detailActions = orderSparkExtensions(inject(SPARK_DETAIL_ACTIONS, { optional: true }), a => a.priority ?? 60);
+  private readonly detailLayouts = orderSparkExtensions(inject(SPARK_DETAIL_LAYOUTS, { optional: true }), () => undefined);
 
   showCustomActions = input(true);
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -163,6 +165,14 @@ export class SparkPoDetailComponent {
       deleted: this.deletedMode(),
       reload: () => this.load(),
     };
+  });
+
+  /** The registered layout that draws this object's attributes instead of the tabs (#504), if one matches. */
+  protected readonly detailLayout = computed(() => {
+    const item = this.item();
+    const entityType = this.entityType();
+    if (!item || !entityType) return null;
+    return this.detailLayouts.find(l => l.matches(item, entityType)) ?? null;
   });
 
   /**
