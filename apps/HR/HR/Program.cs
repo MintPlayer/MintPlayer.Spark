@@ -7,7 +7,9 @@ using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.MailManager;
+using MintPlayer.Spark.Mcp;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication;
 
@@ -49,6 +51,20 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         oidc.Scope.Add("fleet.read");
         oidc.SaveTokens = true;
     }));
+
+    // MCP server (docs/guide-mcp.md, PRD D24): agents read and, through propose_changes → apply_changes, change
+    // people and their jobs (the contracts: CarreerJob rows, "agentPermissions": "Read, Write" in the model, with
+    // Person, which owns them). Professions and companies are readable so a job's references stay visible.
+    // HR has no embedded authorization server, so the setup that is wired is personal access tokens (account page).
+    spark.AddMcp(mcp =>
+    {
+        mcp.ServerName = "HR";
+        mcp.ToolPrefix = "hr";
+        mcp.Instructions = "People, their companies, professions and jobs (contracts) in the HR demo, as the signed-in user sees them. Changes go through propose_changes, then apply_changes.";
+        mcp.AgentPermissions = agent => agent.Kind == EAgentKind.Anonymous
+            ? EAgentPermission.Read
+            : EAgentPermission.Read | EAgentPermission.Write;
+    });
 
     spark.AddMessaging();
     // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written
