@@ -230,7 +230,7 @@ To have agents sign in at your organization's OAuth server:
 4. An unmapped token gets 401, never anonymous access. Groups and rights come from the local user, never
    from roles in the token.
 
-Users must therefore sign in to the website once with that provider before their agent works. The agent's
+Users must therefore sign in to the website once with that provider before their agent works. The agent starts with read access to everything exposed; changes need both the user turning them on and `mcp:write` in the token. Its
 grant appears on their account page after its first call; revoking it there blocks the agent even though
 the external server keeps issuing tokens.
 

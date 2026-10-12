@@ -1,6 +1,6 @@
 # PRD — MintPlayer.Spark.Mcp: an MCP server inside a Spark app, acting as the user
 
-**Status:** designed; owner grill done and consistency-reviewed (2026-10-12, §10); one open question (Q18). No code yet.
+**Status:** designed; owner grill done and consistency-reviewed (2026-10-12, §10); no open questions. No code yet.
 **Date:** 2026-10-12
 **Origin:** owner request (2026-10-12). App developers host a Spark website and let its users connect AI
 agents (Claude Code, Codex, Gemini) to their data. SeoTester: agents fix the SEO findings in the site's
@@ -45,7 +45,7 @@ Where §0 and the body disagree, §0 wins and the body is fixed.
 | D19 | **Web fix in this PR:** a reference whose **target type** the caller may not `Read` keeps its id and shows the redacted placeholder, for web and MCP alike. Red test first; audit every app's security.json for affected references; release-notes line. **owner** (R1-Q3) | `BreadcrumbResolver` consults only row security and attribute rights, never `IPermissionService` [verified `BreadcrumbResolver.cs:98-104`, `RowSecurity.cs:254-258`, `EntityMapper.cs:359-380`]. |
 | D20 | **Endpoint `/mcp`**, configurable; `Spark:Mcp:CanonicalUrl` override (default `PublicOrigin` + path) for a subdomain behind a proxy. Startup fails if the path is already mapped. **owner** (R1-Q9) | Outside `/spark` the endpoint doesn't inherit Spark's default CORS and ambient-credential antiforgery [verified `docs/guide-cors.md:32,55-57`]. |
 | D21 | **Tool prefix** `mcp.ToolPrefix`, defaulting to a slug of `ServerName` (`seotester_`, `codecoverage_`); the guide tells developers to set it explicitly so renaming `ServerName` doesn't rename tools users allow-listed, applied to generic and domain tools; domain tools are written unprefixed. **owner** (R1-Q13) | Two Spark apps in one session (ours) would collide on generic tool names. |
-| D22 | **External authorization server (setup 2) maps a token to a user only through a linked external login**: the server is configured as one of the app's sign-in providers, the issuer is bound to that provider, the token's `sub` must equal the linked login's key. Unmapped → **401, never anonymous**. Groups and rights come from the local user, never from token role claims. A **shadow `AgentGrant`** is created on first use. Opaque tokens go through introspection. Full adversarial test list in §6.2. **owner** (R1-Q14, Q15: "if we manage to make it secure, add the appropriate tests") | Matching on `email` is a classic account-takeover bug; issuer binding stops cross-issuer `sub` collisions. |
+| D22 | **External authorization server (setup 2) maps a token to a user only through a linked external login**: the server is configured as one of the app's sign-in providers, the issuer is bound to that provider, the token's `sub` must equal the linked login's key. Unmapped → **401, never anonymous**. Groups and rights come from the local user, never from token role claims. A **shadow `AgentGrant`** is created on first use with "everything exposed", `Read` only. `Write` requires both the user turning it on under Connected applications **and** `mcp:write` in the token: in this setup only, the token scope is a real cap, because we can't step the user up through another server's consent (R3-Q18). Opaque tokens go through introspection. Full adversarial test list in §6.2. **owner** (R1-Q14, Q15: "if we manage to make it secure, add the appropriate tests") | Matching on `email` is a classic account-takeover bug; issuer binding stops cross-issuer `sub` collisions. |
 | D23 | Existing upload credentials are **not** MCP credentials: CodeCoverage `covt_` tokens and GitHub Actions OIDC tokens are rejected on `/mcp`. | Their principal is a token, not a user [verified `ApiTokens/ApiTokenAuthenticationHandler.cs:14-96`]. |
 | D24 | First adopters **in the same PR**: **SeoTester** (app permissions `Read \| Write`, types `Read` only; the one write is `seotester_start_scan`) and **CodeCoverage** (`Read`), both on the embedded setup. **HR** demonstrates `Read, Write` on contracts with propose → apply. **owner** (2026-10-12 request; R1-Q11) | One PR rule. |
 
@@ -310,9 +310,7 @@ non-loopback redirect refused · unreferenced-type reference shows the placehold
 
 ## 8. Open questions
 
-| # | Question | Recommendation |
-|---|---|---|
-| Q18 | External setup: the external server's consent screen can't show our type list, so what does the **shadow grant** allow on first use? | "Everything exposed", `Read` only. `Write` only once the user turns it on under Connected applications **and** the token carries `mcp:write`. In the external setup the token's scope is a real cap, because we can't step the user up through someone else's consent. |
+None. Q18 was resolved in round 3 (§10, D22).
 
 ## 9. Out of scope
 
@@ -359,3 +357,5 @@ non-loopback redirect refused · unreferenced-type reference shows the placehold
   - D21: the prefix default can't be remembered "once"; the guide says to set it explicitly.
   - §4.7: anonymous `seotester_explain_check` needs a new anonymous grant in SeoTester's security.json.
   - Q18 opened: the shadow grant's first-use permissions in the external setup.
+- **Round 3 (owner, 2026-10-12):** Q18 as recommended: shadow grant starts "everything exposed", `Read`;
+  `Write` needs the user's toggle and `mcp:write` in the external token → D22.
