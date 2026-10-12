@@ -38,7 +38,7 @@ Where §0 and the body disagree, §0 wins and the body is fixed.
 | D10 | Results are serialized with **Spark's HTTP `JsonOptions`** (the redaction net), **fenced as untrusted data** in a random per-call tag, paged, capped at about 10k tokens. | Redaction net lives in HTTP `JsonOptions` [verified `SparkMiddleware.cs:102-104`]. Crawled content is an injection channel → S6. Claude Code warns at 10k output tokens [cited code.claude.com/docs/en/mcp]. |
 | D11 | **Personal access tokens** live in the **Authorization package** (all setups): created on the account page with the same per-type choice and read/changes choice, prefix `spat_`, shown once, stored hashed, **mandatory expiry, default 90 days, max 1 year**, revoked on security-stamp change. **owner** (R1-Q4, Q16) | All three clients accept a static bearer header [cited D5 sources]. Precedent: CodeCoverage's hashed `covt_` tokens [verified `CodeCoverage.Library/Entities/ApiToken.cs`]. |
 | D12 | **`AgentGrant` collection in the Authorization package**, one per user and agent, **natural ids**: `AgentGrants/{userId}/pat/{tokenId}`, `AgentGrants/{userId}/ext/{sha256(issuer + "\|" + clientId)[..32]}`, `AgentGrants/{userId}/app/{clientId}`. Holds per-type permissions ("all exposed" or a chosen list), read/changes, `LastUsedAt`, and for tokens the hash and expiry. **It is the source of truth for access**; in the embedded setup `OidcGrant` keeps OAuth bookkeeping and revoking either revokes the other. Read per call, cached a few seconds, invalidated on edit. **owner** (R1-Q2, Q5, Q17) | A grant edited on the server takes effect on the next call without a new sign-in, in both directions. `OidcGrant` exists only with the IdentityProvider [verified `libs/identity_provider/.../Models/OidcGrant.cs:8-46`]. |
-| D13 | **Per-type grant restrictions are enforced inside `IPermissionService`** for agent requests, so every tool, generic or app-written, honours them. **owner** (R1-Q2) | Query rights are already `Query/{type}` [verified `QueryReadPath.cs:97-101`]. |
+| D13 | **Per-type grant restrictions are enforced inside `IPermissionService`** for agent requests, so every tool, generic or app-written, honours them. **owner** (R1-Q2). *M3a:* applied by Mcp's agent restriction from the grant the token package describes (§10, M3a). | Query rights are already `Query/{type}` [verified `QueryReadPath.cs:97-101`]. |
 | D14 | A **Connected applications** section in the Authorization package's account area (all setups) lists each grant: agent, kind, verified/unverified, allowed types, read/changes, created, last used, token expiry; edit, revoke, create token. Linked from `/account` through `SPARK_ACCOUNT_OVERVIEW_LINKS`. The IdentityProvider references the Authorization package, not the reverse, so the section has an **extension point** through which the IdentityProvider contributes its non-agent OAuth grants (sign-in at other websites); its server-rendered `/connect/applications` stays. **owner** (R1-Q4, Q5) | Account page link mechanism [verified `ng-spark/auth/models/src/auth-route-config.ts:56-71`]; the IdP's existing SPA page [verified `Endpoints/Portal/ConnectedApplicationEndpoints.cs:37,82`] becomes such a contribution. |
 | D15 | Audit: one structured log event per call (user, client id, grant id, tool, arguments **hash**, row count, outcome, duration) + `AgentGrant.LastUsedAt` written at most once a minute. Writes are audited by the kept plans (D8). **owner** (R1-Q7) | Arguments are hashed because search terms can be personal data. |
 | D16 | Rate limits per user for signed-in calls, per IP for anonymous calls, with the existing quota mechanism. | [verified `docs/guide-quotas.md`]. |
@@ -415,3 +415,48 @@ None. Q18 was resolved in round 3 (§10, D22).
   - **S11 FAIL by source reading** (§S3 / S11): no client opens sign-in on a mid-session 401 without a
     token. → **D17**: per-client sign-in instructions in the 401/403 error text (owner idea; live test
     pending) and per-app `RequireSignIn` (default off). Step-up on 403 only in Claude Code.
+- **M3a implementation (2026-10-12).** Commits ae7999b8 (seam), 96e4baed (Authorization), 6fdb5408
+  (tests). Decisions taken while building, with their evidence:
+  - **The seam lives in Abstractions** (owner direction; the Authorization package references only
+    Abstractions, and neither it nor the IdentityProvider may reference Mcp, nor Mcp them).
+    `AgentInformation`, `EAgentKind` and `EAgentAuthentication` moved from Mcp to namespace
+    `MintPlayer.Spark.Abstractions` (beside `EAgentPermission`); `AgentInformation` gained `GrantId`.
+    New: `IAgentCredentialScheme` (Setup, Scheme, SubjectIsLocalUserId, `DescribeAsync` →
+    `AgentCredential` = agent + `AgentGrantScope`), registered by a token package as an enumerable
+    singleton; Mcp's effective setups are flags ∩ these registrations (no assembly-name detection; the
+    built-in detector list is gone). `IAgentExposure`, implemented by Mcp, tells the account page (and, in
+    M3b, the consent screen) what may be granted: exposed types the caller may see, app layer per agent,
+    effective setups.
+  - **D13, refined: the grant is enforced in Mcp's `IAgentRequestRestriction`, not a second one in the
+    Authorization package.** Only Mcp knows which targets are entity types (`IModelLoader` is core); a
+    grant restriction without it would either deny application resources or need a new core seam. The
+    Authorization package owns the grant's semantics (`AgentGrant.ToScope()` → `AgentGrantScope.For`),
+    read per request through `DescribeAsync`; the restriction intersects it with the type layer inside
+    `IPermissionService`, so every tool still honours it. Application resources (non-type targets) follow
+    the app layer, the grant's read/changes cap and security.json. Evidence: with the grant clause removed,
+    `The_grant_narrows_tools_and_calls_and_an_edit_applies_to_the_next_call` fails (mutation run).
+  - **Personal access tokens are `/mcp`-only.** The scheme is registered with ASP.NET Core but not as a
+    Spark credential (`AddCredentialScheme`), because the agent layers (app, type, grant) exist only on
+    `/mcp`; on the web a token would act with the user's full rights. Test `A_token_opens_no_web_endpoint`.
+    The scheme's `SubjectIsLocalUserId` reaches core through the gate's authenticated-scheme feature.
+  - **Token format `spat_{base64url(userId)}.{tokenId}.{secret}`**: the grant's natural id (D12) is a
+    point load, with no index (stale right after creation) and no lookup collection (owner prefers none).
+    The user id is not a secret; the 256-bit secret is, stored as SHA-256 and compared in constant time.
+  - **Store-backed groups** (`AgentStoreGroupMembership`, Authorization): active for any non-ambient scheme
+    with `SubjectIsLocalUserId`, so setup 3's tokens (M3b) get them with no further work. Composed through
+    `AddGroupMembershipProvider`, which moved to Abstractions (same namespace `MintPlayer.Spark.Extensions`,
+    callers unchanged) together with its internal composition types. Evidence: S4 test red without the
+    registration, green with it.
+  - **Revocation:** deleting the grant; expiry; the user's security stamp at creation ≠ now (password change,
+    removed login); lockout; deleted user. All answer 401 on `/mcp` (never anonymous). Grants are cached 5 s
+    per node and invalidated on edit/revoke on the node that made the change; the user (stamp, lockout,
+    groups) is read on every call.
+  - **D14 endpoints:** `/spark/auth/manage/agents` (+ `tokens`, `update`, `revoke`,
+    `applications/revoke`), cookie + antiforgery, mapped only with Mcp (`IAgentExposure`) or an
+    `ISparkConnectedApplicationSource` (the IdentityProvider's extension point, M3b). A grant is addressed
+    by its key below the signed-in user's prefix; a choice beyond app(agent) or the type is refused, not
+    trimmed. Client: `withConnectedAgents()` (route `account/agents`, overview link), ng-spark 22.35.0.
+  - **For M3b:** the IdP registers an `IAgentCredentialScheme` (Setup = Embedded) whose `DescribeAsync`
+    loads `AgentGrants/{userId}/app/{clientId}` via `AgentGrantStore` (internal, IVT to the IdP exists); its
+    `/connect/applications` contribution is an `ISparkConnectedApplicationSource`; OidcGrant ↔ AgentGrant
+    revocation uses `AgentGrant.OidcGrantId` (no hook yet: revoking an AgentGrant does not touch OidcGrant).

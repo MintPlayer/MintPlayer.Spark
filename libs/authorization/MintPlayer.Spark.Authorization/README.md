@@ -370,6 +370,40 @@ on display names. Reserved ids (`anonymous`, `authenticated`) and ids not declar
 `security.json` are dropped. Every provider is asked once per request, and the merged answer is
 cached for the rest of that request, including `[SparkAuthorize(Group = …)]`. The order of the
 calls doesn't matter, and adding the same provider type twice does nothing.
+(`AddGroupMembershipProvider` is declared in `MintPlayer.Spark.Abstractions`, namespace
+`MintPlayer.Spark.Extensions`, so a package referencing only Abstractions can compose a provider.)
+
+#### AI agents: grants and personal access tokens (MCP)
+
+With `MintPlayer.Spark.Mcp` installed, `spark.AddAuthentication<TUser>()` also wires the agent side
+of the MCP server ([guide](../../../docs/guide-mcp.md#grants-and-personal-access-tokens),
+`docs/spark_mcp_PRD.md` D11–D15). Without the Mcp package all of this is inert.
+
+- **`AgentGrant`** (collection `AgentGrants`): what one user allowed one agent — read, or read +
+  changes; everything the app makes available to agents, or chosen types. Natural ids:
+  `AgentGrants/{userId}/pat/{tokenId}`, `…/ext/{sha256(issuer|clientId)[..32]}`, `…/app/{clientId}`.
+  It is read on every `/mcp` call (cached 5 seconds, invalidated by an edit), so an edit or a
+  revocation applies to the agent's next call. `LastUsedAt` is written at most once a minute.
+- **Personal access tokens**: `spat_…`, shown once, stored as a SHA-256, 90 days by default and a
+  year at most. Refused once revoked (the grant is deleted), expired, when the user's security stamp
+  changes (password change, removed sign-in method) or the user is locked out. The scheme
+  `PersonalAccessTokens.Scheme` is **not** a Spark web credential: a token authenticates `/mcp` and
+  nothing else, so it can never call the app's API without the agent layers.
+- **Groups from the store**: for an agent token (any non-ambient scheme whose `sub` is the local user
+  id) the user's `Roles` and group claims are read from the store on every request, so removing a
+  role denies the agent's next call. The cookie keeps its claims until Identity's security-stamp
+  validation (30 minutes by default), as before.
+- **Endpoints** under `/spark/auth/manage/agents` (cookie + antiforgery, like the other account
+  endpoints; mapped only with the Mcp package or a contributing package): `GET` the overview,
+  `POST tokens`, `POST update`, `POST revoke`, `POST applications/revoke`. A grant is addressed by
+  its key below the signed-in user's prefix, so a user can only reach their own. A choice beyond
+  what the app allows for that agent (`mcp.AgentPermissions`) or the type's `agentPermissions` is
+  refused with `agent_permission_not_offered`.
+- **Extension point**: register an `ISparkConnectedApplicationSource` to list (and revoke) access a
+  package granted that is not an agent grant, e.g. the identity provider's sign-ins at other
+  websites. Its entries appear on the same page.
+- **Client**: `sparkAuthRoutes(…, withConnectedAgents())` mounts `account/agents`
+  (`SparkConnectedAgentsComponent`) and links it from the account overview.
 
 ### XSRF/Antiforgery Protection
 

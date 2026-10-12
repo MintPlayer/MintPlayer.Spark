@@ -133,8 +133,9 @@ Changing your password or removing a sign-in method disconnects all agents.
 ## Agents without a browser (CI, scheduled jobs)
 
 Create a **personal access token** on the same account page, choosing what it may see and whether it may
-make changes. It starts with `spat_`, is shown once, and expires (90 days unless you pick another date, at
-most a year). Store it as a secret, never in a repository. Then:
+make changes, and how many days it stays valid (90 unless you change it, at most 365). It starts with
+`spat_` and is shown once: copy it right away. Store it as a secret, never in a repository. The token
+works only for the agent connection (the MCP address), not for the website or its API. Then:
 
 - Claude Code: `claude mcp add --transport http seotester https://seotester.mintplayer.com/mcp --header "Authorization: Bearer ${SPARK_PAT}"`
 - Codex: `bearer_token_env_var = "SPARK_PAT"` under `[mcp_servers.seotester]`

@@ -4,8 +4,9 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server inside a Spar
 (Claude Code, Codex, Gemini) connect to `/mcp` and read the application's data **as the user who connected
 them**: `security.json`, row security and attribute redaction apply exactly as in the web UI.
 
-> **Preview.** Agent sign-in (personal access tokens, the embedded or an external authorization server) is not
-> wired yet; until it is, every call runs as `anonymous`. Writes (`propose_changes` / `apply_changes`) are not
+> **Preview.** Agents sign in with personal access tokens (`spat_…`, created on the account page of an app
+> with `MintPlayer.Spark.Authorization`; without that package every call runs as `anonymous`). The embedded
+> and external authorization servers are not wired yet. Writes (`propose_changes` / `apply_changes`) are not
 > available yet. See `docs/spark_mcp_plan.md`.
 
 ```csharp

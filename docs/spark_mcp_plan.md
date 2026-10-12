@@ -56,7 +56,7 @@ sign-ins (Codex ≥ 0.148, Gemini 0.63, Claude Code) moved to the M7 manual chec
   per-IP limits; audit log events.
 - Analyzer SPARK05x for raw sessions / unchecked calls in tool classes.
 
-### M3a — Authorization package: grants and personal tokens (setup 1)
+### M3a — Authorization package: grants and personal tokens (setup 1) — done (2026-10-12)
 - Store-backed groups for agent bearer callers (PRD D4, §4.6): an `IGroupMembershipProvider` loading
   `SparkUser.Roles` by `sub` per request, bearer principals only, registered through core's
   `AddGroupMembershipProvider`. Here, not in core: `ClaimsGroupMembershipProvider` lives in core

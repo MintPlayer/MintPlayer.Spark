@@ -129,6 +129,7 @@ mcp.AgentPermissions = agent => agent.Kind switch
 | `VerifiedHost` | Yes: set only for metadata-document clients, whose document we fetched over HTTPS |
 | `UnverifiedName` | **No.** Any program can call itself "Claude Code". |
 | `User` | Yes |
+| `GrantId` | Yes: the user's grant for this agent (`AgentGrants/…`), for logs; `null` when anonymous |
 
 Keep the function fast and free of database calls. Gemini registers dynamically and has no
 `VerifiedHost`, so a verified-host allowlist gives Gemini users read-only access.
@@ -236,7 +237,30 @@ applies to the agent's next call without signing in again.
 Users manage grants under **Account → Connected applications**, and create **personal access tokens**
 there for agents that can't open a browser (CI jobs). Tokens start with `spat_`, are shown once, are stored
 hashed, and expire after 90 days by default (at most a year). A password change, a removed sign-in method
-or a locked account revokes all grants and tokens.
+or a locked account revokes all personal access tokens.
+
+Wiring, as built (plan M3a):
+
+- **Personal access tokens need no extra call.** `spark.AddAuthentication<TUser>()` wires them, and
+  `AddMcp` accepts them because the Authorization package registers an `IAgentCredentialScheme` for
+  setup 1. Leave `PersonalAccessToken` out of `mcp.Authentication` to refuse them.
+- **A token works on `/mcp` only.** Its scheme is not one of Spark's web credentials, so it cannot call
+  the app's API (`/spark/*`) or the account pages, where the agent layers would not narrow it.
+- **The page.** Mount it in the client with `sparkAuthRoutes(withAccount(), withConnectedAgents())`; it
+  appears on the account overview. It offers only what a call could use: the types the user may see that
+  have `agentPermissions`, and changes only where `mcp.AgentPermissions` (for that agent) and the type
+  allow them. The server endpoints are under `/spark/auth/manage/agents`.
+- **Groups.** An agent's groups are read from the user store on every call, never from the token, so
+  removing a role applies to the agent's next call. The web cookie keeps its role claims until Identity
+  re-validates its security stamp (30 minutes by default), so right after a membership change the agent is
+  the stricter side.
+- **`AgentInformation`, `EAgentKind`, `EAgentAuthentication`** are in `MintPlayer.Spark.Abstractions`
+  (`using MintPlayer.Spark.Abstractions;`), next to `EAgentPermission`.
+
+For package authors: a package that issues agent tokens registers an `IAgentCredentialScheme`
+(Abstractions) describing the agent and the user's grant behind each principal; a package that grants
+other access a user should see on the same page registers an `ISparkConnectedApplicationSource`
+(Authorization package).
 
 ## Using an external authorization server
 
