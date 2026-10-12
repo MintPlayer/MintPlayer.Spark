@@ -10,6 +10,7 @@ using MintPlayer.Spark.Settings;
 using MintPlayer.Spark.Settings.Quotas;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
+using MintPlayer.Spark.Tests.Mcp._Infrastructure;
 using MintPlayer.Spark.Tests.Organizations;
 using Raven.Client.Documents.Linq;
 
@@ -141,29 +142,31 @@ public class SparkQuotaTests : SparkTestDriver
     }
 
     /// <summary>
-    /// MCP PRD D4: an AI agent's bearer principal carries the local user id as <c>sub</c> only, which
-    /// <see cref="MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser"/> reads. Keyed by address instead, an agent
-    /// would spend a quota of its own beside its user's (red before the fix: <c>ip:…</c>).
+    /// MCP PRD D4: an AI agent spends its user's quota, never one of its own per address. A real personal access token
+    /// through <c>/mcp</c>: its principal carries the local user id as <c>NameIdentifier</c> (every agent setup does,
+    /// <c>McpAgentPrincipalTests</c>), which the key reads as it reads the sign-in cookie's. Red with the claim off the
+    /// token's principal: <c>ip:…</c>.
     /// </summary>
     [Fact]
-    public void An_agents_bearer_caller_spends_its_users_quota_not_one_per_address()
+    public async Task An_agents_bearer_caller_spends_its_users_quota_not_one_per_address()
     {
-        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext
-        {
-            RequestServices = new ServiceCollection()
-                .AddSingleton<MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser>(new BearerUser("SparkUsers/ann"))
-                .BuildServiceProvider(),
-            User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
-                [new System.Security.Claims.Claim("sub", "SparkUsers/ann")], "AgentBearer")),
-        };
+        await using var host = McpAccountHost.Create(Store, mcp => mcp.AddTools<QuotaKeyProbeTools>());
+        var user = await McpAccountHost.CreateUserAsync(host, "quota-agent");
+        var browser = await McpBrowser.SignInAsync(host.CreateClient(), "quota-agent");
+        var (token, _) = await browser.CreateTokenAsync("quota-probe");
 
-        ISparkQuotas.KeyFor(context).Should().Be("SparkUsers/ann");
+        var reply = await McpWire.CallAsync(host.CreateClient(), "acme_quota_key", new { }, McpAgentClient.Bearer(token));
+
+        reply.ToolText.Should().Be("key=" + user.Id);
     }
 
-    private sealed class BearerUser(string id) : MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser
+    /// <summary>The quota key of the caller, as a custom action's quota gate computes it.</summary>
+    [ModelContextProtocol.Server.McpServerToolType]
+    public sealed class QuotaKeyProbeTools(Microsoft.AspNetCore.Http.IHttpContextAccessor accessor)
     {
-        public string? Id => id;
-        public bool IsAuthenticated => true;
+        [ModelContextProtocol.Server.McpServerTool(Name = "quota_key", ReadOnly = true)]
+        public ModelContextProtocol.Protocol.CallToolResult QuotaKey()
+            => MintPlayer.Spark.Mcp.SparkMcpResult.Text("key=" + ISparkQuotas.KeyFor(accessor.HttpContext!));
     }
 
     [Fact]

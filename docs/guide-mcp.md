@@ -220,8 +220,10 @@ gone on the agent's next call. Only role and group claims are copied, never the 
 other stored claims).
 
 **Prompts.** `mcp.AddPrompts<TPrompts>()` adds `[McpServerPrompt]` methods of a `[McpServerPromptType]` class, prefixed
-like the tools. A prompt is a message template the user picks in the agent (one per app is plenty, PRD §9); it reads no
-data, so every caller sees it.
+like the tools (`fix_seo_findings` is served as `seotester_fix_seo_findings`; Claude Code shows it as
+`/mcp__seotester__seotester_fix_seo_findings`). A prompt is a message template the user picks in the agent (one per app
+is plenty, PRD §9); it reads no data, so every caller sees it. Name the tools it mentions with the prefix, and put no
+data in it.
 
 **Reaching past the type layer, on purpose.** A type's `agentPermissions` governs every tool, so a tool cannot read a
 `None` type or run an action on a `Read` type. Two attributes on the tool method lift exactly that, for that tool's calls
@@ -258,10 +260,6 @@ public async Task<CallToolResult> StartScanAsync(string site, CancellationToken 
 
 **The application's own words outside the fence.** `SparkMcpResult.Json(note, value)` puts `note` before the fenced
 JSON: say what the data is and what to call next there, and never put a value a user typed or a crawler fetched in it.
-
-**Prompts.** `mcp.AddPrompts<TPrompts>()` registers a class of `[McpServerPrompt]` methods (MCP SDK). They are not
-prefixed (clients show them under the server's name, e.g. `/mcp__seotester__fix_seo_findings` in Claude Code); name the
-tools they mention with the prefix, and put no data in them.
 
 ## Anonymous and signed-in callers
 

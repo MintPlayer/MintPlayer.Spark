@@ -36,8 +36,8 @@ The agent can name a site by the id `seotester_list_sites` gives (`Sites/…`) o
 
 ## Prompt
 
-`fix_seo_findings` runs the whole session below. In Claude Code: `/mcp__seotester__fix_seo_findings example.com High`
-(the site and the lowest severity to fix are optional).
+`seotester_fix_seo_findings` runs the whole session below. In Claude Code:
+`/mcp__seotester__seotester_fix_seo_findings example.com High` (the site and the lowest severity to fix are optional).
 
 ## Example session
 
