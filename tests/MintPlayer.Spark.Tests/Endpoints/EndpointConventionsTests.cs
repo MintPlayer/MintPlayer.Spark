@@ -126,6 +126,9 @@ public class EndpointConventionsTests
         new("OidcAuthorizationResponse", "delivers an authorization response by query or form_post (OAuth 2.0 Form Post Response Mode) from values the endpoint resolved"),
         new("SparkPageHtml", "HTML helpers of the server-rendered pages; AppendAntiforgery writes the form field from the IAntiforgery the endpoint injected"),
         new("SparkProofOfPossession", "resource-server token checks (DPoP, cnf) called from the JwtBearer events and the introspection handler, which are not endpoints"),
+        // mcp (MCP PRD D3, D15): the /mcp endpoint is the SDK's, mapped through MapMcp, not a generator endpoint
+        new("McpOrigin", "the Origin rule the /mcp gate middleware applies (D3); a pure function of the request headers and options, maps no route"),
+        new("McpToolFilters", "the SDK's tools/list and tools/call request filters (permission filter, audit event); they read HttpContext for the per-request agent state, map no route"),
     ];
 
     [Fact]

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Mcp</PackageId>
+		<Version>11.0.0-preview.104</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>A Model Context Protocol server inside a MintPlayer.Spark application: AI agents (Claude Code, Codex, Gemini) read the application's data as the user who connected them, through the same rights, row security and attribute redaction as the web UI. Generic discover/describe/query/get tools, your own tools, bearer-only /mcp with Origin validation, per-agent permissions, call limits and audit events.</Description>
+		<PackageTags>mcp;model-context-protocol;ai;agents;llm;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- MCP PRD D2: pinned. 2.2.0 is the version spike S1 ran on net11 in plain Stateless mode. -->
+		<PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The shared read paths (MCP PRD D9) are internal to core, which grants this assembly access. -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

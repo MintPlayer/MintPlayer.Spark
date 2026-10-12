@@ -90,6 +90,9 @@
     <Project Path="libs/mail/MintPlayer.Spark.MailManager.Abstractions/MintPlayer.Spark.MailManager.Abstractions.csproj" />
     <Project Path="libs/mail/MintPlayer.Spark.MailManager/MintPlayer.Spark.MailManager.csproj" />
   </Folder>
+  <Folder Name="/libs/mcp/">
+    <Project Path="libs/mcp/MintPlayer.Spark.Mcp/MintPlayer.Spark.Mcp.csproj" />
+  </Folder>
   <Folder Name="/libs/messaging/">
     <Project Path="libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj" />
     <Project Path="libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj" />
