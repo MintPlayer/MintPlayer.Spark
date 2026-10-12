@@ -879,7 +879,8 @@ None. Q18 was resolved in round 3 (§10, D22).
     cookie claims; Fleet's log: `groups: [VIEWERS, Administrators]` for a user given `Viewers` that way and
     `Administrators` on the document), and `IsInRole("Developers")`, an ordinal comparison, is false for cookie and
     agent alike. Fleet's administrators hold the role as written on the document (the E2E seed,
-    `SparkAppTestHost.cs:341`), which Fleet's test copies. Parity holds either way.
+    `SparkAppTestHost.cs:341`), which Fleet's test copies. Parity holds either way. *Superseded: fixed in "Role names
+    keep their declared casing" below; Fleet's test adds the role through `UserManager` now.*
   - **Application audit:** the only role read in application code is Fleet's `CarActions.CurrentUserIsAdmin`. SeoTester's
     roles are organization memberships read from the store, CodeCoverage's administrators come from linked forge logins
     (`CoverageAdministrators`, by `NameIdentifier`), HR reads no claims. The `NameIdentifier` reads (SeoTester's
@@ -903,3 +904,46 @@ None. Q18 was resolved in round 3 (§10, D22).
   (contributions PRD, M8 item 11). Fixed the same way: the case waits for indexing before the replay, pinning what it
   tests (a chain the index can see is torn down); the production code is unchanged. Evidence: the same filter (`Mcp`,
   `IdentityProvider`, library route snapshots) 748/749 before the wait, 749/749 after it.
+- **Role names keep their declared casing (2026-10-12, found along the way).** The observation above, fixed. Decisions,
+  with their evidence:
+  - **Root cause:** `UserManager.AddToRoleAsync` normalizes the name before it calls `IUserRoleStore.AddToRoleAsync`
+    (Identity's contract: the store receives `normalizedRoleName`), and Spark's `UserStore` appended it as given
+    (`UserStore.cs:311-317` before). `GetRolesAsync` returned the stored strings, Identity's claims factory made each a
+    role claim, and `ClaimsPrincipal.IsInRole` compares claim values ordinally: `IsInRole("Administrators")` was false for
+    the cookie and for every agent (`AgentRoleClaimsProvider` runs the same factory). Spark's own authorization never
+    noticed: core reads role claims as group names (`ClaimsGroupMembershipProvider.cs:19-26`) and matches them to
+    `security.json` case-insensitively (`SecurityFileAccessControl.cs:164-165`; `[SparkAuthorize(Group)]` likewise).
+  - **The registry is `security.json`.** Identity's role store is registered (`AddRoles<SparkRole>()`, `RoleStore`,
+    `SparkAuthenticationExtensions.cs:64,73`), but nothing in `libs/` or `apps/` creates a `SparkRole` (no `RoleManager`
+    use) and the user store never consulted one: a role is a group name. So `UserStore` resolves the declared name from
+    core's `ISecurityConfigurationLoader` (an optional injection; the first case-insensitive match, as core resolves a
+    role claim's group) and stores nothing more. `AddToRoleAsync` stores the declared name; `GetRolesAsync` maps every
+    stored value to it (case duplicates dropped), so a document holding `ADMINISTRATORS` (written by `UserManager`
+    before) or `administrators` (patched by hand) answers by `Administrators`, and nothing is rewritten. A name no group
+    declares keeps what the store receives, Identity's normalized form: the store never sees the caller's casing.
+  - **Rejected:** a `UserManager` subclass handing the store the caller's casing (re-implements Identity's
+    `AddToRoleAsync`/`AddToRolesAsync`, still fails `IsInRole("Administrators")` for a caller who wrote
+    `administrators`, and does nothing for documents already written); a migration rewriting stored roles (touches
+    production documents, where read-side compatibility was required).
+  - **Membership ignores case**, unchanged: `IsInRoleAsync` and `RemoveFromRoleAsync` already compared
+    `OrdinalIgnoreCase`, and `GetUsersInRoleAsync`'s RavenDB equality on the auto-index already matched any casing
+    (pinned below, green before the fix).
+  - **Callers:** no production code calls `AddToRoleAsync`, `RemoveFromRoleAsync` or `GetUsersInRoleAsync` (tests only).
+    `GetRolesAsync` feeds the cookie, every agent principal (personal tokens, embedded and external servers, through
+    `AgentRoleClaimsProvider`) and `/spark/auth/me` (`GetCurrentUser.cs:43`). Readers of the stored list itself:
+    `AgentStoreGroupMembership.cs:49` (group names, matched case-insensitively), the personal-data export
+    (`PersonalData.cs:54`, as stored) and the identity provider's `role` claim (`OidcTokenGenerator.cs:281,365`), which
+    emits stored values: declared names for every role `UserManager` adds from now on.
+  - **Production data:** CodeCoverage writes no roles (its Administrators come from linked forge logins,
+    `CoverageAdministrators`); SeoTester's are patched in as `Administrators` (`docs/seotester/deploy.md:277`), the
+    declared name. Every casing reads by the declared name, so nothing needs migrating.
+  - **Evidence, red → green:** `UserRoleNameTests` (new: real Identity, a cookie sign-in through `/spark/auth/login`, an
+    endpoint answering `User.IsInRole`): red `found "ADMINISTRATORS" instead of "Administrators"` after
+    `AddToRoleAsync(user, "administrators")`, and `"out"` for `IsInRole("Viewers")` on a document holding `viewers`; the
+    removal (three stored casings) and `GetUsersInRole` (three stored × three asked casings) cases green before and
+    after. `UserStoreTests.A_role_is_kept_and_read_by_the_name_its_group_is_declared_under`: red, `found
+    "ADMINISTRATORS"`. `McpAgentPrincipalTests` asks `IsInRole("Developers")`, the declared name, no longer the stored
+    one: red ×3, `inrole=False;…/role=DEVELOPERS`. Fleet's `An_administrators_agent_sees_…` adds the role through
+    `UserManager` (the document workaround removed): red, the administrator's cookie saw one car. Mutation (the
+    read-side mapping removed): the document case red (`"out"`), the store case red. Green: the `Authorization.Identity`
+    namespace and `McpAgentPrincipalTests` 141/141, Fleet's `McpEmbeddedServerTests` 3/3; the solution builds, 0 errors.
