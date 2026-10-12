@@ -138,6 +138,9 @@ public static class SparkMcpResult
         return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = text }] };
     }
 
+    /// <summary><paramref name="value"/> as JSON through Spark's HTTP options (the redaction net), unfenced: fence it with <see cref="Untrusted"/>.</summary>
+    internal static string Serialize(object? value) => JsonSerializer.Serialize(value, SerializerOptions());
+
     /// <summary>A refusal of the arguments themselves (a bad page size, an unknown sort direction).</summary>
     internal static CallToolResult Invalid(string message)
         => new() { IsError = true, Content = [new TextContentBlock { Text = message }] };

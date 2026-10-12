@@ -5,9 +5,10 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server inside a Spar
 them**: `security.json`, row security and attribute redaction apply exactly as in the web UI.
 
 > **Preview.** Agents sign in with personal access tokens (`spat_…`, created on the account page of an app
-> with `MintPlayer.Spark.Authorization`; without that package every call runs as `anonymous`). The embedded
-> and external authorization servers are not wired yet. Writes (`propose_changes` / `apply_changes`) are not
-> available yet. See `docs/spark_mcp_plan.md`.
+> with `MintPlayer.Spark.Authorization`; without that package every call runs as `anonymous`), through the
+> app's embedded authorization server (`idp.ForMcp()`, `MintPlayer.Spark.IdentityProvider`), or through an
+> external one (`spark.AddExternalAgentAuthorizationServer(...)`, `MintPlayer.Spark.Authorization`). See
+> `docs/spark_mcp_plan.md`.
 
 ```csharp
 builder.Services.AddSpark(builder.Configuration, spark =>
@@ -37,8 +38,12 @@ Nothing is exposed until a type opts in, in its model JSON: `"agentPermissions":
 | `CanonicalUrl` | `Spark:Auth:PublicBaseUrl` + `Path` | `Spark:Mcp:CanonicalUrl`. The only allowed browser `Origin`. |
 | `RequireSignIn` | `false` | Every request without a token, `initialize` included, answers 401. |
 | `Quota` | 120 / 30 per minute | Per signed-in user / per anonymous address (`Spark:Mcp:Quota`). |
+| `PlanRetention` | 365 days | `Spark:Mcp:PlanRetention`. How long applied (and failed) plans are kept as the write audit. |
 
-Generic tools: `discover`, `describe`, `query`, `get`. Your own tools use checked services only
+Generic tools: `discover`, `describe`, `query`, `get`, and the writes `propose_changes` → `apply_changes`
+(signed-in callers with `Write`; plans in the `McpPlans` collection, which needs document expiration, enabled by
+`UseSpark()`). A plan's saves and deletes commit in one RavenDB transaction or not at all; a custom action is a plan
+of its own. Your own tools use checked services only
 (`IDatabaseAccess` without its `…UncheckedAsync` methods, `IQueryExecutor`, `IPermissionService`; analyzer
 SPARK050 flags a raw RavenDB session) and answer through `SparkMcpResult`.
 

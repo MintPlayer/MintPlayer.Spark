@@ -82,7 +82,13 @@ public static class SparkMcpExtensions
                 filters.AddCallToolFilter(McpToolFilters.CallTool);
             });
 
-        McpToolRegistration.Register(services, options.ToolPrefix, [typeof(SparkGenericTools), .. options.ToolTypes]);
+        // Writes (D8): propose_changes / apply_changes over plans in the McpPlans collection, which carry @expires
+        // (10 minutes proposed, PlanRetention once applied). UseSpark() enables document expiration on the database;
+        // a plan read checks its own expiry too, since the sweep may run long after it.
+        services.AddScoped<Plans.McpPlanner>();
+        builder.Registry.RequireDocumentExpiration("Mcp");
+
+        McpToolRegistration.Register(services, options.ToolPrefix, [typeof(SparkGenericTools), typeof(SparkWriteTools), .. options.ToolTypes]);
 
         // UseSpark(), after authentication and authorization: resolve the setups (an explicit flag without its
         // wiring fails here, at startup), then gate every request the MCP endpoint will serve.
@@ -134,5 +140,8 @@ public static class SparkMcpExtensions
             throw new InvalidOperationException($"mcp.ToolPrefix '{options.ToolPrefix}' may contain only lower-case letters, digits, '_' and '-'.");
 
         ArgumentNullException.ThrowIfNull(options.AgentPermissions, "mcp.AgentPermissions");
+
+        if (options.PlanRetention <= TimeSpan.Zero)
+            throw new InvalidOperationException($"mcp.PlanRetention ({options.PlanRetention}) must be positive: applied plans are the record of what agents changed.");
     }
 }

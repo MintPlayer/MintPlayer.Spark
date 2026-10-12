@@ -80,6 +80,13 @@ public sealed class SparkMcpOptions
     /// </summary>
     public bool RequireSignIn { get; set; }
 
+    /// <summary>
+    /// How long an applied (or failed) plan is kept as the record of what agents changed (MCP PRD D8,
+    /// <c>Spark:Mcp:PlanRetention</c>). Default one year. A proposed plan that is never applied expires after
+    /// 10 minutes whatever this says.
+    /// </summary>
+    public TimeSpan PlanRetention { get; set; } = TimeSpan.FromDays(365);
+
     /// <summary>Call limits per user (signed in) and per address (anonymous), MCP PRD D16.</summary>
     public SparkMcpQuotaOptions Quota { get; set; } = new();
 
