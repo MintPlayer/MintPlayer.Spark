@@ -35,6 +35,8 @@ public class McpEmbeddedServerTests : SparkTestDriver
     private const string CanonicalUrl = "https://fleet.example/mcp";
     private const string Password = "Correct-horse-battery-1";
     private const string Redirect = "http://127.0.0.1:53682/callback";
+    private const string Administrators = "Administrators";
+    private const string CarsQueryId = "a20e8400-e29b-41d4-a716-446655440001";
 
     [Fact]
     public async Task A_metadata_document_agent_signs_in_at_Fleet_and_reads_only_the_users_cars()
@@ -99,6 +101,61 @@ public class McpEmbeddedServerTests : SparkTestDriver
         var discover = await Mcp.CallAsync(client, "fleet_discover", new { }, tokens["access_token"]!.GetValue<string>());
         discover.Status.Should().Be(HttpStatusCode.OK);
         discover.Text.Should().Contain("\"Car\"", "a Viewer's groups, read from the store for the agent's token");
+    }
+
+    /// <summary>
+    /// An administrator's agent sees the cars the administrator's cookie sees (<c>CarActions</c> tests
+    /// <c>User.IsInRole("Administrators")</c>), and losing the role narrows the agent's very next call to the cars the user
+    /// created: an agent's roles come from the store on every call (S4), like its groups. Red before the agent principal
+    /// carried the cookie's role claims: the agent saw only the administrator's own car.
+    /// </summary>
+    [Fact]
+    public async Task An_administrators_agent_sees_the_cars_the_cookie_sees_until_the_role_is_removed()
+    {
+        const string clientId = "https://agent.example/fleet/admin.json";
+        await using var host = new FleetAgentHost(Store, new DocumentServer().Serve(clientId, Document(clientId)));
+        var userId = await CreateViewerAsync(host, "admin@fleet.test");
+        await AddRoleToDocumentAsync(userId, Administrators);
+        await SeedCarsAsync(userId);
+        var browser = host.Browser();
+        var agent = new Agent(browser, host.CreateClient(), clientId);
+        await agent.SignInAsync("admin@fleet.test", Password);
+
+        using var web = await browser.PostAsJsonAsync("/spark/queries/execute", new { queryId = CarsQueryId });
+        var webCars = await web.Content.ReadAsStringAsync();
+        web.StatusCode.Should().Be(HttpStatusCode.OK, webCars);
+        webCars.Should().Contain("1-AGT-001").And.Contain("1-AGT-002", "an administrator's cookie sees every car");
+
+        var (consentPage, requestId) = await agent.ConsentPageAsync();
+        var access = (await agent.RedeemAsync(await agent.CodeAsync(consentPage, requestId)))["access_token"]!.GetValue<string>();
+
+        var cars = await Mcp.CallAsync(host.CreateClient(), "fleet_query", new { query = "cars" }, access);
+        cars.Status.Should().Be(HttpStatusCode.OK);
+        cars.Text.Should().Contain("1-AGT-001").And.Contain("1-AGT-002", "the agent carries the cookie's roles, so it sees the cookie's cars");
+
+        using (var scope = host.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<SparkUser>>();
+            (await users.RemoveFromRoleAsync((await users.FindByIdAsync(userId))!, Administrators)).Succeeded.Should().BeTrue();
+        }
+
+        var narrowed = await Mcp.CallAsync(host.CreateClient(), "fleet_query", new { query = "cars" }, access);
+        narrowed.Status.Should().Be(HttpStatusCode.OK, "a role change is no security-stamp change: the agent stays signed in, as a Viewer");
+        narrowed.Text.Should().Contain("1-AGT-001");
+        narrowed.Text.Should().NotContain("1-AGT-002", "the next call reads the roles from the store (S4)");
+    }
+
+    /// <summary>
+    /// The role as Fleet's administrators hold it: the group's name written on the user document, as the E2E seed writes
+    /// it. <c>CarActions</c> compares <c>IsInRole("Administrators")</c> exactly, and <c>UserManager.AddToRoleAsync</c>
+    /// stores the normalized name.
+    /// </summary>
+    private async Task AddRoleToDocumentAsync(string userId, string role)
+    {
+        using var session = Store.OpenAsyncSession();
+        var user = await session.LoadAsync<SparkUser>(userId);
+        user.Roles.Add(role);
+        await session.SaveChangesAsync();
     }
 
     private static async Task<string> CreateViewerAsync(FleetAgentHost host, string email)
