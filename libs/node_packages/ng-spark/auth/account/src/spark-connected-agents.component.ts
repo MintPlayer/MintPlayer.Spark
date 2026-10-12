@@ -101,12 +101,15 @@ interface GrantChoice {
                     }
                   </div>
                   <div class="d-flex flex-wrap gap-2 mt-3">
-                    @if (grant.status === 'active') {
+                    <!-- A disconnected external agent (by the user or a security-stamp change) is allowed again by an edit. -->
+                    @if (grant.status === 'active' || grant.status === 'disconnected') {
                       <button type="button" class="btn btn-outline-primary btn-sm spark-agent-edit" [disabled]="busy()" (click)="edit(grant)">{{ 'auth.agentEdit' | t }}</button>
                     }
-                    <button type="button" class="btn btn-danger btn-sm spark-agent-revoke" [disabled]="busy()" (click)="revoke(grant)">
-                      {{ (grant.kind === 'PersonalAccessToken' ? 'auth.agentRevokeToken' : 'auth.agentDisconnect') | t }}
-                    </button>
+                    @if (grant.status !== 'disconnected') {
+                      <button type="button" class="btn btn-danger btn-sm spark-agent-revoke" [disabled]="busy()" (click)="revoke(grant)">
+                        {{ (grant.kind === 'PersonalAccessToken' ? 'auth.agentRevokeToken' : 'auth.agentDisconnect') | t }}
+                      </button>
+                    }
                   </div>
                 }
               </section>

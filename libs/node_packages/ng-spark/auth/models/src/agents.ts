@@ -48,8 +48,9 @@ export interface SparkAgentGrant {
   expiresAt: string | null;
   lastUsedAt: string | null;
   /**
-   * `revoked`: the token stopped working because the password or sign-in methods changed. `disconnected`: the user
-   * disconnected an external authorization server's agent; an edit allows it again.
+   * `revoked`: the token stopped working because the password or sign-in methods changed. `disconnected`: an external
+   * authorization server's agent the user disconnected, or one a password or sign-in-method change disconnected; an
+   * edit allows it again.
    */
   status: 'active' | 'expired' | 'revoked' | 'disconnected';
 }

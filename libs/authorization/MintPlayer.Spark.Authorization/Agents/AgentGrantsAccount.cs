@@ -140,8 +140,16 @@ internal sealed partial class AgentGrantsAccount(
 
         grant.Permissions = request.Permissions;
         grant.Types = Normalize(request.Types);
-        // Allowing a disconnected external agent again (D22): the choice made here is its grant from now on.
+        // Allowing a disconnected external agent again (D22): the choice made here is its grant from now on. That includes
+        // one a security-stamp change disconnected: the user, signed in now, stamps it anew (owner, 2026-10-12). Personal
+        // access tokens and embedded-server grants are never re-stamped: a new token or a new sign-in replaces them.
         grant.RevokedAt = null;
+        if (grant.Kind == EAgentKind.ExternalAuthorizationServer)
+        {
+            if (await users.GetAsync(userId, cancellationToken) is not { } user)
+                return AgentResult<bool>.NotFound();
+            grant.SecurityStamp = user.SecurityStamp ?? string.Empty;
+        }
         await grants.SaveAsync(grant, cancellationToken);
         LogGrantChanged(logger, userId, grant.Id!, grant.Permissions.ToString(), grant.Types is null ? "all" : string.Join(",", grant.Types.Select(t => t.Name)));
         return AgentResult<bool>.Ok(true);
@@ -226,11 +234,12 @@ internal sealed partial class AgentGrantsAccount(
             return "expired";
         if (grant.RevokedAt is not null)
             return "disconnected";
-        if (grant.Kind == EAgentKind.PersonalAccessToken
-            && !string.Equals(user?.SecurityStamp ?? string.Empty, grant.SecurityStamp ?? string.Empty, StringComparison.Ordinal))
-        {
+        var stampChanged = !string.Equals(user?.SecurityStamp ?? string.Empty, grant.SecurityStamp ?? string.Empty, StringComparison.Ordinal);
+        if (stampChanged && grant.Kind == EAgentKind.PersonalAccessToken)
             return "revoked";
-        }
+        // An external server's agent after a stamp change: refused until the user allows it again, which re-stamps it.
+        if (stampChanged && grant.Kind == EAgentKind.ExternalAuthorizationServer)
+            return "disconnected";
         return "active";
     }
 

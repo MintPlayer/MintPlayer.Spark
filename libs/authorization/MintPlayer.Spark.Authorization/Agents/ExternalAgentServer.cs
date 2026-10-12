@@ -91,8 +91,9 @@ internal sealed class ExternalAgentServerScheme(SparkExternalAgentServerOptions 
 /// </summary>
 /// <remarks>
 /// Refused: a token the inner scheme refuses, a sender-constrained token (<c>/mcp</c> cannot check the proof), a token
-/// without a subject or a client, a subject no user linked under that provider, a deleted or locked-out user, and a grant
-/// the user disconnected. A refusal never says which check failed, and nothing here logs the token. The principal carries
+/// without a subject or a client, a subject no user linked under that provider, a deleted or locked-out user, a grant
+/// the user disconnected, and a grant stamped with a security stamp the user no longer has (it counts as disconnected
+/// until the user allows the agent again). A refusal never says which check failed, and nothing here logs the token. The principal carries
 /// the local user id as <c>sub</c>, the grant id, the client id and the token's scopes: groups and rights come from the
 /// local user, never from the token's role or group claims.
 /// </remarks>
@@ -142,7 +143,8 @@ internal sealed partial class ExternalAgentTokenHandler(
         if (AgentRequestUser.IsLockedOut(user, time.GetUtcNow()))
             return Refuse("user locked out");
 
-        // The shadow grant (D22, R3-Q18): created on first use, everything exposed, read only.
+        // The shadow grant (D22, R3-Q18): created on first use, everything exposed, read only, bound to the user's
+        // security stamp like a personal access token's and an embedded server's grant (owner, 2026-10-12).
         var id = AgentGrantIds.ExternalAuthorizationServer(userId, options.Issuer, clientId);
         var grant = await grants.GetAsync(id, Context.RequestAborted)
             ?? await grants.CreateIfMissingAsync(new AgentGrant
@@ -155,17 +157,25 @@ internal sealed partial class ExternalAgentTokenHandler(
                 Permissions = EAgentPermission.Read,
                 Types = null,
                 CreatedAt = time.GetUtcNow(),
+                SecurityStamp = user.SecurityStamp ?? string.Empty,
             }, Context.RequestAborted);
         if (grant is null || grant.Kind != EAgentKind.ExternalAuthorizationServer || !string.Equals(grant.UserId, userId, StringComparison.Ordinal))
             return Refuse("no agent grant");
         if (grant.RevokedAt is not null)
             return Refuse("disconnected by the user");
+        // A password change, a removed sign-in method or any other stamp change disconnects the agent until the user
+        // allows it again under Connected applications, which stamps the grant anew. The external server keeps issuing
+        // tokens, so a deleted grant would come back on the next call; a stale stamp keeps it refused instead.
+        if (!string.Equals(user.SecurityStamp ?? string.Empty, grant.SecurityStamp ?? string.Empty, StringComparison.Ordinal))
+            return Refuse("security stamp changed");
 
         await grants.TouchAsync(grant, Context.RequestAborted);
 
         var identity = new ClaimsIdentity(
             [
                 new Claim("sub", userId),
+                // The local id under the name application code reads too (Actions, row policies, quotas), as a cookie carries it.
+                new Claim(ClaimTypes.NameIdentifier, userId),
                 new Claim("name", user.UserName ?? userId),
                 new Claim("client_id", clientId),
                 new Claim("scope", string.Join(' ', ExternalAgentServer.ScopesOf(token))),

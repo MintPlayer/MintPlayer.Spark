@@ -77,6 +77,20 @@ describe('SparkConnectedAgentsComponent', () => {
     expect(grants[1].querySelector('.spark-agent-edit')).toBeNull();
   });
 
+  it('offers an edit, the only way to allow it again, for a disconnected external agent', async () => {
+    const data = overview();
+    data.grants = [{ ...data.grants[0], key: 'ext/0123456789abcdef0123456789abcdef', kind: 'ExternalAuthorizationServer', expiresAt: null, status: 'disconnected' }];
+    const updateAgentGrant = vi.fn().mockResolvedValue({ success: true });
+    const fixture = await render({ agentGrants: vi.fn().mockResolvedValue({ success: true, value: data }), updateAgentGrant });
+
+    const grant = element(fixture).querySelector('.spark-agent-grant')!;
+    expect(grant.querySelector('.spark-agent-status')?.textContent).toContain('auth.agentStatus.disconnected');
+    expect(grant.querySelector('.spark-agent-revoke')).toBeNull();
+    (grant.querySelector('.spark-agent-edit') as HTMLButtonElement).click();
+    await fixture.componentInstance.save(fixture.componentInstance.overview()!.grants[0]);
+    expect(updateAgentGrant).toHaveBeenCalledWith({ key: 'ext/0123456789abcdef0123456789abcdef', permissions: 'Read', types: [{ name: 'Contract', permissions: 'Read' }] });
+  });
+
   it('creates a token and shows it once', async () => {
     const agentGrants = vi.fn().mockResolvedValue({ success: true, value: overview() });
     const createAgentToken = vi.fn().mockResolvedValue({ success: true, value: { token: 'spat_secret', key: 'pat/x', expiresAt: '2027-01-01T00:00:00Z' } });

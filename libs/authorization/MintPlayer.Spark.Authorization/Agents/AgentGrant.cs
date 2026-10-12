@@ -63,8 +63,10 @@ public sealed class AgentGrant
     public string? TokenHash { get; set; }
 
     /// <summary>
-    /// The user's security stamp when the token was created. A password change, a removed sign-in method or any
-    /// other stamp change revokes the token (D11).
+    /// The user's security stamp when the grant was made: a personal access token's creation (D11), the embedded
+    /// server's consent (M3b), an external server's agent's first call or the user allowing it again (D22, owner
+    /// 2026-10-12). A password change, a removed sign-in method or any other stamp change revokes a token, makes the
+    /// embedded server's agent sign in again, and disconnects an external server's agent until the user allows it again.
     /// </summary>
     public string? SecurityStamp { get; set; }
 
@@ -77,7 +79,8 @@ public sealed class AgentGrant
     /// <summary>
     /// For an external authorization server's client: when the user disconnected it. The external server keeps issuing
     /// tokens and the grant would otherwise be created again on the next call, so a disconnected grant stays, refusing
-    /// every call, until the user allows the agent again (an edit clears it). MCP PRD D22.
+    /// every call, until the user allows the agent again (an edit clears it and re-stamps <see cref="SecurityStamp"/>).
+    /// MCP PRD D22.
     /// </summary>
     public DateTimeOffset? RevokedAt { get; set; }
 
