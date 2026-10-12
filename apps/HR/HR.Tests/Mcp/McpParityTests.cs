@@ -537,7 +537,11 @@ public class McpParityTests : SparkTestDriver
     /// </summary>
     private static JsonNode? Flatten(JsonNode? value)
         => value is JsonObject { } po && po["attributes"] is JsonArray attributes
-            ? new JsonObject(attributes.Select(a => KeyValuePair.Create(a!["name"]!.GetValue<string>(), Flatten(a["value"]))))
+            ? new JsonObject(attributes.Select(a => KeyValuePair.Create(a!["name"]!.GetValue<string>(),
+                // A nested AsDetail value travels in "object" (a list in "objects"), not in "value".
+                a["object"] is JsonObject nested ? Flatten(nested)
+                : a["objects"] is JsonArray list ? new JsonArray(list.Select(Flatten).ToArray())
+                : Flatten(a["value"]))))
             : value?.DeepClone();
 
     private static void Compare(List<string> differences, string what, IEnumerable<string> agent, IEnumerable<string> web)
