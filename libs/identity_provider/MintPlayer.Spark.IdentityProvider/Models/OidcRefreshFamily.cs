@@ -32,7 +32,7 @@ public class OidcRefreshFamily
     /// </summary>
     public string AuthorizationId { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
-    /// <summary><c>valid</c>, or <c>revoked</c> once a theft signal ended it (<see cref="RevokedReason"/>).</summary>
+    /// <summary><c>valid</c>, or <c>revoked</c> once a theft signal, or a refresh left with no scope, ended it (<see cref="RevokedReason"/>).</summary>
     public string Status { get; set; } = "valid";
     /// <summary>The generation of the active refresh token: 1 when the family starts, one more at every rotation.</summary>
     public int Generation { get; set; }
@@ -54,4 +54,7 @@ public static class OidcRefreshFamilyRevocations
 
     /// <summary>The code that started the family was presented again, or spent twice at once (RFC 6749 §4.1.2).</summary>
     public const string CodeReplay = "code_replay";
+
+    /// <summary>No scope of the family's refresh token is still available to its client: the family can authorize nothing.</summary>
+    public const string NoScopeLeft = "no_scope_left";
 }

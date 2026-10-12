@@ -159,11 +159,11 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         {
             // A code presented twice: the first redemption already consumed it. Everything
             // derived from it is now suspect: the family it started is revoked, exactly (RFC 6749
-            // §4.1.2), and the sweep tears down what else of the authorization its index sees.
-            // The sweep is best-effort: if a concurrent request is tearing down the same chain,
-            // either teardown suffices and the caller is refused regardless.
-            await RevokeFamilyAsync(OidcRefreshFamilies.DocumentId(codeToken.Id!), OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
-            await RevokeAuthorizationChainAsync(session, codeToken, ct);
+            // §4.1.2), and nothing else of the grant. The bookkeeping after it is best-effort: if a
+            // concurrent request is doing the same, either suffices and the caller is refused regardless.
+            var startedFamily = OidcRefreshFamilies.DocumentId(codeToken.Id!);
+            await RevokeFamilyAsync(startedFamily, OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
+            await SweepFamilyAsync(session, codeToken, startedFamily, ct);
             await TrySaveAsync(session, ct);
 
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
@@ -509,10 +509,11 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         {
             // Reuse of an already-rotated refresh token. Per RFC 6819 §5.2.2.3 this is
             // treated as theft, and RFC 9700 §4.14.2 has the active refresh token revoked: the
-            // family goes, exactly, whether or not an index has seen its active token. The sweep
-            // then marks what the index holds, best-effort, as on the code grant.
+            // family goes, exactly, whether or not an index has seen its active token, and nothing
+            // else of the grant (another machine's family is not implicated). Bookkeeping after it
+            // is best-effort, as on the code grant.
             await RevokeFamilyAsync(refreshTokenDoc.FamilyId, OidcRefreshFamilyRevocations.RefreshTokenReuse, reused: refreshTokenDoc, ct);
-            await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
+            await SweepFamilyAsync(session, refreshTokenDoc, refreshTokenDoc.FamilyId, ct);
             await TrySaveAsync(session, ct);
 
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
@@ -584,11 +585,13 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Nothing left to grant. Minting anyway produced a signed, subject-bearing, 60-minute
         // JWT with no scopes at all, plus a successor that rotates forever into more of the
         // same — and a resource server that checks signature and `active` but not scope reads
-        // the holder as an authenticated user. Refuse instead, and tear the chain down: a grant
-        // that can no longer authorize anything is spent, not merely empty.
+        // the holder as an authenticated user. Refuse instead, and tear the family down: a family
+        // that can no longer authorize anything is spent, not merely empty. Only this family: the
+        // grant's others may carry scopes that are still available.
         if (grantedScopeNames.Count == 0)
         {
-            await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
+            await RevokeFamilyAsync(refreshTokenDoc.FamilyId, OidcRefreshFamilyRevocations.NoScopeLeft, reused: null, ct);
+            await SweepFamilyAsync(session, refreshTokenDoc, refreshTokenDoc.FamilyId, ct);
             await session.SaveChangesAsync(ct);
 
             return Results.Json(new
@@ -817,21 +820,15 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     }
 
     /// <summary>
-    /// Revokes every token issued under the same authorization as <paramref name="compromised"/>.
+    /// Marks every token issued under the withdrawn authorization of <paramref name="compromised"/>
+    /// revoked: bookkeeping for a grant the user took back, whose tokens every use already refuses
+    /// by loading the grant (<see cref="OidcGrants.PermitsAsync"/>).
     /// <para>
-    /// Presenting a consumed authorization code, or a refresh token that has already been
-    /// rotated away, is not a benign retry — the legitimate client holds the successor, so a
-    /// replay means the old value leaked. RFC 6819 §5.2.2.3 calls for revoking the whole
-    /// chain rather than merely refusing the request, which would leave the attacker's other
-    /// stolen tokens working.
-    /// </para>
-    /// <para>
-    /// The sweep is by <c>AuthorizationId</c> and therefore rides an eventually-consistent
-    /// index: a token issued moments before the replay may be missed. It is cleanup, not the
-    /// decision: <em>detection</em> is exact (a point-load by id), and so is the revocation that
-    /// matters, the family of the spent credential (<see cref="RevokeFamilyAsync"/>), which
-    /// every later use of its tokens loads by id. The sweep still reaches the authorization's
-    /// other families when its index holds them, best-effort, as before the families existed.
+    /// The sweep is by <c>AuthorizationId</c> and therefore rides an eventually-consistent index:
+    /// a token issued moments earlier may be missed, which is harmless here because the grant
+    /// decides. A theft signal never sweeps the grant (<see cref="SweepFamilyAsync"/>): one user
+    /// runs one agent client on several machines, each a family of the same grant, and only the
+    /// family the signal came from is implicated.
     /// </para>
     /// </summary>
     private static async Task RevokeAuthorizationChainAsync(
@@ -849,6 +846,30 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
         foreach (var sibling in siblings)
             sibling.Status = "revoked";
+    }
+
+    /// <summary>
+    /// The bookkeeping after a family's revocation (<see cref="RevokeFamilyAsync"/>): the presented
+    /// credential is marked revoked, and so are the family's own tokens the grant's index already
+    /// holds. Best-effort, and never the decision: every use of a token loads its family. It reads
+    /// the index the grant sweep uses and keeps only <paramref name="familyId"/>'s tokens, so it
+    /// needs no index of its own and never touches another family of the grant.
+    /// </summary>
+    private static async Task SweepFamilyAsync(
+        IAsyncDocumentSession session, OidcToken presented, string? familyId, CancellationToken ct)
+    {
+        presented.Status = "revoked";
+
+        if (string.IsNullOrEmpty(familyId) || string.IsNullOrEmpty(presented.AuthorizationId))
+            return;
+
+        var tokens = await session
+            .Query<OidcToken>()
+            .Where(t => t.AuthorizationId == presented.AuthorizationId && t.Status == "valid")
+            .ToListAsync(ct);
+
+        foreach (var token in tokens.Where(t => t.FamilyId == familyId))
+            token.Status = "revoked";
     }
 
     /// <summary>

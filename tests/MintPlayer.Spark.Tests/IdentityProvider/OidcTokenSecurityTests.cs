@@ -133,9 +133,10 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
 
         (await RedeemAsync(app, code)).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // The teardown finds the issued tokens through an index, best-effort by design (see
-        // Token.RevokeAuthorizationChainAsync), so a token issued moments before the replay may be
-        // missed. The wait pins what this case is about: a chain the index can see is torn down.
+        // The family is revoked exactly, but this case asserts the stored statuses, which the
+        // bookkeeping after it marks through an index, best-effort by design (see
+        // Token.SweepFamilyAsync), so a token issued moments before the replay may be missed. The
+        // wait pins what this case is about: a chain the index can see is marked revoked.
         // On a fresh database per case the index had almost nothing to catch up on; on the class's
         // shared database it carries every earlier case's tokens, and the race showed (1 failure in
         // a full run, M8 item 11).

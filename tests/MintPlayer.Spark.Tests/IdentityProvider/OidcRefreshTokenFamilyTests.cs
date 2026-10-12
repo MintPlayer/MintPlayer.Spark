@@ -12,9 +12,9 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// Refresh-token families are exact (MCP PRD decision log, "Refresh-token families exact"). A rotated refresh token
 /// presented again, a refresh token spent twice at once, or an authorization code presented twice is a theft signal, and
 /// the provider then revokes the family's active refresh token (RFC 9700 §4.14.2) and the tokens issued with it (RFC 6749
-/// §4.1.2), decided by the family's document, loaded by id. Every case holds indexing back while the family grows, so the
-/// sweep that also marks the tokens revoked (an index query, <c>Token.RevokeAuthorizationChainAsync</c>) cannot see the
-/// tokens in question: only an exact decision refuses them.
+/// §4.1.2), decided by the family's document, loaded by id, and nothing else of the grant is revoked. The cases about
+/// exactness hold indexing back while the family grows, so the bookkeeping that also marks the tokens revoked (an index
+/// query, <c>Token.SweepFamilyAsync</c>) cannot see the tokens in question: only an exact decision refuses them.
 /// </summary>
 public class OidcRefreshTokenFamilyTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
@@ -149,6 +149,36 @@ public class OidcRefreshTokenFamilyTests(OidcSharedHost host) : OidcTestHost(hos
             }
             (await RefreshAsync(app, issued.Refresh!)).Status.Should().Be(HttpStatusCode.BadRequest);
         });
+    }
+
+    /// <summary>
+    /// One user, one client, two machines: two families under one grant (an agent's metadata-document client id is shared by
+    /// every installation). A reuse in family A revokes exactly A; B, which no signal implicates, keeps working (owner
+    /// decision 2026-10-12: a non-deterministic extra revocation is worse than none, and the user can revoke everything under
+    /// Connected applications). Indexing runs and has caught up with both families, so a sweep of the grant would reach B.
+    /// Red while the reuse also swept the grant's other tokens: B's refresh token was refused (400).
+    /// </summary>
+    [Fact]
+    public async Task A_reuse_revokes_its_family_and_leaves_the_grants_other_families_working()
+    {
+        var app = await SeedRefreshableAppAsync("two-families");
+        var email = UserEmail("two-families");
+        await PrimeAsync(app, email);
+        var a = await RedeemAsync(app, await ObtainCodeAsync(app, email, Scopes));
+        var b = await RedeemAsync(app, await ObtainCodeAsync(app, email, Scopes));
+        a.Status.Should().Be(HttpStatusCode.OK);
+        b.Status.Should().Be(HttpStatusCode.OK);
+
+        var rotatedA = await RefreshAsync(app, a.Refresh!);
+        rotatedA.Status.Should().Be(HttpStatusCode.OK);
+        await Store.WaitForIndexingAsync();
+
+        (await RefreshAsync(app, a.Refresh!)).Status.Should().Be(HttpStatusCode.BadRequest, "a rotated refresh token presented again");
+        (await RefreshAsync(app, rotatedA.Refresh!)).Status.Should().Be(HttpStatusCode.BadRequest, "family A is revoked");
+        (await ActiveAsync(app, rotatedA.Access!)).Should().BeFalse("with its access token");
+
+        (await ActiveAsync(app, b.Access!)).Should().BeTrue("family B is not implicated by A's reuse");
+        (await RefreshAsync(app, b.Refresh!)).Status.Should().Be(HttpStatusCode.OK, "family B keeps working");
     }
 
     /// <summary>
