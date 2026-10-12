@@ -91,6 +91,17 @@ sign-ins (Codex ≥ 0.148, Gemini 0.63, Claude Code) moved to the M7 manual chec
 - Consent screen: client name, verified/unverified, redirect host, type choice, read/changes limited by
   `AgentPermissions(agent)`.
 - `OidcGrant` ↔ `AgentGrant` linking; revoke in either revokes both.
+- Hardening (comparison review 2026-10-12): optional CIMD host allow-list (empty = any HTTPS host, D5);
+  CIMD fetch size cap, timeout and freshness cache; client id URL must be https with a path and no
+  fragment, user info or dot segments, and the document must name its own URL as `client_id`; consent page
+  `frame-ancestors 'none'` + `X-Frame-Options: DENY`; a "this application runs on your computer, continue only
+  if you started it" notice for loopback clients; disabled or locked accounts refused at consent; a cleanup
+  job for expired codes, tokens and pruned clients; rate limits on `/connect/*`; audit events for client
+  registration, token issue/revoke and PKCE failures. VS Code (Copilot agent mode) is a fourth supported client (owner,
+  2026-10-12): confirm from its source which redirects it registers, and allow exactly
+  `https://vscode.dev/redirect`, `https://insiders.vscode.dev/redirect` and the `vscode://`/`vscode-insiders://`
+  callbacks it uses (built-in list next to the loopback rule, never "any https"; PKCE makes the relay safe). Add
+  VS Code to the client matrix (§4.9) and to guide-mcp-agents.md.
 
 ### M3c — External authorization server (setup 2)
 - Mcp wiring over `AddSparkResourceServer` (+ introspection), RFC 9728 pointing at the external server.
