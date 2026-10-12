@@ -27,7 +27,8 @@ public interface ICommitGraphSidecar
     bool IsConfigured { get; }
 
     /// <summary>
-    /// Clones the mirror if missing, else fetches it; joins an in-flight fetch (D19). Bounded by
+    /// Clones the mirror if missing (only with <see cref="SidecarFetchModes.CloneOrFetch"/>, D40), else
+    /// fetches it; joins an in-flight fetch (D19). Bounded by
     /// <paramref name="timeout"/> (the quota's plus a margin), and never throws for an outcome the
     /// sidecar reports — only for a transport failure.
     /// </summary>
@@ -135,8 +136,20 @@ public sealed partial class CommitGraphSidecarClient(HttpClient http, IOptions<C
     private static partial Regex RepositoryIdShape();
 }
 
-/// <summary>The body of <c>POST /repos/{provider}/{repoId}/fetch</c>.</summary>
-public sealed record SidecarFetchRequest(string CloneUrl, SidecarCredential? Credential, SidecarQuota Quota);
+/// <summary>The body of <c>POST /repos/{provider}/{repoId}/fetch</c>. <paramref name="Mode"/> is one of <see cref="SidecarFetchModes"/>.</summary>
+public sealed record SidecarFetchRequest(string CloneUrl, SidecarCredential? Credential, SidecarQuota Quota, string Mode);
+
+/// <summary>
+/// Whether a fetch may create a mirror (D10, D40). Only a view-initiated clone sends
+/// <see cref="CloneOrFetch"/>; a push, a repository joining an installation, the hourly safety net and the
+/// stale-on-view refresh send <see cref="FetchOnly"/>, which the sidecar answers <c>refused</c>/<c>missing</c>
+/// without starting git when it has no mirror (a lost volume), instead of re-cloning a repository nobody viewed.
+/// </summary>
+public static class SidecarFetchModes
+{
+    public const string CloneOrFetch = "clone-or-fetch";
+    public const string FetchOnly = "fetch-only";
+}
 
 /// <summary>A forge credential, sent once and never stored.</summary>
 public sealed class SidecarCredential(string username, string password)

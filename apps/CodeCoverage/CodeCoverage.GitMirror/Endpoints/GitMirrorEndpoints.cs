@@ -40,7 +40,8 @@ internal sealed partial class GitMirrorStatsEndpoint : IGetEndpoint
     }
 }
 
-/// <summary><c>POST /repos/{provider}/{repoId}/fetch</c>: clone or fetch, joining one in flight (D19).</summary>
+/// <summary><c>POST /repos/{provider}/{repoId}/fetch</c>: clone or fetch, joining one in flight (D19); with
+/// <c>mode: fetch-only</c> never clone (D40).</summary>
 internal sealed partial class GitMirrorFetchEndpoint : IPostEndpoint<FetchRequestWire>
 {
     public static string Path => "/repos/{provider}/{repoId}/fetch";
@@ -66,6 +67,8 @@ internal sealed partial class GitMirrorFetchEndpoint : IPostEndpoint<FetchReques
             return Results.BadRequest();
         if (CloneUrl(request.CloneUrl, options.Value.AllowInsecureHttp) is not { } url)
             return Results.BadRequest();
+        if (FetchModes.IsFetchOnly(request.Mode) is not { } fetchOnly)
+            return Results.BadRequest();
         GitCredential? credential = null;
         if (request.Credential is { } wire)
         {
@@ -76,7 +79,7 @@ internal sealed partial class GitMirrorFetchEndpoint : IPostEndpoint<FetchReques
 
         // Not tied to the request: a caller that gives up (its HttpClient timeout) must not abort a clone another caller
         // may join. The quota's timeout bounds the operation.
-        var response = await mirrors.FetchAsync(key, url, credential, FetchQuota.From(request.Quota));
+        var response = await mirrors.FetchAsync(key, url, credential, FetchQuota.From(request.Quota), fetchOnly);
         return Results.Json(response, GitMirrorHost.Json);
     }
 

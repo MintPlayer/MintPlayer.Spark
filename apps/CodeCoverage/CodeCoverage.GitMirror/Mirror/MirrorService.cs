@@ -31,14 +31,27 @@ public sealed class MirrorService(GitRunner git, MirrorPaths paths, DiskGuard di
     private readonly Dictionary<RepoKey, Operation> inFlight = [];
     private readonly Dictionary<RepoKey, SemaphoreSlim> gates = [];
 
-    /// <summary>Clones the repository if it has no mirror, else fetches it; joins an operation already in flight.</summary>
-    public Task<FetchResponse> FetchAsync(RepoKey key, Uri cloneUrl, GitCredential? credential, FetchQuota quota)
+    /// <summary>Clones the repository if it has no mirror, else fetches it; joins an operation already in flight. With
+    /// <paramref name="fetchOnly"/> a missing mirror is answered <c>refused</c>/<c>missing</c> without starting git (D40);
+    /// joining a clone already in flight is still allowed, its result is the caller's.</summary>
+    public async Task<FetchResponse> FetchAsync(RepoKey key, Uri cloneUrl, GitCredential? credential, FetchQuota quota, bool fetchOnly = false)
+    {
+        var response = await StartOrJoin(key, cloneUrl, credential, quota, fetchOnly);
+        // A clone-or-fetch that joined a fetch-only operation whose mirror vanished meanwhile must still clone.
+        if (!fetchOnly && response is { Outcome: FetchOutcomes.Refused, Reason: FetchReasons.Missing })
+            response = await StartOrJoin(key, cloneUrl, credential, quota, fetchOnly: false);
+        return response;
+    }
+
+    private Task<FetchResponse> StartOrJoin(RepoKey key, Uri cloneUrl, GitCredential? credential, FetchQuota quota, bool fetchOnly)
     {
         Operation operation;
         lock (inFlight)
         {
             if (inFlight.TryGetValue(key, out var running))
                 return running.Result.Task;
+            if (fetchOnly && !paths.Exists(key))
+                return Task.FromResult(Missing(key));
             operation = new Operation();
             inFlight[key] = operation;
         }
@@ -48,7 +61,7 @@ public sealed class MirrorService(GitRunner git, MirrorPaths paths, DiskGuard di
             FetchResponse response;
             try
             {
-                response = await RunAsync(key, cloneUrl, credential, quota, operation.Cancellation.Token);
+                response = await RunAsync(key, cloneUrl, credential, quota, fetchOnly, operation.Cancellation.Token);
             }
             catch (Exception ex)
             {
@@ -102,7 +115,13 @@ public sealed class MirrorService(GitRunner git, MirrorPaths paths, DiskGuard di
         }
     }
 
-    private async Task<FetchResponse> RunAsync(RepoKey key, Uri cloneUrl, GitCredential? credential, FetchQuota quota, CancellationToken aborted)
+    private FetchResponse Missing(RepoKey key)
+    {
+        logger.LogInformation("Mirror {Repo}: fetch-only and no mirror, nothing started", key);
+        return new FetchResponse(FetchOutcomes.Refused, FetchReasons.Missing, 0, null, 0, SafeFreeBytes(), 0);
+    }
+
+    private async Task<FetchResponse> RunAsync(RepoKey key, Uri cloneUrl, GitCredential? credential, FetchQuota quota, bool fetchOnly, CancellationToken aborted)
     {
         var clock = Stopwatch.StartNew();
         var gate = Gate(key);
@@ -116,6 +135,9 @@ public sealed class MirrorService(GitRunner git, MirrorPaths paths, DiskGuard di
         }
         try
         {
+            // Checked again under the gate: a DELETE may have removed the mirror since StartOrJoin looked.
+            if (fetchOnly && !paths.Exists(key))
+                return Missing(key);
             var context = new RunContext(key, cloneUrl.AbsoluteUri, credential, quota, clock, aborted);
             if (disk.BelowFloor())
                 return Respond(context, FetchOutcomes.Refused, FetchReasons.DiskFloor);

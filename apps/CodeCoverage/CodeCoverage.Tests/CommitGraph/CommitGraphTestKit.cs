@@ -76,10 +76,15 @@ public sealed class FakeSidecar : HttpMessageHandler
         if (request.Method == HttpMethod.Post && path.EndsWith("/fetch"))
         {
             var mirror = path[..^"/fetch".Length];
-            FetchBodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            FetchBodies.Add(body);
             var existed = Mirrors.Contains(mirror);
-            var result = OnFetch?.Invoke(mirror) ?? new SidecarFetchResult(
-                existed ? "fetched" : "cloned", null, Sizes.GetValueOrDefault(mirror, 10), "refs-hash", 3, 1_000_000, 5);
+            using var parsed = JsonDocument.Parse(body);
+            var fetchOnly = parsed.RootElement.TryGetProperty("mode", out var mode) && mode.ValueKind == JsonValueKind.String && mode.GetString() == "fetch-only";
+            // D40: fetch-only never clones; a missing mirror is refused before anything starts.
+            var result = OnFetch?.Invoke(mirror) ?? (fetchOnly && !existed
+                ? new SidecarFetchResult("refused", "missing", 0, null, 0, 1_000_000, 0)
+                : new SidecarFetchResult(existed ? "fetched" : "cloned", null, Sizes.GetValueOrDefault(mirror, 10), "refs-hash", 3, 1_000_000, 5));
             if (result.Succeeded) Mirrors.Add(mirror);
             return Json(HttpStatusCode.OK, result);
         }

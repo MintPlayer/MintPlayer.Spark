@@ -209,6 +209,51 @@ public class CommitGraphMirrorTests : CoverageRavenTest
         state.SizeBytes.Should().Be(100);
     }
 
+    [Theory]
+    [InlineData("push")]
+    [InlineData("hourly")]
+    public async Task A_refresh_of_a_mirror_the_sidecar_lost_marks_the_state_mirror_less_and_only_a_later_view_clones_it(string trigger)
+    {
+        using var store = GetDocumentStore();
+        var kit = new CommitGraphKit(store);
+        await CommitGraphKit.SeedRepositoryAsync(store, 1);
+        await CommitGraphKit.SeedMirrorAsync(store, kit.Sidecar, 1, 100, Now, fetchedAtUtc: Now.AddHours(-3));
+        kit.Sidecar.Pages["github/1"] = FakeSidecar.Page(("1111111111111111111111111111111111111111", null));
+        kit.Sidecar.Mirrors.Clear(); // the volume was lost; the app still believes in its mirror
+
+        if (trigger == "hourly")
+            (await kit.Get<ICommitGraphMirrors>().QueueRefreshesAsync()).Should().Be(1);
+        else
+            await kit.Bus.BroadcastAsync(new FetchCommitGraphMessage { RepositoryId = RepoId(1), AllowClone = false });
+        await kit.DrainAsync();
+
+        // D40: the non-view trigger asked fetch-only, so the sidecar cloned nothing and said so.
+        kit.Sidecar.FetchBodies.Should().ContainSingle().Which.Should().Contain("\"mode\":\"fetch-only\"");
+        kit.Sidecar.Mirrors.Should().BeEmpty();
+        var state = (await StateAsync(store, 1))!;
+        state.HasMirror.Should().BeFalse();
+        state.SizeBytes.Should().Be(0);
+        state.Reason.Should().Be("missing");
+        kit.Bus.Of<FetchCommitGraphMessage>().Should().BeEmpty("nothing queues a clone but a view");
+        using (var session = store.OpenAsyncSession())
+            (await session.LoadAsync<CommitGraphMetrics>(CommitGraphMetrics.DocumentId)).Should().BeNull("a missing mirror is not a refusal");
+
+        // Nor does the next hourly net: there is no mirror to refresh.
+        kit.Time.Now = kit.Time.Now.AddHours(2);
+        (await kit.Get<ICommitGraphMirrors>().QueueRefreshesAsync()).Should().Be(0);
+
+        // The next view clones it lazily, at once (the "missing" outcome is no refusal to wait out).
+        var repository = await LoadRepositoryAsync(store, 1);
+        (await kit.Get<ICommitGraphReader>().ReadAsync(repository, new CommitGraphRequest())).State.Should().Be("syncing");
+        kit.Bus.Of<FetchCommitGraphMessage>().Should().ContainSingle().Which.AllowClone.Should().BeTrue();
+        await kit.DrainAsync();
+
+        kit.Sidecar.FetchBodies.Should().HaveCount(2);
+        kit.Sidecar.FetchBodies[1].Should().Contain("\"mode\":\"clone-or-fetch\"");
+        (await StateAsync(store, 1))!.HasMirror.Should().BeTrue();
+        (await kit.Get<ICommitGraphReader>().ReadAsync(repository, new CommitGraphRequest())).State.Should().Be("ready");
+    }
+
     [Fact]
     public async Task A_fetch_hands_the_credential_to_the_sidecar_and_stores_none_of_it()
     {

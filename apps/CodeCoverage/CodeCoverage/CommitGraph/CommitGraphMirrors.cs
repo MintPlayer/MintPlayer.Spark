@@ -17,7 +17,8 @@ public interface ICommitGraphMirrors
 {
     /// <summary>
     /// Clones or fetches one mirror. Without <paramref name="allowClone"/> it only refreshes a
-    /// mirror that exists (D10). Records every outcome on the state; never throws for one.
+    /// mirror that exists (D10), and asks the sidecar for <c>fetch-only</c> so a mirror the sidecar
+    /// lost is not re-cloned either (D40). Records every outcome on the state; never throws for one.
     /// </summary>
     Task FetchAsync(string repositoryId, bool allowClone, CancellationToken cancellationToken = default);
 
@@ -142,7 +143,10 @@ public partial class CommitGraphMirrors : ICommitGraphMirrors
         var request = new SidecarFetchRequest(
             access.CloneUrl,
             access.Password is null ? null : new SidecarCredential(access.Username ?? string.Empty, access.Password),
-            new SidecarQuota(tier.MaxBytes, tier.MaxRefs, tier.TimeoutSeconds));
+            new SidecarQuota(tier.MaxBytes, tier.MaxRefs, tier.TimeoutSeconds),
+            // D40: the app's HasMirror can be wrong (a lost volume), so the sidecar is told too: only a
+            // view-initiated request may clone, everything else refreshes an existing mirror or nothing.
+            allowClone ? SidecarFetchModes.CloneOrFetch : SidecarFetchModes.FetchOnly);
 
         SidecarFetchResult result;
         try
@@ -191,16 +195,22 @@ public partial class CommitGraphMirrors : ICommitGraphMirrors
             return;
         }
 
-        if (result.Outcome == "refused") await BumpMetricsAsync(m => m.Refusals++, cancellationToken);
+        if (result.Outcome == "refused" && !MirrorMissing(result)) await BumpMetricsAsync(m => m.Refusals++, cancellationToken);
         if (cloning && result.Succeeded) await TrimToBudgetAsync(stateId, beforeClone: false, cancellationToken);
     }
 
     /// <summary>
-    /// Whether the sidecar removed an existing mirror (contract: a fetch that leaves it over the size or
-    /// ref quota). A refusal at the disk floor happens before the mirror is touched, so it stays.
+    /// Whether the sidecar has no mirror after this fetch although one existed: a fetch that left it over the
+    /// size or ref quota (the sidecar removes it then), or a <c>fetch-only</c> that found none (D40, a lost
+    /// volume). Either way the state becomes mirror-less, so the next view clones it again. A refusal at the
+    /// disk floor happens before the mirror is touched, so it stays.
     /// </summary>
     private static bool RemovedBySidecar(SidecarFetchResult result)
-        => result.Outcome == "refused" && result.Reason is "too-large" or "too-many-refs";
+        => result.Outcome == "refused" && result.Reason is "too-large" or "too-many-refs" or "missing";
+
+    /// <summary>A <c>fetch-only</c> found no mirror (D40): not a refusal of anything, so not counted as one.</summary>
+    internal static bool MirrorMissing(SidecarFetchResult result)
+        => result.Outcome == "refused" && result.Reason == "missing";
 
     public async Task DeleteAsync(string repositoryId, string reason, bool eviction = false, CancellationToken cancellationToken = default)
     {

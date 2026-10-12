@@ -44,7 +44,8 @@ browser ── GET /api/browse/repos/{provider}/{owner}/{name}/graph ──> cov
   snapshots in a byte-bounded cache. It references no RavenDB, GitHub App or Spark runtime assembly
   (`The_sidecars_compiled_references_hold_no_database_client_no_GitHub_App_and_no_Spark_runtime`).
 - **`coverage-app`** owns the visibility gate, the coverage overlay, the `RepositoryGraphState` documents, the
-  triggers, and the forge credential, which it mints per fetch and sends in the request body.
+  triggers, and the forge credential, which it asks for per fetch (GitHub serves it from the shared installation
+  token cache with at least 15 minutes left, longer than the 600 s quota) and sends in the request body.
 
 The sidecar's API (`CodeCoverage.GitMirror/Endpoints/GitMirrorEndpoints.cs`), reachable only on the internal
 `coverage-git` network:
@@ -53,7 +54,7 @@ The sidecar's API (`CodeCoverage.GitMirror/Endpoints/GitMirrorEndpoints.cs`), re
 |---|---|
 | `GET /healthz` | Liveness. |
 | `GET /stats` | The mirror volume's total and free bytes, the mirror count and their total size (the host-metrics dashboard reads it). |
-| `POST /repos/{provider}/{repoId}/fetch` | Clones or fetches under the per-repository operation; a second call for the same repository **joins** the running one (D19). Returns the outcome, the reason, the size, the refs hash and the commit count. |
+| `POST /repos/{provider}/{repoId}/fetch` | Body `{ cloneUrl, credential, quota, mode }`. Clones or fetches under the per-repository operation; a second call for the same repository **joins** the running one (D19). `mode` is `clone-or-fetch` (the default when absent) or `fetch-only`: with `fetch-only` and no mirror it answers 200 `refused`/`missing` without starting git or creating a directory (D40). The app sends `clone-or-fetch` only for a view-initiated clone; push, repository-added, stale-on-view and the hourly net send `fetch-only`. Any other `mode` is 400. Returns the outcome, the reason, the size, the refs hash and the commit count. |
 | `GET /repos/{provider}/{repoId}/graph?from&count&ref&at&snapshot&firstParent&grep&author` | One page of rows. 404 `missing` without a mirror, 404 `not-found` for an unknown ref or an `at` outside the walk, 410 `stale` for an old snapshot id (D21, D33). |
 | `DELETE /repos/{provider}/{repoId}` | Aborts an in-flight operation, closes the snapshot readers and removes the mirror. Idempotent. |
 
@@ -112,6 +113,9 @@ than the longest quota timeout plus 5 minutes counts as lost and is asked for ag
   the reason (`too-many-refs`, `too-large`, `disk-floor`, `timeout`, `auth`, `not-found`, `error`).
 - A re-clone after eviction is the same path as a first clone: the next view shows `syncing`, then the graph
   (`An_evicted_repository_is_cloned_again_on_its_next_view`).
+- **A lost volume is not re-cloned by refreshes** (D40). A push, repository-added or hourly fetch of a mirror the
+  sidecar no longer has comes back `refused`/`missing`; the state is marked mirror-less (`SizeBytes` 0), and only the
+  next view clones it again, at once, since `missing` is not a refusal that waits out `RetryAfterMinutes`.
 
 The numbers are the PRD's placeholders (D7, D8). S2 measured about 0.53 KB per commit on the VPS (100k commits ≈
 53 MB, vscode's 192k commits 119.5 MB cloned in 5.7 s), well inside them. Production numbers are recorded at plan M8.

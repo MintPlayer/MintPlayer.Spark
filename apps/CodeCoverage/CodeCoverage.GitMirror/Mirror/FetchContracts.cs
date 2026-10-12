@@ -7,6 +7,28 @@ public sealed class FetchRequestWire
     public string? CloneUrl { get; set; }
     public CredentialWire? Credential { get; set; }
     public QuotaWire? Quota { get; set; }
+
+    /// <summary><c>clone-or-fetch</c> (absent: the default) or <c>fetch-only</c>, see <see cref="FetchModes"/>.</summary>
+    public string? Mode { get; set; }
+}
+
+/// <summary>
+/// Whether a fetch may create a mirror (D10, D40). Only a graph view may: every other trigger (push, repository added,
+/// the hourly safety net) sends <c>fetch-only</c>, which answers <c>refused</c>/<c>missing</c> without starting git when
+/// there is no mirror, so a lost volume is not re-cloned for repositories nobody views.
+/// </summary>
+public static class FetchModes
+{
+    public const string CloneOrFetch = "clone-or-fetch";
+    public const string FetchOnly = "fetch-only";
+
+    /// <summary>True for <c>fetch-only</c>, false for <c>clone-or-fetch</c> or absent, null for anything else.</summary>
+    public static bool? IsFetchOnly(string? mode) => mode switch
+    {
+        null or CloneOrFetch => false,
+        FetchOnly => true,
+        _ => null,
+    };
 }
 
 public sealed class CredentialWire
@@ -62,6 +84,9 @@ public static class FetchReasons
     public const string Auth = "auth";
     public const string NotFound = "not-found";
     public const string Error = "error";
+
+    /// <summary>A <c>fetch-only</c> request found no mirror (D40).</summary>
+    public const string Missing = "missing";
 }
 
 public sealed record FetchResponse(

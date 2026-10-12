@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using CodeCoverage.GitMirror.Mirror;
@@ -190,6 +191,46 @@ public class MirrorServiceTests : MirrorTestBase
         response.Outcome.Should().Be("failed");
         response.Reason.Should().Be("not-found");
         Entries(Sidecar.Root).Where(e => e.Contains("1010")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Fetch_only_without_a_mirror_is_refused_as_missing_without_starting_git_or_creating_a_directory()
+    {
+        CreateOrigin("repo");
+
+        var response = await Sidecar.FetchAsync("github", "1013", Server.UrlOf("repo"), mode: "fetch-only");
+
+        response.Outcome.Should().Be("refused");
+        response.Reason.Should().Be("missing");
+        Sidecar.Started.Should().BeEmpty("D40: only a view may clone, so a missing mirror starts nothing");
+        Server.Requests.Should().Be(0);
+        Entries(Sidecar.Root).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Fetch_only_fetches_an_existing_mirror_and_clone_or_fetch_clones_a_missing_one()
+    {
+        var shas = CreateOrigin("repo");
+
+        var cloned = await Sidecar.FetchAsync("github", "1014", Server.UrlOf("repo"), mode: "clone-or-fetch");
+        Push("repo", "main", "e", 5, shas["c"]);
+        var fetched = await Sidecar.FetchAsync("github", "1014", Server.UrlOf("repo"), mode: "fetch-only");
+
+        cloned.Outcome.Should().Be("cloned");
+        fetched.Outcome.Should().Be("fetched");
+        fetched.CommitCount.Should().Be(5);
+        Clones(Sidecar).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task An_unknown_fetch_mode_is_a_bad_request()
+    {
+        CreateOrigin("repo");
+
+        var response = await Sidecar.Client.PostAsJsonAsync("/repos/github/1015/fetch", new { cloneUrl = Server.UrlOf("repo").AbsoluteUri, mode = "clone" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        Sidecar.Started.Should().BeEmpty();
     }
 
     [Fact]

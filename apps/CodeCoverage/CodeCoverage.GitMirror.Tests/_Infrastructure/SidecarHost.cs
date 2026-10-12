@@ -72,9 +72,9 @@ internal sealed class SidecarHost : IAsyncDisposable
         return new SidecarHost(app, root, logs);
     }
 
-    public async Task<FetchResponse> FetchAsync(string provider, string repoId, Uri cloneUrl, object? credential = null, object? quota = null)
+    public async Task<FetchResponse> FetchAsync(string provider, string repoId, Uri cloneUrl, object? credential = null, object? quota = null, string? mode = null)
     {
-        var response = await Client.PostAsJsonAsync($"/repos/{provider}/{repoId}/fetch", new { cloneUrl = cloneUrl.AbsoluteUri, credential, quota });
+        var response = await Client.PostAsJsonAsync($"/repos/{provider}/{repoId}/fetch", new { cloneUrl = cloneUrl.AbsoluteUri, credential, quota, mode });
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<FetchResponse>(GitMirrorHost.Json))!;
     }

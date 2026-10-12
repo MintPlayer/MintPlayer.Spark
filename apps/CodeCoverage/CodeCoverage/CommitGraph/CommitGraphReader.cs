@@ -141,7 +141,8 @@ public partial class CommitGraphReader : ICommitGraphReader
             if (state.Syncing && state.SyncingSinceUtc > now.UtcDateTime - CloneLostAfter)
                 return CommitGraphResponse.Empty("syncing");
 
-            if (state.Outcome is "refused" or "failed"
+            // A fetch-only that found the mirror gone (D40) refused nothing: this view clones it again.
+            if (state.Outcome is "refused" or "failed" && state.Reason != "missing"
                 && state.LastFetchAtUtc > now.UtcDateTime.AddMinutes(-o.RetryAfterMinutes))
                 return CommitGraphResponse.Empty("unavailable", state.Reason ?? state.Outcome);
 
