@@ -25,14 +25,29 @@ internal sealed partial class OidcRegisterClient : IPostEndpoint<OidcClientMetad
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly Mcp.OidcAgentDynamicRegistration agentRegistration;
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
         => new(Results.Json(new { error = "invalid_client_metadata", error_description = failure?.Message }, statusCode: 400));
+
+    // The machine-endpoint budget (per IP, when the application runs the rate limiter), on top of the always-on
+    // per-address registration budget of anonymous agent registration (MCP plan M3b).
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
+        => builder.RequireRateLimiting(Extensions.SparkIdentityProviderExtensions.RateLimitPolicy);
 
     public override async Task<IResult> HandleAsync(OidcClientMetadata metadata, CancellationToken ct)
     {
         var http = httpContextAccessor.HttpContext!;
         using var session = store.OpenAsyncSession();
+
+        // MCP PRD D5 (G6): with idp.ForMcp(), a request WITHOUT an initial access token registers an AI agent with
+        // loopback redirects only. A request that presents a token is still a developer's, and is judged as one.
+        if (options.Mcp is { DynamicRegistration: true } && http.Request.Headers.Authorization.Count == 0)
+        {
+            http.Response.Headers.CacheControl = "no-store";
+            return await agentRegistration.RegisterAsync(metadata, http.Connection.RemoteIpAddress?.ToString(), ct);
+        }
 
         var initial = await OidcClientRegistration.ResolveBearerAsync(session, http.Request, "initial", ct);
         if (initial is null || !developers.IsActive(await developers.GetAsync(initial.Subject, ct)))

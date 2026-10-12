@@ -2024,6 +2024,81 @@
         "fr": "Gérer les applications ayant accès à votre compte",
         "nl": "Applicaties met toegang tot je account beheren"
       },
+      "consentAgentHeading": {
+        "en": "{0} wants to work with your data as an AI agent",
+        "fr": "{0} souhaite utiliser vos données en tant qu'agent IA",
+        "nl": "{0} wil als AI-agent met je gegevens werken"
+      },
+      "consentAgentVerified": {
+        "en": "Verified: its description was published at {0}.",
+        "fr": "Vérifié : sa description est publiée sur {0}.",
+        "nl": "Geverifieerd: de beschrijving staat op {0}."
+      },
+      "consentAgentUnverified": {
+        "en": "Unverified: this application chose its own name, and nothing confirms who made it.",
+        "fr": "Non vérifié : cette application a choisi son propre nom, et rien ne confirme qui l'a créée.",
+        "nl": "Niet geverifieerd: deze toepassing koos zelf haar naam, en niets bevestigt wie haar maakte."
+      },
+      "consentAgentLoopback": {
+        "en": "This application runs on your computer. Continue only if you started it yourself just now.",
+        "fr": "Cette application s'exécute sur votre ordinateur. Continuez uniquement si vous venez de la lancer vous-même.",
+        "nl": "Deze toepassing draait op je computer. Ga alleen verder als je ze daarnet zelf hebt gestart."
+      },
+      "consentAgentTypes": {
+        "en": "What may it use?",
+        "fr": "Que peut-il utiliser ?",
+        "nl": "Wat mag hij gebruiken?"
+      },
+      "consentAgentTypesAll": {
+        "en": "Everything this application makes available to agents, including what is added later",
+        "fr": "Tout ce que cette application met à la disposition des agents, y compris ce qui sera ajouté plus tard",
+        "nl": "Alles wat deze toepassing beschikbaar stelt voor agents, ook wat later wordt toegevoegd"
+      },
+      "consentAgentTypesChosen": {
+        "en": "Only what I choose:",
+        "fr": "Seulement ce que je choisis :",
+        "nl": "Alleen wat ik kies:"
+      },
+      "consentAgentQueries": {
+        "en": "Lists: {0}",
+        "fr": "Listes : {0}",
+        "nl": "Lijsten: {0}"
+      },
+      "consentAgentPermission": {
+        "en": "What may it do?",
+        "fr": "Que peut-il faire ?",
+        "nl": "Wat mag hij doen?"
+      },
+      "consentAgentRead": {
+        "en": "Read",
+        "fr": "Lire",
+        "nl": "Lezen"
+      },
+      "consentAgentWrite": {
+        "en": "Read and make changes",
+        "fr": "Lire et effectuer des modifications",
+        "nl": "Lezen en wijzigingen uitvoeren"
+      },
+      "consentAgentNothing": {
+        "en": "This application makes nothing available to agents that you may see.",
+        "fr": "Cette application ne met à la disposition des agents rien que vous puissiez voir.",
+        "nl": "Deze toepassing stelt niets beschikbaar voor agents dat jij mag zien."
+      },
+      "consentAgentRights": {
+        "en": "The agent never sees more than you may see yourself.",
+        "fr": "L'agent ne voit jamais plus que ce que vous pouvez voir vous-même.",
+        "nl": "De agent ziet nooit meer dan jij zelf mag zien."
+      },
+      "errorAccountLocked": {
+        "en": "This account is locked or disabled, so it cannot give an application access.",
+        "fr": "Ce compte est verrouillé ou désactivé ; il ne peut donc pas donner accès à une application.",
+        "nl": "Dit account is vergrendeld of uitgeschakeld en kan dus geen toegang geven aan een toepassing."
+      },
+      "errorAgentChoice": {
+        "en": "That choice is not available. Go back and choose again.",
+        "fr": "Ce choix n'est pas disponible. Revenez en arrière et choisissez à nouveau.",
+        "nl": "Die keuze is niet beschikbaar. Ga terug en kies opnieuw."
+      },
       "loginTitle": {
         "en": "Login",
         "fr": "Connexion",

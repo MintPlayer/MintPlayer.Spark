@@ -61,6 +61,15 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
         if (app == null || !app.Enabled)
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorUnknownClient");
 
+        // An AI agent's sign-in (MCP PRD §4.6): types and read/changes instead of scopes. A locked or disabled account
+        // gives no application access.
+        if (AgentConsent.Applies(request))
+        {
+            if (await AgentConsent.UsableUserAsync(context, userId) is null)
+                return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status403Forbidden, "errorAccountLocked");
+            return await AgentConsent.RenderAsync(context, text, options, antiforgery, app, request, requestId);
+        }
+
         // Load scope definitions
         var requestedScopes = request.Scopes;
         var scopeDefinitions = await OidcScopeCatalog.LoadAsync(session, requestedScopes, ct);
@@ -182,7 +191,17 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
 }
 
 /// <summary>The consent form as posted: the handle, the button pressed, and the ticked scopes.</summary>
-internal sealed record OidcConsentSubmission(string? RequestId, string? Decision, string[] Scopes, bool Remember = false);
+internal sealed record OidcConsentSubmission(string? RequestId, string? Decision, string[] Scopes, bool Remember = false)
+{
+    /// <summary>An agent consent's type choice: <c>all</c> or <c>chosen</c> (MCP PRD §4.6).</summary>
+    public string? TypesMode { get; init; }
+
+    /// <summary>An agent consent's chosen entity types.</summary>
+    public string[] Types { get; init; } = [];
+
+    /// <summary>An agent consent's <c>read</c> or <c>write</c> (read + changes).</summary>
+    public string? Permission { get; init; }
+}
 
 /// <summary>Records the consent decision (<c>POST /connect/consent</c>).</summary>
 /// <remarks>
@@ -214,7 +233,12 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
             RequestId: form["request_id"].FirstOrDefault(),
             Decision: form["decision"].FirstOrDefault(),
             Scopes: [.. form["scopes"].Where(s => !string.IsNullOrEmpty(s)).Select(s => s!)],
-            Remember: string.Equals(form["remember"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase));
+            Remember: string.Equals(form["remember"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase))
+        {
+            TypesMode = form["types_mode"].FirstOrDefault(),
+            Types = [.. form["types"].Where(s => !string.IsNullOrEmpty(s)).Select(s => s!)],
+            Permission = form["permission"].FirstOrDefault(),
+        };
     }
 
     public override async Task<IResult> HandleAsync(OidcConsentSubmission submission, CancellationToken ct)
@@ -251,6 +275,14 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
         var app = await session.LoadAsync<OidcApplication>(request.ApplicationId, ct);
         if (app == null || !app.Enabled)
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorUnknownClient");
+
+        if (AgentConsent.Applies(request))
+        {
+            if (await AgentConsent.UsableUserAsync(context, userId) is not { } user)
+                return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status403Forbidden, "errorAccountLocked");
+            return await AgentConsent.AllowAsync(context, session, text, options, audit, oidcIssuer.Resolve(context.Request), app, request, user,
+                new AgentConsent.Choice(submission.TypesMode, submission.Types, submission.Permission), ct);
+        }
 
         // The checkboxes can only narrow what the request already carries. They are attacker-
         // controlled markup, so a crafted POST must not be able to grant a scope the client was

@@ -138,7 +138,11 @@ internal class OidcTokenGenerator
 
         if (user != null)
         {
-            claims.Add(new Claim(JwtRegisteredClaimNames.Sub, OidcSubjects.For(app, user.Id!)));
+            // MCP PRD D5 (G10): a token for the MCP resource always carries the local user id, never a pairwise
+            // subject, whatever the client is configured with: /mcp, the agent grant's natural id and the store-backed
+            // groups all key on it.
+            var mcp = properties?.ContainsKey(Mcp.OidcAgentClients.RequestProperty) == true;
+            claims.Add(new Claim(JwtRegisteredClaimNames.Sub, mcp ? user.Id! : OidcSubjects.For(app, user.Id!)));
         }
 
         // Application claims carry the *client's own* authority, so they belong only in a
@@ -171,11 +175,19 @@ internal class OidcTokenGenerator
             .ToList();
 
         // RFC 8707: resource indicators narrow the audience to the APIs the client named.
+        var resourceNamed = false;
         if (properties?.GetValueOrDefault("resource") is { Length: > 0 } resources)
         {
             var named = resources.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             audiences = audiences.Where(a => named.Contains(a, StringComparer.Ordinal)).ToList();
+            resourceNamed = true;
         }
+
+        // MCP PRD D5 (G4): a token whose request named a resource is for that resource or not issued at all. Falling
+        // back to the client id here would mint a token for an audience nobody asked for. /connect/authorize already
+        // refuses a resource no requested scope serves, so this is the backstop.
+        if (resourceNamed && audiences.Count == 0 && properties!.ContainsKey(Mcp.OidcAgentClients.RequestProperty))
+            throw new InvalidOperationException("The requested resource is not an audience of any granted scope; no token is issued.");
 
         var credentials = _signingKeyService.GetSigningCredentials(null);
 

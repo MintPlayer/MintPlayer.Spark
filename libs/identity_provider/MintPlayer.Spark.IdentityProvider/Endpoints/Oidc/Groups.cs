@@ -20,6 +20,15 @@ internal class OidcWellKnownGroup : IEndpointGroup
 /// <summary>
 /// The protocol surface, unconditional and without the CORS convention.
 /// </summary>
+/// <summary>The well-known documents of the embedded authorization server for agents, mapped only with <c>idp.ForMcp()</c>.</summary>
+internal class OidcMcpWellKnownGroup : IEndpointGroup
+{
+    public static string Prefix => "/.well-known";
+
+    static bool IEndpointGroup.IsEnabled(IServiceProvider services)
+        => services.GetRequiredService<SparkIdentityProviderOptions>().Mcp is not null;
+}
+
 internal class OidcConnectGroup : IEndpointGroup
 {
     public static string Prefix => "/connect";

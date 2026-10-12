@@ -67,7 +67,7 @@ internal sealed partial class OidcPushedAuthorization : IPostEndpoint<OidcAuthor
 
         if (parameters.ClientId is not null && parameters.ClientId != app.ClientId)
             return Error("invalid_request", "client_id does not match the authenticated client.");
-        if (string.IsNullOrEmpty(parameters.RedirectUri) || !app.RedirectUris.Contains(parameters.RedirectUri, StringComparer.Ordinal))
+        if (string.IsNullOrEmpty(parameters.RedirectUri) || !Mcp.OidcAgentClients.RedirectAllowed(app, parameters.RedirectUri))
             return Error("invalid_request", "Invalid redirect_uri.");
         if (parameters.ResponseType != "code")
             return Error("unsupported_response_type", "Only 'code' response type is supported.");

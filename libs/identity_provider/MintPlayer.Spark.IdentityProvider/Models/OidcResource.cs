@@ -24,6 +24,12 @@ public class OidcResource
     public string Kind { get; set; } = OidcResourceKinds.Identity;
     /// <summary>For an identity resource, the scope name (<c>email</c>). For an API, the audience (<c>fleet</c>). Read-only once created.</summary>
     public string Name { get; set; } = string.Empty;
+    /// <summary>
+    /// For an API resource whose audience is not its <see cref="Name"/>: the access token's <c>aud</c> and the RFC 8707
+    /// <c>resource</c> value. The MCP resource (<c>idp.ForMcp()</c>) is named <c>mcp</c>, owns <c>mcp:read</c> and
+    /// <c>mcp:write</c>, and carries the MCP canonical URL here: a URL has dots, so it cannot be a scope prefix.
+    /// </summary>
+    public string? Audience { get; set; }
     /// <summary>Human-readable name, shown to users on the consent screen.</summary>
     public TranslatedString? DisplayName { get; set; }
     /// <summary>What it grants access to, shown to users on the consent screen.</summary>

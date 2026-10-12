@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.IdentityProvider.Services;
 /// <c>openid</c> (or nothing) is a withdrawal of the whole grant.
 /// </para>
 /// </summary>
-internal sealed class OidcGrantWithdrawal(IDocumentStore store, OidcAudit audit)
+internal sealed class OidcGrantWithdrawal(IDocumentStore store, OidcAudit audit, IServiceProvider? services = null)
 {
     /// <summary>
     /// Withdraws <paramref name="scopes"/> (or the whole grant when null) that <paramref name="userId"/> gave
@@ -63,6 +63,10 @@ internal sealed class OidcGrantWithdrawal(IDocumentStore store, OidcAudit audit)
             try
             {
                 await session.SaveChangesAsync(ct);
+                // MCP PRD D12: an agent grant linked to this OAuth grant goes with it, so the agent's next call is refused too.
+                if (whole && services?.GetService(typeof(Mcp.OidcAgentGrants)) is Mcp.OidcAgentGrants agentGrants
+                    && await session.LoadAsync<OidcApplication>(applicationId, ct) is { } app)
+                    await agentGrants.RemoveAsync(userId, app.ClientId, ct);
                 return true;
             }
             catch (ConcurrencyException)

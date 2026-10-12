@@ -21,11 +21,16 @@ public static class OidcScopeCatalog
     /// <summary>The document id of the resource named <paramref name="resourceName"/>.</summary>
     public static string ResourceId(string resourceName) => CollectionPrefix + resourceName;
 
-    /// <summary>The resource name an API scope belongs to: the part before its first dot, or null.</summary>
+    /// <summary>
+    /// The resource name an API scope belongs to: the part before its first dot or colon, or null. The colon is what
+    /// makes the MCP scopes expressible (MCP PRD D5 gap G11): <c>mcp:read</c> belongs to the resource named
+    /// <c>mcp</c>, whose audience (<see cref="OidcResource.Audience"/>) is the MCP canonical URL. An identity scope
+    /// whose name has a colon still resolves as itself: its own document is looked up first.
+    /// </summary>
     public static string? ApiResourceNameOf(string scopeName)
     {
-        var dot = scopeName.IndexOf('.');
-        return dot > 0 ? scopeName[..dot] : null;
+        var separator = scopeName.IndexOfAny(['.', ':']);
+        return separator > 0 ? scopeName[..separator] : null;
     }
 
     /// <summary>
@@ -112,6 +117,6 @@ public static class OidcScopeCatalog
         identity.ClaimTypes, identity.Required, identity.Emphasize, identity.ShowInDiscoveryDocument);
 
     private static OidcScopeDefinition Define(OidcResource api, OidcApiScope scope) => new(
-        scope.Name, api.Name, OidcResourceKinds.Api, scope.DisplayName ?? api.DisplayName, scope.Description,
+        scope.Name, api.Audience ?? api.Name, OidcResourceKinds.Api, scope.DisplayName ?? api.DisplayName, scope.Description,
         scope.ClaimTypes, false, scope.Emphasize, scope.ShowInDiscoveryDocument && api.ShowInDiscoveryDocument);
 }

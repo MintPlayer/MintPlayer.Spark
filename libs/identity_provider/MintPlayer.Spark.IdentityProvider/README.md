@@ -25,6 +25,53 @@ withIdentityProvider(withConnectedApplications(), withDeveloperRoutes(), withMan
 // and provideSparkClientOperations() for the show-once secret dialog
 ```
 
+## AI agents: `ForMcp()`
+
+With the Mcp package, the provider can be the application's own authorization server for AI agents (setup 3 of
+[docs/spark_mcp_PRD.md](../../../docs/spark_mcp_PRD.md)):
+
+```csharp
+spark.AddIdentityProvider(idp => idp.ForMcp(mcp =>
+{
+    mcp.MetadataDocumentHosts = [];          // empty: client metadata documents from any public HTTPS host
+}));
+spark.AddMcp(mcp => { /* … */ });            // required; so is a canonical URL (Spark:Mcp:CanonicalUrl or Spark:Auth:PublicBaseUrl)
+```
+
+It adds, and changes nothing else:
+
+- `GET /.well-known/oauth-authorization-server` (RFC 8414): code + PKCE (S256), refresh, revocation, scopes
+  `mcp:read`, `mcp:write`, `offline_access`, `client_id_metadata_document_supported`, the `none` auth method,
+  `authorization_response_iss_parameter_supported` (RFC 9207 `iss` is on every authorization response).
+- The API resource `OidcResources/mcp`, owning `mcp:read` and `mcp:write`, whose `Audience` is the MCP
+  canonical URL. A request for those scopes may name only that `resource` (RFC 8707; anything else is
+  `invalid_target`, also at the token endpoint), its token has exactly that audience and the local user id as
+  `sub` (never pairwise), and it always shows the agent consent screen.
+- **Client ID Metadata Documents**: a `client_id` that is an `https` URL is fetched through the SSRF-safe client
+  (public addresses only, one DNS resolution for check and connect, port 443, no redirects, `MetadataDocumentMaxBytes`
+  5 KiB, `MetadataDocumentTimeout` 5 s), kept for `MetadataDocumentCacheFor` (1 h). The URL needs a path and no
+  user info, query, fragment, dot segments or trailing `/`; the document must name its own URL as `client_id`, be a
+  public client, and list https or loopback redirect URIs. The client is stored at `OidcApplications/agent-{hash}`.
+- **Anonymous registration** at `/connect/register` (no initial access token; `DynamicRegistration`, default on):
+  public clients whose redirect URIs are all loopback (`localhost`, `127.0.0.1`, `[::1]`) or VS Code's
+  `https://vscode.dev/redirect` / `https://insiders.vscode.dev/redirect`. Labelled unverified, no registration
+  access token, `RegistrationsPerHour` (20) per address together with document fetches, deleted after
+  `UnusedClientLifetime` (30 days) without use by a job that runs every six hours. A request with an initial
+  access token is a developer's registration, as before.
+- Loopback redirect URIs of agent clients match on any port and any path (RFC 8252 §7.3).
+- Refresh tokens for agents whether or not they asked for `offline_access`, rotating, a reused one revoking the
+  whole chain; not tied to the browser session (signing out of the website does not sign the agent out).
+- The agent consent screen: client name, verified host (metadata documents) or "unverified", the loopback
+  notice, the types the agent may use and read or read + changes, limited by the Mcp package's
+  `AgentPermissions(agent)` and each type's `agentPermissions`. A locked account is refused. Allowing writes
+  `AgentGrants/{userId}/app/{clientId}`, linked to the `OidcGrant`; revoking either revokes both.
+- The `/mcp` bearer scheme for these tokens (`IAgentCredentialScheme`, setup `EmbeddedAuthorizationServer`).
+- Audit events `registration.metadata-document`, `registration.pruned`, `token.issued`, `token.revoked`,
+  `token.pkce.failed`.
+
+Without `ForMcp()` the provider also contributes its sign-ins at other websites to the account page's
+**Connected applications** (`ISparkConnectedApplicationSource`).
+
 ## The host's part: two groups
 
 The layer's `security.json` grants rights to two slots. The host binds them to its own groups in its

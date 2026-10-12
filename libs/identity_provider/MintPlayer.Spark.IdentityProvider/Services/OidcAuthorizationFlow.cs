@@ -235,6 +235,14 @@ internal static class OidcAuthorizationFlow
     internal static async Task<OidcApplication?> FindApplicationByClientIdAsync(
         IAsyncDocumentSession session, string clientId, CancellationToken ct)
     {
+        // Agent clients (metadata documents, anonymous registration; MCP PRD D5) live at a natural id derived from
+        // the client id: a point load, consistent the moment the client was registered, where the index below may not
+        // have caught up yet when the agent redeems its first code seconds later. The id is a hash, so the client id
+        // is compared exactly as well.
+        var agent = await session.LoadAsync<OidcApplication>(Mcp.OidcAgentClients.ApplicationId(clientId), ct);
+        if (agent is not null && string.Equals(agent.ClientId, clientId, StringComparison.Ordinal))
+            return agent;
+
         // exact: true because RavenDB compares strings case-insensitively by default, which
         // would make "acmeapp" resolve the application registered as "AcmeApp" — impersonation
         // by casing, on the lookup that decides which client every other check is applied to.

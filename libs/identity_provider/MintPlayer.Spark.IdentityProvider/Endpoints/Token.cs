@@ -208,9 +208,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             var computedChallenge = ComputeS256Challenge(codeVerifier);
             if (!FixedTimeEquals(computedChallenge, codeToken.CodeChallenge))
             {
+                // Audited (MCP plan M3b): a wrong verifier is what an intercepted code looks like when it is tried.
+                await RecordPkceFailureAsync(codeToken, ct);
                 return Results.Json(new { error = "invalid_grant", error_description = "PKCE verification failed." }, statusCode: 400);
             }
         }
+
+        if (ResourceMismatch(codeToken) is { } invalidTarget)
+            return invalidTarget;
 
         // Mark code as redeemed (single-use)
         codeToken.Status = "redeemed";
@@ -226,6 +231,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Load scope definitions from DB
         var grantedScopes = await Token.LoadScopesAsync(session, codeToken.Scopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
+        if (IsMcp(codeToken) && !grantedScopes.Any(s => s.Audience is not null))
+            return McpResourceUnavailable();
 
         var issuer = oidcIssuer.Resolve(httpContext.Request);
 
@@ -256,8 +263,13 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // minted unconditionally, so every browser client silently received a 14-day credential
         // it never requested and could not decline — the widest-reaching thing this endpoint
         // handed out, given away by default.
+        //
+        // An agent's request for the MCP resource is the exception (MCP PRD D5, gap G8): an agent is a native client
+        // that must keep working after the access token expires, and its grant, not a remembered consent, is what the
+        // user manages; Gemini and Codex do not always ask for offline_access.
+        var mcpToken = IsMcp(codeToken);
         var issueRefreshToken = AllowsRefreshTokens(app)
-            && codeToken.Scopes.Contains("offline_access", StringComparer.OrdinalIgnoreCase);
+            && (mcpToken || codeToken.Scopes.Contains("offline_access", StringComparer.OrdinalIgnoreCase));
         var refreshTokenValue = issueRefreshToken ? tokenGenerator.GenerateRefreshToken() : null;
 
         // Store access token
@@ -285,7 +297,9 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
                 ApplicationId = app.Id!,
                 AuthorizationId = codeToken.AuthorizationId,
                 Subject = codeToken.Subject,
-                SessionId = codeToken.SessionId,
+                // An agent's refresh token is not tied to the browser session it was consented in: signing out of the
+                // website must not sign the agent out. The user revokes it under Connected applications (D12, D14).
+                SessionId = mcpToken ? null : codeToken.SessionId,
                 Id = OidcTokenReference.DocumentId(refreshTokenValue),
                 Type = OidcTokenTypes.RefreshToken,
                 Scopes = grantedScopeNames,
@@ -308,6 +322,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         }
 
         await OidcGrantUsage.TouchAsync(store, codeToken.AuthorizationId, ct);
+        if (mcpToken)
+            await RecordAgentTokenAsync(app, codeToken.Subject, "authorization_code", ct);
 
         httpContext.Response.Headers.CacheControl = "no-store";
         httpContext.Response.Headers.Pragma = "no-cache";
@@ -372,6 +388,49 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// Whether this client may hold refresh tokens at all. Checked both when one is asked for
     /// and when one would be handed out alongside an authorization code.
     /// </summary>
+    /// <summary>Whether the code or refresh token belongs to an agent's request for the MCP resource (MCP PRD D5).</summary>
+    private static bool IsMcp(OidcToken token) => token.Properties.ContainsKey(Mcp.OidcAgentClients.RequestProperty);
+
+    /// <summary>
+    /// RFC 8707 §2.2 at the token endpoint, for MCP tokens: a <c>resource</c> the client names here must be one the
+    /// authorization was for. Codex sends it on every request; a different one is <c>invalid_target</c>, never a
+    /// token silently addressed elsewhere (MCP PRD D5, gap G4).
+    /// </summary>
+    private IResult? ResourceMismatch(OidcToken token)
+    {
+        var named = form["resource"].Where(r => !string.IsNullOrEmpty(r)).Select(r => r!).ToList();
+        if (named.Count == 0 || !IsMcp(token))
+            return null;
+
+        var recorded = (token.Properties.GetValueOrDefault("resource") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return named.All(r => recorded.Contains(r, StringComparer.Ordinal))
+            ? null
+            : Results.Json(new { error = "invalid_target", error_description = "This grant is not for that resource." }, statusCode: 400);
+    }
+
+    /// <summary>The MCP resource or its scopes were disabled after the grant: no token, rather than one addressed elsewhere.</summary>
+    private static IResult McpResourceUnavailable()
+        => Results.Json(new { error = "invalid_scope", error_description = "The MCP resource is not available." }, statusCode: 400);
+
+    private async Task RecordPkceFailureAsync(OidcToken codeToken, CancellationToken ct)
+    {
+        using var auditSession = store.OpenAsyncSession();
+        await audit.RecordAsync(auditSession, OidcAuditKinds.PkceFailed, actorId: null, codeToken.ApplicationId, codeToken.Subject,
+            httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
+        await auditSession.SaveChangesAsync(ct);
+    }
+
+    /// <summary>The audit event of an agent's token issue, and the client's last use (an unused registration is pruned, M3b).</summary>
+    private async Task RecordAgentTokenAsync(OidcApplication app, string? subject, string grantType, CancellationToken ct)
+    {
+        using var bookkeeping = store.OpenAsyncSession();
+        await audit.RecordAsync(bookkeeping, OidcAuditKinds.TokenIssued, actorId: subject, app.Id, subject,
+            httpContext.Connection.RemoteIpAddress?.ToString(), new Dictionary<string, string> { ["grantType"] = grantType }, ct);
+        if (Mcp.OidcAgentClients.IsAgent(app) && (app.LastUsedAt is null || app.LastUsedAt < DateTime.UtcNow.AddHours(-1)))
+            bookkeeping.Advanced.Patch<OidcApplication, DateTime?>(app.Id!, a => a.LastUsedAt, DateTime.UtcNow);
+        await bookkeeping.SaveChangesAsync(ct);
+    }
+
     private static bool AllowsRefreshTokens(OidcApplication app)
         => app.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase);
 
@@ -465,6 +524,9 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // ceiling the successor must inherit (RFC 6749 §6), it is what the stored record should
         // continue to say this token carried, and it is the baseline a narrowing is announced
         // against. Overwriting it did all three kinds of damage at once.
+        if (ResourceMismatch(refreshTokenDoc) is { } invalidTarget)
+            return invalidTarget;
+
         var presentedScopes = refreshTokenDoc.Scopes;
 
         // A refresh may narrow but never widen: re-intersect against what the client is
@@ -484,6 +546,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // Load scope definitions from DB
         var grantedScopes = await Token.LoadScopesAsync(session, permittedScopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
+        if (IsMcp(refreshTokenDoc) && !grantedScopes.Any(s => s.Audience is not null))
+            return McpResourceUnavailable();
 
         // Nothing left to grant. Minting anyway produced a signed, subject-bearing, 60-minute
         // JWT with no scopes at all, plus a successor that rotates forever into more of the
@@ -582,6 +646,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         }
 
         await OidcGrantUsage.TouchAsync(store, refreshTokenDoc.AuthorizationId, ct);
+        if (IsMcp(refreshTokenDoc))
+            await RecordAgentTokenAsync(app, refreshTokenDoc.Subject, "refresh_token", ct);
 
         httpContext.Response.Headers.CacheControl = "no-store";
         httpContext.Response.Headers.Pragma = "no-cache";

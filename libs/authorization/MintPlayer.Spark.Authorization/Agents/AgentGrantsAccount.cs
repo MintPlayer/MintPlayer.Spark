@@ -147,10 +147,16 @@ internal sealed partial class AgentGrantsAccount(
     /// <summary>Revokes (deletes) a grant: the agent's next call is refused.</summary>
     public async Task<bool> RevokeAsync(string userId, string? key, CancellationToken cancellationToken)
     {
-        if (AgentGrantIds.FromKey(userId, key) is not { } id || !await grants.DeleteAsync(userId, id, cancellationToken))
+        if (AgentGrantIds.FromKey(userId, key) is not { } id || await grants.GetOwnAsync(userId, id, cancellationToken) is not { } grant
+            || !await grants.DeleteAsync(userId, id, cancellationToken))
             return false;
 
         LogGrantRevoked(logger, userId, id);
+
+        // D12: an embedded-server grant is linked with its OAuth grant; revoking one revokes the other, so the agent's
+        // refresh token stops working too, not only its next call.
+        foreach (var link in services.GetServices<IAgentGrantLink>())
+            await link.RevokedAsync(grant, cancellationToken);
         return true;
     }
 

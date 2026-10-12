@@ -50,6 +50,24 @@ public class SparkIdentityProviderOptions
     public SparkIdentityProviderRateLimitOptions RateLimits { get; set; } = new();
 
     /// <summary>
+    /// The embedded authorization server for AI agents (MCP PRD D4 setup 3), <see langword="null"/> when off. Turned on by
+    /// <see cref="ForMcp"/> or by a <c>Spark:IdentityProvider:Mcp</c> section. Needs <c>spark.AddMcp(...)</c>.
+    /// </summary>
+    public SparkIdentityProviderMcpOptions? Mcp { get; set; }
+
+    /// <summary>
+    /// Lets AI agents sign users in for the application's MCP endpoint (MCP PRD D4 setup 3, D5): RFC 8414 metadata,
+    /// Client ID Metadata Documents, anonymous loopback registration, the <c>mcp:read</c>/<c>mcp:write</c> scopes with
+    /// the MCP canonical URL as audience, refresh rotation, and the agent consent screen.
+    /// </summary>
+    public SparkIdentityProviderOptions ForMcp(Action<SparkIdentityProviderMcpOptions>? configure = null)
+    {
+        Mcp ??= new SparkIdentityProviderMcpOptions();
+        configure?.Invoke(Mcp);
+        return this;
+    }
+
+    /// <summary>
     /// Opt in to cross-origin access on the OIDC protocol endpoints. <b>Off by default.</b>
     /// </summary>
     /// <remarks>
