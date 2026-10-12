@@ -6,24 +6,21 @@
   <ng-container *ngTemplateOutlet="codeBlock; context: { $implicit: mcpUrl }" />
 
   <h2 class="h5 mt-4">{{ 'mcpUi.clientsTitle' | t }}</h2>
-  <ul class="nav nav-tabs mb-3" role="tablist">
+  <bs-tab-control [border]="true" class="d-block mb-3">
     @for (client of clients; track client) {
-      <li class="nav-item" role="presentation">
-        <button type="button" class="nav-link" role="tab" [class.active]="active() === client"
-                [attr.aria-selected]="active() === client" (click)="active.set(client)" [attr.data-client]="client">
-          {{ ('mcpUi.client.' + client) | t }}
-        </button>
-      </li>
+      <bs-tab-page [attr.data-client]="client">
+        <ng-container *bsTabPageHeader>{{ ('mcpUi.client.' + client) | t }}</ng-container>
+        <div class="p-3">
+          @for (step of steps[client]; track step.text) {
+            <p class="mb-1">{{ step.text | t }}</p>
+            @if (step.code) {
+              <ng-container *ngTemplateOutlet="codeBlock; context: { $implicit: step.code }" />
+            }
+          }
+        </div>
+      </bs-tab-page>
     }
-  </ul>
-  <div role="tabpanel">
-    @for (step of steps[active()]; track step.text) {
-      <p class="mb-1">{{ step.text | t }}</p>
-      @if (step.code) {
-        <ng-container *ngTemplateOutlet="codeBlock; context: { $implicit: step.code }" />
-      }
-    }
-  </div>
+  </bs-tab-control>
 
   <h2 class="h5 mt-4">{{ 'mcpUi.signInTitle' | t }}</h2>
   <ol>

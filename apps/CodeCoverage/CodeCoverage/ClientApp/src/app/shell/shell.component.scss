@@ -10,3 +10,16 @@ spark-shell {
   flex: 1 1 auto;
   min-height: 0;
 }
+
+// Topbar links drawn like <spark-auth-bar>'s login button: an outline in the topbar's own text colour, which
+// follows the theme. btn-outline-secondary was grey on the topbar and read as a disabled button.
+.topbar-btn {
+  --bs-btn-color: currentColor;
+  --bs-btn-border-color: currentColor;
+  --bs-btn-hover-color: currentColor;
+  --bs-btn-hover-bg: color-mix(in srgb, currentColor 15%, transparent);
+  --bs-btn-hover-border-color: currentColor;
+  --bs-btn-active-color: currentColor;
+  --bs-btn-active-bg: color-mix(in srgb, currentColor 25%, transparent);
+  --bs-btn-active-border-color: currentColor;
+}

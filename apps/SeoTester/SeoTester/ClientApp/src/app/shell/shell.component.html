@@ -8,6 +8,10 @@
       <spark-organization-switcher />
       <spark-notification-bell />
     }
+    <!-- How to connect an AI agent to /mcp, for everyone: drawn like the auth bar's login button beside it. -->
+    <a class="btn btn-sm topbar-btn text-nowrap" routerLink="/connect-agent" [title]="'mcpUi.title' | t" data-connect-agent-link>
+      <i class="bi bi-robot"></i><span class="d-none d-sm-inline"> {{ 'mcpUi.navLink' | t }}</span>
+    </a>
     <spark-auth-bar />
   </ng-container>
   <router-outlet />

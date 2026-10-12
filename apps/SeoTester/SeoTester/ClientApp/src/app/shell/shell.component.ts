@@ -14,6 +14,19 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
     SparkAuthBarComponent, SparkNotificationBellComponent, SparkOrganizationSwitcherComponent, TranslateKeyPipe,
   ],
   templateUrl: './shell.component.html',
+  // The connect-agent link is drawn like <spark-auth-bar>'s login button: an outline in the topbar's own text colour.
+  styles: [`
+    .topbar-btn {
+      --bs-btn-color: currentColor;
+      --bs-btn-border-color: currentColor;
+      --bs-btn-hover-color: currentColor;
+      --bs-btn-hover-bg: color-mix(in srgb, currentColor 15%, transparent);
+      --bs-btn-hover-border-color: currentColor;
+      --bs-btn-active-color: currentColor;
+      --bs-btn-active-bg: color-mix(in srgb, currentColor 25%, transparent);
+      --bs-btn-active-border-color: currentColor;
+    }
+  `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ShellComponent {

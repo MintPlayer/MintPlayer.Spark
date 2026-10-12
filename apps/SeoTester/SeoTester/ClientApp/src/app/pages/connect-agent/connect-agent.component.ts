@@ -1,7 +1,8 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DOCUMENT, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DOCUMENT, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
+import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 
 type ClientKey = 'claude' | 'codex' | 'gemini' | 'vscode' | 'other';
@@ -18,7 +19,7 @@ interface Step { text: string; code?: string; }
  */
 @Component({
   selector: 'app-connect-agent',
-  imports: [NgTemplateOutlet, RouterLink, BsCodeSnippetComponent, TranslateKeyPipe],
+  imports: [NgTemplateOutlet, RouterLink, BsCodeSnippetComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, TranslateKeyPipe],
   templateUrl: './connect-agent.component.html',
   styles: [`
     .agent-page { max-width: 52rem; }
@@ -31,7 +32,6 @@ export default class ConnectAgentComponent {
   protected readonly mcpUrl = inject(DOCUMENT).location.origin + '/mcp';
 
   protected readonly clients: ClientKey[] = ['claude', 'codex', 'gemini', 'vscode', 'other'];
-  protected readonly active = signal<ClientKey>('claude');
 
   protected readonly steps: Record<ClientKey, Step[]> = {
     claude: [
