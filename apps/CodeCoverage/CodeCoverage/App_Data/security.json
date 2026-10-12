@@ -12,6 +12,9 @@
   "bindings": {
     "dashboards:administrators": [ "Administrators" ]
   },
+  "libraries": {
+    "identity-provider": false
+  },
   "rights": [
     {
       "key": "c0e5a9e1-0000-4000-8000-000000000001",

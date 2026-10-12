@@ -58,6 +58,13 @@ public sealed class FleetTestHost : SparkAppTestHost
     /// </summary>
     public string? JwtBearerAuthority { get; init; }
 
+    /// <summary>
+    /// Fleet as its AI agents' authorization server (MCP setup 3, <c>idp.ForMcp()</c> in <c>Program.cs</c>): the issuer and
+    /// the MCP canonical URL its Development settings carry, pointed at this host. Off in the shared host, whose
+    /// <c>/mcp</c> takes personal access tokens only.
+    /// </summary>
+    public bool AgentAuthorizationServer { get; init; }
+
     protected override Task ConfigureAppSettings(JsonObject settings, SparkAppHostContext context)
     {
         var spark = settings["Spark"]!.AsObject();
@@ -71,6 +78,14 @@ public sealed class FleetTestHost : SparkAppTestHost
         };
         if (JwtBearerAuthority is not null)
             spark["JwtBearer"] = new JsonObject { ["Authority"] = JwtBearerAuthority, ["Audience"] = "fleet-api" };
+
+        if (AgentAuthorizationServer)
+        {
+            // The base settings hold the provider's rate limits; the issuer joins them. Keys are generated into the
+            // per-host database at first start, protected by the host's Data Protection key ring.
+            spark["IdentityProvider"]!.AsObject()["Issuer"] = context.HttpsUrl;
+            spark["Mcp"] = new JsonObject { ["CanonicalUrl"] = context.HttpsUrl + "/mcp" };
+        }
 
         return Task.CompletedTask;
     }

@@ -5,8 +5,14 @@
     "a signed-in user reaches, and with which organization role, is the organizations row policy (IOrganizationOwned",
     "and [RequiresOrganizationRole] on Site, AuditRun, PageResult). The catalogue is read by every signed-in user",
     "and edited by Administrators (D32); the abuse log is the Administrators' and the operator dashboard is granted to the",
-    "dashboards package's slot, bound to Administrators like the database statistics it ships (D28, #504 D13)."
+    "dashboards package's slot, bound to Administrators like the database statistics it ships (D28, #504 D13).",
+    "MCP (docs/spark_mcp_PRD.md §4.7, D17): anonymous visitors read the catalogue too, so an agent's seotester_explain_check works",
+    "before signing in; it is the same public text GET /seotester/catalogue serves to anyone. The identity provider is here only",
+    "as the agents' authorization server (idp.ForMcp()): its developer portal's rights are off, so no group manages OAuth clients."
   ],
+  "libraries": {
+    "identity-provider": false
+  },
   "wellKnown": {
     "anonymous": "00000000-0000-0000-0000-000000000000",
     "authenticated": "5e070000-0000-4000-8000-00000000000f"
@@ -37,6 +43,7 @@
     { "key": "runs-export", "resource": "ExportReport/AuditRun", "groupId": "5e070000-0000-4000-8000-00000000000f" },
     { "key": "pages", "resource": "QueryRead/PageResult", "groupId": "5e070000-0000-4000-8000-00000000000f" },
     { "key": "checks", "resource": "QueryRead/CheckDefinition", "groupId": "5e070000-0000-4000-8000-00000000000f" },
+    { "key": "checks-anonymous", "resource": "QueryRead/CheckDefinition", "groupId": "00000000-0000-0000-0000-000000000000" },
     { "key": "checks-edit", "resource": "EditNewDelete/CheckDefinition", "groupId": "5e070000-0000-4000-8000-000000000001" },
     { "key": "checks-reset", "resource": "ResetCheckDefinition/CheckDefinition", "groupId": "5e070000-0000-4000-8000-000000000001" },
     { "key": "audit-log", "resource": "QueryRead/AuditLogEntry", "groupId": "5e070000-0000-4000-8000-000000000001" },

@@ -21,26 +21,42 @@ public static class OidcScopeCatalog
     /// <summary>The document id of the resource named <paramref name="resourceName"/>.</summary>
     public static string ResourceId(string resourceName) => CollectionPrefix + resourceName;
 
-    /// <summary>The resource name an API scope belongs to: the part before its first dot, or null.</summary>
+    /// <summary>
+    /// The resource name an API scope belongs to: the part before its first dot or colon, or null. The colon is what
+    /// makes the MCP scopes expressible (MCP PRD D5 gap G11): <c>mcp:read</c> belongs to the resource named
+    /// <c>mcp</c>, whose audience (<see cref="OidcResource.Audience"/>) is the MCP canonical URL. An identity scope
+    /// whose name has a colon still resolves as itself: its own document is looked up first.
+    /// </summary>
     public static string? ApiResourceNameOf(string scopeName)
     {
-        var dot = scopeName.IndexOf('.');
-        return dot > 0 ? scopeName[..dot] : null;
+        var separator = scopeName.IndexOfAny(['.', ':']);
+        return separator > 0 ? scopeName[..separator] : null;
     }
 
     /// <summary>
     /// The enabled definitions of <paramref name="scopeNames"/>, in their order. A name that is not
     /// defined, or whose scope or resource is disabled, is left out.
     /// </summary>
-    public static async Task<List<OidcScopeDefinition>> LoadAsync(
+    public static Task<List<OidcScopeDefinition>> LoadAsync(
         IAsyncDocumentSession session, IEnumerable<string> scopeNames, CancellationToken ct)
+        => LoadAsync(session, scopeNames, mcpResourceId: null, ct);
+
+    /// <summary>
+    /// <see cref="LoadAsync(IAsyncDocumentSession, IEnumerable{string}, CancellationToken)"/> for an agent's request for
+    /// one MCP endpoint: <c>mcp:read</c> and <c>mcp:write</c> resolve in <paramref name="mcpResourceId"/>, that endpoint's
+    /// resource, and so carry its audience. Every MCP endpoint (the application's own, <c>OidcResources/mcp</c>, and other
+    /// applications', <c>ForMcpResource</c>) owns the same two scope names, so the name alone cannot say which;
+    /// <see langword="null"/> resolves them by their prefix, as any API scope.
+    /// </summary>
+    public static async Task<List<OidcScopeDefinition>> LoadAsync(
+        IAsyncDocumentSession session, IEnumerable<string> scopeNames, string? mcpResourceId, CancellationToken ct)
     {
         var names = scopeNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (names.Count == 0)
             return [];
 
         var ids = names
-            .SelectMany(n => ApiResourceNameOf(n) is { } api ? new[] { ResourceId(n), ResourceId(api) } : [ResourceId(n)])
+            .SelectMany(n => ApiResourceIdOf(n, mcpResourceId) is { } api ? new[] { ResourceId(n), api } : [ResourceId(n)])
             .Distinct(StringComparer.Ordinal)
             .ToList();
         var resources = await session.LoadAsync<OidcResource>(ids, ct);
@@ -48,11 +64,17 @@ public static class OidcScopeCatalog
         var result = new List<OidcScopeDefinition>(names.Count);
         foreach (var name in names)
         {
-            if (Resolve(resources, name) is { } definition)
+            if (Resolve(resources, name, mcpResourceId) is { } definition)
                 result.Add(definition);
         }
         return result;
     }
+
+    /// <summary>The document id of the API resource that defines <paramref name="scopeName"/>: by its prefix, except an MCP scope of a request for one endpoint.</summary>
+    private static string? ApiResourceIdOf(string scopeName, string? mcpResourceId)
+        => ApiResourceNameOf(scopeName) is not { } api ? null
+            : mcpResourceId is not null && string.Equals(api, Mcp.OidcAgentClients.ResourceName, StringComparison.Ordinal) ? mcpResourceId
+            : ResourceId(api);
 
     /// <summary>Every enabled scope listed in the discovery document.</summary>
     public static async Task<List<OidcScopeDefinition>> LoadDiscoverableAsync(IAsyncDocumentSession session, CancellationToken ct)
@@ -87,7 +109,7 @@ public static class OidcScopeCatalog
         }
     }
 
-    private static OidcScopeDefinition? Resolve(Dictionary<string, OidcResource> resources, string name)
+    private static OidcScopeDefinition? Resolve(Dictionary<string, OidcResource> resources, string name, string? mcpResourceId)
     {
         if (resources.TryGetValue(ResourceId(name), out var identity)
             && identity is { Kind: OidcResourceKinds.Identity, Enabled: true }
@@ -96,8 +118,8 @@ public static class OidcScopeCatalog
             return Define(identity);
         }
 
-        if (ApiResourceNameOf(name) is { } apiName
-            && resources.TryGetValue(ResourceId(apiName), out var api)
+        if (ApiResourceIdOf(name, mcpResourceId) is { } apiId
+            && resources.TryGetValue(apiId, out var api)
             && api is { Kind: OidcResourceKinds.Api, Enabled: true }
             && api.Scopes.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase)) is { Enabled: true } scope)
         {
@@ -112,6 +134,6 @@ public static class OidcScopeCatalog
         identity.ClaimTypes, identity.Required, identity.Emphasize, identity.ShowInDiscoveryDocument);
 
     private static OidcScopeDefinition Define(OidcResource api, OidcApiScope scope) => new(
-        scope.Name, api.Name, OidcResourceKinds.Api, scope.DisplayName ?? api.DisplayName, scope.Description,
+        scope.Name, api.Audience ?? api.Name, OidcResourceKinds.Api, scope.DisplayName ?? api.DisplayName, scope.Description,
         scope.ClaimTypes, false, scope.Emphasize, scope.ShowInDiscoveryDocument && api.ShowInDiscoveryDocument);
 }

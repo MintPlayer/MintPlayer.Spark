@@ -18,6 +18,7 @@ internal sealed partial class OidcDiscovery : IGetEndpoint
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcKeyRing signingKeys;
     [Inject] private readonly MintPlayer.Spark.Services.ICultureLoader cultures;
+    [Inject] private readonly OidcSurface surface;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -44,58 +45,64 @@ internal sealed partial class OidcDiscovery : IGetEndpoint
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        // D8: everything the provider supports is advertised, and nothing it does not.
+        // D8: everything the provider supports is advertised, and nothing it does not. What it supports is its surface
+        // (Flows, Endpoints): an endpoint or grant left out is not mapped, so it is not listed either. The keys keep the
+        // order they always had.
         string[] clientAuth = [.. OidcClientAuthMethods.All.Where(m => m != OidcClientAuthMethods.None)];
         string[] signingAlgs = [.. signingKeys.SupportedAlgorithms];
-        var document = new Dictionary<string, object?>
-        {
-            ["issuer"] = issuer,
-            ["authorization_endpoint"] = $"{issuer}/connect/authorize",
-            ["token_endpoint"] = $"{issuer}/connect/token",
-            ["userinfo_endpoint"] = $"{issuer}/connect/userinfo",
-            ["end_session_endpoint"] = $"{issuer}/connect/logout",
-            ["introspection_endpoint"] = $"{issuer}/connect/introspect",
-            ["revocation_endpoint"] = $"{issuer}/connect/revoke",
-            ["pushed_authorization_request_endpoint"] = $"{issuer}/connect/par",
-            ["device_authorization_endpoint"] = $"{issuer}/connect/device_authorization",
-            ["registration_endpoint"] = $"{issuer}/connect/register",
-            ["jwks_uri"] = $"{issuer}/.well-known/jwks",
-            ["response_types_supported"] = new[] { "code" },
-            ["response_modes_supported"] = OidcAuthorizationResponse.Supported,
-            ["grant_types_supported"] = new[] { "authorization_code", "refresh_token", "client_credentials", OidcDeviceCodes.GrantType, "urn:ietf:params:oauth:grant-type:token-exchange" },
-            ["subject_types_supported"] = new[] { "public", "pairwise" },
-            ["id_token_signing_alg_values_supported"] = signingAlgs,
-            ["id_token_encryption_alg_values_supported"] = OidcJwe.KeyAlgorithms,
-            ["id_token_encryption_enc_values_supported"] = OidcJwe.ContentAlgorithms,
-            ["userinfo_signing_alg_values_supported"] = signingAlgs,
-            ["userinfo_encryption_alg_values_supported"] = OidcJwe.KeyAlgorithms,
-            ["userinfo_encryption_enc_values_supported"] = OidcJwe.ContentAlgorithms,
-            ["request_object_signing_alg_values_supported"] = new[] { "RS256", "PS256", "ES256" },
-            ["scopes_supported"] = scopeNames,
-            ["claims_supported"] = claimsSupported,
-            ["claims_parameter_supported"] = true,
-            ["request_parameter_supported"] = true,
-            // Only the request_uri values /connect/par hands out; no fetching of client-hosted request objects.
-            ["request_uri_parameter_supported"] = false,
-            ["require_request_uri_registration"] = true,
-            ["acr_values_supported"] = OidcAcr.Supported,
-            ["prompt_values_supported"] = new[] { "none", "login", "consent", "select_account" },
-            ["ui_locales_supported"] = cultures.GetCulture().Languages.Keys.ToArray(),
-            ["code_challenge_methods_supported"] = new[] { "S256" },
-            ["token_endpoint_auth_methods_supported"] = clientAuth,
-            ["token_endpoint_auth_signing_alg_values_supported"] = new[] { "RS256", "PS256", "ES256" },
-            ["introspection_endpoint_auth_methods_supported"] = clientAuth,
-            ["revocation_endpoint_auth_methods_supported"] = clientAuth,
-            ["tls_client_certificate_bound_access_tokens"] = true,
-            ["dpop_signing_alg_values_supported"] = OidcProofOfPossession.DpopAlgorithms,
-            ["authorization_response_iss_parameter_supported"] = true,
-            ["backchannel_logout_supported"] = true,
-            ["backchannel_logout_session_supported"] = true,
-            ["frontchannel_logout_supported"] = true,
-            ["frontchannel_logout_session_supported"] = true,
-        };
+        var authorize = surface.AuthorizationCode;
+        var document = new Dictionary<string, object?> { ["issuer"] = issuer };
+        AddIf(document, authorize, "authorization_endpoint", $"{issuer}/connect/authorize");
+        document["token_endpoint"] = $"{issuer}/connect/token";
+        AddIf(document, surface.UserInfo, "userinfo_endpoint", $"{issuer}/connect/userinfo");
+        AddIf(document, surface.EndSession, "end_session_endpoint", $"{issuer}/connect/logout");
+        AddIf(document, surface.Introspection, "introspection_endpoint", $"{issuer}/connect/introspect");
+        AddIf(document, surface.Revocation, "revocation_endpoint", $"{issuer}/connect/revoke");
+        AddIf(document, surface.PushedAuthorization, "pushed_authorization_request_endpoint", $"{issuer}/connect/par");
+        AddIf(document, surface.DeviceCode, "device_authorization_endpoint", $"{issuer}/connect/device_authorization");
+        AddIf(document, surface.Registration, "registration_endpoint", $"{issuer}/connect/register");
+        document["jwks_uri"] = $"{issuer}/.well-known/jwks";
+        document["response_types_supported"] = authorize ? new[] { "code" } : Array.Empty<string>();
+        AddIf(document, authorize, "response_modes_supported", OidcAuthorizationResponse.Supported);
+        document["grant_types_supported"] = surface.GrantTypes;
+        document["subject_types_supported"] = new[] { "public", "pairwise" };
+        document["id_token_signing_alg_values_supported"] = signingAlgs;
+        document["id_token_encryption_alg_values_supported"] = OidcJwe.KeyAlgorithms;
+        document["id_token_encryption_enc_values_supported"] = OidcJwe.ContentAlgorithms;
+        AddIf(document, surface.UserInfo, "userinfo_signing_alg_values_supported", signingAlgs);
+        AddIf(document, surface.UserInfo, "userinfo_encryption_alg_values_supported", OidcJwe.KeyAlgorithms);
+        AddIf(document, surface.UserInfo, "userinfo_encryption_enc_values_supported", OidcJwe.ContentAlgorithms);
+        AddIf(document, authorize, "request_object_signing_alg_values_supported", new[] { "RS256", "PS256", "ES256" });
+        document["scopes_supported"] = scopeNames;
+        document["claims_supported"] = claimsSupported;
+        AddIf(document, authorize, "claims_parameter_supported", true);
+        AddIf(document, authorize, "request_parameter_supported", true);
+        // Only the request_uri values /connect/par hands out; no fetching of client-hosted request objects.
+        AddIf(document, authorize, "request_uri_parameter_supported", false);
+        AddIf(document, authorize, "require_request_uri_registration", true);
+        AddIf(document, authorize, "acr_values_supported", OidcAcr.Supported);
+        AddIf(document, authorize, "prompt_values_supported", new[] { "none", "login", "consent", "select_account" });
+        AddIf(document, surface.Interactive, "ui_locales_supported", cultures.GetCulture().Languages.Keys.ToArray());
+        AddIf(document, authorize, "code_challenge_methods_supported", new[] { "S256" });
+        document["token_endpoint_auth_methods_supported"] = clientAuth;
+        document["token_endpoint_auth_signing_alg_values_supported"] = new[] { "RS256", "PS256", "ES256" };
+        AddIf(document, surface.Introspection, "introspection_endpoint_auth_methods_supported", clientAuth);
+        AddIf(document, surface.Revocation, "revocation_endpoint_auth_methods_supported", clientAuth);
+        document["tls_client_certificate_bound_access_tokens"] = true;
+        document["dpop_signing_alg_values_supported"] = OidcProofOfPossession.DpopAlgorithms;
+        AddIf(document, authorize, "authorization_response_iss_parameter_supported", true);
+        AddIf(document, surface.EndSession, "backchannel_logout_supported", true);
+        AddIf(document, surface.EndSession, "backchannel_logout_session_supported", true);
+        AddIf(document, surface.EndSession, "frontchannel_logout_supported", true);
+        AddIf(document, surface.EndSession, "frontchannel_logout_session_supported", true);
 
         return Results.Json(document);
+    }
+
+    private static void AddIf(Dictionary<string, object?> document, bool offered, string key, object value)
+    {
+        if (offered)
+            document[key] = value;
     }
 
     /// <summary>Claims every id_token carries, whatever the scopes (<c>at_hash</c> and <c>auth_time</c> when known).</summary>

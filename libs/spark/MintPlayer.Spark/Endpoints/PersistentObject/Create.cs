@@ -21,12 +21,11 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
     }
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly ISaveValidation saveValidation;
+    [Inject] private readonly IPersistentObjectSavePath savePath;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly IPermissionService permissionService;
-    [Inject] private readonly ISaveResponsePresenter saveResponse;
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
@@ -71,15 +70,6 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
         // Set up retry state if this is a re-invocation
         RetryScope.Accept(retryAccessor, request);
 
-        // Ensure the ObjectTypeId matches the resolved entity type
-        obj.ObjectTypeId = entityType.Id;
-        // R2-M18: POST is "Create", never "Edit". Force Id=null so SavePersistentObjectAsync's
-        // string.IsNullOrEmpty(Id) branch always picks "New" — a client posting
-        // {"Id":"cars/existing"} used to flip the action to Edit and overwrite a
-        // foreign record under the POST verb, bypassing the entity-type-level "New"
-        // permission and any developer mental-model of "POST = creation".
-        obj.Id = null;
-
         // The parent a sub-query card's New was started from: resolved and authorized exactly as
         // /po/new resolved it, then handed to the save hooks as obj.Parent. A Parent in the body is the
         // caller's claim, so it is replaced either way — never the context a hook decides on.
@@ -89,36 +79,17 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint<PersistentO
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-        obj.Parent = resolved?.Parent;
 
         try
         {
-            // Authorize before validating (N23). The other order told a caller with no right to
-            // create this type which of its attributes were invalid — a refusal either way, but one
-            // that answers a question the caller was not entitled to ask. The decision itself still
-            // belongs to DatabaseAccess; this only asks it earlier.
-            await databaseAccess.EnsureSaveAuthorizedAsync(obj);
+            // Authorize, validate, save and present: the shared sequence the MCP tools run too (MCP PRD
+            // D9). It forces the id to null and the type to the resolved one (R2-M18).
+            var presented = await savePath.CreateAsync(entityType, obj, resolved?.Parent, httpContext.RequestAborted);
 
-            // Validated inside the save, right after the write shield (contributions M2d): against the
-            // object as the refresh hook shapes it, not as the model declares it (a hook that makes a
-            // field required changed the contract, and re-deriving it server-side is what stops a
-            // client escaping the hook by never calling /refresh) — and only on the attributes the
-            // caller may set, since a New-denied one keeps its CLR default whatever was posted.
-            saveValidation.Request(obj, httpContext.RequestAborted);
-
-            // Values for attributes the caller may not set on a create are dropped inside the save
-            // (contributions M2c-2b, leak 7): the CLR default or initializer stays, and the save is not
-            // refused, because a refusal would say which attributes exist.
-            var result = await databaseAccess.SavePersistentObjectAsync(obj);
-
-            // Re-presented as a load presents it, as Update does (leak 2).
-            var presented = await saveResponse.PresentAsync(entityType, result, isNew: true, httpContext.RequestAborted);
-            return ClientResult.Envelope(clientAccessor, presented, 201);
-        }
-        catch (SparkCancelException)
-        {
             // An interceptor cancelled the create (#482): nothing was created, and nothing went wrong.
-            return ClientResult.Envelope(clientAccessor, null, 204);
+            return presented is null
+                ? ClientResult.Envelope(clientAccessor, null, 204)
+                : ClientResult.Envelope(clientAccessor, presented, 201);
         }
         catch (SparkConcurrencyException ex)
         {

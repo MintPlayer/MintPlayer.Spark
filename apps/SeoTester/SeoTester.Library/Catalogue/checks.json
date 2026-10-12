@@ -153,8 +153,8 @@
         "nl": "Canonieke URL is geldig"
       },
       "summary": {
-        "en": "The canonical link of {url} points to {target}, which returns {status}.",
-        "nl": "De canonieke link van {url} verwijst naar {target}, dat {status} teruggeeft."
+        "en": "The canonical link of {url} points to {target}: {status}.",
+        "nl": "De canonieke link van {url} verwijst naar {target}: {status}."
       },
       "howToFix": {
         "en": "Use one absolute <link rel=\"canonical\"> per page that points to a URL returning 200, not redirecting and not marked noindex. If you also send a Link: header, it must name the same URL.",

@@ -29,9 +29,10 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
 
     /// <summary>
     /// /, /a and /b (same title), /old (301 to /a), /missing (404, linked), /orphan (sitemap only), /private (disallowed by
-    /// robots.txt, linked from the home page) and a link to another site.
+    /// robots.txt, linked from the home page) and a link to another site, <paramref name="externalHost"/>: a verified site's
+    /// run checks it, and the fake web is the collection's, so a test that counts those checks owns that host.
     /// </summary>
-    private string BuildSite(string? hostName = null, string robots = "User-agent: *\nDisallow: /private\n")
+    private string BuildSite(string? hostName = null, string robots = "User-agent: *\nDisallow: /private\n", string externalHost = "external.example.org")
     {
         var h = hostName ?? FakeSite.NewHost();
         var o = "https://" + h;
@@ -39,7 +40,7 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         host.Web.Pages[o + "/sitemap.xml"] = new FakeResponse(HttpStatusCode.OK,
             $"<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>{o}/</loc></url><url><loc>{o}/a</loc></url><url><loc>{o}/orphan</loc></url></urlset>",
             ContentType: "application/xml");
-        host.Web.Html(o + "/", FakeSite.Page("Home of the example shop", "/a", "/b", "/old", "/missing", "/private/secret", "https://external.example.org/page"),
+        host.Web.Html(o + "/", FakeSite.Page("Home of the example shop", "/a", "/b", "/old", "/missing", "/private/secret", $"https://{externalHost}/page"),
             new Dictionary<string, string> { ["Strict-Transport-Security"] = "max-age=63072000", ["X-Content-Type-Options"] = "nosniff" });
         host.Web.Html(o + "/a", FakeSite.Page("Same title on two pages", "/"));
         host.Web.Html(o + "/b", FakeSite.Page("Same title on two pages", "/"));
@@ -47,7 +48,7 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         host.Web.Html(o + "/orphan", FakeSite.Page("Nobody links here"));
         host.Web.Html(o + "/private/secret", FakeSite.Page("Must never be fetched"));
         host.Web.Page(o + "/.git/HEAD", "ref: refs/heads/main\n");
-        host.Web.Html("https://external.example.org/page", "<html></html>");
+        host.Web.Html($"https://{externalHost}/page", "<html></html>");
         FakeSite.Registries(host.Web);
         return h;
     }
@@ -89,7 +90,7 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         host.Web.RequestsTo("external.example.org").Should().BeEmpty("external links are checked for verified sites only");
 
         using var session = host.Database.OpenAsyncSession();
-        var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(runId), pageSize: 100);
+        var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(site.Id!), pageSize: 100);
         pages.Should().HaveCount(6);
         pages.Should().OnlyContain(p => p.OrganizationId == Acme && p.ExpiresAtUtc > DateTime.UtcNow.AddDays(6));
         pages.Single(p => p.Url == site.Origin + "/").Findings.Should().Contain(f => f.CheckId == "seo.title-present" && f.Status == "Pass");
@@ -219,7 +220,7 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         busy.Should().HaveCount(3, "asked once and retried twice, then recorded as it is");
         busy.Zip(busy.Skip(1), (a, b) => (b - a).TotalMilliseconds).Should().OnlyContain(gap => gap >= 950, "Retry-After: 1 is waited for");
         using var session = host.Database.OpenAsyncSession();
-        (await session.LoadAsync<PageResult>(PageResult.IdFor(run.Id!, origin + "/busy"))).StatusCode.Should().Be(429);
+        (await session.LoadAsync<PageResult>(PageResult.IdFor(site.Id!, origin + "/busy"))).StatusCode.Should().Be(429);
     }
 
     [Fact]
@@ -248,6 +249,49 @@ public class CrawlPipelineTests(SeoPipelineHostFixture host)
         deltas["seo.duplicate-titles"].Should().Be("Fixed");
         deltas["security.exposed-files"].Should().Be("Fixed");
         deltas["technical.orphan-pages"].Should().Be("Unchanged");
+    }
+
+    /// <summary>
+    /// One result per page and site, the latest (owner decision 2026-10-12): a new scan's fetch of a page replaces the earlier
+    /// scan's result instead of adding a copy of its own, a page the new scan no longer reaches keeps its earlier result until
+    /// it expires, and each scan is scored from the pages it fetched, never from what an earlier scan left. What a scan
+    /// measured stays on its run (totals, samples, the delta), so the history needs no old page.
+    /// </summary>
+    [Fact]
+    public async Task A_new_scan_replaces_each_pages_result_and_counts_only_the_pages_it_fetched()
+    {
+        var hostName = BuildSite(externalHost: FakeSite.NewHost());
+        var origin = "https://" + hostName;
+        var site = await SeedSiteAsync(host, Acme, verified: true, hostName: hostName);
+        var first = await FakeSite.FinishedAsync(host.Database, await StartAsync(site));
+        first.Status.Should().Be(AuditRunStatus.Completed, first.Error);
+        first.PagesDone.Should().Be(6, "/, /a, /b, /old, /missing, /orphan");
+
+        // The owner trims the site: the home page links /a and /old only, and the sitemap lists / and /a.
+        host.Web.Html(origin + "/", FakeSite.Page("Home of the example shop", "/a", "/old"));
+        host.Web.Pages[origin + "/sitemap.xml"] = new FakeResponse(HttpStatusCode.OK,
+            $"<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"><url><loc>{origin}/</loc></url><url><loc>{origin}/a</loc></url></urlset>",
+            ContentType: "application/xml");
+        var second = await FakeSite.FinishedAsync(host.Database, await StartAsync(site));
+        second.Status.Should().Be(AuditRunStatus.Completed, second.Error);
+        second.PagesDone.Should().Be(3, "/, /a and /old");
+
+        using var session = host.Database.OpenAsyncSession();
+        var pages = await session.Advanced.LoadStartingWithAsync<PageResult>(PageResult.PrefixFor(site.Id!), pageSize: 100);
+        pages.Select(p => p.Url).Should().OnlyHaveUniqueItems().And.HaveCount(6, "one result per page of the site");
+        pages.Where(p => p.RunId == second.Id).Select(p => p.Url).Should().BeEquivalentTo(
+            [origin + "/", origin + "/a", origin + "/old"], because: "the second scan's fetches replaced the first scan's results");
+        pages.Where(p => p.RunId == first.Id).Select(p => p.Url).Should().BeEquivalentTo(
+            [origin + "/b", origin + "/missing", origin + "/orphan"], because: "a page the second scan did not reach keeps its latest result");
+        pages.Should().OnlyContain(p => p.ExpiresAtUtc > DateTime.UtcNow.AddDays(6), "7 days from the fetch that wrote it");
+        (await session.Advanced.LoadStartingWithAsync<PageResult>(first.Id + "/pages/", pageSize: 10)).Should().BeEmpty("no copy per scan");
+
+        // Scored from its own three pages: /b (the duplicate title) is still stored, but it is the first scan's.
+        var results = second.CheckResults.ToDictionary(r => r.CheckId);
+        results["seo.duplicate-titles"].Status.Should().Be("Pass");
+        results["seo.duplicate-titles"].Delta.Should().Be("Fixed", "compared with the first scan's totals, kept on its run");
+        (await session.LoadAsync<AuditRun>(first.Id)).CheckResults.Select(r => (r.CheckId, r.Status, r.Affected, string.Join(' ', r.SampleUrls)))
+            .Should().Equal(first.CheckResults.Select(r => (r.CheckId, r.Status, r.Affected, string.Join(' ', r.SampleUrls))), "a scan keeps what it measured");
     }
 }
 

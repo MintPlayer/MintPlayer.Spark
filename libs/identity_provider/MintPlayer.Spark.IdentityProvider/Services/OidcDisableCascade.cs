@@ -49,8 +49,14 @@ internal static class OidcDisableCascade
 
     private static async Task RunAsync(IDocumentStore store, string rql, Parameters parameters, CancellationToken ct)
     {
+        // StaleTimeout: a token written a moment ago may not be in the auto-index yet, and without a timeout RavenDB refuses
+        // the whole patch at once ("Cannot perform bulk operation. Index is stale."), so nothing was revoked. The server now
+        // waits for the index, bounded like the rest.
         var operation = await store.Operations.SendAsync(
-            new PatchByQueryOperation(new IndexQuery { Query = rql, QueryParameters = parameters }), token: ct);
+            new PatchByQueryOperation(
+                new IndexQuery { Query = rql, QueryParameters = parameters },
+                new QueryOperationOptions { AllowStale = false, StaleTimeout = Wait }),
+            token: ct);
         try { await operation.WaitForCompletionAsync(Wait); }
         catch (TimeoutException) { /* still running server-side; see remarks */ }
     }

@@ -1,0 +1,79 @@
+{
+  "Results": [
+    {
+      "Description": "Parity developer",
+      "Regime": "Full-time",
+      "@metadata": { "@id": "Professions/parity-dev", "@collection": "Professions", "Raven-Clr-Type": "HR.Entities.Profession, HR.Library" }
+    },
+    {
+      "Description": "Parity consultant",
+      "Regime": "Freelance",
+      "@metadata": { "@id": "Professions/parity-consultant", "@collection": "Professions", "Raven-Clr-Type": "HR.Entities.Profession, HR.Library" }
+    },
+    {
+      "Name": "Northwind Parity",
+      "Website": "https://northwind.example",
+      "EmployeeCount": 120,
+      "BrandColor": "#123456",
+      "AccentColor": "#abcdef",
+      "Sector": "Professions/parity-dev",
+      "@metadata": { "@id": "Companies/parity-north", "@collection": "Companies", "Raven-Clr-Type": "HR.Entities.Company, HR.Library" }
+    },
+    {
+      "Name": "Southwind Parity",
+      "Website": "https://southwind.example",
+      "EmployeeCount": 40,
+      "BrandColor": null,
+      "AccentColor": null,
+      "Sector": "Professions/parity-consultant",
+      "@metadata": { "@id": "Companies/parity-south", "@collection": "Companies", "Raven-Clr-Type": "HR.Entities.Company, HR.Library" }
+    },
+    {
+      "FirstName": "Avery",
+      "LastName": "Example",
+      "FullName": "Avery Example",
+      "Email": "avery@example.test",
+      "DateOfBirth": "1990-04-01",
+      "Company": "Companies/parity-north",
+      "Professions": [ "Professions/parity-dev" ],
+      "Address": {
+        "Street": "Voorbeeldstraat 1",
+        "PostalCode": "1000",
+        "City": "Brussel",
+        "Description": { "Title": "Office", "Notes": "Fictional address" },
+        "Crumb": "Voorbeeldstraat 1, 1000 Brussel"
+      },
+      "Jobs": [
+        { "Id": "parityjob-1a", "ProfessionId": "Professions/parity-dev", "ContractStart": "2020-01-01", "ContractEnd": "2022-12-31" },
+        { "Id": "parityjob-1b", "ProfessionId": "Professions/parity-consultant", "ContractStart": "2023-01-01", "ContractEnd": null }
+      ],
+      "@metadata": { "@id": "People/parity-1", "@collection": "People", "Raven-Clr-Type": "HR.Entities.Person, HR.Library" }
+    },
+    {
+      "FirstName": "Blake",
+      "LastName": "Sample",
+      "FullName": "Blake Sample",
+      "Email": "blake@example.test",
+      "DateOfBirth": null,
+      "Company": "Companies/parity-south",
+      "Professions": [ "Professions/parity-consultant", "Professions/parity-dev" ],
+      "Address": null,
+      "Jobs": [
+        { "Id": "parityjob-2a", "ProfessionId": "Professions/parity-consultant", "ContractStart": "2021-06-01", "ContractEnd": "2024-05-31" }
+      ],
+      "@metadata": { "@id": "People/parity-2", "@collection": "People", "Raven-Clr-Type": "HR.Entities.Person, HR.Library" }
+    },
+    {
+      "FirstName": "Casey",
+      "LastName": "Placeholder",
+      "FullName": "Casey Placeholder",
+      "Email": null,
+      "DateOfBirth": null,
+      "Company": null,
+      "Professions": [],
+      "Address": null,
+      "Jobs": [],
+      "@metadata": { "@id": "People/parity-3", "@collection": "People", "Raven-Clr-Type": "HR.Entities.Person, HR.Library" }
+    }
+  ]
+}

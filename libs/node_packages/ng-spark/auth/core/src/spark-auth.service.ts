@@ -35,6 +35,10 @@ import {
   SparkExternalLoginTwoFactor,
   SparkTwoFactorRequest,
   SparkTwoFactorState,
+  SparkAgentGrantsOverview,
+  SparkAgentGrantUpdate,
+  SparkAgentTokenCreated,
+  SparkAgentTokenRequest,
 } from '@mintplayer/ng-spark/auth/models';
 
 /** How often the popup is checked for a manual close. */
@@ -554,6 +558,45 @@ export class SparkAuthService {
       this.currentUser.set(null);
       // The antiforgery token was bound to the deleted identity.
       await this.csrfRefresh().catch(() => undefined);
+    });
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Connected applications (MCP PRD D14) — the AI agents the user connected, their personal access
+  // tokens, and what other packages contribute. Mapped only when the server has the Mcp package (or a
+  // contributing package); elsewhere these answer 404.
+  // ---------------------------------------------------------------------------------------------
+
+  /** `GET /manage/agents` — the user's grants, what may be granted, and contributed entries. */
+  agentGrants(): Promise<SparkAccountResult<SparkAgentGrantsOverview>> {
+    return this.accountCall(() =>
+      firstValueFrom(this.http.get<SparkAgentGrantsOverview>(`${this.config.apiBasePath}/manage/agents`)));
+  }
+
+  /** `POST /manage/agents/tokens` — the answer carries the token, once; it cannot be read again. */
+  createAgentToken(request: SparkAgentTokenRequest): Promise<SparkAccountResult<SparkAgentTokenCreated>> {
+    return this.accountCall(() =>
+      firstValueFrom(this.http.post<SparkAgentTokenCreated>(`${this.config.apiBasePath}/manage/agents/tokens`, request)));
+  }
+
+  /** `POST /manage/agents/update` — the agent's next call uses the new choice; no new sign-in. */
+  updateAgentGrant(update: SparkAgentGrantUpdate): Promise<SparkAccountResult> {
+    return this.accountCall(async () => {
+      await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/manage/agents/update`, update));
+    });
+  }
+
+  /** `POST /manage/agents/revoke` — disconnects the agent (or revokes the token) at once. */
+  revokeAgentGrant(key: string): Promise<SparkAccountResult> {
+    return this.accountCall(async () => {
+      await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/manage/agents/revoke`, { key }));
+    });
+  }
+
+  /** `POST /manage/agents/applications/revoke` — revokes an entry another package contributed. */
+  revokeConnectedApplication(source: string, id: string): Promise<SparkAccountResult> {
+    return this.accountCall(async () => {
+      await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/manage/agents/applications/revoke`, { source, id }));
     });
   }
 

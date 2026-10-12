@@ -4,6 +4,8 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Notifications;
 using MintPlayer.Spark.Settings;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Commands.Batches;
+using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Session;
 using SeoTester.Audits;
 using SeoTester.Entities;
@@ -114,20 +116,57 @@ public sealed class RunPipeline(
         await outbox.EnqueueAsync(session, new SeoTester.Messaging.AggregateMessage(runId), cancellationToken: cancellationToken);
     }
 
-    /// <summary>Adds findings to stored pages (by page id) and site-level findings to the frontier, in the caller's unit of work.</summary>
-    public static void AddFindings(IAsyncDocumentSession session, string runId, IReadOnlyDictionary<string, List<PageFinding>> pages, IReadOnlyList<StoredFinding> site)
+    /// <summary>
+    /// Adds a sampled page's findings (render, PageSpeed) to its stored result, by URL, and site-level findings to the
+    /// frontier, in the caller's unit of work. A page holds one finding per check: one that is already there (a concurrent
+    /// scan's measurement of the same page) is replaced. The page findings go onto the frontier too, which the aggregate
+    /// scores: a concurrent scan's fetch of the page would take them off the page with this run's (<see cref="CrawlFrontier.SampledFindings"/>).
+    /// </summary>
+    public static void AddFindings(IAsyncDocumentSession session, AuditRun run, IReadOnlyDictionary<string, List<PageFinding>> pagesByUrl, IReadOnlyList<StoredFinding> site)
     {
-        foreach (var (pageId, findings) in pages)
+        var sampled = new List<StoredFinding>();
+        foreach (var (url, findings) in pagesByUrl)
             if (findings.Count > 0)
             {
                 var added = findings.ToArray();
-                session.Advanced.Patch<PageResult, PageFinding>(pageId, p => p.Findings, list => list.Add(added));
+                // A constant script, the values as its arguments (never spliced into it).
+                session.Advanced.Defer(new PatchCommandData(PageResult.IdFor(PageResult.OwnerOf(run), url), changeVector: null, new PatchRequest
+                {
+                    Script = "this.Findings = (this.Findings || []).filter(f => args.Checks.indexOf(f.CheckId) < 0).concat(args.Added);",
+                    Values = { ["Checks"] = added.Select(f => f.CheckId).ToArray(), ["Added"] = added },
+                }, patchIfMissing: null));
+                sampled.AddRange(added.Select(f => new StoredFinding(f.CheckId, f.Status, f.Detail, url)));
             }
+        if (sampled.Count > 0)
+        {
+            var added = sampled.ToArray();
+            session.Advanced.Patch<CrawlFrontier, StoredFinding>(CrawlFrontier.IdFor(run.Id!), f => f.SampledFindings, list => list.Add(added));
+        }
         if (site.Count > 0)
         {
             var added = site.ToArray();
-            session.Advanced.Patch<CrawlFrontier, StoredFinding>(CrawlFrontier.IdFor(runId), f => f.SiteFindings, list => list.Add(added));
+            session.Advanced.Patch<CrawlFrontier, StoredFinding>(CrawlFrontier.IdFor(run.Id!), f => f.SiteFindings, list => list.Add(added));
         }
+    }
+
+    /// <summary>
+    /// The pages <paramref name="run"/> stored, read by its site's id prefix (a site keeps one result per page, the latest):
+    /// those whose URL the run's frontier recorded as stored (<see cref="CrawlFrontier.Stored"/>), whoever wrote the
+    /// result last, and any the run still owns. A page an earlier scan left behind is not the run's; one a concurrent scan
+    /// of the same site fetched again after this run is (its result is the latest of the same page), so the run's tally
+    /// stays whole. Read by prefix, not through an index: complete and never stale.
+    /// </summary>
+    public static async Task<List<PageResult>> LoadRunPagesAsync(IAsyncDocumentSession session, AuditRun run, CrawlFrontier? frontier, CancellationToken cancellationToken)
+    {
+        var pages = new List<PageResult>();
+        await using var stream = await session.Advanced.StreamAsync<PageResult>(PageResult.PrefixFor(PageResult.OwnerOf(run)), token: cancellationToken);
+        while (await stream.MoveNextAsync())
+        {
+            var page = stream.Current.Document;
+            if (page.RunId == run.Id || frontier?.Stored.Contains(SeoTester.Crawling.CrawlUrl.Hash(page.Url)) == true)
+                pages.Add(page);
+        }
+        return pages;
     }
 
     /// <summary>The run's page in the SPA: <c>/po/{alias}/{id}</c>, the alias of <c>AuditRun.json</c> (the SPA resolves a type by alias or id).</summary>

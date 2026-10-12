@@ -150,9 +150,12 @@ public static class RenderChecks
             }
             var severe = violations.Any(v => v.Impact is "critical" or "serious");
             var nodes = violations.Sum(v => v.Nodes);
-            var example = violations.OrderByDescending(v => Impact(v.Impact)).ThenByDescending(v => v.Nodes).First();
+            var ordered = violations.OrderByDescending(v => Impact(v.Impact)).ThenByDescending(v => v.Nodes).ToList();
+            var example = ordered[0];
+            // Element evidence (MCP PRD §4.7 gap 1): axe's own selectors, the worst violations' first.
             yield return Finding.Make(check, severe ? CheckStatus.Fail : CheckStatus.Warn,
-                [("url", url), ("n", nodes), ("value", example.Help ?? example.Id), ("rule", example.Id)]);
+                    [("url", url), ("n", nodes), ("value", example.Help ?? example.Id), ("rule", example.Id)])
+                .With(Html.ElementEvidence.Of(ordered.SelectMany(v => v.Targets ?? [])));
         }
     }
 

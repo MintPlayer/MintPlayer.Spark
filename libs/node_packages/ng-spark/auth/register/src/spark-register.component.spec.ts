@@ -75,6 +75,44 @@ describe('SparkRegisterComponent', () => {
     expect(TestBed.inject(Router).url).toBe('/login?registered=true');
   });
 
+  it('sends a pending /connect/ request back to the provider sign-in page with a full page load', async () => {
+    const pendingAuthorization = '/connect/authorize?client_id=https://claude.ai/a&state=x';
+    const { harness } = await setup();
+    const component = await harness.navigateByUrl(
+      `/register?returnUrl=${encodeURIComponent(pendingAuthorization)}`, SparkRegisterComponent);
+    const leaveTo = vi.spyOn(component as any, 'leaveTo').mockImplementation(() => undefined);
+    component.form.setValue({ email: 'a@b.c', userName: 'ab', password: 'pw', confirmPassword: 'pw' });
+
+    await component.onSubmit();
+
+    expect(leaveTo).toHaveBeenCalledWith(`/connect/login?returnUrl=${encodeURIComponent(pendingAuthorization)}`);
+  });
+
+  it('carries a local returnUrl on to the sign-in step and drops an off-site one', async () => {
+    const localPage = '/people?page=2';
+    for (const [returnUrl, expected] of [
+      [localPage, localPage],
+      ['//evil.com', undefined],
+      ['/\\evil.com', undefined],
+      ['https://evil.com', undefined],
+    ] as const) {
+      TestBed.resetTestingModule();
+      const { harness } = await setup();
+      const component = await harness.navigateByUrl(
+        `/register?returnUrl=${encodeURIComponent(returnUrl)}`, SparkRegisterComponent);
+      component.form.setValue({ email: 'a@b.c', userName: 'ab', password: 'pw', confirmPassword: 'pw' });
+
+      const navigated = nextNavigationEnd();
+      await component.onSubmit();
+      await navigated;
+
+      const router = TestBed.inject(Router);
+      expect(router.parseUrl(router.url).queryParams).toEqual(
+        expected ? { registered: 'true', returnUrl: expected } : { registered: 'true' });
+      expect(component.returnUrlParams).toEqual(expected ? { returnUrl: expected } : {});
+    }
+  });
+
   it('flattens server validation errors into a single message', async () => {
     const error = new HttpErrorResponse({
       status: 400,

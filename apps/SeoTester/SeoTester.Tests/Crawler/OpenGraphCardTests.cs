@@ -63,14 +63,14 @@ public class OpenGraphCardTests(SeoPipelineHostFixture host)
         var runId = body.GetProperty("result").GetProperty("runId").GetString()!;
         (await FakeSite.FinishedAsync(host.Database, runId)).Status.Should().Be(AuditRunStatus.Completed);
 
-        var home = (await LoadDocumentAsync<PageResult>(host, PageResult.IdFor(runId, o + "/")))!;
+        var home = (await LoadDocumentAsync<PageResult>(host, PageResult.IdFor(site.Id!, o + "/")))!;
         home.OgTitle.Should().Be("home card");
         home.OgDescription.Should().Be("Shared home");
         home.OgImage.Should().Be(images + "/card.png");
         home.OgUrl.Should().Be("https://www.example.com/home");
         host.Web.RequestsTo(new Uri(images).Host).Should().BeEmpty("the crawl stores the address, it does not fetch the image");
 
-        using var member = await GetAsync(PageResult.IdFor(runId, o + "/"), Max);
+        using var member = await GetAsync(PageResult.IdFor(site.Id!, o + "/"), Max);
         member.StatusCode.Should().Be(HttpStatusCode.OK);
         member.Content.Headers.ContentType!.MediaType.Should().Be("image/png");
         member.Headers.GetValues("X-Content-Type-Options").Should().Equal("nosniff");
@@ -78,10 +78,10 @@ public class OpenGraphCardTests(SeoPipelineHostFixture host)
         (await member.Content.ReadAsByteArrayAsync()).Should().Equal(Png);
         host.Web.RequestsTo(new Uri(images).Host).Should().OnlyContain(r => r.UserAgent == SeoTesterBot.UserAgent);
 
-        using var outsider = await GetAsync(PageResult.IdFor(runId, o + "/"), Bob);
-        using var anonymous = await GetAsync(PageResult.IdFor(runId, o + "/"), null);
-        using var svg = await GetAsync(PageResult.IdFor(runId, o + "/svg"), Max);
-        using var huge = await GetAsync(PageResult.IdFor(runId, o + "/huge"), Max);
+        using var outsider = await GetAsync(PageResult.IdFor(site.Id!, o + "/"), Bob);
+        using var anonymous = await GetAsync(PageResult.IdFor(site.Id!, o + "/"), null);
+        using var svg = await GetAsync(PageResult.IdFor(site.Id!, o + "/svg"), Max);
+        using var huge = await GetAsync(PageResult.IdFor(site.Id!, o + "/huge"), Max);
         outsider.StatusCode.Should().Be(HttpStatusCode.NotFound, "the page is Acme's (#453)");
         anonymous.StatusCode.Should().Be(HttpStatusCode.NotFound);
         svg.StatusCode.Should().Be(HttpStatusCode.NotFound, "only PNG, JPEG, GIF and WebP by their bytes, whatever Content-Type says");
@@ -135,12 +135,12 @@ public class OpenGraphCardTests(SeoPipelineHostFixture host)
 
         foreach (var name in refused.Keys)
         {
-            using var response = await GetAsync(PageResult.IdFor(runId, o + "/" + name), Max);
+            using var response = await GetAsync(PageResult.IdFor(site.Id!, o + "/" + name), Max);
             response.StatusCode.Should().Be(HttpStatusCode.NotFound, name);
         }
         foreach (var (name, (bytes, _, served)) in accepted)
         {
-            using var response = await GetAsync(PageResult.IdFor(runId, o + "/" + name), Max);
+            using var response = await GetAsync(PageResult.IdFor(site.Id!, o + "/" + name), Max);
             response.StatusCode.Should().Be(HttpStatusCode.OK, name);
             response.Content.Headers.ContentType!.ToString().Should().Be(served, name);
             response.Headers.GetValues("X-Content-Type-Options").Should().Equal("nosniff");

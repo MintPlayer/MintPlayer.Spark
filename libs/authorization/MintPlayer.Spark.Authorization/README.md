@@ -370,6 +370,68 @@ on display names. Reserved ids (`anonymous`, `authenticated`) and ids not declar
 `security.json` are dropped. Every provider is asked once per request, and the merged answer is
 cached for the rest of that request, including `[SparkAuthorize(Group = …)]`. The order of the
 calls doesn't matter, and adding the same provider type twice does nothing.
+(`AddGroupMembershipProvider` is declared in `MintPlayer.Spark.Abstractions`, namespace
+`MintPlayer.Spark.Extensions`, so a package referencing only Abstractions can compose a provider.)
+
+#### AI agents: grants and personal access tokens (MCP)
+
+With `MintPlayer.Spark.Mcp` installed, `spark.AddAuthentication<TUser>()` also wires the agent side
+of the MCP server ([guide](../../../docs/guide-mcp.md#grants-and-personal-access-tokens),
+`docs/spark_mcp_PRD.md` D11–D15). Without the Mcp package all of this is inert.
+
+- **`AgentGrant`** (collection `AgentGrants`): what one user allowed one agent — read, or read +
+  changes; everything the app makes available to agents, or chosen types. Natural ids:
+  `AgentGrants/{userId}/pat/{tokenId}`, `…/ext/{sha256(issuer|clientId)[..32]}`, `…/app/{clientId}`.
+  It is read on every `/mcp` call (cached 5 seconds, invalidated by an edit), so an edit or a
+  revocation applies to the agent's next call. `LastUsedAt` is written at most once a minute.
+- **Personal access tokens**: `spat_…`, shown once, stored as a SHA-256, 90 days by default and a
+  year at most. Refused once revoked (the grant is deleted), expired, when the user's security stamp
+  changes (password change, removed sign-in method) or the user is locked out. The scheme
+  `PersonalAccessTokens.Scheme` is **not** a Spark web credential: a token authenticates `/mcp` and
+  nothing else, so it can never call the app's API without the agent layers.
+- **Groups from the store**: for an agent token (any non-ambient scheme whose `sub` is the local user
+  id) the user's `Roles` and group claims are read from the store on every request, so removing a
+  role denies the agent's next call. The cookie keeps its claims until Identity's security-stamp
+  validation (30 minutes by default), as before.
+- **Endpoints** under `/spark/auth/manage/agents` (cookie + antiforgery, like the other account
+  endpoints; mapped only with the Mcp package or a contributing package): `GET` the overview,
+  `POST tokens`, `POST update`, `POST revoke`, `POST applications/revoke`. A grant is addressed by
+  its key below the signed-in user's prefix, so a user can only reach their own. A choice beyond
+  what the app allows for that agent (`mcp.AgentPermissions`) or the type's `agentPermissions` is
+  refused with `agent_permission_not_offered`.
+- **Extension point**: register an `ISparkConnectedApplicationSource` to list (and revoke) access a
+  package granted that is not an agent grant, e.g. the identity provider's sign-ins at other
+  websites. Its entries appear on the same page.
+- **Client**: `sparkAuthRoutes(…, withConnectedAgents())` mounts `account/agents`
+  (`SparkConnectedAgentsComponent`) and links it from the account overview.
+
+#### AI agents: an external authorization server (MCP setup 2)
+
+`spark.AddExternalAgentAuthorizationServer(issuer, loginProvider, o => …)` (namespace
+`MintPlayer.Spark.Authorization.ResourceServer`) lets agents sign in at your organization's OAuth server
+and call `/mcp` with its access tokens ([guide](../../../docs/guide-mcp.md#using-an-external-authorization-server),
+`docs/spark_mcp_PRD.md` D22). Call it after `AddAuthentication<TUser>()` and after the sign-in provider
+for the same server; it needs `spark.AddMcp(...)` with a canonical URL.
+
+```csharp
+spark.AddOpenIdConnect("Corp", "Corp sign-in", o => { /* the website's sign-in at the same server */ });
+spark.AddExternalAgentAuthorizationServer("https://login.corp.example/realms/acme", loginProvider: "Corp");
+```
+
+- **Validation** is `AddSparkResourceServer`'s (signature from the issuer's keys, pinned issuer, lifetime,
+  `at+jwt` unless `RequireAccessTokenType = false`; `UseIntrospection` for opaque tokens), under its own
+  scheme, which is **not** a Spark web credential: the token opens `/mcp` only. The audience is always
+  the MCP canonical URL. A sender-constrained token (`cnf`) is refused.
+- **Mapping**: only through a login of `loginProvider` whose key equals the token's `SubjectClaim`
+  (`sub`; `oid` for Entra), via Identity's `FindByLoginAsync`. Never by email. Unmapped → 401.
+  `ISparkCurrentUser.Id` is the local id; groups come from the store, never from the token.
+- **Shadow grant** `AgentGrants/{userId}/ext/{sha256(issuer|clientId)[..32]}`, created on the agent's first
+  call (client id from `azp`, else `client_id`): everything exposed, read only. Changes need the user's
+  toggle on the account page **and** `WriteScope` (`mcp:write`) in the token. Revoking it keeps it as
+  *disconnected* (status `disconnected`), because the external server keeps issuing tokens; an edit allows
+  the agent again. Unlinking the login, locking or deleting the user also refuse the next call.
+- Startup fails when `loginProvider` is not a registered remote scheme, without the Mcp package, or
+  without a canonical URL.
 
 ### XSRF/Antiforgery Protection
 
@@ -691,6 +753,12 @@ The corresponding `security.json`:
 ⚠️ The anonymous grant is the ONLY one an unauthenticated visitor gets — `anonymous` is not a
 floor under the other groups. A Manager who is also meant to read Companies needs their own
 grant, which is why one appears on every role above.
+
+A user's roles (`SparkUser.Roles`) are these groups by name. `UserManager.AddToRoleAsync(user, "viewers")`
+stores the name the group is declared under (`Viewers`), and the role claims of the cookie and of an
+agent carry it, so `User.IsInRole("Viewers")`, which compares ordinally, holds. A role stored in another
+casing reads by the declared name too, and `IsInRoleAsync`, `RemoveFromRoleAsync` and `GetUsersInRoleAsync`
+ignore case. A name no group declares is kept as the store receives it: Identity's normalized form (`VIEWERS`).
 
 ## Complete Example
 

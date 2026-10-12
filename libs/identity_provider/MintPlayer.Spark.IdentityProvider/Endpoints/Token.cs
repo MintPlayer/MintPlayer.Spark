@@ -69,6 +69,8 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     [Inject] private readonly OidcJwe jwe;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcAudit audit;
+    [Inject] private readonly Mcp.OidcMcpResources mcpResources;
+    [Inject] private readonly OidcSurface surface;
 
     /// <summary>The posted form, kept from <see cref="BindRequestAsync"/>: client authentication reads more of it than the bound record carries.</summary>
     private IFormCollection form = null!;
@@ -104,14 +106,16 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             ? Results.Json(new { error = "invalid_request" }, statusCode: StatusCodes.Status400BadRequest)
             : Results.Json(new { error = "invalid_request", error_description = failure.Message }, statusCode: failure.StatusCode));
 
+    // A grant whose flow this provider does not offer (SparkIdentityProviderOptions.Flows) is unsupported, whatever the
+    // client is registered for: the discovery documents do not list it either.
     public override Task<IResult> HandleAsync(OidcTokenRequest request, CancellationToken ct)
         => request.GrantType switch
         {
-            "authorization_code" => HandleAuthorizationCodeGrant(request, ct),
-            "refresh_token" => HandleRefreshTokenGrant(request, ct),
-            "client_credentials" => HandleClientCredentialsGrant(request, ct),
-            OidcDeviceCodes.GrantType => HandleDeviceCodeGrant(ct),
-            TokenExchangeGrantType => HandleTokenExchangeGrant(ct),
+            "authorization_code" when surface.AuthorizationCode => HandleAuthorizationCodeGrant(request, ct),
+            "refresh_token" when surface.RefreshToken => HandleRefreshTokenGrant(request, ct),
+            "client_credentials" when surface.ClientCredentials => HandleClientCredentialsGrant(request, ct),
+            OidcDeviceCodes.GrantType when surface.DeviceCode => HandleDeviceCodeGrant(ct),
+            TokenExchangeGrantType when surface.TokenExchange => HandleTokenExchangeGrant(ct),
             _ => Task.FromResult(Results.Json(new { error = "unsupported_grant_type" }, statusCode: 400)),
         };
 
@@ -154,10 +158,12 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         if (codeToken is { Type: "authorization_code", Status: not "valid" })
         {
             // A code presented twice: the first redemption already consumed it. Everything
-            // derived from it is now suspect, so the whole authorization is torn down.
-            // Best-effort: if a concurrent request is tearing down the same chain, either
-            // teardown suffices and the caller is refused regardless.
-            await RevokeAuthorizationChainAsync(session, codeToken, ct);
+            // derived from it is now suspect: the family it started is revoked, exactly (RFC 6749
+            // §4.1.2), and nothing else of the grant. The bookkeeping after it is best-effort: if a
+            // concurrent request is doing the same, either suffices and the caller is refused regardless.
+            var startedFamily = OidcRefreshFamilies.DocumentId(codeToken.Id!);
+            await RevokeFamilyAsync(startedFamily, OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
+            await SweepFamilyAsync(session, codeToken, startedFamily, ct);
             await TrySaveAsync(session, ct);
 
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
@@ -208,9 +214,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             var computedChallenge = ComputeS256Challenge(codeVerifier);
             if (!FixedTimeEquals(computedChallenge, codeToken.CodeChallenge))
             {
+                // Audited (MCP plan M3b): a wrong verifier is what an intercepted code looks like when it is tried.
+                await RecordPkceFailureAsync(codeToken, ct);
                 return Results.Json(new { error = "invalid_grant", error_description = "PKCE verification failed." }, statusCode: 400);
             }
         }
+
+        if (ResourceMismatch(codeToken) is { } invalidTarget)
+            return invalidTarget;
 
         // Mark code as redeemed (single-use)
         codeToken.Status = "redeemed";
@@ -224,8 +235,10 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         }
 
         // Load scope definitions from DB
-        var grantedScopes = await Token.LoadScopesAsync(session, codeToken.Scopes, ct);
+        var grantedScopes = await LoadScopesAsync(session, codeToken, codeToken.Scopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
+        if (IsMcp(codeToken) && !grantedScopes.Any(s => s.Audience is not null))
+            return McpResourceUnavailable();
 
         var issuer = oidcIssuer.Resolve(httpContext.Request);
 
@@ -256,8 +269,13 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // minted unconditionally, so every browser client silently received a 14-day credential
         // it never requested and could not decline — the widest-reaching thing this endpoint
         // handed out, given away by default.
+        //
+        // An agent's request for the MCP resource is the exception (MCP PRD D5, gap G8): an agent is a native client
+        // that must keep working after the access token expires, and its grant, not a remembered consent, is what the
+        // user manages; Gemini and Codex do not always ask for offline_access.
+        var mcpToken = IsMcp(codeToken);
         var issueRefreshToken = AllowsRefreshTokens(app)
-            && codeToken.Scopes.Contains("offline_access", StringComparer.OrdinalIgnoreCase);
+            && (mcpToken || codeToken.Scopes.Contains("offline_access", StringComparer.OrdinalIgnoreCase));
         var refreshTokenValue = issueRefreshToken ? tokenGenerator.GenerateRefreshToken() : null;
 
         // Store access token
@@ -280,12 +298,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
         if (refreshTokenValue != null)
         {
-            await session.StoreExpiringAsync(new OidcToken
+            var refreshTokenDoc = new OidcToken
             {
                 ApplicationId = app.Id!,
                 AuthorizationId = codeToken.AuthorizationId,
                 Subject = codeToken.Subject,
-                SessionId = codeToken.SessionId,
+                // An agent's refresh token is not tied to the browser session it was consented in: signing out of the
+                // website must not sign the agent out. The user revokes it under Connected applications (D12, D14).
+                SessionId = mcpToken ? null : codeToken.SessionId,
                 Id = OidcTokenReference.DocumentId(refreshTokenValue),
                 Type = OidcTokenTypes.RefreshToken,
                 Scopes = grantedScopeNames,
@@ -296,18 +316,27 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
                 // The sign-in context travels with the refresh token, and so does a DPoP key: a
                 // public client's refresh token is bound to it (RFC 9449 §5).
                 Properties = WithBinding(codeToken.Properties, possession),
-            }, ct);
+            };
+            // The refresh token starts a family, which the access token issued beside it joins: a reuse, or this code
+            // presented again, revokes both through the family's document (OidcRefreshFamily).
+            await OidcRefreshFamilies.StartAsync(session, codeToken, refreshTokenDoc, accessTokenDoc, ct);
+            await session.StoreExpiringAsync(refreshTokenDoc, ct);
         }
 
         // Marking the code redeemed and issuing the tokens are one batch, so losing the race
         // writes nothing at all. The winner holds the tokens; this request gets the same answer
-        // a later replay would get.
+        // a later replay would get, and the same teardown: when the winner redeemed the code,
+        // this was its second spend, and the family the winner started is revoked.
         if (!await TrySaveAsync(session, ct))
         {
+            if (await SpentMeanwhileAsync(codeToken.Id!, ct))
+                await RevokeFamilyAsync(OidcRefreshFamilies.DocumentId(codeToken.Id!), OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
         await OidcGrantUsage.TouchAsync(store, codeToken.AuthorizationId, ct);
+        if (mcpToken)
+            await RecordAgentTokenAsync(app, codeToken.Subject, "authorization_code", ct);
 
         httpContext.Response.Headers.CacheControl = "no-store";
         httpContext.Response.Headers.Pragma = "no-cache";
@@ -372,8 +401,67 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// Whether this client may hold refresh tokens at all. Checked both when one is asked for
     /// and when one would be handed out alongside an authorization code.
     /// </summary>
-    private static bool AllowsRefreshTokens(OidcApplication app)
-        => app.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase);
+    /// <summary>Whether the code or refresh token belongs to an agent's request for the MCP resource (MCP PRD D5).</summary>
+    private static bool IsMcp(OidcToken token) => token.Properties.ContainsKey(Mcp.OidcAgentClients.RequestProperty);
+
+    /// <summary>
+    /// RFC 8707 §2.2 at the token endpoint, for MCP tokens: a <c>resource</c> the client names here must be one the
+    /// authorization was for. Codex sends it on every request; a different one is <c>invalid_target</c>, never a
+    /// token silently addressed elsewhere (MCP PRD D5, gap G4).
+    /// </summary>
+    private IResult? ResourceMismatch(OidcToken token)
+    {
+        var named = form["resource"].Where(r => !string.IsNullOrEmpty(r)).Select(r => r!).ToList();
+        if (named.Count == 0 || !IsMcp(token))
+            return null;
+
+        var recorded = (token.Properties.GetValueOrDefault("resource") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return named.All(r => recorded.Contains(r, StringComparer.Ordinal))
+            ? null
+            : Results.Json(new { error = "invalid_target", error_description = "This grant is not for that resource." }, statusCode: 400);
+    }
+
+    /// <summary>
+    /// The definitions of <paramref name="names"/> for the token chain <paramref name="token"/> belongs to. An agent's
+    /// chain resolves its MCP scopes in the resource of the endpoint it was authorized for (its recorded
+    /// <c>resource</c>), so a token for another application's endpoint keeps that audience; an endpoint no longer
+    /// configured leaves them undefined, and the caller answers <see cref="McpResourceUnavailable"/>.
+    /// </summary>
+    private Task<List<OidcScopeDefinition>> LoadScopesAsync(IAsyncDocumentSession session, OidcToken token, List<string> names, CancellationToken ct)
+    {
+        if (!IsMcp(token))
+            return Token.LoadScopesAsync(session, names, ct);
+        return mcpResources.Of(token) is { } endpoint
+            ? OidcScopeCatalog.LoadAsync(session, names, endpoint.ResourceId, ct)
+            : OidcScopeCatalog.LoadAsync(session, names.Where(n => !Mcp.OidcMcpResources.AsksForMcp([n])), ct);
+    }
+
+    /// <summary>The MCP resource or its scopes were disabled after the grant: no token, rather than one addressed elsewhere.</summary>
+    private static IResult McpResourceUnavailable()
+        => Results.Json(new { error = "invalid_scope", error_description = "The MCP resource is not available." }, statusCode: 400);
+
+    private async Task RecordPkceFailureAsync(OidcToken codeToken, CancellationToken ct)
+    {
+        using var auditSession = store.OpenAsyncSession();
+        await audit.RecordAsync(auditSession, OidcAuditKinds.PkceFailed, actorId: null, codeToken.ApplicationId, codeToken.Subject,
+            httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
+        await auditSession.SaveChangesAsync(ct);
+    }
+
+    /// <summary>The audit event of an agent's token issue, and the client's last use (an unused registration is pruned, M3b).</summary>
+    private async Task RecordAgentTokenAsync(OidcApplication app, string? subject, string grantType, CancellationToken ct)
+    {
+        using var bookkeeping = store.OpenAsyncSession();
+        await audit.RecordAsync(bookkeeping, OidcAuditKinds.TokenIssued, actorId: subject, app.Id, subject,
+            httpContext.Connection.RemoteIpAddress?.ToString(), new Dictionary<string, string> { ["grantType"] = grantType }, ct);
+        if (Mcp.OidcAgentClients.IsAgent(app) && (app.LastUsedAt is null || app.LastUsedAt < DateTime.UtcNow.AddHours(-1)))
+            bookkeeping.Advanced.Patch<OidcApplication, DateTime?>(app.Id!, a => a.LastUsedAt, DateTime.UtcNow);
+        await bookkeeping.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Whether <paramref name="app"/> gets refresh tokens: this provider offers the flow, and the client is registered for it.</summary>
+    private bool AllowsRefreshTokens(OidcApplication app)
+        => surface.RefreshToken && app.AllowedGrantTypes.Contains("refresh_token", StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Whether an authentication assertion was actually asked for.</summary>
     private static bool GrantsOpenId(List<string> scopes)
@@ -408,31 +496,35 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
 
         // Find refresh token
-        // Point-load for the same reason as the authorization-code path above.
+        // Point-load for the same reason as the authorization-code path above, and so is its family,
+        // which decides whether the token is the one to honour (OidcRefreshFamily).
         var refreshTokenDoc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refreshToken), ct);
+        if (refreshTokenDoc is not { Type: "refresh_token" })
+            refreshTokenDoc = null;
+        var family = refreshTokenDoc is null ? null : await OidcRefreshFamilies.LoadAsync(session, refreshTokenDoc, ct);
+
         // Only a rotated token counts as reuse. One revoked by logout, a withdrawal, the disable cascade or
         // RevokeGrant is simply refused below; treating it as theft would write a false audit event.
-        if (refreshTokenDoc is { Type: "refresh_token", Status: "redeemed" })
+        if (refreshTokenDoc is not null && OidcRefreshFamilies.IsReuse(refreshTokenDoc, family))
         {
             // Reuse of an already-rotated refresh token. Per RFC 6819 §5.2.2.3 this is
-            // treated as theft: revoke the entire chain rather than just refusing.
-            // Best-effort, as on the code grant.
-            await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
-            // D9: a reuse is the one token event that signals theft, so it lands in the audit trail.
-            await audit.RecordAsync(session, OidcAuditKinds.RefreshTokenReuse, actorId: null,
-                refreshTokenDoc.ApplicationId, refreshTokenDoc.Subject,
-                httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
+            // treated as theft, and RFC 9700 §4.14.2 has the active refresh token revoked: the
+            // family goes, exactly, whether or not an index has seen its active token, and nothing
+            // else of the grant (another machine's family is not implicated). Bookkeeping after it
+            // is best-effort, as on the code grant.
+            await RevokeFamilyAsync(refreshTokenDoc.FamilyId, OidcRefreshFamilyRevocations.RefreshTokenReuse, reused: refreshTokenDoc, ct);
+            await SweepFamilyAsync(session, refreshTokenDoc, refreshTokenDoc.FamilyId, ct);
             await TrySaveAsync(session, ct);
 
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
-        if (refreshTokenDoc is not { Type: "refresh_token", Status: "valid" })
-            refreshTokenDoc = null;
-
         // Client binding, as on the code grant: without it any client may present another's
-        // refresh token and receive a token carrying the original's subject and scopes.
+        // refresh token and receive a token carrying the original's subject and scopes. A token
+        // that is not its family's active one (revoked, or its family revoked or gone; every
+        // refresh token is issued into a family) is refused the same way.
         if (refreshTokenDoc == null
+            || !OidcRefreshFamilies.IsActive(refreshTokenDoc, family)
             || refreshTokenDoc.ExpiresAt < DateTime.UtcNow
             || !string.Equals(refreshTokenDoc.ApplicationId, app.Id, StringComparison.Ordinal))
         {
@@ -465,6 +557,9 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         // ceiling the successor must inherit (RFC 6749 §6), it is what the stored record should
         // continue to say this token carried, and it is the baseline a narrowing is announced
         // against. Overwriting it did all three kinds of damage at once.
+        if (ResourceMismatch(refreshTokenDoc) is { } invalidTarget)
+            return invalidTarget;
+
         var presentedScopes = refreshTokenDoc.Scopes;
 
         // A refresh may narrow but never widen: re-intersect against what the client is
@@ -482,17 +577,21 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         }
 
         // Load scope definitions from DB
-        var grantedScopes = await Token.LoadScopesAsync(session, permittedScopes, ct);
+        var grantedScopes = await LoadScopesAsync(session, refreshTokenDoc, permittedScopes, ct);
         var grantedScopeNames = GrantedNames(grantedScopes);
+        if (IsMcp(refreshTokenDoc) && !grantedScopes.Any(s => s.Audience is not null))
+            return McpResourceUnavailable();
 
         // Nothing left to grant. Minting anyway produced a signed, subject-bearing, 60-minute
         // JWT with no scopes at all, plus a successor that rotates forever into more of the
         // same — and a resource server that checks signature and `active` but not scope reads
-        // the holder as an authenticated user. Refuse instead, and tear the chain down: a grant
-        // that can no longer authorize anything is spent, not merely empty.
+        // the holder as an authenticated user. Refuse instead, and tear the family down: a family
+        // that can no longer authorize anything is spent, not merely empty. Only this family: the
+        // grant's others may carry scopes that are still available.
         if (grantedScopeNames.Count == 0)
         {
-            await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
+            await RevokeFamilyAsync(refreshTokenDoc.FamilyId, OidcRefreshFamilyRevocations.NoScopeLeft, reused: null, ct);
+            await SweepFamilyAsync(session, refreshTokenDoc, refreshTokenDoc.FamilyId, ct);
             await session.SaveChangesAsync(ct);
 
             return Results.Json(new
@@ -571,17 +670,27 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             Properties = WithBinding(refreshTokenDoc.Properties, possession),
         };
 
+        // The successor becomes the family's active refresh token. The family is written with the
+        // rotation, so a rotation racing this one, or a revocation of the family, fails the batch.
+        OidcRefreshFamilies.Advance(session, family, newRefreshTokenDoc, newAccessTokenDoc);
         await session.StoreExpiringAsync(newAccessTokenDoc, ct);
         await session.StoreExpiringAsync(newRefreshTokenDoc, ct);
 
         // As on the code grant: rotation and issuance are one batch, so the loser of a
-        // simultaneous rotation writes nothing and is answered as a replay.
+        // simultaneous rotation writes nothing and is answered as a replay, with a replay's
+        // teardown: when the winner spent the same token, this was its second spend, and the
+        // family goes (RFC 9700 §4.14.2), the winner's successor with it. When the winner
+        // revoked the family instead, nothing is left to do.
         if (!await TrySaveAsync(session, ct))
         {
+            if (await SpentMeanwhileAsync(refreshTokenDoc.Id!, ct))
+                await RevokeFamilyAsync(refreshTokenDoc.FamilyId, OidcRefreshFamilyRevocations.RefreshTokenReuse, reused: refreshTokenDoc, ct);
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
         await OidcGrantUsage.TouchAsync(store, refreshTokenDoc.AuthorizationId, ct);
+        if (IsMcp(refreshTokenDoc))
+            await RecordAgentTokenAsync(app, refreshTokenDoc.Subject, "refresh_token", ct);
 
         httpContext.Response.Headers.CacheControl = "no-store";
         httpContext.Response.Headers.Pragma = "no-cache";
@@ -711,20 +820,15 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     }
 
     /// <summary>
-    /// Revokes every token issued under the same authorization as <paramref name="compromised"/>.
+    /// Marks every token issued under the withdrawn authorization of <paramref name="compromised"/>
+    /// revoked: bookkeeping for a grant the user took back, whose tokens every use already refuses
+    /// by loading the grant (<see cref="OidcGrants.PermitsAsync"/>).
     /// <para>
-    /// Presenting a consumed authorization code, or a refresh token that has already been
-    /// rotated away, is not a benign retry — the legitimate client holds the successor, so a
-    /// replay means the old value leaked. RFC 6819 §5.2.2.3 calls for revoking the whole
-    /// chain rather than merely refusing the request, which would leave the attacker's other
-    /// stolen tokens working.
-    /// </para>
-    /// <para>
-    /// The sweep is by <c>AuthorizationId</c> and therefore rides an eventually-consistent
-    /// index: a token issued moments before the replay may be missed. That is a deliberate
-    /// asymmetry — <em>detection</em> is exact (a point-load by id), only the blast-radius
-    /// cleanup is best-effort, and it errs toward revoking too little rather than failing
-    /// closed on a legitimate request.
+    /// The sweep is by <c>AuthorizationId</c> and therefore rides an eventually-consistent index:
+    /// a token issued moments earlier may be missed, which is harmless here because the grant
+    /// decides. A theft signal never sweeps the grant (<see cref="SweepFamilyAsync"/>): one user
+    /// runs one agent client on several machines, each a family of the same grant, and only the
+    /// family the signal came from is implicated.
     /// </para>
     /// </summary>
     private static async Task RevokeAuthorizationChainAsync(
@@ -742,6 +846,69 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
         foreach (var sibling in siblings)
             sibling.Status = "revoked";
+    }
+
+    /// <summary>
+    /// The bookkeeping after a family's revocation (<see cref="RevokeFamilyAsync"/>): the presented
+    /// credential is marked revoked, and so are the family's own tokens the grant's index already
+    /// holds. Best-effort, and never the decision: every use of a token loads its family. It reads
+    /// the index the grant sweep uses and keeps only <paramref name="familyId"/>'s tokens, so it
+    /// needs no index of its own and never touches another family of the grant.
+    /// </summary>
+    private static async Task SweepFamilyAsync(
+        IAsyncDocumentSession session, OidcToken presented, string? familyId, CancellationToken ct)
+    {
+        presented.Status = "revoked";
+
+        if (string.IsNullOrEmpty(familyId) || string.IsNullOrEmpty(presented.AuthorizationId))
+            return;
+
+        var tokens = await session
+            .Query<OidcToken>()
+            .Where(t => t.AuthorizationId == presented.AuthorizationId && t.Status == "valid")
+            .ToListAsync(ct);
+
+        foreach (var token in tokens.Where(t => t.FamilyId == familyId))
+            token.Status = "revoked";
+    }
+
+    /// <summary>
+    /// Revokes the refresh-token family of a spent credential: the decision a theft signal makes
+    /// (<c>docs/spark_mcp_PRD.md</c> decision log, "Refresh-token families exact").
+    /// <para>
+    /// Committed in a batch of its own, which checks no change vector: neither a rotation that
+    /// committed after the family was read nor a lost race of the sweep's bookkeeping can undo
+    /// it, and a rotation that read the family before it fails on its own optimistic
+    /// concurrency. A refresh-token reuse is audited in the same batch (D9: the one token event
+    /// that signals theft), so the event lands even when the bookkeeping loses a race.
+    /// </para>
+    /// </summary>
+    /// <param name="reused">The presented refresh token when the signal is its reuse; null for a code spent twice.</param>
+    private async Task RevokeFamilyAsync(string? familyId, string reason, OidcToken? reused, CancellationToken ct)
+    {
+        using var revocation = store.OpenAsyncSession();
+        revocation.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.None;
+
+        var revoked = await OidcRefreshFamilies.RevokeAsync(revocation, familyId, reason, ct);
+        if (reused is not null)
+        {
+            await audit.RecordAsync(revocation, OidcAuditKinds.RefreshTokenReuse, actorId: null,
+                reused.ApplicationId, reused.Subject,
+                httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
+        }
+
+        if (revoked || reused is not null)
+            await revocation.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Whether the single-use credential recorded at <paramref name="tokenId"/> was spent by
+    /// another request, read afresh after this one lost the race for it.
+    /// </summary>
+    private async Task<bool> SpentMeanwhileAsync(string tokenId, CancellationToken ct)
+    {
+        using var session = store.OpenAsyncSession();
+        return await session.LoadAsync<OidcToken>(tokenId, ct) is { Status: "redeemed" };
     }
 
     /// <summary>

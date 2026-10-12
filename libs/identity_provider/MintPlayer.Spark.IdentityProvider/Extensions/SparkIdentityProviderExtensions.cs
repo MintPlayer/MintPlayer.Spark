@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Interceptors;
@@ -37,6 +38,11 @@ public static class SparkIdentityProviderExtensions
     /// Registers OIDC endpoints, signing key service, token generator,
     /// and token cleanup background service.
     /// </summary>
+    /// <remarks>
+    /// Every flow and endpoint by default; <see cref="SparkIdentityProviderOptions.Flows"/>,
+    /// <see cref="SparkIdentityProviderOptions.Endpoints"/> and <see cref="SparkIdentityProviderOptions.AgentsOnly"/> choose fewer.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The chosen flows and endpoints do not fit together (the message names the dependency).</exception>
     public static ISparkBuilder AddIdentityProvider(
         this ISparkBuilder builder,
         Action<SparkIdentityProviderOptions>? configure = null)
@@ -46,6 +52,11 @@ public static class SparkIdentityProviderExtensions
         builder.Configuration?.GetSection("Spark:IdentityProvider").Bind(options);
         configure?.Invoke(options);
         builder.Services.AddSingleton(options);
+
+        // What is mapped and advertised (Flows, Endpoints, the agent server), decided here once: every endpoint's IsEnabled,
+        // the token endpoint and the metadata documents read it. A combination that cannot work stops startup now, naming
+        // the dependency, rather than mapping something half-usable.
+        builder.Services.AddSingleton(OidcSurface.For(options));
 
         // Register services
         // I10: the signing keys live in OidcKeys, protected with Data Protection; a key file named by
@@ -117,6 +128,8 @@ public static class SparkIdentityProviderExtensions
         builder.Services.AddSingleton<OidcClientRegistration>();
         builder.Services.AddScoped<OidcAuthorizeHandler>();
         builder.AddGroupMembershipProvider<OidcDeveloperMembership>();
+
+        AddAgents(builder, options);
 
         // Constructed rather than resolved, because the CORS policy's predicate below has no service
         // provider of its own. Registered unconditionally: an unused snapshot costs nothing, and it
@@ -222,9 +235,66 @@ public static class SparkIdentityProviderExtensions
             }
 
             new OidcGrants_BySubject().Execute(documentStore);
+
+            // ForMcp() / ForMcpResource(): one MCP resource per endpoint, its canonical URL as its audience, before the
+            // first request (startup fails here, with the reason: ForMcp() without spark.AddMcp or a canonical URL, a
+            // malformed or duplicate endpoint URL).
+            if (options.Mcp is not null)
+                app.ApplicationServices.GetRequiredService<Mcp.OidcMcpResources>().InitializeAsync(app.ApplicationServices, documentStore).GetAwaiter().GetResult();
         });
 
         return builder;
+    }
+
+    /// <summary>
+    /// The agent side (MCP PRD D4 setup 3, D12, D14). The Connected-applications contribution and the grant link are
+    /// always registered: a provider's sign-ins at other websites belong on the account page with or without agents.
+    /// The rest exists only with <see cref="SparkIdentityProviderOptions.ForMcp"/> or
+    /// <see cref="SparkIdentityProviderOptions.ForMcpResource"/>; the <c>/mcp</c> bearer scheme only for this
+    /// application's own endpoint.
+    /// </summary>
+    private static void AddAgents(ISparkBuilder builder, SparkIdentityProviderOptions options)
+    {
+        var services = builder.Services;
+        services.AddSingleton<Mcp.OidcMcpResources>();
+        // A factory for the same reason as the grants below; the consent endpoints inject it.
+        services.AddScoped(sp => ActivatorUtilities.CreateInstance<Endpoints.AgentConsent>(sp));
+        services.AddSingleton<Mcp.OidcAgentRegistrationLimiter>();
+        services.AddSingleton<Mcp.OidcClientMetadataDocuments>();
+        services.AddSingleton<Mcp.OidcAgentDynamicRegistration>();
+        // A factory, so validation without AddAuthentication<TUser>() reports the missing user type (OidcUserEndpoints), not the grant store.
+        services.AddSingleton(sp => ActivatorUtilities.CreateInstance<Mcp.OidcAgentGrants>(sp));
+        services.AddSingleton<MintPlayer.Spark.Authorization.Agents.IAgentGrantLink>(sp => sp.GetRequiredService<Mcp.OidcAgentGrants>());
+        services.AddScoped<MintPlayer.Spark.Authorization.Agents.ISparkConnectedApplicationSource, Mcp.OidcConnectedApplicationSource>();
+
+        if (options.Mcp is not { } mcp)
+            return;
+
+        // The metadata-document fetch is the caller's URL (D5): SSRF-safe, https on 443 only, no redirects (the
+        // document must be at its own URL), a few KiB, a few seconds. Configuration cannot open private networks
+        // for it; ClientRequests is for the jwks/logout clients only.
+        services.Configure<SafeHttpOptions>(Mcp.OidcClientMetadataDocuments.HttpClientName, o =>
+        {
+            o.AllowedPorts = [443];
+            o.FollowRedirects = false;
+            o.MaxRedirects = 0;
+            o.Timeout = mcp.MetadataDocumentTimeout;
+            o.ConnectTimeout = mcp.MetadataDocumentTimeout;
+            o.MaxResponseBytes = mcp.MetadataDocumentMaxBytes;
+            o.MaxDecompressedBytes = mcp.MetadataDocumentMaxBytes;
+        });
+        services.AddSafeHttpClient(Mcp.OidcClientMetadataDocuments.HttpClientName);
+        services.AddHostedService<Mcp.OidcAgentClientCleanupService>();
+
+        // The agent token on this application's /mcp only: registered with ASP.NET Core, never as a Spark (web)
+        // credential. The Mcp package finds it through IAgentCredentialScheme (M3a seam). A provider that signs agents in
+        // only for other applications' endpoints has no /mcp of its own to accept them on, and advertising itself in this
+        // application's protected-resource metadata would send agents for a token it cannot mint.
+        if (!mcp.ServesLocalEndpoint)
+            return;
+        services.AddAuthentication().AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, Mcp.OidcAgentBearerHandler>(
+            Mcp.OidcAgentCredentialScheme.SchemeName, _ => { });
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<MintPlayer.Spark.Abstractions.IAgentCredentialScheme, Mcp.OidcAgentCredentialScheme>());
     }
 
     /// <summary>

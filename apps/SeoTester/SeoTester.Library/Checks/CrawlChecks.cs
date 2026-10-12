@@ -53,7 +53,7 @@ public static class CrawlChecks
         foreach (var page in html.Where(p => p.Canonical is not null && p.Canonical != p.Url))
             if (byUrl.TryGetValue(page.Canonical!, out var target) && (target.StatusCode != 200 || target.RedirectHops > 0 || target.NoIndex))
                 findings.Add(new(page.Url, Finding.Fail("seo.canonical", ("url", page.Url), ("target", target.Url),
-                    ("status", target.NoIndex ? "noindex" : target.RedirectHops > 0 ? "a redirect" : target.StatusCode.ToString(System.Globalization.CultureInfo.InvariantCulture)))));
+                    ("status", target.NoIndex ? "marked noindex" : target.RedirectHops > 0 ? "redirects" : "HTTP " + target.StatusCode.ToString(System.Globalization.CultureInfo.InvariantCulture)))));
 
         // hreflang return links: A lists B, so B must list A.
         foreach (var page in html.Where(p => p.Alternates.Count > 0))

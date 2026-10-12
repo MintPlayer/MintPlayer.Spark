@@ -5,6 +5,7 @@
     "name": "Company",
     "clrType": "Fleet.Replicated.Company",
     "breadcrumb": "{Name}",
+    "agentPermissions": "Read",
     "tabs": [],
     "groups": [],
     "attributes": [

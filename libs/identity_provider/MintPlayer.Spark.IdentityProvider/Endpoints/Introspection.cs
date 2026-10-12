@@ -25,6 +25,8 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
 {
     public static string Path => "/introspect";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Introspection;
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
@@ -85,7 +87,10 @@ internal sealed partial class OidcIntrospect : IPostEndpoint<OidcClientTokenRequ
             if (!OwnedBy(refreshDoc.ApplicationId, app) && !app.MayIntrospectAnyAudience)
                 return Inactive();
 
-            var active = refreshDoc.Status == "valid" && refreshDoc.ExpiresAt > DateTime.UtcNow;
+            // Active while it is its family's active refresh token, as the token endpoint decides it: a
+            // reuse revokes the family at once, where the sweep marking the token may not reach it.
+            var active = refreshDoc.ExpiresAt > DateTime.UtcNow
+                && OidcRefreshFamilies.IsActive(refreshDoc, await OidcRefreshFamilies.LoadAsync(session, refreshDoc, ct));
             return Results.Json(new
             {
                 active,

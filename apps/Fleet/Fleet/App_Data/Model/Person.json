@@ -5,6 +5,7 @@
     "name": "Person",
     "clrType": "Fleet.Replicated.Person",
     "breadcrumb": "{FirstName}",
+    "agentPermissions": "Read",
     "tabs": [],
     "groups": [],
     "attributes": [

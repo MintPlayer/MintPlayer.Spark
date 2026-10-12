@@ -145,6 +145,7 @@ public partial class PageBatchRecipient : IRecipient<PageBatchMessage>
         foreach (var page in results.OrderBy(p => batch.FindIndex(b => b.Url == p.Result.Url)))
         {
             await session.StoreAsync(page.Result, cancellationToken);
+            frontier.Stored.Add(CrawlUrl.Hash(page.Result.Url));
             CrawlFrontiers.Extend(frontier, page, run.MaxPages, run.DeepCrawl ? options.MaxExternalLinks : 0);
             frontier.Fetched++;
             frontier.Bytes += page.Input.BodyBytes;

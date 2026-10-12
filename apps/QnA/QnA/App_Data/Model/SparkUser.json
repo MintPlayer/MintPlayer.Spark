@@ -8,10 +8,10 @@
     "QnA shows UserName on the form only: Question/Answer CreatedBy and ModifiedBy render the user name",
     "through the breadcrumb, and no query lists users.",
     "",
-    "security.json grants NOTHING on SparkUser: a reference label is resolved through row security on",
-    "the target only (BreadcrumbResolver), not through a type right, so the breadcrumb renders for",
-    "visitors without anyone being able to load or list users. A Read/SparkUser grant to `anonymous` is",
-    "refused at startup anyway (no row rule on SparkUserActions -- it would publish every user)."
+    "security.json grants Read/SparkUser to visitors and signed-in users (MCP PRD D19, 2026-10-12: a",
+    "reference is shown only to a caller who may Read its target type). QnA's Actions/SparkUserActions",
+    "row rule limits it to authors of a published question or a live answer, so it never publishes",
+    "every user; anyone else renders the placeholder. Only UserName is in the model."
   ],
   "persistentObject": {
     "name": "SparkUser",

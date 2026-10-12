@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import {
-  githubProvider, googleProvider, microsoftProvider, oidcProvider, sparkAuthRoutes, twitterProvider, withAccount, withExternalLogin,
+  githubProvider, googleProvider, microsoftProvider, oidcProvider, sparkAuthRoutes, twitterProvider, withAccount, withConnectedAgents, withExternalLogin,
 } from '@mintplayer/ng-spark/auth/routes';
 import { withOrganizationRoutes } from '@mintplayer/ng-spark/organizations';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
@@ -21,9 +21,12 @@ export const routes: Routes = [
       // registered, so an unconfigured one never appears. SparkId is Development's (appsettings.Development.json).
       // The account pages include the connected logins (ConfirmByEmail linking, D7) and passkeys (D46); no passwords.
       // withOrganizationRoutes() is the page a mailed invitation or join request opens (X11).
+      // withConnectedAgents() is Account → Connected applications (MCP, docs/seotester/mcp.md): the AI agents the user
+      // connected, what each may see and change, revoking them, and personal access tokens.
       ...sparkAuthRoutes(
         withExternalLogin(microsoftProvider(), githubProvider(), twitterProvider(), googleProvider(), oidcProvider('SparkId', 'Spark Identity')),
         withAccount(),
+        withConnectedAgents(),
         withOrganizationRoutes(),
       ),
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },

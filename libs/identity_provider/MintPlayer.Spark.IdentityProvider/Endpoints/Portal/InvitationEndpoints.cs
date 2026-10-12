@@ -24,6 +24,8 @@ internal sealed partial class AcceptInvitation : IPostEndpoint<OidcAcceptInvitat
 {
     public static string Path => "/invitations/accept";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeveloperPortal;
+
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 

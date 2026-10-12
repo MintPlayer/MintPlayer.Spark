@@ -32,32 +32,57 @@ public static class SparkResourceServerExtensions
         var options = new SparkResourceServerOptions { Authority = authority, Audience = audience };
         configure?.Invoke(options);
 
-        if (string.IsNullOrWhiteSpace(options.Authority))
-            throw new InvalidOperationException("AddSparkResourceServer requires an authority.");
+        ValidateIssuer(options, nameof(AddSparkResourceServer));
         if (string.IsNullOrWhiteSpace(options.Audience))
             throw new InvalidOperationException(
                 "AddSparkResourceServer requires an audience. Without it this application accepts every token the "
                 + "issuer has minted, including ones obtained for an entirely different resource.");
+
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, SparkScopeRequirementHandler>());
+        AddTokenScheme(builder.Services, SparkJwtBearerExtensions.Scheme, options);
+
+        // A bearer or DPoP token is not ambient, so the caller is exempt from the antiforgery gate (D2).
+        return builder.AddCredentialScheme(SparkJwtBearerExtensions.Scheme, isAmbient: false);
+    }
+
+    /// <summary>The checks of <paramref name="options"/> that do not depend on the audience.</summary>
+    internal static void ValidateIssuer(SparkResourceServerOptions options, string caller)
+    {
+        if (string.IsNullOrWhiteSpace(options.Authority))
+            throw new InvalidOperationException($"{caller} requires an authority.");
         if (options.UseIntrospection && (string.IsNullOrWhiteSpace(options.IntrospectionClientId) || string.IsNullOrWhiteSpace(options.IntrospectionClientSecret)))
             throw new InvalidOperationException(
                 "UseIntrospection needs IntrospectionClientId and IntrospectionClientSecret: the issuer answers only "
                 + "an authenticated client whose client id is the token's audience.");
+    }
 
-        builder.Services.AddMemoryCache();
-        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, SparkScopeRequirementHandler>());
+    /// <summary>
+    /// Registers the ASP.NET Core scheme <paramref name="scheme"/> that validates <paramref name="options"/>' tokens: a JWT
+    /// bearer, or introspection with <see cref="SparkResourceServerOptions.UseIntrospection"/>. Shared by
+    /// <see cref="AddSparkResourceServer"/> and the MCP external authorization server
+    /// (<see cref="SparkExternalAgentServerExtensions.AddExternalAgentAuthorizationServer"/>), which registers it under its own
+    /// name and does not declare it a Spark credential.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="options"/> is read when the scheme's options are first built (the first request), not now, so a caller
+    /// may fill <see cref="SparkResourceServerOptions.Audience"/> at startup, as the MCP wiring does from the canonical URL.
+    /// </remarks>
+    internal static void AddTokenScheme(IServiceCollection services, string scheme, SparkResourceServerOptions options)
+    {
+        services.AddMemoryCache();
 
         if (options.UseIntrospection)
         {
-            builder.Services.AddHttpClient();
-            builder.Services
+            services.AddHttpClient();
+            services
                 .AddAuthentication()
-                .AddScheme<SparkIntrospectionOptions, SparkIntrospectionHandler>(SparkJwtBearerExtensions.Scheme, o => o.ResourceServer = options);
+                .AddScheme<SparkIntrospectionOptions, SparkIntrospectionHandler>(scheme, o => o.ResourceServer = options);
         }
         else
         {
-            builder.Services
+            services
                 .AddAuthentication()
-                .AddJwtBearer(SparkJwtBearerExtensions.Scheme, jwt =>
+                .AddJwtBearer(scheme, jwt =>
                 {
                     jwt.Authority = options.Authority;
                     jwt.Audience = options.Audience;
@@ -96,8 +121,5 @@ public static class SparkResourceServerExtensions
                     };
                 });
         }
-
-        // A bearer or DPoP token is not ambient, so the caller is exempt from the antiforgery gate (D2).
-        return builder.AddCredentialScheme(SparkJwtBearerExtensions.Scheme, isAmbient: false);
     }
 }

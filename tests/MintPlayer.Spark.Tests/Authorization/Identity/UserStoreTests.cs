@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Testing;
+using NSubstitute;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Authorization.Identity;
@@ -168,6 +170,82 @@ public class UserStoreTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task CreateAsync_takes_over_a_reservation_whose_user_document_was_deleted()
+    {
+        // MCP live checks, round 1: a user document removed without its reservation blocked the
+        // address forever — every external sign-in with it answered "account could not be created".
+        var user = NewUser("alice", "alice@example.com");
+        var creating = CreateStore();
+        await creating.CreateAsync(user, CancellationToken.None);
+        creating.Dispose();
+
+        using (var raw = Store.OpenAsyncSession())
+        {
+            raw.Delete(user.Id!);
+            await raw.SaveChangesAsync();
+        }
+
+        var again = NewUser("alice2", "alice@example.com");
+        using (var reUser = CreateStore())
+            (await reUser.CreateAsync(again, CancellationToken.None)).Should().Be(IdentityResult.Success);
+
+        using var reading = CreateStore();
+        (await reading.FindByEmailAsync("ALICE@EXAMPLE.COM", CancellationToken.None))!.Id.Should().Be(again.Id);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_that_loses_a_concurrency_race_keeps_the_old_reservation_and_frees_the_new()
+    {
+        var user = NewUser("alice", "old@example.com");
+        var creating = CreateStore();
+        await creating.CreateAsync(user, CancellationToken.None);
+        creating.Dispose();
+
+        using var racing = CreateStore();
+        var stale = await racing.FindByIdAsync(user.Id!, CancellationToken.None);
+
+        using (var winner = CreateStore())
+        {
+            var fresh = await winner.FindByIdAsync(user.Id!, CancellationToken.None);
+            fresh!.PhoneNumber = "123";
+            (await winner.UpdateAsync(fresh, CancellationToken.None)).Should().Be(IdentityResult.Success);
+        }
+
+        stale!.Email = "new@example.com";
+        stale.NormalizedEmail = "NEW@EXAMPLE.COM";
+        var result = await racing.UpdateAsync(stale, CancellationToken.None);
+        result.Errors.Should().ContainSingle().Which.Code.Should().Be("ConcurrencyFailure");
+
+        using var reading = CreateStore();
+        (await reading.FindByEmailAsync("OLD@EXAMPLE.COM", CancellationToken.None))!.Id.Should().Be(user.Id);
+        using var other = CreateStore();
+        (await other.CreateAsync(NewUser("bob", "new@example.com"), CancellationToken.None)).Should().Be(IdentityResult.Success);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_never_releases_a_reservation_held_by_another_user()
+    {
+        var alice = NewUser("alice", "alice@example.com");
+        var creating = CreateStore();
+        await creating.CreateAsync(alice, CancellationToken.None);
+        creating.Dispose();
+
+        // A user document that claims alice's address without holding its reservation.
+        var impostor = NewUser("mallory", "alice@example.com");
+        using (var raw = Store.OpenAsyncSession())
+        {
+            await raw.StoreAsync(impostor);
+            await raw.SaveChangesAsync();
+        }
+
+        using (var deleting = CreateStore())
+            (await deleting.DeleteAsync(impostor, CancellationToken.None)).Should().Be(IdentityResult.Success);
+
+        using var reading = CreateStore();
+        (await reading.FindByEmailAsync("ALICE@EXAMPLE.COM", CancellationToken.None))!.Id.Should().Be(alice.Id);
+    }
+
+    [Fact]
     public async Task FindByIdAsync_returns_null_when_missing()
     {
         using var store = CreateStore();
@@ -305,6 +383,35 @@ public class UserStoreTests : SparkTestDriver
 
         (await store.GetRolesAsync(user, CancellationToken.None)).Should().BeEmpty();
         (await store.IsInRoleAsync(user, "admins", CancellationToken.None)).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A role is kept, and read, by the name <c>security.json</c> declares for its group: <c>UserManager</c> hands the store
+    /// the normalized name, and <c>IsInRole</c> compares ordinally. A document holding another casing reads by it too, once;
+    /// a name no group declares stays as the store was handed it.
+    /// </summary>
+    [Fact]
+    public async Task A_role_is_kept_and_read_by_the_name_its_group_is_declared_under()
+    {
+        var loader = Substitute.For<ISecurityConfigurationLoader>();
+        loader.GetConfiguration().Returns(new SecurityConfiguration
+        {
+            Groups =
+            {
+                ["a1b2c3d4-0000-0000-0000-000000000001"] = "Administrators",
+                ["a1b2c3d4-0000-0000-0000-000000000002"] = "Fleet managers",
+            },
+        });
+        using var store = new UserStore<SparkUser>(Store, dataProtection, securityConfiguration: loader);
+        var user = new SparkUser { Roles = ["fleet MANAGERS", "Fleet managers"] };
+
+        await store.AddToRoleAsync(user, "ADMINISTRATORS", CancellationToken.None);
+        await store.AddToRoleAsync(user, "UNDECLARED", CancellationToken.None);
+        await store.AddToRoleAsync(user, "FLEET MANAGERS", CancellationToken.None); // held already, in another casing
+
+        user.Roles.Should().Equal("fleet MANAGERS", "Fleet managers", "Administrators", "UNDECLARED");
+        (await store.GetRolesAsync(user, CancellationToken.None)).Should().Equal("Fleet managers", "Administrators", "UNDECLARED");
+        (await store.IsInRoleAsync(user, "administrators", CancellationToken.None)).Should().BeTrue();
     }
 
     [Fact]

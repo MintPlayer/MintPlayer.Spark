@@ -29,6 +29,8 @@ internal sealed partial class OidcUserInfo<TUser> : IGetEndpoint
 {
     public static string Path => "/userinfo";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).UserInfo;
+
     [Inject] private readonly UserManager<TUser> userManager;
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
@@ -133,6 +135,8 @@ internal sealed partial class OidcUserInfoByPost<TUser> : IPostEndpoint<OidcUser
     where TUser : SparkUser, new()
 {
     public static string Path => "/userinfo";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).UserInfo;
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new Microsoft.AspNetCore.Antiforgery.RequireAntiforgeryTokenAttribute(false));

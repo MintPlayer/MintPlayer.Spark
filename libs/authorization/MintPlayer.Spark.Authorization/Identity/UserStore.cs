@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authorization;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.CompareExchange;
 using Raven.Client.Documents.Session;
@@ -39,6 +41,9 @@ public partial class UserStore<TUser> :
     [Inject] private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? dataProtectionProvider;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<UserStore<TUser>>? logger;
     [Inject] private readonly TimeProvider? timeProvider;
+    // The groups security.json declares, whose names roles keep (see IUserRoleStore below). Absent without core's loader
+    // (a bare AddSparkAuthentication, the store's unit tests): a role then keeps the name the store was handed.
+    [Inject] private readonly ISecurityConfigurationLoader? securityConfiguration;
     private IAsyncDocumentSession? session;
     private bool disposed;
 
@@ -86,12 +91,18 @@ public partial class UserStore<TUser> :
                 ? SparkRegistrationMethods.External(login.LoginProvider)
                 : SparkRegistrationMethods.Other;
 
-        if (user.Email != null)
+        // StoreAsync assigns the id without writing anything, so the reservation names the real user
+        // from the start. It used to hold "" until the save, and a save that failed left that
+        // placeholder blocking the address forever.
+        await Session.StoreAsync(user, cancellationToken);
+
+        var normalizedEmail = user.Email is null ? null : user.NormalizedEmail ?? user.Email.ToUpperInvariant();
+        if (normalizedEmail != null)
         {
             // Reserve email via compare/exchange (cluster-safe uniqueness)
-            var reserveResult = await CreateEmailReservationAsync(user.NormalizedEmail ?? user.Email.ToUpperInvariant(), string.Empty, cancellationToken);
-            if (!reserveResult)
+            if (!await CreateEmailReservationAsync(normalizedEmail, user.Id!, cancellationToken))
             {
+                Session.Advanced.Evict(user);
                 return IdentityResult.Failed(new IdentityError
                 {
                     Code = "DuplicateEmail",
@@ -100,13 +111,15 @@ public partial class UserStore<TUser> :
             }
         }
 
-        await Session.StoreAsync(user, cancellationToken);
-        await Session.SaveChangesAsync(cancellationToken);
-
-        // Update email reservation with the actual user ID
-        if (user.Email != null && user.Id != null)
+        try
         {
-            await UpdateEmailReservationAsync(user.NormalizedEmail ?? user.Email.ToUpperInvariant(), user.Id, cancellationToken);
+            await Session.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            if (normalizedEmail != null)
+                await DeleteEmailReservationAsync(normalizedEmail, user.Id!, CancellationToken.None);
+            throw;
         }
 
         return IdentityResult.Success;
@@ -118,45 +131,48 @@ public partial class UserStore<TUser> :
         ThrowIfDisposed();
 
         // Detect email changes
+        string? oldEmail = null;
+        string? newEmail = null;
         var changes = Session.Advanced.WhatChanged();
         if (user.Id != null && changes.TryGetValue(user.Id, out var documentChanges))
         {
-            var emailChanged = documentChanges.Any(c =>
+            var emailChange = documentChanges.FirstOrDefault(c =>
                 string.Equals(c.FieldName, nameof(SparkUser.NormalizedEmail), StringComparison.OrdinalIgnoreCase));
 
-            if (emailChanged)
+            if (emailChange != null)
             {
-                var oldEmail = documentChanges
-                    .Where(c => string.Equals(c.FieldName, nameof(SparkUser.NormalizedEmail), StringComparison.OrdinalIgnoreCase))
-                    .Select(c => c.FieldOldValue?.ToString())
-                    .FirstOrDefault();
-
-                if (oldEmail != null)
-                {
-                    await DeleteEmailReservationAsync(oldEmail, cancellationToken);
-                }
-
-                if (user.NormalizedEmail != null)
-                {
-                    var reserved = await CreateEmailReservationAsync(user.NormalizedEmail, user.Id, cancellationToken);
-                    if (!reserved)
-                    {
-                        return IdentityResult.Failed(new IdentityError
-                        {
-                            Code = "DuplicateEmail",
-                            Description = $"Email '{user.Email}' is already taken."
-                        });
-                    }
-                }
+                oldEmail = emailChange.FieldOldValue?.ToString();
+                newEmail = user.NormalizedEmail;
+                // A change of case only keeps the same reservation key: nothing to move.
+                if (oldEmail != null && newEmail != null && CompareExchangeKeyFor(oldEmail) == CompareExchangeKeyFor(newEmail))
+                    oldEmail = newEmail = null;
             }
+        }
+
+        // The new address is reserved first and the old one released only after the user document
+        // is saved: a refused save (ConcurrencyFailure) used to leave the old address unreserved and
+        // the new one held by a user who never got it, blocking it for everyone.
+        if (newEmail != null && !await CreateEmailReservationAsync(newEmail, user.Id!, cancellationToken))
+        {
+            return IdentityResult.Failed(new IdentityError
+            {
+                Code = "DuplicateEmail",
+                Description = $"Email '{user.Email}' is already taken."
+            });
         }
 
         try
         {
             await Session.SaveChangesAsync(cancellationToken);
         }
-        catch (Raven.Client.Exceptions.ConcurrencyException)
+        catch (Exception ex)
         {
+            if (newEmail != null)
+                await DeleteEmailReservationAsync(newEmail, user.Id!, CancellationToken.None);
+
+            if (ex is not Raven.Client.Exceptions.ConcurrencyException)
+                throw;
+
             // Someone else wrote this user while we held it. Losing is a normal outcome, not a
             // fault: the caller re-reads and retries, and a single-use credential stays single-use.
             return IdentityResult.Failed(new IdentityError
@@ -166,6 +182,9 @@ public partial class UserStore<TUser> :
             });
         }
 
+        if (oldEmail != null)
+            await DeleteEmailReservationAsync(oldEmail, user.Id!, cancellationToken);
+
         return IdentityResult.Success;
     }
 
@@ -174,17 +193,36 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
-        if (user.NormalizedEmail != null)
-        {
-            await DeleteEmailReservationAsync(user.NormalizedEmail, cancellationToken);
-        }
-
         // Passkeys hold reservations of their own. Skipping this would burn every one of the user's
         // credential ids permanently and leave them pointing at a deleted document.
         await DeleteAllPasskeyReservationsAsync(user, cancellationToken);
 
-        Session.Delete(user);
-        await Session.SaveChangesAsync(cancellationToken);
+        // The document and its email reservation go in one cluster-wide transaction: deleted
+        // separately, a user removed without its reservation blocked the address for good
+        // (MCP live checks, round 1: "account could not be created" on every external sign-in).
+        using (var clusterSession = documentStore.OpenAsyncSession(new Raven.Client.Documents.Session.SessionOptions
+        {
+            Database = DatabaseName,
+            TransactionMode = TransactionMode.ClusterWide,
+            // Users are written by ordinary sessions, so they carry no atomic guard to check.
+            DisableAtomicDocumentWritesInClusterWideTransaction = true,
+        }))
+        {
+            clusterSession.Delete(user.Id!);
+            if (user.NormalizedEmail != null)
+            {
+                var key = CompareExchangeKeyFor(user.NormalizedEmail);
+                var reservation = await clusterSession.Advanced.ClusterTransaction
+                    .GetCompareExchangeValueAsync<string>(key, cancellationToken);
+                // Only the user's own reservation: another account's must never be released by this one.
+                if (reservation != null && (reservation.Value == user.Id || string.IsNullOrEmpty(reservation.Value)))
+                    clusterSession.Advanced.ClusterTransaction.DeleteCompareExchangeValue(key, reservation.Index);
+            }
+            await clusterSession.SaveChangesAsync(cancellationToken);
+        }
+
+        if (Session.Advanced.IsLoaded(user.Id!))
+            Session.Advanced.Evict(user);
         return IdentityResult.Success;
     }
 
@@ -308,11 +346,18 @@ public partial class UserStore<TUser> :
 
     #region IUserRoleStore
 
+    // A role is a security.json group: core reads role claims as group names, matched case-insensitively
+    // (SecurityFileAccessControl). UserManager hands this store the NORMALIZED name ("ADMINISTRATORS"); kept as given, it
+    // became the role claim, and ClaimsPrincipal.IsInRole compares ordinally, so IsInRole("Administrators") was false for
+    // the cookie and for an agent alike (both come from Identity's claims factory, which reads GetRolesAsync). So a role
+    // is kept and read by the name its group is declared under; reading maps too, so a document holding another casing
+    // (written before, or patched by hand) answers by the declared name, and nothing is rewritten. Membership ignores case.
+
     public Task AddToRoleAsync(TUser user, string roleName, CancellationToken cancellationToken)
     {
         if (!user.Roles.Contains(roleName, StringComparer.OrdinalIgnoreCase))
         {
-            user.Roles.Add(roleName);
+            user.Roles.Add(DeclaredRoleName(roleName));
         }
         return Task.CompletedTask;
     }
@@ -324,7 +369,10 @@ public partial class UserStore<TUser> :
     }
 
     public Task<IList<string>> GetRolesAsync(TUser user, CancellationToken cancellationToken)
-        => Task.FromResult<IList<string>>(user.Roles);
+        => Task.FromResult<IList<string>>(user.Roles
+            .Select(DeclaredRoleName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList());
 
     public Task<bool> IsInRoleAsync(TUser user, string roleName, CancellationToken cancellationToken)
         => Task.FromResult(user.Roles.Contains(roleName, StringComparer.OrdinalIgnoreCase));
@@ -334,10 +382,21 @@ public partial class UserStore<TUser> :
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
+        // Ignores case: RavenDB matches an equality on an auto-index field case-insensitively, so the normalized name
+        // UserManager passes finds a role stored in any casing (UserRoleNameTests).
         return await Session.Query<TUser>()
             .Where(u => u.Roles.Contains(roleName))
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// <paramref name="roleName"/> as <c>security.json</c> declares the group it names, found as core finds a role
+    /// claim's group (case-insensitively, the first match); a name no group declares is returned as given.
+    /// </summary>
+    private string DeclaredRoleName(string roleName)
+        => securityConfiguration?.GetConfiguration().Groups.Values
+               .FirstOrDefault(name => string.Equals(name, roleName, StringComparison.OrdinalIgnoreCase))
+           ?? roleName;
 
     #endregion
 
@@ -644,26 +703,38 @@ public partial class UserStore<TUser> :
         var result = await operations.SendAsync(
             new PutCompareExchangeValueOperation<string>(key, userId, 0),
             token: cancellationToken);
-        return result.Successful;
-    }
+        if (result.Successful)
+            return true;
 
-    private async Task UpdateEmailReservationAsync(string normalizedEmail, string userId, CancellationToken cancellationToken)
-    {
-        var key = CompareExchangeKeyFor(normalizedEmail);
-        var operations = documentStore.Operations.ForDatabase(DatabaseName);
+        // Self-healing: a reservation whose user document no longer exists is stale (the user was
+        // removed without releasing it) and is taken over — atomically, against the index just read,
+        // so two claimants cannot both win. Never while the user it names exists. An empty value is a
+        // creation in flight under the old protocol and is left alone.
         var existing = await operations.SendAsync(
-            new GetCompareExchangeValueOperation<string>(key),
-            token: cancellationToken);
+            new GetCompareExchangeValueOperation<string>(key), token: cancellationToken);
+        if (existing is null)
+            return (await operations.SendAsync(
+                new PutCompareExchangeValueOperation<string>(key, userId, 0), token: cancellationToken)).Successful;
+        if (existing.Value == userId)
+            return true;
+        if (string.IsNullOrEmpty(existing.Value))
+            return false;
 
-        if (existing != null)
+        using (var probe = documentStore.OpenAsyncSession(DatabaseName))
         {
-            await operations.SendAsync(
-                new PutCompareExchangeValueOperation<string>(key, userId, existing.Index),
-                token: cancellationToken);
+            if (await probe.Advanced.ExistsAsync(existing.Value, cancellationToken))
+                return false;
         }
+
+        logger?.LogWarning("Taking over a stale email reservation whose user document no longer exists.");
+        var takeover = await operations.SendAsync(
+            new PutCompareExchangeValueOperation<string>(key, userId, existing.Index),
+            token: cancellationToken);
+        return takeover.Successful;
     }
 
-    private async Task DeleteEmailReservationAsync(string normalizedEmail, CancellationToken cancellationToken)
+    /// <summary>Releases <paramref name="normalizedEmail"/>'s reservation, but only while it is <paramref name="userId"/>'s.</summary>
+    private async Task DeleteEmailReservationAsync(string normalizedEmail, string userId, CancellationToken cancellationToken)
     {
         var key = CompareExchangeKeyFor(normalizedEmail);
         var operations = documentStore.Operations.ForDatabase(DatabaseName);
@@ -671,7 +742,7 @@ public partial class UserStore<TUser> :
             new GetCompareExchangeValueOperation<string>(key),
             token: cancellationToken);
 
-        if (existing != null)
+        if (existing != null && existing.Value == userId)
         {
             await operations.SendAsync(
                 new DeleteCompareExchangeValueOperation<string>(key, existing.Index),

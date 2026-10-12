@@ -1,3 +1,8 @@
+GET /.well-known/jwks
+GET /.well-known/oauth-authorization-server
+GET /.well-known/oauth-protected-resource | allow-anonymous
+GET /.well-known/oauth-protected-resource/mcp | allow-anonymous
+GET /.well-known/openid-configuration
 GET /api/browse/accounts/{provider}/{login} | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/accounts/{provider}/{login}/dependency-graph | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
 GET /api/browse/accounts/{provider}/{login}/repos | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:browse
@@ -23,8 +28,18 @@ POST /api/uploads/finish | antiforgery=not-required | authorize(policy=;roles=;s
 POST /api/uploads/fork/{provider}/{owner}/{name}/pull/{number:int} | allow-anonymous | antiforgery=not-required | rate-limit=policy:fork-uploads | request-size-limit=52428800
 GET /api/uploads/status | authorize(policy=;roles=;schemes=ApiToken,GitHubOidc) | authorize(policy=MintPlayer.Spark.SparkAuthorize;roles=;schemes=) | rate-limit=policy:uploads-status
 GET /badge/{provider}/{owner}/{name}.svg | allow-anonymous | rate-limit=policy:badges | response-cache(duration=300;location=Any;no-store=False;profile=;vary-by-header=)
+GET /connect/authorize
+POST /connect/authorize | antiforgery=not-required
+GET /connect/consent
+POST /connect/consent | antiforgery=required
+GET /connect/error
+GET /connect/login
+POST /connect/register | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/revoke | rate-limit=policy:SparkIdentityProviderMachine
+POST /connect/token | rate-limit=policy:SparkIdentityProviderMachine
 GET /health
 GET /health/ready
+POST /mcp | accepts(application/json) | authorize(policy=;roles=;schemes=) | authorize-policy(requirements=Handler assertion should evaluate to true.;schemes=Spark.IdentityProvider.Agent,SparkPersonalAccessToken)
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required
@@ -42,6 +57,11 @@ POST /spark/auth/logout | antiforgery=required
 POST /spark/auth/manage/2fa | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/2fa/authenticator-uri | authorize(policy=;roles=;schemes=)
 DELETE /spark/auth/manage/account | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/auth/manage/agents | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/applications/revoke | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/revoke | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/tokens | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/update | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/info | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/personal-data | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/profile | authorize(policy=;roles=;schemes=)

@@ -2024,6 +2024,96 @@
         "fr": "Gérer les applications ayant accès à votre compte",
         "nl": "Applicaties met toegang tot je account beheren"
       },
+      "consentAgentHeading": {
+        "en": "{0} wants to work with your data as an AI agent",
+        "fr": "{0} souhaite utiliser vos données en tant qu'agent IA",
+        "nl": "{0} wil als AI-agent met je gegevens werken"
+      },
+      "consentAgentVerified": {
+        "en": "Verified: its description was published at {0}.",
+        "fr": "Vérifié : sa description est publiée sur {0}.",
+        "nl": "Geverifieerd: de beschrijving staat op {0}."
+      },
+      "consentAgentUnverified": {
+        "en": "Unverified: this application chose its own name, and nothing confirms who made it.",
+        "fr": "Non vérifié : cette application a choisi son propre nom, et rien ne confirme qui l'a créée.",
+        "nl": "Niet geverifieerd: deze toepassing koos zelf haar naam, en niets bevestigt wie haar maakte."
+      },
+      "consentAgentLoopback": {
+        "en": "This application runs on your computer. Continue only if you started it yourself just now.",
+        "fr": "Cette application s'exécute sur votre ordinateur. Continuez uniquement si vous venez de la lancer vous-même.",
+        "nl": "Deze toepassing draait op je computer. Ga alleen verder als je ze daarnet zelf hebt gestart."
+      },
+      "consentAgentTypes": {
+        "en": "What may it use?",
+        "fr": "Que peut-il utiliser ?",
+        "nl": "Wat mag hij gebruiken?"
+      },
+      "consentAgentTypesAll": {
+        "en": "Everything this application makes available to agents, including what is added later",
+        "fr": "Tout ce que cette application met à la disposition des agents, y compris ce qui sera ajouté plus tard",
+        "nl": "Alles wat deze toepassing beschikbaar stelt voor agents, ook wat later wordt toegevoegd"
+      },
+      "consentAgentTypesChosen": {
+        "en": "Only what I choose:",
+        "fr": "Seulement ce que je choisis :",
+        "nl": "Alleen wat ik kies:"
+      },
+      "consentAgentQueries": {
+        "en": "Lists: {0}",
+        "fr": "Listes : {0}",
+        "nl": "Lijsten: {0}"
+      },
+      "consentAgentPermission": {
+        "en": "What may it do?",
+        "fr": "Que peut-il faire ?",
+        "nl": "Wat mag hij doen?"
+      },
+      "consentAgentRead": {
+        "en": "Read",
+        "fr": "Lire",
+        "nl": "Lezen"
+      },
+      "consentAgentWrite": {
+        "en": "Read and make changes",
+        "fr": "Lire et effectuer des modifications",
+        "nl": "Lezen en wijzigingen uitvoeren"
+      },
+      "consentAgentNothing": {
+        "en": "This application makes nothing available to agents that you may see.",
+        "fr": "Cette application ne met à la disposition des agents rien que vous puissiez voir.",
+        "nl": "Deze toepassing stelt niets beschikbaar voor agents dat jij mag zien."
+      },
+      "consentAgentRights": {
+        "en": "The agent never sees more than you may see yourself.",
+        "fr": "L'agent ne voit jamais plus que ce que vous pouvez voir vous-même.",
+        "nl": "De agent ziet nooit meer dan jij zelf mag zien."
+      },
+      "consentAgentResource": {
+        "en": "It will work as you in {0} ({1}), and nowhere else.",
+        "fr": "Il agira en votre nom dans {0} ({1}), et nulle part ailleurs.",
+        "nl": "Hij werkt als jou in {0} ({1}), en nergens anders."
+      },
+      "consentAgentRemoteWrite": {
+        "en": "Read and make changes, once you also allow changes in {0}",
+        "fr": "Lire et effectuer des modifications, dès que vous les autorisez aussi dans {0}",
+        "nl": "Lezen en wijzigingen uitvoeren, zodra je wijzigingen ook in {0} toestaat"
+      },
+      "consentAgentRemoteManage": {
+        "en": "It starts with reading what {0} makes available to agents. You choose what it may use, and turn changes on, in {0} under Account → Connected applications.",
+        "fr": "Il commence par lire ce que {0} met à la disposition des agents. Vous choisissez ce qu'il peut utiliser, et activez les modifications, dans {0} sous Compte → Applications connectées.",
+        "nl": "Hij begint met het lezen van wat {0} beschikbaar stelt voor agents. Wat hij mag gebruiken, en of hij mag wijzigen, kies je in {0} onder Account → Gekoppelde toepassingen."
+      },
+      "errorAccountLocked": {
+        "en": "This account is locked or disabled, so it cannot give an application access.",
+        "fr": "Ce compte est verrouillé ou désactivé ; il ne peut donc pas donner accès à une application.",
+        "nl": "Dit account is vergrendeld of uitgeschakeld en kan dus geen toegang geven aan een toepassing."
+      },
+      "errorAgentChoice": {
+        "en": "That choice is not available. Go back and choose again.",
+        "fr": "Ce choix n'est pas disponible. Revenez en arrière et choisissez à nouveau.",
+        "nl": "Die keuze is niet beschikbaar. Ga terug en kies opnieuw."
+      },
       "loginTitle": {
         "en": "Login",
         "fr": "Connexion",
@@ -2073,6 +2163,11 @@
         "en": "Sign in with {0}",
         "fr": "Se connecter avec {0}",
         "nl": "Aanmelden met {0}"
+      },
+      "loginCreateAccount": {
+        "en": "Create an account",
+        "fr": "Créer un compte",
+        "nl": "Account aanmaken"
       },
       "loginNoMethod": {
         "en": "No sign-in method is configured for this identity provider.",

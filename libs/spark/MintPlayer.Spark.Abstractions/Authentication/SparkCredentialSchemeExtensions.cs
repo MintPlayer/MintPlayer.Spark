@@ -25,12 +25,17 @@ public static class SparkCredentialSchemeExtensions
     /// makes CSRF possible, and therefore what makes an antiforgery token worth demanding. See
     /// <see cref="SparkCredentialScheme"/>.
     /// </param>
+    /// <param name="subjectIsLocalUserId">
+    /// <c>true</c> only for a bearer scheme whose tokens this application issued itself, so their
+    /// <c>sub</c> is the local user id. See <see cref="SparkCredentialScheme.SubjectIsLocalUserId"/>.
+    /// </param>
     public static ISparkBuilder AddCredentialScheme(
         this ISparkBuilder builder,
         string scheme,
-        bool isAmbient = false)
+        bool isAmbient = false,
+        bool subjectIsLocalUserId = false)
     {
-        builder.Registry.AddCredentialScheme(scheme, isAmbient);
+        builder.Registry.AddCredentialScheme(scheme, isAmbient, subjectIsLocalUserId);
         builder.EnsureCompositeScheme();
         return builder;
     }

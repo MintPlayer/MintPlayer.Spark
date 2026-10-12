@@ -309,7 +309,7 @@ user secrets, never into a chat, a tool or the repository.
 | **Web Push (VAPID)** | Generate once (below). `VAPID_SUBJECT` is `mailto:` your address. Changing the pair later drops every browser's subscription | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | `Spark:Notifications:WebPush:PublicKey` / `PrivateKey` / `Subject` |
 | **SMTP** | Nothing to register: CodeCoverage's relay, once §3.2 is done. Overrides only if you relay elsewhere | `MAIL_HOST`, `MAIL_PORT`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` (all optional) | `Spark:Mail:Smtp:Host` / `Port`, `Spark:Mail:From:Address` / `Name` |
 | **RavenDB** | The client certificate and CA in `/var/www/seotester/raven-certs/` (§3.0, [raven-tls-migration.md](../code-coverage/raven-tls-migration.md)); URL `https://coverage-raven:8080`, database `SeoTester`. Set in the compose file, not `.env` | — | `Spark:RavenDb:Urls:0`, `Database`, `CertificateFile`, `CertificateKeyFile`, `ServerCertificateAuthorityFile` |
-| **Data Protection keys** | Nothing: the `seotester_dataprotection-keys` volume. Deleting it signs everyone out once | — | `Spark:DataProtection:KeysPath` (compose) |
+| **Data Protection keys** | Nothing: the `seotester_dataprotection-keys` volume. Deleting it signs everyone out once, and (with the MCP server, §4.4) makes the agents' signing keys unreadable | — | `Spark:DataProtection:KeysPath` (compose) |
 | Public origin | Nothing: `https://seotester.mintplayer.com` in `appsettings.Production.json`. ⚠️ Also the **passkey relying-party id** (D46): never change it once passkeys exist | — | `Spark:Auth:PublicBaseUrl` |
 
 **VAPID keys** (the format Spark expects: the uncompressed P-256 point and the private scalar, base64url), on the VPS:
@@ -350,6 +350,45 @@ Not legal advice.
 
 Google's OAuth consent screen and X's app settings take the two URLs above. When a text changes in substance, raise
 `LegalPages.Version` and `EffectiveDate` in the code.
+
+### 4.4 MCP server (plan M9; not deployed yet)
+
+SeoTester serves AI agents at `/mcp` ([mcp.md](mcp.md); `docs/spark_mcp_PRD.md` §4.7). It is its own OAuth authorization
+server for them (`idp.ForMcp().AgentsOnly()`: the identity provider maps only what agents use), next to personal access
+tokens. **No new secret and no `.env` entry:**
+
+| What | Where it comes from | Config key (override only) |
+|---|---|---|
+| **Signing keys** of agent tokens | Generated at the first start into the `OidcKeys` collection of the `SeoTester` database, the private halves protected with the Data Protection key ring (the `seotester_dataprotection-keys` volume), rotated every 90 days by the app. No key file, no key in configuration (`**/oidc-signing-key*.json` is git-ignored). ⚠️ Back up the volume with the database: without it the app refuses to start ("signing key … cannot be decrypted"), and the only way out, deleting the `OidcKeys` documents, disconnects every agent | `Spark:IdentityProvider:Keys:*` |
+| **Issuer** of agent tokens | `Spark:Auth:PublicBaseUrl` (`https://seotester.mintplayer.com`, `appsettings.Production.json`), set by `Program.cs` | `Spark:IdentityProvider:Issuer` |
+| **Canonical URL** (every agent token's audience) | The public URL + `/mcp`: `https://seotester.mintplayer.com/mcp`. Permanent: users paste it into their agents | `Spark:Mcp:CanonicalUrl` |
+
+The proxy needs nothing: Traefik's router sends every path of the host to the app and does not buffer `text/event-stream`
+(the app also sends `X-Accel-Buffering: no`). The new public routes are `/mcp`, `/.well-known/*` and the agents' part of
+`/connect/*`: authorize with the sign-in and consent pages, token, client registration and revocation
+(`apps/SeoTester/SeoTester.Tests/RouteSnapshots/SeoTester.txt`). Any other path under `/connect`, `/.well-known` or `/mcp`
+answers 404, never the SPA. The identity provider's developer portal rights are
+switched off in `security.json` (`"libraries": { "identity-provider": false }`), so nobody can register other OAuth
+clients; agents register themselves (client metadata documents, or loopback-only dynamic registration, 20 an hour per
+address).
+
+**Rate limiting** (owner decision 2026-10-12): the app runs ASP.NET's rate limiter (`spark.AddRateLimiter()` in
+`Program.cs`), so the identity provider's own budgets apply: 120 requests a minute per address on its machine endpoints
+(token, revocation and client registration, the ones agents use; `Spark:IdentityProvider:RateLimits`), on
+top of Spark's 150 per 10 s per address on `/spark` and `/connect` (`Spark:RateLimiter`). Over a budget the answer is
+429. The address is the client's: Spark core takes it from Traefik's `X-Forwarded-For` (`Spark:ForwardedHeaders`).
+Nothing to configure; `/mcp` keeps its own per-user and per-address quota (`Spark:Mcp:Quota`).
+
+After the deploy:
+
+```bash
+curl -sS https://seotester.mintplayer.com/.well-known/oauth-protected-resource/mcp   # resource = …/mcp, authorization_servers = the issuer
+curl -sS https://seotester.mintplayer.com/.well-known/oauth-authorization-server     # issuer = https://seotester.mintplayer.com
+```
+
+Then, from a workstation: `claude mcp add --transport http seotester https://seotester.mintplayer.com/mcp`, `/mcp` →
+Authenticate, sign in, and run each documented example of [mcp.md](mcp.md) once (plan M9); remove mcp.md's Draft banner
+afterwards.
 
 ## 5. Post-deploy checklist (measurements deferred to M12)
 

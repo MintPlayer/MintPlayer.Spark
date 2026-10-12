@@ -14,6 +14,12 @@ public sealed record CheckFinding(string CheckId, CheckStatus Status, IReadOnlyD
     /// <summary>Longest value kept per placeholder: findings are stored per page and must stay small (§4.2).</summary>
     public const int MaxValueLength = 200;
 
+    /// <summary>
+    /// The elements behind a failing or warning finding (<c>docs/spark_mcp_PRD.md</c> §4.7 gap 1), as CSS selectors, where
+    /// the check judges elements; null for a check of headers, the response or the whole page. See <see cref="Html.ElementEvidence"/>.
+    /// </summary>
+    public Html.ElementEvidence? Evidence { get; init; }
+
     /// <summary><see cref="Detail"/> as a short JSON object, or null.</summary>
     public string? DetailJson => Detail is { Count: > 0 } ? JsonSerializer.Serialize(Detail) : null;
 
@@ -44,6 +50,21 @@ public static class Finding
     /// <summary>Pass when <paramref name="ok"/>, else <paramref name="otherwise"/>.</summary>
     public static CheckFinding When(bool ok, string id, CheckStatus otherwise, params (string Key, object? Value)[] detail)
         => Make(id, ok ? CheckStatus.Pass : otherwise, detail);
+
+    /// <summary>
+    /// <paramref name="finding"/> with the evidence of <paramref name="elements"/> when it fails or warns (a pass needs
+    /// none, and stored evidence costs space on every page: spike S7).
+    /// </summary>
+    public static CheckFinding With(this CheckFinding finding, IEnumerable<AngleSharp.Dom.IElement> elements)
+        => finding.Status is CheckStatus.Fail or CheckStatus.Warn && Html.ElementEvidence.Of(elements) is { } evidence
+            ? finding with { Evidence = evidence }
+            : finding;
+
+    /// <summary><paramref name="finding"/> with <paramref name="evidence"/> when it fails or warns.</summary>
+    public static CheckFinding With(this CheckFinding finding, Html.ElementEvidence? evidence)
+        => finding.Status is CheckStatus.Fail or CheckStatus.Warn && evidence is not null
+            ? finding with { Evidence = evidence }
+            : finding;
 
     public static CheckFinding Make(string id, CheckStatus status, (string Key, object? Value)[] detail)
     {

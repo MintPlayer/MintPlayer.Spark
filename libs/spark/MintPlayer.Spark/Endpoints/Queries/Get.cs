@@ -25,14 +25,13 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
     // No antiforgery metadata, deliberately: the verb changed, what the endpoint does did not. See
     // the note in PersistentObject/Get.cs.
 
-    [Inject] private readonly IQueryLoader queryLoader;
-    [Inject] private readonly IPermissionService permissionService;
-    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
+    // The check and the metadata shaping live in the catalogue, shared with the MCP tools (MCP PRD D9).
+    [Inject] private readonly ISparkCatalogue catalogue;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
-        => new(Results.Json(new { error = "Query not found" }, statusCode: 404));
+        => new(SparkDenial.NotFoundOrSignIn(context, "Query not found"));
 
     public override async Task<IResult> HandleAsync(GetQueryRequest request, CancellationToken cancellationToken)
     {
@@ -42,22 +41,15 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
         // A malformed body and an unknown query get the same answer, for the same reason the
         // unauthorized case does below: the status must not tell a caller which query ids are real.
         if (string.IsNullOrEmpty(id))
-            return Results.Json(new { error = "Query not found" }, statusCode: 404);
+            return SparkDenial.NotFoundOrSignIn(httpContext, "Query not found");
 
-        var query = queryLoader.ResolveQuery(id);
-
-        if (query is null)
-            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
-
-        // Return 404 (not 403) when the caller isn't authorized — so existence isn't leaked.
-        if (query.EntityType is null ||
-            !await permissionService.IsAllowedAsync("Query", query.EntityType, httpContext.RequestAborted))
-        {
-            return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
-        }
-
-        // Sort columns, column overrides and the parent reference name attributes of the row type; one
-        // the caller may not query is left out, so the metadata does not say it exists (S7).
-        return Results.Json(await attributeRights.ForQueryMetadataAsync(query, httpContext.RequestAborted));
+        // Not 403 when the caller isn't authorized — so existence isn't leaked: the catalogue answers an
+        // unknown query and a refused one with the same null. Like queries/execute (MCP PRD D18), an
+        // anonymous caller on a host that can sign in gets the uniform 401 so it is sent to sign in; a
+        // signed-in caller keeps the 404.
+        var query = await catalogue.GetQueryAsync(id, httpContext.RequestAborted);
+        return query is null
+            ? SparkDenial.NotFoundOrSignIn(httpContext, $"Query '{id}' not found")
+            : Results.Json(query);
     }
 }

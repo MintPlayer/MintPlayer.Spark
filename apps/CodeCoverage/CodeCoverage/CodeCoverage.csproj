@@ -41,6 +41,9 @@
 		<ProjectReference Include="..\..\..\libs\dashboards\MintPlayer.Spark.Dashboards\MintPlayer.Spark.Dashboards.csproj" />
 		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
 		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
+		<!-- The MCP server for AI agents (plan M6) and its embedded authorization server (ForMcp().AgentsOnly(), PRD D24). -->
+		<ProjectReference Include="..\..\..\libs\mcp\MintPlayer.Spark.Mcp\MintPlayer.Spark.Mcp.csproj" />
+		<ProjectReference Include="..\..\..\libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
 		<ProjectReference Include="..\..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
 		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
 		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub.DevTunnel\MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj" />

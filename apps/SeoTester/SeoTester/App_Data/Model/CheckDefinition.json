@@ -6,6 +6,7 @@
     "clrType": "SeoTester.Entities.CheckDefinition",
     "alias": "check",
     "breadcrumb": "{CheckId}",
+    "agentPermissions": "Read",
     "tabs": [],
     "groups": [],
     "attributes": [

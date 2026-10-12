@@ -47,6 +47,13 @@ public class OidcToken
     /// <summary>The session the token belongs to (<c>sid</c>), for logout.</summary>
     public string? SessionId { get; set; }
     /// <summary>
+    /// The <see cref="OidcRefreshFamily"/> the token belongs to: every refresh token, and an access token issued with one
+    /// (or exchanged from such an access token). Null for every other token, which no family decides for.
+    /// </summary>
+    public string? FamilyId { get; set; }
+    /// <summary>A refresh token's place in its family: the family's <see cref="OidcRefreshFamily.Generation"/> it was issued at.</summary>
+    public int Generation { get; set; }
+    /// <summary>
     /// Protocol state that only some types carry: the authorize parameters of a pending or pushed
     /// request (<c>prompt</c>, <c>max_age</c>, <c>claims</c>, <c>resource</c>, <c>response_mode</c>…),
     /// a device code's user code, a session's authentication methods, a token's <c>cnf</c> binding.

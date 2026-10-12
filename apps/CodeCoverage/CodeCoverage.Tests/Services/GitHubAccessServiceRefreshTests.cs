@@ -68,14 +68,16 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
 
     private static Harness CreateService(IAsyncDocumentSession session, SparkUser user,
         Func<bool, GitHubUserToken> tokenScript,
-        Func<HttpRequestMessage, string?, HttpResponseMessage> responder)
+        Func<HttpRequestMessage, string?, HttpResponseMessage> responder,
+        System.Security.Claims.ClaimsPrincipal? principal = null)
     {
         var tokens = new ScriptedTokenService(tokenScript);
         var handler = new StubHttpMessageHandler(responder);
         var cache = new MemoryCache(new MemoryCacheOptions());
 
         var services = new ServiceCollection();
-        services.AddSingleton<IHttpContextAccessor>(new FakeHttpContextAccessor(GitHubAuthTestFakes.PrincipalFor(user)));
+        services.AddSingleton<IHttpContextAccessor>(new FakeHttpContextAccessor(principal ?? GitHubAuthTestFakes.PrincipalFor(user)));
+        services.AddSingleton<MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser>(new FakeSparkCurrentUser(user.Id));
         services.AddSingleton(GitHubAuthTestFakes.UserManagerOver(new InMemoryUserStore().Add(user)));
         services.AddSingleton<IGitHubUserTokenService>(tokens);
         services.AddSingleton<IHttpClientFactory>(new SingleClientHttpFactory(handler));
@@ -104,6 +106,29 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
         visibility.Owners.Should().BeEquivalentTo(["MintPlayer", OwnLogin]);
         harness.Tokens.ForcedCalls.Should().Be(1);
         harness.Handler.Requests.Should().HaveCount(3, "the stale token 401s on /user, the refreshed one asks /user and /user/installations");
+    }
+
+    /// <summary>
+    /// An AI agent's token names its user by <c>sub</c> and carries no NameIdentifier (MCP plan M6). The service must ask
+    /// Spark who is calling, not read the cookie's claim off the principal, or an agent signed in as an owner sees only
+    /// public repositories.
+    /// </summary>
+    [Fact]
+    public async Task An_agent_caller_without_a_NameIdentifier_claim_gets_the_users_owners()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var user = NewUser();
+        var agent = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [new System.Security.Claims.Claim("sub", user.Id!)], authenticationType: "SparkPersonalAccessToken"));
+        var harness = CreateService(session, user,
+            tokenScript: _ => new("ghu_test_ok", GitHubTokenState.Ok),
+            responder: (request, _) => GitHub(request),
+            principal: agent);
+
+        var visibility = await harness.Access.GetVisibilityAsync();
+
+        visibility.Owners.Should().BeEquivalentTo(["MintPlayer", OwnLogin]);
     }
 
     [Fact]

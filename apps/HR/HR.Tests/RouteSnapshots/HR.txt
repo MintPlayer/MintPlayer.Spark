@@ -1,4 +1,5 @@
 GET /api/hr/fleet-cars | authorize(policy=;roles=;schemes=)
+POST /mcp | accepts(application/json) | authorize(policy=;roles=;schemes=) | authorize-policy(requirements=Handler assertion should evaluate to true.;schemes=SparkPersonalAccessToken)
 GET /spark
 POST /spark/actions/execute | antiforgery=required
 POST /spark/actions/list | antiforgery=not-required
@@ -18,6 +19,11 @@ POST /spark/auth/logout | antiforgery=required
 POST /spark/auth/manage/2fa | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/2fa/authenticator-uri | authorize(policy=;roles=;schemes=)
 DELETE /spark/auth/manage/account | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/auth/manage/agents | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/applications/revoke | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/revoke | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/tokens | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/update | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/info | authorize(policy=;roles=;schemes=)
 POST /spark/auth/manage/info | antiforgery=required | authorize(policy=;roles=;schemes=)
 POST /spark/auth/manage/password | antiforgery=required | authorize(policy=;roles=;schemes=)

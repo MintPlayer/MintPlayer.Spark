@@ -167,6 +167,19 @@ public class OidcApplication
     /// <summary>Whether a token exchange by this client may impersonate the subject rather than only act on its behalf (RFC 8693).</summary>
     public bool AllowImpersonation { get; set; }
 
+    /// <summary>
+    /// How an AI agent client came to exist (MCP PRD D5, D7): <see cref="OidcAgentRegistrations.MetadataDocument"/> or
+    /// <see cref="OidcAgentRegistrations.DynamicRegistration"/>. <see langword="null"/> for an application registered
+    /// by a person (the portal, the admin screens or initial-access-token registration).
+    /// </summary>
+    public string? AgentRegistration { get; set; }
+
+    /// <summary>For a metadata-document client: when its document was last fetched (the freshness cache).</summary>
+    public DateTime? MetadataDocumentFetchedAt { get; set; }
+
+    /// <summary>For an agent client: when it last signed a user in or refreshed a token; an unused dynamic registration is pruned from it.</summary>
+    public DateTime? LastUsedAt { get; set; }
+
     /// <summary>The id_token lifetime used when <see cref="IdTokenLifetimeMinutes"/> is empty or not positive.</summary>
     public const int DefaultIdTokenLifetimeMinutes = 5;
 
@@ -184,6 +197,16 @@ public class OidcApplication
 }
 
 /// <summary>The values of <see cref="OidcApplication.Mode"/>.</summary>
+/// <summary>The values of <see cref="OidcApplication.AgentRegistration"/>.</summary>
+public static class OidcAgentRegistrations
+{
+    /// <summary>Its client id is the HTTPS URL of a Client ID Metadata Document this server fetched.</summary>
+    public const string MetadataDocument = "MetadataDocument";
+
+    /// <summary>It registered itself anonymously, with loopback redirect URIs only. Unverified.</summary>
+    public const string DynamicRegistration = "DynamicRegistration";
+}
+
 public static class OidcApplicationModes
 {
     /// <summary>Only the application's members can authorize it; nothing needs approval.</summary>

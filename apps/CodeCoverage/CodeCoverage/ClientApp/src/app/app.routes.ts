@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
-import { sparkAuthRoutes, withExternalLogin, githubProvider, withAccount } from '@mintplayer/ng-spark/auth/routes';
+import { sparkAuthRoutes, withExternalLogin, githubProvider, withAccount, withConnectedAgents } from '@mintplayer/ng-spark/auth/routes';
 import { ShellComponent } from './shell/shell.component';
 import { accountRedirectGuard, commitRedirectGuard, repositoryRedirectGuard } from './spark/vanity-redirects';
 import { HOME_URL } from './spark/home-route';
@@ -37,9 +37,12 @@ export const routes: Routes = [
       // Connected logins matter here — ForgeIntegrationResolver derives the user's forges from them.
       // Account deletion needs no CodeCoverage cleanup handler: users are referenced only as audit
       // stamps (ApiToken.CreatedByUserId, DeleteRepositoryDataMessage.RequestedByUserId).
+      // withConnectedAgents() (account/agents): the AI agents a user connected to /mcp and their personal access tokens
+      // (MCP plan M6). The server maps its endpoints because the app runs the MCP server.
       ...sparkAuthRoutes(
         withExternalLogin(githubProvider()),
         withAccount({ exclude: ['changePassword', 'twoFactorSetup'] }),
+        withConnectedAgents(),
       ),
       // The passkey page lived at /passkeys before it moved under the account area. It goes through
       // account/passkeys rather than straight to the generic page (/po/passkeys/me) on purpose: that

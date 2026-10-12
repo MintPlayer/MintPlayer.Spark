@@ -7,6 +7,7 @@
     "alias": "audit-run",
     "breadcrumb": "{Origin}",
     "live": true,
+    "agentPermissions": "Read",
     "tabs": [
       {
         "id": "90cf342a-7ecb-465c-865c-c28c2f29a8ef",

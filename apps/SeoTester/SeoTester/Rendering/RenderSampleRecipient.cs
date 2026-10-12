@@ -53,10 +53,10 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
     {
         var pages = new Dictionary<string, List<PageFinding>>(StringComparer.Ordinal);
         var site = new List<StoredFinding>();
-        var sample = await RenderSample.PickAsync(session, run.Id!, run.RenderedSample, cancellationToken);
         var frontier = await session.LoadAsync<CrawlFrontier>(CrawlFrontier.IdFor(run.Id!), cancellationToken);
         if (frontier is not null)
             session.Advanced.Evict(frontier);
+        var sample = await RenderSample.PickAsync(session, run, frontier, run.RenderedSample, cancellationToken);
         var pwa = run.SiteId is not null && (await session.LoadAsync<Site>(run.SiteId, cancellationToken))?.PwaProfile == true;
 
         if (!chromium.Enabled)
@@ -84,7 +84,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
             }
         }
 
-        RunPipeline.AddFindings(session, run.Id!, pages, site);
+        RunPipeline.AddFindings(session, run, pages, site);
         await pipeline.FinishStageAsync(session, outbox, run.Id!, PipelineStages.Render, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
     }
@@ -107,9 +107,9 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
             var render = await renderer.RenderAsync(network, new Uri(page.Url), probeRoute: i == 0, cancellationToken);
             logger.LogInformation("Run {RunId}: rendered {Url} ({Timings})", run.Id, page.Url,
                 string.Join(", ", render.Timings.Select(t => $"{t.Key} {t.Value} ms")));
-            pages[page.Id!] = RenderChecks.Evaluate(render.Facts with { Url = page.Url })
+            pages[page.Url] = RenderChecks.Evaluate(render.Facts with { Url = page.Url })
                 .Where(f => f.Status != CheckStatus.NotApplicable)
-                .Select(f => new PageFinding { CheckId = f.CheckId, Status = f.Status.ToString(), Detail = f.DetailJson })
+                .Select(PageFinding.From)
                 .ToList();
             serviceWorker ??= render.ServiceWorkerUrl;
             if (i == 0)

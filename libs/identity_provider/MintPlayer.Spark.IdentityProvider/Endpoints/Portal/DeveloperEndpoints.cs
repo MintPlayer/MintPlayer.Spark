@@ -45,6 +45,8 @@ internal sealed partial class IssueRegistrationToken : IPostEndpoint
 {
     public static string Path => "/developer/registration-token";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeveloperRegistration;
+
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
@@ -69,6 +71,8 @@ internal sealed partial class IssueRegistrationToken : IPostEndpoint
 internal sealed partial class GetDeveloperStatus : IGetEndpoint
 {
     public static string Path => "/developer";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeveloperPortal;
 
     [Inject] private readonly OidcDevelopers developers;
     [Inject] private readonly SparkIdentityProviderOptions options;
@@ -101,6 +105,8 @@ internal sealed partial class GetDeveloperStatus : IGetEndpoint
 internal sealed partial class RequestDeveloperStatus : IPostEndpoint<OidcDeveloperRequestBody>
 {
     public static string Path => "/developer";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).DeveloperPortal;
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder, IServiceProvider services)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));

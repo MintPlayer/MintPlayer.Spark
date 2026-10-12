@@ -40,6 +40,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
         services.AddSingleton(GitHubAuthTestFakes.TestConfiguration());
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<Raven.Client.Documents.Session.IAsyncDocumentSession>()));
+        services.AddScoped<CodeCoverage.Services.IRepositoryScope, CodeCoverage.Services.RepositoryScope>();
         services.AddScoped<BrowseController>();
         return services.BuildServiceProvider().GetRequiredService<BrowseController>();
     }

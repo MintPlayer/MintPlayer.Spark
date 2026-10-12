@@ -5,6 +5,11 @@ using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Authorization.Agents;
+using MintPlayer.Spark.Extensions;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
 
@@ -89,6 +94,12 @@ public static class SparkBuilderAuthorizationExtensions
         builder.AddCredentialScheme(IdentityConstants.ApplicationScheme, isAmbient: true);
         builder.AddCredentialScheme(IdentityConstants.BearerScheme);
 
+        builder.AddAgentAccess();
+        // Setup 2's mapping (MCP PRD D22): Identity's login lookup for this user type.
+        builder.Services.TryAddScoped<IAgentLinkedLogins, AgentLinkedLogins<TUser>>();
+        // Every agent principal's roles and groups (§4.6): Identity's claims factory for this user type, as for the cookie.
+        builder.Services.TryAddScoped<IAgentRoleClaimsProvider, AgentRoleClaimsProvider<TUser>>();
+
         // Register middleware and endpoint callbacks
         builder.Registry.AddEndpoints(endpoints =>
             endpoints.MapSparkIdentityApi<TUser>());
@@ -96,4 +107,29 @@ public static class SparkBuilderAuthorizationExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Agent grants and personal access tokens (MCP PRD D4, D11–D14): setup 1 is wired whenever this package is.
+    /// Inert without the Mcp package — nothing runs the token scheme and the account endpoints are not mapped.
+    /// </summary>
+    /// <remarks>
+    /// The token scheme is registered with ASP.NET Core but deliberately <b>not</b> declared a Spark credential
+    /// (<c>AddCredentialScheme</c>): the Mcp package runs it on <c>/mcp</c> only, where the agent layers narrow the
+    /// token's rights; on every other endpoint a personal access token authenticates nothing. The registration of
+    /// <see cref="IAgentCredentialScheme"/> is how the Mcp package learns the setup is wired (no assembly sniffing).
+    /// </remarks>
+    private static void AddAgentAccess(this ISparkBuilder builder)
+    {
+        var services = builder.Services;
+        services.AddAuthentication()
+            .AddScheme<AuthenticationSchemeOptions, PersonalAccessTokenHandler>(PersonalAccessTokens.Scheme, _ => { });
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<AgentGrantStore>();
+        services.TryAddScoped<AgentRequestUser>();
+        services.TryAddScoped<AgentGrantsAccount>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentCredentialScheme, PersonalAccessTokenScheme>());
+
+        // PRD §4.6: an agent token carries no groups; they come from the user store on every request.
+        builder.AddGroupMembershipProvider<AgentStoreGroupMembership>();
+    }
 }

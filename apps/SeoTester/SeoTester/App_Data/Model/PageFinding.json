@@ -40,6 +40,17 @@
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
+      },
+      {
+        "id": "cff32c26-c7c2-49fe-ba24-8d4f59c611d5",
+        "name": "Selectors",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
       }
     ],
     "queries": []

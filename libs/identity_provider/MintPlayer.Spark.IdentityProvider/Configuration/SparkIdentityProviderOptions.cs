@@ -40,6 +40,13 @@ public class SparkIdentityProviderOptions
     /// <summary>How the <c>/connect/*</c> pages present the provider (<c>Spark:IdentityProvider:Branding</c>, PRD D7).</summary>
     public SparkIdentityProviderBranding Branding { get; set; } = new();
 
+    /// <summary>
+    /// The application's registration page (<c>Spark:IdentityProvider:RegistrationPath</c>), linked from <c>/connect/login</c>
+    /// as "Create an account" with the pending authorization as <c>returnUrl</c>, when the application offers registration
+    /// (<c>SparkLocalCredentials.Full</c>). Default <c>/register</c>, ng-spark's <c>withRegistration()</c> route; empty hides the link.
+    /// </summary>
+    public string? RegistrationPath { get; set; } = "/register";
+
     /// <summary>The signing-key rotation schedule (<c>Spark:IdentityProvider:Keys</c>, PRD D8).</summary>
     public SparkIdentityProviderKeyOptions Keys { get; set; } = new();
 
@@ -48,6 +55,83 @@ public class SparkIdentityProviderOptions
 
     /// <summary>The machine-endpoint policy and the client-authentication throttle (<c>Spark:IdentityProvider:RateLimits</c>, PRD D9).</summary>
     public SparkIdentityProviderRateLimitOptions RateLimits { get; set; } = new();
+
+    /// <summary>
+    /// The authorization server for AI agents (MCP PRD D4), <see langword="null"/> when off. Turned on by
+    /// <see cref="ForMcp"/> (this application's own MCP endpoint, setup 3, needs <c>spark.AddMcp(...)</c>), by
+    /// <see cref="ForMcpResource"/> (another application's MCP endpoint, that application's setup 2), or by a
+    /// <c>Spark:IdentityProvider:Mcp</c> section.
+    /// </summary>
+    public SparkIdentityProviderMcpOptions? Mcp { get; set; }
+
+    /// <summary>
+    /// Lets AI agents sign users in for the application's MCP endpoint (MCP PRD D4 setup 3, D5): RFC 8414 metadata,
+    /// Client ID Metadata Documents, anonymous loopback registration, the <c>mcp:read</c>/<c>mcp:write</c> scopes with
+    /// the MCP canonical URL as audience, refresh rotation, and the agent consent screen.
+    /// </summary>
+    public SparkIdentityProviderOptions ForMcp(Action<SparkIdentityProviderMcpOptions>? configure = null)
+    {
+        Mcp ??= new SparkIdentityProviderMcpOptions();
+        Mcp.LocalEndpoint = true;
+        configure?.Invoke(Mcp);
+        return this;
+    }
+
+    /// <summary>
+    /// Lets AI agents sign users in here for <b>another</b> application's MCP endpoint, which accepts this server's tokens
+    /// as its external authorization server (that application's <c>AddExternalAgentAuthorizationServer</c>, MCP PRD D22).
+    /// The same agent server as <see cref="ForMcp"/> (RFC 8414 metadata, metadata documents, loopback registration,
+    /// refresh rotation, the consent screen), with an API resource whose audience is <paramref name="canonicalUrl"/> and
+    /// the scopes <c>mcp:read</c> and <c>mcp:write</c>. Call once per endpoint; needs no MCP endpoint in this application.
+    /// </summary>
+    /// <param name="canonicalUrl">That endpoint's canonical URL exactly as it publishes it (its <c>Spark:Mcp:CanonicalUrl</c>).</param>
+    /// <remarks>
+    /// The consent screen cannot see what that application exposes, so it offers read or read + changes only; which
+    /// types the agent may use, and whether changes are on, the user decides in that application (its Connected
+    /// applications page), where the agent's grant lives.
+    /// </remarks>
+    public SparkIdentityProviderOptions ForMcpResource(string canonicalUrl, Action<SparkIdentityProviderMcpResource>? configure = null)
+    {
+        Mcp ??= new SparkIdentityProviderMcpOptions();
+        var resource = new SparkIdentityProviderMcpResource { Url = canonicalUrl };
+        configure?.Invoke(resource);
+        Mcp.Resources.Add(resource);
+        return this;
+    }
+
+    /// <summary>
+    /// The grants the provider issues tokens by (<c>Spark:IdentityProvider:Flows</c>, e.g. <c>"AuthorizationCode, RefreshToken"</c>).
+    /// Default <see cref="SparkIdentityProviderFlows.All"/>. A flow left out is not mapped, is refused at the token endpoint and
+    /// is not advertised. Checked at startup against <see cref="Endpoints"/> and the agent server: a combination that cannot
+    /// work refuses to start, naming the dependency (README, "Choosing flows and endpoints").
+    /// </summary>
+    public SparkIdentityProviderFlows Flows { get; set; } = SparkIdentityProviderFlows.All;
+
+    /// <summary>
+    /// The endpoints beyond the flows' own (<c>Spark:IdentityProvider:Endpoints</c>, e.g. <c>"Revocation, UserInfo"</c>).
+    /// Default <see cref="SparkIdentityProviderEndpoints.All"/>. An endpoint left out is not mapped (404) and not advertised.
+    /// </summary>
+    public SparkIdentityProviderEndpoints Endpoints { get; set; } = SparkIdentityProviderEndpoints.All;
+
+    /// <summary>
+    /// Maps only what AI agents need, for an application that hosts the provider just to sign agents in to its own MCP
+    /// endpoint (<see cref="ForMcp"/>): the authorization code flow (sign-in, consent) with refresh tokens, revocation, the
+    /// discovery documents and JWKS, and the agent server's Client ID Metadata Documents and anonymous loopback registration.
+    /// The device grant, client credentials, token exchange, PAR, introspection, userinfo, end-session, developer
+    /// registration and portal, the provider's connected-applications pages and key administration are not mapped.
+    /// </summary>
+    /// <remarks>
+    /// It sets <see cref="Flows"/> and <see cref="Endpoints"/>; a later assignment wins. Users manage their agents on the
+    /// application's account page (Connected applications), not at the provider. Not for a provider that also signs agents in
+    /// for another application's endpoint (<see cref="ForMcpResource"/>): that application's users sign in here to link their
+    /// login, and its sign-in reads userinfo, so startup refuses the combination.
+    /// </remarks>
+    public SparkIdentityProviderOptions AgentsOnly()
+    {
+        Flows = SparkIdentityProviderFlows.AuthorizationCode | SparkIdentityProviderFlows.RefreshToken;
+        Endpoints = SparkIdentityProviderEndpoints.Revocation;
+        return this;
+    }
 
     /// <summary>
     /// Opt in to cross-origin access on the OIDC protocol endpoints. <b>Off by default.</b>

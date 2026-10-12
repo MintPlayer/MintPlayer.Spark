@@ -15,6 +15,8 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
 {
     public static string Path => "/authorize";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).AuthorizationCode;
+
     [Inject] private readonly OidcAuthorizeHandler handler;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
@@ -34,6 +36,8 @@ internal sealed partial class OidcAuthorize : IGetEndpoint<string>
 internal sealed partial class OidcAuthorizeByPost : IPostEndpoint<OidcAuthorizeParameters>
 {
     public static string Path => "/authorize";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).AuthorizationCode;
 
     // The exemption stated, not implied: without it Spark's antiforgery gate refused a signed-in
     // browser's POST, which is exactly the request this endpoint exists for.

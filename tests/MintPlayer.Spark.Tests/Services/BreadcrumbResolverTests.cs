@@ -253,6 +253,106 @@ public class BreadcrumbResolverTests : SparkTestDriver
         result.Get("people/1").Should().Be("—");
     }
 
+    // --- the referenced TYPE's Read right (MCP PRD D19) ---
+
+    /// <summary>
+    /// Builds a resolver whose permission service refuses <c>Read</c> on <paramref name="unreadable"/>
+    /// types and allows everything else. Row rules allow every row, so a placeholder here can only come
+    /// from the type-level right.
+    /// </summary>
+    private static IBreadcrumbResolver BuildWithTypeRights(string[] unreadable, params EntityTypeDefinition[] defs)
+    {
+        var loader = Substitute.For<IModelLoader>();
+        loader.GetEntityTypes().Returns(defs);
+        var byClr = defs.ToDictionary(d => d.ClrType, d => d, StringComparer.Ordinal);
+        loader.GetEntityTypeByClrType(Arg.Any<string>()).Returns(ci => byClr.GetValueOrDefault((string)ci[0]!));
+
+        var rowSecurity = Substitute.For<IRowSecurity>();
+        rowSecurity.IsAllowedAsync(default!, default!, default!).ReturnsForAnyArgs(true);
+
+        var permissions = Substitute.For<MintPlayer.Spark.Abstractions.Authorization.IPermissionService>();
+        permissions.IsAllowedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci => !((string)ci[0] == "Read" && unreadable.Contains((string)ci[1])));
+
+        return new BreadcrumbResolver(loader, new BreadcrumbClosure(loader), rowSecurity, new SparkOptions(), permissionService: permissions);
+    }
+
+    /// <summary>
+    /// D19. A caller who may read cars but not people sees the car's driver as the redacted placeholder,
+    /// never the person's name: a reference must not disclose what the target's own Read right withholds.
+    /// Before the fix only row rules and attribute rights were consulted, so the name rendered in full.
+    /// </summary>
+    [Fact]
+    public async Task Reference_to_a_type_the_caller_may_not_Read_renders_the_redacted_placeholder()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Person { FirstName = "Secret", LastName = "Agent" }, "people/1");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "people/1" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate}", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var resolver = BuildWithTypeRights(["BR_Person"], person, car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        result.Get("cars/1").Should().Be("CAR-1");
+        result.Get("people/1").Should().Be("—", "the driver column shows the placeholder, keeping only the id");
+    }
+
+    /// <summary>D19 inside a breadcrumb template: the unreadable target's tokens never reach the owner's text.</summary>
+    [Fact]
+    public async Task Breadcrumb_template_reference_to_an_unreadable_type_renders_the_placeholder()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Person { FirstName = "Secret", LastName = "Agent" }, "people/1");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "people/1" }, "cars/1");
+            await seed.StoreAsync(new BR_ParkingSpot { Coordinates = "1,1", ParkedCar = "cars/1" }, "spots/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var (person, car, spot) = ChainDefs();
+        var resolver = BuildWithTypeRights(["BR_Person"], person, car, spot);
+
+        using var session = Store.OpenAsyncSession();
+        var spotEntity = await session.LoadAsync<BR_ParkingSpot>("spots/1");
+
+        var result = await resolver.ResolveAsync(session, [spotEntity], spot);
+
+        result.Get("spots/1").Should().Be("CAR-1 (—) (1,1)", "two levels down, the person is still withheld");
+        result.Get("cars/1").Should().Be("CAR-1 (—)");
+    }
+
+    /// <summary>The control: with Read on the target type the same reference renders in full.</summary>
+    [Fact]
+    public async Task Reference_to_a_readable_type_still_renders_its_breadcrumb()
+    {
+        using (var seed = Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new BR_Person { FirstName = "John", LastName = "Doe" }, "people/1");
+            await seed.StoreAsync(new BR_Car { LicensePlate = "CAR-1", Driver = "people/1" }, "cars/1");
+            await seed.SaveChangesAsync();
+        }
+
+        var person = Def(typeof(BR_Person), "{FirstName} {LastName}", null, Scalar("FirstName"), Scalar("LastName"));
+        var car = Def(typeof(BR_Car), "{LicensePlate} ({Driver})", null, Scalar("LicensePlate"), Ref("Driver", typeof(BR_Person)));
+        var resolver = BuildWithTypeRights([], person, car);
+
+        using var session = Store.OpenAsyncSession();
+        var carEntity = await session.LoadAsync<BR_Car>("cars/1");
+
+        var result = await resolver.ResolveAsync(session, [carEntity], car);
+
+        result.Get("cars/1").Should().Be("CAR-1 (John Doe)");
+        result.Get("people/1").Should().Be("John Doe");
+    }
+
     // --- stale @Raven-Clr-Type: the document's stored type no longer resolves ---
 
     /// <summary>

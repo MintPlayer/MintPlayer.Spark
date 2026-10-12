@@ -33,7 +33,7 @@ export function downloadUrlOf(action: string, result: unknown): string | null {
 /**
  * The app's poDetail route (`sparkRoutes({ poDetail })`): the generic detail page for every type, with SeoTester's
  * panels where an attribute renderer does not fit (PRD §4.5): a site's score trend, the note that a run's page details
- * expired, and the abuse log under the operator dashboard (whose figures are the dashboards package's tiles, #504). The
+ * expired (or, before that, that a later run takes the pages it checks again: one result per page), and the abuse log under the operator dashboard (whose figures are the dashboards package's tiles, #504). The
  * report itself (progress, scores, results with how-to-fix) is the run's own attributes, drawn by the app's renderers
  * (seo/renderers.ts).
  */
@@ -51,6 +51,9 @@ export function downloadUrlOf(action: string, result: unknown): string | null {
         @case ('AuditRun') {
           @if (expired(po)) {
             <bs-alert [type]="colors.secondary" class="d-block m-3" data-pages-expired>{{ 'seoUi.pagesExpired' | t }}</bs-alert>
+          } @else {
+            <!-- One result per page and site, the latest (owner decision 2026-10-12): a later audit takes the pages it checks again. -->
+            <bs-alert [type]="colors.secondary" class="d-block m-3" data-pages-latest>{{ 'seoUi.pagesLatestOnly' | t }}</bs-alert>
           }
         }
         @case ('OperatorDashboard') {

@@ -50,10 +50,13 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
 {
     public static string Path => "/revoke";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Revocation;
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcKeyRing signingKeyService;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly OidcClientAuthenticator clientAuthenticator;
+    [Inject] private readonly OidcAudit audit;
 
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8) for the issuer; the endpoint is created per request.</summary>
     private HttpContext httpContext = null!;
@@ -137,6 +140,8 @@ internal sealed partial class OidcRevoke : IPostEndpoint<OidcClientTokenRequest>
                 }
             }
 
+            await audit.RecordAsync(session, OidcAuditKinds.TokenRevoked, actorId: null, app.Id, tokenDoc.Subject,
+                httpContext.Connection.RemoteIpAddress?.ToString(), new Dictionary<string, string> { ["type"] = tokenDoc.Type }, ct);
             await session.SaveChangesAsync(ct);
         }
 

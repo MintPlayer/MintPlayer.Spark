@@ -20,6 +20,8 @@ internal sealed partial class OidcTwoFactorPage : IGetEndpoint<string>
 {
     public static string Path => "/two-factor";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Interactive;
+
     [QueryParam("returnUrl")] public string? ReturnUrl { get; set; }
     [QueryParam("error")] public string? Error { get; set; }
     /// <summary><c>true</c> shows the recovery-code form; anything else the authenticator form.</summary>
@@ -136,6 +138,8 @@ internal sealed partial class OidcTwoFactorSubmit<TUser> : IPostEndpoint<OidcTwo
     where TUser : SparkUser, new()
 {
     public static string Path => "/two-factor";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).Interactive;
 
     [Inject] private readonly SignInManager<TUser> signInManager;
 

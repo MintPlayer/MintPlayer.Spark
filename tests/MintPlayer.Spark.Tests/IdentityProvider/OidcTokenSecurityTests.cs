@@ -133,9 +133,10 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
 
         (await RedeemAsync(app, code)).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // The teardown finds the issued tokens through an index, best-effort by design (see
-        // Token.RevokeAuthorizationChainAsync), so a token issued moments before the replay may be
-        // missed. The wait pins what this case is about: a chain the index can see is torn down.
+        // The family is revoked exactly, but this case asserts the stored statuses, which the
+        // bookkeeping after it marks through an index, best-effort by design (see
+        // Token.SweepFamilyAsync), so a token issued moments before the replay may be missed. The
+        // wait pins what this case is about: a chain the index can see is marked revoked.
         // On a fresh database per case the index had almost nothing to catch up on; on the class's
         // shared database it carries every earlier case's tokens, and the race showed (1 failure in
         // a full run, M8 item 11).
@@ -311,9 +312,8 @@ public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), I
 
         var rotated = (await BodyAsync(await TokenAsync(form))).GetProperty("refresh_token").GetString()!;
 
-        // The successor is found through an index, best-effort by design — see the same wait in
-        // Replayed_code_is_refused_and_revokes_the_issued_tokens.
-        await Store.WaitForIndexingAsync();
+        // No wait for indexing: the successor is refused through its family's document, loaded by
+        // id (OidcRefreshTokenFamilyTests holds indexing back to prove it).
         var reuse = await TokenAsync(form);
 
         reuse.StatusCode.Should().Be(HttpStatusCode.BadRequest);

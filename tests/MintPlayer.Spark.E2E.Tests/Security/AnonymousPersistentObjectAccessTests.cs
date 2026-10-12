@@ -37,18 +37,13 @@ public class AnonymousPersistentObjectAccessTests
 
         var ex = (await new Func<Task>(() => client.ExecuteQueryAsync(GetCarsQueryId)).Should().ThrowExactlyAsync<SparkClientException>()).Which;
 
-        // 404, and deliberately not 401. This used to read through GET /spark/po/{type}, which
-        // refuses with 401 for an anonymous caller so a client knows authenticating would help. That
-        // endpoint is gone, and the query path answers a DIFFERENT and equally deliberate way: a
-        // denied query is byte-identical to a query that does not exist, so no caller can use
-        // refusals to enumerate which queries an application has.
-        //
-        // The 401-versus-403 distinction that mattered here — "refused because anonymous" against
-        // "refused despite a session" — is still pinned, by Anonymous_cannot_create_a_Car below,
-        // which goes through a PO endpoint that still exists and still draws it.
-        ex.StatusCode.Should().Be(HttpStatusCode.NotFound,
-            "Car is granted to Administrators and Fleet managers, never to anonymous callers — and on "
-            + "the query path a refusal must be indistinguishable from an unknown query");
+        // 401 since MCP PRD D18: query execute refuses an anonymous caller as every access endpoint
+        // does (SparkDenial), so the client knows authenticating would help. Still no oracle: an
+        // unknown query id gets the same 401 (QueryExecuteAnonymousDenialTests pins both), and a
+        // signed-in caller keeps the 404 that is byte-identical to a query that does not exist.
+        ex.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "Car is granted to Administrators and Fleet managers, never to anonymous callers — and "
+            + "Fleet can sign in, so the refusal tells the caller to");
     }
 
     /// <summary>

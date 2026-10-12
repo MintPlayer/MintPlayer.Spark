@@ -15,7 +15,7 @@ public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(
     {
         var value = OidcTokenReference.GenerateValue();
         using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(new OidcToken
+        await StoreInFamilyAsync(session, new OidcToken
         {
             Id = OidcTokenReference.DocumentId(value),
             ApplicationId = app.Id!,

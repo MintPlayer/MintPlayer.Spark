@@ -75,6 +75,44 @@ public class PageChecksTests
         statuses.Keys.Should().BeSubsetOf(PageChecks.Ids);
     }
 
+    /// <summary>
+    /// MCP PRD §4.7 gap 1: a failing or warning check that judges elements names them, so an agent finds the template: up to
+    /// five CSS selectors, anchored at the nearest id. No HTML excerpt (spike S7): nothing of the body is kept.
+    /// </summary>
+    [Fact]
+    public void A_finding_about_elements_carries_their_selectors()
+    {
+        var images = string.Concat(Enumerable.Range(1, 7).Select(i => $"<img src=\"/i{i}.png\">"));
+        var page = Page(GoodHead + Body(extra: $"<section id=\"gallery\">{images}</section><h1>Second heading</h1>"));
+
+        var findings = PageChecks.Evaluate(page).ToDictionary(f => f.CheckId);
+
+        var alt = findings["accessibility.img-alt"];
+        alt.Status.Should().Be(CheckStatus.Fail);
+        alt.Evidence!.Selectors.Should().Equal(
+            "#gallery > img:nth-of-type(1)", "#gallery > img:nth-of-type(2)", "#gallery > img:nth-of-type(3)", "#gallery > img:nth-of-type(4)", "#gallery > img:nth-of-type(5)");
+
+        var h1 = findings["seo.single-h1"];
+        h1.Status.Should().Be(CheckStatus.Warn);
+        h1.Evidence!.Selectors.Should().Equal("body > h1", "body > main > h1");
+
+        var lang = PageChecks.Evaluate(Page(GoodHead.Replace("<html lang=\"en-GB\">", "<html lang=\"english\">") + Body())).Single(f => f.CheckId == "seo.html-lang");
+        lang.Evidence!.Selectors.Should().Equal("html");
+
+        findings["seo.title-present"].Evidence.Should().BeNull("a pass carries no evidence");
+        findings["security.hsts"].Evidence.Should().BeNull("a header check names no element");
+    }
+
+    [Fact]
+    public void Axe_selectors_are_capped_and_deduplicated_like_the_page_checks_own()
+    {
+        var evidence = ElementEvidence.Of(["#nav > a.button", "  ", "#nav > a.button", "footer > a", "a", "b", "c", "d", new string('x', 300)]);
+
+        evidence!.Selectors.Should().Equal("#nav > a.button", "footer > a", "a", "b", "c");
+        ElementEvidence.Of([new string('x', 300)])!.Selectors.Single().Length.Should().Be(ElementEvidence.MaxSelectorLength);
+        ElementEvidence.Of([" "]).Should().BeNull();
+    }
+
     [Fact]
     public void A_neglected_page_fails_the_checks_that_describe_it()
     {
@@ -205,6 +243,8 @@ public class PageChecksTests
         var findings = PageChecks.Evaluate(Page(head + Body())).ToDictionary(f => f.CheckId);
 
         findings["seo.canonical"].Status.Should().Be(CheckStatus.Warn);
+        // The summary reads "points to {target}: {status}"; it said "which returns relative" before.
+        findings["seo.canonical"].Detail!["status"].Should().Be("a relative URL");
         findings["social.open-graph"].Status.Should().NotBe(CheckStatus.Pass);
     }
 }

@@ -10,8 +10,9 @@ namespace SeoTester.Crawler;
 public sealed record AnalyzedPage(PageResult Result, PageInput Input, IReadOnlyList<Uri> InternalLinks, IReadOnlyList<Uri> ExternalLinks);
 
 /// <summary>
-/// Turns one <see cref="FetchResult"/> into a <see cref="PageResult"/> (id <c>{runId}/pages/{hash}</c>, so a retried batch
-/// overwrites rather than duplicates, §4.3) with the page-level findings of <see cref="PageChecks"/>, and the page's links.
+/// Turns one <see cref="FetchResult"/> into a <see cref="PageResult"/> (id <c>{siteId}/pages/{hash}</c>: the site's one result
+/// for the page, which this fetch replaces, and a retried batch overwrites rather than duplicates, §4.3) with the page-level
+/// findings of <see cref="PageChecks"/>, and the page's links.
 /// </summary>
 public static class PageAnalyzer
 {
@@ -49,7 +50,7 @@ public static class PageAnalyzer
 
         var result = new PageResult
         {
-            Id = PageResult.IdFor(run.Id!, entry.Url),
+            Id = PageResult.IdFor(PageResult.OwnerOf(run), entry.Url),
             RunId = run.Id,
             OrganizationId = run.OrganizationId,
             Url = entry.Url,
@@ -63,8 +64,7 @@ public static class PageAnalyzer
             OgDescription = Cut(html?.MetaProperty("og:description")?.Trim(), 500),
             OgImage = Cut(html?.MetaProperty("og:image")?.Trim(), 2000),
             OgUrl = Cut(html?.MetaProperty("og:url")?.Trim(), 2000),
-            Findings = findings.Where(f => f.Status != Scoring.CheckStatus.NotApplicable)
-                .Select(f => new PageFinding { CheckId = f.CheckId, Status = f.Status.ToString(), Detail = f.DetailJson }).ToList(),
+            Findings = findings.Where(f => f.Status != Scoring.CheckStatus.NotApplicable).Select(PageFinding.From).ToList(),
             ExpiresAtUtc = nowUtc + Retention,
             FinalUrl = fetch.Hops.Count > 0 ? fetch.FinalUrl?.AbsoluteUri : null,
             RedirectHops = fetch.Hops.Count,

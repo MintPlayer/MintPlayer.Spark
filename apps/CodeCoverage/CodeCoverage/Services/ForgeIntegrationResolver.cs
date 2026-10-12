@@ -2,6 +2,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Identity;
 
 namespace CodeCoverage.Services;
@@ -11,7 +12,7 @@ namespace CodeCoverage.Services;
 public partial class ForgeIntegrationResolver : IForgeIntegrationResolver
 {
     [Inject] private readonly IEnumerable<IForgeIntegration> integrations;
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly UserManager<SparkUser> userManager;
 
     // Memoized for the request: the row-security hooks ask repeatedly, and this is a user load.
@@ -79,11 +80,15 @@ public partial class ForgeIntegrationResolver : IForgeIntegrationResolver
     /// </remarks>
     private async Task<IReadOnlyList<EForgeProvider>> QueryLinkedProvidersAsync()
     {
-        var principal = httpContextAccessor.HttpContext?.User;
-        if (principal?.Identity?.IsAuthenticated != true)
+        // ⚠️ The viewer as Spark identifies every caller (ISparkCurrentUser.Id): the sign-in cookie's user id, or the local
+        // user an agent token names on /mcp. userManager.GetUserAsync(principal) read only the cookie's NameIdentifier,
+        // which an agent token does not carry (its subject is `sub`), so an agent signed in as an owner saw only public
+        // repositories (plan M6, CoverageMcpScopingParityTests). A token another issuer signed never maps here: Spark
+        // reads `sub` only for schemes whose subject is a local user id.
+        if (currentUser.Id is not { Length: > 0 } userId)
             return [];
 
-        var user = await userManager.GetUserAsync(principal);
+        var user = await userManager.FindByIdAsync(userId);
         if (user?.Logins is null)
             return [];
 

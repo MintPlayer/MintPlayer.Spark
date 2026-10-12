@@ -6,6 +6,7 @@
     "clrType": "Fleet.Entities.ServiceEntry",
     "breadcrumb": "{Description}",
     "serverSideRowLifecycle": true,
+    "agentPermissions": "Read",
     "tabs": [],
     "groups": [],
     "attributes": [

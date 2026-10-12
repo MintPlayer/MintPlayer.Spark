@@ -5,6 +5,7 @@ using CodeCoverage.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Identity;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -14,7 +15,7 @@ namespace CodeCoverage.Services;
 [Register(typeof(IGitHubAccessService), ServiceLifetime.Scoped)]
 public partial class GitHubAccessService : IGitHubAccessService
 {
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly UserManager<SparkUser> userManager;
     [Inject] private readonly IGitHubUserTokenService tokenService;
     [Inject] private readonly IHttpClientFactory httpClientFactory;
@@ -44,11 +45,9 @@ public partial class GitHubAccessService : IGitHubAccessService
 
     public async Task<GitHubVisibility> GetVisibilityAsync(CancellationToken cancellationToken = default)
     {
-        var principal = httpContextAccessor.HttpContext?.User;
-        if (principal?.Identity?.IsAuthenticated != true)
-            return new([], GitHubTokenState.Ok);
-
-        var user = await userManager.GetUserAsync(principal);
+        // The viewer as Spark identifies every caller: the cookie's user id, or the local user an agent token names on
+        // /mcp (plan M6). The principal's NameIdentifier alone missed every agent, whose subject is `sub`.
+        var user = await ViewerAsync();
         if (user is null)
             return new([], GitHubTokenState.Ok);
 
@@ -183,11 +182,7 @@ public partial class GitHubAccessService : IGitHubAccessService
 
     public async Task InvalidateAsync(CancellationToken cancellationToken = default)
     {
-        var principal = httpContextAccessor.HttpContext?.User;
-        if (principal?.Identity?.IsAuthenticated != true)
-            return;
-
-        var user = await userManager.GetUserAsync(principal);
+        var user = await ViewerAsync();
         if (user is null)
             return;
 
@@ -198,6 +193,10 @@ public partial class GitHubAccessService : IGitHubAccessService
         // FailureCacheDuration, which reads as "the fix did not work".
         memoryCache.Remove($"github-owners-failed/{user.Id}");
     }
+
+    /// <summary>The signed-in viewer's user document; <see langword="null"/> for an anonymous caller.</summary>
+    private async Task<SparkUser?> ViewerAsync()
+        => currentUser.Id is { Length: > 0 } userId ? await userManager.FindByIdAsync(userId) : null;
 
     /// <summary>
     /// Who the token belongs to (GET /user) and what it can reach (GET /user/installations), both

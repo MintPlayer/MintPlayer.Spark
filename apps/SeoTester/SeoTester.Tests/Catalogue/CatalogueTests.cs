@@ -51,17 +51,28 @@ public class CatalogueTests(SeoTesterHostFixture host)
         (await LoadDocumentAsync<CheckDefinition>(host, CheckDefinition.IdFor(fresh.Id)))!.TitleEn.Should().Be("New");
     }
 
+    /// <summary>
+    /// Anyone reads the catalogue, anonymous visitors included: the same public text <c>GET /seotester/catalogue</c> serves,
+    /// granted to the anonymous group so an AI agent's <c>seotester_explain_check</c> works before signing in
+    /// (<c>docs/spark_mcp_PRD.md</c> §4.7, D17). Only an administrator edits it (D32).
+    /// </summary>
     [Fact]
-    public async Task Every_signed_in_user_reads_the_catalogue_and_only_an_administrator_edits_it()
+    public async Task Everyone_reads_the_catalogue_and_only_an_administrator_edits_it()
     {
         var id = CheckDefinition.IdFor(ShippedCatalogue.All[0].Id);
 
         var list = await PostAsync(host, "/spark/queries/execute", Wire.Query(CheckDefinitionsQueryId), Vic);
         list.Status.Should().Be(HttpStatusCode.OK, list.Raw);
         list.Body.GetProperty("totalItems").GetInt32().Should().BeGreaterThan(80);
+        var anonymous = await PostAsync(host, "/spark/queries/execute", Wire.Query(CheckDefinitionsQueryId), null);
+        anonymous.Status.Should().Be(HttpStatusCode.OK, anonymous.Raw);
+        anonymous.Body.GetProperty("totalItems").GetInt32().Should().Be(list.Body.GetProperty("totalItems").GetInt32());
 
         (await UpdateAsync(host, CheckDefinitionTypeId, "CheckDefinition", id, Ann, ("Weight", 1))).Status.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
-        (await PostAsync(host, "/spark/queries/execute", Wire.Query(CheckDefinitionsQueryId), null)).Status.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.NotFound);
+        (await PostAsync(host, "/spark/po/update", Wire.Typed(CheckDefinitionTypeId, new
+        {
+            persistentObject = new { id, name = "CheckDefinition", objectTypeId = CheckDefinitionTypeId, attributes = new[] { new { name = "Weight", value = (object)1, isValueChanged = true } } },
+        }, id), null)).Status.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden, HttpStatusCode.NotFound, HttpStatusCode.BadRequest);
     }
 
     [Fact]

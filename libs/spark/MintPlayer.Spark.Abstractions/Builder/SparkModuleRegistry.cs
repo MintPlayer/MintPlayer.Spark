@@ -159,12 +159,15 @@ public class SparkModuleRegistry
     /// Registering the same scheme twice keeps the first declaration, so the order a caller sees is
     /// the order schemes were first added.
     /// </summary>
-    public void AddCredentialScheme(string scheme, bool isAmbient = false)
+    /// <param name="scheme">The authentication scheme name.</param>
+    /// <param name="isAmbient">See <see cref="SparkCredentialScheme.IsAmbient"/>.</param>
+    /// <param name="subjectIsLocalUserId">See <see cref="SparkCredentialScheme.SubjectIsLocalUserId"/>.</param>
+    public void AddCredentialScheme(string scheme, bool isAmbient = false, bool subjectIsLocalUserId = false)
     {
         if (credentialSchemes.Any(s => string.Equals(s.Name, scheme, StringComparison.Ordinal)))
             return;
 
-        credentialSchemes.Add(new SparkCredentialScheme(scheme, isAmbient));
+        credentialSchemes.Add(new SparkCredentialScheme(scheme, isAmbient, subjectIsLocalUserId));
     }
 
     /// <summary>

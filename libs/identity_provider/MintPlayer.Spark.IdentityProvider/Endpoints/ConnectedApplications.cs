@@ -35,6 +35,8 @@ internal sealed partial class OidcConnectedApplications : IGetEndpoint<string>
 {
     public static string Path => "/applications";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).ConnectedApplications;
+
     /// <summary>The outcome of a withdrawal, carried back by its redirect.</summary>
     [QueryParam("status")] public string? Status { get; set; }
 
@@ -195,6 +197,8 @@ internal sealed partial class OidcRevokeApplication : IPostEndpoint<OidcRevokeAp
 {
     public static string Path => "/applications/revoke";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).ConnectedApplications;
+
     [Inject] private readonly OidcGrantWithdrawal withdrawal;
     [Inject] private readonly ConnectText text;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
@@ -255,6 +259,8 @@ internal sealed record OidcRevokeScopeRequest(string? ApplicationId, string? Sco
 internal sealed partial class OidcRevokeApplicationScope : IPostEndpoint<OidcRevokeScopeRequest>
 {
     public static string Path => "/applications/revoke-scope";
+
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).ConnectedApplications;
 
     [Inject] private readonly OidcGrantWithdrawal withdrawal;
     [Inject] private readonly ConnectText text;

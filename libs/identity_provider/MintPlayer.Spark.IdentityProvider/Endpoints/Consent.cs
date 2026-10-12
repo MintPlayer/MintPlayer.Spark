@@ -26,6 +26,8 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
 {
     public static string Path => "/consent";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).AuthorizationCode;
+
     // Optional: a missing handle is this page's own 400, not the binder's.
     [QueryParam("request_id")] public string? RequestId { get; set; }
 
@@ -34,6 +36,8 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly ConnectText text;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly AgentConsent agentConsent;
+    [Inject] private readonly OidcSurface surface;
 
     public override async Task<IResult> HandleAsync(CancellationToken ct)
     {
@@ -60,6 +64,15 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
         var app = await session.LoadAsync<OidcApplication>(request.ApplicationId, ct);
         if (app == null || !app.Enabled)
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorUnknownClient");
+
+        // An AI agent's sign-in (MCP PRD §4.6): types and read/changes instead of scopes. A locked or disabled account
+        // gives no application access.
+        if (AgentConsent.Applies(request))
+        {
+            if (await agentConsent.UsableUserAsync(userId, ct) is null)
+                return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status403Forbidden, "errorAccountLocked");
+            return await agentConsent.RenderAsync(context, text, options, antiforgery, app, request, requestId);
+        }
 
         // Load scope definitions
         var requestedScopes = request.Scopes;
@@ -100,9 +113,11 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
         if (redirectHost.Length > 0)
             sb.Append("<p class=\"muted\">").Append(Encode(text["consentRedirect", redirectHost])).Append("</p>");
 
-        // As whom: the signed-in account, with a way out when it is the wrong one.
-        sb.Append("<p class=\"muted\">").Append(Encode(text["consentSignedInAs", account])).Append(' ')
-          .Append("<a href=\"/connect/logout\">").Append(Encode(text["consentNotYou"])).Append("</a></p>");
+        // As whom: the signed-in account, with a way out when it is the wrong one (where the end-session endpoint is mapped).
+        sb.Append("<p class=\"muted\">").Append(Encode(text["consentSignedInAs", account]));
+        if (surface.EndSession)
+            sb.Append(' ').Append("<a href=\"/connect/logout\">").Append(Encode(text["consentNotYou"])).Append("</a>");
+        sb.Append("</p>");
 
         sb.Append("<p>").Append(Encode(text["consentIntro"])).Append("</p>");
         sb.Append("<form method=\"post\">");
@@ -170,10 +185,14 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
 
         // The consent screen is the only place a user is reliably told this decision exists, so it
         // is the only place they will think to look for undoing it. A withdrawal page nothing
-        // links to is a withdrawal page nobody finds.
-        sb.Append("<p style=\"margin-top:24px;font-size:13px\">")
-          .Append("<a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a>")
-          .Append("</p>");
+        // links to is a withdrawal page nobody finds; a link to a page that is not mapped
+        // (Endpoints.ConnectedApplications) finds nothing either.
+        if (surface.ConnectedApplications)
+        {
+            sb.Append("<p style=\"margin-top:24px;font-size:13px\">")
+              .Append("<a href=\"/connect/applications\">").Append(Encode(text["consentManage"])).Append("</a>")
+              .Append("</p>");
+        }
 
         sb.Append("</body></html>");
 
@@ -182,7 +201,17 @@ internal sealed partial class OidcConsentPage : IGetEndpoint<string>
 }
 
 /// <summary>The consent form as posted: the handle, the button pressed, and the ticked scopes.</summary>
-internal sealed record OidcConsentSubmission(string? RequestId, string? Decision, string[] Scopes, bool Remember = false);
+internal sealed record OidcConsentSubmission(string? RequestId, string? Decision, string[] Scopes, bool Remember = false)
+{
+    /// <summary>An agent consent's type choice: <c>all</c> or <c>chosen</c> (MCP PRD §4.6).</summary>
+    public string? TypesMode { get; init; }
+
+    /// <summary>An agent consent's chosen entity types.</summary>
+    public string[] Types { get; init; } = [];
+
+    /// <summary>An agent consent's <c>read</c> or <c>write</c> (read + changes).</summary>
+    public string? Permission { get; init; }
+}
 
 /// <summary>Records the consent decision (<c>POST /connect/consent</c>).</summary>
 /// <remarks>
@@ -194,11 +223,14 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
 {
     public static string Path => "/consent";
 
+    static bool IEndpointBase.IsEnabled(IServiceProvider services) => OidcSurface.Of(services).AuthorizationCode;
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly OidcAudit audit;
     [Inject] private readonly OidcIssuer oidcIssuer;
     [Inject] private readonly ConnectText text;
     [Inject] private readonly Configuration.SparkIdentityProviderOptions options;
+    [Inject] private readonly AgentConsent agentConsent;
 
     /// <summary>Kept from <see cref="BindRequestAsync"/> (D8); the endpoint is created per request.</summary>
     private HttpContext context = null!;
@@ -214,7 +246,12 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
             RequestId: form["request_id"].FirstOrDefault(),
             Decision: form["decision"].FirstOrDefault(),
             Scopes: [.. form["scopes"].Where(s => !string.IsNullOrEmpty(s)).Select(s => s!)],
-            Remember: string.Equals(form["remember"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase));
+            Remember: string.Equals(form["remember"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase))
+        {
+            TypesMode = form["types_mode"].FirstOrDefault(),
+            Types = [.. form["types"].Where(s => !string.IsNullOrEmpty(s)).Select(s => s!)],
+            Permission = form["permission"].FirstOrDefault(),
+        };
     }
 
     public override async Task<IResult> HandleAsync(OidcConsentSubmission submission, CancellationToken ct)
@@ -251,6 +288,14 @@ internal sealed partial class OidcConsentSubmit : IPostEndpoint<OidcConsentSubmi
         var app = await session.LoadAsync<OidcApplication>(request.ApplicationId, ct);
         if (app == null || !app.Enabled)
             return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status400BadRequest, "errorUnknownClient");
+
+        if (AgentConsent.Applies(request))
+        {
+            if (await agentConsent.UsableUserAsync(userId, ct) is not { } user)
+                return ConnectResults.ErrorPage(context, text, options.Branding, StatusCodes.Status403Forbidden, "errorAccountLocked");
+            return await agentConsent.AllowAsync(context, session, text, options, audit, oidcIssuer.Resolve(context.Request), app, request, user,
+                new AgentConsent.Choice(submission.TypesMode, submission.Types, submission.Permission), ct);
+        }
 
         // The checkboxes can only narrow what the request already carries. They are attacker-
         // controlled markup, so a crafted POST must not be able to grant a scope the client was

@@ -292,7 +292,10 @@ services:
       - ./raven-certs/codecoverage.key:/run/secrets/raven/codecoverage.key:ro
       - ./raven-certs/ca.crt:/run/secrets/raven/ca.crt:ro
       # Survives `docker compose down` / image updates. Deleting this volume signs every user
-      # out once and invalidates outstanding antiforgery tokens -- nothing else is lost.
+      # out once and invalidates outstanding antiforgery tokens. ⚠️ It also protects the identity
+      # provider's signing keys (OidcKeys documents, AI-agent sign-in, MCP plan M6): without it the
+      # app refuses to start until those documents are deleted, after which every agent signs in
+      # again. Back it up with the database (docs/code-coverage/hosting.md, "AI agents (MCP)").
       - dataprotection-keys:/var/lib/codecoverage/dataprotection-keys
     labels:
       - "traefik.enable=true"

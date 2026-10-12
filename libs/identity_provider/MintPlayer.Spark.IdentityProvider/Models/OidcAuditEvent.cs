@@ -51,5 +51,15 @@ public static class OidcAuditKinds
     public const string RefreshTokenReuse = "token.refresh.reuse";
     public const string KeyRotated = "key.rotated";
     public const string DynamicRegistration = "registration.dynamic";
+    /// <summary>An agent client was created or refreshed from its Client ID Metadata Document (MCP PRD D5).</summary>
+    public const string MetadataDocumentRegistration = "registration.metadata-document";
+    /// <summary>An unused dynamically registered agent client was deleted (MCP plan M3b).</summary>
+    public const string RegistrationPruned = "registration.pruned";
+    /// <summary>Tokens were issued for the MCP resource (code or refresh grant).</summary>
+    public const string TokenIssued = "token.issued";
+    /// <summary>A client revoked a token at <c>/connect/revoke</c>.</summary>
+    public const string TokenRevoked = "token.revoked";
+    /// <summary>A code redemption failed its PKCE check.</summary>
+    public const string PkceFailed = "token.pkce.failed";
     public const string ResourceChanged = "resource.changed";
 }

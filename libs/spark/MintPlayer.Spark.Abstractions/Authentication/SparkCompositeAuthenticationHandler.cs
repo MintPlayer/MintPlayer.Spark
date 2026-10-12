@@ -15,6 +15,13 @@ public static class SparkAuthenticationDefaults
     /// own — it delegates to each registered credential scheme in turn.
     /// </summary>
     public const string CompositeScheme = "Spark:Composite";
+
+    /// <summary>
+    /// The <see cref="AuthenticationProperties.Items"/> key of a refused agent token's <c>AuthenticateResult</c> that
+    /// names the sign-in provider (its display name) the user must sign in with once to link the account. Set only
+    /// for a token the trusted issuer validly signed whose subject no user linked; never for an invalid token.
+    /// </summary>
+    public const string UnlinkedLoginProviderItem = "spark.agent.unlinked-login-provider";
 }
 
 /// <summary>

@@ -75,10 +75,10 @@ internal sealed partial class QueryReadPath : IQueryReadPath
         // enumerate the entity's attribute names by watching 400-vs-403 -- authorization
         // has to come first, or the parser answers questions on its behalf.
         //
-        // Deliberate deviation from the audit's literal "keep 401 for unauthenticated":
-        // this follows its metadata sibling Queries/Get.cs, which already answers 404 to
-        // anonymous callers for the same id. The grid fetches metadata first, so the
-        // login redirect was never reachable on this path anyway.
+        // Every refusal here is the same NotFound. The HTTP endpoint turns all of them alike into
+        // SparkDenial's answer (MCP PRD D18): 401 for an anonymous caller on a host that can sign
+        // in, 404 otherwise — uniform, so the split on authentication opens no oracle. The live
+        // socket and share links keep their own single "unavailable" answer.
         if (query is null)
         {
             return QueryReadOutcome.NotFound($"Query '{id}' not found");
@@ -190,12 +190,19 @@ internal sealed partial class QueryReadPath : IQueryReadPath
                 columnFilters: columnFilters, cancellationToken: cancellationToken);
             return QueryReadOutcome.Ok(results);
         }
+        catch (MintPlayer.Spark.Queries.SparkQueryParentRequiredException ex)
+        {
+            // A sub-query run on its own (no parent, or another type's): an incomplete request, decided after the
+            // query's authorization above, so the message tells nothing the caller could not already see. It used
+            // to escape as a 500 (found by the MCP parity suite, spike S5: HR's company-people).
+            return QueryReadOutcome.BadRequest(ex.Message);
+        }
         catch (SparkAccessDeniedException)
         {
-            // The same 404 as the gate above, for anonymous callers too. Splitting on
-            // authentication HERE would undo the gate: an anonymous caller would get 404
-            // for an unknown query and 401 for a real one, which is the existence oracle
-            // this endpoint just closed.
+            // The same NotFound as the gate above. Splitting on authentication HERE would undo
+            // the gate: an anonymous caller would get 404 for an unknown query and 401 for a
+            // real one, which is the existence oracle this path closes. The endpoint splits
+            // every NotFound alike instead (D18).
             return QueryReadOutcome.NotFound($"Query '{id}' not found");
         }
     }

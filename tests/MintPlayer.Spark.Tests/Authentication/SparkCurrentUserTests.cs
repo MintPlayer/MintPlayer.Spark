@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions.Authentication;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Services;
 using NSubstitute;
 
@@ -47,6 +48,51 @@ public class SparkCurrentUserTests
 
         user.IsAuthenticated.Should().BeTrue();
         user.Id.Should().BeNull();
+    }
+
+    private sealed class SchemeFeature(SparkCredentialScheme scheme) : ISparkAuthenticatedSchemeFeature
+    {
+        public SparkCredentialScheme Scheme { get; } = scheme;
+    }
+
+    private static HttpContextSparkCurrentUser ForBearer(ClaimsPrincipal principal, SparkCredentialScheme? scheme)
+    {
+        var context = new DefaultHttpContext { User = principal };
+        if (scheme is not null)
+            context.Features.Set<ISparkAuthenticatedSchemeFeature>(new SchemeFeature(scheme));
+        var accessor = Substitute.For<IHttpContextAccessor>();
+        accessor.HttpContext.Returns(context);
+        return new HttpContextSparkCurrentUser(accessor);
+    }
+
+    /// <summary>MCP PRD D4, §4.6 (spike S2): a resource-server principal carries <c>sub</c>, not NameIdentifier.</summary>
+    [Fact]
+    public void A_bearer_principal_of_a_scheme_whose_subject_is_local_is_identified_by_sub()
+    {
+        var user = ForBearer(SignedIn(new Claim("sub", "SparkUsers/7-A")), new SparkCredentialScheme("Mcp", IsAmbient: false, SubjectIsLocalUserId: true));
+
+        user.Id.Should().Be("SparkUsers/7-A", "an agent acting for a user must carry that user's id, or row security fails closed for it");
+    }
+
+    [Fact]
+    public void A_bearer_principal_of_another_issuer_has_no_id()
+    {
+        // Fleet validating SparkId's tokens: their sub names a SparkId user, not a Fleet one.
+        var foreign = ForBearer(SignedIn(new Claim("sub", "SparkUsers/7-A")), new SparkCredentialScheme("Spark:JwtBearer", IsAmbient: false));
+        var unrecorded = ForBearer(SignedIn(new Claim("sub", "SparkUsers/7-A")), scheme: null);
+
+        foreign.Id.Should().BeNull("another issuer's subject is not a local user id");
+        unrecorded.Id.Should().BeNull("without the scheme there is no way to know whose subject it is");
+    }
+
+    [Fact]
+    public void NameIdentifier_wins_over_sub()
+    {
+        var user = ForBearer(
+            SignedIn(new Claim(ClaimTypes.NameIdentifier, "users/1-A"), new Claim("sub", "users/2-A")),
+            new SparkCredentialScheme("Mcp", IsAmbient: false, SubjectIsLocalUserId: true));
+
+        user.Id.Should().Be("users/1-A");
     }
 
     [Fact]

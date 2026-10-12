@@ -14,6 +14,10 @@ internal partial class PermissionService : IPermissionService
     // Scoped and inactive except inside a share-link read (X6). Optional for hand-built instances.
     [Inject] private readonly Sharing.SparkShareGrant? shareGrant;
 
+    // MCP PRD D13: what an agent's grant leaves of the caller's rights for this request. Empty unless the
+    // MCP package registers one, and then it can only narrow. Optional for hand-built instances.
+    [Inject] private readonly IEnumerable<IAgentRequestRestriction>? agentRestrictions;
+
     /// <summary>
     /// One decision per resource per request.
     /// </summary>
@@ -37,25 +41,44 @@ internal partial class PermissionService : IPermissionService
 
     public async Task EnsureAuthorizedAsync(string action, string target, CancellationToken cancellationToken = default)
     {
-        var resource = $"{action}/{target}";
-        if (!await DecideAsync(resource, cancellationToken))
-            throw new SparkAccessDeniedException(resource);
+        if (!await DecideAsync(action, target, cancellationToken))
+            throw new SparkAccessDeniedException($"{action}/{target}");
     }
 
     public Task<bool> IsAllowedAsync(string action, string target, CancellationToken cancellationToken = default)
-        => DecideAsync($"{action}/{target}", cancellationToken);
+        => DecideAsync(action, target, cancellationToken);
 
-    private async Task<bool> DecideAsync(string resource, CancellationToken cancellationToken)
+    private async Task<bool> DecideAsync(string action, string target, CancellationToken cancellationToken)
     {
+        var resource = $"{action}/{target}";
+
         // A share-link read (X6) has exactly the rights of its link and no others, whatever security.json says.
         if (shareGrant is { IsActive: true })
-            return shareGrant.Allows(resource);
+            return shareGrant.Allows(resource) && await AgentAllowsAsync(action, target, cancellationToken);
 
         if (decisions.TryGetValue(resource, out var cached))
             return cached;
 
-        var allowed = await accessControl.IsAllowedAsync(resource, cancellationToken);
+        var allowed = await accessControl.IsAllowedAsync(resource, cancellationToken)
+            && await AgentAllowsAsync(action, target, cancellationToken);
         decisions[resource] = allowed;
         return allowed;
+    }
+
+    /// <summary>
+    /// Every registered agent restriction allows the resource (D13). Asked only after the caller's own
+    /// rights allowed it — the <c>&amp;&amp;</c> above — so a restriction can narrow and never widen.
+    /// </summary>
+    private async ValueTask<bool> AgentAllowsAsync(string action, string target, CancellationToken cancellationToken)
+    {
+        if (agentRestrictions is null)
+            return true;
+
+        foreach (var restriction in agentRestrictions)
+        {
+            if (!await restriction.AllowsAsync(action, target, cancellationToken))
+                return false;
+        }
+        return true;
     }
 }
