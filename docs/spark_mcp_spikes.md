@@ -417,9 +417,10 @@ and database growth under 25 %; otherwise selectors only.
 (`SeoTester:Browser:Mode` Launch), PageSpeed Insights off (no key), and the test driver's embedded RavenDB (a local
 throwaway database: no production data). Each site was an unverified site of a test organization with the default limits
 (100 pages, one connection, a request a second, 10 minutes) and was started with `StartAudit`, as the button does. The
-evidence was commit 801ea1ca's: up to five selectors (200 characters each) and an excerpt (the first element's outer
-HTML, or a document element's start tag, whitespace collapsed, at most 300 characters) on every failing or warning
-finding about elements, from the page checks and from axe's node targets. Every stored `PageResult` was then measured as
+evidence was commit 801ea1ca's (c0aeacdd after the rebase): up to five selectors (200 characters each) and an excerpt
+(the first element's outer HTML, or a document element's start tag, whitespace collapsed, at most 300 characters) on
+every failing or warning finding about elements, from the page checks and from axe's node targets. Every stored
+`PageResult` was then measured as
 JSON (UTF-8 bytes) three ways: as stored, without excerpts, and without any evidence; RavenDB's detailed collection
 statistics gave the database total. The harness was a temporary xUnit test, not committed (throwaway spike code).
 
@@ -441,7 +442,8 @@ has no links to follow); mintplayer.com dominates the sample.
   the measure to judge by: that database is mostly fixed overhead (RavenDB's minimum allocation per collection), while in
   production the page results are the bulk (up to 2,000 pages per verified scan, kept 7 days), so the growth lands there.
 
-**Verdict: selectors only** (applied in commit 56842722: no excerpt is computed, stored or answered).
+**Verdict: selectors only** (applied in commit 203d52f9, 56842722 before the rebase onto `feat/spark-mcp`: no excerpt is
+computed, stored or answered).
 
 **A second reason, found while measuring.** SeoTester's owner-requested guarantee "Nothing crawled is stored"
 (`docs/seo_analyzer_PRD.md` §12, "Untrusted content: proof tests") failed with excerpts: `CrawledContentTests` found its
@@ -449,6 +451,9 @@ body marker in the axe excerpt of an `accessibility.landmarks` finding (`<p>Body
 only.</p>`). With selectors only it is green again (`p:nth-child(1)`, `h1`, `a[href$="about"]` for that finding).
 Selectors name tags, positions and ids, and axe's include attribute fragments such as `href$=`; never text. Whether ids
 and those fragments count as "facts about a page, never the page" is the owner's call (PRD decision log, M5).
+**Owner decision 2026-10-12: selectors are accepted.** The rule now reads "no crawled text or markup is stored; element
+selectors are kept with the latest page result", and `CrawledContentTests` proves both halves (PRD decision log, "M5
+follow-ups").
 
 ---
 

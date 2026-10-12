@@ -133,7 +133,7 @@ Additions beyond the issue: broken links, redirect chains, duplicate titles and 
 | F3 | **Ownership verification per org**: DNS TXT `_seotester.<host>`, meta tag, or `/.well-known/` file; re-checked periodically. Verifying a site another org already holds mails that org's owner an acceptance link | D18 |
 | F4 | **Audit run**: background crawl, live progress, cancel; **join a running audit** if a member of the owning org | D4, D17, D18 |
 | F5 | **Report**: headline + category scores, issues grouped per check (affected count, sample URLs), prioritised fix list (weight × pages × gap + effort tag), summary + how-to-fix toggle (a user preference remembers the default) | D15, D16 |
-| F6 | **Page drill-down**: per-page findings for 7 days, then "page details expired" | D8 |
+| F6 | **Page drill-down**: per-page findings for 7 days, then "page details expired"; one result per page and site, the latest (a later scan's fetch replaces it, D8) | D8 |
 | F7 | **Previewers**: SERP (desktop/mobile pixel widths), OG card, X card | — |
 | F8 | **History**: score trend (marks `ScoringVersion` changes), "new / fixed since last run" | D9, D32 |
 | F9 | **Monitoring** (verified, setting-gated): off/weekly/monthly per site | D11, D12 |
@@ -195,7 +195,7 @@ Org-owned documents carry `OrganizationId`. Row security for every SeoTester typ
 | `Organization`, `OrganizationMembership`, `OrganizationInvitation` (X11) | permanent; invitations `@expires` 14 d (`expiresAfter`) | tiny | the personal org is created on first sign-in; a membership's id is `OrganizationMemberships/{userId}/{orgId}` (read by prefix, S13) |
 | `Site` | permanent until deleted | < 2 KB | org, origin, profile, verification (method, token, verifiedAt, lastCheckedAt), schedule, alert thresholds, `LatestRunId/Score/Grade`, share-token hash |
 | `AuditRun` | **permanent** (D8) | 5–20 KB | site + org, participants (who started or joined), status/phase/progress, `CancelRequested`, limits used, **weights snapshot + `ScoringVersion`**, category scores, overall + grade, `CheckResults` [ValueObject] list (checkId, status, affected count, ≤ 5 sample URLs, delta New/Fixed/Unchanged), timing, error |
-| `PageResult` | **`@expires` 7 d** (D8) | ~1–3 KB | run, URL, status, depth, timings, title/description/h1 snapshot (previewers), findings `(checkId, status, params)`. Shown as a sub-query of `AuditRun`, not AsDetail |
+| `PageResult` | **`@expires` 7 d** (D8); one per page and site, the latest fetch's | ~1–3 KB | run, URL, status, depth, timings, title/description/h1 snapshot (previewers), findings `(checkId, status, params)`. Shown as a sub-query of `AuditRun`, not AsDetail |
 | `CrawlFrontier` | `@expires` 2 d, deleted on completion | grows with the crawl | pending URLs + visited-set hashes, the checkpoint for page batches |
 | `LookupCache` (RDAP, hstspreload, robots, PSI) | `@expires` 1–7 d | small | natural ids (`rdap/example.com`) |
 | `TargetCooldown` | `@expires` = cool-down | tiny | per-target throttle across **all** users for unverified targets (D17) |
@@ -566,6 +566,12 @@ Round 9 (live-update details and loose ends) was answered on 2026-10-10: D33–D
 - **D8 (G4): retention.**
   - **Run summaries are kept forever.**
   - **Per-page results expire after 7 days** (`@expires`), superseding ~~30 d~~ in §4.2.
+  - **One result per page and site, the latest** (owner decision 2026-10-12, MCP plan M5 follow-ups): a scan's fetch of a
+    page replaces the result an earlier scan stored (id `{siteId}/pages/{hash}`), and the 7 days count from that fetch.
+    A run's page list holds the pages whose latest result is still its own; what each run measured (scores, per-check
+    totals and samples, the delta) stays on the run. *Evidence:* `CrawlPipelineTests.A_new_scan_replaces_each_pages_result_and_counts_only_the_pages_it_fetched`
+    (red on per-run ids: 0 pages under the site), `RunPagesTests`. No migration (owner, 2026-10-12: no important data
+    in production); per-run results written before it expire within 7 days.
   - Seven days is above the 36 h Community floor. Once pages expire, the report still shows the per-check aggregates and the ≤ 5 sample URLs stored on the summary; the page drill-down says "page details expired".
   
   *Evidence: owner preference.*
@@ -1425,7 +1431,7 @@ Library holds what is pure: `Catalogue/checks.json` and its parser, the scoring 
 |---|---|---|
 | `Site` | `IOrganizationOwned`: Viewer reads; Member edits the profile and starts audits; Admin adds, deletes, verifies, shares (D23, D31) | `live`; origin normalized and unique per organization, fixed after creation; personal organization when the form leaves it empty (D21); server-owned verification and latest-run fields (`SiteSaveInterceptor`) |
 | `AuditRun` | `IOrganizationOwned`, read + share only (never a form) | `live`; status, progress, participants, limits fixed at start, `ScoringSnapshot` + `ScoringVersion`, `CategoryScores` and `CheckResults` value objects; sub-query `site-runs` of `Site` |
-| `PageResult` | `IOrganizationOwned`, read only | `expiresAfter` 7 d (D8), id `{runId}/pages/{hash}`, findings value objects; sub-query `run-pages` of `AuditRun` |
+| `PageResult` | `IOrganizationOwned`, read only | `expiresAfter` 7 d (D8), ~~id `{runId}/pages/{hash}`~~ id `{siteId}/pages/{hash}` (one per page and site, the latest; D8), findings value objects; sub-query `run-pages` of `AuditRun` (the pages whose latest result is the run's) |
 | `CheckDefinition` | everyone signed in reads (`ISparkOwnsRowSecurity`, stated rationale); Administrators edit, create, reset | id `CheckDefinitions/{checkId}`; `SeededHash` (not a model attribute) |
 | `AuditLogEntry` | Administrators | `ExpiresAtUtc` = now + `SeoTester:AuditLog:Retention` (1 y, D37) |
 | `TargetCooldown` | not a persistent object | `TargetCooldowns/{host}`, `IExpiring` = the cool-down |
@@ -1536,8 +1542,10 @@ render, PSI and PDF stay M10's.
   the full-crawl ceiling for full crawls), an empty frontier, a cancel, or > 50 % errors after ≥ 10 pages; a verified
   run then checks ≤ 50 external links (one `HEAD` per host, `GET` on 405/501) and adds `crawl` to `StagesDone` and
   enqueues the aggregate (M10's render and PSI stages will each enqueue it when they finish last).
-- **Aggregate** (`AggregateRecipient`): pages are read by id prefix (`{runId}/pages/`, `StreamAsync`: no index, never
-  stale); `RunTally` gives one vote per (check, URL), the worst status winning when a page check and the crawl's look at
+- **Aggregate** (`AggregateRecipient`): pages are read by id prefix (~~`{runId}/pages/`~~ the site's `{siteId}/pages/`,
+  kept to the URLs the run stored, `CrawlFrontier.Stored`: D8's one result per page; `StreamAsync`: no index, never
+  stale), so a page an earlier scan left is not counted and one a concurrent scan of the site fetched again still is; the
+  render and PageSpeed findings come from the frontier too (`SampledFindings`), which a concurrent fetch cannot replace; `RunTally` gives one vote per (check, URL), the worst status winning when a page check and the crawl's look at
   the same URL disagree; `CrawlChecks` adds the site-level S checks over all pages; `ScoreCalculator.Score` with the
   run's own snapshot (D32); `Delta` New/Fixed/Unchanged against the site's previous completed run; one commit finishes
   the run (patches), updates `Site.Latest*` and deletes the frontier; then `ISparkNotifier` tells the participants
@@ -2440,11 +2448,16 @@ The server, its data, logs and every certificate were deleted afterwards; no key
     { acceptDownloads: true } …"): no bytes are written, so the test asserts no completed download and no file rather
     than no event. *Red:* `AcceptDownloads = true`: six files in `playwright-artifacts-*` (one a `.crdownload`), the
     downloads "completed".
-  - **Nothing crawled is stored.** `CrawledContentTests.No_body_content_of_a_crawled_and_rendered_page_is_stored`: a full
-    audit (crawl, render, PageSpeed) of a site whose marker sits only in the body (text, a comment, an attribute, a
-    script, script-written text); a smuggler export of the whole database (documents, revisions, attachments, counters,
+  - ~~**Nothing crawled is stored.**~~ **No crawled text or markup is stored; element selectors are kept with the latest
+    page result** (owner decision 2026-10-12, after MCP spike S7: selectors are accepted).
+    `CrawledContentTests.No_text_or_markup_of_a_crawled_and_rendered_page_is_stored_only_selectors`: a full audit (crawl,
+    render, PageSpeed) of a site whose marker sits only in the body (text, a comment, an attribute, a script,
+    script-written text); a smuggler export of the whole database (documents, revisions, attachments, counters,
     compare-exchange, expired and artificial included, gzip) holds the marker nowhere, while it holds the run and the
-    page's title (controls). *Red:* `PageResult.Fingerprint` set to the body text: the marker found in the export.
+    page's title (controls). A second marker is the id of a heading that `seo.single-h1` flags: it is stored as the
+    selector `#…` (the control for the allowance), and with every stored selector string taken out of the export it is
+    found nowhere. *Red:* `PageResult.Fingerprint` set to the body text: the marker found in the export (M9); an HTML
+    excerpt beside the selectors (spike S7): the body marker found in it.
     `FetcherFilesystemTests.The_fetcher_service_works_with_no_writable_folder_and_leaves_no_file` runs the real
     `SeoTester.Fetcher` process with its working directory, content root, `TMP`/`TEMP`/`TMPDIR`, `ASPNETCORE_TEMP`,
     home and app-data folders all pointed at one folder it may not write to (a deny-write ACL for the user on Windows,

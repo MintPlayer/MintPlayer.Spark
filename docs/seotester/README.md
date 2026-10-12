@@ -62,7 +62,7 @@ model JSON in `App_Data/Model`.
 |---|---|---|
 | Landing | `/` → `/home` | what is checked and how; signed in: my sites and the (live) audits |
 | Site | `/po/site/{id}` | latest score (gauge), settings, ownership: verified state or the three proofs with copy buttons; the audits; the score trend (scoring changes marked) |
-| Audit | `/po/audit-run/{id}` | *Report*: live progress while it runs, then the score, category bars and every check (issues first; New/Fixed/Unchanged; why not measured; sample pages; how to fix with nginx/Apache/IIS/HTML snippets); the pages (7 days, then a note). *Details*: what the run was allowed |
+| Audit | `/po/audit-run/{id}` | *Report*: live progress while it runs, then the score, category bars and every check (issues first; New/Fixed/Unchanged; why not measured; sample pages; how to fix with nginx/Apache/IIS/HTML snippets); the pages whose latest result is this audit's (one result per page, 7 days, then a note). *Details*: what the run was allowed |
 | Page | `/po/page-result/{id}` | Google desktop/phone previews, the shared-link card from the page's Open Graph tags (its image through `/seotester/og-image`, never loaded from the site by the browser, D51), the page's findings |
 | Shared report | `/shared/{Type}/{token}?id=…` | anonymous, read-only (a site or an audit) |
 | Operator dashboard | `/po/operator-dashboard/main` | Administrators: usage, refusals, database size per collection, every site, the abuse log; live, refreshed every 15 s |
@@ -200,7 +200,8 @@ Probes for exposed files (`/.git/HEAD`, `/.env`, …) and folder listings run on
 client (`Spark:SafeHttp`: public addresses only, ports 80/443, each redirect re-checked, 10 MiB / 50 MiB caps, 30 s), made
 in Production by the fetcher container (PRD D54, below).
 Progress (`Phase`, `PagesDone`, `PagesDiscovered`, `CurrentUrl`) is written at most every 2 s and reaches open pages
-live. Page details (`PageResult`) expire after 7 days, the frontier after 2.
+live. Page details (`PageResult`) are one per page and site, the latest (`{siteId}/pages/{hash}`): a new audit's fetch of a
+page replaces the earlier result, and each expires 7 days after the fetch that wrote it; the frontier expires after 2.
 
 | Configuration (`SeoTester:Crawl:*`) | Default | |
 |---|---|---|

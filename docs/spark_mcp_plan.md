@@ -171,6 +171,10 @@ As built, with the deviations, in the PRD decision log ("M5 implementation"); S7
 - S6: fixture site `apps/SeoTester/tools/s6-injection-site/`, server-side dry run, runbook. **Live run: owner.**
 - Tests: `SeoToolsTests` (12), `McpToolReachTests` (5), evidence cases in `PageChecksTests`, quota key in
   `SparkQuotaTests`; mutation runs recorded in the decision log.
+- Follow-ups (2026-10-12, decision log "M5 follow-ups"): rebased onto `feat/spark-mcp` with one prompt API (M6's,
+  prefixed); owner decisions applied: selectors accepted (rule reworded, `CrawledContentTests` allows only selectors),
+  one `PageResult` per page and site, the latest (`{siteId}/pages/{hash}`, no migration), SeoTester runs the rate
+  limiter (`RateLimitTests`), the reach attributes documented in the guide.
 
 ### M6 — CodeCoverage — done (2026-10-12), except the live run (M7/M9)
 As built, with the deviations, in the PRD decision log ("M6 implementation").

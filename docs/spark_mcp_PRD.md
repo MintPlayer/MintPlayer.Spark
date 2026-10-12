@@ -229,7 +229,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 | `seotester_run_summary(site, run?)` | Category scores and every check: rule, severity, status, affected count, delta New/Fixed/Unchanged. |
 | `seotester_list_findings(site, run?, minSeverity?, category?, checkId?, urlPrefix?, skip, take)` | Per-page findings rendered from the catalogue + `Detail`, grouped by rule, with page URL and element evidence. |
 | `seotester_explain_check(checkId)` | Title, summary, how-to-fix, nginx/Apache/IIS/HTML snippets, docs URL. Anonymous, which needs a new `QueryRead/CheckDefinition` grant for the anonymous group: today only signed-in users have it [verified `apps/SeoTester/SeoTester/App_Data/security.json:39`]; the catalogue is already public through `GET /seotester/catalogue` [verified `Catalogue/CatalogueEndpoint.cs:20`]. |
-| `seotester_get_page(site, url)` | One page's facts and findings. |
+| `seotester_get_page(site, url)` | One page's facts and findings: its latest result, and the scan that checked it (one result per page and site, decision log "M5 follow-ups"). |
 | `seotester_start_scan(site)` (Write) | Starts a re-scan; same organization role and quota as the button. |
 | `seotester_scan_status(run)` | Phase and progress. |
 
@@ -240,7 +240,9 @@ Gaps closed in this PR:
    `SeoTester.Library/Rendering/RenderFacts.cs:46`]. Size → S7. *M5: selectors only* — S7 measured +40.7 % page-result
    growth with excerpts (limit 25 %), +20.4 % with selectors only; an excerpt also stored body text, which SeoTester never
    keeps (decision log "M5 implementation").
-2. **Expired page results** (7 days): the tools say so and suggest a re-scan; never an empty "clean" list.
+2. **Expired page results** (7 days): the tools say so and suggest a re-scan; never an empty "clean" list. *M5
+   follow-ups:* the same for pages a later scan checked again (a site keeps one result per page, the latest): the tools
+   name that scan.
 3. **Untrusted text**: crawled titles, descriptions, H1s, URLs and excerpts are always fenced (D10); they
    are already cut to 200 characters [verified `CheckFinding.cs:15,48-58`].
 
@@ -845,9 +847,9 @@ None. Q18 was resolved in round 3 (§10, D22).
     back to the implied endpoint → `The_resource_names_the_endpoint_…`; the own `/mcp` audience check off →
     `A_token_for_the_other_endpoint_is_refused_by_the_providers_own_mcp` (200, the shared OAuth grant makes it reachable);
     the binding reset off → `A_canonical_url_from_configuration_…`; the component's `disconnected` Edit off → the spec case.
-- **M5 implementation (2026-10-12).** SeoTester adopts the MCP server (§4.7, D24): commits 21b01a8c (Mcp), 6ce592b8
-  (Organizations, Settings), 801ea1ca (SeoTester), 56842722 (S7 outcome). Decisions taken while building, with their
-  evidence:
+- **M5 implementation (2026-10-12).** SeoTester adopts the MCP server (§4.7, D24): commits 2e59bb87 (Mcp), 7de5705f
+  (Organizations, Settings), c0aeacdd (SeoTester), 203d52f9 (S7 outcome); 21b01a8c, 6ce592b8, 801ea1ca and 56842722 before
+  the rebase onto `feat/spark-mcp` ("M5 follow-ups"). Decisions taken while building, with their evidence:
   - **An application tool declares what it reaches beyond the type layer.** As built in M2 the restriction refused both
     things §4.7 and D24 ask for: `PageResult` is `None` yet "reached through the tools", and `seotester_start_scan` runs
     `StartAudit` on `Site`, whose type is `Read` (a custom action needs `Write` at the type). New, on the tool method, for
@@ -863,16 +865,18 @@ None. Q18 was resolved in round 3 (§10, D22).
     Executed/Refused/Invalid/Disabled/Throttled. `seotester_start_scan` is `StartAudit` through it, so quota, cool-down,
     joining and the Member role are `AuditStarter`'s, never a second path (test: the quota refusal is logged by the same
     `AuditStarter`). M4's `apply_changes` may want to share the mapping.
-  - **An agent's bearer `sub` is the user in two more packages.** `OrganizationRowPolicy` and `ISparkQuotas.KeyFor` read
-    only the cookie's `NameIdentifier`: an agent got no row of its own organizations (fails closed) and a quota keyed by
-    address. Both fall back to `ISparkCurrentUser.Id` (D4). SeoTester's `StartAudit`, `StartFullCrawl`, `VerifySite` take
+  - **An agent's bearer `sub` is the user in two more packages.** *Superseded at the rebase ("M5 follow-ups"): every
+    agent principal now carries `NameIdentifier`, so the fallback was dropped; the tests stay.* `OrganizationRowPolicy`
+    and `ISparkQuotas.KeyFor` read only the cookie's `NameIdentifier`: an agent got no row of its own organizations (fails
+    closed) and a quota keyed by address. ~~Both fall back to `ISparkCurrentUser.Id` (D4).~~ SeoTester's `StartAudit`, `StartFullCrawl`, `VerifySite` take
     the user from `ISparkCurrentUser` too. Evidence: fallback off → 8 `SeoToolsTests` red ("Not found." for the user's own
     site); `KeyFor` red with `ip:unknown`.
   - **Element evidence: selectors only (S7).** p99 8.9 KB passes; page-result growth +40.7 % with excerpts fails the 25 %
     bound, +20.4 % with selectors only passes ([spark_mcp_spikes.md](spark_mcp_spikes.md) S7). The excerpt also broke
     SeoTester's owner-requested "Nothing crawled is stored" (`docs/seo_analyzer_PRD.md` §12): `CrawledContentTests` found
     its body marker in an axe excerpt; green with selectors only. Selectors carry ids and, from axe, attribute fragments
-    (`a[href$="about"]`), never text. **Owner to confirm** that ids in selectors are "facts about a page".
+    (`a[href$="about"]`), never text. ~~**Owner to confirm** that ids in selectors are "facts about a page".~~
+    **Confirmed by the owner (2026-10-12):** selectors are accepted ("M5 follow-ups").
   - **`seotester_explain_check` says an unknown rule plainly** instead of D17's uniform 401: the catalogue is public
     (`GET /seotester/catalogue`), so there is nothing to hide and signing in would not help. Sites, scans and pages follow
     D17 exactly (one uniform 401 for anonymous, existing or not; "Not found." for another organization's).
@@ -887,15 +891,17 @@ None. Q18 was resolved in round 3 (§10, D22).
     only the agents' authorization server. Its routes are still mapped (42 new routes in the snapshot, including
     `/spark/identity-provider/*` and `/connect/register` with an initial access token), now without any right behind them.
     **Owner decision:** whether `ForMcp()` should map only the agent endpoints.
-  - **Prompts:** `mcp.AddPrompts<T>()`, unprefixed (clients namespace prompts per server); SeoTester's
-    `fix_seo_findings`. A `List<Type>` bound to the SDK's `WithPrompts<T>(T target)` overload and registered nothing
+  - **Prompts:** `mcp.AddPrompts<T>()`, ~~unprefixed (clients namespace prompts per server); SeoTester's
+    `fix_seo_findings`~~ (*superseded at the rebase: one prompt API, M6's, prefixed: `seotester_fix_seo_findings`*). A `List<Type>` bound to the SDK's `WithPrompts<T>(T target)` overload and registered nothing
     (`prompts/list` "not available"): passed as `IEnumerable<Type>`.
   - **SeoTester's SPA mounts `withConnectedAgents()`**: without it a user could not create a personal access token or
     revoke an agent there.
   - **S6 prepared, not run:** fixture site `apps/SeoTester/tools/s6-injection-site/`, a server-side dry run (every
     injected instruction stayed inside the fence) and the runbook in [spark_mcp_spikes.md](spark_mcp_spikes.md).
-  - **For M6:** if CodeCoverage's per-file coverage documents are model types, its tools need `[McpReadsThrough]` too.
-    **For the PR:** the per-project version gate needs bumps for Organizations and Settings (and Mcp, Spark if not yet).
+  - **For M6:** if CodeCoverage's per-file coverage documents are model types, its tools need `[McpReadsThrough]` too
+    (*answered in "M5 follow-ups": not needed*).
+    **For the PR:** the per-project version gate needs bumps for ~~Organizations and Settings (and~~ Mcp, Spark if not yet
+    (*Organizations and Settings are unchanged since the rebase*).
 - **M6 merged into `feat/spark-mcp` (2026-10-12).** Rebased onto the demo-app commits, then fast-forwarded. One conflict
   in code: both sides had fixed the `Spark:Mcp` binding bug; the demo-app side's `SparkMcpOptions.Create` stays (it also
   un-pins `ToolPrefix`), M6's own line in `AddMcp` went, both sides' tests stay ("M6 implementation" amended). The guide's
@@ -1003,3 +1009,86 @@ None. Q18 was resolved in round 3 (§10, D22).
     `UserManager` (the document workaround removed): red, the administrator's cookie saw one car. Mutation (the
     read-side mapping removed): the document case red (`"out"`), the store case red. Green: the `Authorization.Identity`
     namespace and `McpAgentPrincipalTests` 141/141, Fleet's `McpEmbeddedServerTests` 3/3; the solution builds, 0 errors.
+- **M5 follow-ups (2026-10-12).** M5 rebased onto `feat/spark-mcp` (402e1934: M4 writes, the demo apps, M6, agent role parity) and the
+  owner's decisions of 2026-10-12 on it. Commits e2020f3b (reconciliation), 2028b83e (pages, selectors),
+  fdcfdcf9 (rate limiting) and this documentation. Decisions, with their evidence:
+  - **One prompt API, M6's.** M5 and M6 each added `mcp.AddPrompts<T>()`: M5's unprefixed through the SDK's
+    `WithPrompts`, M6's prefixed like the tools through `McpPromptRegistration`, with a duplicate name refused at startup.
+    M6's is kept: D21's prefix keeps two Spark servers in one session apart, which holds for everything a server lists,
+    not only its tools. SeoTester's prompt is now `seotester_fix_seo_findings` (Claude Code:
+    `/mcp__seotester__seotester_fix_seo_findings`); M5's workaround for the SDK's `List<Type>` overload went with
+    `WithPrompts`. Evidence: `SeoToolsTests.The_fix_prompt_is_offered_…` lists and gets it by the prefixed name;
+    CodeCoverage's prompt test is unchanged.
+  - **`SparkMcpResult`**: M4's `Serialize`, M6's public `Invalid` and `Track`, and M5's `Json(note, value)` are all kept.
+    The two `Json` overloads share one `FencedJson` (serialize, cut at 40k characters, fence) instead of two copies.
+  - **Agent identity in Organizations and Settings: the fallback is dropped, the tests stay.** M5 made
+    `OrganizationRowPolicy` and `ISparkQuotas.KeyFor` fall back to `ISparkCurrentUser.Id`, because agent principals
+    carried the user only as `sub`. The demo-app work then put `NameIdentifier` on every agent principal (8a43aea2
+    embedded server, cb543b7b personal tokens and external server; `McpAgentPrincipalTests`), which both packages read. The
+    fallback became dead code, and both files are back to `feat/spark-mcp`'s.
+    `SparkQuotaTests.An_agents_bearer_caller_spends_its_users_quota_not_one_per_address` now sends a real personal access
+    token through `/mcp` instead of a hand-made `sub`-only principal, which no setup produces any more. Mutation: with
+    `NameIdentifier` off the token's principal it is red (`key=ip:unknown`). `SeoToolsTests.An_agent_sees_its_users_sites_…`
+    passes without the fallback.
+  - **CodeCoverage's tools do not use `[McpReadsThrough]`.** The attribute changes what `IPermissionService` answers for a
+    type while the tool runs. CodeCoverage's tools ask it only about `Repository` and `Commit` (both `Read` for agents) and
+    read file coverage and builds through `ICoverageInsights`, below `IRepositoryScope`'s gate. `FileCoverage` is not a
+    model type; `Build` is, but no check asks about it. Declaring the attribute would change nothing, so the tools stay as
+    M6 built them. The guide now says when the attributes apply.
+  - **(a) Selectors are accepted (owner).** SeoTester's rule now reads "no crawled text or markup is stored; element
+    selectors are kept with the latest page result" (`docs/seo_analyzer_PRD.md` §12, `docs/seotester/mcp.md`,
+    `ElementEvidence`). `CrawledContentTests.No_text_or_markup_of_a_crawled_and_rendered_page_is_stored_only_selectors` still
+    keeps the body marker (text, comment, attribute, script, script-written text) out of the whole export. A second
+    marker is the id of a heading that `seo.single-h1` flags. It must be stored as the selector `#…` (the control), and
+    with every stored selector string taken out of the export it must appear nowhere. Mutation: the first heading's outer HTML stored as the page's `H1` turned it red, the marker found in
+    `"H1":"<h1 id=…` outside any selector.
+  - **(b) One result per page and site, the latest (owner).** `PageResult` ids are `{siteId}/pages/{hash}`.
+    `PageResult.OwnerOf` uses the site, never the origin: one origin can be a site of several organizations, and the page
+    is read under its site's organization. A scan's fetch replaces the earlier scan's result, the 7-day expiry counts from
+    that fetch, and `RunId` names the scan that wrote it. What read per-run page results (inventory of 2026-10-12), and how
+    each is kept:
+    - *Aggregate (scores, per-check totals, samples) and the render and PageSpeed samples* read the pages the run stored
+      (`CrawlFrontier.Stored`, by the site's prefix), never one an earlier scan left. Two scans of one site can run at once
+      (a full crawl during an audit of a verified site, or two starts that race; `AuditStarter`) and write the same
+      documents. A page the run stored therefore counts for it whoever wrote it last. The run's render and PageSpeed
+      findings are scored from the frontier (`SampledFindings`); on the page they replace the same check's finding instead
+      of adding a second one (a constant patch script, the values as arguments: Raven's typed patch could not translate
+      the list of checks). Evidence: `CrawlPipelineTests.A_new_scan_replaces_each_pages_result_and_counts_only_the_pages_it_fetched`
+      was red on per-run ids (0 pages under the site). Mutation "every page of the site": the second scan scored
+      `seo.duplicate-titles` Fail from the first scan's `/b`. `RunPagesTests` (2), mutations: selecting by `RunId` only
+      lost the page a concurrent scan fetched again; appending findings left two `accessibility.color-contrast` on the page.
+    - *New/Fixed/Unchanged, alerts, the trend, the PDF report, share links, `run_summary` and `scan_status`* use AuditRun
+      fields only (the delta compares `CheckResults`, computed at scan time) and are unaffected. There is no CSV export or
+      side-by-side comparison.
+    - *The run page's page list* (`RunPages`, `RunId == run`) now holds the pages whose latest result is the run's. The
+      page says so (`seoUi.pagesLatestOnly`) until the 7-day note replaces it; the later scan's run lists the pages it
+      checked again.
+    - *MCP:* `seotester_get_page` answers the page's one result with `page.scan`, and names the scan that wrote it when it
+      is another. `seotester_list_findings` lists the run's pages and says how many a later scan checked again and which
+      scan. With none left it answers the run's totals, never an empty list that reads as clean (§4.7 gap 2). Evidence:
+      `SeoToolsTests.A_page_a_later_scan_checked_again_…` and `A_scan_whose_pages_a_later_scan_checked_again_…` were both
+      red before ("This scan has no page with that URL", and the clean "None of the pages read has a matching finding").
+    - *og:image proxy* (by page id) is unaffected.
+
+    **No migration** (owner, 2026-10-12: only the owner used production in the past 3 days, and no important data is
+    stored there). There is no compatibility code: per-run results written before the change are ignored and expire
+    within 7 days.
+  - **(c) Rate limiting.** SeoTester calls `spark.AddRateLimiter()`: 150 requests per 10 s per address on `/spark` and
+    `/connect`, at the BeforeAuthentication stage, with no second `UseRateLimiter`. The identity provider's endpoint
+    budgets now act. `RateLimitTests` (own host, provider budget 3): the 4th empty `POST /connect/register` answers 429;
+    without the call it answered 400 (red). An empty registration is refused for its redirect URIs before the provider's
+    always-on registration budget is spent, so only the policy can answer 429. The shared test hosts raise both budgets,
+    because every test request is one partition (the E2E host does the same). In production the partition is the
+    client's address: Spark core reads it from Traefik's `X-Forwarded-For`.
+  - **(d)** `docs/guide-mcp.md`, "Reach past the type layer: `[McpReadsThrough]` and `[McpRunsAction]`" (under "Write your
+    own tools"). **(e)** This entry; `docs/seotester/mcp.md` (latest result per page, selectors, the prompt's name),
+    `README.md`, `deploy.md` §4.4 (rate limiting).
+  - **Tests** (on 402e1934): Spark.Tests 223/223 (220/220 on a0c25c6d; the `Mcp` namespace, `Organizations`, `SparkQuotaTests`, the route snapshot,
+    `SparkCredentialInventoryTests`); CodeCoverage.Tests 34/34 (`Mcp`, the route snapshot, `RegistrationInventoryTests`);
+    SeoTester.Tests 96/96 (`Mcp`, `Crawler`, the route snapshot, `CompositionTests`, `RateLimitTests`,
+    `CrawledContentTests`, `RenderPipelineTests`, `PageChecksTests`, `RenderAndPsiChecksTests`). The first SeoTester run
+    was 95/96: the new pipeline test's verified site linked the fixed `external.example.org`, so the verified-site test,
+    which shares the collection's fake web, counted two HEAD checks. `BuildSite` now takes the external host and the new
+    test owns one. After the mutation runs (sources restored): `SparkQuotaTests` and `McpAgentPrincipalTests` 10/10, the
+    SeoTester set 96/96 again. The SeoTester client's templates type-check (`ngc -p ClientApp/tsconfig.app.json --noEmit`,
+    `rootDir` widened to the repository, exit 0). Not run: the SPA spec and the full suites.

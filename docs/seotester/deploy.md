@@ -369,6 +369,13 @@ switched off in `security.json` (`"libraries": { "identity-provider": false }`),
 clients; agents register themselves (client metadata documents, or loopback-only dynamic registration, 20 an hour per
 address).
 
+**Rate limiting** (owner decision 2026-10-12): the app runs ASP.NET's rate limiter (`spark.AddRateLimiter()` in
+`Program.cs`), so the identity provider's own budgets apply: 120 requests a minute per address on its machine endpoints
+(token, PAR, device authorization, revocation, userinfo and client registration; `Spark:IdentityProvider:RateLimits`), on
+top of Spark's 150 per 10 s per address on `/spark` and `/connect` (`Spark:RateLimiter`). Over a budget the answer is
+429. The address is the client's: Spark core takes it from Traefik's `X-Forwarded-For` (`Spark:ForwardedHeaders`).
+Nothing to configure; `/mcp` keeps its own per-user and per-address quota (`Spark:Mcp:Quota`).
+
 After the deploy:
 
 ```bash

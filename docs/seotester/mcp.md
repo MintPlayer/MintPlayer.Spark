@@ -26,8 +26,8 @@ applications** lists every agent you connected: change what it may see or do, or
 |---|---|
 | `seotester_list_sites` | Your organizations' sites: address, whether ownership is verified, latest score and grade, last scan. |
 | `seotester_run_summary` | One scan (the latest finished one unless the agent names another): category scores and every rule with its severity, status, affected pages, up to five sample URLs and New/Fixed/Unchanged since the previous scan. |
-| `seotester_list_findings` | The failing and warning rules page by page, grouped by rule, with what is wrong and the affected elements as CSS selectors. Filters: minimum severity, category, rule, URL prefix. It reads up to 200 pages a call and says where to continue. |
-| `seotester_get_page` | One page: status code, load time, title, description, H1, Open Graph tags and its findings. |
+| `seotester_list_findings` | The failing and warning rules page by page, grouped by rule, with what is wrong and the affected elements as CSS selectors. Filters: minimum severity, category, rule, URL prefix. It reads up to 200 pages a call and says where to continue, and which later scan holds the pages it checked again. |
+| `seotester_get_page` | One page's latest result: status code, load time, title, description, H1, Open Graph tags, its findings and the scan that checked it. |
 | `seotester_explain_check` | Why a rule matters, how to fix it, and ready-made snippets for nginx, Apache, IIS and HTML. Works without signing in. |
 | `seotester_start_scan` | Starts a new scan, or joins the one already running for the site. Only for an agent you allowed to make changes, and only where the Scan button works for you: the Member role in the site's organization, your scan quota, and for an unverified site the 6-hour pause between scans. |
 | `seotester_scan_status` | Status, phase and progress of a scan, and its score once finished. |
@@ -57,10 +57,14 @@ The agent typically:
 
 ## Good to know
 
-- **Per-page findings are kept for 7 days.** After that only the totals of a scan remain (affected pages, sample URLs);
-  the agent says so and offers a new scan. An expired scan is never reported as clean.
-- **Elements are named, not copied.** A finding names up to five elements as CSS selectors (`#hero > img`). SeoTester
-  keeps nothing of a page's body, so there is no HTML excerpt: the agent finds the element in your code from the selector.
+- **Each page keeps its latest result, for 7 days.** A new scan's check of a page replaces what an earlier scan found
+  there, so a page's findings are always the latest. A scan's own totals (affected pages, sample URLs, New/Fixed) stay
+  with the scan. Reading an older scan whose pages a later scan checked again, the agent gets that scan's totals and is
+  told which scan holds the pages now; after 7 days only the totals remain, and the agent offers a new scan. Neither is
+  ever reported as clean.
+- **Elements are named, not copied.** A finding names up to five elements as CSS selectors (`#hero > img`), kept with
+  the page's latest result. SeoTester stores no text or markup of your pages, so there is no HTML excerpt: the agent
+  finds the element in your code from the selector.
 - **Website text is untrusted.** Titles, descriptions, URLs and selectors come from the scanned site and reach the agent
   inside a marked data block that tells it to treat them as data. If your site was tampered with, its text should not
   steer the agent into doing something else, but always read what the agent wants to change.

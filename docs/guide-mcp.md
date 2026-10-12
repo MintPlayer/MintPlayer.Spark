@@ -18,6 +18,7 @@ End users: see [Connect an AI agent](guide-mcp-agents.md).
 - [Choose what agents can see and do](#choose-what-agents-can-see-and-do)
 - [Generic tools](#generic-tools)
 - [Write your own tools](#write-your-own-tools)
+  - [Reach past the type layer: `[McpReadsThrough]` and `[McpRunsAction]`](#reach-past-the-type-layer-mcpreadsthrough-and-mcprunsaction)
 - [Anonymous and signed-in callers](#anonymous-and-signed-in-callers)
 - [Grants and personal access tokens](#grants-and-personal-access-tokens)
 - [Using an external authorization server](#using-an-external-authorization-server)
@@ -208,7 +209,8 @@ Rules:
    (and say how many were left out): the cap cuts an oversized answer mid-document.
 5. **Check the types you read.** An app tool that reads an entity type outside the generic read paths asks
    `IPermissionService.IsAllowedAsync("Read", "<Type>")` (or `Query`) first, so the type's `agentPermissions` and the
-   user's grant narrow it like every generic tool.
+   user's grant narrow it like every generic tool. A type the tool declares it reads through another (below) answers by
+   that other type's layers.
 
 The caller is available as a `ClaimsPrincipal user` parameter or through `ISparkCurrentUser`; identify the user
 through `ISparkCurrentUser.Id`. An agent's principal carries the local user id as `sub` and as
@@ -219,15 +221,21 @@ call), so `User.IsInRole` and role-claim reads answer for the agent as for the u
 gone on the agent's next call. Only role and group claims are copied, never the cookie's others (email, the user's
 other stored claims).
 
+**The application's own words outside the fence.** `SparkMcpResult.Json(note, value)` puts `note` before the fenced
+JSON: say what the data is and what to call next there, and never put a value a user typed or a crawler fetched in it.
+
 **Prompts.** `mcp.AddPrompts<TPrompts>()` adds `[McpServerPrompt]` methods of a `[McpServerPromptType]` class, prefixed
 like the tools (`fix_seo_findings` is served as `seotester_fix_seo_findings`; Claude Code shows it as
 `/mcp__seotester__seotester_fix_seo_findings`). A prompt is a message template the user picks in the agent (one per app
 is plenty, PRD §9); it reads no data, so every caller sees it. Name the tools it mentions with the prefix, and put no
 data in it.
 
-**Reaching past the type layer, on purpose.** A type's `agentPermissions` governs every tool, so a tool cannot read a
-`None` type or run an action on a `Read` type. Two attributes on the tool method lift exactly that, for that tool's calls
-only (SeoTester's tools are the example):
+### Reach past the type layer: `[McpReadsThrough]` and `[McpRunsAction]`
+
+A type's `agentPermissions` (and the user's choice of types in the grant) narrows every rights check of an `/mcp` call,
+so a tool cannot read a `None` type or run a custom action on a `Read` type. Two attributes on the tool method lift
+exactly that, for that tool's calls only (SeoTester's tools are the example: `PageResult` stays `None`, and its one write
+runs `StartAudit` on `Site`, which agents may only read):
 
 ```csharp
 [McpServerTool(Name = "list_findings", ReadOnly = true)]
@@ -248,18 +256,27 @@ public async Task<CallToolResult> StartScanAsync(string site, CancellationToken 
 }
 ```
 
-- `[McpReadsThrough(type, through)]` judges **reading** `type` by `through`'s `agentPermissions` and the user's choice of
-  types; writing `type` still follows its own (none). Use it for rows that belong to an exposed parent.
+- `[McpReadsThrough(type, through)]` judges **reading** (`Read`, `Query`) `type` by `through`'s `agentPermissions` and the
+  user's choice of types, while the tool runs; writing `type` still follows its own layers (with `None`: never). Use it
+  for rows that belong to an exposed parent and are read as part of it. A `through` that names no entity type refuses the
+  read (fails closed).
 - `[McpRunsAction(type, action)]` lets that one custom action need only `Read` from the type and the grant's choice of
-  types. It still needs `Write` from `mcp.AgentPermissions` and the grant's read/changes, so the tool is listed only to
-  agents allowed changes. A `ReadOnly` tool that declares it refuses startup.
-- Neither touches `security.json` or row security, and the generic tools keep the type layer.
+  types. It still needs `Write` from `mcp.AgentPermissions` and the grant's read/changes (checked first, as for every
+  write), so the tool is listed only to agents allowed changes. Any other action on the type still needs `Write` there.
+  A `ReadOnly` tool that declares it refuses startup.
+- Types and actions are named as in the model (case-insensitive); both attributes may be repeated on one method. They
+  apply only to calls of the method they are on: another tool, and every generic tool, keeps the type layer.
+- Neither touches `security.json`, row security, disabled actions or quotas: those decide exactly as on the web.
+- They act only on checks that reach `IPermissionService`: `IDatabaseAccess`, `IQueryExecutor`, `ISparkMcpActions` and
+  your own `IsAllowedAsync` calls. A tool that gates on a parent's rights itself and reads the rest below that gate
+  needs neither (CodeCoverage's tools ask for `Read` on `Repository` and `Commit`, then read file coverage through
+  their own service; plan M6).
 - `ISparkMcpActions.RunAsync(type, action, id)` runs a custom action through the same gates as the button
-  (`POST /spark/actions/execute`): the right, the row rule for the action, disabled actions, quotas. Never call the action
-  class or its service directly: that would be a second, unchecked path.
-
-**The application's own words outside the fence.** `SparkMcpResult.Json(note, value)` puts `note` before the fenced
-JSON: say what the data is and what to call next there, and never put a value a user typed or a crawler fetched in it.
+  (`POST /spark/actions/execute`): the right, the row-gated load of the object, the row rule for the action, disabled
+  actions, quotas. It answers `Executed` (with what the action handed to `SetResult`), `Refused` (answer
+  `SparkMcpResult.Refuse()`: unknown, denied and missing alike), `Invalid`, `Disabled`, `Throttled` (with
+  `RetryAfter`) or `Failed` (details in the server log only). Never call the action class or its service directly: that
+  would be a second, unchecked path.
 
 ## Anonymous and signed-in callers
 
