@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.Configuration;
 using MintPlayer.Spark.Abstractions;
 using ModelContextProtocol.Server;
 
@@ -51,6 +52,31 @@ public sealed class SparkMcpOptions
 
     /// <summary>Whether <see cref="Authentication"/> was set by the application rather than left at its default.</summary>
     internal bool AuthenticationIsExplicit { get; private set; }
+
+    /// <summary>
+    /// <c>Spark:Mcp</c> from <paramref name="configuration"/>, then <paramref name="configure"/> (code wins). A member
+    /// counts as set only when the section names it or the callback sets it.
+    /// </summary>
+    /// <remarks>
+    /// The configuration binder calls every public setter, with the getter's own value when the key is absent (so a
+    /// setter can adjust it). Binding any <c>Spark:Mcp</c> key therefore marked <see cref="Authentication"/> explicit, so an
+    /// application that configured only <c>Spark:Mcp:CanonicalUrl</c> had to wire all three setups or not start; and it
+    /// pinned <see cref="ToolPrefix"/> to the slug of the default <see cref="ServerName"/> before the callback named the
+    /// server. Both are undone here for keys the section does not hold (found wiring Fleet and HR, 2026-10-12).
+    /// </remarks>
+    internal static SparkMcpOptions Create(IConfiguration? configuration, Action<SparkMcpOptions>? configure)
+    {
+        var options = new SparkMcpOptions();
+        if (configuration?.GetSection(SectionName) is { } section && section.Exists())
+        {
+            section.Bind(options);
+            options.AuthenticationIsExplicit = section[nameof(Authentication)] is not null;
+            if (section[nameof(ToolPrefix)] is null)
+                options.toolPrefix = null;
+        }
+        configure?.Invoke(options);
+        return options;
+    }
 
     /// <summary>
     /// The application's layer of agent permissions (MCP PRD D6), evaluated on every call. The effective

@@ -48,9 +48,7 @@ public static class SparkMcpExtensions
         if (services.Any(d => d.ServiceType == typeof(SparkMcpOptions)))
             throw new InvalidOperationException("AddMcp was called twice. One application has one MCP server; configure it in one call.");
 
-        var options = new SparkMcpOptions();
-        builder.Configuration?.GetSection(SparkMcpOptions.SectionName).Bind(options);
-        configure?.Invoke(options);
+        var options = SparkMcpOptions.Create(builder.Configuration, configure);
         Validate(options);
 
         services.AddSingleton(options);
