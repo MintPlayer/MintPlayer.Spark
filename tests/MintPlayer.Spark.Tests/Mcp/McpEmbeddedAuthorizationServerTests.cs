@@ -346,6 +346,98 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
             .Should().Be(EAgentPermission.Read | EAgentPermission.Write);
     }
 
+    /// <summary>
+    /// Types chosen on the consent screen restrict the agent's token to them (§6.2 "grant type restriction", D12, D13; the
+    /// personal-token and external cases are in their own classes): the other exposed type is not there for the agent.
+    /// </summary>
+    [Fact]
+    public async Task Types_chosen_on_the_consent_screen_restrict_the_token_to_them()
+    {
+        var (factory, agent, user) = await StartAsync("chosen");
+        await using var _ = factory;
+        await agent.SignInAsync(user.Email!);
+        var (html, requestId, _) = await agent.ConsentPageAsync();
+
+        var consent = await agent.PostConsentAsync(html, requestId, typesMode: "chosen", types: "FilteredDoc");
+        consent.StatusCode.Should().Be(HttpStatusCode.Redirect, await consent.Content.ReadAsStringAsync());
+        var (status, tokens) = await agent.RedeemAsync(System.Web.HttpUtility.ParseQueryString(consent.Headers.Location!.Query)["code"]!);
+        status.Should().Be(HttpStatusCode.OK, tokens.ToJsonString());
+        var bearer = McpAgentClient.Bearer(tokens["access_token"]!.GetValue<string>());
+        var client = factory.CreateClient();
+
+        var chosen = await CallAsync(client, "acme_describe", new { type = "FilteredDoc" }, bearer);
+        var other = await CallAsync(client, "acme_describe", new { type = "GuardedDoc" }, bearer);
+        var discover = await CallAsync(client, "acme_discover", new { }, bearer);
+
+        chosen.IsToolError.Should().BeFalse(chosen.ToolText);
+        other.Status.Should().Be(HttpStatusCode.OK);
+        other.ToolText.Should().Be(MintPlayer.Spark.Mcp.SparkMcpResult.NotFoundMessage, "the user may read GuardedDoc, but did not give it to this agent");
+        discover.ToolText.Should().Contain("\"FilteredDoc\"").And.NotContain("\"GuardedDoc\"");
+    }
+
+    /// <summary>The user's groups come from the store on every call of an embedded server's token too (S4, §4.6).</summary>
+    [Fact]
+    public async Task Removing_the_users_role_denies_the_tokens_next_call()
+    {
+        var (factory, agent, user) = await StartAsync("s4");
+        await using var _ = factory;
+        var bearer = McpAgentClient.Bearer((await agent.SignInAndRedeemAsync(user.Email!))["access_token"]!.GetValue<string>());
+        var client = factory.CreateClient();
+        (await CallAsync(client, "acme_describe", new { type = "GuardedDoc" }, bearer)).IsToolError.Should().BeFalse();
+
+        await McpAccountHost.ChangeUserAsync(factory, user.Id!, (users, u) => users.RemoveFromRoleAsync(u, McpAccountHost.Developers));
+        var after = await CallAsync(client, "acme_describe", new { type = "GuardedDoc" }, bearer);
+
+        after.Status.Should().Be(HttpStatusCode.OK, "a role change is no security-stamp change: the token stays valid");
+        after.ToolText.Should().Be(MintPlayer.Spark.Mcp.SparkMcpResult.NotFoundMessage, "the group is gone on the very next call, with no new sign-in");
+    }
+
+    /// <summary>
+    /// A security-stamp change (a password change, a removed sign-in method, an administrator's reset) refuses the
+    /// embedded server's tokens on <c>/mcp</c> at once (§6.2 "security-stamp change revokes all"; the consent stamps the
+    /// agent grant, decision log M3b), as it does personal tokens and external grants.
+    /// </summary>
+    [Fact]
+    public async Task A_security_stamp_change_refuses_the_tokens_next_call()
+    {
+        var (factory, agent, user) = await StartAsync("stamp");
+        await using var _ = factory;
+        var access = (await agent.SignInAndRedeemAsync(user.Email!))["access_token"]!.GetValue<string>();
+        (await WhoAmIAsync(factory.CreateClient(), access)).Status.Should().Be(HttpStatusCode.OK);
+
+        await McpAccountHost.ChangeUserAsync(factory, user.Id!, (users, u) => users.UpdateSecurityStampAsync(u));
+        var refused = await WhoAmIAsync(factory.CreateClient(), access);
+
+        refused.Status.Should().Be(HttpStatusCode.Unauthorized, "the token is unexpired and its record live; the stamp it was granted under is gone");
+        refused.Response.Headers.WwwAuthenticate.ToString().Should().Contain("invalid_token");
+    }
+
+    /// <summary>
+    /// Without a <c>resource</c> the token is for the canonical URL (D5 G4), never the client: the implied default followed
+    /// past the consent to the token itself (§6.2 "unknown resource never yields aud = client_id").
+    /// </summary>
+    [Fact]
+    public async Task Without_a_resource_the_token_is_for_the_canonical_url_and_never_the_client()
+    {
+        var (factory, agent, user) = await StartAsync("implied");
+        await using var _ = factory;
+        await agent.SignInAsync(user.Email!);
+
+        var authorize = await agent.AuthorizeAsync(resource: null);
+        authorize.Headers.Location!.OriginalString.Should().StartWith("/connect/consent");
+        var requestId = System.Web.HttpUtility.ParseQueryString(new Uri("https://x" + authorize.Headers.Location.OriginalString).Query)["request_id"]!;
+        var html = await (await agent.Browser.GetAsync(authorize.Headers.Location.OriginalString)).Content.ReadAsStringAsync();
+        var consent = await agent.PostConsentAsync(html, requestId);
+        consent.StatusCode.Should().Be(HttpStatusCode.Redirect, await consent.Content.ReadAsStringAsync());
+        var (status, tokens) = await agent.RedeemAsync(System.Web.HttpUtility.ParseQueryString(consent.Headers.Location!.Query)["code"]!, resource: null);
+
+        status.Should().Be(HttpStatusCode.OK, tokens.ToJsonString());
+        var payload = Payload(tokens["access_token"]!.GetValue<string>());
+        Strings(payload["aud"] is JsonArray ? payload["aud"] : new JsonArray(payload["aud"]!.GetValue<string>()))
+            .Should().Equal([McpTestHost.CanonicalUrl], "the implied resource is the canonical URL; the client id is never an MCP token's audience");
+        (await WhoAmIAsync(factory.CreateClient(), tokens["access_token"]!.GetValue<string>())).Status.Should().Be(HttpStatusCode.OK);
+    }
+
     [Fact]
     public async Task A_locked_account_cannot_consent()
     {

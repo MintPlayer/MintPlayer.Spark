@@ -73,6 +73,7 @@ public class McpPlanTests(SparkSharedDatabase database)
     : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private const string Scheme = "PlanBearer";
+    private const string CarsQuery = "mcpwtcars";
 
     private readonly HashSet<string> denied = new(StringComparer.OrdinalIgnoreCase);
     private readonly McpWtRace race = new();
@@ -99,6 +100,8 @@ public class McpPlanTests(SparkSharedDatabase database)
                     new() { Id = Guid.NewGuid(), Name = "Driver", DataType = "Reference", ReferenceType = typeof(McpWtDriver).FullName, Order = 3 },
                 ],
             },
+            // The list a selection is ticked in: a custom action on a selection names it (#467 D12).
+            Queries = [new SparkQuery { Id = Guid.Parse("4c9d0000-00b3-4000-8000-0000000000b3"), Name = "AllMcpWtCars", Alias = CarsQuery, Source = "Database.Cars", EntityType = "McpWtCar" }],
         },
         new()
         {
@@ -138,8 +141,10 @@ public class McpPlanTests(SparkSharedDatabase database)
                 services.AddSingleton(race);
                 services.AddSingleton(actionLog);
                 services.AddScoped<McpWtStampAction>();
-                services.AddSingleton(TestActions.LoaderWithCustom(McpWtStampAction.Name));
-                services.AddScoped<ICustomActionResolver>(sp => new McpWtActionResolver(sp.GetRequiredService<McpWtStampAction>()));
+                services.AddScoped<McpWtStampSelectionAction>();
+                services.AddSingleton(TestActions.LoaderWithCustom(McpWtStampAction.Name, McpWtStampSelectionAction.Name));
+                services.AddScoped<ICustomActionResolver>(sp => new McpWtActionResolver(
+                    sp.GetRequiredService<McpWtStampAction>(), sp.GetRequiredService<McpWtStampSelectionAction>()));
                 services.AddSingleton<ILoggerProvider>(logs);
                 services.UseSparkTestAccessControl(access);
             },
@@ -216,6 +221,8 @@ public class McpPlanTests(SparkSharedDatabase database)
 
         applied.IsToolError.Should().BeFalse(applied.ToolText);
         (await LoadCarAsync(CarId("1")))!.Name.Should().Be("Alpha 2");
+        (await LoadCarAsync(CarId("1")))!.Driver.Should().Be($"mcpwtdrivers/{Scope}-1",
+            "the plan's save keeps the stored value of a reference the caller cannot see (D19; §6.2 'kept on save')");
         (await LoadCarAsync(CarId("3"))).Should().BeNull();
         var ids = Unfence(applied.ToolText)["ids"]!.AsArray();
         var createdId = ids[1]!.GetValue<string>();
@@ -441,6 +448,14 @@ public class McpPlanTests(SparkSharedDatabase database)
         (reply.IsToolError || reply.ErrorMessage is not null).Should().BeTrue("an anonymous propose is refused (D8, D17)");
         reply.ToolText.Should().NotContain("planId");
         (await LoadCarAsync(CarId("1")))!.Name.Should().Be("Alpha");
+
+        // Nor can an anonymous caller run a plan it was handed (§6.2 "anonymous write refused").
+        var (planId, changes, _) = await ProposeAsync(client, As("alice"), Update(CarId("1"), new { Name = "Alice's" }));
+        var anonymousApply = await ApplyAsync(client, _ => { }, planId, changes);
+
+        anonymousApply.ErrorMessage.Should().Be("Unknown tool: 'acme_apply_changes'", "anonymous calls are read-only (D17)");
+        (await LoadCarAsync(CarId("1")))!.Name.Should().Be("Alpha");
+        (await LoadPlanAsync(planId)).Status.Should().Be(McpPlanStatus.Proposed, "the refused call did not use the plan up");
     }
 
     [Fact]
@@ -568,7 +583,80 @@ public class McpPlanTests(SparkSharedDatabase database)
         actionLog.Runs.Should().Be(0);
     }
 
-    private static JsonNode Unfence(string text)
+    private static object Selection(string? query, params string[] ids)
+        => new { kind = "action", type = "McpWtCar", action = McpWtStampSelectionAction.Name, query, ids };
+
+    /// <summary>
+    /// A custom action on a selection (the query the rows were ticked in and their ids, as the web's grid posts it;
+    /// plan M7, "missing tests named by M4"): checked at propose, where the rows are re-read through the query and
+    /// nothing runs, and run once at apply on the rows re-read again.
+    /// </summary>
+    [Fact]
+    public async Task A_custom_action_on_a_selection_is_checked_at_propose_and_runs_once_at_apply_on_the_selected_rows()
+    {
+        await using var factory = await StartAsync();
+        var client = factory.CreateClient();
+        var alice = As("alice");
+
+        var (planId, changes, _) = await ProposeAsync(client, alice, Selection(CarsQuery, CarId("1"), CarId("2")));
+
+        changes.Select(c => c!.GetValue<string>()).Should().Equal(
+            $"1. action {McpWtStampSelectionAction.Name} on McpWtCar selection [{CarId("1")}, {CarId("2")}] of query {CarsQuery}");
+        actionLog.Runs.Should().Be(0, "proposing re-reads the selection and runs every gate, never the action");
+
+        var applied = await ApplyAsync(client, alice, planId, changes);
+        var again = await ApplyAsync(client, alice, planId, changes);
+
+        applied.IsToolError.Should().BeFalse(applied.ToolText);
+        again.IsToolError.Should().BeTrue("a plan runs once");
+        actionLog.Runs.Should().Be(1);
+        actionLog.SelectedRows.OrderBy(r => r, StringComparer.Ordinal).Should().Equal(CarId("1"), CarId("2"));
+        (await LoadCarAsync(CarId("1")))!.Note.Should().Be("selected");
+        (await LoadCarAsync(CarId("2")))!.Note.Should().Be("selected");
+        (await LoadCarAsync(CarId("3")))!.Note.Should().BeNull("a row outside the selection is untouched");
+        (await LoadPlanAsync(planId)).Status.Should().Be(McpPlanStatus.Applied);
+    }
+
+    /// <summary>
+    /// A selection is all or nothing, as on the web: a row the caller cannot see (here: no such row) refuses the whole
+    /// proposal with the uniform not-found, a selection must name the query it was ticked in, and a selected row gone by
+    /// the time of apply refuses the plan before the action runs. Selected rows carry no etag (only the object an action
+    /// runs on does); they are re-read at apply, so a smaller selection never runs in their place.
+    /// </summary>
+    [Fact]
+    public async Task A_selection_is_all_or_nothing_at_propose_and_again_at_apply()
+    {
+        await using var factory = await StartAsync();
+        var client = factory.CreateClient();
+        var alice = As("alice");
+
+        var unseen = await CallAsync(client, "acme_propose_changes",
+            new { summary = "stamp", operations = new[] { Selection(CarsQuery, CarId("1"), CarId("missing")) } }, alice);
+        var noQuery = await CallAsync(client, "acme_propose_changes",
+            new { summary = "stamp", operations = new[] { Selection(null, CarId("1")) } }, alice);
+
+        unseen.IsToolError.Should().BeTrue();
+        unseen.ToolText.Should().Be($"Operation 1: {SparkMcpResult.NotFoundMessage}", "a row the caller cannot see and a missing one answer alike");
+        noQuery.IsToolError.Should().BeTrue();
+        noQuery.ToolText.Should().Contain("must name the query its rows were selected in");
+
+        var (planId, changes, _) = await ProposeAsync(client, alice, Selection(CarsQuery, CarId("1"), CarId("2")));
+        using (var session = Store.OpenAsyncSession())
+        {
+            session.Delete(CarId("2"));
+            await session.SaveChangesAsync();
+        }
+
+        var applied = await ApplyAsync(client, alice, planId, changes);
+
+        applied.IsToolError.Should().BeTrue("the selection is re-read at apply, and one of its rows is gone");
+        applied.ToolText.Should().Be($"Operation 1: {SparkMcpResult.NotFoundMessage}");
+        actionLog.Runs.Should().Be(0, "nothing ran: not at propose, not at the refused apply");
+        (await LoadCarAsync(CarId("1")))!.Note.Should().Be("first", "the row still there is not acted on alone");
+        (await LoadPlanAsync(planId)).Status.Should().Be(McpPlanStatus.Failed);
+    }
+
+    internal static JsonNode Unfence(string text)
     {
         var start = text.IndexOf("<data-", StringComparison.Ordinal) + 1;
         var tag = text[start..text.IndexOf('>', start)];
@@ -649,12 +737,20 @@ public sealed class McpWtRace
     }
 }
 
-/// <summary>How often <see cref="McpWtStampAction"/> ran.</summary>
+/// <summary>How often the custom actions ran, and the rows a selection action was handed.</summary>
 public sealed class McpWtActionLog
 {
     private int runs;
     public int Runs => runs;
+    public ConcurrentQueue<string> SelectedRows { get; } = new();
     public void Ran() => Interlocked.Increment(ref runs);
+
+    public void Ran(IEnumerable<string> selectedRows)
+    {
+        Ran();
+        foreach (var row in selectedRows)
+            SelectedRows.Enqueue(row);
+    }
 }
 
 /// <summary>A custom action that writes the object it runs on through the gated write path (it commits by itself).</summary>
@@ -671,12 +767,34 @@ public sealed class McpWtStampAction(IDatabaseAccess databaseAccess, McpWtAction
     }
 }
 
-internal sealed class McpWtActionResolver(McpWtStampAction stamp) : ICustomActionResolver
+/// <summary>
+/// A custom action on a selection: writes every row it is handed, which the framework re-reads through the query the
+/// selection was ticked in (<c>CustomActionArgs.SelectedItems</c>), never the ids as typed.
+/// </summary>
+public sealed class McpWtStampSelectionAction(IDatabaseAccess databaseAccess, McpWtActionLog log) : ICustomAction
+{
+    public const string Name = "McpWtStampSelection";
+
+    public async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
+    {
+        log.Ran(args.SelectedItems.Select(i => i.Id!));
+        foreach (var item in args.SelectedItems)
+        {
+            var po = await databaseAccess.GetPersistentObjectAsync(Guid.Parse("4c9d0000-00b1-4000-8000-0000000000b1"), item.Id!);
+            po!["Note"].SetValue("selected");
+            await databaseAccess.SavePersistentObjectAsync(po);
+        }
+    }
+}
+
+internal sealed class McpWtActionResolver(McpWtStampAction stamp, McpWtStampSelectionAction selection) : ICustomActionResolver
 {
     public ICustomAction? Resolve(string name)
-        => string.Equals(name, McpWtStampAction.Name, StringComparison.OrdinalIgnoreCase) ? stamp : null;
+        => string.Equals(name, McpWtStampAction.Name, StringComparison.OrdinalIgnoreCase) ? stamp
+            : string.Equals(name, McpWtStampSelectionAction.Name, StringComparison.OrdinalIgnoreCase) ? selection
+            : null;
 
-    public IReadOnlyList<string> GetRegisteredActionNames() => [McpWtStampAction.Name];
+    public IReadOnlyList<string> GetRegisteredActionNames() => [McpWtStampAction.Name, McpWtStampSelectionAction.Name];
 }
 
 public sealed class McpWtRaceInterceptor(McpWtRace race) : IBeforeSave

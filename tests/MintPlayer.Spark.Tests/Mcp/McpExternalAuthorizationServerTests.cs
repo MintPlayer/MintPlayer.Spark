@@ -142,6 +142,11 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
         "not yet valid",
         "alg none",
         "HMAC",
+        "HMAC keyed with the issuer's public key",
+        "another MCP endpoint of the same issuer",
+        "the application's origin as audience",
+        "a path below the MCP endpoint as audience",
+        "another endpoint's audience beside a near miss of ours",
         "sender-constrained",
         "no client",
     };
@@ -168,6 +173,18 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
             "not yet valid" => issuer.Token(subject, notBefore: now.AddHours(1), expires: now.AddHours(2)),
             "alg none" => issuer.UnsignedToken(subject),
             "HMAC" => issuer.Token(subject, key: new SymmetricSecurityKey(RandomNumberGenerator.GetBytes(32)), algorithm: SecurityAlgorithms.HmacSha256),
+            // The algorithm-confusion attack proper (§6.2 "HMAC/RSA confusion"): HS256 keyed with the bytes of the public key
+            // the issuer publishes, under that key's kid, so a validator that let the token's alg pick the verification
+            // would check the MAC with a "secret" everyone has.
+            "HMAC keyed with the issuer's public key" => issuer.Token(subject,
+                key: new SymmetricSecurityKey(issuer.Key.Rsa.ExportSubjectPublicKeyInfo()) { KeyId = issuer.Key.KeyId }, algorithm: SecurityAlgorithms.HmacSha256),
+            // Tokens the trusted issuer really minted, for a neighbouring resource (§6.2 "token for another resource"): only an
+            // exact audience opens this endpoint, never a prefix, the origin or a path below it.
+            "another MCP endpoint of the same issuer" => issuer.Token(subject, audience: "https://other-app.example/mcp"),
+            "the application's origin as audience" => issuer.Token(subject, audience: "https://acme.example"),
+            "a path below the MCP endpoint as audience" => issuer.Token(subject, audience: McpTestHost.CanonicalUrl + "/admin"),
+            "another endpoint's audience beside a near miss of ours" => issuer.Token(subject, audience: null,
+                claims: new Dictionary<string, object> { ["aud"] = new[] { "https://other-app.example/mcp", "https://acme.example/mcp2" } }),
             "sender-constrained" => issuer.Token(subject, claims: new Dictionary<string, object> { ["cnf"] = new Dictionary<string, object> { ["jkt"] = "abc" } }),
             "no client" => issuer.Token(subject, clientId: ""),
             _ => throw new ArgumentOutOfRangeException(nameof(variant)),
@@ -299,6 +316,111 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
         ExternalAgentServerScheme.ScopeOf(all, ["MCP:WRITE"], "mcp:write").Permissions.Should().Be(EAgentPermission.Read, "scopes are case-sensitive");
         ExternalAgentServerScheme.ScopeOf(typed, ["mcp:read"], "mcp:write").For("GuardedDoc").Should().Be(EAgentPermission.Read, "the cap reaches every chosen type");
         ExternalAgentServerScheme.ScopeOf(readOnly, ["mcp:write"], "mcp:write").Permissions.Should().Be(EAgentPermission.Read, "the scope never widens the grant");
+    }
+
+    /// <summary>
+    /// The write tools through an external server's token (D22; plan M7, the test M3c and M4 left for it): a plan needs the
+    /// user's toggle under Connected applications <i>and</i> <c>mcp:write</c> in the token, at propose and again at apply,
+    /// so a plan proposed with a write token is not run by a read-only token of the same agent (same user, client and
+    /// grant: the plan's binding passes, the cap does not).
+    /// </summary>
+    [Fact]
+    public async Task Apply_changes_needs_the_users_toggle_and_mcp_write_in_the_token()
+    {
+        await using var factory = McpExternalHost.Create(Store, issuer, developersEdit: true);
+        var user = await McpAccountHost.CreateUserAsync(factory, Name("apply"));
+        var subject = "corp-" + Name("apply");
+        await McpExternalHost.LinkAsync(factory, Store, user.Id!, McpExternalHost.Provider, subject);
+        var docId = $"guardeddocs/{Scope}-apply";
+        await SeedAsync(session => session.StoreAsync(new GuardedDoc { Name = "Before", IsVisible = true }, docId));
+        var client = factory.CreateClient();
+        var write = McpExternalHost.Token(issuer.Token(subject, scope: "mcp:read mcp:write"));
+        var read = McpExternalHost.Token(issuer.Token(subject, scope: "mcp:read"));
+        var rename = new { summary = "rename", operations = new[] { new { kind = "update", type = "GuardedDoc", id = docId, values = new { Name = "After" } } } };
+
+        var untoggled = await CallAsync(client, "acme_propose_changes", rename, write);
+
+        var browser = await McpBrowser.SignInAsync(factory.CreateClient(), Name("apply"));
+        var key = (await browser.AgentsAsync())["grants"]!.AsArray().Single()!["key"]!.GetValue<string>();
+        using (var allow = await browser.SendAsync(HttpMethod.Post, "/spark/auth/manage/agents/update", new { key, permissions = "Read, Write", types = (object?)null }))
+            allow.StatusCode.Should().Be(HttpStatusCode.OK, await allow.Content.ReadAsStringAsync());
+
+        var readProposal = await CallAsync(client, "acme_propose_changes", rename, read);
+        var proposal = await CallAsync(client, "acme_propose_changes", rename, write);
+        proposal.IsToolError.Should().BeFalse(proposal.ToolText + proposal.ErrorMessage);
+        var plan = McpPlanTests.Unfence(proposal.ToolText);
+        var applyArguments = new { planId = plan["planId"]!.GetValue<string>(), changes = plan["changes"]!.AsArray() };
+        var readApply = await CallAsync(client, "acme_apply_changes", applyArguments, read);
+        var afterReadApply = await NameAsync(docId);
+        var applied = await CallAsync(client, "acme_apply_changes", applyArguments, write);
+
+        untoggled.ErrorMessage.Should().Be("Unknown tool: 'acme_propose_changes'", "the shadow grant is read only until the user turns changes on");
+        readProposal.ErrorMessage.Should().Be("Unknown tool: 'acme_propose_changes'", "without mcp:write in the token the toggle alone is not enough");
+        readApply.ErrorMessage.Should().Be("Unknown tool: 'acme_apply_changes'", "the cap holds at apply too, for a plan a write token proposed");
+        afterReadApply.Should().Be("Before");
+        applied.IsToolError.Should().BeFalse(applied.ToolText + applied.ErrorMessage);
+        (await NameAsync(docId)).Should().Be("After", "toggle and scope together allow the change, and the refused apply did not use the plan up");
+    }
+
+    /// <summary>
+    /// A type choice made on Connected applications narrows the very next call of the same token, and widening it back
+    /// applies as fast (§6.2 "grant type restriction", "grant edit applies without re-sign-in"; D12, D13): the grant is read
+    /// per call, the token's scope never caps the type choice.
+    /// </summary>
+    [Fact]
+    public async Task A_type_choice_edited_on_the_page_applies_to_the_next_call_of_the_same_token_both_ways()
+    {
+        var (factory, _, subject) = await StartAsync("types");
+        await using var _f = factory;
+        var client = factory.CreateClient();
+        var token = issuer.Token(subject);
+        (await DescribeAsync(client, token)).IsToolError.Should().BeFalse("the shadow grant starts with everything exposed");
+
+        var browser = await McpBrowser.SignInAsync(factory.CreateClient(), Name("types"));
+        var key = (await browser.AgentsAsync())["grants"]!.AsArray().Single()!["key"]!.GetValue<string>();
+        using (var narrow = await browser.SendAsync(HttpMethod.Post, "/spark/auth/manage/agents/update",
+                   new { key, permissions = "Read", types = new[] { new { name = "FilteredDoc", permissions = "Read" } } }))
+            narrow.StatusCode.Should().Be(HttpStatusCode.OK, await narrow.Content.ReadAsStringAsync());
+
+        var narrowed = await DescribeAsync(client, token);
+        var chosen = await CallAsync(client, "acme_describe", new { type = "FilteredDoc" }, McpExternalHost.Token(token));
+        var discovered = await CallAsync(client, "acme_discover", new { }, McpExternalHost.Token(token));
+
+        using (var widen = await browser.SendAsync(HttpMethod.Post, "/spark/auth/manage/agents/update", new { key, permissions = "Read", types = (object?)null }))
+            widen.StatusCode.Should().Be(HttpStatusCode.OK, await widen.Content.ReadAsStringAsync());
+        var widened = await DescribeAsync(client, token);
+
+        narrowed.Status.Should().Be(HttpStatusCode.OK, "the token is still valid");
+        narrowed.ToolText.Should().Be(SparkMcpResult.NotFoundMessage, "a type the grant no longer lists is not there for the agent");
+        chosen.IsToolError.Should().BeFalse(chosen.ToolText);
+        discovered.ToolText.Should().Contain("\"FilteredDoc\"").And.NotContain("\"GuardedDoc\"");
+        widened.IsToolError.Should().BeFalse("widening applies to the next call too, without a new token: " + widened.ToolText);
+    }
+
+    /// <summary>
+    /// The user's groups come from the store on every call for this setup too (S4, §4.6; the personal-token case is
+    /// <c>McpPersonalAccessTokenTests.Removing_the_users_role_denies_the_live_tokens_next_call</c>).
+    /// </summary>
+    [Fact]
+    public async Task Removing_the_users_role_denies_the_tokens_next_call()
+    {
+        var (factory, userId, subject) = await StartAsync("s4");
+        await using var _f = factory;
+        var client = factory.CreateClient();
+        var token = issuer.Token(subject);
+        (await DescribeAsync(client, token)).IsToolError.Should().BeFalse();
+
+        await McpAccountHost.ChangeUserAsync(factory, userId, (users, user) => users.RemoveFromRoleAsync(user, McpAccountHost.Developers));
+        var after = await DescribeAsync(client, token);
+
+        after.Status.Should().Be(HttpStatusCode.OK, "the external server still vouches for the token, and a role change is no stamp change");
+        after.ToolText.Should().Be(SparkMcpResult.NotFoundMessage, "the group is gone on the very next call, with no new sign-in");
+    }
+
+    private async Task<string?> NameAsync(string docId)
+    {
+        using var session = Store.OpenAsyncSession();
+        return (await session.LoadAsync<GuardedDoc>(docId))?.Name;
     }
 
     [Fact]

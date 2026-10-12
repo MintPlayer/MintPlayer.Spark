@@ -131,6 +131,57 @@ public class McpReferenceRedactionTests(SparkSharedDatabase database)
         query.ToolText.Should().NotContain("rtdrivers/mcp-1", "the hidden reference's target id must not leak either");
     }
 
+    /// <summary>
+    /// A sort or a filter on a hidden reference answers what the web answers the same caller (§6.2, D19 "sort/filter";
+    /// the web side is <c>ReferenceTargetRightsTests</c>): ignored, so neither the order of the rows nor their count says
+    /// anything about the hidden target ids. Two cars whose drivers' ids order against their names, so a sort that was
+    /// applied would show.
+    /// </summary>
+    [Fact]
+    public async Task A_sort_or_a_filter_on_a_hidden_reference_changes_nothing_as_on_the_web()
+    {
+        await using var factory = await StartAsync("QueryRead/RtCar");
+        using (var session = Store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new RtCar { Name = "Sort A", Driver = "rtdrivers/mcp-sort-2" }, "rtcars/mcp-sort-a");
+            await session.StoreAsync(new RtCar { Name = "Sort B", Driver = "rtdrivers/mcp-sort-1" }, "rtcars/mcp-sort-b");
+            await session.SaveChangesAsync();
+        }
+        var client = factory.CreateClient();
+        await CallAsync(client, "acme_query", new { query = "rtcars" }); // creates the auto index
+        await WaitForIndexesAsync();
+        var sort = new[] { new { property = "Driver", direction = "desc" } };
+        var filters = new[] { new { name = "Driver", includes = new[] { "rtdrivers/mcp-sort-1" } } };
+
+        var plain = await RowsAsync(await CallAsync(client, "acme_query", new { query = "rtcars" }));
+        var sorted = await RowsAsync(await CallAsync(client, "acme_query", new { query = "rtcars", sort }));
+        var filtered = await RowsAsync(await CallAsync(client, "acme_query", new { query = "rtcars", filters }));
+        var webSorted = await WebRowsAsync(client, new { queryId = "rtcars", sortColumns = sort });
+        var webFiltered = await WebRowsAsync(client, new { queryId = "rtcars", columns = filters });
+
+        plain.Ids.Should().Contain("rtcars/mcp-sort-a").And.Contain("rtcars/mcp-sort-b");
+        sorted.Ids.Should().Equal(webSorted.Ids, "the agent's sort answers what the web's does");
+        sorted.Ids.Should().Equal(plain.Ids, "a sort on the hidden reference is ignored: an applied one is an order oracle on its ids");
+        filtered.Total.Should().Be(webFiltered.Total);
+        filtered.Total.Should().Be(plain.Total, "a filter on the hidden reference is ignored: an applied one is a count oracle on its ids");
+    }
+
+    private static Task<(List<string> Ids, int Total)> RowsAsync(Reply reply)
+    {
+        reply.IsToolError.Should().BeFalse(reply.ToolText);
+        var page = Unfence(reply.ToolText);
+        return Task.FromResult((page["rows"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()).ToList(), page["totalItems"]!.GetValue<int>()));
+    }
+
+    private static async Task<(List<string> Ids, int Total)> WebRowsAsync(HttpClient client, object request)
+    {
+        using var response = await client.PostAsJsonAsync("/spark/queries/execute", request);
+        var body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.OK, body);
+        var json = JsonNode.Parse(body)!;
+        return (json["items"]!.AsArray().Select(i => i!["id"]!.GetValue<string>()).ToList(), json["totalItems"]!.GetValue<int>());
+    }
+
     private static JsonNode Unfence(string text)
     {
         var start = text.IndexOf("<data-", StringComparison.Ordinal) + 1;

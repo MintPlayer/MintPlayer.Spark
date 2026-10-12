@@ -46,7 +46,8 @@ internal static class McpExternalHost
         Action<SparkExternalAgentServerOptions>? configureExternal = null,
         Action<SparkMcpOptions>? configureMcp = null,
         string loginProvider = Provider,
-        IntrospectionStub? introspection = null)
+        IntrospectionStub? introspection = null,
+        bool developersEdit = false)
         => new(
             store,
             McpAccountHost.Models(),
@@ -99,7 +100,7 @@ internal static class McpExternalHost
                     configureMcp?.Invoke(mcp);
                 });
             },
-            security: SparkTestSecurity.FromJson(McpAccountHost.Security()));
+            security: SparkTestSecurity.FromJson(McpAccountHost.Security(developersEdit)));
 
     /// <summary>
     /// Links an external login to the user, as a sign-in at the website through <paramref name="provider"/> would, and

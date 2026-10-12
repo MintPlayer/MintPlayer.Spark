@@ -59,7 +59,8 @@ internal static class McpAccountHost
             },
             security: SparkTestSecurity.FromJson(Security()));
 
-    internal static string Security() => JsonSerializer.Serialize(new
+    /// <param name="developersEdit">Developers may also edit <c>GuardedDoc</c> (for the write tools).</param>
+    internal static string Security(bool developersEdit = false) => JsonSerializer.Serialize(new
     {
         wellKnown = new Dictionary<string, string>
         {
@@ -74,7 +75,7 @@ internal static class McpAccountHost
         },
         rights = new[]
         {
-            new { key = "dev-guarded", resource = "QueryRead/GuardedDoc", groupId = DevelopersGroupId.ToString() },
+            new { key = "dev-guarded", resource = developersEdit ? "QueryReadEdit/GuardedDoc" : "QueryRead/GuardedDoc", groupId = DevelopersGroupId.ToString() },
             new { key = "dev-filtered", resource = "QueryRead/FilteredDoc", groupId = DevelopersGroupId.ToString() },
         },
         libraries = SparkTestSecurity.LibraryRightsOff(),
@@ -112,6 +113,9 @@ internal sealed class McpBrowser(HttpClient client)
     private readonly Dictionary<string, string> cookies = new(StringComparer.Ordinal);
 
     public HttpClient Client => client;
+
+    /// <summary>The browser's cookies as a <c>Cookie</c> header, for sending its sign-in where a test wants it.</summary>
+    public string CookieHeader => string.Join("; ", cookies.Select(c => $"{c.Key}={c.Value}"));
 
     public static async Task<McpBrowser> SignInAsync(HttpClient client, string userName)
     {

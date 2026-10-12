@@ -106,6 +106,58 @@ public class McpPersonalAccessTokenTests(SparkSharedDatabase database)
         after.ToolText.Should().Be(SparkMcpResult.NotFoundMessage, "the group is gone on the very next call, with no new sign-in");
     }
 
+    // ── the sign-in cookie on /mcp ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The cookie <c>/spark/auth/login</c> really issues, on <c>/mcp</c> (D3; §6.2 "cookie on /mcp ignored", "bearer + cookie
+    /// runs as the bearer", "authenticated-scheme feature reset"; <c>McpServerTests</c> has the stub-cookie cases). The same
+    /// cookie signs the user in on the web; on <c>/mcp</c> it is anonymous alone, and beside another user's personal token
+    /// the token decides, with the token's scheme in the feature.
+    /// </summary>
+    [Fact]
+    public async Task The_sign_in_cookie_is_ignored_on_mcp_and_beside_a_token_the_token_decides()
+    {
+        var (factory, browser, _) = await StartAsync("cookie");
+        await using var _f = factory;
+        var other = await McpAccountHost.CreateUserAsync(factory, Name("cookie-token"));
+        var (token, _) = await (await McpBrowser.SignInAsync(factory.CreateClient(), Name("cookie-token"))).CreateTokenAsync("agent");
+        var client = factory.CreateClient();
+        Action<HttpRequestMessage> cookie = r => r.Headers.Add("Cookie", browser.CookieHeader);
+
+        using var me = await browser.SendAsync(HttpMethod.Get, "/spark/auth/me");
+        var web = await me.Content.ReadAsStringAsync();
+        var cookieOnly = await CallAsync(client, "acme_whoami", new { }, cookie);
+        var cookieDescribe = await CallAsync(client, "acme_describe", new { type = "GuardedDoc" }, cookie);
+        var both = await CallAsync(client, "acme_whoami", new { }, Both(McpBrowser.Token(token), cookie));
+
+        web.Should().Contain("\"isAuthenticated\":true", "the cookie is a live sign-in on the web");
+        cookieOnly.ToolText.Should().Be("authenticated=False;id=;scheme=", "/mcp ignores the cookie, and the scheme feature does not name the cookie scheme");
+        cookieDescribe.IsToolError.Should().BeTrue("the cookie's user may read GuardedDoc on the web, the anonymous /mcp caller may not");
+        both.ToolText.Should().Be($"authenticated=True;id={other.Id};scheme={PersonalAccessTokens.Scheme}", "beside a token the token decides");
+    }
+
+    /// <summary>
+    /// <c>RequireSignIn</c> on a host with personal tokens only (§6.2 "RequireSignIn 401s an unauthenticated initialize";
+    /// the other cases run on stub schemes): no OAuth server is wired, so the challenge is a plain <c>Bearer</c>, and a
+    /// real personal token connects.
+    /// </summary>
+    [Fact]
+    public async Task With_RequireSignIn_an_unauthenticated_initialize_is_a_401_and_a_personal_token_connects()
+    {
+        var (factory, browser, _) = await StartAsync("required", mcp => mcp.RequireSignIn = true);
+        await using var _f = factory;
+        var (token, _) = await browser.CreateTokenAsync("agent");
+        var client = factory.CreateClient();
+
+        var anonymous = await InitializeAsync(client);
+        var signedIn = await InitializeAsync(client, McpBrowser.Token(token));
+
+        anonymous.Status.Should().Be(HttpStatusCode.Unauthorized, "every client signs in at connect (D17, S11)");
+        anonymous.Response.Headers.WwwAuthenticate.ToString().Should().StartWith("Bearer").And.NotContain("resource_metadata",
+            "personal tokens alone publish no protected-resource document");
+        signedIn.Status.Should().Be(HttpStatusCode.OK);
+    }
+
     // ── revocation ──────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
