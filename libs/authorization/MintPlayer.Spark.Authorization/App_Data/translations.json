@@ -808,7 +808,17 @@
         "en": "revoked: your password or sign-in methods changed",
         "fr": "révoqué : votre mot de passe ou vos méthodes de connexion ont changé",
         "nl": "ingetrokken: uw wachtwoord of aanmeldmethoden zijn gewijzigd"
+      },
+      "disconnected": {
+        "en": "disconnected: edit it to allow this agent again",
+        "fr": "déconnecté : modifiez-le pour autoriser à nouveau cet agent",
+        "nl": "losgekoppeld: wijzig het om deze agent opnieuw toe te laten"
       }
+    },
+    "agentIssuer": {
+      "en": "Signed in at",
+      "fr": "Connecté via",
+      "nl": "Aangemeld bij"
     },
     "agentCreated": {
       "en": "Created",

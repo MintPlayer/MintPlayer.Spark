@@ -81,6 +81,28 @@ internal sealed partial class AgentGrantStore(IDocumentStore store, TimeProvider
         Invalidate(grant.Id!);
     }
 
+    /// <summary>
+    /// Stores <paramref name="grant"/> only if no document has its id yet, and answers the grant that exists afterwards:
+    /// <paramref name="grant"/>, or the one a concurrent first call (or the user) wrote first, which wins.
+    /// </summary>
+    public async Task<AgentGrant?> CreateIfMissingAsync(AgentGrant grant, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var session = store.OpenAsyncSession();
+            // An empty change vector: the write fails if the document exists (optimistic concurrency on creation).
+            await session.StoreAsync(grant, string.Empty, grant.Id, cancellationToken);
+            await session.SaveChangesAsync(cancellationToken);
+            Invalidate(grant.Id!);
+            return grant;
+        }
+        catch (Raven.Client.Exceptions.ConcurrencyException)
+        {
+            Invalidate(grant.Id!);
+            return await GetAsync(grant.Id!, cancellationToken);
+        }
+    }
+
     /// <summary>Deletes the grant: the agent's next call is refused. Answers whether it existed.</summary>
     public async Task<bool> DeleteAsync(string userId, string id, CancellationToken cancellationToken = default)
     {

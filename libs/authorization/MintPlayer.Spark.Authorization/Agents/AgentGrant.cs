@@ -71,6 +71,16 @@ public sealed class AgentGrant
     /// <summary>The embedded server's <c>OidcGrant</c> this grant is linked with (plan M3b); revoking either revokes both.</summary>
     public string? OidcGrantId { get; set; }
 
+    /// <summary>For an external authorization server's client: the server's issuer (<c>iss</c>), shown on the account page.</summary>
+    public string? Issuer { get; set; }
+
+    /// <summary>
+    /// For an external authorization server's client: when the user disconnected it. The external server keeps issuing
+    /// tokens and the grant would otherwise be created again on the next call, so a disconnected grant stays, refusing
+    /// every call, until the user allows the agent again (an edit clears it). MCP PRD D22.
+    /// </summary>
+    public DateTimeOffset? RevokedAt { get; set; }
+
     /// <summary>The grant as the permission layer applies it.</summary>
     public AgentGrantScope ToScope()
         => new(Id!, Permissions, Types?.GroupBy(t => t.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Permissions, StringComparer.Ordinal));

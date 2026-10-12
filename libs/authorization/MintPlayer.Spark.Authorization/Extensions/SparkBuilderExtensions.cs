@@ -95,6 +95,8 @@ public static class SparkBuilderAuthorizationExtensions
         builder.AddCredentialScheme(IdentityConstants.BearerScheme);
 
         builder.AddAgentAccess();
+        // Setup 2's mapping (MCP PRD D22): Identity's login lookup for this user type.
+        builder.Services.TryAddScoped<IAgentLinkedLogins, AgentLinkedLogins<TUser>>();
 
         // Register middleware and endpoint callbacks
         builder.Registry.AddEndpoints(endpoints =>

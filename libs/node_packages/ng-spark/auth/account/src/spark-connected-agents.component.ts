@@ -60,7 +60,9 @@ interface GrantChoice {
                 <div class="d-flex flex-wrap align-items-center gap-2">
                   <h5 class="mb-0 text-break spark-agent-name">{{ grant.name || grant.clientId || grant.key }}</h5>
                   <bs-badge [type]="colors.secondary">{{ 'auth.agentKind.' + grant.kind | t }}</bs-badge>
-                  @if (grant.kind !== 'PersonalAccessToken') {
+                  @if (grant.kind === 'ExternalAuthorizationServer') {
+                    <bs-badge [type]="colors.info" class="spark-agent-issuer" [title]="'auth.agentIssuer' | t">{{ grant.issuer }}</bs-badge>
+                  } @else if (grant.kind !== 'PersonalAccessToken') {
                     @if (grant.verifiedHost) {
                       <bs-badge [type]="colors.success" class="spark-agent-verified">{{ grant.verifiedHost }}</bs-badge>
                     } @else {

@@ -41,7 +41,7 @@ internal sealed class McpAuthentication
     private static readonly IReadOnlyDictionary<EAgentAuthentication, string> Requirements = new Dictionary<EAgentAuthentication, string>
     {
         [EAgentAuthentication.PersonalAccessToken] = "MintPlayer.Spark.Authorization (spark.AddAuthentication<TUser>()), which issues personal access tokens",
-        [EAgentAuthentication.ExternalAuthorizationServer] = "an external authorization server configured as a sign-in provider (not available yet)",
+        [EAgentAuthentication.ExternalAuthorizationServer] = "MintPlayer.Spark.Authorization with spark.AddExternalAgentAuthorizationServer(issuer, loginProvider), the server also configured as a sign-in provider",
         [EAgentAuthentication.EmbeddedAuthorizationServer] = "MintPlayer.Spark.IdentityProvider with spark.AddIdentityProvider(idp => idp.ForMcp())",
     };
 

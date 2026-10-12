@@ -38,6 +38,8 @@ export interface SparkAgentGrant {
   clientId: string | null;
   /** Set only when the client's identity was verified (its metadata document was fetched from this host). */
   verifiedHost: string | null;
+  /** For `ExternalAuthorizationServer`: the issuer of the server the agent signed in at. */
+  issuer?: string | null;
   permissions: SparkAgentPermission;
   types: SparkAgentGrantType[] | null;
   /** The most this grant may be given (the application's limit for this agent). */
@@ -45,8 +47,11 @@ export interface SparkAgentGrant {
   createdAt: string;
   expiresAt: string | null;
   lastUsedAt: string | null;
-  /** `revoked`: the token stopped working because the password or sign-in methods changed. */
-  status: 'active' | 'expired' | 'revoked';
+  /**
+   * `revoked`: the token stopped working because the password or sign-in methods changed. `disconnected`: the user
+   * disconnected an external authorization server's agent; an edit allows it again.
+   */
+  status: 'active' | 'expired' | 'revoked' | 'disconnected';
 }
 
 /** An entry another package contributed (e.g. sign-ins at other websites, from the identity provider). */

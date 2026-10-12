@@ -51,6 +51,7 @@ internal sealed partial class AgentGrantsAccount(
                 g.Name,
                 g.Kind == EAgentKind.PersonalAccessToken ? null : g.ClientId,
                 g.VerifiedHost,
+                g.Issuer,
                 g.Permissions,
                 g.Types,
                 exposure?.AppPermissions(AgentOf(g, principal)) ?? EAgentPermission.None,
@@ -139,17 +140,32 @@ internal sealed partial class AgentGrantsAccount(
 
         grant.Permissions = request.Permissions;
         grant.Types = Normalize(request.Types);
+        // Allowing a disconnected external agent again (D22): the choice made here is its grant from now on.
+        grant.RevokedAt = null;
         await grants.SaveAsync(grant, cancellationToken);
         LogGrantChanged(logger, userId, grant.Id!, grant.Permissions.ToString(), grant.Types is null ? "all" : string.Join(",", grant.Types.Select(t => t.Name)));
         return AgentResult<bool>.Ok(true);
     }
 
-    /// <summary>Revokes (deletes) a grant: the agent's next call is refused.</summary>
+    /// <summary>
+    /// Revokes a grant: the agent's next call is refused. Deleted, except an external authorization server's grant, which
+    /// is kept as disconnected (<see cref="AgentGrant.RevokedAt"/>): that server keeps issuing tokens, and a deleted grant
+    /// would be created again by the agent's next call (D22).
+    /// </summary>
     public async Task<bool> RevokeAsync(string userId, string? key, CancellationToken cancellationToken)
     {
-        if (AgentGrantIds.FromKey(userId, key) is not { } id || await grants.GetOwnAsync(userId, id, cancellationToken) is not { } grant
-            || !await grants.DeleteAsync(userId, id, cancellationToken))
+        if (AgentGrantIds.FromKey(userId, key) is not { } id || await grants.GetOwnAsync(userId, id, cancellationToken) is not { } grant)
             return false;
+
+        if (grant.Kind == EAgentKind.ExternalAuthorizationServer)
+        {
+            grant.RevokedAt ??= time.GetUtcNow();
+            await grants.SaveAsync(grant, cancellationToken);
+        }
+        else if (!await grants.DeleteAsync(userId, id, cancellationToken))
+        {
+            return false;
+        }
 
         LogGrantRevoked(logger, userId, id);
 
@@ -208,6 +224,8 @@ internal sealed partial class AgentGrantsAccount(
     {
         if (grant.ExpiresAt is { } expires && expires <= now)
             return "expired";
+        if (grant.RevokedAt is not null)
+            return "disconnected";
         if (grant.Kind == EAgentKind.PersonalAccessToken
             && !string.Equals(user?.SecurityStamp ?? string.Empty, grant.SecurityStamp ?? string.Empty, StringComparison.Ordinal))
         {
@@ -265,6 +283,7 @@ internal sealed record AgentGrantView(
     string? Name,
     string? ClientId,
     string? VerifiedHost,
+    string? Issuer,
     EAgentPermission Permissions,
     IReadOnlyList<AgentGrantType>? Types,
     EAgentPermission MaxPermissions,
