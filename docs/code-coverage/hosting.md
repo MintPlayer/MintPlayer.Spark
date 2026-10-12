@@ -307,8 +307,11 @@ so startup refuses it on every licence.
 ### AI agents (MCP)
 
 The app serves an MCP server at `/mcp` (`libs/mcp/MintPlayer.Spark.Mcp`) and its own authorization server for it
-(`libs/identity_provider`, `ForMcp()`), wired in `Program.cs` (plan M6, [mcp.md](mcp.md)). **Nothing new has to be
-configured, and there is no new secret:**
+(`libs/identity_provider`, `ForMcp().AgentsOnly()`), wired in `Program.cs` (plan M6, [mcp.md](mcp.md)). The provider
+serves agents only: the discovery and RFC 8414 documents, the JWKS, authorize with the sign-in and consent pages, the
+token endpoint for code and refresh, anonymous loopback registration and revocation; every other provider route (device
+grant, PAR, introspection, userinfo, end-session, `/connect/applications`, the developer portal and key administration)
+answers 404 (`RouteSnapshots/CodeCoverage.txt`). **Nothing new has to be configured, and there is no new secret:**
 
 | Key | Default | App value | Meaning |
 |---|---|---|---|
@@ -325,7 +328,8 @@ configured, and there is no new secret:**
   in again). Back the volume up with the database.
 - **New collections** in `Coverage`: `OidcKeys`, `OidcApplications` (agent clients registered through metadata documents
   or anonymous loopback registration, pruned after 30 days unused), `OidcResources` (`OidcResources/mcp`), `OidcGrants`,
-  `OidcTokens`, `OidcAuditEvents` (180 days) and `AgentGrants`; tokens and audit events carry `@expires`.
+  `OidcTokens`, `OidcRefreshFamilies` (one per agent sign-in, deciding which refresh token is the live one),
+  `OidcAuditEvents` (180 days) and `AgentGrants`; tokens, refresh families and audit events carry `@expires`.
 - **Rights.** The identity provider's own administration (applications, developer portal, audit pages) is switched off
   in `App_Data/security.json` (`"libraries": { "identity-provider": false }`): the MCP preset needs none of it. Binding
   its two slots (`identity-provider:administrators`, `identity-provider:developers`, the latter to a group of its own,

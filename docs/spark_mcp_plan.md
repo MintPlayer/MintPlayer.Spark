@@ -164,15 +164,29 @@ Owner decision of 2026-10-12; as built, with its evidence, in the PRD decision l
 - `idp.ForMcp().AgentsOnly()`: discovery and RFC 8414 documents, JWKS, authorize with sign-in and consent, the token
   endpoint for code and refresh, anonymous loopback registration with metadata documents, revocation. Everything else
   answers 404, userinfo and end-session included, because no MCP client calls them.
-- Fleet uses it; SparkId keeps everything. CodeCoverage and SeoTester, whose embedded servers M6 and M5 added with
-  `ForMcp()`, move to `idp.ForMcp().AgentsOnly()` next.
+- Fleet, CodeCoverage and SeoTester use it; SparkId keeps everything. SeoTester's SPA fallback skips `/connect`,
+  `/.well-known` and `/mcp` now, as the other two did, so what is left out answers 404.
 - Tests: `McpAgentsOnlyProviderTests`, `OidcSurfaceTests`, Fleet's `McpEmbeddedServerTests` (404s, metadata,
-  refresh), and Fleet's route snapshot.
+  refresh), CodeCoverage's `CoverageMcpSignInTests` and SeoTester's `AgentAuthorizationServerTests` (404s, metadata,
+  registration), and the three apps' route snapshots.
+
+### Refresh-token families exact — done (2026-10-12)
+Owner decision of 2026-10-12 (RFC 9700 §4.14.2); as built, with its evidence, in the PRD decision log ("Refresh-token
+families exact").
+- IdentityProvider: `OidcRefreshFamilies/<id>`, one per code or device code redeemed for a refresh token, records the
+  family's status and the active token's generation; every refresh token and the access tokens issued with them carry
+  its id. Redemption, rotation, introspection and access-token checks load it by id, never through an index.
+- A rotated token presented again, a refresh token or code spent twice at once, or a code presented twice revokes the
+  family at once; a rotation racing a revocation or another rotation of the family fails. The index sweep stays, as
+  cleanup.
+- Tests: `OidcRefreshTokenFamilyTests` (indexing stopped while a family grows), and the waits for indexing before a
+  reuse are gone from `McpEmbeddedAuthorizationServerTests` and `OidcTokenSecurityTests`.
 
 ### M5 — SeoTester — done (2026-10-12), except the live S6 run
 As built, with the deviations, in the PRD decision log ("M5 implementation"); S7 and the S6 runbook in
 [spark_mcp_spikes.md](spark_mcp_spikes.md).
-- Embedded setup (`idp.ForMcp()`, issuer = the public URL, no key in configuration) and personal access tokens;
+- Embedded setup (`idp.ForMcp()`, `AgentsOnly()` since "IdP surface for MCP-only apps"; issuer = the public URL, no
+  key in configuration) and personal access tokens;
   `SeoTools` (PRD §4.7); `agentPermissions: "Read"` on `Site`/`AuditRun`/`CheckDefinition`; anonymous
   `QueryRead/CheckDefinition` in security.json; the identity provider's portal rights off.
 - Mcp: `[McpReadsThrough]` (a run's pages through the run) and `[McpRunsAction]` (`StartAudit` on a `Read` type) per tool;
@@ -197,7 +211,8 @@ As built, with the deviations, in the PRD decision log ("M6 implementation").
 - `CoverageTools` (PRD §4.8): `list_repositories`, `summary`, `hotspots`, `file`, `patch`, `drops`, read-only, through the
   scope and `IPermissionService`; reads in `ICoverageInsights` (SPARK050 quiet). Hotspots rank by uncovered lines (S8 FAIL,
   [spikes](spark_mcp_spikes.md#s8--does-the-hotspot-ranking-predict-cheap-gains)).
-- Embedded setup in the app (`ForMcp()`, issuer and canonical URL from the public origin) plus personal tokens
+- Embedded setup in the app (`ForMcp().AgentsOnly()` since "IdP surface for MCP-only apps"; issuer and canonical URL
+  from the public origin) plus personal tokens
   (`withConnectedAgents()` in the SPA); `covt_`/OIDC rejected on `/mcp` (D23, test); one prompt
   (`codecoverage_raise_coverage`, new `mcp.AddPrompts<T>()`).
 - Found and fixed on the way: agents were invisible to CodeCoverage's owner check (`ISparkCurrentUser.Id` now); any

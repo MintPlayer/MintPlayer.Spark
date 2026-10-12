@@ -867,8 +867,8 @@ None. Q18 was resolved in round 3 (§10, D22).
   - **Open for M5/M6 (production apps):** hosting the provider for agents maps its whole surface, not only the MCP
     preset §7 assumed: device authorization, PAR, introspection, the developer-portal and key-admin APIs (Fleet's route
     snapshot). Inert without registrations and rights, but an agents-only mapping would be the tighter design for
-    SeoTester and CodeCoverage. *Resolved 2026-10-12: `idp.ForMcp().AgentsOnly()`, and Fleet uses it ("IdP surface for
-    MCP-only apps" below).*
+    SeoTester and CodeCoverage. *Resolved 2026-10-12: `idp.ForMcp().AgentsOnly()`, and Fleet, CodeCoverage and SeoTester
+    use it ("IdP surface for MCP-only apps" below).*
   - **Live run (owner, M7 checklist), Claude Code; not run yet:** RavenDB on `localhost:8080`; Node trusting the dev
     certificate (`dotnet dev-certs https --export-path <file>.pem --format pem`, `NODE_EXTRA_CA_CERTS=<file>.pem`).
     *HR via SparkId:* `dotnet run --project apps/SparkId/SparkId --launch-profile https` (5011) and
@@ -1015,7 +1015,8 @@ None. Q18 was resolved in round 3 (§10, D22).
   every earlier case's tokens to catch up on: the race OidcTokenSecurity's two chain-revocation cases showed
   (contributions PRD, M8 item 11). Fixed the same way: the case waits for indexing before the replay, pinning what it
   tests (a chain the index can see is torn down); the production code is unchanged. Evidence: the same filter (`Mcp`,
-  `IdentityProvider`, library route snapshots) 748/749 before the wait, 749/749 after it.
+  `IdentityProvider`, library route snapshots) 748/749 before the wait, 749/749 after it. *Superseded 2026-10-12 by
+  "Refresh-token families exact" below: the family's document decides, loaded by id, and the case no longer waits.*
 - **IdP surface for MCP-only apps (2026-10-12).** Owner decision of 2026-10-12: apps that host the identity provider only to
   sign agents in (Fleet now; SeoTester and CodeCoverage in M5/M6, all with `ForMcp()`) expose only what agents need, and the
   provider's registration gives developers granular control over flows and endpoints; a full provider like SparkId keeps
@@ -1076,7 +1077,25 @@ None. Q18 was resolved in round 3 (§10, D22).
   - **Fleet** uses `idp.ForMcp().AgentsOnly()`; its route snapshot lost 22 routes (device ×3, PAR, introspection,
     userinfo ×2, logout, `/connect/applications` ×3, RFC 7592 ×3, portal ×8 incl. admin ×2) and nothing else changed.
     SeoTester's and CodeCoverage's, which M5 and M6 added with `ForMcp()` before this work was rebased onto them, move
-    to `AgentsOnly()` next.
+    to `AgentsOnly()` next. *Done: the next two bullets.*
+  - **CodeCoverage** (production, coverage.mintplayer.com) uses `idp.ForMcp().AgentsOnly()` since f931bf4c, made after
+    the rebase onto M6. Its route snapshot lost exactly the 22 routes Fleet lost and nothing else (22 deletions, no
+    addition). Red first: `CoverageMcpSignInTests.CodeCoverage_maps_only_what_its_agents_need` (Fleet's case on CodeCoverage's
+    real `Program`) failed with the routes answering 401, 302, 200 or 400 instead of 404. The app needed nothing else: its
+    SPA fallback already skips `/connect`, `/.well-known` and `/spark`, its management types were already off, and its
+    agents' surface (`CoverageMcpSignInTests`' registration, authorize and sign-in cases) is what `AgentsOnly()` keeps.
+    `docs/code-coverage/hosting.md` lists the surface for M9.
+  - **SeoTester** (production, seotester.mintplayer.com) uses it since 757c5fb7, made after the rebase onto M5, as
+    CodeCoverage does: the same 22 routes left its snapshot and nothing else. One more change was needed: its SPA fallback
+    skipped only `/spark`, so an unmapped `/connect`, `/.well-known` or `/mcp` path reached the SPA instead of answering
+    404; it now skips all three, as CodeCoverage's and Fleet's do. Mutation (the old fallback restored, `AgentsOnly()`
+    kept): the surface case failed at the first unmapped `/connect` path, the SPA's default-page middleware throwing
+    because the test host builds no SPA; production would have served `index.html`. Red
+    first: `AgentAuthorizationServerTests.SeoTester_maps_only_what_its_agents_need` failed with the routes answering 401,
+    302, 200, 400 or 415 instead of 404; its companion (an agent registers itself and is sent to the website's sign-in)
+    passed before and pins the agents' path. The rate limiter M5 added still covers what stays (token, revocation,
+    registration: `RateLimitTests`). `docs/seotester/deploy.md` §4.4 lists the surface for M9. Both apps green on the
+    final tree: the numbers closing "Refresh-token families exact" below.
   - **Bug found: the disable cascade gave up on a stale index.** `OidcDisableCascade` sent its patch-by-query without a
     `StaleTimeout`, and RavenDB then refuses at once when the index is stale (`QueryOperationOptions.StaleTimeout`: "null
     by default - throw immediately if index is stale" [verified, Raven.Client 7.2.6 docs]): a token issued moments before
@@ -1095,6 +1114,8 @@ None. Q18 was resolved in round 3 (§10, D22).
     `Reused_refresh_token_is_refused_and_revokes_the_chain` does); the rebase kept that one fix and its comment.
     **Open for the owner:** RFC 9700 §4.14.2 expects the active refresh token revoked. A bounded wait in the sweep would
     make that exact; every caller of the sweep is refusing the request anyway, so the wait would delay no token.
+    *Resolved 2026-10-12 (owner): exact without a wait, by a family document loaded by id ("Refresh-token families exact"
+    below); the case's wait is gone.*
   - **Evidence:** red first. `McpAgentsOnlyProviderTests` and `OidcSurfaceTests` against the API with nothing reading it: 15 of
     17 failed for the intended reasons (the routes answered 401/302/200 instead of 404, the documents listed 5 grant types,
     other grants answered `invalid_client`, no startup refusal, the consent links present, a developer's initial access
@@ -1234,6 +1255,68 @@ None. Q18 was resolved in round 3 (§10, D22).
     test owns one. After the mutation runs (sources restored): `SparkQuotaTests` and `McpAgentPrincipalTests` 10/10, the
     SeoTester set 96/96 again. The SeoTester client's templates type-check (`ngc -p ClientApp/tsconfig.app.json --noEmit`,
     `rootDir` widened to the repository, exit 0). Not run: the SPA spec and the full suites.
+- **Refresh-token families exact (2026-10-12).** Owner decision of 2026-10-12, resolving the open point of "IdP surface for
+  MCP-only apps" above: RFC 9700 §4.14.2 has the provider revoke the active refresh token when a rotated one comes back,
+  and that must hold without depending on a possibly stale index and without a wait. Commits 611e3cd4 (the family
+  document), f7c89f3a (tests). Decisions, with their evidence:
+  - **A family document decides, loaded by id.** `OidcRefreshFamilies/<SHA-256 of the code's or device code's document
+    id>` (`OidcRefreshFamily`: status, the generation of the active refresh token, `@expires` at the latest expiry of its
+    tokens) is stored in the batch that redeems a code or device code for a refresh token. Every refresh token carries
+    `FamilyId` and its `Generation`; every access token issued with one carries `FamilyId`, and a token exchanged from such
+    an access token inherits it. A refresh is honoured only for the family's active token (valid, at the family's
+    generation, the family valid). Access tokens (introspection, userinfo, `/mcp`) and refresh-token introspection consult
+    the family by id beside the grant (`AccessTokens.ResolveAsync`, `FamilyPermits`; the record's load includes the
+    family). The id derives from the code, so a code presented again finds the family it started with nothing stored on
+    the code.
+  - **A rotation is a compare-and-swap on the family.** It advances the generation in the batch that spends the token, so
+    under that session's optimistic concurrency two rotations of one token cannot both commit, and a rotation that read the
+    family before a revocation committed fails.
+  - **A revocation cannot lose.** A reuse (a rotated token presented again, or a valid one not at its family's
+    generation), the second spend of one refresh token or code at once (the loser of the race re-reads the token and finds
+    it `redeemed`), and a code presented again revoke the family in a batch of their own that checks no change vector
+    (`Token.RevokeFamilyAsync`). This deviates from the owner's sketch, which had the reuse mark the family "in the same
+    session with optimistic concurrency": an optimistic revocation can lose to a rotation committed between its read and
+    its write, and a retry can lose again, so exactness would hang on timing. The unconditional write wins against a
+    rotation committed after it read the family; a rotation that read the family before it fails on its own change vector;
+    revoked is final, so overwriting a rotation's generation loses nothing. The reuse audit event (D9) commits with the
+    revocation, so it lands even when the sweep's bookkeeping loses a race (before, it rode that batch).
+  - **The index sweep is cleanup.** `RevokeAuthorizationChainAsync` still marks the authorization's valid tokens revoked
+    through its index, best-effort, after the family is revoked; nothing depends on it. It also still reaches the
+    authorization's other families (another device of the same user and client) when its index holds them, as before.
+    Exactness covers the family the signal came from, which is what RFC 9700 §4.14.2 and RFC 6749 §4.1.2 ask. *Open for
+    the owner: narrow the sweep to the family, or keep its wider best-effort reach.*
+  - **Revoking the grant ends its families through the link,** unchanged: every redemption and every access-token check
+    loads the `OidcGrant` (`OidcGrants.PermitsAsync`: status and `LastRevokedAt`), so withdrawing it, or revoking the agent
+    grant linked to it (D12), ends every family of the grant at once. No family document is written for it.
+  - **Rejected:** a bounded wait for the index in the sweep (the open point above: still timing-bound, and a wait in a
+    request path); setting the grant's `LastRevokedAt` on a reuse (exact too, but it signs out every family of the grant,
+    every device of a shared client id such as Claude Code's metadata document, and makes a theft signal look like the
+    user withdrawing consent); the family as an `OidcToken` of a new type (the token sweeps and the disable cascade query
+    `OidcTokens` by grant, application and status and would rewrite it in passing; a typed generation reads better).
+  - **No backward compatibility, and nothing to migrate:** a refresh token without a family is refused, fail closed as a
+    missing grant. None exists outside development: the MCP servers of CodeCoverage (M6) and SeoTester (M5), the two
+    production apps that host the provider, have not been deployed (M9), and SparkId and Fleet are development demos whose
+    agents sign in again. Seeded refresh
+    tokens in tests are stored in a family (`OidcTestHost.StoreInFamilyAsync`), so a case refuses them for what it is
+    about. A device code spent twice keeps its old answer (`invalid_grant`, no teardown): RFC 8628 clients poll, and two
+    overlapping polls must not revoke anything.
+  - **Not changed:** RFC 7009 revocation of a refresh token still sweeps the grant's access tokens best-effort (the
+    revoked refresh token itself is refused at once, by its loaded status); refresh-token introspection consults the
+    family now but, as before, not the grant.
+  - **Evidence, red → green:** `OidcRefreshTokenFamilyTests` stops the database's indexing while a family grows, after a
+    first reuse has primed the sweep's auto-index, so the sweep cannot see the tokens in question. Red against the code
+    before the family document: 4 of 5, each with the successor's or the winner's refresh token still refreshing (200): a
+    rotated token presented again, four concurrent refreshes of one token, a code presented twice, a code redeemed four
+    times at once. The fifth, the grant withdrawal, passed before too: it pins the link the families keep. Green: 5/5.
+    Mutation runs (guard removed → red, restored → green): the family check on access tokens off → the four cases red at
+    their access-token assertion (introspection `active: true`); the lost race's re-read off (`SpentMeanwhileAsync` never
+    true) → both concurrency cases red (the winner's refresh token refreshed, 200), so their losers really race. The waits
+    for indexing before a reuse are gone from `McpEmbeddedAuthorizationServerTests.Reusing_a_refresh_token_revokes_the_whole_family`
+    and `OidcTokenSecurityTests.Reused_refresh_token_is_refused_and_revokes_the_chain`. On the final tree (rebased onto
+    ca0577b0, CodeCoverage and SeoTester on `AgentsOnly()`): the `IdentityProvider` and `Mcp` namespaces with the library
+    route snapshots 753/753; CodeCoverage's `Mcp` classes and route snapshot 29/29; SeoTester's `Mcp` classes
+    (`SeoToolsTests`, `AgentAuthorizationServerTests`), `RateLimitTests` and route snapshot 18/18; Fleet's
+    `McpEmbeddedServerTests` and route snapshot 5/5; SparkId's route snapshot 1/1. The solution builds, 0 errors.
 - **M7a — the §6.2 audit, S5, S9, E2E and the tests earlier milestones left (2026-10-12).** Decisions and evidence:
   - **Audit:** every §6.2 item mapped to its tests in §6.2 "Coverage (M7a audit)", SeoTester's included since its merge.
     Gaps closed (marked **+** there): HMAC keyed with the issuer's own public key; tokens of the trusted issuer for

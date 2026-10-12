@@ -407,6 +407,11 @@ production, which runs Community):
 | `OidcKeys` | Keys | signing and encryption keys with a state (Next/Active/Retired), encrypted with ASP.NET Data Protection |
 | `OidcAuditEvents` | none | the audit trail (D9), with `@expires` retention defaulting to 180 days |
 
+*Amended 2026-10-12: a seventh collection, `OidcRefreshFamilies`: one document per code or device code redeemed for a
+refresh token, recording whether the family stands and the generation of its active refresh token, with `@expires`. It
+makes refresh-token reuse detection exact (RFC 9700 §4.14.2) without an index ([spark_mcp_PRD.md](spark_mcp_PRD.md)
+decision log, "Refresh-token families exact").*
+
 - **Uniqueness (O17):**
   - **Client ids:** a compare-exchange reservation `oidc/client-ids/<client id>` naming the
     application document (`OidcClientIdReservation`). A failed save leaves a reservation whose owner

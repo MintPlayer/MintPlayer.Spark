@@ -354,7 +354,8 @@ Google's OAuth consent screen and X's app settings take the two URLs above. When
 ### 4.4 MCP server (plan M9; not deployed yet)
 
 SeoTester serves AI agents at `/mcp` ([mcp.md](mcp.md); `docs/spark_mcp_PRD.md` §4.7). It is its own OAuth authorization
-server for them (`idp.ForMcp()`), next to personal access tokens. **No new secret and no `.env` entry:**
+server for them (`idp.ForMcp().AgentsOnly()`: the identity provider maps only what agents use), next to personal access
+tokens. **No new secret and no `.env` entry:**
 
 | What | Where it comes from | Config key (override only) |
 |---|---|---|
@@ -363,15 +364,17 @@ server for them (`idp.ForMcp()`), next to personal access tokens. **No new secre
 | **Canonical URL** (every agent token's audience) | The public URL + `/mcp`: `https://seotester.mintplayer.com/mcp`. Permanent: users paste it into their agents | `Spark:Mcp:CanonicalUrl` |
 
 The proxy needs nothing: Traefik's router sends every path of the host to the app and does not buffer `text/event-stream`
-(the app also sends `X-Accel-Buffering: no`). The new public routes are `/mcp`, `/connect/*` and `/.well-known/*`
-(`apps/SeoTester/SeoTester.Tests/RouteSnapshots/SeoTester.txt`). The identity provider's developer portal rights are
+(the app also sends `X-Accel-Buffering: no`). The new public routes are `/mcp`, `/.well-known/*` and the agents' part of
+`/connect/*`: authorize with the sign-in and consent pages, token, client registration and revocation
+(`apps/SeoTester/SeoTester.Tests/RouteSnapshots/SeoTester.txt`). Any other path under `/connect`, `/.well-known` or `/mcp`
+answers 404, never the SPA. The identity provider's developer portal rights are
 switched off in `security.json` (`"libraries": { "identity-provider": false }`), so nobody can register other OAuth
 clients; agents register themselves (client metadata documents, or loopback-only dynamic registration, 20 an hour per
 address).
 
 **Rate limiting** (owner decision 2026-10-12): the app runs ASP.NET's rate limiter (`spark.AddRateLimiter()` in
 `Program.cs`), so the identity provider's own budgets apply: 120 requests a minute per address on its machine endpoints
-(token, PAR, device authorization, revocation, userinfo and client registration; `Spark:IdentityProvider:RateLimits`), on
+(token, revocation and client registration, the ones agents use; `Spark:IdentityProvider:RateLimits`), on
 top of Spark's 150 per 10 s per address on `/spark` and `/connect` (`Spark:RateLimiter`). Over a budget the answer is
 429. The address is the client's: Spark core takes it from Traefik's `X-Forwarded-For` (`Spark:ForwardedHeaders`).
 Nothing to configure; `/mcp` keeps its own per-user and per-address quota (`Spark:Mcp:Quota`).

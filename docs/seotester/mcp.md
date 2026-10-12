@@ -76,8 +76,9 @@ The agent typically:
 
 ## For developers of SeoTester
 
-- `/mcp` is configured in `Program.cs` (`AddMcp`, `idp.ForMcp()`); the tools are `Mcp/SeoTools.cs`, the prompt
-  `Mcp/SeoPrompts.cs`, the tests `SeoTester.Tests/Mcp/SeoToolsTests.cs`.
+- `/mcp` is configured in `Program.cs` (`AddMcp`, `idp.ForMcp().AgentsOnly()`); the tools are `Mcp/SeoTools.cs`, the
+  prompt `Mcp/SeoPrompts.cs`, the tests `SeoTester.Tests/Mcp/SeoToolsTests.cs` and, for the agents' authorization server,
+  `SeoTester.Tests/Mcp/AgentAuthorizationServerTests.cs`.
 - Locally the canonical URL is `http://localhost:5014/mcp` (`appsettings.Development.json`): use the `http` address in
   the agent, because Node-based agents do not trust the ASP.NET development certificate.
 - Deploying: [deploy.md](deploy.md), "MCP server".
