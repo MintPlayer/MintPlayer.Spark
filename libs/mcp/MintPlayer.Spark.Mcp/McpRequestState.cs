@@ -54,5 +54,11 @@ internal sealed class McpRequestState
     /// <summary>The refused call's JSON-RPC request id, for the error body of that 401.</summary>
     public System.Text.Json.Nodes.JsonNode? JsonRpcId { get; set; }
 
+    /// <summary>
+    /// What the application tool being called declared it reaches (<see cref="McpReadsThroughAttribute"/>,
+    /// <see cref="McpRunsActionAttribute"/>), set by the call filter for that call only; <see langword="null"/> otherwise.
+    /// </summary>
+    public McpToolReach? Reach { get; set; }
+
     public static McpRequestState? Of(HttpContext? context) => context?.Features.Get<McpRequestState>();
 }

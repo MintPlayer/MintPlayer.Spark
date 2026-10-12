@@ -27,6 +27,10 @@ internal static class McpToolRegistration
                 if (!names.Add(name))
                     throw new InvalidOperationException($"Two MCP tools are named '{name}' ({type.FullName}.{method.Name}). Tool names must be unique, the generic ones (discover, describe, query, get) included.");
 
+                // A tool that runs an action writes: listed as read-only, it would run for agents allowed to read only.
+                if (method.GetCustomAttribute<McpServerToolAttribute>()!.ReadOnly && method.GetCustomAttributes<McpRunsActionAttribute>().Any())
+                    throw new InvalidOperationException($"MCP tool '{name}' ({type.FullName}.{method.Name}) is ReadOnly but declares [McpRunsAction]. A tool that runs an action is a write: remove ReadOnly = true.");
+
                 services.AddSingleton(sp => Create(type, method, sp, name));
             }
         }

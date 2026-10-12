@@ -30,6 +30,14 @@ namespace MintPlayer.Spark.Mcp;
 /// package knows which targets are entity types, so the grant's semantics (<c>AgentGrantScope.For</c>) and the
 /// type test meet here (decision log, M3a seam).
 /// </para>
+/// <para>
+/// <b>An application tool's declared reach (decision log, M5).</b> While a tool marked
+/// <see cref="McpReadsThroughAttribute"/> runs, reading its type is judged by the "through" type's layers (a run's pages
+/// as the run); while one marked <see cref="McpRunsActionAttribute"/> runs, that one action needs <c>Write</c> from the
+/// application layer and the grant's cap (checked first, as for every write) and <c>Read</c> from the type and the
+/// grant's choice of types. Both are declared on the tool by its developer, apply to that call only, and never touch
+/// <c>security.json</c> or row security.
+/// </para>
 /// </remarks>
 internal sealed class McpAgentRestriction(IHttpContextAccessor httpContextAccessor, IModelLoader modelLoader) : IAgentRequestRestriction
 {
@@ -49,9 +57,26 @@ internal sealed class McpAgentRestriction(IHttpContextAccessor httpContextAccess
         if (type is null)
             return ValueTask.FromResult(true); // an application resource: app layer and security.json only
 
+        // The type layer and the grant's choice of types: of this type, or what the running tool declared.
+        var layer = needed;
+        if (state.Reach is { } reach)
+        {
+            if (needed == EAgentPermission.Read && reach.ReadThrough(type.Name) is { } through)
+            {
+                // Read as part of the "through" type: its layers, never more (an unknown name fails closed).
+                if (modelLoader.GetEntityTypeByName(through) is not { } throughType)
+                    return ValueTask.FromResult(false);
+                type = throughType;
+            }
+            else if (needed == EAgentPermission.Write && reach.RunsAction(type.Name, action))
+            {
+                layer = EAgentPermission.Read; // the tool's own write; the type must still be readable by the agent
+            }
+        }
+
         return ValueTask.FromResult(
-            (type.AgentPermissions & needed) == needed
-            && (state.Grant is null || (state.Grant.For(type.Name) & needed) == needed));
+            (type.AgentPermissions & layer) == layer
+            && (state.Grant is null || (state.Grant.For(type.Name) & layer) == layer));
     }
 
     /// <summary>The agent permission an action needs.</summary>

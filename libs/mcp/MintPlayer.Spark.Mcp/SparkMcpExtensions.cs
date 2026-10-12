@@ -63,6 +63,9 @@ public static class SparkMcpExtensions
         // What the account page and the consent screen may offer a user to grant (Abstractions seam, decision log M3a).
         services.AddScoped<MintPlayer.Spark.Abstractions.IAgentExposure, McpAgentExposure>();
 
+        // An application tool runs a custom action through the web's own gates (D9; decision log, M5).
+        services.AddScoped<ISparkMcpActions, McpCustomActions>();
+
         services.AddMcpServer(server =>
             {
                 server.ServerInfo = new Implementation

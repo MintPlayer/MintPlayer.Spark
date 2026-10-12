@@ -32,13 +32,14 @@ public static class SparkMcpResult
     /// <paramref name="value"/> as JSON, fenced as data. Anything a user typed or a crawler fetched may sit in it.
     /// Cut at <see cref="MaxCharacters"/>, saying so.
     /// </summary>
-    public static CallToolResult Json(object? value)
-    {
-        var json = JsonSerializer.Serialize(value, SerializerOptions());
-        if (json.Length > MaxCharacters)
-            json = json[..MaxCharacters] + " … (truncated: the result exceeded the size limit; ask for less)";
-        return Text(Untrusted(json));
-    }
+    public static CallToolResult Json(object? value) => Text(FencedJson(value));
+
+    /// <summary>
+    /// The application's own <paramref name="note"/> — what the data is, what the agent can do next — then
+    /// <paramref name="value"/> as JSON, fenced as data like <see cref="Json(object?)"/> and cut the same way. Never put
+    /// a value a user typed or a crawler fetched in <paramref name="note"/>: only the fence marks text as data.
+    /// </summary>
+    public static CallToolResult Json(string note, object? value) => Text(note + "\n" + FencedJson(value));
 
     /// <summary>
     /// One page of a query as a compact table: the columns, then per row its object id, its breadcrumb and its
@@ -141,6 +142,15 @@ public static class SparkMcpResult
     /// <summary><paramref name="value"/> as JSON through Spark's HTTP options (the redaction net), unfenced: fence it with <see cref="Untrusted"/>.</summary>
     internal static string Serialize(object? value) => JsonSerializer.Serialize(value, SerializerOptions());
 
+    /// <summary><see cref="Serialize"/>, cut at <see cref="MaxCharacters"/> (saying so) and fenced: the body of both <c>Json</c> answers.</summary>
+    private static string FencedJson(object? value)
+    {
+        var json = Serialize(value);
+        if (json.Length > MaxCharacters)
+            json = json[..MaxCharacters] + " … (truncated: the result exceeded the size limit; ask for less)";
+        return Untrusted(json);
+    }
+
     /// <summary>
     /// A refusal of the arguments themselves (a bad page size, an unknown sort direction, a malformed name). The
     /// message may say what is wrong: it depends on the arguments only, never on data, so it reveals nothing that
@@ -154,7 +164,7 @@ public static class SparkMcpResult
 
     /// <summary>
     /// Adds <paramref name="rows"/> to the row count of this call's audit event (MCP PRD D15). <see cref="Rows"/> counts
-    /// itself; a tool answering through <see cref="Json"/> or <see cref="Text"/> says how many rows it returned here.
+    /// itself; a tool answering through <see cref="Json(object?)"/> or <see cref="Text"/> says how many rows it returned here.
     /// </summary>
     public static void Track(int rows)
     {

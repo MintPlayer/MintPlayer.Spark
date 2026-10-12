@@ -53,6 +53,10 @@ internal static partial class McpToolFilters
                     // is not there, rather than "there, but forbidden".
                     throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams);
                 }
+
+                // What this tool declared it reaches (McpReadsThrough, McpRunsAction), for the restriction inside
+                // IPermissionService during this call only (decision log, M5).
+                state.Reach = McpToolReach.Of(tool);
             }
 
             var stopwatch = Stopwatch.StartNew();
@@ -71,6 +75,8 @@ internal static partial class McpToolFilters
             }
             finally
             {
+                if (state is not null)
+                    state.Reach = null;
                 Audit(request, context, state, outcome, stopwatch.Elapsed);
             }
         };

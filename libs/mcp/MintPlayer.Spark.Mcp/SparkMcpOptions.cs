@@ -140,7 +140,8 @@ public sealed class SparkMcpOptions
     /// <summary>
     /// Adds the prompts of <typeparamref name="TPrompts"/>: its <see cref="McpServerPromptAttribute"/> methods, written
     /// without the prefix (<c>raise_coverage</c> becomes <c>codecoverage_raise_coverage</c>). A prompt is a message
-    /// template the user picks in the agent; it reads no data, so every caller sees it.
+    /// template the user picks in the agent; it reads no data, so every caller sees it. Name the tools it mentions with
+    /// the prefix, and put no data in it.
     /// </summary>
     public SparkMcpOptions AddPrompts<TPrompts>() where TPrompts : class
     {
