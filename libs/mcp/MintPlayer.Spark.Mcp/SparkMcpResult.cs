@@ -116,10 +116,16 @@ public static class SparkMcpResult
     /// </summary>
     public static CallToolResult Refuse()
     {
+        // The web's own decision (SparkDenial.Refuse, which NotFoundOrSignIn wraps for queries/get and
+        // types/{id}): 401 for an anonymous caller on a host that can sign in, else not-found. On /mcp the
+        // principal is the bearer's or an empty one (the gate), so "anonymous" means "no agent token".
+        // Like SparkDenial's own rule, a 401 is promised only where signing in can help: with no agent setup
+        // wired, nothing can, and every caller gets the not-found.
         var context = Accessor.HttpContext;
-        var state = State();
-        var text = state is { IsAnonymous: true } && context is not null
-            ? McpSignInText.For(context.RequestServices.GetRequiredService<McpAuthentication>(), context.RequestServices.GetRequiredService<SparkMcpOptions>().ServerName)
+        var authentication = context?.RequestServices.GetService<McpAuthentication>();
+        var text = context is not null && authentication is { Setups.Count: > 0 }
+                   && Endpoints.SparkDenial.Refuse(context).StatusCode == StatusCodes.Status401Unauthorized
+            ? McpSignInText.For(authentication, context.RequestServices.GetRequiredService<SparkMcpOptions>().ServerName)
             : NotFoundMessage;
         return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = text }] };
     }

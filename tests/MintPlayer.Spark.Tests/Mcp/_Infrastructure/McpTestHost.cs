@@ -60,9 +60,21 @@ internal static class McpTestHost
         SparkTestSecurity security,
         Action<SparkMcpOptions>? configure = null,
         Action<ISparkBuilder>? configureSpark = null)
+        => Create<GuardedContext>(store, Models(), security, configure, configureSpark);
+
+    /// <summary>The same host over other fixtures.</summary>
+    public static SparkEndpointFactory<TContext> Create<TContext>(
+        Raven.Client.Documents.IDocumentStore store,
+        IEnumerable<EntityTypeFile> models,
+        SparkTestSecurity security,
+        Action<SparkMcpOptions>? configure = null,
+        Action<ISparkBuilder>? configureSpark = null,
+        Action<IServiceCollection>? configureServices = null)
+        where TContext : SparkContext
         => new(
             store,
-            Models(),
+            models,
+            configureServices: configureServices,
             configureSpark: spark =>
             {
                 spark.AddCredentialScheme<AuthenticationSchemeOptions, StubCookieHandler>(CookieScheme, isAmbient: true);
