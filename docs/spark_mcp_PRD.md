@@ -628,11 +628,19 @@ None. Q18 was resolved in round 3 (§10, D22).
     `AsDetail` of `Person`), so `Person` and `CarreerJob` are `"Read, Write"` and `Profession`/`Company` `"Read"` (their
     references would otherwise be hidden, D19). HR signs in against SparkId, so the setup wired is personal access tokens
     (account page); setup 2 against SparkId is possible with M3c's `AddExternalAgentAuthorizationServer` but not wired.
-  - **Evidence:** `McpPlanTests` 18/18 green. Mutation runs (guard removed → red, restored → green): binding check off →
+  - **The type-level right is asked first** (`New`/`Edit`/`Delete` on the type, before the object is scaffolded or an
+    attribute looked at), as the web endpoints do: otherwise a caller who may not create a type could tell its attribute
+    names from the answers, and the application's `OnNewAsync` would run for them. Red without it
+    (`A_caller_who_may_not_create_a_type_learns_nothing_about_its_attributes`), green with it.
+  - **Evidence:** `McpPlanTests` 21/21 green (custom-action plans included: checked at propose without running, run
+    once at apply, refused beside other operations and without the action right); the related classes (`Mcp`,
+    `Endpoints.PersistentObject`, `CustomAction`, `DurableAfterCommit`, `Interceptor`) 397/397 green on the core change.
+    Mutation runs (guard removed → red, restored → green): binding check off →
     the 3 `A_plan_is_bound_to_the_user_agent_and_grant…` cases fail; echo check off → `An_echo_that_differs…` fails;
     status check off → `A_plan_runs_once` fails; expiry check off → `An_expired_plan_is_refused` fails; one-commit batching
     off (each save commits) → `A_write_racing_the_apply_fails_the_whole_commit` fails. The apply-time re-check removed
     stays green: the real save refuses a revoked right too (the re-check only moves the refusal before any write).
-  - **For M5/M7:** custom-action plans have no test yet (needs an actions catalogue fixture; SeoTester's
-    `seotester_start_scan` is its own tool, not a plan); `apply_changes` through an external (M3c) token and the parity
-    suite's write half are M7's; HR's MCP wiring has not been run against the live app.
+  - **For M5/M7:** a custom action on a selection (`query` + `ids`) is passed through to `CustomActionExecution` but has
+    no MCP test, and only the object it runs on carries an etag (selected rows are re-materialized at apply, as on the
+    web); SeoTester's `seotester_start_scan` is its own tool, not a plan. `apply_changes` through an external (M3c) token
+    and the parity suite's write half are M7's. HR's MCP wiring builds but has not been run against the live app.
