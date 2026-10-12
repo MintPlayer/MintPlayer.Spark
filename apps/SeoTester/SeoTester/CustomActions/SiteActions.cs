@@ -1,6 +1,6 @@
-using System.Security.Claims;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Actions;
@@ -22,11 +22,11 @@ public partial class StartAuditAction : SparkCustomAction
     [Inject] private readonly AuditStarter starter;
     [Inject] private readonly MintPlayer.Spark.Services.IModelLoader models;
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IManager manager;
 
     public override Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
-        => SiteActionSupport.StartAsync(args, starter, session, httpContextAccessor, manager, models, fullCrawl: false, cancellationToken);
+        => SiteActionSupport.StartAsync(args, starter, session, currentUser, manager, models, fullCrawl: false, cancellationToken);
 }
 
 /// <summary><c>StartFullCrawl</c> on a verified site: the weekly full-site crawl (D14).</summary>
@@ -35,11 +35,11 @@ public partial class StartFullCrawlAction : SparkCustomAction
     [Inject] private readonly AuditStarter starter;
     [Inject] private readonly MintPlayer.Spark.Services.IModelLoader models;
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IManager manager;
 
     public override Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
-        => SiteActionSupport.StartAsync(args, starter, session, httpContextAccessor, manager, models, fullCrawl: true, cancellationToken);
+        => SiteActionSupport.StartAsync(args, starter, session, currentUser, manager, models, fullCrawl: true, cancellationToken);
 }
 
 /// <summary>
@@ -51,13 +51,13 @@ public partial class VerifySiteAction : SparkCustomAction
 {
     [Inject] private readonly SiteVerification verification;
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly ISparkCurrentUser currentUser;
     [Inject] private readonly IManager manager;
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken)
     {
         var site = await SiteActionSupport.SiteAsync(args, session, cancellationToken);
-        var userId = SiteActionSupport.UserId(httpContextAccessor);
+        var userId = SiteActionSupport.UserId(currentUser);
         var result = await verification.VerifyAsync(site.Id!, userId, cancellationToken);
         args.SetResult(new { outcome = result.Outcome.ToString(), method = result.Method });
 
@@ -83,10 +83,10 @@ public partial class VerifySiteAction : SparkCustomAction
 
 internal static class SiteActionSupport
 {
-    public static async Task StartAsync(CustomActionArgs args, AuditStarter starter, IAsyncDocumentSession session, IHttpContextAccessor accessor, IManager manager, MintPlayer.Spark.Services.IModelLoader models, bool fullCrawl, CancellationToken cancellationToken)
+    public static async Task StartAsync(CustomActionArgs args, AuditStarter starter, IAsyncDocumentSession session, ISparkCurrentUser currentUser, IManager manager, MintPlayer.Spark.Services.IModelLoader models, bool fullCrawl, CancellationToken cancellationToken)
     {
         var site = await SiteAsync(args, session, cancellationToken);
-        var result = await starter.StartAsync(site, UserId(accessor), fullCrawl, cancellationToken);
+        var result = await starter.StartAsync(site, UserId(currentUser), fullCrawl, cancellationToken);
         args.SetResult(new { runId = result.RunId, joined = result.Joined });
         manager.Client.Notify(manager.GetTranslatedMessage(result.Joined ? "seo.auditJoined" : "seo.auditStarted", site.Origin), NotificationKind.Success);
         // M11: the caller follows the run live on its page (a joined run is the one already in progress).
@@ -100,8 +100,12 @@ internal static class SiteActionSupport
             ? site
             : throw new SparkValidationException("Open the site first.");
 
-    public static string UserId(IHttpContextAccessor accessor)
-        => accessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } id
+    /// <summary>
+    /// The caller's user id: the sign-in cookie's, or an AI agent's (its bearer token carries the local id as <c>sub</c>,
+    /// which <see cref="ISparkCurrentUser"/> reads; MCP PRD D4). The scan and its quota are the user's either way.
+    /// </summary>
+    public static string UserId(ISparkCurrentUser currentUser)
+        => currentUser.Id is { Length: > 0 } id
             ? id
             : throw new SparkValidationException("Sign in first.");
 }

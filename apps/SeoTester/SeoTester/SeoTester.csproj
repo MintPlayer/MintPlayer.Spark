@@ -37,6 +37,9 @@
 		<ProjectReference Include="..\..\..\libs\settings\MintPlayer.Spark.Settings\MintPlayer.Spark.Settings.csproj" />
 		<ProjectReference Include="..\..\..\libs\notifications\MintPlayer.Spark.Notifications\MintPlayer.Spark.Notifications.csproj" />
 		<ProjectReference Include="..\..\..\libs\organizations\MintPlayer.Spark.Organizations\MintPlayer.Spark.Organizations.csproj" />
+		<!-- MCP (docs/spark_mcp_PRD.md §4.7, D24): the MCP server, and the embedded authorization server agents sign in at. -->
+		<ProjectReference Include="..\..\..\libs\mcp\MintPlayer.Spark.Mcp\MintPlayer.Spark.Mcp.csproj" />
+		<ProjectReference Include="..\..\..\libs\identity_provider\MintPlayer.Spark.IdentityProvider\MintPlayer.Spark.IdentityProvider.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

@@ -204,6 +204,12 @@ public class SeoTesterHostFixture : SparkTestDriver
     /// <summary>Ann owns Acme (Max Member, Vic Viewer); Bob owns Globex; Ann and Max have personal organizations.</summary>
     public Task SeedOrganizationsAsync() => SeedFromJsonAsync("Data/organizations.json");
 
+    /// <summary>
+    /// Waits until every index of the test database is up to date: Spark's queries read auto-indexes without waiting, so a
+    /// test that seeds documents and then queries through the application waits here in between.
+    /// </summary>
+    public void WaitForIndexes() => WaitForIndexing(Store, timeout: TimeSpan.FromSeconds(30));
+
     /// <summary>The host this fixture runs (a subclass puts the fakes elsewhere: the remote fetcher's, D54).</summary>
     protected virtual SeoTesterWebAppFactory CreateFactory() => new(Store, HostSettings, dns: Dns, web: Web, tls: Tls);
 

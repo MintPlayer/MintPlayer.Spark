@@ -43,58 +43,63 @@ public static partial class PageChecks
         void Add(CheckFinding finding) => findings.Add(finding);
 
         // ---- SEO -------------------------------------------------------------------------------------------------
+        // Element evidence (MCP PRD §4.7 gap 1): every check that judges elements names them on a failure or a warning
+        // (Finding.With), so the fix can be found in the templates. Checks of headers or of the page as a whole carry none.
         var titles = html.Titles;
         var title = html.Title;
-        Add(titles.Count == 0 || string.IsNullOrEmpty(title) ? Finding.Fail("seo.title-present", ("url", url))
+        Add((titles.Count == 0 || string.IsNullOrEmpty(title) ? Finding.Fail("seo.title-present", ("url", url))
             : titles.Count > 1 ? Finding.Warn("seo.title-present", ("url", url), ("n", titles.Count))
-            : Finding.Pass("seo.title-present"));
+            : Finding.Pass("seo.title-present")).With(titles));
 
         if (string.IsNullOrEmpty(title))
             Add(Finding.NotApplicable("seo.title-length"));
         else
         {
             var pixels = TitleWidth.Pixels(title);
-            Add(title.Length is < 30 or > 60 || pixels > TitleWidth.TruncationPx
+            Add((title.Length is < 30 or > 60 || pixels > TitleWidth.TruncationPx
                 ? Finding.Warn("seo.title-length", ("url", url), ("n", title.Length), ("value", Math.Round(pixels)))
-                : Finding.Pass("seo.title-length", ("n", title.Length)));
+                : Finding.Pass("seo.title-length", ("n", title.Length))).With(titles.Take(1)));
         }
 
         var description = html.Description;
-        Add(string.IsNullOrEmpty(description) ? Finding.Fail("seo.meta-description", ("url", url), ("n", 0))
+        Add((string.IsNullOrEmpty(description) ? Finding.Fail("seo.meta-description", ("url", url), ("n", 0))
             : description.Length is < 70 or > 160 ? Finding.Warn("seo.meta-description", ("url", url), ("n", description.Length))
-            : Finding.Pass("seo.meta-description"));
+            : Finding.Pass("seo.meta-description")).With(MetaElements(html, "description")));
 
         var h1s = html.H1s;
-        Add(h1s.Count == 1 ? Finding.Pass("seo.single-h1")
+        Add((h1s.Count == 1 ? Finding.Pass("seo.single-h1")
             : h1s.Count == 0 ? Finding.Fail("seo.single-h1", ("url", url), ("n", 0))
-            : Finding.Warn("seo.single-h1", ("url", url), ("n", h1s.Count)));
+            : Finding.Warn("seo.single-h1", ("url", url), ("n", h1s.Count))).With(html.Document.QuerySelectorAll("h1")));
 
         Add(Canonical(page, html, url));
         Add(Hreflang(page, html, url));
 
         var lang = html.Document.DocumentElement.GetAttribute("lang");
-        Add(string.IsNullOrWhiteSpace(lang) ? Finding.Fail("seo.html-lang", ("url", url))
+        Add((string.IsNullOrWhiteSpace(lang) ? Finding.Fail("seo.html-lang", ("url", url))
             : !IsLanguageTag(lang) ? Finding.Fail("seo.html-lang", ("url", url), ("value", lang))
-            : Finding.Pass("seo.html-lang", ("value", lang)));
+            : Finding.Pass("seo.html-lang", ("value", lang))).With([html.Document.DocumentElement]));
 
         Add(page.Header("content-language") is { } contentLanguage
             ? Finding.Warn("seo.content-language-header", ("value", contentLanguage))
             : Finding.Pass("seo.content-language-header"));
 
-        Add(!page.NoIndex ? Finding.Pass("seo.noindex-conflict")
+        Add((!page.NoIndex ? Finding.Pass("seo.noindex-conflict")
             : page.InSitemap || page.LinkedInternally ? Finding.Fail("seo.noindex-conflict", ("url", url), ("value", page.InSitemap ? "sitemap" : "link"))
-            : Finding.NotApplicable("seo.noindex-conflict"));
+            : Finding.NotApplicable("seo.noindex-conflict"))
+            .With(MetaElements(html, "robots").Concat(MetaElements(html, "googlebot"))));
 
         var jsonLd = JsonLd(html);
         Add(StructuredData(jsonLd, url));
-        Add(html.Document.QuerySelector("[itemscope], [typeof], [vocab]") is not null
-            ? Finding.Warn("seo.microdata-rdfa", ("url", url)) : Finding.Pass("seo.microdata-rdfa"));
+        var microdata = html.Document.QuerySelectorAll("[itemscope], [typeof], [vocab]");
+        Add((microdata.Length > 0
+            ? Finding.Warn("seo.microdata-rdfa", ("url", url)) : Finding.Pass("seo.microdata-rdfa")).With(microdata));
         Add(LinkText(html, url));
 
         var words = html.MainWordCount;
         Add(words < 200 ? Finding.Warn("seo.thin-content", ("url", url), ("n", words)) : Finding.Pass("seo.thin-content", ("n", words)));
         Add(UrlProblem(page.Url) is { } urlProblem ? Finding.Warn("seo.url-hygiene", ("n", 1), ("target", url), ("value", urlProblem)) : Finding.Pass("seo.url-hygiene"));
-        Add(html.Meta("keywords") is not null ? Finding.Warn("seo.meta-keywords", ("url", url)) : Finding.Pass("seo.meta-keywords"));
+        Add((html.Meta("keywords") is not null ? Finding.Warn("seo.meta-keywords", ("url", url)) : Finding.Pass("seo.meta-keywords"))
+            .With(MetaElements(html, "keywords")));
 
         var types = jsonLd.SelectMany(j => j.Types).ToList();
         Add(jsonLd.Any(j => j.HasSearchAction) ? Finding.Warn("seo.sitelinks-searchbox", ("url", url)) : Finding.Pass("seo.sitelinks-searchbox"));
@@ -112,7 +117,8 @@ public static partial class PageChecks
             : Finding.Warn("social.open-graph", ("url", url), ("value", string.Join(", ", missingOg))));
         Add(string.IsNullOrWhiteSpace(html.MetaProperty("twitter:card")) ? Finding.Warn("social.twitter-card", ("url", url)) : Finding.Pass("social.twitter-card"));
         var share = ShareTargets(html);
-        Add(share.Count > 0 ? Finding.Warn("social.share-buttons", ("url", url), ("value", string.Join(", ", share))) : Finding.Pass("social.share-buttons"));
+        Add((share.Count > 0 ? Finding.Warn("social.share-buttons", ("url", url), ("value", string.Join(", ", share))) : Finding.Pass("social.share-buttons"))
+            .With(ShareLinks(html)));
 
         // ---- Performance -----------------------------------------------------------------------------------------
         Add(page.BodyBytes < 1024 ? Finding.NotApplicable("performance.compression")
@@ -120,15 +126,18 @@ public static partial class PageChecks
             : Finding.Fail("performance.compression", ("n", 1), ("target", url)));
         Add(page.Header("etag") is null && page.Header("last-modified") is null
             ? Finding.Warn("performance.validators", ("url", url)) : Finding.Pass("performance.validators"));
-        var undimensioned = html.Document.QuerySelectorAll("img, video, iframe").Count(e =>
+        var undimensioned = html.Document.QuerySelectorAll("img, video, iframe").Where(e =>
             !(e.HasAttribute("width") && e.HasAttribute("height")) && !(e.GetAttribute("style") ?? string.Empty).Contains("aspect-ratio", StringComparison.OrdinalIgnoreCase)
-            && !(e.GetAttribute("style") is { } style && style.Contains("width", StringComparison.OrdinalIgnoreCase) && style.Contains("height", StringComparison.OrdinalIgnoreCase)));
-        Add(undimensioned == 0 ? Finding.Pass("performance.media-dimensions")
-            : Finding.Make("performance.media-dimensions", undimensioned >= 3 ? CheckStatus.Fail : CheckStatus.Warn, [("url", url), ("n", undimensioned)]));
-        var preconnects = html.Links("preconnect").Count();
-        Add(preconnects > 4 ? Finding.Warn("performance.resource-hints", ("url", url), ("n", preconnects)) : Finding.Pass("performance.resource-hints", ("n", preconnects)));
-        var inlineStyles = html.Document.QuerySelectorAll("[style]").Length;
-        Add(inlineStyles > 20 ? Finding.Warn("performance.inline-styles", ("url", url), ("n", inlineStyles)) : Finding.Pass("performance.inline-styles", ("n", inlineStyles)));
+            && !(e.GetAttribute("style") is { } style && style.Contains("width", StringComparison.OrdinalIgnoreCase) && style.Contains("height", StringComparison.OrdinalIgnoreCase))).ToList();
+        Add((undimensioned.Count == 0 ? Finding.Pass("performance.media-dimensions")
+            : Finding.Make("performance.media-dimensions", undimensioned.Count >= 3 ? CheckStatus.Fail : CheckStatus.Warn, [("url", url), ("n", undimensioned.Count)]))
+            .With(undimensioned));
+        var preconnects = html.Links("preconnect").ToList();
+        Add((preconnects.Count > 4 ? Finding.Warn("performance.resource-hints", ("url", url), ("n", preconnects.Count)) : Finding.Pass("performance.resource-hints", ("n", preconnects.Count)))
+            .With(preconnects));
+        var inlineStyles = html.Document.QuerySelectorAll("[style]");
+        Add((inlineStyles.Length > 20 ? Finding.Warn("performance.inline-styles", ("url", url), ("n", inlineStyles.Length)) : Finding.Pass("performance.inline-styles", ("n", inlineStyles.Length)))
+            .With(inlineStyles));
 
         // ---- Security --------------------------------------------------------------------------------------------
         Add(Hsts(page));
@@ -157,33 +166,39 @@ public static partial class PageChecks
         var obsolete = new[] { "expect-ct", "public-key-pins", "public-key-pins-report-only", "feature-policy", "p3p" }.Where(h => page.Header(h) is not null).ToList();
         Add(obsolete.Count > 0 ? Finding.Warn("security.obsolete-headers", ("value", string.Join(", ", obsolete))) : Finding.Pass("security.obsolete-headers"));
         Add(Sri(page, html, url));
-        var opener = html.Document.QuerySelectorAll("a[rel]").Count(a => HtmlPage.HasToken(a.GetAttribute("rel"), "opener"));
-        Add(opener > 0 ? Finding.Warn("security.target-blank-opener", ("url", url), ("n", opener)) : Finding.Pass("security.target-blank-opener"));
+        var opener = html.Document.QuerySelectorAll("a[rel]").Where(a => HtmlPage.HasToken(a.GetAttribute("rel"), "opener")).ToList();
+        Add((opener.Count > 0 ? Finding.Warn("security.target-blank-opener", ("url", url), ("n", opener.Count)) : Finding.Pass("security.target-blank-opener"))
+            .With(opener));
         Add(Csrf(html, url));
         Add(CookieFlags(page));
 
         // ---- Accessibility (the raw-HTML part; axe on the rendered page is M10) ---------------------------------
         var images = html.Document.QuerySelectorAll("img");
-        var noAlt = images.Count(i => !i.HasAttribute("alt"));
-        Add(images.Length == 0 ? Finding.NotApplicable("accessibility.img-alt")
-            : noAlt > 0 ? Finding.Fail("accessibility.img-alt", ("url", url), ("n", noAlt)) : Finding.Pass("accessibility.img-alt"));
+        var noAlt = images.Where(i => !i.HasAttribute("alt")).ToList();
+        Add((images.Length == 0 ? Finding.NotApplicable("accessibility.img-alt")
+            : noAlt.Count > 0 ? Finding.Fail("accessibility.img-alt", ("url", url), ("n", noAlt.Count)) : Finding.Pass("accessibility.img-alt"))
+            .With(noAlt));
         Add(FormLabels(html, url));
 
         // ---- Mobile ----------------------------------------------------------------------------------------------
         var viewport = html.Meta("viewport");
-        Add(viewport is null ? Finding.Fail("mobile.viewport", ("url", url))
+        var viewportElements = MetaElements(html, "viewport");
+        Add((viewport is null ? Finding.Fail("mobile.viewport", ("url", url))
             : !viewport.Contains("width=device-width", StringComparison.OrdinalIgnoreCase) ? Finding.Warn("mobile.viewport", ("url", url), ("value", viewport))
-            : Finding.Pass("mobile.viewport"));
-        Add(viewport is null ? Finding.NotApplicable("mobile.zoom-disabled")
-            : ZoomBlock(viewport) is { } zoom ? Finding.Fail("mobile.zoom-disabled", ("url", url), ("value", zoom)) : Finding.Pass("mobile.zoom-disabled"));
+            : Finding.Pass("mobile.viewport")).With(viewportElements));
+        Add((viewport is null ? Finding.NotApplicable("mobile.zoom-disabled")
+            : ZoomBlock(viewport) is { } zoom ? Finding.Fail("mobile.zoom-disabled", ("url", url), ("value", zoom)) : Finding.Pass("mobile.zoom-disabled"))
+            .With(viewportElements));
         Add(Charset(page, html, url));
         Add(html.Meta("theme-color") is null ? Finding.Warn("mobile.theme-color", ("url", url)) : Finding.Pass("mobile.theme-color"));
-        Add(html.Document.QuerySelectorAll("meta[name]").Any(m => m.GetAttribute("name")!.StartsWith("apple-mobile-web-app", StringComparison.OrdinalIgnoreCase))
-            ? Finding.Warn("mobile.apple-web-app", ("url", url)) : Finding.Pass("mobile.apple-web-app"));
+        var appleWebApp = html.Document.QuerySelectorAll("meta[name]").Where(m => m.GetAttribute("name")!.StartsWith("apple-mobile-web-app", StringComparison.OrdinalIgnoreCase)).ToList();
+        Add((appleWebApp.Count > 0
+            ? Finding.Warn("mobile.apple-web-app", ("url", url)) : Finding.Pass("mobile.apple-web-app")).With(appleWebApp));
         var amp = html.Document.DocumentElement.HasAttribute("amp") || html.Document.DocumentElement.HasAttribute("⚡");
-        var ampLink = html.Links("amphtml").FirstOrDefault()?.GetAttribute("href");
-        Add(amp ? Finding.Warn("mobile.amp", ("url", url), ("value", ""))
-            : ampLink is not null ? Finding.Warn("mobile.amp", ("url", url), ("value", " (" + ampLink + ")"))
+        var ampLinkElement = html.Links("amphtml").FirstOrDefault();
+        var ampLink = ampLinkElement?.GetAttribute("href");
+        Add(amp ? Finding.Warn("mobile.amp", ("url", url), ("value", "")).With([html.Document.DocumentElement])
+            : ampLink is not null ? Finding.Warn("mobile.amp", ("url", url), ("value", " (" + ampLink + ")")).With([ampLinkElement!])
             : Finding.Pass("mobile.amp"));
 
         // ---- Technical -------------------------------------------------------------------------------------------
@@ -196,15 +211,20 @@ public static partial class PageChecks
 
     private static CheckFinding Canonical(PageInput page, HtmlPage html, string url)
     {
-        var canonicals = html.Links("canonical").Select(l => l.GetAttribute("href")).Where(h => !string.IsNullOrWhiteSpace(h)).ToList();
+        var elements = html.Links("canonical").Where(l => !string.IsNullOrWhiteSpace(l.GetAttribute("href"))).ToList();
+        var canonicals = elements.Select(l => l.GetAttribute("href")).ToList();
         if (canonicals.Count == 0)
             return Finding.Warn("seo.canonical", ("url", url), ("target", "(none)"), ("status", "missing"));
         if (canonicals.Distinct(StringComparer.Ordinal).Count() > 1)
-            return Finding.Fail("seo.canonical", ("url", url), ("target", string.Join(" | ", canonicals)), ("status", "several"));
+            return Finding.Fail("seo.canonical", ("url", url), ("target", string.Join(" | ", canonicals)), ("status", "several")).With(elements);
         if (!IsHttpUrl(canonicals[0]!))
-            return Finding.Warn("seo.canonical", ("url", url), ("target", canonicals[0]), ("status", "relative"));
+            return Finding.Warn("seo.canonical", ("url", url), ("target", canonicals[0]), ("status", "relative")).With(elements.Take(1));
         return Finding.Pass("seo.canonical", ("target", canonicals[0]));
     }
+
+    /// <summary>The <c>meta</c> elements named <paramref name="name"/> (case-insensitive), in document order.</summary>
+    private static List<IElement> MetaElements(HtmlPage html, string name)
+        => html.Document.QuerySelectorAll("meta[name]").Where(m => string.Equals(m.GetAttribute("name"), name, StringComparison.OrdinalIgnoreCase)).ToList();
 
     /// <summary>The page's canonical URL, absolute, when it declares exactly one.</summary>
     public static Uri? CanonicalOf(PageInput page)
@@ -228,11 +248,13 @@ public static partial class PageChecks
         var alternates = AlternatesOf(page);
         if (alternates.Count == 0)
             return Finding.NotApplicable("seo.hreflang");
+        var links = html.Links("alternate").Where(l => l.HasAttribute("hreflang")).ToList();
         var invalid = alternates.FirstOrDefault(a => !a.Lang.Equals("x-default", StringComparison.OrdinalIgnoreCase) && !IsLanguageTag(a.Lang));
         if (invalid.Url is not null)
-            return Finding.Fail("seo.hreflang", ("url", url), ("target", invalid.Url.AbsoluteUri), ("value", "invalid code " + invalid.Lang));
+            return Finding.Fail("seo.hreflang", ("url", url), ("target", invalid.Url.AbsoluteUri), ("value", "invalid code " + invalid.Lang))
+                .With(links.Where(l => string.Equals(l.GetAttribute("hreflang")?.Trim(), invalid.Lang, StringComparison.Ordinal)));
         if (!alternates.Any(a => a.Url.AbsoluteUri == page.Url.AbsoluteUri))
-            return Finding.Fail("seo.hreflang", ("url", url), ("target", url), ("value", "no self-reference"));
+            return Finding.Fail("seo.hreflang", ("url", url), ("target", url), ("value", "no self-reference")).With(links);
         return Finding.Pass("seo.hreflang");
     }
 
@@ -247,7 +269,12 @@ public static partial class PageChecks
     [GeneratedRegex(@"^[A-Za-z]{2,3}(-[A-Za-z]{4})?(-([A-Za-z]{2}|[0-9]{3}))?(-[A-Za-z0-9]{5,8})*$", RegexOptions.None, matchTimeoutMilliseconds: 500)]
     private static partial Regex LanguageTag();
 
-    private sealed record JsonLdBlock(bool Valid, string? Problem, IReadOnlyList<string> Types, bool HasSearchAction);
+    private sealed record JsonLdBlock(bool Valid, string? Problem, IReadOnlyList<string> Types, bool HasSearchAction)
+    {
+        // The script element the block is in, for the finding's evidence. (A plain comment: the attribute-descriptions
+        // generator reads summaries of properties, and this private record is not a model type.)
+        public IElement? Element { get; init; }
+    }
 
     private static readonly Dictionary<string, string[][]> RequiredProperties = new(StringComparer.Ordinal)
     {
@@ -281,7 +308,7 @@ public static partial class PageChecks
             var text = script.TextContent;
             if (text.Length > 256 * 1024)
             {
-                blocks.Add(new JsonLdBlock(false, "block too large", [], false));
+                blocks.Add(new JsonLdBlock(false, "block too large", [], false) { Element = script });
                 continue;
             }
             try
@@ -310,11 +337,11 @@ public static partial class PageChecks
                     problem ??= "no @context";
                 if (types.Count == 0)
                     problem ??= "no @type";
-                blocks.Add(new JsonLdBlock(problem is null, problem, types, search));
+                blocks.Add(new JsonLdBlock(problem is null, problem, types, search) { Element = script });
             }
             catch (JsonException ex)
             {
-                blocks.Add(new JsonLdBlock(false, $"invalid JSON at line {ex.LineNumber + 1}", [], false));
+                blocks.Add(new JsonLdBlock(false, $"invalid JSON at line {ex.LineNumber + 1}", [], false) { Element = script });
             }
         }
         return blocks;
@@ -361,9 +388,10 @@ public static partial class PageChecks
         var bad = blocks.FirstOrDefault(b => !b.Valid);
         if (bad is null)
             return Finding.Pass("seo.structured-data", ("value", string.Join(", ", blocks.SelectMany(b => b.Types).Distinct().Take(10))));
-        return bad.Problem!.StartsWith("invalid JSON", StringComparison.Ordinal) || bad.Problem == "block too large"
+        return (bad.Problem!.StartsWith("invalid JSON", StringComparison.Ordinal) || bad.Problem == "block too large"
             ? Finding.Fail("seo.structured-data", ("url", url), ("value", bad.Problem))
-            : Finding.Warn("seo.structured-data", ("url", url), ("value", bad.Problem));
+            : Finding.Warn("seo.structured-data", ("url", url), ("value", bad.Problem)))
+            .With(blocks.Where(b => !b.Valid && b.Element is not null).Select(b => b.Element!));
     }
 
     private static readonly IReadOnlySet<string> GenericLinkTexts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -377,7 +405,7 @@ public static partial class PageChecks
         var links = html.Document.QuerySelectorAll("a[href]");
         if (links.Length == 0)
             return Finding.NotApplicable("seo.link-text");
-        var bad = links.Count(a =>
+        var bad = links.Where(a =>
         {
             var name = HtmlPage.Collapse(a.TextContent);
             if (name.Length == 0)
@@ -385,8 +413,8 @@ public static partial class PageChecks
             if (name.Length == 0 && a.HasAttribute("aria-labelledby"))
                 return false; // named by another element: assume it is
             return name.Trim().Length == 0 || GenericLinkTexts.Contains(name.Trim().TrimEnd('.', '…', '»', '›', '>').Trim());
-        });
-        return bad > 0 ? Finding.Warn("seo.link-text", ("url", url), ("n", bad)) : Finding.Pass("seo.link-text");
+        }).ToList();
+        return bad.Count > 0 ? Finding.Warn("seo.link-text", ("url", url), ("n", bad.Count)).With(bad) : Finding.Pass("seo.link-text");
     }
 
     /// <summary>Why a URL is not clean, or null.</summary>
@@ -422,6 +450,10 @@ public static partial class PageChecks
         return ShareEndpoints.Where(e => hrefs.Any(h => h.Contains(e.Host, StringComparison.OrdinalIgnoreCase))).Select(e => e.Label).Distinct().ToList();
     }
 
+    /// <summary>The links to a share endpoint, for <see cref="ShareTargets"/>' evidence.</summary>
+    private static IEnumerable<IElement> ShareLinks(HtmlPage html)
+        => html.Document.QuerySelectorAll("a[href]").Where(a => a.GetAttribute("href") is { } href && ShareEndpoints.Any(e => href.Contains(e.Host, StringComparison.OrdinalIgnoreCase)));
+
     public static bool IsCompressed(string? encoding)
         => encoding is { } e && (e.Contains("br", StringComparison.OrdinalIgnoreCase) || e.Contains("gzip", StringComparison.OrdinalIgnoreCase)
             || e.Contains("zstd", StringComparison.OrdinalIgnoreCase) || e.Contains("deflate", StringComparison.OrdinalIgnoreCase));
@@ -446,8 +478,8 @@ public static partial class PageChecks
     {
         if (!page.IsHttps)
             return Finding.NotApplicable("security.mixed-content");
-        var active = new List<string>();
-        var passive = new List<string>();
+        var active = new List<(string Url, IElement Element)>();
+        var passive = new List<(string Url, IElement Element)>();
         foreach (var element in html.Document.QuerySelectorAll("script[src], iframe[src], object[data], link[href], img[src], video[src], audio[src], source[src], embed[src]"))
         {
             var attribute = element.LocalName switch { "object" => "data", "link" => "href", _ => "src" };
@@ -457,13 +489,13 @@ public static partial class PageChecks
             if (element.LocalName == "link" && !HtmlPage.HasToken(element.GetAttribute("rel"), "stylesheet") && !HtmlPage.HasToken(element.GetAttribute("rel"), "icon")
                 && !HtmlPage.HasToken(element.GetAttribute("rel"), "manifest"))
                 continue;
-            (element.LocalName is "script" or "iframe" or "object" or "link" or "embed" ? active : passive).Add(value);
+            (element.LocalName is "script" or "iframe" or "object" or "link" or "embed" ? active : passive).Add((value, element));
         }
         if (active.Count + passive.Count == 0)
             return Finding.Pass("security.mixed-content");
-        var sample = active.Concat(passive).First();
+        var sample = active.Concat(passive).First().Url;
         return Finding.Make("security.mixed-content", active.Count > 0 ? CheckStatus.Fail : CheckStatus.Warn,
-            [("url", url), ("n", active.Count + passive.Count), ("target", sample)]);
+            [("url", url), ("n", active.Count + passive.Count), ("target", sample)]).With(active.Concat(passive).Select(e => e.Element));
     }
 
     /// <summary>What a policy allows that it should not (CSP Evaluator's main rules), or null.</summary>
@@ -519,8 +551,8 @@ public static partial class PageChecks
             .ToList();
         if (crossOrigin.Count == 0)
             return Finding.NotApplicable("security.sri");
-        var missing = crossOrigin.Count(x => !x.Element.HasAttribute("integrity"));
-        return missing > 0 ? Finding.Warn("security.sri", ("url", url), ("n", missing)) : Finding.Pass("security.sri");
+        var missing = crossOrigin.Where(x => !x.Element.HasAttribute("integrity")).Select(x => x.Element).ToList();
+        return missing.Count > 0 ? Finding.Warn("security.sri", ("url", url), ("n", missing.Count)).With(missing) : Finding.Pass("security.sri");
     }
 
     private static CheckFinding Csrf(HtmlPage html, string url)
@@ -528,8 +560,8 @@ public static partial class PageChecks
         var posts = html.Document.QuerySelectorAll("form").Where(f => string.Equals(f.GetAttribute("method")?.Trim(), "post", StringComparison.OrdinalIgnoreCase)).ToList();
         if (posts.Count == 0)
             return Finding.NotApplicable("security.csrf-heuristic");
-        var without = posts.Count(f => !f.QuerySelectorAll("input[type=hidden][name]").Any(i => TokenField().IsMatch(i.GetAttribute("name")!)));
-        return without > 0 ? Finding.Warn("security.csrf-heuristic", ("url", url), ("n", without)) : Finding.Pass("security.csrf-heuristic");
+        var without = posts.Where(f => !f.QuerySelectorAll("input[type=hidden][name]").Any(i => TokenField().IsMatch(i.GetAttribute("name")!))).ToList();
+        return without.Count > 0 ? Finding.Warn("security.csrf-heuristic", ("url", url), ("n", without.Count)).With(without) : Finding.Pass("security.csrf-heuristic");
     }
 
     [GeneratedRegex(@"csrf|xsrf|token|authenticity|nonce|requestverification", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 500)]
@@ -562,13 +594,13 @@ public static partial class PageChecks
         if (fields.Count == 0)
             return Finding.NotApplicable("accessibility.form-labels");
         var labelled = new HashSet<string>(html.Document.QuerySelectorAll("label[for]").Select(l => l.GetAttribute("for")!), StringComparer.Ordinal);
-        var unlabelled = fields.Count(f =>
+        var unlabelled = fields.Where(f =>
             !(f.Id is { Length: > 0 } id && labelled.Contains(id))
             && f.Closest("label") is null
             && string.IsNullOrWhiteSpace(f.GetAttribute("aria-label"))
             && string.IsNullOrWhiteSpace(f.GetAttribute("aria-labelledby"))
-            && string.IsNullOrWhiteSpace(f.GetAttribute("title")));
-        return unlabelled > 0 ? Finding.Fail("accessibility.form-labels", ("url", url), ("n", unlabelled)) : Finding.Pass("accessibility.form-labels");
+            && string.IsNullOrWhiteSpace(f.GetAttribute("title"))).ToList();
+        return unlabelled.Count > 0 ? Finding.Fail("accessibility.form-labels", ("url", url), ("n", unlabelled.Count)).With(unlabelled) : Finding.Pass("accessibility.form-labels");
     }
 
     /// <summary>What in a viewport blocks zooming, or null.</summary>

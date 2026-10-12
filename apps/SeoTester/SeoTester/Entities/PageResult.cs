@@ -92,6 +92,13 @@ public class PageResult : IOrganizationOwned, IExpiring
 [ValueObject]
 public partial class PageFinding
 {
+    /// <summary>
+    /// Whether <see cref="Excerpt"/> is stored next to <see cref="Selectors"/>: the rule of spike S7
+    /// (<c>docs/spark_mcp_spikes.md</c>, MCP PRD §6.1): kept only while page results stay under 64 KB at p99 and the
+    /// evidence grows the database by less than 25 %; otherwise selectors only.
+    /// </summary>
+    public const bool StoreExcerpts = true;
+
     [ValueKey]
     public string CheckId { get; set; } = string.Empty;
 
@@ -100,4 +107,20 @@ public partial class PageFinding
 
     /// <summary>The template parameters (<c>{n}</c>, <c>{value}</c>, …) as a short JSON object.</summary>
     public string? Detail { get; set; }
+
+    /// <summary>CSS selectors of up to five elements behind a failing or warning finding: the page's own markup, untrusted.</summary>
+    public List<string>? Selectors { get; set; }
+
+    /// <summary>The first such element's HTML, at most 300 characters: the page's own markup, untrusted.</summary>
+    public string? Excerpt { get; set; }
+
+    /// <summary>A check's result as stored on its page, with its element evidence (MCP PRD §4.7 gap 1).</summary>
+    public static PageFinding From(Checks.CheckFinding finding) => new()
+    {
+        CheckId = finding.CheckId,
+        Status = finding.Status.ToString(),
+        Detail = finding.DetailJson,
+        Selectors = finding.Evidence is { Selectors.Count: > 0 } evidence ? [.. evidence.Selectors] : null,
+        Excerpt = StoreExcerpts ? finding.Evidence?.Excerpt : null,
+    };
 }

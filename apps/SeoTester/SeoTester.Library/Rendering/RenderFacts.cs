@@ -43,7 +43,9 @@ public sealed record ImageFact(string? Source, bool Lazy, bool AboveFold);
 public sealed record NetworkEntry(string Url, string ResourceType, int Status, long Bytes, bool ThirdParty, string Outcome);
 
 /// <summary>An axe-core violation: the rule, its impact and how many elements failed it.</summary>
-public sealed record AxeViolation(string Id, string? Impact, int Nodes, string? Help);
+/// <param name="Targets">axe's CSS selectors of the first failing elements (at most five), for the finding's evidence.</param>
+/// <param name="Html">The first failing element's HTML as axe reports it (cut), for the finding's evidence.</param>
+public sealed record AxeViolation(string Id, string? Impact, int Nodes, string? Help, IReadOnlyList<string>? Targets = null, string? Html = null);
 
 /// <summary>JavaScript loaded before the page settled, and the share of it that never ran (Chromium's precise coverage).</summary>
 public sealed record ScriptCoverage(long Bytes, long UnusedBytes);

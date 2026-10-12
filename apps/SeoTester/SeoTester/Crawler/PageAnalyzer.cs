@@ -63,8 +63,7 @@ public static class PageAnalyzer
             OgDescription = Cut(html?.MetaProperty("og:description")?.Trim(), 500),
             OgImage = Cut(html?.MetaProperty("og:image")?.Trim(), 2000),
             OgUrl = Cut(html?.MetaProperty("og:url")?.Trim(), 2000),
-            Findings = findings.Where(f => f.Status != Scoring.CheckStatus.NotApplicable)
-                .Select(f => new PageFinding { CheckId = f.CheckId, Status = f.Status.ToString(), Detail = f.DetailJson }).ToList(),
+            Findings = findings.Where(f => f.Status != Scoring.CheckStatus.NotApplicable).Select(PageFinding.From).ToList(),
             ExpiresAtUtc = nowUtc + Retention,
             FinalUrl = fetch.Hops.Count > 0 ? fetch.FinalUrl?.AbsoluteUri : null,
             RedirectHops = fetch.Hops.Count,

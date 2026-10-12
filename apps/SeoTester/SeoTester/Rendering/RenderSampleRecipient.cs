@@ -109,7 +109,7 @@ public partial class RenderSampleRecipient : IRecipient<RenderSampleMessage>
                 string.Join(", ", render.Timings.Select(t => $"{t.Key} {t.Value} ms")));
             pages[page.Id!] = RenderChecks.Evaluate(render.Facts with { Url = page.Url })
                 .Where(f => f.Status != CheckStatus.NotApplicable)
-                .Select(f => new PageFinding { CheckId = f.CheckId, Status = f.Status.ToString(), Detail = f.DetailJson })
+                .Select(PageFinding.From)
                 .ToList();
             serviceWorker ??= render.ServiceWorkerUrl;
             if (i == 0)

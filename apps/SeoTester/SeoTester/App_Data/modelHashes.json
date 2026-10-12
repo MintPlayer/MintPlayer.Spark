@@ -1,21 +1,37 @@
 {
   "version": 2,
-  "modelHash": "6e98fc66923fc81fa514ce2ca102553cedf694ee8fb30174b4c28286f17bfb9f",
+  "modelHash": "6f13e6bef73fb440d3982330f9090c94bba35c37c773f93b6849937aa952e325",
   "contextRoots": "1b8e4efcde47c4e51c1d4c7a9fe86500addac829f98589af212e782f77120d6b",
-  "modelFiles": "08dfba404a71c2fcf84357744287b8401290535392a97ed39ee1f880559dea41",
+  "modelFiles": "85c5e78315189851fb063c2201b31cbc827a3653fa958fb25dfa26a4d4dea4fa",
   "files": {
     "AuditLogEntry.json": "5bb23be7fe5131c9a72f641b7b7cc74b436881e922197cc8378acd4a475789c8",
     "AuditRun.json": "2b0603eead94854a6ca7e208a8344c49f428327dc743dacd6f9a1ebb3df012f5",
     "CheckDefinition.json": "9de4dbad54c309304639fd104c54b3d11fb5e7ed1dc893f2ed54dfdffcda5640",
+    "ClientClaim.json": "94bb0ad62af0b10712bbf1f88d98534addafb037ea693b691b2ca893fb8f437d",
+    "ClientSecret.json": "a6fa599f79e5819c7e231c99e036645618d9686a291613b1275cfc3ff1a4ad33",
     "DatabaseStatistics.json": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84",
     "Notification.json": "de4b9331d3dcfd1be52d90e7ad253408c88748b04d3a971b84b79ba4818c1bdd",
     "NotificationPreference.json": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da",
+    "OidcApiScope.json": "2a1e2a01feaa390b07bbb761fdfedb6f07fee8646586b8c14851cbf0c98b16fc",
+    "OidcApplication.json": "eb095d7621543951867e435be6d20b65691276e078bb12a39e6e39d8d819e34c",
+    "OidcApplicationMember.json": "a80e1870ed16dd1bba0c536318d15ddc624edcd31d30b76b6b1086ffe85a502c",
+    "OidcApplicationMemberRow.json": "f75aba6d425cba5553bc0b70a9b42b4003eaea2cd152578df06e8f074674fa37",
+    "OidcApplicationScope.json": "9ac27a9706e0d17d1c736dfc8163e4238bd956b6f53a519a21659e45cf549150",
+    "OidcApplicationSecretRow.json": "d69b0ffc08c1020218482e7c581a5a46aa21d3728b0325b45eb87cb46986745d",
+    "OidcAuditEvent.json": "0bde83462b4f4c399e64e0d8794e267b65bb51e2b37707e5a21ee21f5abe009d",
+    "OidcDeveloperRequest.json": "ef09fd8e81cf2e4f08ef03244f16fcd0b371bcb0020336cdb3a6ffd5bbdb76c7",
+    "OidcGoLiveReview.json": "63cc0b475f513ff0e2272e446fb3faa92dd82fac87be98c0e01be2370ba54982",
+    "OidcGrant.json": "2032a1e42a5270a4f6c7aa84c15531ee431922452d274870e10315879a0a0b36",
+    "OidcInvitation.json": "e24279356c96c98cf1689dc127f3b93210f1959966a2c27b6b8d773d2001afe1",
+    "OidcResource.json": "43d72632cb47e38c35e3db60db0cf07069088f02ca31b864b40c633055d36840",
+    "OidcReviewDecision.json": "db313ab9a1716de50e7756acf412ae11535fc9ce6bbf31b5a79607ad03105e83",
+    "OidcScopeApproval.json": "6013b35064771788ca07869bff4b3b28209b43f3d75e761b7bd8f9e5cc3e071f",
     "OperatorDashboard.json": "79a4978c7f3ef374c556889e7bcfcc12b048e4681d369b9159803bb54944e226",
     "Organization.json": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935",
     "OrganizationInvitation.json": "8e40cf9b44347a167f5eada49a9adc613ca2b1e913b7d6d4c2d6340508ced115",
     "OrganizationInvite.json": "6e65251c03be7fb106c8dc45a0aff242b775dc3023fe01a49fc68d5105f53eaa",
     "OrganizationMembership.json": "bd3c26cf32d9ca0f8e307e283fe2e37492271c66eacd2dbd589069bc88aff4b8",
-    "PageFinding.json": "fe94e2cfbb58e89f90a2671a67ad6fe9a9d266d6a2c947839900523fcddea916",
+    "PageFinding.json": "fe10223aeabf08a58249dc59dcdb24e84eb9175515a3c6a45ae61fb2c3f43a19",
     "PageResult.json": "f772d1cb59204ff3f043ad0e41aa7ed8a7f27084a1b00f4b835e0050f117c7dd",
     "PasskeyRename.json": "efd6a49e2c20d8420f48f546557fe7605a0553d3f4ce50ec8ae62876ce86714e",
     "PasskeyRow.json": "902d6e7e53ac01ab224b90bdd486b9ba3f4ee27273fe667c907312aac3541b33",
@@ -36,18 +52,25 @@
     "Site": "ed07d323bb46354035b203541af8e4aad63b252c78c457f0895160c4daf86b9e"
   },
   "configFiles": {
-    "actions.json": "6becc8ca83b43656498972ca2d035174ac61d75bb41847b095b6afa68ce8c829",
-    "programUnits.json": "7f9110340640491869b7769df947603d0455cc461080b46c7a1b643d23b69d97"
+    "actions.json": "1e0fc500613f51d5fbac64264d10fd7bb04cba73f8a037a43a3ea33f6a3fcb0b",
+    "programUnits.json": "fd0812c3c5dc8a3f0f09a13d27fadfce8afa16e08d122acbb2ec1775c068bf38"
   },
   "libraries": {
     "authorization": "MintPlayer.Spark.Authorization",
     "dashboards": "MintPlayer.Spark.Dashboards",
+    "identity-provider": "MintPlayer.Spark.IdentityProvider",
     "notifications": "MintPlayer.Spark.Notifications",
     "organizations": "MintPlayer.Spark.Organizations",
     "settings": "MintPlayer.Spark.Settings",
     "spark": "MintPlayer.Spark"
   },
   "layers": {
+    "Model/ClientClaim.json": {
+      "identity-provider": "94bb0ad62af0b10712bbf1f88d98534addafb037ea693b691b2ca893fb8f437d"
+    },
+    "Model/ClientSecret.json": {
+      "identity-provider": "a6fa599f79e5819c7e231c99e036645618d9686a291613b1275cfc3ff1a4ad33"
+    },
     "Model/DatabaseStatistics.json": {
       "dashboards": "c6855f53fc792722fd52f5d537268698211f5936953a3e36254252adf55f6d84"
     },
@@ -56,6 +79,48 @@
     },
     "Model/NotificationPreference.json": {
       "notifications": "35a45688ce2b8d50cef7a07a40351bfd10babbbb2bd182b573cdca2c276b75da"
+    },
+    "Model/OidcApiScope.json": {
+      "identity-provider": "2a1e2a01feaa390b07bbb761fdfedb6f07fee8646586b8c14851cbf0c98b16fc"
+    },
+    "Model/OidcApplication.json": {
+      "identity-provider": "eb095d7621543951867e435be6d20b65691276e078bb12a39e6e39d8d819e34c"
+    },
+    "Model/OidcApplicationMember.json": {
+      "identity-provider": "a80e1870ed16dd1bba0c536318d15ddc624edcd31d30b76b6b1086ffe85a502c"
+    },
+    "Model/OidcApplicationMemberRow.json": {
+      "identity-provider": "f75aba6d425cba5553bc0b70a9b42b4003eaea2cd152578df06e8f074674fa37"
+    },
+    "Model/OidcApplicationScope.json": {
+      "identity-provider": "9ac27a9706e0d17d1c736dfc8163e4238bd956b6f53a519a21659e45cf549150"
+    },
+    "Model/OidcApplicationSecretRow.json": {
+      "identity-provider": "d69b0ffc08c1020218482e7c581a5a46aa21d3728b0325b45eb87cb46986745d"
+    },
+    "Model/OidcAuditEvent.json": {
+      "identity-provider": "0bde83462b4f4c399e64e0d8794e267b65bb51e2b37707e5a21ee21f5abe009d"
+    },
+    "Model/OidcDeveloperRequest.json": {
+      "identity-provider": "ef09fd8e81cf2e4f08ef03244f16fcd0b371bcb0020336cdb3a6ffd5bbdb76c7"
+    },
+    "Model/OidcGoLiveReview.json": {
+      "identity-provider": "63cc0b475f513ff0e2272e446fb3faa92dd82fac87be98c0e01be2370ba54982"
+    },
+    "Model/OidcGrant.json": {
+      "identity-provider": "2032a1e42a5270a4f6c7aa84c15531ee431922452d274870e10315879a0a0b36"
+    },
+    "Model/OidcInvitation.json": {
+      "identity-provider": "e24279356c96c98cf1689dc127f3b93210f1959966a2c27b6b8d773d2001afe1"
+    },
+    "Model/OidcResource.json": {
+      "identity-provider": "43d72632cb47e38c35e3db60db0cf07069088f02ca31b864b40c633055d36840"
+    },
+    "Model/OidcReviewDecision.json": {
+      "identity-provider": "db313ab9a1716de50e7756acf412ae11535fc9ce6bbf31b5a79607ad03105e83"
+    },
+    "Model/OidcScopeApproval.json": {
+      "identity-provider": "6013b35064771788ca07869bff4b3b28209b43f3d75e761b7bd8f9e5cc3e071f"
     },
     "Model/Organization.json": {
       "organizations": "34c3fc47300423547d236b50c8d04b4ecacaa1b243cec6534a2802807ba7f935"
@@ -90,12 +155,14 @@
     "actions.json": {
       "app": "746f2393a4371b769517882474f3ec1376a1760749589014f71e7280fe7747b5",
       "authorization": "fb0d34fa66e732b157e4e222fb9c357e4219cf6d85177473103874e8c1090427",
+      "identity-provider": "06f7de305383ac57955571ab5c16d3aed1b802a7c2159b49d23634d241d33b15",
       "organizations": "254d9fe0f061cf7cbc6fd6de921d9a00cf8e0426052ba5a95e1d7895e70c62f9",
       "spark": "5974b38c8164cafbfb22c012c52fb46dd27264181d772b9f004de1829d1838e6"
     },
     "programUnits.json": {
       "app": "ee83bb83196499c985294ad2a8bc00606012c4ec82b701a62b02614fa517cd94",
       "dashboards": "9f3065ae4c6256c4d047737c3d55d3b2c32a18a186d17896f965321205d98e8d",
+      "identity-provider": "5bf759a10e423cf6d9fc3d0f423b424ed736312d6f74cc572743ab1f8988b28b",
       "notifications": "b962972bc9e43ff5f3ce944c4276dfaa2b713f6dc7c5b64644db81abd4585d19",
       "organizations": "5a4e33ac1d686d6c1b0e2c07d31cb6c60f19107c1bd6d2d223a74cd09c65e963",
       "settings": "562d0dfbe0badee24003f1faf8f2b5e088cc18fabd5ad5493db5e7e75f1418c5"
