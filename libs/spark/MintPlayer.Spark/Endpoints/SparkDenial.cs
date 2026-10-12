@@ -117,4 +117,17 @@ public static class SparkDenial
         var (body, status) = Refuse(httpContext);
         return Results.Json(body, statusCode: status);
     }
+
+    /// <summary>
+    /// For the metadata endpoints that keep their own not-found message (<c>queries/get</c>,
+    /// <c>types/{id}</c>): the uniform 401 where <see cref="Refuse"/> answers one, otherwise a 404
+    /// carrying <paramref name="error"/>, as before (MCP PRD D19 follow-up, aligned with D17/D18).
+    /// </summary>
+    internal static IResult NotFoundOrSignIn(HttpContext httpContext, string? error)
+    {
+        var (body, status) = Refuse(httpContext);
+        return status == StatusCodes.Status401Unauthorized
+            ? Results.Json(body, statusCode: status)
+            : Results.Json(new { error }, statusCode: StatusCodes.Status404NotFound);
+    }
 }

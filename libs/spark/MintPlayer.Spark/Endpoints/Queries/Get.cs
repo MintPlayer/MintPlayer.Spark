@@ -31,7 +31,7 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
 
     /// <summary>A body that cannot be bound gets the refusal an unusable request gets below, never a parse error (PRD D3a).</summary>
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
-        => new(Results.Json(new { error = "Query not found" }, statusCode: 404));
+        => new(SparkDenial.NotFoundOrSignIn(context, "Query not found"));
 
     public override async Task<IResult> HandleAsync(GetQueryRequest request, CancellationToken cancellationToken)
     {
@@ -41,13 +41,15 @@ internal sealed partial class GetQuery : IPostEndpoint<GetQueryRequest>
         // A malformed body and an unknown query get the same answer, for the same reason the
         // unauthorized case does below: the status must not tell a caller which query ids are real.
         if (string.IsNullOrEmpty(id))
-            return Results.Json(new { error = "Query not found" }, statusCode: 404);
+            return SparkDenial.NotFoundOrSignIn(httpContext, "Query not found");
 
-        // Return 404 (not 403) when the caller isn't authorized — so existence isn't leaked: the
-        // catalogue answers an unknown query and a refused one with the same null.
+        // Not 403 when the caller isn't authorized — so existence isn't leaked: the catalogue answers an
+        // unknown query and a refused one with the same null. Like queries/execute (MCP PRD D18), an
+        // anonymous caller on a host that can sign in gets the uniform 401 so it is sent to sign in; a
+        // signed-in caller keeps the 404.
         var query = await catalogue.GetQueryAsync(id, httpContext.RequestAborted);
         return query is null
-            ? Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404)
+            ? SparkDenial.NotFoundOrSignIn(httpContext, $"Query '{id}' not found")
             : Results.Json(query);
     }
 }

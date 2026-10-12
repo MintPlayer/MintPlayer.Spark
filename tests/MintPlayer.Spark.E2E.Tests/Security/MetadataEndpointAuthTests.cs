@@ -53,16 +53,17 @@ public class MetadataEndpointAuthTests
     }
 
     [Fact]
-    public async Task Unauthenticated_GET_query_by_id_for_protected_query_returns_null()
+    public async Task Unauthenticated_GET_query_by_id_for_protected_query_is_told_to_sign_in()
     {
         using var client = SparkClientFactory.ForFleet(_fixture.Host);
 
         // The Car "GetCars" query is gated by QueryRead/Car which the anonymous group does not have.
-        // The endpoint must behave as if the query doesn't exist (M-3: 404 vs 403 must be
-        // indistinguishable) — SparkClient surfaces that as null.
-        var query = await client.GetQueryAsync(Guid.Parse("a20e8400-e29b-41d4-a716-446655440001"));
+        // Fleet can sign in, so the anonymous caller gets the uniform 401 every access endpoint answers
+        // (MCP PRD D17/D18, and queries/get since the D19 follow-up) — the same for an unknown id, so
+        // it still tells nothing about which queries exist.
+        var act = () => client.GetQueryAsync(Guid.Parse("a20e8400-e29b-41d4-a716-446655440001"));
 
-        query.Should().BeNull(
+        (await act.Should().ThrowAsync<SparkClientException>()).Which.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             "an anonymous caller has no rights on the Car query and must not receive its definition");
     }
 

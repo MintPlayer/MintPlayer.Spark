@@ -22,11 +22,12 @@ internal sealed partial class GetEntityType : IGetEndpoint
     {
         var id = Id;
 
-        // 404 rather than 403 for a type the caller may not query — so existence isn't leaked: the
-        // catalogue answers both with null. `?for=new` shapes it for the create form (#264, G1/G2).
+        // Not 403 for a type the caller may not query — so existence isn't leaked: the catalogue
+        // answers both with null. An anonymous caller on a host that can sign in gets the uniform 401
+        // (MCP PRD D17/D18), a signed-in one the 404. `?for=new` shapes it for the create form (#264, G1/G2).
         var shaped = await catalogue.GetEntityTypeAsync(id, FormVerb(Purpose ?? string.Empty), httpContext.RequestAborted);
         return shaped is null
-            ? Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404)
+            ? SparkDenial.NotFoundOrSignIn(httpContext, $"Entity type '{id}' not found")
             : Results.Json(shaped);
     }
 
