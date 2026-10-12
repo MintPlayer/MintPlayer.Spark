@@ -11,9 +11,10 @@
     <spark-auth-bar />
   </ng-container>
   <router-outlet />
-  <!-- Under every page, the sign-in page included (D47). Plain links: these are the server's pages (Legal/, Bot/), not
+  <!-- Under every page, the sign-in page included (D47). Connect an AI agent is this app's page (a route); the rest are
+       plain links: these are the server's pages (Legal/, Bot/), not
        routes, and the service worker leaves them to the server (ngsw-config.json). -->
   <footer class="small text-center text-body-secondary my-4" data-legal-links>
-    <a href="/privacy">{{ 'app.privacy' | t }}</a> · <a href="/terms">{{ 'app.terms' | t }}</a> · <a href="/bot">{{ 'app.aboutTheCrawler' | t }}</a>
+    <a routerLink="/connect-agent" data-connect-agent-link>{{ 'mcpUi.navLink' | t }}</a> · <a href="/privacy">{{ 'app.privacy' | t }}</a> · <a href="/terms">{{ 'app.terms' | t }}</a> · <a href="/bot">{{ 'app.aboutTheCrawler' | t }}</a>
   </footer>
 </spark-shell>

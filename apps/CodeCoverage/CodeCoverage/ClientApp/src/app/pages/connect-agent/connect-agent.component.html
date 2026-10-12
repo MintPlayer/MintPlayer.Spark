@@ -1,0 +1,54 @@
+<div class="agent-page py-3" data-connect-agent>
+  <h1 class="h3 mb-3"><i class="bi bi-robot"></i> {{ 'mcpUi.title' | t }}</h1>
+  <p class="lead">{{ 'mcpUi.intro' | t }}</p>
+
+  <h2 class="h5 mt-4">{{ 'mcpUi.addressTitle' | t }}</h2>
+  <ng-container *ngTemplateOutlet="codeBlock; context: { $implicit: mcpUrl }" />
+
+  <h2 class="h5 mt-4">{{ 'mcpUi.clientsTitle' | t }}</h2>
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    @for (client of clients; track client) {
+      <li class="nav-item" role="presentation">
+        <button type="button" class="nav-link" role="tab" [class.active]="active() === client"
+                [attr.aria-selected]="active() === client" (click)="active.set(client)" [attr.data-client]="client">
+          {{ ('mcpUi.client.' + client) | t }}
+        </button>
+      </li>
+    }
+  </ul>
+  <div role="tabpanel">
+    @for (step of steps[active()]; track step.text) {
+      <p class="mb-1">{{ step.text | t }}</p>
+      @if (step.code) {
+        <ng-container *ngTemplateOutlet="codeBlock; context: { $implicit: step.code }" />
+      }
+    }
+  </div>
+
+  <h2 class="h5 mt-4">{{ 'mcpUi.signInTitle' | t }}</h2>
+  <ol>
+    <li>{{ 'mcpUi.signIn.browser' | t }}</li>
+    <li>{{ 'mcpUi.signIn.signIn' | t }}</li>
+    <li>{{ 'mcpUi.signIn.choose' | t }}</li>
+    <li>{{ 'mcpUi.signIn.approve' | t }}</li>
+  </ol>
+  <p>{{ 'mcpUi.signIn.manage' | t }} <a routerLink="/account/agents">{{ 'mcpUi.connectedApplications' | t }}</a></p>
+
+  <h2 class="h5 mt-4">{{ 'mcpUi.examplesTitle' | t }}</h2>
+  @for (example of examples; track example) {
+    <blockquote class="border-start border-3 ps-3 text-body-secondary">{{ example | t }}</blockquote>
+  }
+
+  <h2 class="h5 mt-4">{{ 'mcpUi.tokenTitle' | t }}</h2>
+  <p class="mb-1">{{ 'mcpUi.token.text' | t }} <a routerLink="/account/agents">{{ 'mcpUi.connectedApplications' | t }}</a></p>
+  <ng-container *ngTemplateOutlet="codeBlock; context: { $implicit: 'Authorization: Bearer spat_…' }" />
+</div>
+
+<ng-template #codeBlock let-code>
+  <div class="agent-code mb-3">
+    <pre class="bg-body-tertiary border rounded p-2 mb-0"><code>{{ code }}</code></pre>
+    <button type="button" class="btn btn-outline-secondary btn-sm py-0" [bsCopy]="code" [copiedAnnouncement]="'mcpUi.copied' | t">
+      <i class="bi bi-clipboard"></i> {{ 'mcpUi.copy' | t }}
+    </button>
+  </div>
+</ng-template>

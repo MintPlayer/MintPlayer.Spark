@@ -8,6 +8,7 @@ Let your coding agent ask CodeCoverage where coverage is missing, then write the
 **Server address:** `https://coverage.mintplayer.com/mcp`
 
 How to add it to Claude Code, Codex, Gemini or VS Code: [Connect an AI agent](../guide-mcp-agents.md).
+In the app, **AI agents** in the top bar opens `/connect-agent`: the same steps with copyable commands for the address you are on.
 
 ## Signing in
 

@@ -27,6 +27,13 @@
       The passkey page is deliberately not a programUnits.json entry: the sidebar is two units, and
       a credential page is account plumbing rather than a program unit.
     -->
+    <!--
+      How to connect an AI agent to /mcp, for everyone (public repositories need no sign-in). A topbar link rather than
+      a programUnits.json entry: a url unit always opens in a new tab, and this is a page of the app.
+    -->
+    <a class="btn btn-sm btn-outline-secondary text-nowrap" routerLink="/connect-agent" [title]="'mcpUi.title' | t" data-connect-agent-link>
+      <i class="bi bi-robot"></i><span class="d-none d-lg-inline"> {{ 'mcpUi.navLink' | t }}</span>
+    </a>
     <spark-auth-bar />
   </div>
 

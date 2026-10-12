@@ -30,6 +30,8 @@ export const routes: Routes = [
         withOrganizationRoutes(),
       ),
       { path: 'home', loadComponent: () => import('./pages/home/home.component') },
+      // How to connect an AI agent to /mcp (docs/seotester/mcp.md); static, open to anonymous visitors too.
+      { path: 'connect-agent', loadComponent: () => import('./pages/connect-agent/connect-agent.component') },
       // Last: sparkRoutes() has parameterised first segments that would shadow anything after them.
       // /bot is the server's page (Bot/BotPageEndpoint.cs), excluded from the service worker in ngsw-config.json.
       // The detail page is the generic one plus SeoTester's panels (seo/po-detail-page.component.ts).

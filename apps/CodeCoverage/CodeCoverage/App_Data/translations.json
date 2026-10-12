@@ -2227,5 +2227,200 @@
         "nl": "{count} token(s) intrekken? Een ingetrokken token werkt niet meer voor uploads en kan niet worden hersteld."
       }
     }
+  },
+  "mcpUi": {
+    "title": {
+      "en": "Connect an AI agent",
+      "fr": "Connecter un agent IA",
+      "nl": "Een AI-agent koppelen"
+    },
+    "navLink": {
+      "en": "AI agents",
+      "fr": "Agents IA",
+      "nl": "AI-agents"
+    },
+    "addressTitle": {
+      "en": "Server address",
+      "fr": "Adresse du serveur",
+      "nl": "Serveradres"
+    },
+    "clientsTitle": {
+      "en": "Add it to your agent",
+      "fr": "Ajoutez-le à votre agent",
+      "nl": "Voeg hem toe aan je agent"
+    },
+    "client": {
+      "claude": {
+        "en": "Claude Code",
+        "fr": "Claude Code",
+        "nl": "Claude Code"
+      },
+      "codex": {
+        "en": "Codex",
+        "fr": "Codex",
+        "nl": "Codex"
+      },
+      "gemini": {
+        "en": "Gemini CLI",
+        "fr": "Gemini CLI",
+        "nl": "Gemini CLI"
+      },
+      "vscode": {
+        "en": "VS Code",
+        "fr": "VS Code",
+        "nl": "VS Code"
+      },
+      "other": {
+        "en": "Other clients",
+        "fr": "Autres clients",
+        "nl": "Andere clients"
+      }
+    },
+    "claude": {
+      "add": {
+        "en": "In a terminal, in your project:",
+        "fr": "Dans un terminal, dans votre projet :",
+        "nl": "In een terminal, in je project:"
+      },
+      "auth": {
+        "en": "Then, in a Claude Code session, run /mcp, pick the server and choose Authenticate:",
+        "fr": "Ensuite, dans une session Claude Code, lancez /mcp, choisissez le serveur puis Authenticate :",
+        "nl": "Daarna, in een Claude Code-sessie: voer /mcp uit, kies de server en kies Authenticate:"
+      }
+    },
+    "codex": {
+      "add": {
+        "en": "In a terminal (Codex 0.148 or later). It opens your browser to sign in right away:",
+        "fr": "Dans un terminal (Codex 0.148 ou plus récent). Votre navigateur s'ouvre aussitôt pour la connexion :",
+        "nl": "In een terminal (Codex 0.148 of nieuwer). Je browser opent meteen om aan te melden:"
+      },
+      "login": {
+        "en": "To sign in again later:",
+        "fr": "Pour vous reconnecter plus tard :",
+        "nl": "Om later opnieuw aan te melden:"
+      }
+    },
+    "gemini": {
+      "add": {
+        "en": "In a terminal (Gemini CLI 0.63 or later):",
+        "fr": "Dans un terminal (Gemini CLI 0.63 ou plus récent) :",
+        "nl": "In een terminal (Gemini CLI 0.63 of nieuwer):"
+      },
+      "auth": {
+        "en": "Then, in a Gemini session:",
+        "fr": "Ensuite, dans une session Gemini :",
+        "nl": "Daarna, in een Gemini-sessie:"
+      }
+    },
+    "vscode": {
+      "command": {
+        "en": "With GitHub Copilot in agent mode: run MCP: Add Server… from the Command Palette, choose HTTP and paste this address:",
+        "fr": "Avec GitHub Copilot en mode agent : lancez MCP: Add Server… depuis la palette de commandes, choisissez HTTP et collez cette adresse :",
+        "nl": "Met GitHub Copilot in agentmodus: voer MCP: Add Server… uit vanuit het Command Palette, kies HTTP en plak dit adres:"
+      },
+      "file": {
+        "en": "Or add it to .vscode/mcp.json in your project. VS Code offers to sign you in when the server asks:",
+        "fr": "Ou ajoutez-le à .vscode/mcp.json dans votre projet. VS Code propose la connexion quand le serveur la demande :",
+        "nl": "Of voeg hem toe aan .vscode/mcp.json in je project. VS Code biedt aan om je aan te melden wanneer de server erom vraagt:"
+      }
+    },
+    "other": {
+      "oauth": {
+        "en": "Any MCP client that supports Streamable HTTP and OAuth sign-in works with this address:",
+        "fr": "Tout client MCP qui prend en charge Streamable HTTP et la connexion OAuth fonctionne avec cette adresse :",
+        "nl": "Elke MCP-client die Streamable HTTP en aanmelden via OAuth ondersteunt, werkt met dit adres:"
+      },
+      "token": {
+        "en": "A client that can't open a browser (CI, scheduled jobs) sends a personal access token as a header instead (see below):",
+        "fr": "Un client qui ne peut pas ouvrir de navigateur (CI, tâches planifiées) envoie plutôt un jeton d'accès personnel en en-tête (voir ci-dessous) :",
+        "nl": "Een client die geen browser kan openen (CI, geplande taken) stuurt in de plaats een persoonlijk toegangstoken als header (zie hieronder):"
+      }
+    },
+    "signInTitle": {
+      "en": "Signing in",
+      "fr": "Connexion",
+      "nl": "Aanmelden"
+    },
+    "signIn": {
+      "browser": {
+        "en": "Your browser opens.",
+        "fr": "Votre navigateur s'ouvre.",
+        "nl": "Je browser opent."
+      },
+      "approve": {
+        "en": "Approve. The browser says you can close it, and the agent continues; it keeps you signed in.",
+        "fr": "Approuvez. Le navigateur indique que vous pouvez le fermer et l'agent continue ; il vous garde connecté.",
+        "nl": "Keur goed. De browser meldt dat je hem mag sluiten en de agent gaat verder; hij houdt je aangemeld."
+      },
+      "manage": {
+        "en": "Change what an agent may do, or disconnect it, later on your account page:",
+        "fr": "Modifiez plus tard ce qu'un agent peut faire, ou déconnectez-le, sur votre page de compte :",
+        "nl": "Wijzig later wat een agent mag, of koppel hem los, op je accountpagina:"
+      },
+      "signIn": {
+        "en": "Sign in to CodeCoverage with GitHub, as on the website.",
+        "fr": "Connectez-vous à CodeCoverage avec GitHub, comme sur le site.",
+        "nl": "Meld je aan bij CodeCoverage met GitHub, zoals op de website."
+      },
+      "choose": {
+        "en": "Choose what the agent may read: everything, or only the parts you tick. It can never change anything.",
+        "fr": "Choisissez ce que l'agent peut lire : tout, ou seulement les parties que vous cochez. Il ne peut jamais rien modifier.",
+        "nl": "Kies wat de agent mag lezen: alles, of alleen de onderdelen die je aanvinkt. Wijzigen kan hij nooit."
+      }
+    },
+    "connectedApplications": {
+      "en": "Connected applications",
+      "fr": "Applications connectées",
+      "nl": "Gekoppelde toepassingen"
+    },
+    "examplesTitle": {
+      "en": "Ask away",
+      "fr": "Posez vos questions",
+      "nl": "Vraag maar raak"
+    },
+    "tokenTitle": {
+      "en": "Personal access token",
+      "fr": "Jeton d'accès personnel",
+      "nl": "Persoonlijk toegangstoken"
+    },
+    "token": {
+      "text": {
+        "en": "For an agent that can't open a browser (CI, scheduled jobs): create a token on your account page, store it as a secret and send it as the header below. It starts with spat_, is shown once, lasts 90 days unless you choose otherwise (at most 365), and works only for the agent address, not the website.",
+        "fr": "Pour un agent qui ne peut pas ouvrir de navigateur (CI, tâches planifiées) : créez un jeton sur votre page de compte, conservez-le comme secret et envoyez-le dans l'en-tête ci-dessous. Il commence par spat_, n'est affiché qu'une fois, reste valable 90 jours sauf choix contraire (365 au maximum) et ne fonctionne que pour l'adresse des agents, pas pour le site.",
+        "nl": "Voor een agent die geen browser kan openen (CI, geplande taken): maak een token aan op je accountpagina, bewaar het als geheim en stuur het mee als onderstaande header. Het begint met spat_, wordt één keer getoond, blijft 90 dagen geldig tenzij je anders kiest (hoogstens 365) en werkt alleen voor het agentadres, niet voor de website."
+      }
+    },
+    "copy": {
+      "en": "Copy",
+      "fr": "Copier",
+      "nl": "Kopiëren"
+    },
+    "copied": {
+      "en": "Copied",
+      "fr": "Copié",
+      "nl": "Gekopieerd"
+    },
+    "intro": {
+      "en": "Ask your AI coding agent (Claude Code, Codex, Gemini, Copilot…) about your coverage: which files have the most uncovered lines, which lines of a pull request no test runs, which commits lowered coverage. It then writes the tests in your checkout. The agent signs in as you and sees only the repositories you can see; it can't change anything in CodeCoverage. Public repositories work without signing in.",
+      "fr": "Interrogez votre agent de code IA (Claude Code, Codex, Gemini, Copilot…) sur votre couverture : quels fichiers ont le plus de lignes non couvertes, quelles lignes d'une pull request aucun test n'exécute, quels commits ont fait baisser la couverture. Il écrit ensuite les tests dans votre copie locale. L'agent se connecte en votre nom et ne voit que les dépôts que vous pouvez voir ; il ne peut rien modifier dans CodeCoverage. Les dépôts publics fonctionnent sans connexion.",
+      "nl": "Vraag je AI-codeeragent (Claude Code, Codex, Gemini, Copilot…) naar je coverage: welke bestanden de meeste niet-gedekte regels hebben, welke regels van een pull request geen enkele test uitvoert, welke commits de coverage verlaagden. Daarna schrijft hij de tests in je checkout. De agent meldt zich aan als jou en ziet alleen de repositories die jij kunt zien; hij kan niets wijzigen in CodeCoverage. Publieke repositories werken zonder aanmelden."
+    },
+    "example": {
+      "hotspots": {
+        "en": "Using CodeCoverage, find the five files in this repository with the most uncovered lines. For each, show the uncovered ranges, then write tests for the first one.",
+        "fr": "Avec CodeCoverage, trouve les cinq fichiers de ce dépôt qui ont le plus de lignes non couvertes. Pour chacun, montre les plages non couvertes, puis écris des tests pour le premier.",
+        "nl": "Zoek met CodeCoverage de vijf bestanden in deze repository met de meeste niet-gedekte regels. Toon per bestand de niet-gedekte bereiken en schrijf daarna tests voor het eerste."
+      },
+      "pullRequest": {
+        "en": "My pull request #123 has low patch coverage. Which added lines are uncovered? Add tests for them.",
+        "fr": "Ma pull request #123 a une faible couverture de patch. Quelles lignes ajoutées ne sont pas couvertes ? Ajoute des tests pour elles.",
+        "nl": "Mijn pull request #123 heeft een lage patch-coverage. Welke toegevoegde regels zijn niet gedekt? Voeg er tests voor toe."
+      },
+      "drops": {
+        "en": "Using CodeCoverage, which recent commits on main lowered coverage, and in which files?",
+        "fr": "D'après CodeCoverage, quels commits récents sur main ont fait baisser la couverture, et dans quels fichiers ?",
+        "nl": "Welke recente commits op main verlaagden volgens CodeCoverage de coverage, en in welke bestanden?"
+      }
+    }
   }
 }
