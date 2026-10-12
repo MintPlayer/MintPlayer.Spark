@@ -54,6 +54,11 @@ export class SparkRegisterComponent {
     confirmPassword: ['', Validators.required],
   }, { validators: passwordMatchValidator });
 
+  /** A full page load, for a server route the router can't reach. A method so tests can replace it. */
+  protected leaveTo(url: string): void {
+    window.location.assign(url);
+  }
+
   async onSubmit(): Promise<void> {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -70,7 +75,7 @@ export class SparkRegisterComponent {
       // A pending identity-provider request (/connect/authorize, …) is a server route the router
       // can't reach: go back to the provider's own sign-in page, which continues it.
       if (this.returnUrl && isSafeReturnUrl(this.returnUrl) && this.returnUrl.startsWith('/connect/')) {
-        window.location.assign(`/connect/login?returnUrl=${encodeURIComponent(this.returnUrl)}`);
+        this.leaveTo(`/connect/login?returnUrl=${encodeURIComponent(this.returnUrl)}`);
         return;
       }
       // An app can mount registration without the password form (external-only sign-in with

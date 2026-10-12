@@ -75,10 +75,23 @@ describe('SparkRegisterComponent', () => {
     expect(TestBed.inject(Router).url).toBe('/login?registered=true');
   });
 
-  it('carries a local returnUrl on to the sign-in step and drops an off-site one', async () => {
+  it('sends a pending /connect/ request back to the provider sign-in page with a full page load', async () => {
     const pendingAuthorization = '/connect/authorize?client_id=https://claude.ai/a&state=x';
+    const { harness } = await setup();
+    const component = await harness.navigateByUrl(
+      `/register?returnUrl=${encodeURIComponent(pendingAuthorization)}`, SparkRegisterComponent);
+    const leaveTo = vi.spyOn(component as any, 'leaveTo').mockImplementation(() => undefined);
+    component.form.setValue({ email: 'a@b.c', userName: 'ab', password: 'pw', confirmPassword: 'pw' });
+
+    await component.onSubmit();
+
+    expect(leaveTo).toHaveBeenCalledWith(`/connect/login?returnUrl=${encodeURIComponent(pendingAuthorization)}`);
+  });
+
+  it('carries a local returnUrl on to the sign-in step and drops an off-site one', async () => {
+    const localPage = '/people?page=2';
     for (const [returnUrl, expected] of [
-      [pendingAuthorization, pendingAuthorization],
+      [localPage, localPage],
       ['//evil.com', undefined],
       ['/\\evil.com', undefined],
       ['https://evil.com', undefined],
