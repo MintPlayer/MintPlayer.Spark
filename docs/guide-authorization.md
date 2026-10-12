@@ -143,6 +143,15 @@ attribute no right mentions is never removed, even though the row type usually h
 its own. When it holds none for the verb, a mention there — allow or deny — counts as a refusal,
 because attribute rights never unlock.
 
+**A reference follows its target type's `Read` right.** A `Reference` attribute (single or array) whose
+target type the caller may not `Read` is treated exactly as if a right denied it for every verb: absent
+from the definition, the persistent object and query rows, ignored by search, sort, filters and
+distincts, and kept at its stored value on save (MCP PRD D19, 2026-10-12). Grant `Read` on the target —
+with a row rule if it goes to `anonymous` or `authenticated` — to show it. A breadcrumb template of the
+owning type that names the reference renders the redacted placeholder (`"—"`) for it. A **required**
+reference hidden this way fails the save with an error naming the attribute and the type to ask `Read`
+on, rather than storing the row without it. AsDetail and embedded rows are not references.
+
 **⚠️ Search narrowed to shown, queryable columns.** Search used to match every readable string
 property of the row type, hidden ones included, with `*word*` wildcards — a substring oracle on
 values no column shows. It now matches only attributes on the caller's query surface:

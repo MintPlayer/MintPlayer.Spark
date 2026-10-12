@@ -10,14 +10,17 @@ moderation | MintPlayer.Spark.Moderation | 97c6289972e2
 Query/Answer
 Query/Question
 Query/QuestionTranslationsContribution
+Query/SparkUser
 Read/Answer
 Read/Question
 Read/QuestionTranslationsContribution
+Read/SparkUser
 
 ## Granted to @anonymous
 Anonymous visitors | grant | QueryRead/Answer | 4e13ffff-0000-4000-8000-000000000002 | app
 Anonymous visitors | grant | QueryRead/Question | 4e13ffff-0000-4000-8000-000000000001 | app
 Anonymous visitors | grant | QueryRead/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000036 | app
+Anonymous visitors | grant | Read/SparkUser | 4e13ffff-0000-4000-8000-000000000049 | app
 
 ## Rights
 Downvoters | grant | Downvote/Answer | 4e13ffff-0000-4000-8000-000000000012 | app
@@ -62,6 +65,7 @@ Signed-in users | grant | History/Question | 4e13ffff-0000-4000-8000-00000000000
 Signed-in users | grant | QueryRead/QuestionTranslationsContribution | 4e13ffff-0000-4000-8000-000000000037 | app
 Signed-in users | grant | QueryReadEditNewDelete/Answer | 4e13ffff-0000-4000-8000-000000000004 | app
 Signed-in users | grant | QueryReadEditNewDelete/Question | 4e13ffff-0000-4000-8000-000000000003 | app
+Signed-in users | grant | Read/SparkUser | 4e13ffff-0000-4000-8000-000000000050 | app
 Signed-in users | grant | ReopenQuestion/Question | 4e13ffff-0000-4000-8000-000000000008 | app
 Signed-in users (@authenticated) | grant | AddPasskey/Passkeys | authorization:passkeys-add | authorization
 Signed-in users (@authenticated) | grant | Query/PasskeyRow | authorization:passkey-rows-query | authorization

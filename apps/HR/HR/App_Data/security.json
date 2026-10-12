@@ -26,6 +26,18 @@
       "isDenied": false
     },
     {
+      "key": "00000000-0000-0000-0000-000000000002",
+      "resource": "Read/Profession",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "00000000-0000-0000-0000-000000000010",
+      "resource": "Read/Profession",
+      "groupId": "b1b2c3d4-0000-0000-0000-00000000000f",
+      "isDenied": false
+    },
+    {
       "key": "a0000001-0000-0000-0000-000000000001",
       "resource": "QueryReadEditNewDelete/Person",
       "groupId": "b1b2c3d4-0000-0000-0000-000000000001",

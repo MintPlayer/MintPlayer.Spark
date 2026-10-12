@@ -138,7 +138,8 @@ to agents" or specific types, and whether changes are allowed (offered only if l
 They can change both later on their account page.
 
 **4. Rights.** security.json and row security decide which rows and attributes, as on screen. A reference
-to a type the caller may not read shows a placeholder, not the referenced object's name.
+to a type the caller may not read is left out entirely, like an attribute the caller may not read: neither
+its id nor the referenced object's name is shown (a breadcrumb that names it shows a placeholder).
 
 If a type allows `Write` but the app's function never returns it, the app logs a warning at startup.
 
