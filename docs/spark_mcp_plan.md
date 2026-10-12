@@ -191,7 +191,9 @@ As built, with the deviations, in the PRD decision log ("M6 implementation").
 - For M9: no new secret or configuration; the Data Protection volume now guards the signing keys
   ([hosting.md](code-coverage/hosting.md#ai-agents-mcp)).
 
-### M7 — Tests
+### M7 — Tests — M7a done (2026-10-12), except the manual checklist
+As built, with the bugs it found and fixed, in the PRD decision log ("M7a"); the §6.2 coverage table is in PRD §6.2, S5 and
+S9 in the spikes doc.
 - Parity suite (S5) over HR, SeoTester and CodeCoverage fixtures (no personal data).
 - The full adversarial list of PRD §6.2.
 - E2E: the OAuth dance with a scripted client against `SparkAppTestHost`; personal-token flow; S9 budgets.

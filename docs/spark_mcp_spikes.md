@@ -1,4 +1,4 @@
-# Spark MCP — spike results S1, S2, S4, S7, S8 (live), S3, S11 (source-read) and S6 (prepared)
+# Spark MCP — spike results S1, S2, S4, S5, S7, S8, S9 (live), S3, S11 (source-read) and S6 (prepared)
 
 **Date:** 2026-10-12 · **Branch:** `spike/spark-mcp` (local only, never pushed) · **PRD:** `docs/spark_mcp_PRD.md` §0, §4, §6.1, decision log round 4
 Throwaway evidence, not production code. Logs quoted below were captured to files and filtered afterwards.
@@ -12,6 +12,8 @@ Throwaway evidence, not production code. Logs quoted below were captured to file
 - **S7** ran live in plan M5 against the owner's three sites: [S7](#s7--what-element-evidence-costs-m5-live).
 - **S6** is prepared (fixture site, server-side dry run, runbook); the live run with Claude Code is the owner's:
   [S6](#s6--does-fencing-hold-prepared-pending-live-run).
+- **S5** (parity) and **S9** (output budgets) ran in plan M7 as committed test suites on the real applications:
+  [S5](#s5--is-parity-real-m7), [S9](#s9--do-results-fit-the-output-budget-m7). Both PASS after fixes they found.
 
 ## Environment and versions
 
@@ -543,3 +545,97 @@ The open question is the model's: does it treat fenced text as data?
 
 Afterwards: Ctrl+C the fixture server; stop SeoTester and SparkId (their whole `dotnet run` process trees); drop the
 `SeoTester-S6` database.
+
+## S5 — is parity real? (M7)
+
+**Verdict: PASS**, after fixing what the suites found (2026-10-12, plan M7a). Every generic tool and every SeoTester tool
+answers each caller what the web's own endpoint answers the same user; where an answer differs, it is a narrowing D6 or
+D19 asks for, asserted as such. CodeCoverage's parity is M6's (`CoverageMcpScopingParityTests`).
+
+**Method.** Committed suites on the real `Program` of each application, real Identity and RavenDB; the agent holds a
+personal access token of the same user whose sign-in cookie (HR) or test principal (SeoTester) asks the web.
+
+- **HR** (`apps/HR/HR.Tests/Mcp/McpParityTests.cs`, fixtures `Data/parity.json`, made up): an *HR manager* and a *Viewer*
+  (HR's own groups) and a *restricted* user (a test group added to a copy of HR's `security.json`: people without their
+  company, a hidden reference, D19, nor their e-mail, an attribute denial), plus an anonymous caller.
+  `discover` ↔ `GET /spark/types` + `/spark/queries`; `describe` ↔ `GET /spark/types/{type}`; `query` ↔
+  `POST /spark/queries/execute` (totals, columns, row ids, every value); `get` ↔ `POST /spark/po/load` (every attribute,
+  detail rows included); `propose_changes`/`apply_changes` ↔ `po/update`, `po/delete` (allowed, refused, what is stored).
+- **SeoTester** (`apps/SeoTester/SeoTester.Tests/Mcp/SeoToolsTests.Parity.cs`): Acme's owner, Acme's viewer, Globex's owner
+  and an anonymous caller. `list_sites` ↔ the Sites query; `run_summary`, `scan_status` ↔ `po/load` AuditRun (score,
+  status, every check's status, affected count, samples); `get_page` ↔ `po/load` PageResult; `list_findings` ↔ `run-pages`
+  + the pages; the generic `get` ↔ `po/load` Site; `explain_check` ↔ `po/load` CheckDefinition.
+- Each comparison also asserts what that caller should see (the restricted user has no company or e-mail anywhere, Globex's
+  owner no Acme scan, a query answers rows to the users who may read it). A check removed from a *shared* service changes
+  both surfaces alike, so only these expectations can see it.
+
+**What the suites found** (red first, then fixed; decision log "M7a"):
+
+1. `POST /spark/queries/execute` on HR's `company-people` (a sub-query whose model declares no parent) threw out of the
+   endpoint, a 500 (`EnsureParent`'s `InvalidOperationException`), and an opaque error on `/mcp`. Now a 400 with the
+   message on the web and the same text from the `query` tool (`SparkQueryParentRequiredException`).
+2. `get` never showed detail rows: the web carries an AsDetail attribute's rows in `object`/`objects`, the tool read `value`,
+   so an agent saw `null` for a person's jobs (HR's contracts) and a car's services. Now a detail object is inline and
+   detail rows are counted, with the rows on request (`include`), as PRD §4.4 has it.
+3. The first query comparison was vacuous: it asked queries by *name* (`GetPeople`), which no endpoint resolves (a query is
+   addressed by id or alias, `people`), so web and agent refused alike and passed. Now the suite uses the aliases
+   `discover` lists, states the web status each caller must get, and counts the row comparisons it made.
+
+**Narrowings by design, asserted:** a type without `agentPermissions` is no type for the agent (HR's `Address`, `Car`), but a
+person's embedded address is the person's value and shown as the web and the query rows show it; a reference to a type
+agents are not given is hidden from the agent (SeoTester's `Site.OrganizationId` → `Organization`); anonymous refusals are
+the sign-in text (HR, personal tokens only) or HTTP 401 (SeoTester, OAuth wired); a write the save would drop silently is
+refused by name (M4).
+
+**Mutation run** (one, before the owner stopped mutation runs): with `AttributeRightsEnforcement.GetHiddenReferencesAsync`
+answering no hidden reference, HR's describe, get and changes tests failed (the restricted user saw and could post
+`Person.Company` on both surfaces); the query test stayed green, which is how its vacuity (3 above) showed.
+
+## S9 — do results fit the output budget? (M7)
+
+**Verdict: PASS** after four fixes (2026-10-12, plan M7a). Every tool's default page, and every list at its maximum page
+size, answers in less than 10k tokens on production-sized data.
+
+**Method.** Committed tests call each tool the largest realistic way and measure the whole answer text (note, fence and
+JSON). Tokens are estimated as characters / 4: no Claude tokenizer runs offline. The bound is
+`SparkMcpResult.MaxCharacters` = 40,000 characters; an answer that reaches it is cut mid-JSON, so it is a failure, not a fit.
+Data: HR 2,000 people with 5–40 jobs each and every text at its model maximum; Fleet 500 cars (descriptions in three
+languages) and one with 120 service entries; CodeCoverage 179 repositories and one shaped like production's largest report
+(736 files, 31,942 coverable lines; docs/code-coverage/multi-forge-plan.md) with every list past its cap; SeoTester 60 sites
+and a verified site's scan with a result for every rule of the catalogue (5 sample URLs each) and 300 pages of 25 findings
+with 3–5 selectors. Tests: `HR.Tests` and `Fleet.Tests` `McpOutputBudgetTests`, `CodeCoverage.Tests` `CoverageMcpBudgetTests`,
+`SeoTester.Tests` `SeoToolsTests.Budget`.
+
+| App | Call | Characters | ≈ tokens |
+|---|---|---|---|
+| HR | `discover`, `describe Person` | 665, 2,373 | 167, 594 |
+| HR | `query people` (25 rows; 100 asked: cut to fit by `SparkMcpResult.Rows`) | 36,826 | 9,207 |
+| HR | `query companies` | 13,492 | 3,373 |
+| HR | `get` Person with 40 jobs; with `include: [Jobs]` | 1,520; 10,093 | 380; 2,524 |
+| HR | `propose_changes`, 50 updates (the maximum) | 25,030 | 6,258 |
+| Fleet | `discover`, `describe Car` | 785, 6,532 | 197, 1,633 |
+| Fleet | `query cars` (25 rows); 100 asked | 34,377; 39,664 | 8,595; 9,916 |
+| Fleet | `get` Car, 120 services counted; `include` (86 of 120 rows fit) | 1,969; 31,953 | 493; 7,989 |
+| CodeCoverage | `list_repositories` 25; 50 | 6,065; 11,890 | 1,517; 2,973 |
+| CodeCoverage | `summary`; `hotspots` 10; 50 | 6,726; 2,138; 9,022 | 1,682; 535; 2,256 |
+| CodeCoverage | `file` (1,200 ranges, 300 partial lines); `patch` (45 files × 60 hunks) | 9,915; 14,550 | 2,479; 3,638 |
+| CodeCoverage | `drops` 5; 10 | 3,073; 7,201 | 769; 1,801 |
+| SeoTester | `list_sites` 50; 100 | 10,192; 12,154 | 2,548; 3,039 |
+| SeoTester | `run_summary` (every rule) | 38,063 | 9,516 |
+| SeoTester | `list_findings` 100 pages; 200 | 23,032 | 5,758 |
+| SeoTester | `get_page` (25 findings, texts at maximum); `scan_status`; `explain_check` (longest rule) | 20,851; 623; 1,396 | 5,213; 156; 349 |
+
+**Fixes (red first):**
+
+1. `codecoverage_drops` at its documented maximum (`take` 10) threw (the SDK's generic error): five reads per drop passed
+   RavenDB's 30-request session budget. The budget is lifted for that loop, bounded by `take`.
+2. `seotester_run_summary`: 40,567 characters, so its JSON was cut. Every check is kept; sample URLs are added while the
+   answer fits, failures first, and the note says for how many checks they were left out.
+3. `seotester_list_findings`: 40,558 characters at the default page: its budget counted the findings, not the rules' headers
+   or the body. Both are counted now.
+4. `get` with `include`: detail rows stop at 30,000 characters as well as 100 rows (`omitted` says how many more), so long
+   rows end a page at a row, never mid-text.
+
+Close to the bound by construction: a `query` page is cut to fit by `SparkMcpResult.Rows`, so its largest answers sit just
+under 40,000 characters (Fleet's 100 asked: 39,664); with chars / 4 that is just under 10k tokens. Rows of realistic length
+(HR's long-tail texts are 2–3 times typical) leave a wide margin.

@@ -355,6 +355,54 @@ non-loopback redirect refused · ~~unreferenced-type reference shows the placeho
 a type the caller may not Read is absent from metadata, rows, sort/filter/distincts and kept on save (D19,
 2026-10-12) · query execute, queries/get and types/{id} 401 anonymous (D18).
 
+**Coverage (M7a audit, 2026-10-12; decision log "M7a").** Every item and the tests that hold it, as `file:line` of the test
+method. **+** = added in M7a; each was written red where the property was missing, else proven falsifiable by removing its
+guard once (mutation runs in the decision log). Setups: PAT (personal tokens), EMB (embedded server), EXT (external server),
+REM (a Spark provider as another app's external server), STUB (test schemes). Paths: `M/` = `tests/MintPlayer.Spark.Tests/Mcp/`,
+`T/` = `tests/MintPlayer.Spark.Tests/`, `E2E/` = `tests/MintPlayer.Spark.E2E.Tests/Mcp/`, `CC/` = `apps/CodeCoverage/CodeCoverage.Tests/Mcp/`,
+`SEO/` = `apps/SeoTester/SeoTester.Tests/Mcp/`, `HR/` = `apps/HR/HR.Tests/Mcp/`, `FL/` = `apps/Fleet/Fleet.Tests/`.
+
+| Item | Tests | Setups |
+|---|---|---|
+| Wrong audience | `M/McpExternalAuthorizationServerTests.cs:156` (theory: another audience, no audience), `:211` (opaque, introspected) | EXT |
+| Wrong issuer | `M/McpExternalAuthorizationServerTests.cs:156` (another issuer with the same or its own key, the right issuer name with another key) | EXT |
+| `sub` linked under another provider | `M/McpExternalAuthorizationServerTests.cs:100`, `:82` (same e-mail, no link) | EXT |
+| Same `sub` from another issuer | `M/McpExternalAuthorizationServerTests.cs:156` (the linked `sub` from another issuer), `M/McpRemoteResourceTests.cs:264` | EXT, REM |
+| ID token as access token | `M/McpExternalAuthorizationServerTests.cs:156` (the website's client as audience; typed `JWT`) | EXT |
+| `alg: none`, HMAC/RSA confusion | `M/McpExternalAuthorizationServerTests.cs:156` (alg none; HMAC; **+** HMAC keyed with the issuer's own public key under its `kid`) | EXT |
+| Expired, not yet valid | `M/McpExternalAuthorizationServerTests.cs:156` | EXT |
+| Token for another resource | `M/McpExternalAuthorizationServerTests.cs:156` (**+** another MCP endpoint of the same issuer, the application's origin, a path below `/mcp`, `aud` of other endpoints beside a near miss), `M/McpEmbeddedAuthorizationServerTests.cs:220`, `M/McpRemoteResourceTests.cs:221` | EXT, EMB, REM |
+| Unlinked `sub` → 401 | `M/McpExternalAuthorizationServerTests.cs:70`, `:491` (login unlinked), `M/McpRemoteResourceTests.cs:238` | EXT, REM |
+| Token role claims grant nothing | `M/McpExternalAuthorizationServerTests.cs:113` | EXT |
+| Revoked shadow grant | `M/McpExternalAuthorizationServerTests.cs:427` | EXT |
+| Grant revoke from either side | `M/McpEmbeddedAuthorizationServerTests.cs:284` (OidcGrant withdrawn), `:299` (AgentGrant revoked), `M/McpPersonalAccessTokenTests.cs:164`, `M/McpExternalAuthorizationServerTests.cs:427`, **+** `E2E/McpAgentJourneyTests.cs:138` (revoked on the page, next call 401). REM: the provider's withdrawal ends the refresh (EMB cases); the resource side is EXT's | EMB, PAT, EXT |
+| Grant type restriction, generic and app tools | `M/McpPersonalAccessTokenTests.cs:245`, **+** `M/McpEmbeddedAuthorizationServerTests.cs:354` (consent's chosen types), **+** `M/McpExternalAuthorizationServerTests.cs:371`, `CC/CoverageMcpScopingParityTests.cs:151` (app tool), **+** `SEO/SeoToolsTests.Adversarial.cs:25` (app tools; red: the SDK's generic error, fixed) | PAT, EMB, EXT |
+| Grant edit without re-sign-in | `M/McpPersonalAccessTokenTests.cs:245`, **+** `M/McpExternalAuthorizationServerTests.cs:371` (narrowed and widened, same token), `:277`, `M/McpPlanTests.cs:360` | PAT, EXT, STUB |
+| Tampered `changes` | `M/McpPlanTests.cs:265` | STUB |
+| Plan replay | `M/McpPlanTests.cs:284`, **+** `:595` (a custom action on a selection runs once) | STUB |
+| Plan of another user | `M/McpPlanTests.cs:247` (user, agent, grant) | STUB |
+| Expired plan | `M/McpPlanTests.cs:302` | STUB |
+| Anonymous write refused | `M/McpPlanTests.cs:437` (**+** a handed plan cannot be applied anonymously), **+** `SEO/SeoToolsTests.Adversarial.cs:94` (`start_scan`), **+** `HR/McpParityTests.cs:363` | STUB, PAT, EMB |
+| Anonymous uniform 401 | `M/McpServerTests.cs:155`, `M/McpSignInChallengeTests.cs:60`, `CC/CoverageMcpScopingParityTests.cs`, `SEO/SeoToolsTests.cs:50`, **+** `SEO/SeoToolsTests.Adversarial.cs:94` (`get_page`), **+** the S5 suites | STUB, EMB, PAT |
+| Signed-in uniform not-found | `M/McpServerTests.cs:180`, `CC/CoverageMcpScopingParityTests.cs`, `SEO/SeoToolsTests.cs:79`, **+** `SEO/SeoToolsTests.Adversarial.cs:61` (every read, a scan of another site), **+** the S5 suites | STUB, PAT |
+| Cookie on `/mcp` ignored | `M/McpServerTests.cs:77` (stub cookie), **+** `M/McpPersonalAccessTokenTests.cs:118` (the cookie `/spark/auth/login` issues) | STUB, PAT |
+| Bearer + cookie runs as the bearer | `M/McpServerTests.cs:88`, **+** `M/McpPersonalAccessTokenTests.cs:118` | STUB, PAT |
+| Authenticated-scheme feature reset | `M/McpServerTests.cs:77`, `:88`, **+** `M/McpPersonalAccessTokenTests.cs:118` | STUB, PAT |
+| Group removal denies the next call (S4) | `M/McpPersonalAccessTokenTests.cs:92`, **+** `M/McpEmbeddedAuthorizationServerTests.cs:380`, **+** `M/McpExternalAuthorizationServerTests.cs:405`, `FL/McpEmbeddedServerTests.cs:113`, **+** `SEO/SeoToolsTests.Adversarial.cs:127` (organization membership) | PAT, EMB, EXT |
+| Bearer `ISparkCurrentUser.Id` = local id | `M/McpServerTests.cs:88`, `M/McpPersonalAccessTokenTests.cs:77`, `M/McpEmbeddedAuthorizationServerTests.cs:83`, `M/McpExternalAuthorizationServerTests.cs:53`, `M/McpRemoteResourceTests.cs:238` | all |
+| `RequireSignIn` 401s `initialize` | `M/McpServerTests.cs:113`, `M/McpSignInChallengeTests.cs`, **+** `M/McpPersonalAccessTokenTests.cs:145` | STUB, PAT |
+| Unknown `resource` never `aud` = `client_id` | `M/McpEmbeddedAuthorizationServerTests.cs:198`, **+** `:420` (no `resource`: the token's `aud` decoded), `M/McpRemoteResourceTests.cs` | EMB, REM |
+| Bad `Origin` 403 | `M/McpServerTests.cs:133` | STUB |
+| `covt_` and GitHub OIDC rejected | `CC/CoverageMcpCredentialTests.cs:21` | CodeCoverage |
+| Personal token past expiry | `M/McpPersonalAccessTokenTests.cs:180` | PAT |
+| Security-stamp change revokes all | `M/McpPersonalAccessTokenTests.cs:199`, `M/McpExternalAuthorizationServerTests.cs:452`, **+** `M/McpEmbeddedAuthorizationServerTests.cs:401` | PAT, EXT, EMB |
+| CIMD to a private address | `T/IdentityProvider/OidcClientMetadataDocumentTests.cs:132`, `:143` (through the real SSRF-safe client) | EMB |
+| DCR with a non-loopback redirect | `M/McpEmbeddedAuthorizationServerTests.cs:164` | EMB |
+| Hidden reference (D19) | web: `T/Authorization/ReferenceTargetRightsTests.cs:182`, `:194`, `:238` and the rest of the class; MCP: `M/McpReferenceRedactionTests.cs:91`, `:113`, **+** `:141` (sort and filter), `M/McpPlanTests.cs:462`, **+** `:197` (kept on a plan's save), **+** `HR/McpParityTests.cs` (restricted user, every tool) | STUB, PAT |
+| D18 anonymous 401 | `T/Endpoints/Queries/QueryExecuteAnonymousDenialTests.cs`, `T/Endpoints/Queries/MetadataAnonymousDenialTests.cs` | web |
+
+Pending: none. SeoTester's items (M5) are in the table since its merge; the live runs (S3/S11 sign-ins, S6) stay on the manual checklist.
+
 ## 7. Risks
 
 - **OAuth server in production apps** (setup 3): only the MCP preset is on.
@@ -1092,3 +1140,48 @@ None. Q18 was resolved in round 3 (§10, D22).
     test owns one. After the mutation runs (sources restored): `SparkQuotaTests` and `McpAgentPrincipalTests` 10/10, the
     SeoTester set 96/96 again. The SeoTester client's templates type-check (`ngc -p ClientApp/tsconfig.app.json --noEmit`,
     `rootDir` widened to the repository, exit 0). Not run: the SPA spec and the full suites.
+- **M7a — the §6.2 audit, S5, S9, E2E and the tests earlier milestones left (2026-10-12).** Decisions and evidence:
+  - **Audit:** every §6.2 item mapped to its tests in §6.2 "Coverage (M7a audit)", SeoTester's included since its merge.
+    Gaps closed (marked **+** there): HMAC keyed with the issuer's own public key; tokens of the trusted issuer for
+    neighbouring resources (another MCP endpoint, the origin, a path below `/mcp`, a near miss beside other audiences); a
+    type choice made at consent (EMB) and on the page (EXT, narrowed and widened on the same token); group removal for EMB,
+    EXT and SeoTester's organization membership; the security stamp for EMB; the real sign-in cookie on `/mcp` (alone
+    anonymous, beside a token the token decides, the scheme feature reset); `RequireSignIn` on a personal-token host; the
+    implied `resource` followed to the token's `aud`; sort and filter on a hidden reference through `query`; a hidden
+    reference kept by a plan's save; anonymous `apply_changes` of a handed plan; SeoTester: chosen types, every read's
+    uniform not-found, anonymous `start_scan` and `get_page`. Not covered, by design: REM's provider-side withdrawal against
+    a live JWT (the resource validates the token itself; the provider's withdrawal ends the refresh, the EMB cases).
+  - **Earlier milestones' tests:** a custom action on a selection through propose/apply (`McpPlanTests`: checked at propose,
+    run once at apply on the rows re-read through the query; a row the caller cannot see, a missing query and a row gone by
+    apply refuse the whole plan); `apply_changes` with an external server's token (`McpExternalAuthorizationServerTests`:
+    the toggle and `mcp:write` at propose *and* at apply; a read token cannot run a plan a write token proposed).
+  - **S5 and S9:** spikes doc, both PASS after fixes. HR's suite runs HR's real `Program` over a copy of its content root
+    whose `security.json` adds one test group (no other way to reach D19 and attribute denials with HR's own groups).
+  - **E2E** (`tests/MintPlayer.Spark.E2E.Tests/Mcp/McpAgentJourneyTests.cs`, 2/2): the OAuth dance against Fleet's own
+    server (401 + RFC 9728 challenge → PRM → RFC 8414 → anonymous loopback DCR → Playwright on `/connect/login` and
+    `/connect/consent`, whose forms post their antiforgery fields → code + PKCE + `resource` at a real loopback listener →
+    `tools/list`, `tools/call`), and a personal token made, used and revoked on Connected applications. Fleet runs as its
+    agents' server only in this collection (`FleetTestHost.AgentAuthorizationServer`, environment `E2EMcp`, its own process
+    and rate-limit bucket); the shared host is unchanged. No new host app; `E2E_APPS` unchanged.
+  - **Bugs found and fixed, each red first:** (1) a sub-query without its parent answered the web with a 500
+    (`EnsureParent`'s exception) and `/mcp` with the SDK's opaque error: now 400 and `SparkQueryParentRequiredException`
+    (S5, HR's `company-people`); (2) `get` dropped detail rows (the web carries them in `object`/`objects`): HR's contracts
+    read `null`; now inline objects, counted rows and `include`, bounded by 100 rows and 30,000 characters (S5, S9);
+    (3) a SeoTester grant of the scans without the catalogue made `run_summary`, `list_findings` and `get_page` throw: the
+    catalogue is now read through the scan (`[McpReadsThrough(CheckDefinition, AuditRun)]`); (4) `seotester_run_summary` and
+    `seotester_list_findings` passed the output cap (40,567 and 40,558 characters, cut JSON): sample URLs while they fit,
+    headers counted (S9); (5) `codecoverage_drops` at its maximum `take` threw: RavenDB's session request budget, lifted for
+    that loop (S9).
+  - **Decision for the owner (taken, reversible):** an AsDetail type without `agentPermissions` is no type for the agent, but
+    its rows inside an exposed object stay the object's values (HR's `Person.Address`), as query rows and the web show
+    them; an AsDetail type's `agentPermissions` governs writing its rows. The other reading (hide them) would need a narrowing
+    in the presentation path.
+  - **Falsifiability:** two mutation batches ran before the owner stopped mutation runs (2026-10-12: "they burn tokens for
+    little gain"; evidence is red-before-fix from now on). With the guard removed these new tests failed: the type choice in
+    `ScopeOf` and at consent, the store groups (EMB, EXT), the embedded stamp check, `RequireSignIn`, the signature and
+    audience checks (the HMAC and neighbouring-resource variants), the bearer-only policy with the gate's reset (the cookie
+    test), the tool filter (anonymous apply), the hidden-reference set (sort and filter), the selection gates, the write cap
+    (external apply). Passed immediately, not mutated: the implied-`resource` `aud` test (its one mutation missed the
+    path), SeoTester's uniform not-found, anonymous and membership tests, the kept-on-save assertion, the E2E journeys. All
+    guards restored; `grep -rn "M7 MUTATION\|if (false &&"` over `libs apps tests` is empty.
+  - **Still open for M7:** the manual checklist (live S3/S11 sign-ins with Claude Code, Codex, Gemini) and S6's live run.
