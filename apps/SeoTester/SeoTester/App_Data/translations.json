@@ -990,16 +990,6 @@
             "en": "Elements",
             "nl": "Elementen"
           }
-        },
-        "Excerpt": {
-          "description": {
-            "en": "The first such element's HTML, at most 300 characters: the page's own markup, untrusted.",
-            "nl": "De HTML van het eerste zulke element, hoogstens 300 tekens: de eigen opmaak van de pagina, niet vertrouwd."
-          },
-          "label": {
-            "en": "HTML excerpt",
-            "nl": "HTML-fragment"
-          }
         }
       },
       "label": {

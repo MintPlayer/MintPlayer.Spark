@@ -15,8 +15,8 @@ public sealed record CheckFinding(string CheckId, CheckStatus Status, IReadOnlyD
     public const int MaxValueLength = 200;
 
     /// <summary>
-    /// The elements behind a failing or warning finding (<c>docs/spark_mcp_PRD.md</c> §4.7 gap 1), where the check judges
-    /// elements; null for a check of headers, the response or the whole page. See <see cref="Html.ElementEvidence"/>.
+    /// The elements behind a failing or warning finding (<c>docs/spark_mcp_PRD.md</c> §4.7 gap 1), as CSS selectors, where
+    /// the check judges elements; null for a check of headers, the response or the whole page. See <see cref="Html.ElementEvidence"/>.
     /// </summary>
     public Html.ElementEvidence? Evidence { get; init; }
 

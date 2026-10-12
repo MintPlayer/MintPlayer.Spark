@@ -152,10 +152,10 @@ public static class RenderChecks
             var nodes = violations.Sum(v => v.Nodes);
             var ordered = violations.OrderByDescending(v => Impact(v.Impact)).ThenByDescending(v => v.Nodes).ToList();
             var example = ordered[0];
-            // Element evidence (MCP PRD §4.7 gap 1): axe's own selectors, the worst violations' first; the example's HTML.
+            // Element evidence (MCP PRD §4.7 gap 1): axe's own selectors, the worst violations' first.
             yield return Finding.Make(check, severe ? CheckStatus.Fail : CheckStatus.Warn,
                     [("url", url), ("n", nodes), ("value", example.Help ?? example.Id), ("rule", example.Id)])
-                .With(Html.ElementEvidence.Of(ordered.SelectMany(v => v.Targets ?? []), example.Html));
+                .With(Html.ElementEvidence.Of(ordered.SelectMany(v => v.Targets ?? [])));
         }
     }
 

@@ -51,17 +51,6 @@
         "isArray": true,
         "showedOn": "PersistentObject",
         "rules": []
-      },
-      {
-        "id": "f9506137-5586-4f18-851d-a6fb36f2e9d1",
-        "name": "Excerpt",
-        "dataType": "string",
-        "isRequired": false,
-        "isReadOnly": true,
-        "order": 5,
-        "isArray": false,
-        "showedOn": "PersistentObject",
-        "rules": []
       }
     ],
     "queries": []

@@ -35,9 +35,8 @@ public sealed partial class PageRenderer(ChromiumBrowser chromium, ILogger<PageR
           const result = await axe.run(document, { runOnly: { type: 'tag', values: tags }, resultTypes: ['violations'] });
           return result.violations.slice(0, 200).map(v => ({
             id: String(v.id), impact: v.impact || null, nodes: v.nodes.length, help: String(v.help || '').slice(0, 200),
-            // Element evidence (MCP PRD §4.7 gap 1): axe's selectors of the first five nodes and the first one's HTML.
+            // Element evidence (MCP PRD §4.7 gap 1): axe's selectors of the first five nodes. No HTML (spike S7).
             targets: v.nodes.slice(0, 5).map(n => [].concat(n.target || []).flat(Infinity).map(String).join(' ').slice(0, 200)),
-            html: String((v.nodes[0] && v.nodes[0].html) || '').slice(0, 300),
           }));
         }
         """;

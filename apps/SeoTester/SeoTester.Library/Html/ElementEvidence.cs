@@ -1,49 +1,37 @@
-using System.Text;
 using AngleSharp.Dom;
 
 namespace SeoTester.Html;
 
 /// <summary>
-/// Where on a page a finding is (<c>docs/spark_mcp_PRD.md</c> §4.7 gap 1): up to <see cref="MaxSelectors"/> CSS selectors
-/// of the offending elements and an excerpt of the first one's HTML of at most <see cref="MaxExcerptLength"/> characters,
-/// so an agent (or a person) can find the template that renders it. Both are the page's own markup: untrusted, and fenced
-/// as data wherever they are shown to an agent.
+/// Where on a page a finding is (<c>docs/spark_mcp_PRD.md</c> §4.7 gap 1): CSS selectors of up to
+/// <see cref="MaxSelectors"/> offending elements, so an agent (or a person) can find the template that renders them.
 /// </summary>
+/// <remarks>
+/// <b>Selectors only, no HTML excerpt</b> (spike S7, <c>docs/spark_mcp_spikes.md</c>): an excerpt of at most 300 characters
+/// grew the stored page results by 40.7 % against 20.4 % for selectors alone, past the 25 % the PRD allows, and it would
+/// store the page's body, which SeoTester never keeps (<c>docs/seo_analyzer_PRD.md</c> §12, "Nothing crawled is stored").
+/// A selector names an element by its tag, position and id: structure, not content. It is still the page's own markup and
+/// is fenced as data wherever an agent reads it.
+/// </remarks>
 /// <param name="Selectors">The elements' selectors, at most <see cref="MaxSelectors"/>, each at most <see cref="MaxSelectorLength"/> characters.</param>
-/// <param name="Excerpt">The first element's outer HTML, whitespace collapsed, cut to <see cref="MaxExcerptLength"/>; null when there is none.</param>
-public sealed record ElementEvidence(IReadOnlyList<string> Selectors, string? Excerpt)
+public sealed record ElementEvidence(IReadOnlyList<string> Selectors)
 {
     public const int MaxSelectors = 5;
     public const int MaxSelectorLength = 200;
-    public const int MaxExcerptLength = 300;
 
     /// <summary>Levels a selector climbs without meeting an id before it stops (the path is then unanchored).</summary>
     private const int MaxDepth = 6;
 
     /// <summary>The evidence of <paramref name="elements"/> in document order, or <see langword="null"/> when there is none.</summary>
     public static ElementEvidence? Of(IEnumerable<IElement> elements)
-    {
-        var first = elements.Take(MaxSelectors).ToList();
-        if (first.Count == 0)
-            return null;
-        return new ElementEvidence(
-            first.Select(SelectorOf).Where(s => s.Length > 0).Distinct(StringComparer.Ordinal).ToList(),
-            ExcerptOf(first[0].LocalName is "html" or "head" or "body" ? StartTag(first[0]) : first[0].OuterHtml));
-    }
+        => Of(elements.Take(MaxSelectors).Select(SelectorOf));
 
-    /// <summary>A document-sized element's start tag only: its outer HTML would be the whole page.</summary>
-    private static string StartTag(IElement element)
-        => "<" + element.LocalName + string.Concat(element.Attributes.Select(a => $" {a.Name}=\"{a.Value}\"")) + ">";
-
-    /// <summary>
-    /// Evidence from selectors and HTML something else already computed (axe-core's node targets), with the same caps.
-    /// </summary>
-    public static ElementEvidence? Of(IEnumerable<string>? selectors, string? html)
+    /// <summary>Evidence from selectors something else already computed (axe-core's node targets), with the same caps.</summary>
+    public static ElementEvidence? Of(IEnumerable<string>? selectors)
     {
         var list = (selectors ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => Cut(s.Trim(), MaxSelectorLength))
             .Distinct(StringComparer.Ordinal).Take(MaxSelectors).ToList();
-        var excerpt = ExcerptOf(html);
-        return list.Count == 0 && excerpt is null ? null : new ElementEvidence(list, excerpt);
+        return list.Count == 0 ? null : new ElementEvidence(list);
     }
 
     /// <summary>
@@ -81,33 +69,6 @@ public sealed record ElementEvidence(IReadOnlyList<string> Selectors, string? Ex
         => id.Length <= 100
            && (char.IsAsciiLetter(id[0]) || id[0] is '_' || (id[0] is '-' && id.Length > 1 && !char.IsAsciiDigit(id[1])))
            && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-');
-
-    private static string? ExcerptOf(string? html)
-    {
-        if (string.IsNullOrWhiteSpace(html))
-            return null;
-        var builder = new StringBuilder(Math.Min(html.Length, MaxExcerptLength + 1));
-        var space = false;
-        foreach (var c in html)
-        {
-            if (char.IsWhiteSpace(c))
-            {
-                space = builder.Length > 0;
-                continue;
-            }
-            if (char.IsControl(c))
-                continue;
-            if (space)
-            {
-                builder.Append(' ');
-                space = false;
-            }
-            builder.Append(c);
-            if (builder.Length >= MaxExcerptLength)
-                break;
-        }
-        return builder.Length == 0 ? null : Cut(builder.ToString(), MaxExcerptLength);
-    }
 
     /// <summary>At most <paramref name="max"/> characters, never splitting a surrogate pair.</summary>
     private static string Cut(string value, int max)

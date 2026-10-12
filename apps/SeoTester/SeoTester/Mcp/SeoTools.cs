@@ -34,7 +34,7 @@ namespace SeoTester.Mcp;
 /// </para>
 /// <para>
 /// <b>Untrusted text</b> (D10): every answer is JSON fenced as data (<see cref="SparkMcpResult.Json(string, object?)"/>); page
-/// titles, descriptions, URLs, excerpts and a site's own address are written by the site's owner or fetched from the
+/// titles, descriptions, URLs, element selectors and a site's own address are written by the site's owner or fetched from the
 /// web. Only the application's own notes (what the data is, what to call next) stand outside the fence.
 /// </para>
 /// <para>
@@ -172,7 +172,7 @@ public sealed class SeoTools(
 
     [McpServerTool(Name = "list_findings", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [McpReadsThrough(nameof(PageResult), nameof(AuditRun))]
-    [Description("The failing and warning checks of a scan, page by page and grouped by rule: the page URL, what is wrong, and where known the element (CSS selectors and an HTML excerpt). Reads the scan's pages in URL order, 'take' pages per call; page with skip/nextSkip. Filter by severity, category, rule or URL prefix.")]
+    [Description("The failing and warning checks of a scan, page by page and grouped by rule: the page URL, what is wrong, and where known the elements (CSS selectors). Reads the scan's pages in URL order, 'take' pages per call; page with skip/nextSkip. Filter by severity, category, rule or URL prefix.")]
     public async Task<CallToolResult> ListFindingsAsync(
         [Description("The site: its id from seotester_list_sites (Sites/…) or its address (example.com).")] string site,
         [Description("A scan id (AuditRuns/…) of that site; empty for the latest finished scan.")] string? run = null,
@@ -649,17 +649,16 @@ public sealed class SeoTools(
 
     // ---- Findings ------------------------------------------------------------------------------------------------------
 
-    private sealed record FindingView(string Check, string? Status, string? Detail, IReadOnlyList<string> Selectors, string? Excerpt);
+    private sealed record FindingView(string Check, string? Status, string? Detail, IReadOnlyList<string> Selectors);
 
     private static IEnumerable<FindingView> Findings(PersistentObject page)
         => Rows(page, nameof(PageResult.Findings)).Select(f => new FindingView(
             Str(Value(f, nameof(PageFinding.CheckId))) ?? string.Empty,
             Str(Value(f, nameof(PageFinding.Status))),
             Str(Value(f, nameof(PageFinding.Detail))),
-            Strings(Value(f, nameof(PageFinding.Selectors))),
-            Str(Value(f, nameof(PageFinding.Excerpt)))));
+            Strings(Value(f, nameof(PageFinding.Selectors)))));
 
-    /// <summary>One finding as the agent reads it: the catalogue's sentence filled from <c>Detail</c>, and the element.</summary>
+    /// <summary>One finding as the agent reads it: the catalogue's sentence filled from <c>Detail</c>, and the elements' selectors.</summary>
     private static JsonObject FindingEntry(string? url, FindingView finding, IReadOnlyDictionary<string, string> summaries)
     {
         var entry = new JsonObject();
@@ -673,8 +672,6 @@ public sealed class SeoTools(
             entry["detail"] = new JsonObject([.. detail.Select(d => KeyValuePair.Create(d.Key, (JsonNode?)d.Value))]);
         if (finding.Selectors.Count > 0)
             entry["selectors"] = new JsonArray([.. finding.Selectors.Select(s => (JsonNode?)s)]);
-        if (finding.Excerpt is { Length: > 0 } excerpt)
-            entry["excerpt"] = excerpt;
         return entry;
     }
 
