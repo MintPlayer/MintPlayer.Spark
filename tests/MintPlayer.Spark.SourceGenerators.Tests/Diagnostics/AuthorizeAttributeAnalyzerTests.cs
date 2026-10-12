@@ -312,6 +312,23 @@ public class AuthorizeAttributeAnalyzerTests
         }
     }
 
+    /// <summary>
+    /// MCP PRD D3 (spike S1 finding 2): <c>/mcp</c> ignores cookies through a bearer-only policy that lets
+    /// every caller through. The spike registered it by NAME and tripped SPARK020; the Mcp package builds it
+    /// as a policy OBJECT instead, which names no registry entry and so cannot throw "policy not found".
+    /// This is the shape <c>AddMcp</c> writes, in both spellings.
+    /// </summary>
+    [Theory]
+    [InlineData(".RequireAuthorization(new AuthorizationPolicyBuilder(\"Spark:Mcp\").RequireAssertion(_ => true).Build())")]
+    [InlineData(".RequireAuthorization(policy => policy.AddAuthenticationSchemes(\"Spark:Mcp\").RequireAssertion(_ => true))")]
+    public async Task The_Mcp_packages_bearer_only_policy_object_is_not_flagged(string call)
+    {
+        var diagnostics = await RunEndpointAsync(OnGroup(call));
+
+        diagnostics.Where(d => d.Id == "SPARK020").Should().BeEmpty(
+            "a policy object built in code resolves nothing by name, so it cannot fail at request time");
+    }
+
     [Fact]
     public async Task The_diagnostic_is_on_the_RequireAuthorization_name_not_the_whole_chain()
     {
