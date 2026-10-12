@@ -529,7 +529,16 @@ public class McpParityTests : SparkTestDriver
     private static JsonNode? AsAgentValue(JsonNode value)
         => value["objectId"] is JsonValue objectId
             ? new JsonObject { ["id"] = objectId.DeepClone(), ["breadcrumb"] = (value["breadcrumb"] ?? value["value"])?.DeepClone() }
-            : value["value"]?.DeepClone();
+            : Flatten(value["value"]);
+
+    /// <summary>
+    /// The web sends an AsDetail value as a whole persistent object (attributes with labels and rules); the agent gets
+    /// only its attribute values, nested AsDetail values flattened the same way (live-check fix 3, 24b780b2).
+    /// </summary>
+    private static JsonNode? Flatten(JsonNode? value)
+        => value is JsonObject { } po && po["attributes"] is JsonArray attributes
+            ? new JsonObject(attributes.Select(a => KeyValuePair.Create(a!["name"]!.GetValue<string>(), Flatten(a["value"]))))
+            : value?.DeepClone();
 
     private static void Compare(List<string> differences, string what, IEnumerable<string> agent, IEnumerable<string> web)
     {
