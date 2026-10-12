@@ -75,7 +75,7 @@
       @if (routePaths.login) {
         <div class="mt-3 text-center">
           <span>{{ 'auth.alreadyHaveAccount' | t }} </span>
-          <a [routerLink]="routePaths.login">{{ 'auth.login' | t }}</a>
+          <a [routerLink]="routePaths.login" [queryParams]="returnUrlParams">{{ 'auth.login' | t }}</a>
         </div>
       }
     </div>

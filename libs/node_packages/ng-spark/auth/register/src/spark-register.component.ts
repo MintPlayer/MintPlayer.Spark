@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
-import { RouterLink, Router } from '@angular/router';
+import { RouterLink, Router, ActivatedRoute } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SPARK_AUTH_ROUTE_PATHS } from '@mintplayer/ng-spark/auth/models';
+import { SPARK_AUTH_ROUTE_PATHS, isSafeReturnUrl } from '@mintplayer/ng-spark/auth/models';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark/auth/core';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/auth/pipes';
 
@@ -32,7 +32,15 @@ export class SparkRegisterComponent {
   private readonly authService = inject(SparkAuthService);
   private readonly router = inject(Router);
   private readonly translation = inject(SparkAuthTranslationService);
+  private readonly route = inject(ActivatedRoute);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
+
+  /**
+   * Carries a local `returnUrl` on to the sign-in step, e.g. the identity provider's pending
+   * authorization from its sign-in page's "Create an account" link. Anything else is dropped (R2-H9).
+   */
+  private readonly returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+  readonly returnUrlParams = isSafeReturnUrl(this.returnUrl) ? { returnUrl: this.returnUrl } : {};
 
   colors = Color;
   readonly loading = signal(false);
@@ -64,7 +72,7 @@ export class SparkRegisterComponent {
       // which the router resolves to the current route — leaving the user on a form they just
       // submitted successfully.
       this.router.navigate([this.routePaths.login ?? '/'], {
-        queryParams: { registered: 'true' },
+        queryParams: { registered: 'true', ...this.returnUrlParams },
       });
     } catch (err: any) {
       if (err instanceof HttpErrorResponse) {

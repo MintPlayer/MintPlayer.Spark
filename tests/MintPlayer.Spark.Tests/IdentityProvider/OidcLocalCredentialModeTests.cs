@@ -129,6 +129,42 @@ public class OidcLocalCredentialModeTests(SparkSharedDatabase database)
     }
 
     [Fact]
+    public async Task Login_page_links_to_registration_with_the_local_return_url_only_when_registration_is_on()
+    {
+        // Owner request during the live MCP checks (2026-10-12): a new user who arrives from an agent's
+        // authorization request needs a way to create an account and come back to it.
+        var returnUrl = "/connect/authorize?client_id=https%3A%2F%2Fclaude.ai%2Fa&resource=https%3A%2F%2Fapp.test%2Fmcp&state=a&b";
+        static string? RegisterHref(string html)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(html, "href=\"(/register[^\"]*)\"");
+            return match.Success ? System.Net.WebUtility.HtmlDecode(match.Groups[1].Value) : null;
+        }
+
+        await using (var full = CreateFactory(SparkLocalCredentials.Full))
+        {
+            var client = full.CreateClient();
+            var html = await (await client.GetAsync($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}")).Content.ReadAsStringAsync();
+
+            // ng-spark's withRegistration() route, with the pending authorization as returnUrl.
+            RegisterHref(html).Should().Be($"/register?returnUrl={Uri.EscapeDataString(returnUrl)}");
+            html.Should().Contain("Create an account");
+
+            // An off-site returnUrl is never carried: the provider only ever builds local ones.
+            foreach (var offSite in new[] { "https://attacker.test/phish", "//evil.com", "/\\evil.com" })
+            {
+                var page = await (await client.GetAsync($"/connect/login?returnUrl={Uri.EscapeDataString(offSite)}")).Content.ReadAsStringAsync();
+                RegisterHref(page).Should().BeNull(offSite);
+            }
+        }
+
+        // SignInOnly: the password form stays, but nobody can register, so there is nothing to link to.
+        await using var signInOnly = CreateFactory(SparkLocalCredentials.SignInOnly);
+        var withoutRegistration = await (await signInOnly.CreateClient().GetAsync($"/connect/login?returnUrl={Uri.EscapeDataString(returnUrl)}")).Content.ReadAsStringAsync();
+        withoutRegistration.Should().Contain("type=\"password\"");
+        RegisterHref(withoutRegistration).Should().BeNull();
+    }
+
+    [Fact]
     public async Task Disabled_mode_keeps_the_oidc_protocol_endpoints()
     {
         // The discriminating half: an identity provider that federates to an upstream provider

@@ -40,6 +40,13 @@ public class SparkIdentityProviderOptions
     /// <summary>How the <c>/connect/*</c> pages present the provider (<c>Spark:IdentityProvider:Branding</c>, PRD D7).</summary>
     public SparkIdentityProviderBranding Branding { get; set; } = new();
 
+    /// <summary>
+    /// The application's registration page (<c>Spark:IdentityProvider:RegistrationPath</c>), linked from <c>/connect/login</c>
+    /// as "Create an account" with the pending authorization as <c>returnUrl</c>, when the application offers registration
+    /// (<c>SparkLocalCredentials.Full</c>). Default <c>/register</c>, ng-spark's <c>withRegistration()</c> route; empty hides the link.
+    /// </summary>
+    public string? RegistrationPath { get; set; } = "/register";
+
     /// <summary>The signing-key rotation schedule (<c>Spark:IdentityProvider:Keys</c>, PRD D8).</summary>
     public SparkIdentityProviderKeyOptions Keys { get; set; } = new();
 

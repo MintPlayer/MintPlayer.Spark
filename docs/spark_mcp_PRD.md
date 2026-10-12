@@ -1400,3 +1400,12 @@ None. Q18 was resolved in round 3 (§10, D22).
     - Neither final answer told the user that the pages address AI agents. The MCP prompt's summary step could ask for
       that.
     - The `seo.canonical` message reads "which returns relative" (a template slip in `PageChecks.cs`, `Canonical`).
+- **"Create an account" on `/connect/login` (owner request during the live checks, 2026-10-12).** A new user sent to the
+  sign-in page by an agent's authorization request had no way to register. The page now links to the application's
+  registration page with the pending authorization as `returnUrl`, only when the application offers registration
+  (`LocalCredentials` is `Full`, the mode that maps `POST /spark/auth/register`). The page path is the new
+  `idp.RegistrationPath` (`Spark:IdentityProvider:RegistrationPath`, default `/register`, ng-spark's `withRegistration()`);
+  no existing option named it. An off-site `returnUrl` gets no link, and ng-spark's register page passes only a local one
+  on to its sign-in step. Owner's scope: a simple link; the email-confirmation mail does not carry the `returnUrl`.
+  Evidence: `OidcLocalCredentialModeTests.Login_page_links_to_registration_with_the_local_return_url_only_when_registration_is_on`
+  red before the change, green after; the register spec's returnUrl case.

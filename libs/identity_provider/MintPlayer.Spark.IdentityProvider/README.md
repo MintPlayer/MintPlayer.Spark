@@ -273,6 +273,7 @@ startup refuses the combination.
 | `Apps:RequireReviewToGoLive` / `MaxRedirectUris` / `InvitationLifetime` | `false` / `20` / 7 days | Applications |
 | `TwoFactor:Enabled` | `true` | The provider's own second factor at `/connect/login` |
 | `Branding:ProductName` / `LogoUrl` / `ExtraCss` | | The `/connect` pages' header and styles |
+| `RegistrationPath` | `/register` | The application's registration page, linked from `/connect/login` when `LocalCredentials` is `Full` ([Login page and federation](#login-page-and-federation)); empty hides the link |
 | `Keys:RotationDays` / `PrePublishDays` / `RetainRetiredDays` | `90` / `2` / `14` | Signing-key rotation |
 | `Audit:RetentionDays` | `180` | RavenDB deletes older audit events |
 | `RateLimits:PermitLimit` / `Window` | `120` / 1 min | Per IP on token, PAR, device authorization, revocation and userinfo, when the app runs `spark.AddRateLimiter()` |
@@ -355,6 +356,10 @@ with one, carries the family's id, and every use loads the family by id, never t
   - Each button runs the external login in redirect mode.
   - Success resumes the pending authorization.
   - A refusal comes back as a fixed message.
+- A "Create an account" link when the application offers registration (`LocalCredentials` is `Full`). It points at
+  `RegistrationPath` (default `/register`, ng-spark's `withRegistration()`) with the pending authorization as
+  `returnUrl`, which the registration page passes on to its sign-in step. A page asked with an off-site `returnUrl` shows
+  no link. Set `RegistrationPath` to an empty string to hide it.
 
 ## Sessions and logout
 

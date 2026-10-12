@@ -91,6 +91,7 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
         sb.Append(".btn-external:hover{border-color:var(--idp-focus-border)}");
         sb.Append(".separator{display:flex;align-items:center;gap:8px;margin:20px 0 4px;color:var(--idp-muted);font-size:13px}");
         sb.Append(".separator::before,.separator::after{content:\"\";flex:1;border-top:1px solid var(--idp-border)}");
+        sb.Append(".register{margin-top:20px;text-align:center;font-size:14px}.register a{color:var(--idp-link)}");
         sb.Append("</style></head><body>");
         ConnectPageTheme.AppendBrand(sb, options.Branding);
         sb.Append("<h2>").Append(Encode(text["loginHeading"])).Append("</h2>");
@@ -139,6 +140,17 @@ internal sealed partial class OidcLoginPage : IGetEndpoint<string>
                 sb.Append("<a class=\"btn btn-external\" href=\"").Append(Encode(href)).Append("\">")
                   .Append(Encode(text["loginWithProvider", scheme.DisplayName ?? scheme.Name])).Append("</a>");
             }
+        }
+
+        // "Create an account", only where registration is mapped (Full) and for a local returnUrl: the provider only
+        // builds local ones, so a page asked with an off-site one is not a pending authorization worth carrying.
+        var returnUrlIsLocal = string.IsNullOrEmpty(ReturnUrl) || string.Equals(returnUrl, ReturnUrl, StringComparison.Ordinal);
+        if (sparkAuthenticationOptions.LocalCredentials == SparkLocalCredentials.Full
+            && !string.IsNullOrEmpty(options.RegistrationPath) && returnUrlIsLocal)
+        {
+            var registerHref = QueryHelpers.AddQueryString(options.RegistrationPath, "returnUrl", returnUrl);
+            sb.Append("<div class=\"register\"><a href=\"").Append(Encode(registerHref)).Append("\">")
+              .Append(Encode(text["loginCreateAccount"])).Append("</a></div>");
         }
 
         sb.Append("</body></html>");

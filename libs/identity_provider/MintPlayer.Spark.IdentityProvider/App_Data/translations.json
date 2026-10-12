@@ -2164,6 +2164,11 @@
         "fr": "Se connecter avec {0}",
         "nl": "Aanmelden met {0}"
       },
+      "loginCreateAccount": {
+        "en": "Create an account",
+        "fr": "Créer un compte",
+        "nl": "Account aanmaken"
+      },
       "loginNoMethod": {
         "en": "No sign-in method is configured for this identity provider.",
         "fr": "Aucune méthode de connexion n'est configurée pour ce fournisseur d'identité.",
