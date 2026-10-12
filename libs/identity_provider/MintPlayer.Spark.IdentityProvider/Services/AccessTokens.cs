@@ -53,7 +53,8 @@ internal static class AccessTokens
         var jti = jwt.Id;
         var record = string.IsNullOrEmpty(jti)
             ? null
-            : await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(jti), ct);
+            // The family comes with the record (consulted below), in the same round trip.
+            : await session.Include<OidcToken>(t => t.FamilyId!).LoadAsync<OidcToken>(OidcTokenReference.DocumentId(jti), ct);
 
         if (record is not { Type: "access_token" })
             record = null;
@@ -68,7 +69,13 @@ internal static class AccessTokens
         // 200 — telling a caller responding to a breach that a live credential is dead.
         var grantPermits = record is null || await OidcGrants.PermitsAsync(session, record, ct);
 
-        return new ResolvedAccessToken(jwt, validation.Claims, record, grantPermits);
+        // Whether the refresh-token family the token was issued in, if any, still stands: a reuse
+        // revokes the family, and its access tokens with it, at once (docs/spark_mcp_PRD.md decision
+        // log, "Refresh-token families exact"), where the sweep that also marks them revoked rides an
+        // index. A flag beside GrantPermits, with Record left populated, for the same reason.
+        var familyPermits = record is null || await OidcRefreshFamilies.PermitsAsync(session, record, ct);
+
+        return new ResolvedAccessToken(jwt, validation.Claims, record, grantPermits, familyPermits);
     }
 }
 
@@ -77,11 +84,13 @@ internal sealed record ResolvedAccessToken(
     JsonWebToken Jwt,
     IDictionary<string, object> Claims,
     OidcToken? Record,
-    bool GrantPermits = true)
+    bool GrantPermits = true,
+    bool FamilyPermits = true)
 {
     /// <summary>
-    /// True only if we issued it, it has not been revoked, it has not expired, and the user's
-    /// consent still stands behind it. A token whose record has gone fails closed.
+    /// True only if we issued it, it has not been revoked, it has not expired, the user's
+    /// consent still stands behind it, and so does the refresh-token family it was issued in, if
+    /// any. A token whose record has gone fails closed.
     /// <para>
     /// The consent clause cannot reach a resource server that validates the JWT offline against
     /// JWKS — nothing in this package can, which is why withdrawal also revokes the refresh
@@ -91,7 +100,8 @@ internal sealed record ResolvedAccessToken(
     /// </summary>
     public bool IsActive => Record is { Status: "valid" }
         && Jwt.ValidTo > DateTime.UtcNow
-        && GrantPermits;
+        && GrantPermits
+        && FamilyPermits;
 
     public string? Subject => Claim("sub");
     public string? Scope => Claim("scope");

@@ -158,9 +158,11 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
         if (codeToken is { Type: "authorization_code", Status: not "valid" })
         {
             // A code presented twice: the first redemption already consumed it. Everything
-            // derived from it is now suspect, so the whole authorization is torn down.
-            // Best-effort: if a concurrent request is tearing down the same chain, either
-            // teardown suffices and the caller is refused regardless.
+            // derived from it is now suspect: the family it started is revoked, exactly (RFC 6749
+            // §4.1.2), and the sweep tears down what else of the authorization its index sees.
+            // The sweep is best-effort: if a concurrent request is tearing down the same chain,
+            // either teardown suffices and the caller is refused regardless.
+            await RevokeFamilyAsync(OidcRefreshFamilies.DocumentId(codeToken.Id!), OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
             await RevokeAuthorizationChainAsync(session, codeToken, ct);
             await TrySaveAsync(session, ct);
 
@@ -296,7 +298,7 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
         if (refreshTokenValue != null)
         {
-            await session.StoreExpiringAsync(new OidcToken
+            var refreshTokenDoc = new OidcToken
             {
                 ApplicationId = app.Id!,
                 AuthorizationId = codeToken.AuthorizationId,
@@ -314,14 +316,21 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
                 // The sign-in context travels with the refresh token, and so does a DPoP key: a
                 // public client's refresh token is bound to it (RFC 9449 §5).
                 Properties = WithBinding(codeToken.Properties, possession),
-            }, ct);
+            };
+            // The refresh token starts a family, which the access token issued beside it joins: a reuse, or this code
+            // presented again, revokes both through the family's document (OidcRefreshFamily).
+            await OidcRefreshFamilies.StartAsync(session, codeToken, refreshTokenDoc, accessTokenDoc, ct);
+            await session.StoreExpiringAsync(refreshTokenDoc, ct);
         }
 
         // Marking the code redeemed and issuing the tokens are one batch, so losing the race
         // writes nothing at all. The winner holds the tokens; this request gets the same answer
-        // a later replay would get.
+        // a later replay would get, and the same teardown: when the winner redeemed the code,
+        // this was its second spend, and the family the winner started is revoked.
         if (!await TrySaveAsync(session, ct))
         {
+            if (await SpentMeanwhileAsync(codeToken.Id!, ct))
+                await RevokeFamilyAsync(OidcRefreshFamilies.DocumentId(codeToken.Id!), OidcRefreshFamilyRevocations.CodeReplay, reused: null, ct);
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
@@ -487,31 +496,34 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
 
         // Find refresh token
-        // Point-load for the same reason as the authorization-code path above.
+        // Point-load for the same reason as the authorization-code path above, and so is its family,
+        // which decides whether the token is the one to honour (OidcRefreshFamily).
         var refreshTokenDoc = await session.LoadAsync<OidcToken>(OidcTokenReference.DocumentId(refreshToken), ct);
+        if (refreshTokenDoc is not { Type: "refresh_token" })
+            refreshTokenDoc = null;
+        var family = refreshTokenDoc is null ? null : await OidcRefreshFamilies.LoadAsync(session, refreshTokenDoc, ct);
+
         // Only a rotated token counts as reuse. One revoked by logout, a withdrawal, the disable cascade or
         // RevokeGrant is simply refused below; treating it as theft would write a false audit event.
-        if (refreshTokenDoc is { Type: "refresh_token", Status: "redeemed" })
+        if (refreshTokenDoc is not null && OidcRefreshFamilies.IsReuse(refreshTokenDoc, family))
         {
             // Reuse of an already-rotated refresh token. Per RFC 6819 §5.2.2.3 this is
-            // treated as theft: revoke the entire chain rather than just refusing.
-            // Best-effort, as on the code grant.
+            // treated as theft, and RFC 9700 §4.14.2 has the active refresh token revoked: the
+            // family goes, exactly, whether or not an index has seen its active token. The sweep
+            // then marks what the index holds, best-effort, as on the code grant.
+            await RevokeFamilyAsync(refreshTokenDoc.FamilyId, OidcRefreshFamilyRevocations.RefreshTokenReuse, reused: refreshTokenDoc, ct);
             await RevokeAuthorizationChainAsync(session, refreshTokenDoc, ct);
-            // D9: a reuse is the one token event that signals theft, so it lands in the audit trail.
-            await audit.RecordAsync(session, OidcAuditKinds.RefreshTokenReuse, actorId: null,
-                refreshTokenDoc.ApplicationId, refreshTokenDoc.Subject,
-                httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
             await TrySaveAsync(session, ct);
 
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
-        if (refreshTokenDoc is not { Type: "refresh_token", Status: "valid" })
-            refreshTokenDoc = null;
-
         // Client binding, as on the code grant: without it any client may present another's
-        // refresh token and receive a token carrying the original's subject and scopes.
+        // refresh token and receive a token carrying the original's subject and scopes. A token
+        // that is not its family's active one (revoked, or its family revoked or gone; every
+        // refresh token is issued into a family) is refused the same way.
         if (refreshTokenDoc == null
+            || !OidcRefreshFamilies.IsActive(refreshTokenDoc, family)
             || refreshTokenDoc.ExpiresAt < DateTime.UtcNow
             || !string.Equals(refreshTokenDoc.ApplicationId, app.Id, StringComparison.Ordinal))
         {
@@ -655,13 +667,21 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             Properties = WithBinding(refreshTokenDoc.Properties, possession),
         };
 
+        // The successor becomes the family's active refresh token. The family is written with the
+        // rotation, so a rotation racing this one, or a revocation of the family, fails the batch.
+        OidcRefreshFamilies.Advance(session, family, newRefreshTokenDoc, newAccessTokenDoc);
         await session.StoreExpiringAsync(newAccessTokenDoc, ct);
         await session.StoreExpiringAsync(newRefreshTokenDoc, ct);
 
         // As on the code grant: rotation and issuance are one batch, so the loser of a
-        // simultaneous rotation writes nothing and is answered as a replay.
+        // simultaneous rotation writes nothing and is answered as a replay, with a replay's
+        // teardown: when the winner spent the same token, this was its second spend, and the
+        // family goes (RFC 9700 §4.14.2), the winner's successor with it. When the winner
+        // revoked the family instead, nothing is left to do.
         if (!await TrySaveAsync(session, ct))
         {
+            if (await SpentMeanwhileAsync(refreshTokenDoc.Id!, ct))
+                await RevokeFamilyAsync(refreshTokenDoc.FamilyId, OidcRefreshFamilyRevocations.RefreshTokenReuse, reused: refreshTokenDoc, ct);
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired refresh token." }, statusCode: 400);
         }
 
@@ -807,10 +827,11 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
     /// </para>
     /// <para>
     /// The sweep is by <c>AuthorizationId</c> and therefore rides an eventually-consistent
-    /// index: a token issued moments before the replay may be missed. That is a deliberate
-    /// asymmetry — <em>detection</em> is exact (a point-load by id), only the blast-radius
-    /// cleanup is best-effort, and it errs toward revoking too little rather than failing
-    /// closed on a legitimate request.
+    /// index: a token issued moments before the replay may be missed. It is cleanup, not the
+    /// decision: <em>detection</em> is exact (a point-load by id), and so is the revocation that
+    /// matters, the family of the spent credential (<see cref="RevokeFamilyAsync"/>), which
+    /// every later use of its tokens loads by id. The sweep still reaches the authorization's
+    /// other families when its index holds them, best-effort, as before the families existed.
     /// </para>
     /// </summary>
     private static async Task RevokeAuthorizationChainAsync(
@@ -828,6 +849,45 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
 
         foreach (var sibling in siblings)
             sibling.Status = "revoked";
+    }
+
+    /// <summary>
+    /// Revokes the refresh-token family of a spent credential: the decision a theft signal makes
+    /// (<c>docs/spark_mcp_PRD.md</c> decision log, "Refresh-token families exact").
+    /// <para>
+    /// Committed in a batch of its own, which checks no change vector: neither a rotation that
+    /// committed after the family was read nor a lost race of the sweep's bookkeeping can undo
+    /// it, and a rotation that read the family before it fails on its own optimistic
+    /// concurrency. A refresh-token reuse is audited in the same batch (D9: the one token event
+    /// that signals theft), so the event lands even when the bookkeeping loses a race.
+    /// </para>
+    /// </summary>
+    /// <param name="reused">The presented refresh token when the signal is its reuse; null for a code spent twice.</param>
+    private async Task RevokeFamilyAsync(string? familyId, string reason, OidcToken? reused, CancellationToken ct)
+    {
+        using var revocation = store.OpenAsyncSession();
+        revocation.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.None;
+
+        var revoked = await OidcRefreshFamilies.RevokeAsync(revocation, familyId, reason, ct);
+        if (reused is not null)
+        {
+            await audit.RecordAsync(revocation, OidcAuditKinds.RefreshTokenReuse, actorId: null,
+                reused.ApplicationId, reused.Subject,
+                httpContext.Connection.RemoteIpAddress?.ToString(), ct: ct);
+        }
+
+        if (revoked || reused is not null)
+            await revocation.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Whether the single-use credential recorded at <paramref name="tokenId"/> was spent by
+    /// another request, read afresh after this one lost the race for it.
+    /// </summary>
+    private async Task<bool> SpentMeanwhileAsync(string tokenId, CancellationToken ct)
+    {
+        using var session = store.OpenAsyncSession();
+        return await session.LoadAsync<OidcToken>(tokenId, ct) is { Status: "redeemed" };
     }
 
     /// <summary>

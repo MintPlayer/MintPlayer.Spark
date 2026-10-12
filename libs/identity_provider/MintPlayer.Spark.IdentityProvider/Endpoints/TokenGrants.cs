@@ -87,7 +87,7 @@ internal sealed partial class OidcTokenEndpoint<TUser>
                 return Results.Json(new { error = "invalid_client", error_description = "The client asked for encrypted id_tokens and has no usable encryption key." }, statusCode: 400);
         }
 
-        await session.StoreExpiringAsync(new OidcToken
+        var accessTokenDoc = new OidcToken
         {
             Id = OidcTokenReference.DocumentId(jti),
             ApplicationId = app.Id!,
@@ -99,13 +99,14 @@ internal sealed partial class OidcTokenEndpoint<TUser>
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddMinutes(app.AccessTokenLifetimeMinutes),
             SessionId = device.Properties.GetValueOrDefault("sid"),
-        }, ct);
+        };
+        await session.StoreExpiringAsync(accessTokenDoc, ct);
 
         string? refreshToken = null;
         if (AllowsRefreshTokens(app))
         {
             refreshToken = tokenGenerator.GenerateRefreshToken();
-            await session.StoreExpiringAsync(new OidcToken
+            var refreshTokenDoc = new OidcToken
             {
                 Id = OidcTokenReference.DocumentId(refreshToken),
                 ApplicationId = app.Id!,
@@ -118,7 +119,10 @@ internal sealed partial class OidcTokenEndpoint<TUser>
                 ExpiresAt = DateTime.UtcNow.AddDays(app.RefreshTokenLifetimeDays),
                 AuthTime = device.AuthTime,
                 Properties = WithBinding(device.Properties, possession),
-            }, ct);
+            };
+            // A family of its own, as a code's refresh token starts one (OidcRefreshFamily).
+            await OidcRefreshFamilies.StartAsync(session, device, refreshTokenDoc, accessTokenDoc, ct);
+            await session.StoreExpiringAsync(refreshTokenDoc, ct);
         }
 
         if (!await TrySaveAsync(session, ct))
@@ -212,6 +216,8 @@ internal sealed partial class OidcTokenEndpoint<TUser>
             Id = OidcTokenReference.DocumentId(jti),
             ApplicationId = app.Id!,
             AuthorizationId = record.AuthorizationId,
+            // Derived from the subject token, so it dies with that token's refresh-token family.
+            FamilyId = record.FamilyId,
             Subject = record.Subject,
             Type = OidcTokenTypes.AccessToken,
             Scopes = GrantedNames(grantedScopes),
