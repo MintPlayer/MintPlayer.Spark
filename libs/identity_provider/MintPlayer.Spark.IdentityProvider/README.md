@@ -59,9 +59,9 @@ It adds, and changes nothing else:
   `UnusedClientLifetime` (30 days) without use by a job that runs every six hours. A request with an initial
   access token is a developer's registration, as before.
 - Loopback redirect URIs of agent clients match on any port and any path (RFC 8252 §7.3).
-- Refresh tokens for agents whether or not they asked for `offline_access`, rotating, a reused one revoking the
-  whole chain (its family exactly: see "Refresh-token families" below); not tied to the browser session (signing out of
-  the website does not sign the agent out).
+- Refresh tokens for agents whether or not they asked for `offline_access`, rotating, a reused one revoking exactly
+  its family (see "Refresh-token families" below); not tied to the browser session (signing out of the website does
+  not sign the agent out).
 - The agent consent screen: client name, verified host (metadata documents) or "unverified", the loopback
   notice, the types the agent may use and read or read + changes, limited by the Mcp package's
   `AgentPermissions(agent)` and each type's `agentPermissions`. A locked account is refused. Allowing writes
@@ -151,7 +151,7 @@ The layer's `security.json` grants rights to two slots. The host binds them to i
 | `/.well-known/openid-configuration`, `/.well-known/jwks` | Discovery; every published key (next, active, retired) |
 | `/connect/authorize` (GET and POST) | Code flow with PKCE; `prompt`, `max_age`, `acr_values`, `login_hint`, `ui_locales`, `claims`, `id_token_hint`, `resource`, `request` (JAR), `request_uri` (PAR only), `response_mode=query|form_post`; answers carry `iss` (RFC 9207) |
 | `/connect/par` | Pushed authorization requests (RFC 9126); the `request_uri` lives 90 s |
-| `/connect/token` | `authorization_code`, `refresh_token` (rotating; a reused one revokes its family at once and the rest of its token chain best-effort, and is audited), `client_credentials`, the device grant, token exchange (RFC 8693) |
+| `/connect/token` | `authorization_code`, `refresh_token` (rotating; a reused one revokes exactly its family, at once, and is audited), `client_credentials`, the device grant, token exchange (RFC 8693) |
 | `/connect/device_authorization`, `/connect/device` | Device grant (RFC 8628) and its user-code page |
 | `/connect/userinfo` | Plain, signed or encrypted per client |
 | `/connect/introspect`, `/connect/revoke` | RFC 7662 / RFC 7009; introspection answers the token's owner and its audiences |
@@ -340,8 +340,8 @@ with one, carries the family's id, and every use loads the family by id, never t
   batch, so two rotations of one token cannot both succeed.
 - A rotated refresh token presented again, one refresh token or code spent twice at once, or a code presented twice
   revokes the family at once (RFC 9700 §4.14.2, RFC 6749 §4.1.2): its active refresh token and its access tokens are
-  refused from the next request on, and the reuse is audited. The provider then also marks the rest of the token
-  chain revoked, best-effort.
+  refused from the next request on, and the reuse is audited. Nothing else of the grant is touched: the same client
+  on the user's other machines runs other families of the same grant, and keeps working.
 - Withdrawing the grant ends every family issued under it: each use loads the grant too.
 
 ## Login page and federation

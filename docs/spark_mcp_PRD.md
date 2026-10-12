@@ -1280,11 +1280,24 @@ None. Q18 was resolved in round 3 (§10, D22).
     rotation committed after it read the family; a rotation that read the family before it fails on its own change vector;
     revoked is final, so overwriting a rotation's generation loses nothing. The reuse audit event (D9) commits with the
     revocation, so it lands even when the sweep's bookkeeping loses a race (before, it rode that batch).
-  - **The index sweep is cleanup.** `RevokeAuthorizationChainAsync` still marks the authorization's valid tokens revoked
-    through its index, best-effort, after the family is revoked; nothing depends on it. It also still reaches the
+  - **The index sweep is cleanup.** ~~`RevokeAuthorizationChainAsync` still marks the authorization's valid tokens
+    revoked through its index, best-effort, after the family is revoked; nothing depends on it. It also still reaches the
     authorization's other families (another device of the same user and client) when its index holds them, as before.
     Exactness covers the family the signal came from, which is what RFC 9700 §4.14.2 and RFC 6749 §4.1.2 ask. *Open for
-    the owner: narrow the sweep to the family, or keep its wider best-effort reach.*
+    the owner: narrow the sweep to the family, or keep its wider best-effort reach.*~~ *Superseded the same day, below.*
+  - **A reuse revokes exactly its family, nothing else of the grant** (owner decision 2026-10-12, answering the open
+    point above: "narrow it"). One user often runs one agent client on several machines: the same metadata-document
+    client id, so the same grant, and a family per machine. A revocation that reaches another family only when an index
+    happens to hold its tokens is worse than none, and the user can revoke everything under Connected applications. So a
+    reuse and a code presented again or spent twice, and by the same reasoning (Claude, technical) a refresh left with no
+    scope (`NoScopeLeft`: the grant's other families may still carry available scopes), revoke their family and sweep
+    nothing of the grant: the bookkeeping after
+    the revocation (`Token.SweepFamilyAsync`) marks the presented credential and, best-effort, the family's own tokens the
+    grant's index already holds (filtered by `FamilyId` in memory, so no new index). `RevokeAuthorizationChainAsync` now
+    serves only a withdrawn grant, whose tokens the grant link refuses anyway: cleanup of dead documents. Red first:
+    `A_reuse_revokes_its_family_and_leaves_the_grants_other_families_working` (two families under one grant, indexing on
+    and caught up) failed with family B's access token inactive (the grant sweep had marked it revoked); green after.
+    Regression: the `IdentityProvider` and `Mcp` namespaces 744/744.
   - **Revoking the grant ends its families through the link,** unchanged: every redemption and every access-token check
     loads the `OidcGrant` (`OidcGrants.PermitsAsync`: status and `LastRevokedAt`), so withdrawing it, or revoking the agent
     grant linked to it (D12), ends every family of the grant at once. No family document is written for it.

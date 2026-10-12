@@ -177,8 +177,8 @@ families exact").
   family's status and the active token's generation; every refresh token and the access tokens issued with them carry
   its id. Redemption, rotation, introspection and access-token checks load it by id, never through an index.
 - A rotated token presented again, a refresh token or code spent twice at once, or a code presented twice revokes the
-  family at once; a rotation racing a revocation or another rotation of the family fails. The index sweep stays, as
-  cleanup.
+  family at once, and nothing else of the grant (owner, 2026-10-12: the user's other machines keep working); a
+  rotation racing a revocation or another rotation of the family fails.
 - Tests: `OidcRefreshTokenFamilyTests` (indexing stopped while a family grows), and the waits for indexing before a
   reuse are gone from `McpEmbeddedAuthorizationServerTests` and `OidcTokenSecurityTests`.
 
