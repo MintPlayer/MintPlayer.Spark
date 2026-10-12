@@ -152,6 +152,16 @@ internal sealed class FakeHttpContextAccessor(ClaimsPrincipal principal) : IHttp
     public HttpContext? HttpContext { get; set; } = new DefaultHttpContext { User = principal };
 }
 
+/// <summary>
+/// The caller as Spark reports it, fixed by the test: <paramref name="userId"/> for a signed-in caller (whatever
+/// credential identified them — a cookie's NameIdentifier or an agent token's <c>sub</c>), null for an anonymous one.
+/// </summary>
+internal sealed class FakeSparkCurrentUser(string? userId) : MintPlayer.Spark.Abstractions.Authentication.ISparkCurrentUser
+{
+    public string? Id => userId;
+    public bool IsAuthenticated => userId is not null;
+}
+
 /// <summary>Scripted <see cref="IGitHubUserTokenService"/> for access-service tests.</summary>
 internal sealed class ScriptedTokenService(Func<bool, GitHubUserToken> script) : IGitHubUserTokenService
 {

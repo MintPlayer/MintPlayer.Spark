@@ -35,9 +35,10 @@ namespace CodeCoverage.Controllers;
 public partial class BrowseController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IRepositoryResolver repositories;
+    // Which repositories and branches the caller may see, shared with the MCP tools (plan M6): the rule lives there.
+    [Inject] private readonly IRepositoryScope scope;
     [Inject] private readonly IForgeIntegrationResolver forges;
-        [Inject] private readonly IConfiguration configuration;
+    [Inject] private readonly IConfiguration configuration;
 
     public sealed record RepoInfo(string Id, string Owner, string Name, string FullName, bool IsPrivate, string? DefaultBranch,
         CoverageSummary? LatestCoverage, string? LatestCoverageSha, bool CanManage, string? BadgeToken, string? BaseUrl);
@@ -66,21 +67,12 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{provider}/{login}/repos")]
     public async Task<ActionResult<IEnumerable<RepoInfo>>> GetAccountRepos(string provider, string login, CancellationToken cancellationToken)
     {
-        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        var forge = TryForge(provider);
-        if (forge is null) return Refuse();
-        var ownerKey = new ForgeOwner(forge.Value, login).ToString();
-        var includePrivate = owners.Contains(ownerKey, StringComparer.OrdinalIgnoreCase);
+        var account = await scope.ListAccountAsync(provider, login, cancellationToken);
+        if (account is null) return Refuse();
 
-        var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.OwnerKey == ownerKey)
-            .Take(1024)
-            .ToListAsync(cancellationToken);
-
-        return Ok(repos
-            .Where(r => RepositoryVisibility.IsListed(r, owners))
+        return Ok(account.Repositories
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(r => ToRepoInfo(r, includePrivate)));
+            .Select(r => ToRepoInfo(r, account.CallerSeesPrivate)));
     }
 
     /// <summary>
@@ -92,16 +84,9 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{provider}/{login}/dependency-graph")]
     public async Task<ActionResult<Dependencies.DependencyGraphResponse>> GetDependencyGraph(string provider, string login, CancellationToken cancellationToken)
     {
-        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        var forge = TryForge(provider);
-        if (forge is null) return Refuse();
-        var ownerKey = new ForgeOwner(forge.Value, login).ToString();
-
-        var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.OwnerKey == ownerKey)
-            .Take(1024)
-            .ToListAsync(cancellationToken);
-        var visible = repos.Where(r => RepositoryVisibility.IsListed(r, owners)).ToList();
+        var account = await scope.ListAccountAsync(provider, login, cancellationToken);
+        if (account is null) return Refuse();
+        var visible = account.Repositories;
 
         // Loaded by derived id, only for repositories that passed the filter: a hidden repository's
         // manifest is never read, so nothing of it can leak into an edge.
@@ -118,7 +103,7 @@ public partial class BrowseController : ControllerBase
     [HttpGet("repos/{provider}/{owner}/{name}")]
     public async Task<ActionResult<RepoInfo>> GetRepo(string provider, string owner, string name, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
         var canManage = await forges.CanManageAsync(repository, cancellationToken);
         return Ok(ToRepoInfo(repository, canManage));
@@ -129,15 +114,11 @@ public partial class BrowseController : ControllerBase
         string provider, string owner, string name, [FromQuery] string? branch, [FromQuery] bool withCoverageOnly = false,
         [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken cancellationToken = default)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
-        // Fork-contributed commits are excluded from every repository-level listing: they carry
-        // this repository's id, so without this they read as its own history, under a branch name
-        // the fork chose. They remain reachable through their pull request, which is the only
-        // context in which they mean anything.
-        var query = session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.ContributedFromFork != true);
+        // Fork-contributed commits are excluded from every repository-level listing (IRepositoryScope.Commits).
+        var query = scope.Commits(repository);
         if (!string.IsNullOrEmpty(branch))
             query = query.Where(c => c.Branch == branch);
         if (withCoverageOnly)
@@ -173,12 +154,11 @@ public partial class BrowseController : ControllerBase
         string provider, string owner, string name, [FromQuery] double threshold = 0, [FromQuery] string? branch = null,
         [FromQuery] int take = 100, CancellationToken cancellationToken = default)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
         var below = -Math.Clamp(double.IsFinite(threshold) ? threshold : 0, 0, 100);
-        var query = session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.ContributedFromFork != true && c.CoverageDeltaVsParent < below);
+        var query = scope.Commits(repository).Where(c => c.CoverageDeltaVsParent < below);
         if (!string.IsNullOrEmpty(branch))
             query = query.Where(c => c.Branch == branch);
 
@@ -209,7 +189,7 @@ public partial class BrowseController : ControllerBase
     public async Task<ActionResult<IEnumerable<HistoryPoint>>> GetHistory(
         string provider, string owner, string name, [FromQuery] string? branch, [FromQuery] int take = 100, CancellationToken cancellationToken = default)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
         // Commits are ordered by time alone, so without a branch filter a feature
@@ -229,8 +209,7 @@ public partial class BrowseController : ControllerBase
         // the branch filter below is dropped entirely, so every branch's points are drawn as the
         // repository's history — and that is exactly the population (no installation, no webhook)
         // whose default branch is unknown.
-        var query = session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.HasCoverage && c.ContributedFromFork != true);
+        var query = scope.Commits(repository).Where(c => c.HasCoverage);
         if (!string.IsNullOrEmpty(effectiveBranch))
             query = query.Where(c => c.Branch == effectiveBranch);
 
@@ -286,7 +265,7 @@ public partial class BrowseController : ControllerBase
         [FromQuery] string? grep = null, [FromQuery] string? author = null,
         CancellationToken cancellationToken = default)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
         return Ok(await graph.ReadAsync(repository,
@@ -318,16 +297,9 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{provider}/{login}/sparklines")]
     public async Task<ActionResult<Dictionary<string, double[]>>> GetSparklines(string provider, string login, CancellationToken cancellationToken)
     {
-        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        var forge = TryForge(provider);
-        if (forge is null) return Refuse();
-        var ownerKey = new ForgeOwner(forge.Value, login).ToString();
-
-        var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.OwnerKey == ownerKey)
-            .Take(1024)
-            .ToListAsync(cancellationToken);
-        var visible = repos.Where(r => RepositoryVisibility.IsListed(r, owners)).ToDictionary(r => r.Id!, r => r);
+        var account = await scope.ListAccountAsync(provider, login, cancellationToken);
+        if (account is null) return Refuse();
+        var visible = account.Repositories.ToDictionary(r => r.Id!, r => r);
         if (visible.Count == 0) return Ok(new Dictionary<string, double[]>());
 
         var repoIds = visible.Keys.ToArray();
@@ -360,22 +332,10 @@ public partial class BrowseController : ControllerBase
     [HttpGet("repos/{provider}/{owner}/{name}/branches")]
     public async Task<ActionResult<IEnumerable<string>>> GetBranches(string provider, string owner, string name, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
-        // A fork's head branch must not appear in this repository's branch list: it is a branch
-        // name from somebody else's repository, and picking it would render an empty badge.
-        var branches = await session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.HasCoverage && c.ContributedFromFork != true)
-            .Select(c => c.Branch)
-            .Distinct()
-            .Take(200)
-            .ToListAsync(cancellationToken);
-
-        return Ok(branches
-            .Where(b => !string.IsNullOrEmpty(b))
-            .OrderByDescending(b => b == repository.DefaultBranch)
-            .ThenBy(b => b, StringComparer.OrdinalIgnoreCase));
+        return Ok(await scope.ListBranchesAsync(repository, cancellationToken));
     }
 
     /// <summary>
@@ -412,7 +372,7 @@ public partial class BrowseController : ControllerBase
     [HttpGet("repos/{provider}/{owner}/{name}/commits/{sha}")]
     public async Task<ActionResult<object>> GetCommit(string provider, string owner, string name, string sha, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
@@ -483,7 +443,7 @@ public partial class BrowseController : ControllerBase
     public async Task<ActionResult<TreeResponse>> GetTree(
         string provider, string owner, string name, string sha, [FromQuery] string? path, [FromQuery] string? flag, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
@@ -563,7 +523,7 @@ public partial class BrowseController : ControllerBase
     [HttpGet("repos/{provider}/{owner}/{name}/commits/{sha}/hierarchy")]
     public async Task<ActionResult<HierarchyNodeDto>> GetHierarchy(string provider, string owner, string name, string sha, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
@@ -622,7 +582,7 @@ public partial class BrowseController : ControllerBase
     public async Task<ActionResult<object>> GetFile(
         string provider, string owner, string name, string sha, [FromQuery] string path, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
+        var repository = await scope.ResolveAsync(provider, owner, name, cancellationToken);
         if (repository is null) return Refuse();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
@@ -648,45 +608,13 @@ public partial class BrowseController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Where a commit's tree and files are read from: the assembly when one
-    /// exists (its ids follow the same {source}/tree and {source}/files/{hash}
-    /// scheme as a build's), else the latest finalized build for commits that
-    /// predate assemblies.
-    /// </summary>
-    private async Task<string> CoverageSourceAsync(Commit commit, CancellationToken cancellationToken)
-    {
-        var assemblyId = CommitAssembly.DocumentId(commit.Id!);
-        return await session.Advanced.ExistsAsync(assemblyId, cancellationToken) ? assemblyId : commit.LatestBuildId!;
-    }
+    /// <summary>Where a commit's tree and files are read from (<see cref="CoverageSources.ForCommitAsync"/>, shared with the MCP tools).</summary>
+    private Task<string> CoverageSourceAsync(Commit commit, CancellationToken cancellationToken)
+        => CoverageSources.ForCommitAsync(session, commit, cancellationToken);
 
-    /// <summary>
-    /// The build's per-file totals: one point-load of the summary materialized
-    /// at finalize. Builds finalized before the summary existed fall back to
-    /// streaming their FileCoverage documents and deriving it on the fly.
-    /// </summary>
-    private async Task<List<TreeFileSummary>> LoadTreeSummaries(string buildId, CancellationToken cancellationToken)
-    {
-        var summary = await session.LoadAsync<BuildTreeSummary>(BuildTreeSummary.DocumentId(buildId), cancellationToken);
-        if (summary is not null)
-            return summary.Files;
-
-        var files = new List<TreeFileSummary>();
-        await using var stream = await session.Advanced.StreamAsync<FileCoverage>(
-            startsWith: $"{buildId}/files/", token: cancellationToken);
-        while (await stream.MoveNextAsync())
-        {
-            var file = stream.Current.Document;
-            files.Add(new TreeFileSummary
-            {
-                Path = file.Path,
-                Matched = file.Matched,
-                LinesCovered = file.Lines.Count(l => l.Status != LineStatus.NotCovered),
-                LinesCoverable = file.Lines.Count,
-            });
-        }
-        return files;
-    }
+    /// <summary>A coverage source's per-file totals (<see cref="CoverageSources.LoadTreeAsync"/>, shared with the MCP tools).</summary>
+    private Task<List<TreeFileSummary>> LoadTreeSummaries(string buildId, CancellationToken cancellationToken)
+        => CoverageSources.LoadTreeAsync(session, buildId, cancellationToken);
 
     /// <summary>The route's forge.</summary>
     /// <remarks>
@@ -697,28 +625,6 @@ public partial class BrowseController : ControllerBase
     /// </remarks>
     private static EForgeProvider? TryForge(string provider)
         => ForgeProviders.TryParse(provider, out var parsed) ? parsed : null;
-
-    private async Task<Repository?> ResolveVisibleRepository(
-        string provider, string owner, string name, CancellationToken cancellationToken)
-    {
-        // An unrecognised forge resolves to nothing rather than throwing: every caller already
-        // treats a null repository as the canonical refusal, the right answer for a URL naming a
-        // forge this deployment does not have. Answering it with another forge's data would be exactly
-        // the silent defaulting this milestone removes.
-        if (TryForge(provider) is not { } forge)
-            return null;
-
-        // Same rule as the /spark surface, from the same place — the two must
-        // agree forever, and a shared doc-comment was the only thing binding
-        // them.
-        // ⚠️ The owner set is fetched BEFORE resolving and unconditionally (#453). Fetching it only
-        // once a private repository turned up made the private path alone pay a (possibly cold)
-        // forge call, and the visibility is the resolver's, so an invisible repository takes the
-        // same steps as a missing one rather than being found and then discarded.
-        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        return (await repositories.ResolveAsync(
-            forge, owner, name, r => RepositoryVisibility.IsVisible(r, owners), cancellationToken)).Repository;
-    }
 
     /// <summary>
     /// The refusal for a repository this caller cannot have — missing, private, or on a forge this
