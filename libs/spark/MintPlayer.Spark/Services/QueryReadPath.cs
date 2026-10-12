@@ -190,6 +190,13 @@ internal sealed partial class QueryReadPath : IQueryReadPath
                 columnFilters: columnFilters, cancellationToken: cancellationToken);
             return QueryReadOutcome.Ok(results);
         }
+        catch (MintPlayer.Spark.Queries.SparkQueryParentRequiredException ex)
+        {
+            // A sub-query run on its own (no parent, or another type's): an incomplete request, decided after the
+            // query's authorization above, so the message tells nothing the caller could not already see. It used
+            // to escape as a 500 (found by the MCP parity suite, spike S5: HR's company-people).
+            return QueryReadOutcome.BadRequest(ex.Message);
+        }
         catch (SparkAccessDeniedException)
         {
             // The same NotFound as the gate above. Splitting on authentication HERE would undo

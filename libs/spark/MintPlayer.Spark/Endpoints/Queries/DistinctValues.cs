@@ -100,6 +100,11 @@ internal sealed partial class DistinctValues : IPostEndpoint<DistinctValuesReque
 
             return Results.Ok(values);
         }
+        catch (MintPlayer.Spark.Queries.SparkQueryParentRequiredException ex)
+        {
+            // A sub-query asked without its parent: incomplete, not a server fault (as POST /execute answers it).
+            return Results.Json(new { error = ex.Message }, statusCode: 400);
+        }
         catch (SparkAccessDeniedException)
         {
             return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);

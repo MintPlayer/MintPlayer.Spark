@@ -143,10 +143,11 @@ internal sealed class SparkGenericTools(
     }
 
     [McpServerTool(Name = "get", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("One object as this user sees it: its readable attributes and values, and whether it may be edited or deleted.")]
+    [Description("One object as this user sees it: its readable attributes and values, and, where the application decides it per row, whether it may be edited or deleted. An attribute holding one detail object (asDetailType in describe) shows it inline; an attribute holding detail rows (a person's jobs, a car's services) shows how many there are: name it in include to have the rows, as many as fit (at most 100; omitted says how many more).")]
     public async Task<CallToolResult> GetAsync(
         [Description("The object's type, as discover lists it.")] string type,
         [Description("The object's id, as query returns it.")] string id,
+        [Description("Detail attributes whose rows to return, by name.")] string[]? include = null,
         CancellationToken cancellationToken = default)
     {
         var obj = await objectReadPath.LoadAsync(new PersistentObjectReferenceRequest { ObjectTypeId = type, Id = id }, cancellationToken);
@@ -158,21 +159,12 @@ internal sealed class SparkGenericTools(
         var node = JsonSerializer.SerializeToNode(obj, jsonOptions.Value.SerializerOptions)?.AsObject()
             ?? throw new InvalidOperationException("A persistent object serialized to nothing.");
 
-        var attributes = new JsonObject();
-        if (node["attributes"] is JsonArray array)
-        {
-            foreach (var attribute in array.OfType<JsonObject>())
-            {
-                if (attribute["name"]?.GetValue<string>() is not { } name)
-                    continue;
-                var value = attribute["value"]?.DeepClone();
-                attributes[name] = attribute["breadcrumb"] is JsonValue breadcrumb && value is JsonValue
-                    ? new JsonObject { ["id"] = value, ["breadcrumb"] = breadcrumb.DeepClone() }
-                    : value;
-            }
-        }
+        var included = new HashSet<string>(include ?? [], StringComparer.OrdinalIgnoreCase);
+        var rows = 1;
+        var budget = MaxDetailCharacters;
+        var attributes = Attributes(node, included, ref rows, ref budget);
 
-        SparkMcpResult.Track(1);
+        SparkMcpResult.Track(rows);
         return SparkMcpResult.Json(new JsonObject
         {
             ["id"] = node["id"]?.DeepClone(),
@@ -182,6 +174,78 @@ internal sealed class SparkGenericTools(
             ["can"] = node["can"]?.DeepClone(),
             ["attributes"] = attributes,
         });
+    }
+
+    /// <summary>The most detail rows <c>get</c> returns per attribute.</summary>
+    internal const int MaxDetailRows = 100;
+
+    /// <summary>
+    /// The characters of detail rows one <c>get</c> returns, across its included attributes: the object's own attributes
+    /// fit beside them within <see cref="SparkMcpResult.MaxCharacters"/>, so a long history ends at a row, never mid-text
+    /// (spike S9: a car's 100 service rows of 200 characters already came to 36,833 of the 40,000).
+    /// </summary>
+    internal const int MaxDetailCharacters = 30_000;
+
+    /// <summary>
+    /// An object's attributes by name, compacted: a reference as its id and breadcrumb; a detail object (AsDetail,
+    /// single) inline, compacted the same way; detail rows (AsDetail, array) as their count, or, when
+    /// <paramref name="included"/> names the attribute, as the rows themselves, at most <see cref="MaxDetailRows"/> and
+    /// <see cref="MaxDetailCharacters"/> (<c>omitted</c> says how many more there are). The web carries detail rows in
+    /// <c>object</c>/<c>objects</c>, not <c>value</c>: an agent saw <c>null</c> for them until the S9 run (plan M7).
+    /// </summary>
+    private static JsonObject Attributes(JsonObject node, HashSet<string> included, ref int rows, ref int budget, JsonObject? into = null)
+    {
+        var attributes = into ?? new JsonObject();
+        if (node["attributes"] is not JsonArray array)
+            return attributes;
+
+        foreach (var attribute in array.OfType<JsonObject>())
+        {
+            if (attribute["name"]?.GetValue<string>() is not { } name)
+                continue;
+
+            if (attribute["objects"] is JsonArray details)
+            {
+                if (!included.Contains(name))
+                {
+                    attributes[name] = new JsonObject { ["count"] = details.Count };
+                    continue;
+                }
+                var shown = new JsonArray();
+                foreach (var detail in details.OfType<JsonObject>().Take(MaxDetailRows))
+                {
+                    // The row's key first (a value object's id), then its attributes.
+                    var row = detail["id"] is JsonValue rowId ? new JsonObject { ["id"] = rowId.DeepClone() } : new JsonObject();
+                    var unbounded = int.MaxValue;
+                    Attributes(detail, [], ref rows, ref unbounded, row);
+                    var size = row.ToJsonString().Length + 1;
+                    if (size > budget)
+                        break;
+                    budget -= size;
+                    shown.Add(row);
+                    rows++;
+                }
+                attributes[name] = new JsonObject
+                {
+                    ["count"] = details.Count,
+                    ["rows"] = shown,
+                    ["omitted"] = details.Count - shown.Count,
+                };
+                continue;
+            }
+
+            if (attribute["object"] is JsonObject detailObject)
+            {
+                attributes[name] = Attributes(detailObject, [], ref rows, ref budget);
+                continue;
+            }
+
+            var value = attribute["value"]?.DeepClone();
+            attributes[name] = attribute["breadcrumb"] is JsonValue breadcrumb && value is JsonValue
+                ? new JsonObject { ["id"] = value, ["breadcrumb"] = breadcrumb.DeepClone() }
+                : value;
+        }
+        return attributes;
     }
 
     private static CallToolResult? Paging(int skip, int take)
