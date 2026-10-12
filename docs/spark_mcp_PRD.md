@@ -208,6 +208,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     `NameIdentifier`, which the resource server doesn't set: `HttpContextSparkCurrentUser.cs:25-27`).
     Without it row security keyed on the user id fails closed for every agent.
   - Setup 2 (D22) uses the same provider after the linked-login mapping.
+  - *Added 2026-10-12:* every setup's principal also carries the role and group claims a cookie sign-in of the user
+    carries (Identity's claims factory, made per request), so application code that tests `User.IsInRole` treats an
+    agent as the user (decision log, "Agent principals carry the cookie's role and group claims").
 - **The cookie path is unchanged (existing behaviour, recorded, not changed by this PR):** cookie role
   claims are baked in at sign-in, `RemoveFromRoleAsync` doesn't change the security stamp, and the claims
   refresh at Identity's default 30-minute `SecurityStampValidator` interval. After a membership change the
@@ -778,9 +781,11 @@ None. Q18 was resolved in round 3 (§10, D22).
     machine, **unrestricted**, so an agent saw every user's cars (red: `totalItems: 2` for a viewer with one car). The
     same read fails closed in Organizations' row policy (SeoTester's sites), notifications and quotas. The three agent
     handlers (personal token, embedded, external) now add the local id as `NameIdentifier` beside `sub`; the external
-    scheme adds the *local* id, never the external subject. `IsInRole` stays false for agents (groups come from the
+    scheme adds the *local* id, never the external subject. ~~`IsInRole` stays false for agents (groups come from the
     store, not role claims), so app code that tests roles is stricter for agents than for the web: Fleet's
-    administrators' agents see only the cars they created. Parity gap for M7, recorded.
+    administrators' agents see only the cars they created. Parity gap for M7, recorded.~~ *Superseded 2026-10-12: agent
+    principals carry the cookie's role and group claims (decision log, "Agent principals carry the cookie's role and
+    group claims").*
   - **Bug found: binding `Spark:Mcp` marked `Authentication` explicit.** The configuration binder calls every public
     setter with the getter's value when the key is absent, so any `Spark:Mcp` key (here `CanonicalUrl`) made all three
     setups mandatory (Fleet refused to start without setup 2), and pinned `ToolPrefix` to the default server name's slug.
@@ -835,3 +840,66 @@ None. Q18 was resolved in round 3 (§10, D22).
     back to the implied endpoint → `The_resource_names_the_endpoint_…`; the own `/mcp` audience check off →
     `A_token_for_the_other_endpoint_is_refused_by_the_providers_own_mcp` (200, the shared OAuth grant makes it reachable);
     the binding reset off → `A_canonical_url_from_configuration_…`; the component's `disconnected` Edit off → the spec case.
+- **M6 merged into `feat/spark-mcp` (2026-10-12).** Rebased onto the demo-app commits, then fast-forwarded. One conflict
+  in code: both sides had fixed the `Spark:Mcp` binding bug; the demo-app side's `SparkMcpOptions.Create` stays (it also
+  un-pins `ToolPrefix`), M6's own line in `AddMcp` went, both sides' tests stay ("M6 implementation" amended). The guide's
+  paragraph on identifying the caller merges both: `ISparkCurrentUser.Id` first, `NameIdentifier` on every agent
+  principal. The M6 entry above is placed by its date, before "Demo apps", and its commit ids are the rebased ones.
+  Evidence: the solution builds; the Spark `Mcp` namespace 146/146 on the rebased tree; with the role-parity change
+  below on top, CodeCoverage's `Mcp` classes 27/27, its registration inventory 6/6 and its route snapshot.
+- **Agent principals carry the cookie's role and group claims (2026-10-12).** The gap "Demo apps" recorded: an agent's
+  principal had no role claims, so `User.IsInRole` was false for every agent, and a Fleet administrator's agent saw only
+  the cars the administrator created while the administrator's cookie saw every car (`CarActions.cs:28`). Requested
+  2026-10-12: the same role and group claims a cookie sign-in of the user carries, from the store per request (S4), for
+  every agent scheme, reusing how the cookie gets them. Decisions, with their evidence:
+  - **How the cookie gets them:** ASP.NET Identity's `UserClaimsPrincipalFactory<TUser, SparkRole>`, registered by
+    `AddIdentityApiEndpoints<TUser>().AddRoles<SparkRole>()` (`SparkAuthenticationExtensions.cs:60-64`); Spark has no
+    factory of its own. It adds a role claim per `SparkUser.Roles` entry (type `IdentityOptions.ClaimsIdentity.RoleClaimType`,
+    default `ClaimTypes.Role`), the claims of those roles, and the claims stored on the user.
+  - **Reused, not re-mapped:** `IAgentRoleClaimsProvider` (`Agents/AgentRoleClaims.cs`), registered with
+    `AddAuthentication<TUser>` beside `IAgentLinkedLogins`, runs the application's `IUserClaimsPrincipalFactory<TUser>` (an
+    application's own factory counts too) on the user the scheme loaded for its token check (`AgentRequestUser`; a
+    `TUser` subtype is loaded as itself through `UserManager`), and keeps the claims of the cookie's role claim type and
+    of a group type (core's list, `AgentStoreGroupMembership.GroupClaimTypes`). The personal-token, embedded and external
+    handlers add them and build their identity with the cookie's role claim type; it was `"role"`, a type no agent claim
+    had.
+  - **Per request:** each scheme runs once per request and nothing caches across requests, so a removed role is gone on
+    the agent's next call; `RemoveFromRoleAsync` changes no security stamp, so the agent stays signed in. The cookie keeps
+    its claims until Identity revalidates it (§4.6): the agent is the stricter side, as for groups.
+  - **Role and group claims only,** never the cookie's other claims (email, security stamp, the user's other stored
+    claims): a stored claim named like a scheme's own would sit beside it, and `scope` is read off the agent's principal
+    as D22's write cap (`ExternalAgentServer.cs:69`). Mutation (the filter removed, every cookie claim copied):
+    `An_external_servers_token_carries_the_cookies_roles_and_none_of_the_users_other_claims` red, the agent's `scope`
+    read `mcp:read mcp:write` for a token issued `mcp:read`; the class's other five tests stayed green.
+  - **Groups unchanged:** `AgentStoreGroupMembership` stays. Composition is a union, an application may replace core's
+    claims provider, and that provider reads `ClaimTypes.Role`, not a custom role claim type; with Identity's default
+    both answer the same groups.
+  - **Observation, not changed:** `UserManager.AddToRoleAsync` hands the store the normalized name and Spark's
+    `UserStore` keeps it as given (`UserStore.cs:311-317`), so a role added that way reads `DEVELOPERS` (the red run's
+    cookie claims; Fleet's log: `groups: [VIEWERS, Administrators]` for a user given `Viewers` that way and
+    `Administrators` on the document), and `IsInRole("Developers")`, an ordinal comparison, is false for cookie and
+    agent alike. Fleet's administrators hold the role as written on the document (the E2E seed,
+    `SparkAppTestHost.cs:341`), which Fleet's test copies. Parity holds either way.
+  - **Application audit:** the only role read in application code is Fleet's `CarActions.CurrentUserIsAdmin`. SeoTester's
+    roles are organization memberships read from the store, CodeCoverage's administrators come from linked forge logins
+    (`CoverageAdministrators`, by `NameIdentifier`), HR reads no claims. The `NameIdentifier` reads (SeoTester's
+    `ReportPdf`, `SiteScheduleInterceptor`, `SeoInterceptors`, `SiteActions`, `CancelAuditAction`; CodeCoverage's
+    `CoverageAdministrators`; Fleet's `CarActions`) are served since "Demo apps" added the claim.
+  - **Evidence, red → green:** `McpAgentPrincipalTests` (a personal token, an embedded server's token, an external
+    server's token: the claims equal the cookie's from Identity's factory, `IsInRole` alike, the role removed → gone on the
+    next call, a stored `scope` claim never copied); red: `"inrole=False;claims="` against
+    `"inrole=True;claims=group=Reviewers|…/role=DEVELOPERS"`. Fleet's
+    `An_administrators_agent_sees_the_cars_the_cookie_sees_until_the_role_is_removed` (real `Program`, embedded server):
+    red: the cookie's query returned both cars, the agent's `totalItems: 1`. Green: `McpAgentPrincipalTests` 6/6,
+    Fleet's `McpEmbeddedServerTests` 3/3. Regression: the Spark `Mcp` namespace 149/149, `IdentityProvider` 565/565 and
+    the library route snapshots 35/35 (749/749, after the race below; 748/749 before it); CodeCoverage's `Mcp` classes,
+    registration inventory and route snapshot 34/34; the Fleet, HR, SparkId, SeoTester, DemoApp and QnA route
+    snapshots; the solution builds, 0 errors.
+- **`McpEmbeddedAuthorizationServerTests.Reusing_a_refresh_token_revokes_the_whole_family` raced (2026-10-12).** Run
+  beside the `IdentityProvider` namespace, the successor refresh token still refreshed after the replay (200 where 400
+  was expected); it had passed in the `Mcp` namespace alone (146/146 above). `Token.RevokeAuthorizationChainAsync` finds
+  the chain through an index, best-effort by design (its own remarks), and the class's shared database gives that index
+  every earlier case's tokens to catch up on: the race OidcTokenSecurity's two chain-revocation cases showed
+  (contributions PRD, M8 item 11). Fixed the same way: the case waits for indexing before the replay, pinning what it
+  tests (a chain the index can see is torn down); the production code is unchanged. Evidence: the same filter (`Mcp`,
+  `IdentityProvider`, library route snapshots) 748/749 before the wait, 749/749 after it.

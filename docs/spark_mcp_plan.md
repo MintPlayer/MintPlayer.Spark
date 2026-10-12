@@ -146,6 +146,15 @@ Owner decisions of 2026-10-12; as built, with the deviations, in the PRD decisio
   (real `Program`, CIMD and DCR), the connected-agents spec; Fleet's route snapshot.
 - Live run with Claude Code (owner, with M7's manual checklist): steps in the decision log entry.
 
+### Agent role parity — done (2026-10-12)
+As built in the PRD decision log ("Agent principals carry the cookie's role and group claims").
+- Every agent scheme (personal tokens, the embedded server, an external server) adds the role and group claims
+  Identity's claims factory puts in the user's sign-in cookie, made per request, under the cookie's role claim type:
+  `User.IsInRole` answers for an agent as for the user (Fleet's administrators' agents see every car), and a removed
+  role is gone on the next call (S4). Closes the gap the demo-app work recorded.
+- Tests: three setups in `McpAgentPrincipalTests` (the cookie's claims, the role removed, no other stored claim
+  copied), Fleet's administrator against the cookie in `McpEmbeddedServerTests`.
+
 ### M5 — SeoTester
 - Embedded setup; `SeoTools` (PRD §4.7); `agentPermissions` on `Site`/`AuditRun`/`CheckDefinition`;
   anonymous `QueryRead/CheckDefinition` in security.json.

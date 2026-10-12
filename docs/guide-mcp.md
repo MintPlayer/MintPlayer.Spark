@@ -214,8 +214,10 @@ The caller is available as a `ClaimsPrincipal user` parameter or through `ISpark
 through `ISparkCurrentUser.Id`. An agent's principal carries the local user id as `sub` and as
 `ClaimTypes.NameIdentifier`, so code that reads the id from the claim (or `UserManager.GetUserAsync(principal)`), as
 from the sign-in cookie, works unchanged; before that, CodeCoverage's owner lookups missed every agent (plan M6). It
-carries no role claims: its groups come from the user store on every call and reach security.json, not
-`User.IsInRole`. Code that tests roles that way treats an agent as having none.
+also carries the role and group claims a cookie sign-in of the user carries (Identity's claims factory, made on every
+call), so `User.IsInRole` and role-claim reads answer for the agent as for the user, and a role removed from the user is
+gone on the agent's next call. Only role and group claims are copied, never the cookie's others (email, the user's
+other stored claims).
 
 **Prompts.** `mcp.AddPrompts<TPrompts>()` adds `[McpServerPrompt]` methods of a `[McpServerPromptType]` class, prefixed
 like the tools. A prompt is a message template the user picks in the agent (one per app is plenty, PRD §9); it reads no
@@ -274,10 +276,10 @@ Wiring, as built (plan M3a):
   appears on the account overview. It offers only what a call could use: the types the user may see that
   have `agentPermissions`, and changes only where `mcp.AgentPermissions` (for that agent) and the type
   allow them. The server endpoints are under `/spark/auth/manage/agents`.
-- **Groups.** An agent's groups are read from the user store on every call, never from the token, so
-  removing a role applies to the agent's next call. The web cookie keeps its role claims until Identity
-  re-validates its security stamp (30 minutes by default), so right after a membership change the agent is
-  the stricter side.
+- **Groups and roles.** An agent's groups and role claims are read from the user store on every call, never
+  from the token, so removing a role applies to the agent's next call. The web cookie keeps its role claims
+  until Identity re-validates its security stamp (30 minutes by default), so right after a membership change
+  the agent is the stricter side.
 - **`AgentInformation`, `EAgentKind`, `EAgentAuthentication`** are in `MintPlayer.Spark.Abstractions`
   (`using MintPlayer.Spark.Abstractions;`), next to `EAgentPermission`.
 
