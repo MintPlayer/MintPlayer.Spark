@@ -76,6 +76,11 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
 
         reply.Status.Should().Be(HttpStatusCode.Unauthorized);
         reply.Response.Headers.WwwAuthenticate.ToString().Should().Contain("invalid_token");
+
+        // MCP live checks, round 1: the agent is told what to do — sign in once with the provider, then reconnect.
+        const string advice = "sign in to Acme Test once with " + McpExternalHost.Provider + " to link it, then reconnect";
+        reply.Response.Headers.WwwAuthenticate.ToString().Should().Contain($"error_description=\"").And.Contain(advice);
+        reply.Body!["error"]!["message"]!.GetValue<string>().Should().Contain(advice);
     }
 
     [Fact]
@@ -192,6 +197,10 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
         var reply = await WhoAmIAsync(factory.CreateClient(), token);
 
         reply.Status.Should().Be(HttpStatusCode.Unauthorized, variant);
+        // The link advice is for a valid token of the trusted issuer only: a refused token learns nothing about the account.
+        reply.Response.Headers.WwwAuthenticate.ToString().Should().NotContain("error_description", variant);
+        reply.Response.Headers.WwwAuthenticate.ToString().Should().NotContain("link", variant);
+        (reply.Body?.ToJsonString() ?? "").Should().NotContain("not linked", variant);
     }
 
     [Fact]

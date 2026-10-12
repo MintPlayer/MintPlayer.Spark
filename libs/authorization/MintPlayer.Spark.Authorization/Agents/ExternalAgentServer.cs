@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Authorization.Identity;
@@ -137,7 +138,17 @@ internal sealed partial class ExternalAgentTokenHandler(
         // of another server never reaches this lookup; an email claim is never consulted.
         var userId = await logins.FindUserIdAsync(options.LoginProvider, subject, Context.RequestAborted);
         if (userId is null)
-            return Refuse("no linked login");
+        {
+            // The one refusal an agent can do something about: the token is valid, the user simply never signed in here
+            // with the provider. Saying so tells a valid token's holder only what they already know (MCP live checks, round 1).
+            var provider = (await Context.RequestServices.GetRequiredService<IAuthenticationSchemeProvider>()
+                .GetSchemeAsync(options.LoginProvider))?.DisplayName;
+            var properties = new AuthenticationProperties();
+            properties.Items[Abstractions.Authentication.SparkAuthenticationDefaults.UnlinkedLoginProviderItem] =
+                string.IsNullOrWhiteSpace(provider) ? options.LoginProvider : provider;
+            LogRefused(Logger, "no linked login");
+            return AuthenticateResult.Fail(RefusalMessage, properties);
+        }
 
         var user = await users.GetAsync(userId, Context.RequestAborted);
         if (user is null)
@@ -193,8 +204,10 @@ internal sealed partial class ExternalAgentTokenHandler(
     private AuthenticateResult Refuse(string reason)
     {
         LogRefused(Logger, reason);
-        return AuthenticateResult.Fail("The access token is not valid for this MCP endpoint.");
+        return AuthenticateResult.Fail(RefusalMessage);
     }
+
+    private const string RefusalMessage = "The access token is not valid for this MCP endpoint.";
 
     [LoggerMessage(EventId = 7330, EventName = "SparkExternalAgentTokenRefused", Level = LogLevel.Information,
         Message = "External agent access token refused on /mcp ({Reason}).")]

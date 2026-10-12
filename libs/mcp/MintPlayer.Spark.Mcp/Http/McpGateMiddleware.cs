@@ -80,6 +80,16 @@ internal sealed class McpGateMiddleware(
         {
             // A credential was presented and nothing accepted it: say so, never fall back to anonymous (F7). This
             // also refuses every credential that is not an agent token (covt_, GitHub OIDC; MCP PRD D23).
+            // A validly signed token of the trusted issuer whose subject no user linked (the external-server setup) is
+            // told what to do: link the account by signing in once, then reconnect. Any other refusal says nothing more.
+            if (context.Items[SparkAuthenticationDefaults.UnlinkedLoginProviderItem] is string unlinked)
+            {
+                var serverName = string.IsNullOrWhiteSpace(options.ServerName) ? "this application" : options.ServerName;
+                var advice = $"Your account is not linked yet: sign in to {serverName} once with {unlinked} to link it, then reconnect.";
+                await ChallengeAsync(context, "The token was not accepted. " + advice, invalidToken: true, errorDescription: advice);
+                return;
+            }
+
             await ChallengeAsync(context, "The token was not accepted. " + McpSignInText.For(authentication, options.ServerName), invalidToken: true);
             return;
         }
@@ -150,6 +160,11 @@ internal sealed class McpGateMiddleware(
         foreach (var setup in authentication.Setups)
         {
             var result = await context.AuthenticateAsync(setup.Scheme);
+            if (result.Failure is not null
+                && result.Properties?.Items.TryGetValue(SparkAuthenticationDefaults.UnlinkedLoginProviderItem, out var provider) == true
+                && !string.IsNullOrWhiteSpace(provider))
+                context.Items[SparkAuthenticationDefaults.UnlinkedLoginProviderItem] = provider;
+
             if (result.Succeeded)
             {
                 context.User = result.Principal;
@@ -169,11 +184,11 @@ internal sealed class McpGateMiddleware(
     /// agent how to start its client's own sign-in (D17). The body names the call's id: the refused tool call's, or
     /// the request body's when the gate refuses before the SDK has read it.
     /// </summary>
-    private async Task ChallengeAsync(HttpContext context, string message, bool invalidToken, JsonNode? id = null)
+    private async Task ChallengeAsync(HttpContext context, string message, bool invalidToken, JsonNode? id = null, string? errorDescription = null)
     {
         id ??= await ReadJsonRpcIdAsync(context);
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        context.Response.Headers.WWWAuthenticate = McpProtectedResource.Challenge(context, options, authentication, configuration, environment, invalidToken);
+        context.Response.Headers.WWWAuthenticate = McpProtectedResource.Challenge(context, options, authentication, configuration, environment, invalidToken, errorDescription);
         await context.Response.WriteAsJsonAsync(new JsonObject
         {
             ["jsonrpc"] = "2.0",

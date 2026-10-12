@@ -62,11 +62,14 @@ internal static class McpProtectedResource
     /// </summary>
     public static string Challenge(
         HttpContext context, SparkMcpOptions options, McpAuthentication authentication, IConfiguration configuration, IHostEnvironment environment,
-        bool invalidToken)
+        bool invalidToken, string? errorDescription = null)
     {
         var parameters = new List<string>();
         if (invalidToken)
             parameters.Add("error=\"invalid_token\"");
+        // RFC 6750 §3: error_description is limited to %x20-21 / %x23-5B / %x5D-7E (no quote, no backslash).
+        if (invalidToken && !string.IsNullOrWhiteSpace(errorDescription))
+            parameters.Add($"error_description=\"{new string(errorDescription.Where(c => c is >= ' ' and <= '~' and not '"' and not '\\').ToArray())}\"");
 
         if (authentication.OffersOAuth && ResourceUrl(context, options, configuration, environment) is { } resource)
         {
