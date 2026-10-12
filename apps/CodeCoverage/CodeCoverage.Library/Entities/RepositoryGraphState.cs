@@ -30,6 +30,7 @@ public class RepositoryGraphState
     public string? Id { get; set; }
 
     /// <summary>The repository document id, e.g. <c>Repositories/github/123</c>.</summary>
+    [Reference(typeof(Repository))]
     public string Repository { get; set; } = string.Empty;
 
     /// <summary>True once a clone succeeded, until the mirror is deleted or found missing.</summary>

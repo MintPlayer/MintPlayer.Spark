@@ -101,10 +101,12 @@
       {
         "id": "4e798374-8c5e-40fe-80b9-cbc9a36b4872",
         "name": "Repository",
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isReadOnly": true,
         "order": 1,
+        "query": "GetRepositories",
+        "referenceType": "CodeCoverage.Entities.Repository",
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
