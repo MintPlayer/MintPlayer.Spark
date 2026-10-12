@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -105,7 +107,38 @@ internal sealed class McpGateMiddleware(
         // Proxies must not buffer the SSE response (guide-mcp.md "Deployment").
         context.Response.Headers["X-Accel-Buffering"] = "no";
 
-        await next(context);
+        if (setup is not null || !authentication.OffersOAuth)
+        {
+            await next(context);
+            return;
+        }
+
+        // D17 (M3b): an anonymous call on a server that offers OAuth. If a tool refuses it (SparkMcpResult.Refuse), the
+        // answer must be a real HTTP 401 with the challenge, since an HTTP 401 is what makes an agent offer its own
+        // sign-in (spike S11) — and a status cannot change once the SDK has started streaming. So the response is held
+        // back until the SDK is done. Stateless mode answers each POST in one piece anyway (D2).
+        var original = context.Features.Get<IHttpResponseBodyFeature>()!;
+        using var buffer = new MemoryStream();
+        context.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(buffer));
+        try
+        {
+            await next(context);
+        }
+        finally
+        {
+            context.Features.Set(original);
+        }
+
+        var state = McpRequestState.Of(context);
+        if (state is { SignInRequired: true } && !context.Response.HasStarted)
+        {
+            context.Response.Clear();
+            await ChallengeAsync(context, McpSignInText.For(authentication, options.ServerName), invalidToken: false, state.JsonRpcId);
+            return;
+        }
+
+        buffer.Position = 0;
+        await buffer.CopyToAsync(original.Stream, context.RequestAborted);
     }
 
     /// <summary>
@@ -131,17 +164,46 @@ internal sealed class McpGateMiddleware(
         return null;
     }
 
-    private async Task ChallengeAsync(HttpContext context, string message, bool invalidToken)
+    /// <summary>
+    /// A 401 with the challenge (RFC 9728 when OAuth is offered) and a JSON-RPC error body whose message tells the
+    /// agent how to start its client's own sign-in (D17). The body names the call's id: the refused tool call's, or
+    /// the request body's when the gate refuses before the SDK has read it.
+    /// </summary>
+    private async Task ChallengeAsync(HttpContext context, string message, bool invalidToken, JsonNode? id = null)
     {
-        var challenges = authentication.Setups.Select(s => s.Challenge).OfType<string>().ToList();
-        if (challenges.Count == 0)
-            challenges.Add("Bearer");
-        if (invalidToken)
-            challenges = [.. challenges.Select(c => c + (c.Contains(' ') ? ", " : " ") + "error=\"invalid_token\"")];
-
-        context.Response.Headers.WWWAuthenticate = challenges.ToArray();
-        await WriteErrorAsync(context, StatusCodes.Status401Unauthorized, message);
+        id ??= await ReadJsonRpcIdAsync(context);
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        context.Response.Headers.WWWAuthenticate = McpProtectedResource.Challenge(context, options, authentication, invalidToken);
+        await context.Response.WriteAsJsonAsync(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = id?.DeepClone(),
+            ["error"] = new JsonObject { ["code"] = UnauthorizedErrorCode, ["message"] = message },
+        });
     }
+
+    /// <summary>The JSON-RPC error code of a sign-in refusal: implementation-defined server error range (-32000 to -32099).</summary>
+    internal const int UnauthorizedErrorCode = -32001;
+
+    /// <summary>The <c>id</c> of a JSON-RPC request body, read without consuming it; <see langword="null"/> for anything else.</summary>
+    private static async Task<JsonNode?> ReadJsonRpcIdAsync(HttpContext context)
+    {
+        if (!HttpMethods.IsPost(context.Request.Method) || context.Request.ContentLength is > MaxPeekBytes)
+            return null;
+        try
+        {
+            context.Request.EnableBuffering(MaxPeekBytes);
+            var node = await JsonNode.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+            context.Request.Body.Position = 0;
+            return node is JsonObject message && message.TryGetPropertyValue("id", out var id) ? id : null;
+        }
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or IOException)
+        {
+            return null;
+        }
+    }
+
+    private const int MaxPeekBytes = 64 * 1024;
 
     private static Task WriteErrorAsync(HttpContext context, int status, string message)
     {

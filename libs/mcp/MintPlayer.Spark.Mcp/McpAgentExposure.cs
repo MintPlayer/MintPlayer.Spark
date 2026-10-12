@@ -9,9 +9,15 @@ namespace MintPlayer.Spark.Mcp;
 /// (Connected applications, the consent screen): the layers the Mcp package owns, app(agent) and type, so the
 /// page offers exactly what a call could use (MCP PRD D6, §4.6).
 /// </summary>
-internal sealed class McpAgentExposure(ISparkCatalogue catalogue, SparkMcpOptions options, McpAuthentication authentication) : IAgentExposure
+internal sealed class McpAgentExposure(
+    ISparkCatalogue catalogue,
+    SparkMcpOptions options,
+    McpAuthentication authentication,
+    Microsoft.Extensions.Configuration.IConfiguration configuration) : IAgentExposure
 {
     public EAgentAuthentication Setups => authentication.Effective;
+
+    public string? ResourceUrl => Http.McpOrigin.CanonicalUrl(options, configuration);
 
     public async Task<IReadOnlyList<AgentExposedType>> ListTypesAsync(CancellationToken cancellationToken = default)
     {

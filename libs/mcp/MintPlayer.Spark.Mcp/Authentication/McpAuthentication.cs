@@ -8,9 +8,14 @@ namespace MintPlayer.Spark.Mcp.Authentication;
 /// <see cref="IAgentCredentialScheme"/> and the challenge its 401 carries.
 /// </summary>
 /// <param name="Source">The package's registration: the scheme that validates the token and describes the agent behind it.</param>
-/// <param name="Challenge">The <c>WWW-Authenticate</c> value a 401 carries, e.g. <c>Bearer resource_metadata="…"</c>; <see langword="null"/> for a setup that offers no OAuth (personal tokens), whose 401 is plain.</param>
-internal sealed record McpAuthenticationSetup(IAgentCredentialScheme Source, string? Challenge)
+internal sealed record McpAuthenticationSetup(IAgentCredentialScheme Source)
 {
+    /// <summary>
+    /// Whether an agent can sign in through this setup with OAuth (setups 2 and 3): its 401 then carries the RFC 9728
+    /// challenge (<see cref="Http.McpProtectedResource"/>). Personal tokens offer none, so their 401 is a plain <c>Bearer</c>.
+    /// </summary>
+    public bool OffersOAuth => Source.Setup != EAgentAuthentication.PersonalAccessToken;
+
     /// <summary>Which of the three setups this is.</summary>
     public EAgentAuthentication Setup => Source.Setup;
 
@@ -37,7 +42,7 @@ internal sealed class McpAuthentication
     {
         [EAgentAuthentication.PersonalAccessToken] = "MintPlayer.Spark.Authorization (spark.AddAuthentication<TUser>()), which issues personal access tokens",
         [EAgentAuthentication.ExternalAuthorizationServer] = "an external authorization server configured as a sign-in provider (not available yet)",
-        [EAgentAuthentication.EmbeddedAuthorizationServer] = "MintPlayer.Spark.IdentityProvider with idp.ForMcp() (not available yet)",
+        [EAgentAuthentication.EmbeddedAuthorizationServer] = "MintPlayer.Spark.IdentityProvider with spark.AddIdentityProvider(idp => idp.ForMcp())",
     };
 
     private readonly object gate = new();
@@ -51,7 +56,14 @@ internal sealed class McpAuthentication
     public EAgentAuthentication Effective => Setups.Aggregate(EAgentAuthentication.None, (all, s) => all | s.Setup);
 
     /// <summary>Whether a 401 can lead the agent to an OAuth sign-in (setup 2 or 3 wired).</summary>
-    public bool OffersOAuth => Setups.Any(s => s.Challenge is not null && s.Setup != EAgentAuthentication.PersonalAccessToken);
+    public bool OffersOAuth => Setups.Any(s => s.OffersOAuth);
+
+    /// <summary>
+    /// The OAuth setups in the order RFC 9728 lists their servers: the embedded server first (MCP PRD §4.2), then an
+    /// external one.
+    /// </summary>
+    public IEnumerable<McpAuthenticationSetup> OAuthSetups
+        => Setups.Where(s => s.OffersOAuth).OrderByDescending(s => s.Setup == EAgentAuthentication.EmbeddedAuthorizationServer);
 
     /// <summary>Whether a 401 can be answered by configuring a personal access token.</summary>
     public bool OffersPersonalTokens => Setups.Any(s => s.Setup == EAgentAuthentication.PersonalAccessToken);
@@ -75,7 +87,7 @@ internal sealed class McpAuthentication
 
                 var schemes = registered.Where(s => s.Setup == flag).ToList();
                 if (schemes.Count > 0)
-                    resolved.AddRange(schemes.Select(s => new McpAuthenticationSetup(s, ChallengeFor(s))));
+                    resolved.AddRange(schemes.Select(s => new McpAuthenticationSetup(s)));
                 else if (options.AuthenticationIsExplicit)
                     missing.Add($"{flag} needs {Requirements[flag]}");
             }
@@ -90,11 +102,4 @@ internal sealed class McpAuthentication
             return setups = resolved;
         }
     }
-
-    /// <summary>
-    /// Personal tokens offer no OAuth, so their 401 is a plain <c>Bearer</c> (PRD §4.2). The OAuth setups' RFC 9728
-    /// challenge arrives with them (plan M3b, M3c).
-    /// </summary>
-    private static string? ChallengeFor(IAgentCredentialScheme scheme)
-        => scheme.Setup == EAgentAuthentication.PersonalAccessToken ? null : "Bearer";
 }

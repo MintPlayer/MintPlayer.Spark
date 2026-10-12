@@ -61,6 +61,12 @@ internal static partial class McpToolFilters
             {
                 var result = await next(request, cancellationToken);
                 outcome = result.IsError == true ? "error" : "ok";
+                if (state is { SignInRequired: true } && request.JsonRpcRequest?.Id is { } id)
+                {
+                    // The gate answers this call with an HTTP 401 instead (D17); its JSON-RPC error names the call.
+                    outcome = "sign-in required";
+                    state.JsonRpcId = JsonSerializer.SerializeToNode(id, McpJsonUtilities.DefaultOptions);
+                }
                 return result;
             }
             finally

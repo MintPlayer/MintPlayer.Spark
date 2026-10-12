@@ -94,8 +94,17 @@ public static class SparkMcpExtensions
 
         builder.Registry.AddEndpoints(endpoints =>
         {
-            var setups = endpoints.ServiceProvider.GetRequiredService<McpAuthentication>().Setups;
+            var authentication = endpoints.ServiceProvider.GetRequiredService<McpAuthentication>();
+            var setups = authentication.Setups;
             var mcp = endpoints.MapMcp(options.NormalizedPath).WithMetadata(new SparkMcpEndpointMarker());
+
+            // RFC 9728 (plan M3b, gap G2): where an agent learns which server signs it in. Only with a setup that offers
+            // OAuth. At the path-inserted location the challenge names, and at the bare one some clients try first.
+            if (authentication.OffersOAuth)
+            {
+                endpoints.MapGet(McpProtectedResource.WellKnown + options.NormalizedPath, McpProtectedResource.Document).AllowAnonymous();
+                endpoints.MapGet(McpProtectedResource.WellKnown, McpProtectedResource.Document).AllowAnonymous();
+            }
 
             // D3: only the bearer schemes authenticate /mcp. A policy OBJECT, not a registered name, so analyzer
             // SPARK020 has nothing to say (a name Spark never registers throws at request time; an object cannot).

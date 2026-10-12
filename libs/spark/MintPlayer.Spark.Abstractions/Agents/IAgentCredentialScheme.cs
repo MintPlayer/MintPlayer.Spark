@@ -42,6 +42,19 @@ public interface IAgentCredentialScheme
     /// no longer exists: the call is then refused as an invalid token, never run as anonymous.
     /// </summary>
     ValueTask<AgentCredential?> DescribeAsync(ClaimsPrincipal principal, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The issuer of the authorization server an agent signs in at (RFC 9728 <c>authorization_servers</c>), for the
+    /// setups that offer OAuth (2 and 3); <see langword="null"/> for one that does not (personal access tokens).
+    /// </summary>
+    /// <param name="requestOrigin">
+    /// The request's origin (<c>scheme://host</c>). Only a server whose issuer is not configured and that runs in
+    /// Development may answer with it, as its own token endpoint does; everywhere else the configured issuer wins.
+    /// </param>
+    string? AuthorizationServer(string requestOrigin) => null;
+
+    /// <summary>The scopes an agent may ask this server for (RFC 9728 <c>scopes_supported</c>, the challenge's <c>scope</c>).</summary>
+    IReadOnlyList<string> ScopesSupported => [];
 }
 
 /// <summary>The agent behind an <c>/mcp</c> request and what its user granted it.</summary>
@@ -89,6 +102,13 @@ public interface IAgentExposure
 
     /// <summary>The application layer for <paramref name="agent"/> (<c>mcp.AgentPermissions</c>; anonymous clamped to read).</summary>
     EAgentPermission AppPermissions(AgentInformation agent);
+
+    /// <summary>
+    /// The MCP endpoint's canonical URL (<c>Spark:Mcp:CanonicalUrl</c>, else the public base URL + the path): the
+    /// resource agents ask a token for (RFC 8707) and the only audience <c>/mcp</c> accepts. <see langword="null"/>
+    /// when neither is configured. Never derived from a request's <c>Host</c>.
+    /// </summary>
+    string? ResourceUrl { get; }
 }
 
 /// <summary>An entity type agents may use.</summary>

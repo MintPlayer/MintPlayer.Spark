@@ -123,10 +123,18 @@ public static class SparkMcpResult
         // wired, nothing can, and every caller gets the not-found.
         var context = Accessor.HttpContext;
         var authentication = context?.RequestServices.GetService<McpAuthentication>();
-        var text = context is not null && authentication is { Setups.Count: > 0 }
-                   && Endpoints.SparkDenial.Refuse(context).StatusCode == StatusCodes.Status401Unauthorized
-            ? McpSignInText.For(authentication, context.RequestServices.GetRequiredService<SparkMcpOptions>().ServerName)
+        var signIn = context is not null && authentication is { Setups.Count: > 0 }
+                     && Endpoints.SparkDenial.Refuse(context).StatusCode == StatusCodes.Status401Unauthorized;
+        var text = signIn
+            ? McpSignInText.For(authentication!, context!.RequestServices.GetRequiredService<SparkMcpOptions>().ServerName)
             : NotFoundMessage;
+
+        // D17 (M3b): with OAuth wired, the refusal becomes a real HTTP 401 carrying the challenge. The gate buffers
+        // an anonymous request's response on such a server and swaps it; the tool-error text below is what an agent
+        // sees only where nothing can sign it in (personal tokens only), or if the gate could not swap.
+        if (signIn && authentication!.OffersOAuth && State() is { IsAnonymous: true } state)
+            state.SignInRequired = true;
+
         return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = text }] };
     }
 

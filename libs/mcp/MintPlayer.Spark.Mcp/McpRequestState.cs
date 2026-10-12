@@ -44,5 +44,15 @@ internal sealed class McpRequestState
     /// <summary>The per-call fence tag (MCP PRD D10), created on first use.</summary>
     public string? FenceTag { get; set; }
 
+    /// <summary>
+    /// Set by <see cref="SparkMcpResult.Refuse"/> when an anonymous call was refused on a server that offers OAuth
+    /// (MCP PRD D17): the gate then answers the request with a real HTTP 401 and the RFC 9728 challenge instead of
+    /// the tool result, because an HTTP 401 is what makes an agent offer its sign-in (spike S11).
+    /// </summary>
+    public bool SignInRequired { get; set; }
+
+    /// <summary>The refused call's JSON-RPC request id, for the error body of that 401.</summary>
+    public System.Text.Json.Nodes.JsonNode? JsonRpcId { get; set; }
+
     public static McpRequestState? Of(HttpContext? context) => context?.Features.Get<McpRequestState>();
 }
