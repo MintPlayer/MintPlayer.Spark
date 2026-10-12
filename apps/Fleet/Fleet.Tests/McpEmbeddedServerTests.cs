@@ -22,7 +22,7 @@ using Raven.Client.Documents;
 namespace Fleet.Tests;
 
 /// <summary>
-/// Fleet's own authorization server for AI agents (setup 3, <c>idp.ForMcp()</c> in <c>Program.cs</c>), beside its SparkId
+/// Fleet's own authorization server for AI agents (setup 3, <c>idp.ForMcp().AgentsOnly()</c> in <c>Program.cs</c>), beside its SparkId
 /// sign-in and its SparkId resource server: Fleet's real <c>Program</c> with the Development wiring (an issuer, the MCP
 /// canonical URL, the SparkId provider), an agent that registers through a Client ID Metadata Document or anonymous
 /// loopback registration, signs the user in at Fleet's <c>/connect</c> pages, and reads cars on <c>/mcp</c> as that user,
@@ -56,6 +56,8 @@ public class McpEmbeddedServerTests : SparkTestDriver
         var (consentPage, requestId) = await agent.ConsentPageAsync();
         consentPage.Should().Contain("data-agent-trust=\"verified\"").And.Contain("value=\"Car\"");
         consentPage.Should().NotContain("value=\"write\"", "Fleet's AgentPermissions is Read");
+        consentPage.Should().NotContain("/connect/logout", "Fleet maps no end-session endpoint: the link would be a dead end")
+            .And.NotContain("/connect/applications", "agents are managed on Fleet's account page, not at the provider");
         var tokens = await agent.RedeemAsync(await agent.CodeAsync(consentPage, requestId));
 
         var access = tokens["access_token"]!.GetValue<string>();
@@ -69,7 +71,62 @@ public class McpEmbeddedServerTests : SparkTestDriver
         cars.Status.Should().Be(HttpStatusCode.OK);
         cars.Text.Should().Contain("1-AGT-001");
         cars.Text.Should().NotContain("1-AGT-002", "another user's car: Fleet's row filter applies to the agent as to the user");
+
+        // The agent keeps working past its access token's hour: a refresh, still as the user.
+        var refreshed = await agent.RefreshAsync(tokens["refresh_token"]!.GetValue<string>());
+        var again = await Mcp.CallAsync(host.CreateClient(), "fleet_query", new { query = "cars" }, refreshed["access_token"]!.GetValue<string>());
+        again.Status.Should().Be(HttpStatusCode.OK);
+        again.Text.Should().Contain("1-AGT-001").And.NotContain("1-AGT-002");
     }
+
+    /// <summary>
+    /// Fleet hosts the provider only for its agents (<c>idp.ForMcp().AgentsOnly()</c>): what a full provider maps beside
+    /// the agents' surface answers 404, and the metadata documents advertise only what is mapped (MCP PRD decision log,
+    /// "IdP surface for MCP-only apps").
+    /// </summary>
+    [Fact]
+    public async Task Fleet_maps_only_what_its_agents_need()
+    {
+        await using var host = new FleetAgentHost(Store, new DocumentServer());
+        var client = host.CreateClient();
+
+        var mapped = new List<string>();
+        foreach (var (method, path) in NotForAgents)
+        {
+            using var request = new HttpRequestMessage(new HttpMethod(method), path);
+            if (method is "POST" or "PUT")
+                request.Content = new FormUrlEncodedContent([]);
+            using var response = await client.SendAsync(request);
+            if (response.StatusCode != HttpStatusCode.NotFound)
+                mapped.Add($"{method} {path} answered {(int)response.StatusCode}");
+        }
+        mapped.Should().BeEmpty("Fleet's provider serves agents only");
+
+        var server = JsonNode.Parse(await client.GetStringAsync("/.well-known/oauth-authorization-server"))!;
+        server["grant_types_supported"]!.AsArray().Select(g => g!.GetValue<string>()).Should().Equal("authorization_code", "refresh_token");
+        server["registration_endpoint"]!.GetValue<string>().Should().Be(Issuer + "/connect/register");
+        server["revocation_endpoint"]!.GetValue<string>().Should().Be(Issuer + "/connect/revoke");
+
+        var discovery = JsonNode.Parse(await client.GetStringAsync("/.well-known/openid-configuration"))!.AsObject();
+        discovery["grant_types_supported"]!.AsArray().Select(g => g!.GetValue<string>()).Should().Equal("authorization_code", "refresh_token");
+        discovery.Select(p => p.Key).Should().NotIntersectWith([
+            "userinfo_endpoint", "end_session_endpoint", "introspection_endpoint", "pushed_authorization_request_endpoint",
+            "device_authorization_endpoint", "backchannel_logout_supported",
+        ]);
+    }
+
+    /// <summary>What a full provider maps beside the agents' surface.</summary>
+    private static readonly (string Method, string Path)[] NotForAgents =
+    [
+        ("POST", "/connect/device_authorization"), ("GET", "/connect/device"), ("POST", "/connect/device"), ("POST", "/connect/par"),
+        ("POST", "/connect/introspect"), ("GET", "/connect/userinfo"), ("POST", "/connect/userinfo"), ("GET", "/connect/logout"),
+        ("GET", "/connect/applications"), ("POST", "/connect/applications/revoke"), ("POST", "/connect/applications/revoke-scope"),
+        ("GET", "/connect/register/some-client"), ("PUT", "/connect/register/some-client"), ("DELETE", "/connect/register/some-client"),
+        ("GET", "/spark/identity-provider/developer"), ("POST", "/spark/identity-provider/developer"),
+        ("POST", "/spark/identity-provider/developer/registration-token"), ("POST", "/spark/identity-provider/invitations/accept"),
+        ("GET", "/spark/identity-provider/applications"), ("POST", "/spark/identity-provider/applications/withdraw"),
+        ("GET", "/spark/identity-provider/admin/keys"), ("POST", "/spark/identity-provider/admin/keys/rotate"),
+    ];
 
     [Fact]
     public async Task A_dynamically_registered_agent_signs_in_at_Fleet_and_an_anonymous_one_sees_only_public_types()
@@ -315,6 +372,17 @@ public class McpEmbeddedServerTests : SparkTestDriver
             }));
             var body = await response.Content.ReadAsStringAsync();
             response.StatusCode.Should().Be(HttpStatusCode.OK, "the token endpoint answered {0}", body);
+            return JsonNode.Parse(body)!;
+        }
+
+        public async Task<JsonNode> RefreshAsync(string refreshToken)
+        {
+            var response = await client.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "refresh_token", ["refresh_token"] = refreshToken, ["client_id"] = clientId, ["resource"] = CanonicalUrl,
+            }));
+            var body = await response.Content.ReadAsStringAsync();
+            response.StatusCode.Should().Be(HttpStatusCode.OK, "the refresh answered {0}", body);
             return JsonNode.Parse(body)!;
         }
 

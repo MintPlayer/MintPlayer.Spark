@@ -33,7 +33,8 @@ internal static class McpEmbeddedHost
         IDocumentStore store,
         DocumentServer? documents = null,
         Action<SparkMcpOptions>? configureMcp = null,
-        Action<SparkIdentityProviderMcpOptions>? configureIdp = null)
+        Action<SparkIdentityProviderMcpOptions>? configureIdp = null,
+        Action<SparkIdentityProviderOptions>? configureProvider = null)
         => new(
             store,
             McpAccountHost.Models(),
@@ -54,6 +55,7 @@ internal static class McpEmbeddedHost
                     idp.Issuer = Issuer;
                     idp.SigningKeyPath = OidcTestHost.CopyOfSharedSigningKey();
                     idp.ForMcp(configureIdp);
+                    configureProvider?.Invoke(idp);
                 });
                 spark.AddMcp(mcp =>
                 {

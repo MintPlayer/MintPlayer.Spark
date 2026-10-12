@@ -28,7 +28,7 @@ public class RouteTableSnapshotTests : SparkTestDriver
                 ["Spark:Replication:ModuleUrl"] = "http://localhost",
                 ["Spark:Replication:SparkModulesUrls:0"] = Store.Urls[0],
                 ["Spark:Replication:SparkModulesDatabase"] = Store.Database + "-modules",
-                // The agents' authorization server of appsettings.Development.json (idp.ForMcp() when an issuer is set),
+                // The agents' authorization server of appsettings.Development.json (idp.ForMcp().AgentsOnly() when an issuer is set),
                 // so its /connect and /.well-known routes are in the snapshot beside /mcp. The E2E host runs without it.
                 ["Spark:IdentityProvider:Issuer"] = "http://localhost",
                 ["Spark:IdentityProvider:SigningKeyPath"] = SparkAppSigningKey.NewFile(),
