@@ -59,7 +59,7 @@ internal static class McpAccountHost
             },
             security: SparkTestSecurity.FromJson(Security()));
 
-    private static string Security() => JsonSerializer.Serialize(new
+    internal static string Security() => JsonSerializer.Serialize(new
     {
         wellKnown = new Dictionary<string, string>
         {

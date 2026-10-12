@@ -16,7 +16,7 @@ GET /connect/login
 POST /connect/login | antiforgery=required
 GET /connect/logout
 POST /connect/par | cors=policy:SparkOidcCors | rate-limit=policy:SparkIdentityProviderMachine
-POST /connect/register
+POST /connect/register | rate-limit=policy:SparkIdentityProviderMachine
 DELETE /connect/register/{clientId}
 GET /connect/register/{clientId}
 PUT /connect/register/{clientId}
@@ -49,6 +49,11 @@ POST /spark/auth/logout | antiforgery=required
 POST /spark/auth/manage/2fa | accepts(application/json) | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/2fa/authenticator-uri | authorize(policy=;roles=;schemes=)
 DELETE /spark/auth/manage/account | antiforgery=required | authorize(policy=;roles=;schemes=)
+GET /spark/auth/manage/agents | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/applications/revoke | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/revoke | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/tokens | antiforgery=required | authorize(policy=;roles=;schemes=)
+POST /spark/auth/manage/agents/update | antiforgery=required | authorize(policy=;roles=;schemes=)
 GET /spark/auth/manage/info | authorize(policy=;roles=;schemes=)
 POST /spark/auth/manage/info | antiforgery=required | authorize(policy=;roles=;schemes=)
 POST /spark/auth/manage/password | antiforgery=required | authorize(policy=;roles=;schemes=)

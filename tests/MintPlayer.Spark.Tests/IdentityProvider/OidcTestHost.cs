@@ -126,7 +126,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
     /// two hosts having different keys.
     /// </para>
     /// </summary>
-    private static string CopyOfSharedSigningKey()
+    internal static string CopyOfSharedSigningKey()
     {
         var path = Path.Combine(Path.GetTempPath(), "spark-oidc-test-" + Guid.NewGuid().ToString("N") + ".json");
         File.Copy(SharedSigningKeyFile.Value, path);
