@@ -21,6 +21,7 @@ End users: see [Connect an AI agent](guide-mcp-agents.md).
 - [Anonymous and signed-in callers](#anonymous-and-signed-in-callers)
 - [Grants and personal access tokens](#grants-and-personal-access-tokens)
 - [Using an external authorization server](#using-an-external-authorization-server)
+- [A Spark identity provider as the external server](#a-spark-identity-provider-as-the-external-server)
 - [Changes: propose, then apply](#changes-propose-then-apply)
 - [Untrusted text and prompt injection](#untrusted-text-and-prompt-injection)
 - [Limits and audit](#limits-and-audit)
@@ -33,7 +34,7 @@ End users: see [Connect an AI agent](guide-mcp-agents.md).
 | Setup | Packages | How an agent gets a token | Browser sign-in |
 |---|---|---|---|
 | **Personal access token** | Authorization + Mcp | The user creates a `spat_…` token on their account page and pastes it into the agent's config. | No |
-| **External authorization server** | Authorization + Mcp | The agent signs in at your organization's OAuth server (Entra, Keycloak, Auth0). | Yes, there |
+| **External authorization server** | Authorization + Mcp | The agent signs in at your organization's OAuth server (Entra, Keycloak, Auth0), or at another Spark application's identity provider ([below](#a-spark-identity-provider-as-the-external-server)). | Yes, there |
 | **Embedded authorization server** | Authorization + IdentityProvider + Mcp | Your app is the OAuth server; users sign in with your normal sign-in, whatever it is. | Yes, at your app |
 
 All three are on by default (`mcp.Authentication = EAgentAuthentication.All`); each works only when its
@@ -62,7 +63,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     {
         mcp.ServerName = "Contracts";                        // tools become contracts_query, ...
         mcp.Instructions = "Contracts, customers and invoices of the signed-in user.";
-        mcp.AgentPermissions = EAgentPermission.Read;        // see below
+        mcp.AgentPermissions = _ => EAgentPermission.Read;   // see below
         mcp.RequireSignIn = false;                           // default; see "Anonymous and signed-in callers"
         mcp.AddTools<ContractTools>();                       // optional
     });
@@ -114,7 +115,7 @@ A type's queries follow the type. `"Write"` without `"Read"` fails at startup. W
 agents pick tools and fields by reading them, and attribute descriptions
 ([guide](guide-attribute-descriptions.md)) are sent with `describe`.
 
-**2. The app, per agent.** `mcp.AgentPermissions` is a value or a function of `AgentInformation`,
+**2. The app, per agent.** `mcp.AgentPermissions` is a function of `AgentInformation` (`_ => EAgentPermission.Read` for one value),
 evaluated on every call:
 
 ```csharp
@@ -201,7 +202,10 @@ Rules:
 3. **Return through `SparkMcpResult`**: Spark serialization (redaction included), paging and fencing.
 4. **Keep results small.** Return ids and the fields needed; aim below 10k tokens per call.
 
-The caller is available as a `ClaimsPrincipal user` parameter or through `ISparkCurrentUser`.
+The caller is available as a `ClaimsPrincipal user` parameter or through `ISparkCurrentUser`. An agent's principal
+carries the local user id as `sub` and as `ClaimTypes.NameIdentifier`, so code that reads the id from the claim, as from
+the sign-in cookie, works unchanged. It carries no role claims: its groups come from the user store on every call and
+reach security.json, not `User.IsInRole`. Code that tests roles that way treats an agent as having none.
 
 ## Anonymous and signed-in callers
 
@@ -309,6 +313,55 @@ in the token (in this setup only, the token's scope is a cap: the user can't be 
 server's consent). Its grant appears on their account page after its first call, with the server's issuer;
 revoking it there marks it *disconnected* and blocks the agent even though the external server keeps
 issuing tokens. Editing it allows the agent again. Unlinking the login from the account also blocks it.
+
+The grant is bound to the user's security stamp, as personal access tokens and the embedded server's grants are: a
+password change, a removed sign-in method or any other stamp change shows it as *disconnected* and refuses the agent,
+however many tokens the external server still issues, until the user allows it again under Connected applications,
+which stamps it anew.
+
+## A Spark identity provider as the external server
+
+A Spark application with the identity provider package can be the external authorization server of **another**
+application's `/mcp`. The demo does exactly this: SparkId signs agents in for HR. Users already sign in to HR with
+their SparkId account, and the agent signs in at SparkId too.
+
+**On the identity provider**, list the other application's MCP endpoint. It needs no MCP endpoint of its own:
+
+```csharp
+spark.AddIdentityProvider(idp => idp.ForMcpResource("https://hr.example.com/mcp", r => r.DisplayName = "HR"));
+```
+
+or in configuration (`Spark:IdentityProvider:Mcp:Resources`, one entry per endpoint, `Url` and `DisplayName`). The URL
+is the other application's canonical URL, exactly. The provider then publishes the RFC 8414 document, accepts
+metadata-document clients and anonymous loopback registration, and mints tokens whose only audience is that URL, with
+`mcp:read`, `mcp:write` only when the user allowed changes, and the user's id as `sub`. `idp.ForMcp()` stays the call
+for the provider's own `/mcp`; both can be combined, and an agent then names the endpoint it wants in `resource`.
+
+**On the application**, accept the provider as its external server, bound to the sign-in its users already link:
+
+```csharp
+spark.AddExternalProviders(builder.Configuration);   // Spark:Auth:Providers:OpenIdConnect:SparkId (issuer, client)
+spark.AddExternalAgentAuthorizationServer("https://id.example.com", loginProvider: "SparkId");
+spark.AddMcp(mcp => { /* … */ });                     // Spark:Mcp:CanonicalUrl = https://hr.example.com/mcp
+```
+
+What the user sees:
+
+1. The agent connects to the application's `/mcp`, gets the 401, reads the protected-resource document, and opens
+   the provider's sign-in.
+2. The provider's consent screen names the application and its host and offers **read** or **read and make changes**.
+   It offers no types: it cannot see what the application exposes, or the user's rights there.
+3. The application maps the token to the user who linked that provider account (never by email). The first call
+   creates the agent's grant there: everything exposed, read only. The user picks types and turns changes on under
+   Connected applications in the application. Changes need that toggle *and* "make changes" at the provider.
+
+A user who never signed in to the application through the provider gets 401: they sign in to the website with it
+once, which links the account. Keep the application's sign-in client at the provider on public subjects (the
+default): the agent token's `sub` is the user's id, and the linked login's key must equal it.
+
+**Revoking**: the agent's grant in the application disconnects it at once. The provider's `/connect/applications`
+withdraws its OAuth grant, so its refresh token stops working; an access token the application validates locally keeps
+working until it expires (60 minutes) unless the application disconnects the agent too.
 
 ## Changes: propose, then apply
 

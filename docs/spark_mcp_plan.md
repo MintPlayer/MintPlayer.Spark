@@ -126,6 +126,26 @@ rows on `Person`; HR is wired for personal access tokens.
   diff echo check, one-shot, user and grant binding, re-validation, 409 handling, retention after apply.
 - HR: contracts `"agentPermissions": "Read, Write"`, app `Read | Write`.
 
+### Demo apps: HR on SparkId (setup 2), Fleet embedded (setup 3) — done (2026-10-12)
+Owner decisions of 2026-10-12; as built, with the deviations, in the PRD decision log ("Demo apps").
+- IdentityProvider `idp.ForMcpResource(url, r => …)` (or `Spark:IdentityProvider:Mcp:Resources`): a Spark identity
+  provider as the external authorization server of another application's `/mcp`. One `OidcResources/mcp-{hash}` per
+  endpoint (audience = its URL, `mcp:read`/`mcp:write`), the endpoint chosen by `resource`; the same metadata, CIMD,
+  loopback DCR, VS Code redirects, refresh families as `ForMcp()`, which stays the call for the provider's own `/mcp`.
+  Consent offers read or read + changes only (`mcp:write`); types and the write toggle stay with the application's
+  shadow grant (D22).
+- HR: `AddExternalAgentAuthorizationServer(SparkId, loginProvider: "SparkId")` where the SparkId sign-in is configured,
+  beside personal access tokens; `Spark:Mcp:CanonicalUrl` and SparkId's resource entry in the Development settings;
+  Connected applications mounted in the SPA.
+- Fleet: Mcp (`Read`; `Car`, `ServiceEntry`, `Person`, `Company` `"Read"`), personal access tokens, and `idp.ForMcp()`
+  when `Spark:IdentityProvider:Issuer` is set (Development); the provider's management rights off; Connected
+  applications mounted in the SPA.
+- D22 amended: external grants are security-stamp bound; a stamp change disconnects until the user allows the agent
+  again (re-stamp). The Connected applications page now offers Edit for a disconnected grant.
+- Tests: `McpRemoteResourceTests`, stamp case in `McpExternalAuthorizationServerTests`, Fleet's `McpEmbeddedServerTests`
+  (real `Program`, CIMD and DCR), the connected-agents spec; Fleet's route snapshot.
+- Live run with Claude Code (owner, with M7's manual checklist): steps in the decision log entry.
+
 ### M5 — SeoTester
 - Embedded setup; `SeoTools` (PRD §4.7); `agentPermissions` on `Site`/`AuditRun`/`CheckDefinition`;
   anonymous `QueryRead/CheckDefinition` in security.json.

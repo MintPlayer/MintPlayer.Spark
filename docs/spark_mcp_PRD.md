@@ -47,7 +47,7 @@ Where §0 and the body disagree, §0 wins and the body is fixed.
 | D19 | ~~**Web fix in this PR:** a reference whose **target type** the caller may not `Read` keeps its id and shows the redacted placeholder, for web and MCP alike.~~ *Superseded 2026-10-12 (owner):* a reference attribute (single or array; AsDetail/embedded rows are not references) is **shown only to a caller holding `Read` on its target type**. Without it the attribute is treated exactly like an attribute-level denial, for every verb: absent from `/spark/types`, query metadata and columns, detail, query and AsDetail rows, search, sort, filter and distincts, and a save drops a posted value and keeps the stored one. The placeholder stays only where a breadcrumb **template** of the owning type interpolates the reference. A **required** hidden reference fails the save with a clear error naming the attribute and the type to ask `Read` on (a startup check cannot tell: rights combine across a caller's groups). Red test first; audit every app's security.json for affected references; release-notes line. **owner** (R1-Q3, 2026-10-12) | `BreadcrumbResolver` consulted only row security and attribute rights, never `IPermissionService` [verified `BreadcrumbResolver.cs:98-104`, `RowSecurity.cs:254-258`, `EntityMapper.cs:359-380`]. The first fix (de7faaec) left the attribute and the target id on the wire (`EntityMapper.cs:361-379` kept `Value`, `QueryResultProjector.cs:219-225` sent Value/ObjectId). **Superseding fix [verified, red→green]:** `AttributeRightsEnforcement.GetHiddenReferencesAsync`, unioned into `GetDeniedAsync`; `ReferenceTargetRightsTests` 8/12 red before (ids on the wire, columns, metadata, sort/filter oracles, a posted reference overwriting the stored one, a bare "Owner is required."), 12/12 after (commit 911fd4b8). The model synchronizer plays no part: `ModelSynchronizer.cs:817-825` only records `DataType` Reference and `ReferenceType` and never reads security.json. **App audit:** QnA grants `Read/SparkUser` behind a `SparkUserActions` row rule (authors of a visible post), HR grants `Read/Profession` to visitors and signed-in users (public reference data); still hidden by design: CodeCoverage `ApiToken.CreatedByUserId` (no SparkUser row rule), Fleet `Car.Manager` for `Module:HR`/`Machine:FleetApi`, HR `Person.Company`/`Professions` for `Module:Fleet` — no machine caller sends or reads those references (replicas carry no `Manager`/`Company`/`Professions`). |
 | D20 | **Endpoint `/mcp`**, configurable; `Spark:Mcp:CanonicalUrl` override (default `PublicOrigin` + path) for a subdomain behind a proxy. Startup fails if the path is already mapped. **owner** (R1-Q9) | Outside `/spark` the endpoint doesn't inherit Spark's default CORS and ambient-credential antiforgery [verified `docs/guide-cors.md:32,55-57`]. |
 | D21 | **Tool prefix** `mcp.ToolPrefix`, defaulting to a slug of `ServerName` (`seotester_`, `codecoverage_`); the guide tells developers to set it explicitly so renaming `ServerName` doesn't rename tools users allow-listed, applied to generic and domain tools; domain tools are written unprefixed. **owner** (R1-Q13) | Two Spark apps in one session (ours) would collide on generic tool names. |
-| D22 | **External authorization server (setup 2) maps a token to a user only through a linked external login**: the server is configured as one of the app's sign-in providers, the issuer is bound to that provider, the token's `sub` must equal the linked login's key. Unmapped → **401, never anonymous**. Groups and rights come from the local user, never from token role claims. A **shadow `AgentGrant`** is created on first use with "everything exposed", `Read` only. `Write` requires both the user turning it on under Connected applications **and** `mcp:write` in the token: in this setup only, the token scope is a real cap, because we can't step the user up through another server's consent (R3-Q18). Opaque tokens go through introspection. Full adversarial test list in §6.2. **owner** (R1-Q14, Q15: "if we manage to make it secure, add the appropriate tests") | Matching on `email` is a classic account-takeover bug; issuer binding stops cross-issuer `sub` collisions. |
+| D22 | **External authorization server (setup 2) maps a token to a user only through a linked external login**: the server is configured as one of the app's sign-in providers, the issuer is bound to that provider, the token's `sub` must equal the linked login's key. Unmapped → **401, never anonymous**. Groups and rights come from the local user, never from token role claims. A **shadow `AgentGrant`** is created on first use with "everything exposed", `Read` only. `Write` requires both the user turning it on under Connected applications **and** `mcp:write` in the token: in this setup only, the token scope is a real cap, because we can't step the user up through another server's consent (R3-Q18). Opaque tokens go through introspection. Full adversarial test list in §6.2. **owner** (R1-Q14, Q15: "if we manage to make it secure, add the appropriate tests"). **Amended 2026-10-12 (owner):** the shadow grant is bound to the user's security stamp like personal tokens and embedded grants; a stamp change counts as *disconnected* until the user allows the agent again, which re-stamps it. A Spark identity provider can be this external server for another app's `/mcp` (`idp.ForMcpResource(url)`); the demo wires HR on SparkId (decision log, "Demo apps"). | Matching on `email` is a classic account-takeover bug; issuer binding stops cross-issuer `sub` collisions. |
 | D23 | Existing upload credentials are **not** MCP credentials: CodeCoverage `covt_` tokens and GitHub Actions OIDC tokens are rejected on `/mcp`. | Their principal is a token, not a user [verified `ApiTokens/ApiTokenAuthenticationHandler.cs:14-96`]. |
 | D24 | First adopters **in the same PR**: **SeoTester** (app permissions `Read \| Write`, types `Read` only; the one write is `seotester_start_scan`) and **CodeCoverage** (`Read`), both on the embedded setup. **HR** demonstrates `Read, Write` on contracts with propose → apply. **owner** (2026-10-12 request; R1-Q11) | One PR rule. |
 
@@ -134,7 +134,7 @@ Calls that anonymous may make succeed without any of this (D17).
 | Setup | Packages | Token | Browser sign-in | Metadata published |
 |---|---|---|---|---|
 | 1. Personal access token | Authorization + Mcp | `spat_…` from the account page, pasted as a bearer header | no | none: a 401 carries no OAuth hint |
-| 2. External authorization server | Authorization + Mcp | issued by Entra/Keycloak/Auth0 for audience = canonical URI | at the external server | RFC 9728, pointing to it |
+| 2. External authorization server | Authorization + Mcp | issued by Entra/Keycloak/Auth0, or another Spark app's identity provider (`idp.ForMcpResource(url)`), for audience = canonical URI | at the external server | RFC 9728, pointing to it |
 | 3. Embedded authorization server | Authorization + IdentityProvider + Mcp | issued by the app | at the app, any sign-in method | RFC 9728 + RFC 8414 |
 
 If setups 2 and 3 are both wired, the metadata lists the embedded server first; tokens of both are valid.
@@ -571,8 +571,9 @@ None. Q18 was resolved in round 3 (§10, D22).
     instead of deleting it. The external server keeps issuing tokens (refresh tokens included), so a deleted shadow grant
     would be recreated by the agent's next call and the revocation would last one call. A disconnected grant refuses
     every call until the user edits it (`update` clears `RevokedAt`). Unlinking the login, lockout and deletion of the
-    user refuse the next call too. No security-stamp check for `ext/` grants: the user never consented to a stamp, and
-    removing the login (which changes the stamp) already unmaps the token.
+    user refuse the next call too. ~~No security-stamp check for `ext/` grants: the user never consented to a stamp, and
+    removing the login (which changes the stamp) already unmaps the token.~~ *Superseded 2026-10-12 (owner decision 4,
+    "Demo apps" below): `ext/` grants are stamp-bound like the others.*
   - **Evidence:** `McpExternalAuthorizationServerTests` (29 cases, in-memory RSA issuer and an RFC 7662 stub), green,
     with `McpPersonalAccessTokenTests`, `McpEmbeddedAuthorizationServerTests`, `SparkResourceServerTests`,
     `McpSignInChallengeTests`, `McpServerTests` (102/102). Mutation runs (red with the guard removed, green restored):
@@ -626,8 +627,9 @@ None. Q18 was resolved in round 3 (§10, D22).
     positive) as `@expires`; the record holds user, client, kind, grant, summary, operations, the diff, created ids, error.
   - **HR:** `AddMcp` (prefix `hr`, app `Read | Write`, anonymous `Read`); the contracts are `CarreerJob` rows (an
     `AsDetail` of `Person`), so `Person` and `CarreerJob` are `"Read, Write"` and `Profession`/`Company` `"Read"` (their
-    references would otherwise be hidden, D19). HR signs in against SparkId, so the setup wired is personal access tokens
-    (account page); setup 2 against SparkId is possible with M3c's `AddExternalAgentAuthorizationServer` but not wired.
+    references would otherwise be hidden, D19). ~~HR signs in against SparkId, so the setup wired is personal access tokens
+    (account page); setup 2 against SparkId is possible with M3c's `AddExternalAgentAuthorizationServer` but not wired.~~
+    *Superseded 2026-10-12: HR now takes SparkId's agent tokens (setup 2) beside personal access tokens ("Demo apps" below).*
   - **The type-level right is asked first** (`New`/`Edit`/`Delete` on the type, before the object is scaffolded or an
     attribute looked at), as the web endpoints do: otherwise a caller who may not create a type could tell its attribute
     names from the answers, and the application's `OnNewAsync` would run for them. Red without it
@@ -644,3 +646,111 @@ None. Q18 was resolved in round 3 (§10, D22).
     no MCP test, and only the object it runs on carries an etag (selected rows are re-materialized at apply, as on the
     web); SeoTester's `seotester_start_scan` is its own tool, not a plan. `apply_changes` through an external (M3c) token
     and the parity suite's write half are M7's. HR's MCP wiring builds but has not been run against the live app.
+- **Demo apps: HR on SparkId (setup 2), Fleet embedded (setup 3); remote resources; stamp-bound external grants
+  (2026-10-12).** Owner decisions of 2026-10-12: (1) a Spark identity provider can be the external authorization server
+  of *another* application's `/mcp`; (2) HR uses SparkId that way, beside personal tokens; (3) Fleet hosts its own
+  embedded server, beside personal tokens; (4) setup 2 grants are security-stamp bound like the others. Decisions taken
+  while building, with their evidence:
+  - **The API: `idp.ForMcpResource(url, r => …)`**, one call per endpoint, or `Spark:IdentityProvider:Mcp:Resources`
+    (`Url`, `DisplayName`, `Permissions`); `idp.ForMcp()` unchanged for the provider's own endpoint, and both combine.
+    Both share `SparkIdentityProviderMcpOptions` (CIMD hosts, DCR, lifetimes). `LocalEndpoint` (`bool?`): `ForMcp()`
+    sets it; unset, a `Spark:IdentityProvider:Mcp` section serves the own endpoint only when it lists no `Resources`, so
+    SparkId's configuration needs no switch and an old config-only `ForMcp` keeps its meaning. The `/mcp` bearer scheme
+    (`IAgentCredentialScheme`, setup 3) is registered only with the own endpoint: otherwise the provider would list itself
+    in an RFC 9728 document for an audience it never mints.
+  - **One resource per endpoint, the scopes shared (owner: "an `OidcResources` entry whose `Audience` is that canonical
+    URL, scopes `mcp:read`/`mcp:write`").** `OidcResources/mcp` stays the own endpoint's; another endpoint is
+    `OidcResources/mcp-{sha256(url)[..32]}` (a URL cannot be a document id). Scope ownership by prefix (G11) cannot tell
+    them apart, so `OidcScopeCatalog.LoadAsync(…, mcpResourceId, …)` resolves `mcp:*` in the endpoint the request is for:
+    `/connect/authorize` chooses the endpoint first (`OidcMcpResources.Select`), the token endpoint and every refresh
+    from the chain's recorded `resource`. An endpoint no longer configured leaves the scopes undefined: no token
+    (`invalid_scope`), never one for the own endpoint's audience. Chosen over one `mcp` resource with several audiences
+    (the owner named a resource per endpoint) and over endpoint-specific scope names (the resource app's
+    `WriteScope`/`ScopesSupported` default to `mcp:read`/`mcp:write`, and agents read them from its RFC 9728 document).
+  - **Choosing the endpoint (D5 G4 generalised):** exactly one distinct `resource`, an endpoint listed here; two at once or
+    an unknown one is `invalid_target`. None named: the own endpoint (as before), else the only one, else refused. URL
+    rules: https, or http on a loopback host (local development); no query, fragment or user info; a trailing `/` dropped
+    as the Mcp package drops it; malformed or duplicate (also against the own canonical URL) refuses startup.
+  - **Consent for another application's endpoint (the open point of decision 1):** it names the application and its
+    host ("It will work as you in {name} ({host}), and nowhere else"), offers **read** or **read and make changes** (the
+    latter only when `r.Permissions` has `Write`, default `Read | Write`), and **no types**: the provider cannot see that
+    application's exposure, `AgentPermissions` or the user's rights there. It says where the rest is decided: the
+    application's Connected applications, where the shadow grant (D22) starts as everything exposed, read only. "Make
+    changes" puts `mcp:write` in the token, the cap D22 applies beside the user's toggle there. No agent grant is written
+    at the provider (it would decide nothing: no `/mcp` there reads it); the `OidcGrant` keeps the bookkeeping (refresh
+    family, revocation at `/connect/applications`). A forged `write` beyond `Permissions`, or any posted type, is refused.
+  - **Subject:** the public user id (G10), as for the own endpoint. The application maps it through the login its users
+    linked by signing in at the provider, whose key is the `sub` the provider gave its sign-in client: that client must
+    use public subjects (the default; HR's `hr` client does). A pairwise one fails closed (401). Not built: a per-endpoint
+    "subject as client X sees it".
+  - **One OAuth grant per user and client at the provider:** an agent client signed in for two endpoints shares it;
+    revoking it (or the provider's own agent grant, which withdraws it, D12) ends the client's sign-ins for both. Refresh
+    chains keep their own scopes and `resource`, so no endpoint's token leaks into the other's.
+  - **D22 amended (decision 4):** the shadow grant stores the user's security stamp at creation; a mismatch refuses the
+    call ("security stamp changed") and lists the grant as `disconnected`; `update` (allowing it again) re-stamps it.
+    Only `ext/` grants are re-stamped: a personal token stays revoked after a password change, and an embedded grant is
+    replaced by the next consent. Supersedes M3c's "no security-stamp check for `ext/` grants".
+  - **Bug found: Connected applications offered Edit only for `active` grants**, so a disconnected external agent could not
+    be allowed again from the page although M3c's text said "edit it to allow this agent again". Edit now shows for
+    `disconnected` (Disconnect hides); spec case in `spark-connected-agents.component.spec.ts`.
+  - **Bug found: agent principals lacked `ClaimTypes.NameIdentifier`.** `ISparkCurrentUser.Id` maps `sub` (M1), but
+    application code reads the claim: Fleet's `CarActions` row filter treats an authenticated principal without it as a
+    machine, **unrestricted**, so an agent saw every user's cars (red: `totalItems: 2` for a viewer with one car). The
+    same read fails closed in Organizations' row policy (SeoTester's sites), notifications and quotas. The three agent
+    handlers (personal token, embedded, external) now add the local id as `NameIdentifier` beside `sub`; the external
+    scheme adds the *local* id, never the external subject. `IsInRole` stays false for agents (groups come from the
+    store, not role claims), so app code that tests roles is stricter for agents than for the web: Fleet's
+    administrators' agents see only the cars they created. Parity gap for M7, recorded.
+  - **Bug found: binding `Spark:Mcp` marked `Authentication` explicit.** The configuration binder calls every public
+    setter with the getter's value when the key is absent, so any `Spark:Mcp` key (here `CanonicalUrl`) made all three
+    setups mandatory (Fleet refused to start without setup 2), and pinned `ToolPrefix` to the default server name's slug.
+    `SparkMcpOptions.Create` undoes both for keys the section does not hold.
+  - **Deviation (D6 wording):** `mcp.AgentPermissions` is a `Func`; "a plain value converts implicitly" never compiled
+    (`mcp.AgentPermissions = EAgentPermission.Read` is CS0029). The guide now writes `_ => EAgentPermission.Read`.
+  - **HR:** `AddExternalAgentAuthorizationServer(<SparkId authority>, loginProvider: "SparkId")` only where the SparkId
+    sign-in is configured (Development; the E2E and route-snapshot hosts have none), personal tokens everywhere,
+    `Spark:Mcp:CanonicalUrl = https://localhost:5005/mcp` in Development, and `withConnectedAgents()` in the SPA (M4 said
+    "account page" but the page was never mounted in HR). **SparkId:** `appsettings.Development.json` lists HR's URL
+    (`Spark HR`), no `/mcp` of its own; nothing secret.
+  - **Fleet:** references Mcp and the IdentityProvider; `AddMcp` (prefix `fleet`, app `Read`); `Car`, `ServiceEntry` (its
+    service rows, AsDetail), `Person` (`Car.Manager`, else hidden by D19) and `Company` (anonymous-readable) are
+    `"agentPermissions": "Read"`; `ConfirmDeleteCar` (a dialog) stays `None`. `idp.ForMcp()` only when
+    `Spark:IdentityProvider:Issuer` is set (Development: `https://localhost:5003`, canonical `https://localhost:5003/mcp`;
+    the signing key is generated in Development, `SigningKeyPath` from secrets elsewhere), so the E2E host is unchanged.
+    The provider beside the SparkId sign-in: its login page offers SparkId (test), and its library rights are switched
+    off (`"libraries": {"identity-provider": false}`: its management types are not Fleet's to offer; an unbound slot would
+    refuse startup). The SPA no longer answers `/connect` and `/.well-known` (an agent probing metadata must get 404, not
+    `index.html`). Model hashes and the posture baseline regenerated (posture: the library inert, nothing reachable
+    anonymously changed); route snapshot taken with the provider on.
+  - **Open for M5/M6 (production apps):** hosting the provider for agents maps its whole surface, not only the MCP
+    preset §7 assumed: device authorization, PAR, introspection, the developer-portal and key-admin APIs (Fleet's route
+    snapshot). Inert without registrations and rights, but an agents-only mapping would be the tighter design for
+    SeoTester and CodeCoverage.
+  - **Live run (owner, M7 checklist), Claude Code; not run yet:** RavenDB on `localhost:8080`; Node trusting the dev
+    certificate (`dotnet dev-certs https --export-path <file>.pem --format pem`, `NODE_EXTRA_CA_CERTS=<file>.pem`).
+    *HR via SparkId:* `dotnet run --project apps/SparkId/SparkId --launch-profile https` (5011) and
+    `dotnet run --project apps/HR/HR --launch-profile https` (5005); sign in to HR once with "Spark Identity" (links the
+    login; give that HR user a group that reads people); `claude mcp add --transport http hr https://localhost:5005/mcp`,
+    then `claude mcp login hr` (or `/mcp` → Authenticate): SparkId's sign-in and consent ("Spark HR (localhost:5005)"),
+    `hr_discover`, `hr_query`. Changes: "make changes" at SparkId *and* the toggle under HR → Account → Connected
+    applications. *Fleet embedded:* `dotnet run --project apps/Fleet/Fleet --launch-profile https` (5003);
+    `claude mcp add --transport http fleet https://localhost:5003/mcp`, `claude mcp login fleet`: Fleet's own sign-in
+    (password, passkey or SparkId), its consent (types), `fleet_discover`, `fleet_query` (`cars`). Personal tokens: Account
+    → Connected applications in either app, then `--header "Authorization: Bearer <token>"`.
+  - **Evidence:** `McpRemoteResourceTests` 17/17 (CIMD and DCR against a provider without `/mcp`, `aud` = the other
+    endpoint only and kept on refresh, consent without types, `mcp:write` only with changes, a forged write or type refused,
+    resource selection and `invalid_target`, the provider's own `/mcp` and another embedded server in its own database with
+    its own key refuse the token, the resource application maps the provider's user through the linked login and 401s an
+    unlinked one, URL rules, duplicate and `ForMcp()`-without-Mcp startup refusals); the stamp case in
+    `McpExternalAuthorizationServerTests` (30/30); `McpAgentPrincipalTests` 3/3; `McpOptionsBindingTests` 2/2; Fleet's
+    `McpEmbeddedServerTests` 2/2 on its real `Program` (metadata document and loopback registration, the SparkId button on
+    its sign-in page, an agent reads only the viewer's own car) and its route snapshot; HR's and SparkId's route snapshots
+    were stale since M3a/M3b/M4 (`/spark/auth/manage/agents`, `/connect/register`'s rate limit, HR's `/mcp`) and were
+    brought up to date; the spec 7/7. Regression: the `Mcp` and `IdentityProvider` namespaces and the library route
+    snapshots, 719/719. Gates: `--spark-verify-model`/`-security` green for Fleet, HR, SparkId. Mutation runs (guard
+    removed → red, restored → green): `NameIdentifier` off → the three `McpAgentPrincipalTests` (and, before the fix,
+    Fleet's car test: `totalItems: 2`); the stamp check off → the stamp test (agent still 200); the re-stamp off → the
+    stamp test at "allowing it again"; the remote write cap off → `A_read_only_endpoint_…`; an unknown `resource` falling
+    back to the implied endpoint → `The_resource_names_the_endpoint_…`; the own `/mcp` audience check off →
+    `A_token_for_the_other_endpoint_is_refused_by_the_providers_own_mcp` (200, the shared OAuth grant makes it reachable);
+    the binding reset off → `A_canonical_url_from_configuration_…`; the component's `disconnected` Edit off → the spec case.

@@ -145,7 +145,8 @@ and can:
 - change what it may see, or turn changes on or off: this applies to its next request;
 - **Disconnect** it: its access stops immediately.
 
-Changing your password or removing a sign-in method disconnects all agents.
+Changing your password or removing a sign-in method disconnects all agents. An agent that signs in at another
+server (your organization's, or another app's sign-in) then shows as **disconnected**: edit it to allow it again.
 
 ## Agents without a browser (CI, scheduled jobs)
 
