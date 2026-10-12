@@ -48,6 +48,8 @@ export const routes: Routes = [
       // account/passkeys rather than straight to the generic page (/po/passkeys/me) on purpose: that
       // path runs the sign-in guard first, so a signed-out visitor is asked to sign in, not shown a 404.
       { path: 'passkeys', redirectTo: 'account/passkeys', pathMatch: 'full' },
+      // How to connect an AI agent to /mcp (docs/code-coverage/mcp.md); static, open to anonymous visitors too.
+      { path: 'connect-agent', loadComponent: () => import('./pages/connect-agent/connect-agent.component') },
       // poDetail override: the generic detail page plus the app panels that
       // can't be expressed as attribute renderers (badge, trend chart, CI
       // setup, the commit file tree).

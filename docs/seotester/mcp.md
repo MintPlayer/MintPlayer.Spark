@@ -8,6 +8,8 @@ the fix.
 
 **Server address:** `https://seotester.mintplayer.com/mcp`
 
+In the app, **AI agents** in the footer opens `/connect-agent`: copyable commands per agent for the address you are on.
+
 How to add it to Claude Code, Codex, Gemini or VS Code and sign in: [Connect an AI agent](../guide-mcp-agents.md). Two ways:
 
 - **Sign in from the agent** (recommended). The agent opens SeoTester's sign-in in your browser; you sign in with the same

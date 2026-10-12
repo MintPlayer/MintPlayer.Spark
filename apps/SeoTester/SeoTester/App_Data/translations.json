@@ -1897,5 +1897,165 @@
         "nl": "Reden"
       }
     }
+  },
+  "mcpUi": {
+    "title": {
+      "en": "Connect an AI agent",
+      "nl": "Een AI-agent koppelen"
+    },
+    "navLink": {
+      "en": "AI agents",
+      "nl": "AI-agents"
+    },
+    "addressTitle": {
+      "en": "Server address",
+      "nl": "Serveradres"
+    },
+    "clientsTitle": {
+      "en": "Add it to your agent",
+      "nl": "Voeg hem toe aan je agent"
+    },
+    "client": {
+      "claude": {
+        "en": "Claude Code",
+        "nl": "Claude Code"
+      },
+      "codex": {
+        "en": "Codex",
+        "nl": "Codex"
+      },
+      "gemini": {
+        "en": "Gemini CLI",
+        "nl": "Gemini CLI"
+      },
+      "vscode": {
+        "en": "VS Code",
+        "nl": "VS Code"
+      },
+      "other": {
+        "en": "Other clients",
+        "nl": "Andere clients"
+      }
+    },
+    "claude": {
+      "add": {
+        "en": "In a terminal, in your project:",
+        "nl": "In een terminal, in je project:"
+      },
+      "auth": {
+        "en": "Then, in a Claude Code session, run /mcp, pick the server and choose Authenticate:",
+        "nl": "Daarna, in een Claude Code-sessie: voer /mcp uit, kies de server en kies Authenticate:"
+      }
+    },
+    "codex": {
+      "add": {
+        "en": "In a terminal (Codex 0.148 or later). It opens your browser to sign in right away:",
+        "nl": "In een terminal (Codex 0.148 of nieuwer). Je browser opent meteen om aan te melden:"
+      },
+      "login": {
+        "en": "To sign in again later:",
+        "nl": "Om later opnieuw aan te melden:"
+      }
+    },
+    "gemini": {
+      "add": {
+        "en": "In a terminal (Gemini CLI 0.63 or later):",
+        "nl": "In een terminal (Gemini CLI 0.63 of nieuwer):"
+      },
+      "auth": {
+        "en": "Then, in a Gemini session:",
+        "nl": "Daarna, in een Gemini-sessie:"
+      }
+    },
+    "vscode": {
+      "command": {
+        "en": "With GitHub Copilot in agent mode: run MCP: Add Server… from the Command Palette, choose HTTP and paste this address:",
+        "nl": "Met GitHub Copilot in agentmodus: voer MCP: Add Server… uit vanuit het Command Palette, kies HTTP en plak dit adres:"
+      },
+      "file": {
+        "en": "Or add it to .vscode/mcp.json in your project. VS Code offers to sign you in when the server asks:",
+        "nl": "Of voeg hem toe aan .vscode/mcp.json in je project. VS Code biedt aan om je aan te melden wanneer de server erom vraagt:"
+      }
+    },
+    "other": {
+      "oauth": {
+        "en": "Any MCP client that supports Streamable HTTP and OAuth sign-in works with this address:",
+        "nl": "Elke MCP-client die Streamable HTTP en aanmelden via OAuth ondersteunt, werkt met dit adres:"
+      },
+      "token": {
+        "en": "A client that can't open a browser (CI, scheduled jobs) sends a personal access token as a header instead (see below):",
+        "nl": "Een client die geen browser kan openen (CI, geplande taken) stuurt in de plaats een persoonlijk toegangstoken als header (zie hieronder):"
+      }
+    },
+    "signInTitle": {
+      "en": "Signing in",
+      "nl": "Aanmelden"
+    },
+    "signIn": {
+      "browser": {
+        "en": "Your browser opens.",
+        "nl": "Je browser opent."
+      },
+      "approve": {
+        "en": "Approve. The browser says you can close it, and the agent continues; it keeps you signed in.",
+        "nl": "Keur goed. De browser meldt dat je hem mag sluiten en de agent gaat verder; hij houdt je aangemeld."
+      },
+      "manage": {
+        "en": "Change what an agent may do, or disconnect it, later on your account page:",
+        "nl": "Wijzig later wat een agent mag, of koppel hem los, op je accountpagina:"
+      },
+      "signIn": {
+        "en": "Sign in to SeoTester the way you always do (Microsoft, GitHub, Google…).",
+        "nl": "Meld je aan bij SeoTester zoals altijd (Microsoft, GitHub, Google…)."
+      },
+      "choose": {
+        "en": "Choose what the agent may read, and whether it may start scans. Starting scans is off by default, and even when allowed the agent asks your approval first.",
+        "nl": "Kies wat de agent mag lezen en of hij scans mag starten. Scans starten staat standaard uit, en ook wanneer het mag, vraagt de agent eerst je goedkeuring."
+      }
+    },
+    "connectedApplications": {
+      "en": "Connected applications",
+      "nl": "Gekoppelde toepassingen"
+    },
+    "examplesTitle": {
+      "en": "Ask away",
+      "nl": "Vraag maar raak"
+    },
+    "tokenTitle": {
+      "en": "Personal access token",
+      "nl": "Persoonlijk toegangstoken"
+    },
+    "token": {
+      "text": {
+        "en": "For an agent that can't open a browser (CI, scheduled jobs): create a token on your account page, store it as a secret and send it as the header below. It starts with spat_, is shown once, lasts 90 days unless you choose otherwise (at most 365), and works only for the agent address, not the website.",
+        "nl": "Voor een agent die geen browser kan openen (CI, geplande taken): maak een token aan op je accountpagina, bewaar het als geheim en stuur het mee als onderstaande header. Het begint met spat_, wordt één keer getoond, blijft 90 dagen geldig tenzij je anders kiest (hoogstens 365) en werkt alleen voor het agentadres, niet voor de website."
+      }
+    },
+    "copy": {
+      "en": "Copy",
+      "nl": "Kopiëren"
+    },
+    "copied": {
+      "en": "Copied",
+      "nl": "Gekopieerd"
+    },
+    "intro": {
+      "en": "Ask your AI coding agent (Claude Code, Codex, Gemini, Copilot…) about SeoTester's findings for your sites, let it fix them in your website's code, then start a new scan to check the fix. The agent signs in as you and sees only the sites of your organizations, with the roles you have on the website.",
+      "nl": "Vraag je AI-codeeragent (Claude Code, Codex, Gemini, Copilot…) naar de bevindingen van SeoTester voor je sites, laat hem ze oplossen in de code van je website en start daarna een nieuwe scan om de oplossing te controleren. De agent meldt zich aan als jou en ziet alleen de sites van jouw organisaties, met de rollen die je op de website hebt."
+    },
+    "example": {
+      "fix": {
+        "en": "Using SeoTester, list the critical and high findings of the latest scan of example.com. Fix the ones you can fix in this repository, explain the ones that need server configuration, then start a new scan.",
+        "nl": "Toon met SeoTester de kritieke en hoge bevindingen van de laatste scan van example.com. Los op wat je in deze repository kunt oplossen, leg uit wat serverconfiguratie vraagt en start daarna een nieuwe scan."
+      },
+      "list": {
+        "en": "List my sites in SeoTester and the critical findings of the latest scan.",
+        "nl": "Toon mijn sites in SeoTester en de kritieke bevindingen van de laatste scan."
+      },
+      "explain": {
+        "en": "Why does SeoTester flag a missing Content-Security-Policy, and what is the nginx snippet to fix it?",
+        "nl": "Waarom markeert SeoTester een ontbrekende Content-Security-Policy, en wat is het nginx-fragment om dat op te lossen?"
+      }
+    }
   }
 }
