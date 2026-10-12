@@ -45,10 +45,5 @@
 </div>
 
 <ng-template #codeBlock let-code>
-  <div class="agent-code mb-3">
-    <pre class="bg-body-tertiary border rounded p-2 mb-0"><code>{{ code }}</code></pre>
-    <button type="button" class="btn btn-outline-secondary btn-sm py-0" [bsCopy]="code" [copiedAnnouncement]="'mcpUi.copied' | t">
-      <i class="bi bi-clipboard"></i> {{ 'mcpUi.copy' | t }}
-    </button>
-  </div>
+  <bs-code-snippet [code]="code" [language]="code.startsWith('{') ? 'json' : 'bash'" [copyLabel]="'mcpUi.copy' | t" class="d-block mb-3" />
 </ng-template>

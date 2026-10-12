@@ -1,7 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DOCUMENT, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { BsCopyDirective } from '@mintplayer/ng-bootstrap/copy';
+import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 
 type ClientKey = 'claude' | 'codex' | 'gemini' | 'vscode' | 'other';
@@ -18,13 +18,10 @@ interface Step { text: string; code?: string; }
  */
 @Component({
   selector: 'app-connect-agent',
-  imports: [NgTemplateOutlet, RouterLink, BsCopyDirective, TranslateKeyPipe],
+  imports: [NgTemplateOutlet, RouterLink, BsCodeSnippetComponent, TranslateKeyPipe],
   templateUrl: './connect-agent.component.html',
   styles: [`
     .agent-page { max-width: 52rem; }
-    .agent-code { position: relative; }
-    .agent-code pre { padding-right: 6rem; white-space: pre-wrap; word-break: break-all; }
-    .agent-code button { position: absolute; top: .4rem; right: .4rem; }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
