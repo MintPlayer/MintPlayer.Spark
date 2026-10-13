@@ -5,7 +5,10 @@ using Microsoft.AspNetCore.Builder;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Testing;
@@ -37,7 +40,7 @@ public class AccountFlowTests : SparkTestDriver
         // D6: Microsoft's forgotPassword ignores unconfirmed addresses; Spark's sends.
         (await client.PostAsJsonAsync("/spark/auth/forgotPassword", new { email = "new@example.com" }))
             .StatusCode.Should().Be(HttpStatusCode.OK);
-        var reset = host.Mail.Sent.Last();
+        var reset = (await host.Mail.WaitForAsync(2)).Last();
         reset.Kind.Should().Be("reset-link");
         reset.Link.Should().StartWith($"{AccountTestHost.BaseUrl}/reset-password?email=");
         reset.Query("email").Should().Be("new@example.com");
@@ -150,6 +153,121 @@ public class AccountFlowTests : SparkTestDriver
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the answer must not depend on whether a mail went out");
         host.Mail.Sent.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A11, asserted on the work done rather than on wall-clock time: a known and an unknown address get the same
+    /// answer after the same token generation, and the request does not wait for the mail — with the sender held,
+    /// both still answer. Before, only a known address generated a token and awaited the send (MailManager's
+    /// suppression lookup and queue write, or an app's SMTP), which made it measurably slower.
+    /// </summary>
+    [Theory]
+    [InlineData("/spark/auth/forgotPassword", "reset-link")]
+    [InlineData("/spark/auth/resendConfirmationEmail", "confirm")]
+    public async Task A11_a_known_and_an_unknown_address_answer_alike_without_waiting_for_the_mail(string url, string kind)
+    {
+        var tokens = new TokenWork();
+        await using var host = await AccountTestHost.StartAsync(Store, services: s => CountTokens(s, tokens));
+        await host.CreateUserAsync("known", "known@example.com", confirmed: false);
+        using var client = host.Client();
+        host.Mail.Hold();
+
+        async Task<(int Status, string Body, int Generated)> AskAsync(string email)
+        {
+            var before = tokens.Generated;
+            // Bounded: a request that awaited its mail would hang here while the sender is held.
+            var response = await client.PostAsJsonAsync(url, new { email }).WaitAsync(TimeSpan.FromSeconds(10));
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(), tokens.Generated - before);
+        }
+
+        // The unknown address first: a mail queued for it would then be the first one out.
+        var unknown = await AskAsync("nobody@example.com");
+        var known = await AskAsync("known@example.com");
+
+        host.Mail.Sent.Should().BeEmpty("the sender is held, and both requests answered anyway");
+        known.Should().Be((200, "", 1));
+        unknown.Should().Be(known, "an unknown address generates a token too, for a user that is no account");
+
+        host.Mail.Release();
+        var mail = (await host.Mail.WaitForAsync(1)).Should().ContainSingle().Which;
+        mail.Kind.Should().Be(kind);
+        mail.Email.Should().Be("known@example.com");
+    }
+
+    /// <summary>
+    /// A11: resetPassword for an unknown address gives the bad-token answer after the same token validation a real
+    /// account's bad token goes through (Data Protection unprotect, a caught CryptographicException); before, the
+    /// unknown address returned without validating anything.
+    /// </summary>
+    [Fact]
+    public async Task A11_a_reset_for_an_unknown_address_answers_and_validates_like_a_bad_token()
+    {
+        var tokens = new TokenWork();
+        await using var host = await AccountTestHost.StartAsync(Store, services: s => CountTokens(s, tokens));
+        await host.CreateUserAsync("known", "known@example.com");
+        using var client = host.Client();
+
+        async Task<(int Status, string Body, int Validated)> ResetAsync(string email)
+        {
+            var before = tokens.Validated;
+            var response = await client.PostAsJsonAsync("/spark/auth/resetPassword", new
+            {
+                email,
+                resetCode = "bm90LWEtdG9rZW4", // base64url of "not-a-token": decodes, never validates
+                newPassword = "Brand-new-password-2",
+            });
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(), tokens.Validated - before);
+        }
+
+        var badToken = await ResetAsync("known@example.com");
+        var unknown = await ResetAsync("nobody@example.com");
+
+        badToken.Status.Should().Be(400);
+        badToken.Body.Should().Contain("InvalidToken");
+        badToken.Validated.Should().Be(1);
+        unknown.Should().Be(badToken);
+        (await host.CookieSignInAsync(client, "known@example.com")).Should().NotBeNullOrEmpty("the password is unchanged");
+    }
+
+    private static void CountTokens(IServiceCollection services, TokenWork tokens)
+    {
+        services.AddSingleton(tokens);
+        services.AddTransient<CountingTokenProvider>();
+        services.Configure<IdentityOptions>(o =>
+        {
+            o.Tokens.ProviderMap["Counting"] = new TokenProviderDescriptor(typeof(CountingTokenProvider));
+            o.Tokens.PasswordResetTokenProvider = "Counting";
+            o.Tokens.EmailConfirmationTokenProvider = "Counting";
+        });
+    }
+
+    private sealed class TokenWork
+    {
+        private int generated, validated;
+        public int Generated => Volatile.Read(ref generated);
+        public int Validated => Volatile.Read(ref validated);
+        public void Generate() => Interlocked.Increment(ref generated);
+        public void Validate() => Interlocked.Increment(ref validated);
+    }
+
+    /// <summary>Identity's Data Protection token provider, counting its calls.</summary>
+    private sealed class CountingTokenProvider(
+        IDataProtectionProvider dataProtection,
+        IOptions<DataProtectionTokenProviderOptions> options,
+        ILogger<DataProtectorTokenProvider<SparkUser>> logger,
+        TokenWork tokens) : DataProtectorTokenProvider<SparkUser>(dataProtection, options, logger)
+    {
+        public override Task<string> GenerateAsync(string purpose, UserManager<SparkUser> manager, SparkUser user)
+        {
+            tokens.Generate();
+            return base.GenerateAsync(purpose, manager, user);
+        }
+
+        public override Task<bool> ValidateAsync(string purpose, string token, UserManager<SparkUser> manager, SparkUser user)
+        {
+            tokens.Validate();
+            return base.ValidateAsync(purpose, token, manager, user);
+        }
     }
 
     [Fact]

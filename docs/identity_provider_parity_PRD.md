@@ -187,6 +187,7 @@ The "Now" column says what master does today.
 | A8 | An invitation to an account registered seconds earlier still sends its mail (index lag) | may send nothing | `Services/OidcInvitations.cs:66, 109-117` (no non-stale wait) |
 | A9 | Run the OpenID conformance plans: logout (RP-initiated, front-channel, back-channel), dynamic OP, FAPI 2.0 | not verified / not run | platform PRD §0 item 5 |
 | A10 | Fix the stale links to `docs/PRD-IdentityProvider.md` and the false "not yet on master" claim | ✅ fixed 2026-10-13 | `docs/prd/PRD-SecurityAudit.md:526`, `docs/prd/PRD-SparkClient-Followups.md:263` |
+| A11 | The password-recovery endpoints (`forgotPassword`, `resendConfirmationEmail`, `resetPassword`) don't tell a known address from an unknown one by timing (found during A4; audit O28) | **done 2026-10-13**: an unknown address generates (or, on reset, validates) a token for a non-account user, so both paths do the same token work; a known address's mail goes to `SparkAccountMailDispatcher` (bounded in-process queue, hosted service, own DI scope, errors and a 1-minute send timeout logged) instead of being awaited. Spark Messaging rejected for the hand-off: the bus write *is* the slow part, and Authorization doesn't require Messaging. `MapIdentityApi`'s own routes are dropped by `LocalCredentialEndpointFilter`. Tests L-L6 (`AccountFlowTests.A11_*`) | `libs/authorization/.../Identity/SparkAccountMail.cs`, `Identity/SparkAccountMailDispatcher.cs`, `Endpoints/Account/{ForgotPassword,ResendConfirmationEmail,ResetPassword}.cs` |
 
 ### Tier B: parity, needed for a credible identity provider (must)
 
@@ -250,7 +251,7 @@ The "Now" column says what master does today.
 | # | Milestone | Items |
 |---|---|---|
 | P0 | Spikes S1–S8, with results written into §4 | — |
-| P1 | Close the #499 residuals | A1–A5, A7, A8, A10 |
+| P1 | Close the #499 residuals | A1–A5, A7, A8, A10, A11 |
 | P2 | Refresh-token lifetime model (absolute + sliding, reuse vs one-time) | B3 |
 | P3 | Profile / claims service | B10 |
 | P4 | Spark-wide telemetry (G4): `TelemetryCategory` attribute, category resolver, configuration switches, instruments in every runtime library; the identity provider's event sinks (audit + metrics); every error exit raises an event | B6, B7 |

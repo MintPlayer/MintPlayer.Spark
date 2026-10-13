@@ -92,6 +92,10 @@ internal static class SparkAuthenticationExtensions
         builder.Services.TryAddSingleton<ISparkAuthLinkBuilder, SparkAuthLinkBuilder>();
         builder.Services.TryAddSingleton<SparkQrCodeRenderer>();
         builder.Services.TryAddScoped<SparkAccountMail<TUser>>();
+        // A11: forgotPassword / resendConfirmationEmail hand their mail to this queue instead of
+        // awaiting it, so a known address answers no slower than an unknown one.
+        builder.Services.TryAddSingleton<SparkAccountMailDispatcher<TUser>>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<SparkAccountMailDispatcher<TUser>>());
 
         // #460 M8: account mail through MailManager. Identity's AddIdentityApiEndpoints TryAdds its no-op
         // DefaultMessageEmailSender, so it is REPLACED here — but only that one: an app that registered
