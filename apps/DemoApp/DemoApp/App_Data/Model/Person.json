@@ -35,8 +35,7 @@
         "query": "GetBicycles",
         "referenceType": "DemoApp.Library.Entities.Bicycle",
         "isArray": false,
-        "inQueryType": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": []
       },
       {

@@ -18,5 +18,9 @@ public partial class VPerson
     public bool IsActive { get; set; }
     [Reference(typeof(Company))]
     public string? Company { get; set; }
+    // On the list too, so a Bicycle reads the same on the list, the detail page and the edit page
+    // (docs/default_index_PRD.md, requirement 4).
+    [Reference(typeof(Bicycle))]
+    public string? Bicycle { get; set; }
 
 }
