@@ -186,7 +186,7 @@ The "Now" column says what master does today.
 | A7 | `SparkIntrospectionHandler` fetches discovery through `IHttpClientFactory`, not a static `ConfigurationManager` | static | `ResourceServer/SparkIntrospectionHandler.cs:47, 139-153` |
 | A8 | An invitation to an account registered seconds earlier still sends its mail (index lag) | may send nothing | `Services/OidcInvitations.cs:66, 109-117` (no non-stale wait) |
 | A9 | Run the OpenID conformance plans: logout (RP-initiated, front-channel, back-channel), dynamic OP, FAPI 2.0 | not verified / not run | platform PRD §0 item 5 |
-| A10 | Fix the stale links to `docs/PRD-IdentityProvider.md` and the false "not yet on master" claim | stale | `docs/prd/PRD-SecurityAudit.md:526`, `docs/prd/PRD-SparkClient-Followups.md:263` |
+| A10 | Fix the stale links to `docs/PRD-IdentityProvider.md` and the false "not yet on master" claim | ✅ fixed 2026-10-13 | `docs/prd/PRD-SecurityAudit.md:526`, `docs/prd/PRD-SparkClient-Followups.md:263` |
 
 ### Tier B: parity, needed for a credible identity provider (must)
 
