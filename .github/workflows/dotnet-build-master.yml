@@ -205,6 +205,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-playwright-
 
+    # Same step as pull-request.yml: SeoTester.Tests' render tests only USE Chromium, and under nx's parallel run
+    # they start before the E2E fixture installs it ("Executable doesn't exist at ~/.cache/ms-playwright/
+    # chromium_headless_shell-1243/…", master runs for #510 and 5ddf4832). One install before any test project.
+    - name: Install Playwright's Chromium
+      run: npx --yes playwright@${{ steps.playwright.outputs.version }} install --with-deps chromium
+
     # All test projects (.NET + Angular) run via Nx so master populates the remote
     # cache that PRs read from. The .NET test target's coverage args live in each
     # test project's project.json so the layout (`{ProjectName}/coverage/{guid}/
