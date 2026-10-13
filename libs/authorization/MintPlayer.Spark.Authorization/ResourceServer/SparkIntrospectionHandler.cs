@@ -9,6 +9,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
+using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Authorization.ResourceServer;
 
@@ -42,7 +43,7 @@ internal sealed class SparkIntrospectionHandler(
     IHttpClientFactory httpClients,
     IMemoryCache cache,
     SparkResourceServerDiscovery discovery,
-    SparkDpopReplayCache replays)
+    IDocumentStore store)
     : AuthenticationHandler<SparkIntrospectionOptions>(options, logger, encoder)
 {
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -70,7 +71,7 @@ internal sealed class SparkIntrospectionHandler(
                 cache.Set(cacheKey, principal, lifetime);
         }
 
-        var possession = await SparkProofOfPossession.ValidateAsync(Context, principal, token, replays);
+        var possession = await SparkProofOfPossession.ValidateAsync(Context, principal, token, store);
         if (possession is not null)
             return AuthenticateResult.Fail(possession);
 

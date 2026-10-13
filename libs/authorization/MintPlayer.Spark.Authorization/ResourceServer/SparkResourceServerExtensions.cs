@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
+using Raven.Client.Documents;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Authorization.Extensions;
@@ -69,8 +70,6 @@ public static class SparkResourceServerExtensions
     internal static void AddTokenScheme(IServiceCollection services, string scheme, SparkResourceServerOptions options)
     {
         services.AddMemoryCache();
-        // DPoP proof ids, shared through the database by every instance of this resource server.
-        services.TryAddSingleton<SparkDpopReplayCache>();
 
         if (options.UseIntrospection)
         {
@@ -115,8 +114,8 @@ public static class SparkResourceServerExtensions
                         OnTokenValidated = async context =>
                         {
                             var token = SparkProofOfPossession.ReadToken(context.HttpContext)!;
-                            var replays = context.HttpContext.RequestServices.GetRequiredService<SparkDpopReplayCache>();
-                            var error = await SparkProofOfPossession.ValidateAsync(context.HttpContext, context.Principal!, token, replays);
+                            var store = context.HttpContext.RequestServices.GetRequiredService<IDocumentStore>();
+                            var error = await SparkProofOfPossession.ValidateAsync(context.HttpContext, context.Principal!, token, store);
                             if (error is not null)
                                 context.Fail(error);
                         },

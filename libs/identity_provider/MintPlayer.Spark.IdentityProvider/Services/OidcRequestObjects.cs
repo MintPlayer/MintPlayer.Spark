@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MintPlayer.Spark.Authorization.Security;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Primitives;
@@ -103,7 +104,7 @@ internal sealed class OidcRequestObjects(IDocumentStore store, OidcClientKeys cl
             return new(null, Error: "invalid_request_object", ErrorDescription: "client_id does not match the request object.");
 
         if (!string.IsNullOrEmpty(jwt.Id)
-            && !await OidcReplayCache.TryUseAsync(store, $"jar:{app.ClientId}:{jwt.Id}", jwt.ValidTo == DateTime.MinValue ? DateTime.UtcNow.AddHours(1) : jwt.ValidTo, ct))
+            && !await SparkOneTimeUse.TryUseAsync(store, "idp-request-object", $"{app.ClientId}:{jwt.Id}", jwt.ValidTo == DateTime.MinValue ? DateTime.UtcNow.AddHours(1) : jwt.ValidTo, ct))
             return new(null, Error: "invalid_request_object", ErrorDescription: "The request object was already used.");
 
         // The payload as JSON, read directly: Wilson keeps claims as parsed CLR values, so asking it for a

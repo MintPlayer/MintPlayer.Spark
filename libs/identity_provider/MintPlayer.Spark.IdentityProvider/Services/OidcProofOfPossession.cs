@@ -1,6 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.Authorization.ResourceServer;
+using MintPlayer.Spark.Authorization.Security;
 using MintPlayer.Spark.IdentityProvider.Models;
 using Raven.Client.Documents;
 
@@ -71,5 +72,8 @@ internal sealed class OidcProofOfPossession(IDocumentStore store, OidcIssuer iss
     /// </summary>
     public Task<(string? Jkt, string? Error)> ValidateProofAsync(HttpContext http, string proof, string? accessToken, CancellationToken ct)
         => SparkDpopProof.ValidateAsync(proof, http.Request.Method, issuer.Resolve(http.Request) + http.Request.Path, accessToken,
-            (key, expiresAt) => OidcReplayCache.TryUseAsync(store, key, expiresAt, ct));
+            (key, expiresAt) => SparkOneTimeUse.TryUseAsync(store, DpopPurpose, key, expiresAt, ct));
+
+    /// <summary>The <see cref="SparkOneTimeUse"/> registry of the proof ids the provider's own endpoints accepted.</summary>
+    internal const string DpopPurpose = "idp-dpop";
 }
