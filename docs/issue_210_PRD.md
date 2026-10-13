@@ -1,5 +1,10 @@
 # PRD — Issue #210: `[GenerateIndex]` — generate RavenDB indexes, projections and sort fields from the entity
 
+> ⚠️ **Partly superseded (2026-10-13):** whether a generated index carries `[DefaultIndex]` is decided by
+> [default_index_PRD.md](default_index_PRD.md) D5: it yields to a hand-written index claiming the entity, and the
+> `IsDefault` opt-out (added by #279) is removed. The generator also writes a view root for every public `[FromIndex]`
+> view (D6) and resolves taken root names to the first free one (D7, `SPARK_INDEX_013`).
+
 **Issue:** [#210](https://github.com/MintPlayer/MintPlayer.Spark/issues/210) ·
 **Plan:** [issue_210_plan.md](issue_210_plan.md) ·
 **Guides touched:** [guide-queries-and-sorting.md](guide-queries-and-sorting.md),

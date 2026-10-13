@@ -431,6 +431,23 @@ Declared on the entity's model file. `source` is the convention that decides how
 binding on the types. An unregistered projection silently returns null computed fields, with no
 error — if an index-computed field is null in a test but right in the app, suspect that first.
 
+**One default index per entity type** (`docs/default_index_PRD.md`). `IIndexCatalog.GetDefaultFor(Type)` elects it
+at `Freeze()`: the index claiming T with `[DefaultIndex(typeof(T))]` (a bare marker on a single-map claims its `T`),
+else T's sole index with a `[FromIndex]` view; two claims, or several viewed indexes and no claim, throw at startup.
+There is no name-order tie-breaker and no `GetDefaultForCollectionType` any more. A multi-map default lists its types
+and derives from `SparkMultiMapIndexCreationTask`, which writes a `SparkCollection` field into each map;
+`QueryExecutor.ApplyIndexWithType` narrows on it before row security, paging and totals. A claimed index without a
+view is allowed: its queries return entity documents.
+
+**A query-less `[Reference(typeof(T))]` resolves to T's plain root**, the context property whose body is
+`Session.Query<T>()`, which the generator marks with `[SparkPlainRoot]`. Filtered roots and view roots never serve it.
+Without a plain root the attribute gets no query (SPARK056 at build time, a warning in synchronize), so a package's type
+needs a root on the app's context (`Organizations => Session.Query<Organization>()`). A minted root query whose name
+or alias is taken steps aside to the first free one and records it (`organizations-2`); satellite queries are planned
+in the same pass, first. What a root's properties become on first creation is `SparkOptions.ModelAttribute`, set with
+`spark.ModelAttributes(...)`: `Default`, `Hidden` (showedOn None, read-only) or `Exclude`; the default hides
+`CreatedBy`, `CreatedAt*`, `ModifiedBy`, `ModifiedAt*`. It never touches an existing attribute.
+
 **Live updates** (`docs/guide-live-updates.md`): `"live": true` on a query, or on an entity type,
 makes grids and detail pages follow the data over one multiplexed WebSocket, `/spark/live`. Every
 push re-runs the HTTP read path (row security, redaction, attribute rights) under the viewer's

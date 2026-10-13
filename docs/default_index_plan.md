@@ -9,7 +9,7 @@ Generators follow the `C:\Repos\MintPlayer.Dotnet.Tools\SourceGenerators` patter
 Run SP1–SP5 on scratch code, without committing it. Record each outcome in the PRD with its evidence. SP1 picks D4's
 B or fallback A; SP3 settles D6's ambiguity rule.
 
-**Done 2026-10-13: outcomes in PRD §7.** They add these items to the milestones below:
+**Status: done** (2026-10-13): outcomes in PRD §7. They add these items to the milestones below:
 - **M2:**
   - the multi-map rewrite in `SparkMultiMapIndexCreationTask.CreateIndexDefinition`, only for marked indexes
   - a public `SparkCollectionRow`
@@ -39,12 +39,16 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 
 ## M1 — Attributes and options
 
+**Status: done** (`a77e9175`).
+
 - `DefaultIndexAttribute(params Type[] entityTypes)`, exposing `EntityTypes`, with a new doc comment.
 - Remove `GenerateIndexAttribute.IsDefault`.
 - `SparkOptions.ModelAttribute` plus `ModelAttributeSeed { Default, Hidden, Exclude }`, with the default
   audit-name convention.
 
 ## M2 — Catalog and executor
+
+**Status: done** (`63f240a1`).
 
 - Entries carry their declared default types.
 - `Freeze()` elects per entity type (D3), multi-maps included (D4). Rename `GetDefaultForCollectionType` to
@@ -59,6 +63,8 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 
 ## M3 — Generator and analyzers
 
+**Status: done** (`28ba9030`).
+
 - Claims (D5): a same-project `ForAttributeWithMetadataName` provider, plus referenced claims in `DescribeReferenced`.
   Suppress the generated marker for claimed entities.
 - SPARK009: per-type claims; a hand-written claim beats `[GenerateIndex]`; new message text.
@@ -71,6 +77,8 @@ B or fallback A; SP3 settles D6's ambiguity rule.
   the `IsDefault` tests.
 
 ## M4 — View roots and naming (D6, D7)
+
+**Status: done** (`a4e00df2`).
 
 - The context step emits a view root for every public `[FromIndex]` view, from the same project and referenced
   assemblies.
@@ -95,6 +103,8 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 
 ## M5 — Missing-root diagnostic (D8)
 
+**Status: done** (`e4d4e31a`; SPARK056 counts only plain roots since `060aa9e3`).
+
 - An analyzer over the generated compilation: a writable `[Reference(typeof(T))]` with no query, and no entity root
   of T, raises a warning. Read-only and audit members are skipped.
 - A code fix (in the CodeFix assembly) adds the entity root to the context.
@@ -109,6 +119,8 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 
 ## M6 — Synchronizer and MCP (D6, D8, D9)
 
+**Status: done** (`2f876924`, `060aa9e3`); loose ends closed in M8 (satellite queries in the D11 plan, no warning for read-only references).
+
 - Per-type default stamping.
 - When T has several roots, a reference resolves to the plain root (SP3's rule).
 - Library-type roots derive attributes through `SparkOptions.ModelAttribute`, at creation only.
@@ -121,12 +133,16 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 
 ## M7 — Picker label (D10)
 
+**Status: done** (`6f2938e3`, `19c15205`); the browser check runs with M8's.
+
 - `spark-reference-picker` and `reference-display-value.pipe`: show the server `attribute.breadcrumb` while the value
   equals the loaded id, otherwise the chosen option row's text, otherwise the id.
 - ng-spark specs, plus a browser check that the list, detail and edit pages show the same text, including a value
   outside the first 50 options.
 
 ## M8 — Apps and docs
+
+**Status: done except the browser checks** (2026-10-13): loose ends, SeoTester root, demos, end-to-end tests, resync of all seven apps (each `--spark-verify-model` exits 0), docs and release notes ([release-notes-preview-106.md](release-notes-preview-106.md)). Pending: the browser checks of M7 and M8.
 
 - SeoTester: add the `Organizations` root to the context (`Site.cs` stays plain).
 - Every app: run `--spark-synchronize-model`; revert unrelated `$schema` bumps; commit model JSON and
@@ -154,6 +170,8 @@ B or fallback A; SP3 settles D6's ambiguity rule.
   - the deploy note for CodeCoverage and SeoTester (model hash)
 
 ## M9 — Test sweep
+
+**Status: not started.**
 
 Run `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected` once, after
 M1–M8. Fix failures by re-running only the failing class.

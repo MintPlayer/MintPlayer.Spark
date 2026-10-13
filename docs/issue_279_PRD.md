@@ -117,6 +117,7 @@ resolve by collection type at runtime.
   (`DatabaseAccess.GetPersistentObjectsAsync`) starts at step 2. **No collection-type lookup remains anywhere
   at runtime.** (The entity-file fallback also keeps an un-restamped model behaving correctly instead of
   silently null-filling computed fields.)
+- ⚠️ **Superseded by [default_index_PRD.md](default_index_PRD.md) (D1, D3, D5; 2026-10-13):** `[DefaultIndex(params Type[])]` claims per entity type, multi-maps included; a hand-written claim beats `[GenerateIndex]`, whose `IsDefault` is removed; a claimed index without a view is allowed; `GetDefaultForCollectionType` became `GetDefaultFor(Type)`. R279.5 and R279.6 below are kept as the record.
 - **R279.5** The per-entity default is authored via a new **`[DefaultIndex]` attribute on the index class**
   (in `MintPlayer.Spark.Abstractions` — typeless, arrow rule holds). Enforcement is two-layered: Roslyn
   analyzer **SPARK009** errors when two claims over the same collection type collide — two `[DefaultIndex]`
