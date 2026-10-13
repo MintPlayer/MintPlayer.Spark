@@ -306,6 +306,13 @@ public class OgNote : IOrganizationOwned, IExpiring
 public class OgContext : SparkContext
 {
     public IRavenQueryable<OgNote> Notes => Session.Query<OgNote>();
+
+    /// <summary>
+    /// The package's type as a plain entity root, as SeoTester's context has it (<c>docs/default_index_PRD.md</c>, D6):
+    /// <c>Database.Organizations</c> serves a query-less <c>[Reference(typeof(Organization))]</c>. A root mints nothing
+    /// without a model file naming its query, so it is inert for every class but <see cref="OrganizationsRootPickerTests"/>.
+    /// </summary>
+    public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();
 }
 
 /// <summary>Records every mail instead of queueing it.</summary>
