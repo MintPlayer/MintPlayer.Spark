@@ -9,6 +9,31 @@ Generators follow the `C:\Repos\MintPlayer.Dotnet.Tools\SourceGenerators` patter
 Run SP1–SP5 on scratch code, without committing it. Record each outcome in the PRD with its evidence. SP1 picks D4's
 B or fallback A; SP3 settles D6's ambiguity rule.
 
+**Done 2026-10-13: outcomes in PRD §7.** They add these items to the milestones below:
+- **M2:**
+  - the multi-map rewrite in `SparkMultiMapIndexCreationTask.CreateIndexDefinition`, only for marked indexes
+  - a public `SparkCollectionRow`
+  - the executor filter at the `ApplyIndexWithType` choke point (`QueryExecutor.cs:944-964`), gated on "a
+    multi-map claiming T"
+  - the soft-delete and expiration startup checks cover multi-map claims
+  - a viewless default keeps `indexName` on the entity file (`ModelSynchronizer.cs:745`); update the
+    `ModelShapeDiscovery` invariant
+  - the dev gate accepts a viewless default; its query surface is the fields its maps emit (non-emitted attributes
+    are not sortable or filterable, and the default sort comes only from emitted fields)
+- **M3:**
+  - an analyzer error for a marker on a JS index used as a multi-map default
+  - check the `params` array's length, not the argument count
+  - incremental tests via `MintPlayer.SourceGenerators.Testing`'s `RunGeneratorTwice`
+- **M4:** always emit `[assembly: SparkPlainRoot(typeof(Ctx), typeof(T), "Prop")]` for plain roots (the
+  classifier from SP3), including roots inherited from same-compilation bases.
+- **M6:**
+  - the synchronizer builds the reference map from `SparkPlainRoot`
+  - D11 collision-free aliases
+  - the hook only in the create branch (never via `ignoredPropertyNames`)
+  - new attributes take the next free `order`
+  - `spark.ModelAttributes(...)` as a builder extension; the synchronize command reads `SparkOptions` from the
+    service descriptors
+
 ## M1 — Attributes and options
 
 - `DefaultIndexAttribute(params Type[] entityTypes)`, exposing `EntityTypes`, with a new doc comment.
@@ -104,6 +129,19 @@ B or fallback A; SP3 settles D6's ambiguity rule.
 - Every app: run `--spark-synchronize-model`; revert unrelated `$schema` bumps; commit model JSON and
   `modelHashes.json`.
 - DemoApp: `Cars_Overview` keeps `[DefaultIndex]`.
+- Demo code proving the features end to end (owner, 2026-10-13; this overrides CLAUDE.md's "no new features in
+  DemoApp" for this work):
+  - DemoApp: a multi-map default index over two types, with a `[FromIndex]` view, and a reference to one of them.
+  - HR: a hand-written `[DefaultIndex(typeof(X))]` index beside a `[GenerateIndex]` entity, so the generated marker
+    is suppressed.
+  - Fleet: a reference without a query to a type with several roots (it resolves to the plain root), plus a
+    library-type root showing `SparkOptions.ModelAttribute` hiding an audit member.
+- `SparkTestDriver` tests (`tests/MintPlayer.Spark.Tests`) over these shapes:
+  - a multi-map default returns only T's rows (paging, totals, row security)
+  - a viewless marked default
+  - a generated-marker suppression end to end (catalog election at startup)
+  - a reference resolving to the plain root's query
+  - the picker query of a library-type root under its row policy (the SeoTester trigger's shape)
 - Browser-check SeoTester's picker with the browser MCP: it lists the caller's organizations.
 - Docs per PRD §5, plus release notes:
   - the `[DefaultIndex]` shape change

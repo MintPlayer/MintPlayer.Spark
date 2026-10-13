@@ -1,6 +1,6 @@
 # Default index per entity type — PRD
 
-Status: **design settled (grilled 2026-10-13), spikes pending**. Plan: [default_index_plan.md](default_index_plan.md).
+Status: **design settled (grilled 2026-10-13), spikes done (§7)**. Plan: [default_index_plan.md](default_index_plan.md).
 Supersedes R279.5 and R279.6 of [issue_279_PRD.md](issue_279_PRD.md) and the `IsDefault` surface of
 [issue_210_PRD.md](issue_210_PRD.md). Packages are preview: **no backward compatibility** (owner, 2026-10-13).
 
@@ -97,9 +97,9 @@ A multi-map that is a default must derive from `SparkMultiMapIndexCreationTask`.
     executable surface.
 - **Ambiguity:** when T has several hand-written roots, the reference uses the one whose body is the plain
   `Session.Query<T>()` (owner-confirmed, 2026-10-13).
-  - The synchronizer reflects at runtime and can't read bodies, but the generator can. Candidate: the generator emits
-    a small marker naming each type's plain root (e.g. an attribute on the context's generated partial), and the
-    synchronizer reads that.
+  - The synchronizer reflects at runtime and can't read bodies, but the generator can. SP3 settled the mechanism: the
+    generator emits an assembly-level `[assembly: SparkPlainRoot(typeof(Ctx), typeof(T), "Prop")]` (most contexts
+    aren't `partial`), and the synchronizer reads that.
   - SP3 proves the mechanism. If no plain root can be identified, the analyzer requires the reference to name a query
     (M5).
 
@@ -173,3 +173,91 @@ Out of scope (not being done): labels resolved through queries or indexes (grill
 | SP3 | With several hand-written roots of T, can the synchronizer identify the plain `Session.Query<T>()` root? With an `Organizations` root in SeoTester, does `Database.Organizations` list exactly what `Custom.Organizations` lists for a member, a non-member and an anonymous caller? | Prototype a generator-emitted marker for the plain root, read by the synchronizer (alternative: invoke the getter on a stub session and inspect the expression); run both queries per caller | D6 ambiguity rule; the trigger's fix |
 | SP4 | A marked default without a view: model shaping, the executor's path, live queries, and the soft-delete/expiration startup checks that iterate catalog entries | Mark a viewless index in DemoApp; synchronize; query; live query | D3 |
 | SP5 | Can the synchronize command see `AddSpark` options (the hook)? What does each app's model and hash diff look like once library roots derive attributes through the default hook? Does `[IgnoreProperty]` affect only the model, never Raven serialization? | Run `--spark-synchronize-model` on every app on a scratch branch; diff; round-trip a document with an `[IgnoreProperty]` member | D9; deploy note for CodeCoverage and SeoTester |
+
+## 7. Spike outcomes (2026-10-13)
+
+All spikes ran as scratch code in isolated worktrees; nothing from them was committed.
+
+**SP1 — D4 option B works.**
+- **The rewrite.** RavenDB normalizes C# maps before Spark sees them: query syntax becomes a method chain,
+  `let`s become chained `Select`s, and typed results become `new { }`. So a string rewrite is enough: insert
+  `SparkCollection = "<Coll>",` after the last top-level `.Select(`/`.SelectMany(`'s `new {`.
+  - Rewritten correctly: plain objects, `let`, `where` before or after `let`, nested `new{}`, string literals
+    containing `})`, SelectMany fan-out, method syntax, typed results. A map that already emits the field is left
+    alone (that covers fallback A).
+  - Refused with `NotSupportedException`: a conditional body `c ? new{..} : new{..}`.
+  - The server compiles the rewritten maps (0 index errors).
+- **JS maps** can be wrapped the same way, but cannot derive from `SparkMultiMapIndexCreationTask`. **Decision:** a
+  JS index cannot be a multi-map default; a marker on one is an analyzer error. This is not deferred work: the owner's
+  requirement names `AbstractMultiMapIndexCreationTask`.
+- **Querying.** `Where(SparkCollection == coll).OfType<T>()` gives the right rows, paging, totals and view
+  projection, with and without a row policy (`Executor_multimap_default_returns_only_T`, all four combinations).
+  Unfiltered, a multi-map returns bikes as cars, which is the hazard this filter closes.
+- **Where the filter goes.** There is one choke point, `QueryExecutor.cs:944-964` (`ApplyIndexWithType`), before
+  re-rooting, projection, row filter, search and sort.
+- **Gap found.** `SoftDeleteStartupCheck.cs:61-63` and `ExpirationStartup.cs:75-78` skip null-collection entries,
+  so they must also check multi-maps for each type they claim.
+
+**SP2 — the generator sees everything D5–D7 need (6/6 scratch tests, plus a real two-project `dotnet build`).**
+- It sees claims on all four index bases, in the same project and in referenced assemblies, reading the explicit
+  types from metadata. It also sees public `[FromIndex]` views; internal views are excluded.
+- `AddMap<T>` resolves through the semantic model in the same project, including the inferred form. It is not
+  readable from referenced assemblies, which confirms D1.
+- ⚠️ A bare `[DefaultIndex]` with the `params` constructor arrives as **one argument holding an empty array**.
+  Test the array's length.
+- The `ForAttributeWithMetadataName` transforms re-run on every edit ("Unchanged", not "Cached"), so the models
+  must be value-equal strings.
+- `GetMembers()` misses inherited members. Walk the base types, skipping private members of base types.
+- Incremental-step tests: use `MintPlayer.SourceGenerators.Testing`'s `RunGeneratorTwice` rather than growing
+  `GeneratorHarness`.
+
+**SP3 — the plain root is identified by a generator marker; row parity holds; a new alias collision found.**
+- **Marker.** It is emitted as an **assembly-level** attribute, `[assembly: SparkPlainRoot(typeof(Ctx), typeof(T),
+  "Prop")]`, because five of the seven app contexts are not `partial`.
+  - Classifier: plain means a body that is a single `Query<T>()` call with no arguments. It handles all three body
+    forms and inherited same-compilation roots.
+  - A helper method counts as not plain, which is conservative: such a reference falls back to an explicit query.
+  - Roots inherited from a referenced assembly's base context get their marker from that assembly's own generator
+    run.
+  - The runtime alternative (invoking getters) was rejected: `.Customize()` leaves no expression node, and it would
+    have to instantiate the context.
+- **Rows.** `Database.Organizations` and `Custom.Organizations` return identical rows for a member, an owner, a user
+  with no organization and an anonymous caller (401 for both). Both paths compose the type's row filter
+  (`QueryExecutor.cs:977`, `:1294`) and run the gate (`:1081`, `:1460`).
+- **Blocker found: alias collision.** The minted `GetOrganizations` derives the alias `organizations`, which the
+  library's `Custom.Organizations` already uses. `--spark-verify-model` then exits 3 ("Two queries resolve to the
+  alias 'organizations'"), and startup throws (`SparkQueryAliasIndex.cs:38`).
+  → **D11** (below).
+
+**SP4 — a viewless default works, after three changes.**
+- `ModelSynchronizer.cs:745` must keep `indexName` on the entity file when the default has no view.
+- The `ModelShapeDiscovery.cs:40-50` comment and invariant change accordingly.
+- The dev gate `VerifyBoundIndexHasAProjection` (`SparkDevelopmentExtensions.cs:533-583`) must accept a viewless
+  default. But then sorting on a field the map doesn't emit returns a 500 ("The field 'Author' is not indexed"),
+  and the synchronizer's default sort picks exactly such a field. **Decision:** for a viewless default, the index's
+  query surface is the set of fields its maps emit, read with SP1's map scanner. Attributes outside that set are
+  minted as not sortable and not filterable, and the default sort is chosen only from emitted fields. Search
+  already falls back to in-memory (`QueryExecutor.cs:2052`).
+- Live queries, the soft-delete check and the expiration check handle a viewless entry correctly.
+
+**SP5 — the hook is reachable and has a precise insertion point.**
+- **Reachability.** `SparkOptions` is a singleton instance in the service descriptors (`SparkMiddleware.cs:52-58`),
+  readable by the synchronize command the way `GetRegistrationTimeModuleRegistry` already reads it
+  (`SparkDevelopmentExtensions.cs:1374`). `ISparkBuilder` does not expose options, so the API is a builder
+  extension, `spark.ModelAttributes(Func<Type, PropertyInfo, ModelAttributeSeed>)`.
+- **Where the hook applies.** Only in the "create new attribute" branch (`ModelSynchronizer.cs:974-1010`).
+  `Exclude` must not join `ignoredPropertyNames` (`:777`), because that set also deletes carried attributes
+  (`:1033`, which would break #253).
+- **Why it's needed.** Without the hook, SeoTester's `Organization` root writes a visible, editable `CreatedBy`
+  whose `order` duplicates another attribute's. New attributes must get the next free order.
+- **`[IgnoreProperty]`** affects only the model: RavenDB still persists and reads it (round-trip test passed).
+- **Baseline sync with no code change:** no hash changes in any app. SeoTester has `$schema` churn and HR a key
+  reorder, both unrelated and not committed.
+
+**D11. Minted query names and aliases never collide either.** (Follows D7's principle; autonomous decision
+recorded for owner review.)
+When a query minted for a context root would take a name or alias another query already holds (a library's own
+`Custom.*` query, as SP3 found), the synchronizer picks the first free alias (`{alias}-2`, …), records it in the
+model file, and reports it. Queries that already exist keep their name, alias and program-unit links. A reference
+still resolves to the minted root query (D6).
+
