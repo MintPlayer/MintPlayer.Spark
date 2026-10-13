@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace MintPlayer.Spark.Authorization.ResourceServer;
 
@@ -19,8 +18,8 @@ namespace MintPlayer.Spark.Authorization.ResourceServer;
 /// <item>A token without <c>cnf</c> sent with the <c>DPoP</c> scheme is refused: it is not bound, and the client
 /// believes it is.</item>
 /// </list>
-/// Proof ids are remembered in memory for the proof lifetime; across several instances of one resource server a
-/// replay inside two minutes on a different instance is not detected.
+/// Proof ids are remembered for the proof lifetime in the database (<see cref="SparkDpopReplayCache"/>), so a replay
+/// against another instance of the same resource server is refused as well.
 /// </remarks>
 internal static class SparkProofOfPossession
 {
@@ -41,7 +40,7 @@ internal static class SparkProofOfPossession
     }
 
     /// <summary>Null when the request proves possession as the token demands, else why not.</summary>
-    public static async Task<string?> ValidateAsync(HttpContext http, ClaimsPrincipal principal, string token, IMemoryCache cache)
+    public static async Task<string?> ValidateAsync(HttpContext http, ClaimsPrincipal principal, string token, SparkDpopReplayCache replays)
     {
         var presentedAsDpop = http.Items.ContainsKey(DpopSchemeItem);
         var cnfClaim = principal.FindFirst("cnf")?.Value;
@@ -70,7 +69,7 @@ internal static class SparkProofOfPossession
             var request = http.Request;
             var url = $"{request.Scheme}://{request.Host}{request.PathBase}{request.Path}";
             var (proofKey, error) = await SparkDpopProof.ValidateAsync(proofs[0]!, request.Method, url, token,
-                (key, expiresAt) => Task.FromResult(TryUse(cache, key, expiresAt)));
+                (key, expiresAt) => replays.TryUseAsync(key, expiresAt, http.RequestAborted));
             if (error is not null)
                 return error;
             if (!string.Equals(proofKey, jkt, StringComparison.Ordinal))
@@ -89,18 +88,5 @@ internal static class SparkProofOfPossession
         }
 
         return null;
-    }
-
-    private static readonly object Gate = new();
-
-    private static bool TryUse(IMemoryCache cache, string key, DateTime expiresAt)
-    {
-        lock (Gate)
-        {
-            if (cache.TryGetValue(key, out _))
-                return false;
-            cache.Set(key, true, new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc)));
-            return true;
-        }
     }
 }

@@ -220,7 +220,6 @@ public class McpExternalAuthorizationServerTests(SparkSharedDatabase database)
     public async Task An_opaque_token_is_introspected_and_mapped_the_same_way()
     {
         var stub = new IntrospectionStub();
-        stub.Install();
         await using var factory = McpExternalHost.Create(Store, new TestIssuer(IntrospectionStub.Issuer), introspection: stub);
         var user = await McpAccountHost.CreateUserAsync(factory, Name("opaque"));
         await McpExternalHost.LinkAsync(factory, Store, user.Id!, McpExternalHost.Provider, "corp-" + Name("opaque"));

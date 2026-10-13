@@ -6,7 +6,7 @@ Companion to [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md) §8 and [coverag
 > - **Gap closed and tested:** L-T4, T-G3, T-G5, T-M4, L-G4, R-J5/R-J6 (N4), R-X2 (N2: inverted), T-O1 (O15: inverted).
 > - **Gap closed, partly tested:** T-G4 (offline_access half only), T-M5 (O20, unit test only).
 > - **Gap closed, no test:** A-R10 (O21), A-S7 (O26).
-> - **Still open:** T-O2 (expired-code message), L-L5 (O27, accepted).
+> - **Still open:** T-O2 (expired-code message). L-L5 (O27) was fixed and written on 2026-10-13 (parity PRD A4).
 > - **Already written, now marked:** A-C4.
 > - **Changed by the platform:** R-J4 (the JWKS now publishes several keys), R.8 (the key file is a legacy import), W "Not covered" (back-channel logout now exists), M-A6 and M-R2/M-R3 (renamed).
 
@@ -305,7 +305,7 @@ Source: `Endpoints/{Login,TwoFactor,Logout,ConnectPage}.cs`, `SparkAuthenticatio
 | L-L2 | `Login_lockout_message_does_not_reveal_password_correctness` | locked-out + right password and locked-out + wrong password produce the same text | the intended asymmetry is locked-vs-not, nothing finer |
 | L-L3 | `Login_lockout_precedes_the_two_factor_step` | a locked-out 2FA user submitting the **correct** password lands on the lockout error, not `/connect/two-factor` | inferred from stock `SignInManager.PreSignInCheck` — **verify empirically, this is not Spark's own code** |
 | L-L4 | `Login_unknown_and_wrong_password_return_identical_text` | both `Invalid email/user name or password.` | confirmed by reading — no message oracle |
-| L-L5 | **[CHARACTERIZATION]** `Login_unknown_email_responds_faster_than_a_wrong_password` | unknown short-circuits before PBKDF2; known runs it | **O27**, accepted risk — see the findings entry. Keep the test informational, never CI-gating: wall-clock assertions over HTTP are too noisy to gate on. **2026-10-09: still open, accepted.** The `/connect` rate limit (D9) is the mitigation. **Not written** |
+| L-L5 | `Login_unknown_email_runs_the_same_password_verification_as_a_wrong_password` (`tests/MintPlayer.Spark.Tests/Authorization/Extensions/SignInIdentifierTests.cs`; planned as the characterization `Login_unknown_email_responds_faster_than_a_wrong_password`) | an unknown identifier, an account without a password and a wrong password each run exactly one password verification (a counting `IPasswordHasher` in the host), and all three redirect with `error=invalid_credentials` | **O27, fixed 2026-10-13** (parity PRD A4): `SparkSignInManager` verifies the supplied password against a dummy hash made once by the configured hasher (`SparkUnknownUserPasswordHash`). Asserted on the work done, not on wall-clock time, so it gates CI without being noisy. Was an accepted risk mitigated only by the `/connect` rate limit (D9), which stays. **Written** |
 
 ### L.4 Two-factor integrity
 

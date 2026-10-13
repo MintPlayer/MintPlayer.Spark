@@ -6,6 +6,13 @@ namespace MintPlayer.Spark.Authorization.ResourceServer;
 /// </summary>
 public sealed class SparkResourceServerOptions
 {
+    /// <summary>
+    /// The <see cref="IHttpClientFactory"/> client with which introspection fetches the issuer's discovery document
+    /// and calls its introspection endpoint. Configure it (<c>services.AddHttpClient(HttpClientName)</c>) for a proxy
+    /// or a custom handler.
+    /// </summary>
+    public const string HttpClientName = "MintPlayer.Spark.ResourceServer";
+
     /// <summary>The issuer's base URL; its discovery document supplies the signing keys and the introspection endpoint.</summary>
     public string Authority { get; set; } = string.Empty;
 

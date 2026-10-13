@@ -72,6 +72,8 @@ internal static class SparkAuthenticationExtensions
         builder.Services.AddScoped<IUserStore<TUser>, UserStore<TUser>>();
         builder.Services.AddScoped<IRoleStore<SparkRole>, RoleStore>();
         builder.Services.AddScoped<SparkExternalLoginLinker<TUser>>();
+        // O27: the dummy password hash an unknown identifier is verified against, made once.
+        builder.Services.TryAddSingleton<SparkUnknownUserPasswordHash<TUser>>();
         // The generic passkeys page (Passkeys / PasskeyRow): its actions classes are resolved by name,
         // so they reach the user through this seam, closed over TUser here.
         builder.Services.AddHttpContextAccessor();
