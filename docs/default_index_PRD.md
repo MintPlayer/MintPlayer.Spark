@@ -287,9 +287,17 @@ still resolves to the minted root query (D6).
   `Get{Prop}2`, …, like the alias. Names and aliases are taken across the composed model.
 - **Fixed point.** A root's query is the query of its type named `Get{Prop}`, as before, or a stepped-aside
   `Get{Prop}N` over `Database.{Prop}`. Otherwise the next run would mint again.
-- **The warning** fires for a writable reference to a type with no root, as SPARK056 does. When the type has roots but
-  none is plain, it fires for every reference, read-only ones included, because the reference lost the query the
-  old last-wins map gave it.
+- **The warning** fires for a writable reference to a type with no root, as SPARK056 does. ~~When the type has roots
+  but none is plain, it fires for every reference, read-only ones included.~~ **Superseded (M8):** it skips read-only
+  references in that case too, as D8 says: a read-only reference opens no picker, so it loses nothing
+  (`SynchronizeReferenceRootTests.A_read_only_reference_to_a_type_without_a_plain_root_does_not_warn`, red before the
+  change).
+- **Satellite queries go through the D11 plan (M8).** A satellite's query (a contributions query) was minted outside
+  the plan, so a root whose derived alias equalled it took the alias first and the satellite then duplicated it
+  ("Two queries resolve to the alias 'rrsatnotes'", red before the change). Satellites are planned first, because
+  their name is a library contract (`ContributionDescriptor` hands the client the alias derived from it): a minted
+  root steps around them. A satellite steps aside only from a query that already exists, with a warning that the
+  library's contract then no longer holds.
 - **Hook outcome `Hidden`** also creates the attribute not required: no form shows it, so nobody could supply a
   value.
 - **Order:** a new attribute keeps its place in the property walk unless an existing attribute holds that order.

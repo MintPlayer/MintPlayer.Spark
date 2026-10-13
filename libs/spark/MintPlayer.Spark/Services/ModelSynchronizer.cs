@@ -124,11 +124,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
         // Every root's query, existing or to be minted, named before any model file is built: a reference on a type
         // processed early must name the query minted for a root processed late (D6, D11).
-        var rootQueries = PlanRootQueries(rootsByEntityType, queriesByType, existingQueries);
+        // Satellites (below) mint queries too, so they are planned in the same pass: a library-named satellite query
+        // (a contributions query, say) and a minted root query must not take each other's name or alias either.
+        var satellites = CollectSatellites(rootsByEntityType);
+        var satelliteQueriesByType = satellites.ToDictionary(s => s.ModelType, s => CollectQueriesFor(existingQueries, s.ModelType.Name));
+        var (rootQueries, satelliteQueryPlans) = PlanRootQueries(rootsByEntityType, queriesByType, satellites, satelliteQueriesByType, existingQueries);
         var referenceQueries = ResolveReferenceQueries(contextType, rootsByEntityType, rootQueries);
-
-        // The context's entity types, in processing order: their satellites are written after them.
-        var rootTypes = new List<Type>();
 
         foreach (var group in rootsByEntityType)
         {
@@ -151,7 +152,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, referenceQueries, querySurface);
             ApplyRendererSeeds(entityTypeDef, entityType);
-            rootTypes.Add(entityType);
 
             // Existing inline queries for this entity type (already retargeted above), plus a default if missing
             var queriesForType = queriesByType[entityType];
@@ -263,7 +263,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         // Satellite types (contributions M5b): documents that belong to a context entity without being
         // a context property — a generated contribution type, say. Each gets a model file like a root,
         // and the query registered for it is minted once (the file owns it afterwards, as for roots).
-        foreach (var satellite in rootTypes.SelectMany(SparkModelSatellites.For))
+        foreach (var satellite in satellites)
         {
             var satelliteType = satellite.ModelType;
             var clrType = satelliteType.FullName ?? satelliteType.Name;
@@ -274,20 +274,32 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(satelliteType, projectionType: null, indexName: null, existingDef, referenceQueries);
             ApplyRendererSeeds(entityTypeDef, satelliteType);
 
-            var satelliteQueries = CollectQueriesFor(existingQueries, satelliteType.Name);
-            if (satellite.Query is { } minted && !satelliteQueries.Any(q => q.Name == minted.Name))
+            var satelliteQueries = satelliteQueriesByType[satelliteType];
+            if (satellite.Query is { } minted
+                && satelliteQueryPlans.TryGetValue(satelliteType, out var plan) && plan.Existing is null)
             {
                 satelliteQueries.Add(new SparkQuery
                 {
                     Id = Guid.NewGuid(),
-                    Name = minted.Name,
+                    Name = plan.Name,
+                    // As for a root (D11): null unless the derived alias was taken.
+                    Alias = plan.Alias,
                     EntityType = satelliteType.Name,
                     Source = minted.Source,
                     SortColumns = minted.SortProperty is { } sort
                         ? [new SortColumn { Property = sort, Direction = minted.SortDirection }]
                         : [],
                 });
-                Console.WriteLine($"Created query: {minted.Name} (inline in {satelliteType.Name}.json)");
+                Console.WriteLine($"Created query: {plan.Name} (inline in {satelliteType.Name}.json)");
+                // A library names its satellite query because something addresses it by that name or its derived
+                // alias (the contributions page reads 'contributionsQuery', ContributionDescriptor). Stepping aside
+                // keeps the model loadable, but that contract no longer holds: say so loudly.
+                if (plan.Name != minted.Name)
+                    Console.WriteLine($"Warning: named it '{plan.Name}': '{minted.Name}' is another query's name. " +
+                                      $"Whatever {satellite.OwnerType.Name}'s library addresses by '{minted.Name}' will not find it; rename the other query.");
+                if (plan.Alias is not null)
+                    Console.WriteLine($"Warning: gave it the alias '{plan.Alias}': '{SparkQueryAliases.Derive(plan.Name)}' is another query's alias. " +
+                                      "Whatever addresses it by the derived alias will not find it; rename the other query.");
             }
 
             var fileName = Path.Combine(modelPath, $"{satelliteType.Name}.json");
@@ -1163,6 +1175,19 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return entityTypeDef;
     }
 
+    /// <summary>
+    /// The satellites of the context's entity types, in processing order, each once (the first owner wins) and never a
+    /// type that is itself a root: that one is written as a root.
+    /// </summary>
+    private static List<SparkSatelliteModelType> CollectSatellites(
+        IReadOnlyList<IGrouping<Type, (PropertyInfo Property, Type? EntityType)>> rootsByEntityType)
+    {
+        var seen = rootsByEntityType.Select(g => g.Key).ToHashSet();
+        return [.. rootsByEntityType
+            .SelectMany(g => SparkModelSatellites.For(g.Key))
+            .Where(s => seen.Add(s.ModelType))];
+    }
+
     /// <summary>The query a context root is served by: an existing one, or the name and alias to mint it under.</summary>
     /// <param name="Alias">Set only when the minted query's derived alias was taken (D11).</param>
     private sealed record RootQueryPlan(string Name, string? Alias, SparkQuery? Existing);
@@ -1188,10 +1213,20 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// Existing queries are never renamed: program units and menus link to their ids and aliases. Only the query being
     /// minted steps aside, and the model file records the alias it got.
     /// </para>
+    /// <para>
+    /// Satellite queries (<see cref="SparkModelSatellites"/>) are minted in the same run, so they are planned here too,
+    /// and <b>first</b>: their names are a library's contract (the contributions page addresses its query by the alias
+    /// derived from the name), while a root's <c>Get{Property}</c> is only a convention. So a minted root steps around a
+    /// satellite's name, never the reverse. A satellite steps aside only from a query that already exists, under the
+    /// same rule, and the synchronizer warns then. Its fixed point is the same: the query of its type named as the
+    /// library names it, or a stepped-aside one over the same source.
+    /// </para>
     /// </remarks>
-    private static Dictionary<string, RootQueryPlan> PlanRootQueries(
+    private static (Dictionary<string, RootQueryPlan> Roots, Dictionary<Type, RootQueryPlan> Satellites) PlanRootQueries(
         IReadOnlyList<IGrouping<Type, (PropertyInfo Property, Type? EntityType)>> rootsByEntityType,
         IReadOnlyDictionary<Type, List<SparkQuery>> queriesByType,
+        IReadOnlyList<SparkSatelliteModelType> satellites,
+        IReadOnlyDictionary<Type, List<SparkQuery>> satelliteQueriesByType,
         IReadOnlyList<SparkQuery> existingQueries)
     {
         var takenNames = existingQueries.Select(q => q.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1199,33 +1234,39 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             .Select(q => q.Alias ?? SparkQueryAliases.Derive(q.Name))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        var satellitePlans = new Dictionary<Type, RootQueryPlan>();
+        foreach (var satellite in satellites)
+        {
+            if (satellite.Query is not { } minted)
+                continue;
+            satellitePlans[satellite.ModelType] = Plan(satelliteQueriesByType[satellite.ModelType], minted.Name, minted.Source);
+        }
+
         var plans = new Dictionary<string, RootQueryPlan>(StringComparer.Ordinal);
         foreach (var group in rootsByEntityType)
         {
             var queriesForType = queriesByType[group.Key];
             foreach (var (property, _) in group)
-            {
-                var conventional = $"Get{property.Name}";
-                var existing = queriesForType.FirstOrDefault(q => q.Name == conventional)
-                    ?? queriesForType.FirstOrDefault(q =>
-                        q.Source == $"Database.{property.Name}" && IsSteppedAside(q.Name, conventional));
-                if (existing is not null)
-                {
-                    plans[property.Name] = new RootQueryPlan(existing.Name, existing.Alias, existing);
-                    continue;
-                }
-
-                var name = FirstFree(conventional, takenNames, i => $"{conventional}{i}");
-                var derived = SparkQueryAliases.Derive(name);
-                var alias = takenAliases.Contains(derived) ? FirstFree(derived, takenAliases, i => $"{derived}-{i}") : null;
-
-                takenNames.Add(name);
-                takenAliases.Add(alias ?? derived);
-                plans[property.Name] = new RootQueryPlan(name, alias, null);
-            }
+                plans[property.Name] = Plan(queriesForType, $"Get{property.Name}", $"Database.{property.Name}");
         }
 
-        return plans;
+        return (plans, satellitePlans);
+
+        RootQueryPlan Plan(List<SparkQuery> queriesForType, string conventional, string source)
+        {
+            var existing = queriesForType.FirstOrDefault(q => q.Name == conventional)
+                ?? queriesForType.FirstOrDefault(q => q.Source == source && IsSteppedAside(q.Name, conventional));
+            if (existing is not null)
+                return new RootQueryPlan(existing.Name, existing.Alias, existing);
+
+            var name = FirstFree(conventional, takenNames, i => $"{conventional}{i}");
+            var derived = SparkQueryAliases.Derive(name);
+            var alias = takenAliases.Contains(derived) ? FirstFree(derived, takenAliases, i => $"{derived}-{i}") : null;
+
+            takenNames.Add(name);
+            takenAliases.Add(alias ?? derived);
+            return new RootQueryPlan(name, alias, null);
+        }
 
         static string FirstFree(string wanted, HashSet<string> taken, Func<int, string> candidate)
         {
@@ -1292,13 +1333,17 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         /// declares, a context in another project). Without a query the edit page's picker has no options.
         /// </summary>
         /// <remarks>
-        /// When T has roots but none is plain, it warns for every reference, read-only ones included: the reference
-        /// lost the lookup an older synchronizer derived from the last root. Without any root it warns only for a
-        /// writable reference, as the analyzer does: a read-only one opens no picker, and some types (<c>SparkUser</c>)
-        /// have no root on purpose.
+        /// It warns only for a writable reference, as the analyzer does (D8): a read-only one (no setter, or
+        /// <c>[ReadOnly(true)]</c>, which the generated audit members carry) opens no picker, so a missing query costs
+        /// it nothing, and some types (<c>SparkUser</c>) have no root on purpose. That holds whether T has no root at
+        /// all or roots none of which is plain; the message then names the roots it passed over.
         /// </remarks>
         public void WarnUnresolved(Type entityType, PropertyInfo property, Type target)
         {
+            var writable = property.CanWrite
+                && property.GetCustomAttribute<System.ComponentModel.ReadOnlyAttribute>()?.IsReadOnly != true;
+            if (!writable) return;
+
             var name = target.Name;
             var fix = $"Add 'public IRavenQueryable<{name}> {new CollectionHelper().GetCollectionName(name)} => Session.Query<{name}>();' " +
                       $"to the context, or name a query in [Reference(typeof({name}), \"…\")].";
@@ -1311,10 +1356,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     $"no query and its picker no options. {fix}");
                 return;
             }
-
-            var writable = property.CanWrite
-                && property.GetCustomAttribute<System.ComponentModel.ReadOnlyAttribute>()?.IsReadOnly != true;
-            if (!writable) return;
 
             Console.WriteLine(
                 $"Warning: '{entityType.Name}.{property.Name}' references '{name}' without naming a query, and the context has " +

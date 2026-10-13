@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Services;
 using NSubstitute;
 using Raven.Client.Documents.Linq;
@@ -149,6 +150,19 @@ public sealed class SynchronizeReferenceRootTests : IDisposable
         output.Should().NotContain("RrAuditedSite.OwnerId");
     }
 
+    /// <summary>
+    /// D8 skips read-only references whatever roots T has: a read-only reference opens no picker, so it loses nothing
+    /// by resolving to no query. The M6 synchronizer still warned here when T had roots but none plain.
+    /// </summary>
+    [Fact]
+    public void A_read_only_reference_to_a_type_without_a_plain_root_does_not_warn()
+    {
+        var output = Synchronize(typeof(RrReadOnlyNoPlainRootContext));
+
+        QueryOf(nameof(RrAuditedSite), nameof(RrAuditedSite.OwnerId)).Should().BeNull();
+        output.Should().NotContain("RrAuditedSite.OwnerId");
+    }
+
     // ---- D11: a minted root query never collides ------------------------------------------------------------
 
     /// <summary>
@@ -213,7 +227,59 @@ public sealed class SynchronizeReferenceRootTests : IDisposable
         File.ReadAllText(ModelFile(nameof(RrLibSite))).Should().Be(sites);
     }
 
-    private static readonly Guid LibraryQueryId = Guid.Parse("0d110000-0000-4000-8000-000000000001");
+    // ---- D11 for satellite queries ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// A satellite's query is minted in the same run as the roots'. It used to be minted outside the plan, so a root
+    /// whose derived alias equals the satellite query's took it first, and the satellite then minted the same alias
+    /// ("Two queries resolve to the alias 'rrsatnotes'"). The satellite's name is its library's contract, so the root
+    /// steps aside.
+    /// </summary>
+    [Fact]
+    public void A_minted_root_query_steps_around_a_satellite_query_minted_in_the_same_run()
+    {
+        RegisterSatellite();
+
+        Synchronize(typeof(RrSatelliteContext));
+
+        var queries = ComposedQueries([]);
+        var act = () => SparkQueryAliasIndex.Index(queries);
+        act.Should().NotThrow();
+
+        var satellite = queries.Single(q => q.Source == "Custom.RrSatNotes");
+        satellite.Name.Should().Be("RrSatNotes", "the library's name is kept");
+        (satellite.Alias ?? SparkQueryAliases.Derive(satellite.Name)).Should().Be("rrsatnotes", "the derived alias is the one the library addresses");
+
+        var root = queries.Single(q => q.Source == "Database.RrSatNotes");
+        root.Name.Should().Be("GetRrSatNotes");
+        root.Alias.Should().Be("rrsatnotes-2");
+    }
+
+    [Fact]
+    public void A_satellite_query_steps_aside_from_an_existing_query_warns_and_is_a_fixed_point()
+    {
+        RegisterSatellite();
+        var library = OrganizationsLibrary(otherQueryName: "RrSatNotes");
+
+        var output = Synchronize(typeof(RrSatelliteContext), [library]);
+
+        var queries = ComposedQueries([library]);
+        var act = () => SparkQueryAliasIndex.Index(queries);
+        act.Should().NotThrow();
+        queries.Single(q => q.Source == "Custom.RrSatNotes").Name.Should().Be("RrSatNotes2",
+            "the existing query keeps its name; only the query being minted steps aside");
+        output.Should().Contain("Warning").And.Contain("RrSatNotes2");
+
+        var notes = File.ReadAllText(ModelFile(nameof(RrSatOwnerNote)));
+        Synchronize(typeof(RrSatelliteContext), [library]);
+        File.ReadAllText(ModelFile(nameof(RrSatOwnerNote))).Should().Be(notes, "the second run finds the stepped-aside query");
+    }
+
+    private static void RegisterSatellite()
+        => SparkModelSatellites.Register(new(typeof(RrSatOwner), typeof(RrSatOwnerNote),
+            new SparkSatelliteQuery("RrSatNotes", "Custom.RrSatNotes")));
+
+    private static readonly Guid LibraryQueryId =Guid.Parse("0d110000-0000-4000-8000-000000000001");
 
     /// <summary>
     /// A library shipping <see cref="RrLibOrganization"/> with its own <c>Custom.*</c> query aliased
@@ -367,6 +433,40 @@ public sealed class RrUnrootedContext : SparkContext
 public sealed class RrReadOnlyReferenceContext : SparkContext
 {
     public IRavenQueryable<RrAuditedSite> Sites => Session.Query<RrAuditedSite>();
+}
+
+[SparkPlainRoot(typeof(RrAuditedSite), nameof(Sites))]
+public sealed class RrReadOnlyNoPlainRootContext : SparkContext
+{
+    public IRavenQueryable<RrAuditedSite> Sites => Session.Query<RrAuditedSite>();
+    public IRavenQueryable<RrOrganization> ActiveOrganizations => Session.Query<RrOrganization>().Where(o => o.IsActive);
+}
+
+public sealed class RrSatOwner
+{
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+}
+
+/// <summary>A satellite of <see cref="RrSatOwner"/>, as a contributions type is of its target.</summary>
+public sealed class RrSatOwnerNote
+{
+    public string? Id { get; set; }
+    public string? Text { get; set; }
+}
+
+public sealed class RrSatNote
+{
+    public string? Id { get; set; }
+    public string? Text { get; set; }
+}
+
+[SparkPlainRoot(typeof(RrSatOwner), nameof(RrSatOwners))]
+[SparkPlainRoot(typeof(RrSatNote), nameof(RrSatNotes))]
+public sealed class RrSatelliteContext : SparkContext
+{
+    public IRavenQueryable<RrSatOwner> RrSatOwners => Session.Query<RrSatOwner>();
+    public IRavenQueryable<RrSatNote> RrSatNotes => Session.Query<RrSatNote>();
 }
 
 /// <summary>Stands in for <c>Organization</c>, which <c>libs/organizations</c> ships with its own model and query.</summary>
