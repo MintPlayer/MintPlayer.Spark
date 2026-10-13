@@ -99,6 +99,7 @@
             <spark-reference-picker
               [value]="formData()[attr.name]"
               [options]="referenceOptions()[attr.name] || []"
+              [loaded]="loadedReferences()[attr.name]"
               [referenceType]="attr.referenceType"
               [inputId]="attr.name"
               [title]="attr.label | resolveTranslation:attr.name"
@@ -424,6 +425,7 @@
         <spark-po-form
           [entityType]="attr | asDetailType:asDetailTypes()"
           [(formData)]="asDetailFormData"
+          [loadedObject]="editingAsDetailLoadedObject()"
           [parentId]="parentId()"
           [parentType]="parentType()"
           [referenceParentId]="referenceParentId()"

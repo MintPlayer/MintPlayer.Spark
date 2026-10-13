@@ -11,7 +11,7 @@ import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { PaginationResponse } from '@mintplayer/pagination';
 import { SparkService, SparkLanguageService, sparkDatatableLabels } from '@mintplayer/ng-spark/services';
 import { EntityType, QueryResultItem, ShowedOn, hasShowedOnFlag } from '@mintplayer/ng-spark/models';
-import { TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe } from '@mintplayer/ng-spark/pipes';
+import { TranslateKeyPipe, ResolveTranslationPipe, ReferenceAttrValuePipe, LoadedReference, referenceLabel } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 
@@ -47,6 +47,11 @@ export class SparkReferencePickerComponent {
   inputId = input<string | undefined>(undefined);
   /** Optional resolved label appended to the modal header ("Select {title}"). */
   title = input<string>('');
+  /**
+   * The id the attribute held when the object was loaded and its server-resolved label
+   * (`PersistentObjectAttribute.breadcrumb`); unset on a create.
+   */
+  loaded = input<LoadedReference | null | undefined>(undefined);
 
   valueChange = output<string | null>();
 
@@ -75,11 +80,15 @@ export class SparkReferencePickerComponent {
   // Typed rows so the datatable generic infers the row type.
   rows = computed<QueryResultItem[]>(() => this.pagination()?.data ?? []);
 
+  /**
+   * The textbox shows the server's label while the value is the loaded one, the chosen option row's
+   * text after a change, and the id as a last resort (D10, see `referenceLabel`). The options are
+   * only the query's first page, so they cannot label a stored value on their own.
+   */
   displayValue = computed(() => {
     const id = this.value();
     if (!id) return this.lang.t('common.notSelected');
-    const selected = this.options().find(o => o.id === id);
-    return selected?.breadcrumb || id;
+    return referenceLabel(id, this.loaded(), this.options());
   });
 
   async open(): Promise<void> {

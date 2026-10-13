@@ -49,6 +49,55 @@ describe('SparkReferencePickerComponent', () => {
     expect(component.displayValue()).toBe('common.notSelected');
   });
 
+  describe('the loaded value (D10)', () => {
+    // companies/500 was stored on the object but lies outside the options, which are one page of the
+    // reference query; the server resolved its label when it loaded the object.
+    const loaded = { value: 'companies/500', breadcrumb: 'Umbrella' };
+
+    it('shows the server label for a loaded value outside the options', () => {
+      const { fixture, component } = createComponent();
+      fixture.componentRef.setInput('options', companies);
+      fixture.componentRef.setInput('loaded', loaded);
+      fixture.componentRef.setInput('value', 'companies/500');
+
+      expect(component.displayValue()).toBe('Umbrella');
+    });
+
+    it('shows the picked option row after a change, and the server label again after changing back', () => {
+      const { fixture, component } = createComponent();
+      fixture.componentRef.setInput('options', companies);
+      fixture.componentRef.setInput('loaded', loaded);
+      fixture.componentRef.setInput('value', 'companies/500');
+
+      fixture.componentRef.setInput('value', 'companies/1');
+      expect(component.displayValue()).toBe('Acme Corp');
+
+      fixture.componentRef.setInput('value', 'companies/500');
+      expect(component.displayValue()).toBe('Umbrella');
+    });
+
+    it('prefers the server label over the option row while the value is the loaded one', () => {
+      // Both render T's template, but the option page may be older than the object: one source wins.
+      const { fixture, component } = createComponent();
+      fixture.componentRef.setInput('options', companies);
+      fixture.componentRef.setInput('loaded', { value: 'companies/1', breadcrumb: 'Acme Corporation' });
+      fixture.componentRef.setInput('value', 'companies/1');
+
+      expect(component.displayValue()).toBe('Acme Corporation');
+    });
+
+    it('falls back to the id when neither the server nor an option has a label', () => {
+      const { fixture, component } = createComponent();
+      fixture.componentRef.setInput('options', companies);
+      fixture.componentRef.setInput('loaded', { value: 'companies/500', breadcrumb: null });
+      fixture.componentRef.setInput('value', 'companies/500');
+      expect(component.displayValue()).toBe('companies/500');
+
+      fixture.componentRef.setInput('loaded', { value: 'companies/500', breadcrumb: '   ' });
+      expect(component.displayValue()).toBe('companies/500');
+    });
+  });
+
   it('open lazily loads the target entity type for the grid columns and seeds pagination', async () => {
     const { fixture, component, service } = createComponent();
     fixture.componentRef.setInput('options', companies);

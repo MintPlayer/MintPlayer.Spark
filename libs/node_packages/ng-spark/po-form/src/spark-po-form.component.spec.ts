@@ -3,7 +3,9 @@ import { TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
 
+import { By } from '@angular/platform-browser';
 import { SparkPoFormComponent } from './spark-po-form.component';
+import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import {
@@ -211,6 +213,32 @@ describe('SparkPoFormComponent', () => {
       expect(component.formData()['Company']).toBeNull();
     });
 
+    it('the picker shows the loaded value by its server label, a picked one by its option row (D10)', async () => {
+      const { fixture, component } = createComponent({
+        executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: [{ id: 'companies/1', breadcrumb: 'Acme', values: [] }], totalItems: 1 }),
+      } as any);
+      const companyAttr = personType.attributes.find(a => a.name === 'Company')!;
+      // companies/500 is not among the loaded options (a page of the reference query).
+      fixture.componentRef.setInput('loadedObject', {
+        id: 'people/1', name: 'Person', objectTypeId: 't-person',
+        attributes: [{ ...companyAttr, value: 'companies/500', breadcrumb: 'Umbrella' }],
+      } as any);
+      component.formData.set({ Company: 'companies/500' });
+      await setEntityType(fixture, personType);
+      const picker = () => fixture.debugElement.query(By.directive(SparkReferencePickerComponent))
+        .componentInstance as SparkReferencePickerComponent;
+
+      expect(picker().displayValue()).toBe('Umbrella');
+
+      component.onReferenceValueChange(companyAttr, 'companies/1');
+      fixture.detectChanges();
+      expect(picker().displayValue()).toBe('Acme');
+
+      component.onReferenceValueChange(companyAttr, 'companies/500');
+      fixture.detectChanges();
+      expect(picker().displayValue()).toBe('Umbrella');
+    });
+
     it('onLookupValueChange writes the emitted key into formData', async () => {
       const { fixture, component } = createComponent();
       await setEntityType(fixture, personType);
@@ -233,6 +261,26 @@ describe('SparkPoFormComponent', () => {
       expect(component.showAsDetailModal()).toBe(true);
       expect(component.asDetailFormData()).toEqual({ Street: 'Main' });
       expect(component.editingArrayIndex()).toBeNull();
+    });
+
+    it('hands a single embedded object as loaded to the modal form, and no row of a collection', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const nested = attr({ id: 'a-addr', name: 'Address', dataType: 'AsDetail' });
+      const rows = attr({ id: 'a-jobs', name: 'Jobs', dataType: 'AsDetail', isArray: true });
+      const address = { id: null, name: 'Address', objectTypeId: 't-address', attributes: [] };
+      fixture.componentRef.setInput('loadedObject', {
+        id: 'people/1', name: 'Person', objectTypeId: 't-person',
+        attributes: [{ ...nested, object: address }, { ...rows, objects: [address] }],
+      } as any);
+
+      component.openAsDetailEditor(nested);
+      expect((component as any).editingAsDetailLoadedObject()).toBe(address);
+
+      component.closeAsDetailModal();
+      component.formData.set({ Jobs: [{}] });
+      component.editArrayItem(rows, 0);
+      expect((component as any).editingAsDetailLoadedObject()).toBeNull();
     });
 
     it('saveAsDetailObject writes single-object value back into formData and closes the modal', async () => {
@@ -607,6 +655,32 @@ describe('SparkPoFormComponent', () => {
       component.formData.set({ Tags: 'tags/1' });
       expect(component.referenceTreeValues()['Tags']).toEqual([]);
       expect(Object.keys(component.referenceTreeValues())).toEqual(['Tags']);
+    });
+
+    it('labels a loaded id by its server breadcrumb, a picked one by its option, and the rest by id (D10)', async () => {
+      const { fixture, component } = await mounted();
+      // tags/77 lies outside the loaded options page; only the object as read knows its label.
+      fixture.componentRef.setInput('loadedObject', {
+        id: 'tagged/1', name: 'Tagged', objectTypeId: 't-tagged',
+        attributes: [{ ...tagsAttr, value: ['tags/77', 'tags/88'], breadcrumbs: { 'tags/77': 'Teal', 'tags/88': null } }],
+      } as any);
+
+      component.formData.set({ Tags: ['tags/77', 'tags/1', 'tags/88'] });
+      expect(component.referenceTreeValues()['Tags']).toEqual([
+        { id: 'tags/77', label: 'Teal' },
+        { id: 'tags/1', label: 'Red' },
+        // Loaded, but the server resolved no label and no option has it: the id is all there is.
+        { id: 'tags/88', label: 'tags/88' },
+      ]);
+
+      // Removed and picked again: still the loaded id, so still the server's label.
+      component.onReferenceTreeChange(tagsAttr, [{ id: 'tags/1', label: 'Red' }] as any);
+      expect(component.referenceTreeValues()['Tags']).toEqual([{ id: 'tags/1', label: 'Red' }]);
+      component.onReferenceTreeChange(tagsAttr, [{ id: 'tags/1', label: 'Red' }, { id: 'tags/77', label: 'tags/77' }] as any);
+      expect(component.referenceTreeValues()['Tags']).toEqual([
+        { id: 'tags/1', label: 'Red' },
+        { id: 'tags/77', label: 'Teal' },
+      ]);
     });
 
     it('onReferenceTreeChange writes ids back for a list, a single node and a cleared value', async () => {

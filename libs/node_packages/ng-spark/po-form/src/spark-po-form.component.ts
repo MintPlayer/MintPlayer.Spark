@@ -33,6 +33,8 @@ import {
   CanDeleteDetailRowPipe,
   InlineRefOptionsPipe,
   ErrorForAttributePipe,
+  LoadedReference,
+  loadedReferenceLabel,
 } from '@mintplayer/ng-spark/pipes';
 import {
   AttributeGroup,
@@ -126,6 +128,23 @@ export class SparkPoFormComponent {
   objectTypeId = input<string | undefined>(undefined);
   /** The id of the object being edited; absent for a create. */
   objectId = input<string | undefined>(undefined);
+  /**
+   * The object as read from the server; absent for a create. `formData` keeps only a reference's id,
+   * so this is where the form finds the server-resolved label of the value each Reference was loaded
+   * with. The pickers show that label until the user picks another value (D10): the option rows are
+   * only the query's first page and cannot label a stored value outside it.
+   */
+  loadedObject = input<PersistentObject | null | undefined>(undefined);
+
+  /** Per Reference attribute, the id(s) it was loaded with and their server labels. */
+  protected readonly loadedReferences = computed<Record<string, LoadedReference>>(() => {
+    const result: Record<string, LoadedReference> = {};
+    for (const attr of this.loadedObject()?.attributes ?? []) {
+      if (attr.dataType !== 'Reference') continue;
+      result[attr.name] = { value: attr.value, breadcrumb: attr.breadcrumb, breadcrumbs: attr.breadcrumbs };
+    }
+    return result;
+  });
 
   /**
    * Set when this form renders a single embedded AsDetail object inside a host form: the name of
@@ -176,6 +195,16 @@ export class SparkPoFormComponent {
   // Modal state for AsDetail object editing
   editingAsDetailAttr = signal<EntityAttributeDefinition | null>(null);
   asDetailFormData = signal<Record<string, any>>({});
+  /**
+   * The embedded object the modal edits, as loaded, so its own Reference pickers show their server
+   * labels too (D10). Only for a single AsDetail: a collection row has no stable link to a loaded row
+   * once rows are added, removed or reordered, so a row's pickers resolve from their options.
+   */
+  protected readonly editingAsDetailLoadedObject = computed<PersistentObject | null>(() => {
+    const attr = this.editingAsDetailAttr();
+    if (!attr || attr.isArray) return null;
+    return this.loadedObject()?.attributes.find(a => a.name === attr.name)?.object ?? null;
+  });
   showAsDetailModal = signal(false);
   editingArrayIndex = signal<number | null>(null);
 
@@ -324,17 +353,26 @@ export class SparkPoFormComponent {
    * Stable TreeNode[] value per multi-reference attribute, derived from the id array
    * in formData and the resolved node map. Recomputes only when formData or the node
    * map changes, so binding it into <bs-tree-select> doesn't churn on every CD pass.
-   * Ids without a resolved node fall back to a label of the id itself.
+   * A chip whose id the object was loaded with shows the server's label (`breadcrumbs[id]`), as the
+   * single picker does (D10): the node map holds only the query's first page. A picked id shows its
+   * node's label, and an id with neither falls back to the id itself.
    */
   referenceTreeValues = computed<Record<string, TreeNode[]>>(() => {
     const fd = this.formData();
     const nodesByAttr = this.referenceNodes();
+    const loaded = this.loadedReferences();
     const result: Record<string, TreeNode[]> = {};
     for (const attr of this.editableAttributes()) {
       if (attr.dataType !== 'Reference' || !attr.isArray) continue;
       const ids: string[] = Array.isArray(fd[attr.name]) ? fd[attr.name] : [];
       const nodeMap = nodesByAttr[attr.name] || {};
-      result[attr.name] = ids.map(id => nodeMap[id] ?? { id, label: id });
+      result[attr.name] = ids.map(id => {
+        const server = loadedReferenceLabel(id, loaded[attr.name]);
+        const node = nodeMap[id];
+        // The provider's own node where it answers, so the selection matches the provider's options.
+        if (node && (!server || node.label === server)) return node;
+        return { id, label: server ?? id };
+      });
     }
     return result;
   });

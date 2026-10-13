@@ -146,4 +146,31 @@ describe('ReferenceDisplayValuePipe', () => {
     const pipe = createPipe(ReferenceDisplayValuePipe);
     expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/missing' }, { Owner: [] })).toBe('p/missing');
   });
+
+  describe('with the object as loaded (D10)', () => {
+    // p/500 is the stored value and lies outside the options page; the server resolved its label.
+    const loadedObject = {
+      id: 'cars/1', name: 'Car', objectTypeId: 't-car',
+      attributes: [{ name: 'Owner', dataType: 'Reference', value: 'p/500', breadcrumb: 'Zoe' }],
+    } as any;
+    const opts = { Owner: [{ id: 'p/1', breadcrumb: 'Alice', values: [] } as any] };
+
+    it('shows the server label for the loaded value outside the options', () => {
+      const pipe = createPipe(ReferenceDisplayValuePipe);
+      expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/500' }, opts, loadedObject)).toBe('Zoe');
+    });
+
+    it('shows the option row after a change, and the server label after changing back', () => {
+      const pipe = createPipe(ReferenceDisplayValuePipe);
+      expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/1' }, opts, loadedObject)).toBe('Alice');
+      expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/500' }, opts, loadedObject)).toBe('Zoe');
+    });
+
+    it('falls back to the id when no label exists anywhere', () => {
+      const pipe = createPipe(ReferenceDisplayValuePipe);
+      const unlabelled = { ...loadedObject, attributes: [{ ...loadedObject.attributes[0], breadcrumb: undefined }] };
+      expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/500' }, opts, unlabelled)).toBe('p/500');
+      expect(pipe.transform({ name: 'Owner' } as any, { Owner: 'p/9' }, opts, loadedObject)).toBe('p/9');
+    });
+  });
 });
