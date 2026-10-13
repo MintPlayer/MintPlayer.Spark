@@ -59,7 +59,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     private const string SparkPlainRootAttributeFullName = "MintPlayer.Spark.Abstractions.SparkPlainRootAttribute";
     private const string RavenQueryableMetadataName = "Raven.Client.Documents.Linq.IRavenQueryable`1";
-    private const string RavenSessionNamespace = "Raven.Client.Documents.Session";
 
     /// <summary>Marks a <see cref="SparkContextInfo.QueryableTypeFullNames"/> entry that names an unresolved (not yet generated) type.</summary>
     private const string UnresolvedTypePrefix = "?";
@@ -545,8 +544,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
         var ravenQueryable = compilation.GetTypeByMetadataName(RavenQueryableMetadataName);
         var queryableTypes = new SortedSet<string>(System.StringComparer.Ordinal);
-        var plainRoots = new List<PlainRootInfo>();
-        var plainSeen = new HashSet<string>(System.StringComparer.Ordinal);
 
         for (var current = contextType; current is not null; current = current.BaseType)
         {
@@ -571,24 +568,20 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 queryableTypes.Add(exposed.TypeKind == TypeKind.Error
                     ? UnresolvedTypePrefix + exposed.Name
                     : exposed.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
-
-                // The synchronizer reads public roots only, and a root hidden by a derived one is not the root.
-                if (property.DeclaredAccessibility != Accessibility.Public) continue;
-                if (!plainSeen.Add(property.Name)) continue;
-                if (exposed is INamedTypeSymbol named && named.HasFromIndex()) continue;
-
-                // A base context from a referenced assembly has no syntax here: its markers come from its own
-                // generator run (D6), and the classifier answers "not plain" for it anyway.
-                if (IsPlainRoot(property, exposed, compilation, ct))
-                {
-                    plainRoots.Add(new PlainRootInfo
-                    {
-                        EntityFullName = exposed.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                        PropertyName = property.Name,
-                    });
-                }
             }
         }
+
+        // Shared with SPARK056 (MissingReferenceRootAnalyzer), which must agree with the markers written here. A base
+        // context from a referenced assembly has no syntax here: its markers come from its own generator run (D6).
+        var plainRoots = ravenQueryable is null
+            ? new List<PlainRootInfo>()
+            : PlainRootClassifier.PlainRoots(contextType, ravenQueryable, compilation, ct)
+                .Select(root => new PlainRootInfo
+                {
+                    EntityFullName = root.Entity.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    PropertyName = root.Property.Name,
+                })
+                .ToList();
 
         return new SparkContextInfo
         {
@@ -629,54 +622,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
             names.Add(typeParameter.Name);
 
         return names.ToList();
-    }
-
-    /// <summary>
-    /// Whether <paramref name="property"/> is the plain entity root of <paramref name="entity"/> (PRD §7, SP3): its body,
-    /// in any of the three forms (<c>=&gt; e</c>, <c>get =&gt; e</c>, <c>get { return e; }</c>), is a single
-    /// <c>Query&lt;T&gt;()</c> call with no arguments on a RavenDB session (<c>Session.Query&lt;T&gt;()</c>,
-    /// <c>this.Session.Query&lt;T&gt;()</c>).
-    /// </summary>
-    /// <remarks>
-    /// Conservative by design: a filter, an index or collection argument, <c>.Customize(...)</c>, a local, or a helper
-    /// method (even one that only wraps <c>Session.Query&lt;T&gt;()</c>) is "not plain". A reference to such a type then
-    /// has to name its query, which is a visible, fixable answer; a wrong "plain" would silently route lookups through
-    /// a filtered root.
-    /// </remarks>
-    private static bool IsPlainRoot(
-        IPropertySymbol property, ITypeSymbol entity, Compilation compilation, System.Threading.CancellationToken ct)
-    {
-        var declaration = property.DeclaringSyntaxReferences
-            .Select(r => r.GetSyntax(ct))
-            .OfType<PropertyDeclarationSyntax>()
-            .FirstOrDefault();
-        if (declaration is null) return false;
-
-        var body = declaration.ExpressionBody?.Expression;
-        if (body is null)
-        {
-            var getter = declaration.AccessorList?.Accessors
-                .FirstOrDefault(a => a.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.GetAccessorDeclaration));
-            body = getter?.ExpressionBody?.Expression
-                ?? (getter?.Body?.Statements is { Count: 1 } statements
-                    && statements[0] is ReturnStatementSyntax { Expression: { } returned }
-                        ? returned
-                        : null);
-        }
-
-        while (body is ParenthesizedExpressionSyntax parenthesized)
-            body = parenthesized.Expression;
-
-        if (body is not InvocationExpressionSyntax invocation) return false;
-        if (invocation.ArgumentList.Arguments.Count > 0) return false;
-
-        var model = compilation.GetSemanticModel(declaration.SyntaxTree);
-        if (model.GetSymbolInfo(invocation, ct).Symbol is not IMethodSymbol method) return false;
-
-        return method.Name == "Query"
-            && method.TypeArguments.Length == 1
-            && SymbolEqualityComparer.Default.Equals(method.TypeArguments[0], entity)
-            && method.ContainingType?.ContainingNamespace?.ToDisplayString() == RavenSessionNamespace;
     }
 
     /// <summary>

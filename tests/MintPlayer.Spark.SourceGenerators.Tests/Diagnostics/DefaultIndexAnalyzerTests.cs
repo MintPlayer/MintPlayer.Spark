@@ -263,6 +263,109 @@ public class DefaultIndexAnalyzerTests
             .And.Contain(d => d.GetMessage(null).Contains("entity type 'TestApp.Car'"));
     }
 
+    // ---- Zero claims among several viewed indexes (D3) ------------------------------------------------------
+
+    private const string TwoViewedCarIndexes = """
+        using MintPlayer.Spark.Abstractions;
+        using Raven.Client.Documents.Indexes;
+
+        namespace TestApp;
+
+        public class Cars_Overview : AbstractIndexCreationTask<Car> { }
+        public class Cars_Search : AbstractIndexCreationTask<Car> { }
+
+        [FromIndex(typeof(Cars_Overview))]
+        public class VCar { public string? Model { get; set; } }
+
+        [FromIndex(typeof(Cars_Search))]
+        public class VCarSearch { public string? Model { get; set; } }
+        """;
+
+    /// <summary>
+    /// Without a claim only the sole viewed index of T is its default, so two viewed indexes and no claim is the
+    /// catalog's startup error. SPARK009 says so at compile time, on both indexes.
+    /// </summary>
+    [Fact]
+    public async Task Two_viewed_indexes_and_no_claim_are_flagged_on_both()
+    {
+        var diagnostics = await RunAsync(TwoViewedCarIndexes + """
+
+            public class Car { public string? Model { get; set; } }
+            """);
+
+        var spark009 = diagnostics.Where(d => d.Id == "SPARK009").ToList();
+        spark009.Should().HaveCount(2);
+        spark009.Should().Contain(d => d.GetMessage(null).Contains("none claims it") && d.GetMessage(null).Contains("Cars_Overview, Cars_Search"));
+    }
+
+    [Fact]
+    public async Task Two_viewed_indexes_with_one_claim_are_clean()
+    {
+        var diagnostics = await RunAsync(TwoViewedCarIndexes.Replace(
+            "public class Cars_Overview", "[DefaultIndex] public class Cars_Overview") + """
+
+            public class Car { public string? Model { get; set; } }
+            """);
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    /// <summary>A [GenerateIndex] entity's generated index is a viewed index that claims T (it yields only to a hand-written claim).</summary>
+    [Fact]
+    public async Task A_GenerateIndex_entity_counts_as_a_claim_beside_two_viewed_indexes()
+    {
+        var diagnostics = await RunAsync(TwoViewedCarIndexes + """
+
+            [GenerateIndex]
+            public class Car { public string? Model { get; set; } }
+            """);
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task One_viewed_index_and_an_unviewed_one_are_clean()
+    {
+        var diagnostics = await RunAsync("""
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+
+            namespace TestApp;
+
+            public class Car { public string? Model { get; set; } }
+            public class Cars_Overview : AbstractIndexCreationTask<Car> { }
+            public class Cars_Search : AbstractIndexCreationTask<Car> { }
+
+            [FromIndex(typeof(Cars_Overview))]
+            public class VCar { public string? Model { get; set; } }
+            """);
+
+        diagnostics.Should().BeEmpty("the sole viewed index is the implicit default");
+    }
+
+    /// <summary>Two views of one index are one viewed index.</summary>
+    [Fact]
+    public async Task Two_views_of_one_index_are_clean()
+    {
+        var diagnostics = await RunAsync("""
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+
+            namespace TestApp;
+
+            public class Car { public string? Model { get; set; } }
+            public class Cars_Overview : AbstractIndexCreationTask<Car> { }
+
+            [FromIndex(typeof(Cars_Overview))]
+            public class VCar { public string? Model { get; set; } }
+
+            [FromIndex(typeof(Cars_Overview))]
+            public class VCarSummary { public string? Model { get; set; } }
+            """);
+
+        diagnostics.Should().BeEmpty();
+    }
+
     // ---- Multi-map claims (D1, D4) -------------------------------------------------------------------------
 
     private const string Vehicles = """

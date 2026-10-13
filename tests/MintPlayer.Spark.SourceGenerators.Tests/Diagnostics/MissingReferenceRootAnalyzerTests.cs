@@ -219,6 +219,59 @@ public class MissingReferenceRootAnalyzerTests
         diagnostics.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// The synchronizer resolves a query-less reference to the <b>plain</b> root only (D6), so a filtered root gives it
+    /// no query: the picker is empty. Counting any root used to keep this silent.
+    /// </summary>
+    [Fact]
+    public async Task Only_a_filtered_root_warns()
+    {
+        var diagnostics = await RunAsync("""
+            using System.Linq;
+            using MintPlayer.Spark;
+            using Raven.Client.Documents;
+            using Raven.Client.Documents.Linq;
+            using TestApp.Entities;
+
+            namespace TestApp;
+
+            public partial class AppContext : SparkContext
+            {
+                public IRavenQueryable<Site> Sites => Session.Query<Site>();
+                public IRavenQueryable<Organization> NamedOrganizations => Session.Query<Organization>().Where(o => o.Name != null);
+            }
+            """);
+
+        diagnostics.Should().ContainSingle().Which.GetMessage(null).Should().Contain("no plain entity root");
+    }
+
+    /// <summary>The classifier walks same-compilation bases, as the generator's markers do; a filtered base root does not count.</summary>
+    [Fact]
+    public async Task Only_an_inherited_filtered_root_warns()
+    {
+        var diagnostics = await RunAsync("""
+            using System.Linq;
+            using MintPlayer.Spark;
+            using Raven.Client.Documents;
+            using Raven.Client.Documents.Linq;
+            using TestApp.Entities;
+
+            namespace TestApp;
+
+            public abstract class AppBase : SparkContext
+            {
+                public IRavenQueryable<Organization> Organizations => Session.Query<Organization>().Customize(x => x.WaitForNonStaleResults());
+            }
+
+            public partial class AppContext : AppBase
+            {
+                public IRavenQueryable<Site> Sites => Session.Query<Site>();
+            }
+            """);
+
+        diagnostics.Should().ContainSingle();
+    }
+
     /// <summary>A root inherited from a base context is a root.</summary>
     [Fact]
     public async Task An_inherited_root_is_clean()

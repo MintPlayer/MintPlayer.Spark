@@ -11,7 +11,8 @@ namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 
 /// <summary>
 /// <c>[DefaultIndex(params Type[] entityTypes)]</c> at compile time (<c>docs/default_index_PRD.md</c>, D1–D5):
-/// one claim per entity type (SPARK009), and the shapes a marker may take (SPARK051–055).
+/// exactly one default per entity type (SPARK009: two claims, or several viewed indexes and none), and the shapes a
+/// marker may take (SPARK051–055).
 /// <para>
 /// The authoritative check is the index catalog's freeze-time validation — it alone sees indexes
 /// contributed across assemblies via <c>AddIndexesFrom(...)</c>, and it cannot be switched off. This
@@ -37,6 +38,20 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
         id: "SPARK009",
         title: "Multiple [DefaultIndex] claims for one entity type",
         messageFormat: "'{0}' and '{1}' both claim [DefaultIndex] for entity type '{2}'; an entity type has exactly one default index. Remove one claim (a [GenerateIndex] entity's generated index yields to a hand-written claim by itself)",
+        category: "Correctness",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        customTags: WellKnownDiagnosticTags.CompilationEnd);
+
+    /// <summary>
+    /// D3's other half: without a claim, only the <em>sole</em> index of T with a <c>[FromIndex]</c> view is T's default.
+    /// Several such indexes and no claim is the catalog's startup error (<c>IndexCatalog.Elect</c>), reported here first.
+    /// Same ID as the clash: both are "T does not have exactly one default".
+    /// </summary>
+    internal static readonly DiagnosticDescriptor UnclaimedViewedIndexesRule = new(
+        id: "SPARK009",
+        title: "Several viewed indexes and no [DefaultIndex] claim for one entity type",
+        messageFormat: "'{0}' is one of {1} indexes with a [FromIndex] view over entity type '{2}' ({3}), and none claims it with [DefaultIndex]; an entity type has exactly one default index. Mark one of them [DefaultIndex]",
         category: "Correctness",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -100,6 +115,7 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
         => ImmutableArray.Create(
             DuplicateDefaultIndexRule,
+            UnclaimedViewedIndexesRule,
             SingleMapTypeMismatchRule,
             MultiMapWithoutTypesRule,
             ListedTypeNotMappedRule,
@@ -150,6 +166,22 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
         public bool ForAll { get; }
     }
 
+    /// <summary>A single-map index some <c>[FromIndex]</c> view names, by the type it maps.</summary>
+    private readonly struct ViewedIndex
+    {
+        public ViewedIndex(INamedTypeSymbol index, INamedTypeSymbol entityType)
+        {
+            Index = index;
+            EntityType = entityType;
+        }
+
+        public INamedTypeSymbol Index { get; }
+        public INamedTypeSymbol EntityType { get; }
+    }
+
+    private const string FromIndexAttributeFullName = "MintPlayer.Spark.Abstractions.FromIndexAttribute";
+    private const string GenerateIndexAttributeFullName = "MintPlayer.Spark.Abstractions.GenerateIndexAttribute";
+
     public override void Initialize(AnalysisContext context)
     {
         // Analyze (not None): a generated [DefaultIndex] index should still enter the walk when the host
@@ -162,6 +194,32 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
             var claims = new ConcurrentBag<DefaultClaim>();
             var listed = new ConcurrentBag<ListedTypes>();
             var mapCalls = new ConcurrentBag<MapCall>();
+            var viewed = new ConcurrentBag<ViewedIndex>();
+            var generated = new ConcurrentBag<INamedTypeSymbol>();
+
+            // The views and [GenerateIndex] entities, for the unclaimed-views check at the end.
+            compilationStart.RegisterSymbolAction(symbolContext =>
+            {
+                var type = (INamedTypeSymbol)symbolContext.Symbol;
+                foreach (var attribute in type.GetAttributes())
+                {
+                    switch (attribute.AttributeClass?.ToDisplayString())
+                    {
+                        case GenerateIndexAttributeFullName:
+                            generated.Add(type);
+                            break;
+
+                        // As at runtime, an index enters the implicit election through a view naming it, and only a
+                        // single-map names its collection (a multi-map is a default only by its marker).
+                        case FromIndexAttributeFullName
+                            when attribute.ConstructorArguments.FirstOrDefault().Value is INamedTypeSymbol { IsAbstract: false } index
+                                && RavenIndexHierarchy.Classify(index, out var mapped) == RavenIndexKind.Map
+                                && mapped is not null:
+                            viewed.Add(new ViewedIndex(index, mapped));
+                            break;
+                    }
+                }
+            }, SymbolKind.NamedType);
 
             compilationStart.RegisterSymbolAction(symbolContext =>
             {
@@ -236,6 +294,7 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
             compilationStart.RegisterCompilationEndAction(endContext =>
             {
                 ReportUnmappedListedTypes(endContext, listed, mapCalls);
+                ReportUnclaimedViewedIndexes(endContext, viewed, claims, generated);
 
                 foreach (var group in claims
                     .GroupBy(c => (ITypeSymbol)c.EntityType, SymbolEqualityComparer.Default))
@@ -288,6 +347,45 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
                 context.ReportDiagnostic(Diagnostic.Create(
                     ListedTypeNotMappedRule, entry.Location,
                     entry.Index.Name, type.ToDisplayString(), type.Name));
+            }
+        }
+    }
+
+    /// <summary>
+    /// SPARK009, zero claims (D3): several same-project single-map indexes of T with a <c>[FromIndex]</c> view, and no
+    /// <c>[DefaultIndex]</c> claim for T. The catalog refuses this at startup; this says so at compile time.
+    /// </summary>
+    /// <remarks>
+    /// A <c>[GenerateIndex]</c> entity's generated index counts as a viewed index that claims T, as it does at runtime: the
+    /// generator marks it unless a hand-written index claims T, so T has a claim either way. Counted from the attribute
+    /// rather than from the generated tree, which a host does not always analyze.
+    /// </remarks>
+    private static void ReportUnclaimedViewedIndexes(
+        CompilationAnalysisContext context, IEnumerable<ViewedIndex> viewed, IEnumerable<DefaultClaim> claims,
+        IEnumerable<INamedTypeSymbol> generated)
+    {
+        var claimed = new HashSet<ITypeSymbol>(claims.Select(c => c.EntityType), SymbolEqualityComparer.Default);
+        claimed.UnionWith(generated);
+
+        foreach (var group in viewed.GroupBy(v => (ITypeSymbol)v.EntityType, SymbolEqualityComparer.Default))
+        {
+            if (claimed.Any(c => SymbolEqualityComparer.Default.Equals(c, group.Key))) continue;
+
+            var indexes = group
+                .Select(v => v.Index)
+                .Distinct<INamedTypeSymbol>(SymbolEqualityComparer.Default)
+                .OrderBy(i => i.Name, System.StringComparer.Ordinal)
+                .ToList();
+            if (indexes.Count < 2) continue;
+
+            var names = string.Join(", ", indexes.Select(i => i.Name));
+            foreach (var index in indexes)
+            {
+                if (HandWrittenLocation(index) is not { } location) continue;
+
+                context.ReportDiagnostic(Diagnostic.Create(
+                    UnclaimedViewedIndexesRule, location,
+                    index.Name, indexes.Count, group.Key!.ToDisplayString(), names));
             }
         }
     }
