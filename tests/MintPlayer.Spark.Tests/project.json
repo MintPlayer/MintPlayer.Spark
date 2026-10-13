@@ -8,11 +8,14 @@
         "^production",
         "{workspaceRoot}/apps/*/*/App_Data/Model/*.json",
         "{workspaceRoot}/apps/*/*/App_Data/*.json",
-        "{workspaceRoot}/libs/*/*/App_Data/*.json"
+        "{workspaceRoot}/libs/*/*/App_Data/*.json",
+        "{workspaceRoot}/tools/test-shard.mjs",
+        "{workspaceRoot}/tools/test-shard-weights.json",
+        { "env": "SPARK_TEST_SHARD" }
       ],
       "options": {
         "cwd": "tests/MintPlayer.Spark.Tests",
-        "command": "dotnet test --no-build --no-restore --settings ../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage",
+        "command": "node ../../tools/test-shard.mjs . dotnet test --no-build --no-restore --settings ../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none",
         "args": []
       },
       "configurations": {

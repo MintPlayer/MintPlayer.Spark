@@ -4,6 +4,7 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
+import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import type cytoscape from 'cytoscape';
 import { BrowseService, DependencyEcosystem, DependencyGraph, DependencyGraphPackage } from '../../services/browse.service';
 import { ECOSYSTEM_COLORS, ECOSYSTEMS, edgeId, GraphElements, toElements } from './dependency-graph';
@@ -89,6 +90,8 @@ function buildStyle(): cytoscape.StylesheetJson {
       },
     },
     { selector: 'edge.dev', style: { 'line-style': 'dashed' } },
+    // Unticked in the legend. Hidden rather than removed, so the layout and the zoom stay where they are.
+    { selector: 'edge.ecosystem-hidden', style: { 'display': 'none' } },
     // A label narrower than its ellipsis says nothing: hidden on edges too short to carry one.
     { selector: 'edge.no-label', style: { 'label': '' } },
     ...ECOSYSTEMS.map((eco) => {
@@ -141,7 +144,7 @@ interface SelectedEdge {
  */
 @Component({
   selector: 'app-account-dependency-graph-panel',
-  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent],
+  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsCheckboxComponent],
   template: `
     @if (state() === 'pending' || state() === 'empty') {
       <bs-card class="mt-3 d-block">
@@ -172,11 +175,14 @@ interface SelectedEdge {
               <i class="bi" [class.bi-eye]="showIsolated()" [class.bi-eye-slash]="!showIsolated()"></i>
               Show repositories without dependencies
             </button>
-            <span class="d-flex flex-wrap gap-2 small ms-auto">
+            <span class="d-flex flex-wrap align-items-center gap-3 small ms-auto">
               @for (eco of legend(); track eco.name) {
-                <span class="d-inline-flex align-items-center gap-1">
-                  <span class="swatch" [style.background]="eco.color"></span>{{ eco.name }}
-                </span>
+                <bs-checkbox [type]="'checkbox'" [name]="'ecosystem-' + eco.name" [isToggled]="eco.visible"
+                             (isToggledChange)="setEcosystemVisible(eco.name, $event === true)">
+                  <span class="d-inline-flex align-items-center gap-1">
+                    <span class="swatch" [style.background]="eco.color"></span>{{ eco.name }}
+                  </span>
+                </bs-checkbox>
               }
             </span>
           </div>
@@ -186,7 +192,8 @@ interface SelectedEdge {
 
           <div class="small text-muted mt-1">
             Arrows point from the repository that publishes a package to the one that uses it; dashed arrows carry dev-only
-            dependencies. Click a repository to open it, click an arrow to list its packages.
+            dependencies. Click a repository to open it, click an arrow to list its packages. Untick an ecosystem to hide
+            its arrows.
           </div>
           @if (loadFailed()) {
             <div class="small text-danger mt-1">The graph could not be loaded.</div>
@@ -234,6 +241,8 @@ export class AccountDependencyGraphPanelComponent {
 
   private readonly graph = signal<DependencyGraph | null>(null);
   readonly showIsolated = signal(false);
+  /** Ecosystems unticked in the legend; their arrows are hidden. Everything shows by default. */
+  readonly hiddenEcosystems = signal<ReadonlySet<DependencyEcosystem>>(new Set());
   readonly selected = signal<SelectedEdge | null>(null);
   readonly loadFailed = signal(false);
 
@@ -257,7 +266,9 @@ export class AccountDependencyGraphPanelComponent {
     return graph.nodes.some((n) => n.scannedAt !== null) ? 'empty' : 'pending';
   });
 
-  readonly legend = computed(() => (this.elements()?.ecosystems ?? []).map((name) => ({ name, color: this.colorOf(name) })));
+  readonly legend = computed(() => (this.elements()?.ecosystems ?? []).map((name) => ({
+    name, color: this.colorOf(name), visible: !this.hiddenEcosystems().has(name),
+  })));
 
   private cy: cytoscape.Core | null = null;
   private drawToken = 0;
@@ -286,6 +297,12 @@ export class AccountDependencyGraphPanelComponent {
       void this.draw(host, elements);
     });
 
+    // A toggle restyles the graph that is already drawn; draw() applies the same filter to a new one.
+    effect(() => {
+      const hidden = this.hiddenEcosystems();
+      if (this.cy) this.applyEcosystemFilter(this.cy, hidden);
+    });
+
     // Follow the light/dark theme: ng-bootstrap flips data-bs-theme on <html>, and "auto" follows the OS.
     afterNextRender(() => {
       const restyle = () => this.cy?.style(buildStyle());
@@ -310,10 +327,31 @@ export class AccountDependencyGraphPanelComponent {
     return `var(${name}, ${fallback})`;
   }
 
+  setEcosystemVisible(ecosystem: DependencyEcosystem, visible: boolean): void {
+    this.hiddenEcosystems.update((hidden) => {
+      const next = new Set(hidden);
+      if (visible) next.delete(ecosystem);
+      else next.add(ecosystem);
+      return next;
+    });
+  }
+
   fit(): void {
     const cy = this.cy;
     if (!cy) return;
     cy.animate({ fit: { eles: cy.elements(), padding: 24 } }, { duration: 200 });
+  }
+
+  private applyEcosystemFilter(cy: cytoscape.Core, hidden: ReadonlySet<DependencyEcosystem>): void {
+    cy.batch(() => cy.edges().forEach((edge) => {
+      edge.toggleClass('ecosystem-hidden', hidden.has(edge.data('ecosystem')));
+    }));
+    // The listed packages belong to an arrow that is no longer on screen.
+    const selected = cy.edges(':selected');
+    if (selected.filter('.ecosystem-hidden').nonempty()) {
+      selected.unselect();
+      this.selected.set(null);
+    }
   }
 
   private teardown(): void {
@@ -351,6 +389,7 @@ export class AccountDependencyGraphPanelComponent {
     });
     // Nodes are draggable but never "selected": selection is reserved for the edge whose packages are listed.
     cy.nodes().unselectify();
+    this.applyEcosystemFilter(cy, this.hiddenEcosystems());
 
     // dagre runs synchronously inside the constructor, so positions are final here; dragging a node
     // changes the length of its edges, so their labels are refitted while it moves.

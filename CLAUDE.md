@@ -47,9 +47,24 @@ that is the signal the app is actually serviceable, not `Now listening on:`.
 
 ## Running the test suites
 
-**Local test runs take over 30 minutes; test runs on GitHub Actions take 17 minutes.** The local run
-is serial (RavenDB tests starve each other's CPU when run in parallel) and usually skips E2E, while
-CI runs everything, E2E included, in parallel with its Nx cache and the Developer RavenDB licence.
+**Local test runs take over 30 minutes; the pull-request workflow on GitHub Actions takes about 5.** The
+local run is serial (RavenDB tests starve each other's CPU when run in parallel) and usually skips E2E,
+while CI runs everything, E2E included, with its Nx cache and the Developer RavenDB licence.
+
+**CI layout (PR #511, 2026-10-13):** `.github/workflows/test.yml` (reusable, called by both
+`pull-request.yml` and the master `publish-release`) runs every suite as a parallel job:
+`MintPlayer.Spark.Tests` in four shards, E2E, CodeCoverage.Tests, SeoTester.Tests and "Other suites".
+Each job uploads its coverage reports as an artifact, and one coverage job uploads them together. On
+master, the Release build + pack runs beside the tests and `publish` needs both. Measured: PR run
+38389429815 took 4.7 min wall, against 12–16 min for the single sequential job before.
+
+- **Shards:** `tools/test-shard.mjs` packs the test classes into N groups by
+  `tools/test-shard-weights.json` (seconds per class). Shards 1..N-1 run their classes and shard N runs
+  everything else, so a new class can never be skipped. Unset `SPARK_TEST_SHARD` and the command runs
+  unchanged, which is what local runs do. When the shards drift apart, regenerate the weights from a
+  run's trx files: `gh run download <run> --pattern 'coverage-spark-*'`, then
+  `node tools/test-shard.mjs --timings tests/MintPlayer.Spark.Tests <trx files>`.
+- **A new long suite** gets its own entry in `test.yml`'s matrix (and in "Other suites"' `exclude`).
 
 - **CI runs cost money: never push just to get a test run.** The sweep runs locally. Making it fast
   is tracked work (see `docs/contributions_PRD.md` §5c).

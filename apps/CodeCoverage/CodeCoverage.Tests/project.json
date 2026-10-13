@@ -5,7 +5,7 @@
     "test": {
       "options": {
         "cwd": "apps/CodeCoverage/CodeCoverage.Tests",
-        "command": "dotnet test --no-build --no-restore --settings ../../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage",
+        "command": "dotnet test --no-build --no-restore --settings ../../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none",
         "args": []
       },
       "configurations": {

@@ -1,0 +1,55 @@
+name: Setup Spark workspace
+description: >
+  .NET + Node, npm ci, dotnet restore and the dotnet tools, with the npm and NuGet caches. Shared by every
+  job that builds or tests, now that the workflows run their suites as parallel jobs: each job pays this
+  setup once, so it is kept to cached downloads.
+
+inputs:
+  nuget-token:
+    description: Token for the org's GitHub Packages NuGet feed (dotnet restore pulls @mintplayer/* from it).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 11.0.100-rc.1.26425.128
+        # Authenticates the GitHub Packages feed (restore here, push in the release workflow).
+        source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      env:
+        NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: npm
+
+    # The package folder, not obj/: restore still runs and writes the assets files, it just stops
+    # downloading. Keyed on everything that can change a package version.
+    - name: Cache NuGet packages
+      uses: actions/cache@v6
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', '**/Directory.Build.props', '**/Directory.Build.targets', '**/nuget.config', '**/NuGet.config', '.config/dotnet-tools.json') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    - name: Install npm dependencies
+      shell: bash
+      run: npm ci
+
+    # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so restore must run first on a
+    # fresh runner with no cache hit on `obj/`.
+    - name: dotnet restore
+      shell: bash
+      run: dotnet restore
+      env:
+        NUGET_AUTH_TOKEN: ${{ inputs.nuget-token }}
+
+    # dotnet-coverage, for the E2E Fleet host (SPARK_E2E_HOST_COVERAGE).
+    - name: dotnet tool restore
+      shell: bash
+      run: dotnet tool restore

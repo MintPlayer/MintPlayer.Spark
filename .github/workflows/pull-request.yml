@@ -28,86 +28,29 @@ env:
   SPARK_E2E_HOST_COVERAGE: 'true'
 
 jobs:
+  # The checks that are not test suites, in parallel with the tests (test.yml). This used to be the first
+  # half of one sequential job: setup, build, these checks, then every suite in one `nx run-many`, ~12-16
+  # min with MintPlayer.Spark.Tests alone setting the pace.
   build:
-
-    name: pull-request
+    name: build + verify
     runs-on: ubuntu-latest
-    # Normal runs finish in 2-7 minutes; without a ceiling a wedged run holds
-    # the default 6-hour GitHub timeout (measured twice on PR #269, once on
-    # PR #277 — the E2E suite hanging silently after the other suites passed).
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
     - name: Checkout
       uses: actions/checkout@v7
       with:
-        fetch-depth: 0  # nx affected needs git history to compute base SHA
+        fetch-depth: 0  # nx affected and the version-bump check need history
 
     - name: Derive base SHA for nx affected
       uses: nrwl/nx-set-shas@v5
 
-    - name: Setup .NET Core
-      uses: actions/setup-dotnet@v6
+    - name: Setup
+      uses: ./.github/actions/setup
       with:
-        dotnet-version: 11.0.100-rc.1.26425.128
-        # Authenticates packages to push to GPR
-        source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-      env:
-        NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
+        nuget-token: ${{ github.token }}
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v7
-      with:
-        node-version: 24
-        cache: npm
-
-    - name: Install npm dependencies
-      run: npm ci
-
-    # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so
-    # restore must run first on a fresh runner with no cache hit on `obj/`.
-    # Angular library builds (ng-spark, auth entries included) and the rest of the
-    # solution build are covered by `nx affected --target=build` below.
-    - name: dotnet restore
-      run: dotnet restore
-      env:
-        NUGET_AUTH_TOKEN: ${{ github.token }}
-
-    # dotnet-coverage, for the E2E Fleet host (SPARK_E2E_HOST_COVERAGE above).
-    - name: dotnet tool restore
-      run: dotnet tool restore
-
-    - name: Resolve Playwright version
-      id: playwright
-      run: |
-        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
-          | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-        echo "version=${version}" >> "$GITHUB_OUTPUT"
-        echo "Playwright version: ${version}"
-        # SeoTester's browser tests use the browsers installed for this version (the install step below): one version.
-        seo=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' apps/SeoTester/SeoTester/SeoTester.csproj \
-          | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-        [ "$seo" = "$version" ] || { echo "::error::Microsoft.Playwright is ${version} in the E2E tests but ${seo} in SeoTester: keep them equal, the CI installs one set of browsers"; exit 1; }
-
-    - name: Cache Playwright browsers
-      uses: actions/cache@v6
-      with:
-        path: ~/.cache/ms-playwright
-        key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
-        restore-keys: |
-          ${{ runner.os }}-playwright-
-
-    # Chromium for every browser test, installed ONCE before any test project starts. The E2E tests install it in
-    # process (PlaywrightInstall), but SeoTester.Tests' render and browser-isolation tests (apps/SeoTester/
-    # SeoTester.Tests/Rendering) only use it, and under nx's parallel run they started before the E2E fixture had
-    # installed it: "Executable doesn't exist at ~/.cache/ms-playwright/chromium_headless_shell-1243/…" (PR #505,
-    # 10 tests, every run since the browser tests landed). Node's Playwright at the SAME version installs the same
-    # builds (1.63.0 → chromium-1243 and chromium_headless_shell-1243, checked with --dry-run). One install, not one per
-    # test process: two concurrent --with-deps installs collide on the apt lock (PlaywrightInstall's remark).
-    - name: Install Playwright's Chromium
-      run: npx --yes playwright@${{ steps.playwright.outputs.version }} install --with-deps chromium
-
-    # Run build before tests so Angular-app build failures (e.g., broken
+    # Run build so Angular-app build failures (e.g., broken
     # imports, type errors, budget overruns) block the PR. The .NET test
     # target already dependsOn build, but the demo Angular apps
     # (@spark-demo/{demo-app,fleet-demo,hr-demo,qna-demo,sparkid-demo}) don't have
@@ -258,31 +201,44 @@ jobs:
         fi
         echo "Version bumps present for every changed package."
 
-    - name: Run tests (.NET + Angular via Nx)
-      id: test
-      # Step-level so the known hang (E2E suite wedging with no output) fails
-      # here and the `if: always()` coverage upload below still runs with
-      # whatever the completed suites produced.
-      timeout-minutes: 20
-      # run-many, NOT affected. `test` declares its coverage directories as cached
-      # outputs (nx.json), so an unaffected project's report is RESTORED from the
-      # cache rather than regenerated -- same wall-clock as `affected`, but the
-      # report exists. `affected` drops unaffected projects from the task graph
-      # entirely, so there is no task whose output could be restored and their
-      # reports are simply absent: PR #377 touched only apps/CodeCoverage, uploaded
-      # 1 report of 8, and read as 35.1% against an 81.8% base. Master already runs
-      # run-many, so its cache is warm for exactly the projects a PR will not touch,
-      # and both workflows now measure the same thing.
-      # --output-style=stream: nx buffers each task's output until the task
-      # finishes, so a hung task prints NOTHING — the wedged E2E runs were
-      # undiagnosable. Streaming trades tidy grouping for a visible last line.
-      run: npx nx run-many --target=test --output-style=stream
-      env:
-        # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}  # Nx Cloud disabled — using self-hosted cache (see workflow-level env)
-        RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+  # Every test project as parallel jobs, MintPlayer.Spark.Tests in four shards (test.yml). Normal runs
+  # finish well inside the job timeouts there; without ceilings a wedged run holds the default 6-hour
+  # GitHub timeout (measured twice on PR #269, once on PR #277: the E2E suite hanging silently).
+  tests:
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
 
-    # Upload the coverage to the self-hosted Coverage server. Since the step above
-    # runs run-many, every test project contributes a report (freshly run or
+  # The coverage of every test job, uploaded together as the single job used to: the reports are the same
+  # files at the same paths, collected from the test jobs' artifacts.
+  coverage:
+    name: coverage upload
+    needs: tests
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0  # nx-set-shas: the base the server carries unchanged files forward from
+
+    - name: Derive base SHA
+      uses: nrwl/nx-set-shas@v5
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: 24
+
+    - name: Collect the test jobs' reports
+      uses: actions/download-artifact@v8
+      with:
+        pattern: coverage-*
+        merge-multiple: true
+
+    # Upload the coverage to the self-hosted Coverage server. Since the test jobs
+    # run run-many, every test project contributes a report (freshly run or
     # restored from the Nx cache) and this is a whole-workspace upload in practice.
     # `partial: true` + the nx base SHA stay as defence in depth for the run where
     # that is not true -- a suite that crashes before writing its report -- so the
@@ -294,7 +250,7 @@ jobs:
     # a run that produced no report at all is exactly the run that must still
     # upload (its file list is what lets the server carry the whole commit
     # forward), and the action treats zero reports + partial as legitimate.
-    # `carry-forward` is the test step's outcome: a crashed suite produces no
+    # `carry-forward` is the test jobs' result: a crashed suite produces no
     # report, and without this the server would paint over the hole with the
     # base's numbers.
     # The Angular reports are new here. Both workflows used to glob only
@@ -332,10 +288,25 @@ jobs:
         disable-search: true
         partial: true
         base-sha: ${{ env.NX_BASE }}
-        carry-forward: ${{ steps.test.outcome == 'success' }}
+        carry-forward: ${{ needs.tests.result == 'success' }}
         finish: true
         wait-for-finalize: true
         fail-ci-if-error: false
+
+  # One check that is green only when every job is, under the name the single job used to carry.
+  pull-request:
+    name: pull-request
+    needs: [build, tests, coverage, coverage-action]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Every job passed
+      run: |
+        echo 'build=${{ needs.build.result }} tests=${{ needs.tests.result }} coverage=${{ needs.coverage.result }} coverage-action=${{ needs.coverage-action.result }}'
+        if ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}; then
+          echo "::error::A job failed, was cancelled or was skipped."
+          exit 1
+        fi
 
   # The upload action's source lives in this repository (docs/coverage_action_home_PRD.md).
   # `dist/index.js` is committed and is what `runs.main` executes, so a PR that

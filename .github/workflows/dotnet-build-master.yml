@@ -113,13 +113,15 @@ jobs:
 
         echo "revision=$revision" >> "$GITHUB_OUTPUT"
 
-  build:
-    name: publish-release
+
+  # The Release build and the packages, in parallel with the tests: this used to be one job running
+  # restore, Release build, pack, a Debug build and every suite in a row (~16 min), with the publish at
+  # the end. The packages wait for the tests in `publish`, so nothing ships on red.
+  release:
+    name: build release
     needs: schema-revision
     runs-on: ubuntu-latest
-    # Build + full test sweep + pack + publish normally lands well under this;
-    # the ceiling exists so a wedged run can't hold the 6-hour default.
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     env:
       # Read by MintPlayer.Spark.csproj (an environment variable is an MSBuild property) and
@@ -132,33 +134,10 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v7
 
-    - name: Setup .NET Core
-      uses: actions/setup-dotnet@v6
+    - name: Setup
+      uses: ./.github/actions/setup
       with:
-        dotnet-version: 11.0.100-rc.1.26425.128
-        # Authenticates packages to push to GPR
-        source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-      env:
-        NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v7
-      with:
-        node-version: 24
-
-    - name: Install npm dependencies
-      run: npm ci
-
-    # `nx <target>` for .NET projects uses `dotnet build --no-restore`, so
-    # restore must run first on a fresh runner with no cache hit on `obj/`.
-    - name: Install dependencies
-      run: dotnet restore
-      env:
-        NUGET_AUTH_TOKEN: ${{ github.token }}
-
-    # dotnet-coverage, for the E2E Fleet host (SPARK_E2E_HOST_COVERAGE above).
-    - name: dotnet tool restore
-      run: dotnet tool restore
+        nuget-token: ${{ github.token }}
 
     # Build everything via Nx so master populates the self-hosted remote
     # cache that PRs read from. Two run-many calls because:
@@ -167,75 +146,76 @@ jobs:
     #     consumes below).
     #   - Angular library (@mintplayer/ng-spark, auth entries included)
     #     only have a `build` target and produce ng-packagr `dist/` for the
-    #     `JS-DevTools/npm-publish` steps below.
+    #     `JS-DevTools/npm-publish` steps in `publish`.
     - name: Build .NET projects (Release)
       run: npx nx run-many --target=build:release
 
     # Pack MUST run immediately after the Release build, before any other Nx
     # invocation. Nx cache replay is destructive: it deletes a task's declared
-    # output directories before extracting the cached archive. The Debug
-    # `build` tasks that the `test` step replays used to declare the whole
-    # bin/ + obj/ as outputs, so a cache-hit test step wiped the bin/Release
-    # artifacts this pack consumes (preview.43 release failure, run
-    # 31778271642 — preview.42 only survived because some cached archives
-    # happened to contain Release artifacts). nx.json now scopes each
-    # configuration's outputs to its own directory, and pack runs here so no
-    # later step can starve it either way. Output goes to nupkgs/ (outside
-    # any project's bin/) so cache replays can't delete the packages; the
-    # push steps below stay after the tests, so publishing is still gated on
-    # a green test run.
+    # output directories before extracting the cached archive (preview.43
+    # release failure, run 31778271642, when a cache-hit Debug build wiped the
+    # bin/Release artifacts). The Debug builds of the tests now run on other
+    # runners, but pack still goes first. Output goes to nupkgs/ (outside any
+    # project's bin/) so cache replays can't delete the packages.
     - name: Pack
       run: dotnet pack --no-build --configuration Release /p:ContinuousIntegrationBuild=true -o nupkgs
 
     - name: Build Angular libraries
       run: npx nx run-many --target=build --projects=@mintplayer/ng-spark
 
-    - name: Resolve Playwright version
-      id: playwright
-      run: |
-        version=$(grep -oE 'Microsoft\.Playwright"[[:space:]]*Version="[^"]+"' tests/MintPlayer.Spark.E2E.Tests/MintPlayer.Spark.E2E.Tests.csproj \
-          | grep -oE 'Version="[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-        echo "version=${version}" >> "$GITHUB_OUTPUT"
-
-    - name: Cache Playwright browsers
-      uses: actions/cache@v6
+    - name: Hand the packages to the publish job
+      uses: actions/upload-artifact@v7
       with:
-        path: ~/.cache/ms-playwright
-        key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
-        restore-keys: |
-          ${{ runner.os }}-playwright-
+        name: packages
+        path: |
+          nupkgs/
+          libs/node_packages/ng-spark/dist/
+        if-no-files-found: error
+        retention-days: 7
 
-    # Same step as pull-request.yml: SeoTester.Tests' render tests only USE Chromium, and under nx's parallel run
-    # they start before the E2E fixture installs it ("Executable doesn't exist at ~/.cache/ms-playwright/
-    # chromium_headless_shell-1243/…", master runs for #510 and 5ddf4832). One install before any test project.
-    - name: Install Playwright's Chromium
-      run: npx --yes playwright@${{ steps.playwright.outputs.version }} install --with-deps chromium
+  # Every test project as parallel jobs, MintPlayer.Spark.Tests in four shards (test.yml). The same
+  # jobs as on a pull request, so master populates the remote cache that PRs read from.
+  tests:
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: read
 
-    # All test projects (.NET + Angular) run via Nx so master populates the remote
-    # cache that PRs read from. The .NET test target's coverage args live in each
-    # test project's project.json so the layout (`{ProjectName}/coverage/{guid}/
-    # coverage.cobertura.xml`) is identical between PR and master runs — matches
-    # the glob pattern each flagged codecov upload step below uses.
-    - name: Test (all projects via Nx)
-      # Step-level so a wedged test run (the intermittent E2E hang) fails here
-      # and the `if: always()` coverage upload below still runs.
-      timeout-minutes: 20
-      # --output-style=stream: see pull-request.yml — buffered output hides
-      # where a hung test task is stuck.
-      run: npx nx run-many --target=test --output-style=stream
-      env:
-        RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+  # Master runs every test project unconditionally, so this is a whole-
+  # workspace upload (no `partial`) — it becomes the baseline the Coverage
+  # server compares partial PR uploads against. The reports are the test
+  # jobs' artifacts, at the paths a single job used to produce them.
+  coverage:
+    name: coverage upload
+    needs: tests
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
 
-    # Master runs every test project unconditionally, so this is a whole-
-    # workspace upload (no `partial`) — it becomes the baseline the Coverage
-    # server compares partial PR uploads against.
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: 24
+
+    - name: Collect the test jobs' reports
+      uses: actions/download-artifact@v8
+      with:
+        pattern: coverage-*
+        merge-multiple: true
+
     # A report path the server cannot resolve is dropped SILENTLY -- it is simply
     # absent from the percentage, which reads as a coverage drop rather than as a
     # bug. This runs the server's own resolution rules over every report before
     # upload and fails the build instead, so the failure mode that hid five dead
     # queues cannot also hide a shrinking denominator.
     - name: Verify coverage report paths
-      if: always()
       run: node tools/verify-coverage-paths.mjs
 
     - name: Upload coverage
@@ -255,6 +235,29 @@ jobs:
         disable-search: true
         finish: true
         fail-ci-if-error: false
+
+  # Publishing waits for the packages AND every test job: nothing ships on red. The coverage upload is
+  # not a gate (it never was: fail-ci-if-error is false).
+  publish:
+    name: publish-release
+    needs: [release, tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - name: Collect the packages
+      uses: actions/download-artifact@v8
+      with:
+        name: packages
+
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 11.0.100-rc.1.26425.128
+        # Authenticates packages to push to GPR
+        source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      env:
+        NUGET_AUTH_TOKEN: '%NUGET_AUTH_TOKEN%'
 
     - name: PushNuget
       run: dotnet nuget push 'nupkgs/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.PUBLISH_TO_NUGET_ORG }} --skip-duplicate

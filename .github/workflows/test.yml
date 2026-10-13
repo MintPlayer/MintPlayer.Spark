@@ -1,0 +1,104 @@
+name: test
+
+# Every test project, as parallel jobs. Called by pull-request.yml and dotnet-build-master.yml, so both
+# measure the same thing. One `nx run-many --target=test` used to run them all in one job, where the wall
+# time was MintPlayer.Spark.Tests alone (~8 min of a ~9 min step, behind ~3.5 min of setup and build).
+# Here that project runs in four shards (tools/test-shard.mjs) beside the other long suites.
+#
+# run-many, NOT affected, in every job: `test` declares its coverage directories as cached outputs
+# (nx.json), so an unaffected project's report is RESTORED from the cache rather than regenerated, and
+# the coverage upload still gets a report for every project (PR #377 uploaded 1 report of 8 under
+# `affected`). Each job hands its reports to the caller's coverage job as an artifact; that job uploads
+# them together, exactly as the single job used to.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
+  NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || secrets.NX_CACHE_RO_TOKEN }}
+  # Runs the E2E suite's Fleet host under dotnet-coverage (FleetTestHost.HostCoverageEnabled).
+  SPARK_E2E_HOST_COVERAGE: 'true'
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      # Every suite reports even when another fails: one red shard must not hide the rest.
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Spark.Tests 1/4, artifact: spark-1, projects: MintPlayer.Spark.Tests, shard: 1/4 }
+          - { name: Spark.Tests 2/4, artifact: spark-2, projects: MintPlayer.Spark.Tests, shard: 2/4 }
+          - { name: Spark.Tests 3/4, artifact: spark-3, projects: MintPlayer.Spark.Tests, shard: 3/4 }
+          - { name: Spark.Tests 4/4, artifact: spark-4, projects: MintPlayer.Spark.Tests, shard: 4/4 }
+          - { name: E2E, artifact: e2e, projects: MintPlayer.Spark.E2E.Tests, playwright: true }
+          - { name: CodeCoverage.Tests, artifact: codecoverage, projects: CodeCoverage.Tests }
+          - { name: SeoTester.Tests, artifact: seotester, projects: SeoTester.Tests, playwright: true }
+          # Everything else: the generator, client and app test projects and the Angular (vitest) suites.
+          - { name: Other suites, artifact: other, exclude: 'MintPlayer.Spark.Tests,MintPlayer.Spark.E2E.Tests,CodeCoverage.Tests,SeoTester.Tests' }
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup
+      uses: ./.github/actions/setup
+      with:
+        nuget-token: ${{ github.token }}
+
+    - name: Playwright
+      if: matrix.playwright
+      uses: ./.github/actions/playwright
+
+    - name: Run tests
+      # Step-level, so a hung suite fails here and the artifact upload below still runs with what the
+      # suite produced. The large .NET suites also carry --blame-hang (5-10 min per test) in their nx
+      # command, which names the hung test instead of just timing out.
+      timeout-minutes: 20
+      # --output-style=stream: nx buffers each task's output until the task finishes, so a hung task
+      # prints NOTHING. Streaming trades tidy grouping for a visible last line.
+      run: |
+        if [ -n "${{ matrix.projects }}" ]; then
+          npx nx run-many --target=test --projects=${{ matrix.projects }} --output-style=stream
+        else
+          npx nx run-many --target=test --exclude=${{ matrix.exclude }} --output-style=stream
+        fi
+      env:
+        RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
+        # Read by tools/test-shard.mjs; an input of the MintPlayer.Spark.Tests task, so each shard is
+        # cached on its own.
+        SPARK_TEST_SHARD: ${{ matrix.shard }}
+
+    # upload-artifact roots the artifact at the deepest folder ALL matched files share, so a job that only
+    # produced tests/MintPlayer.Spark.Tests/coverage/** would lose that prefix, and the coverage job would
+    # put the reports where the server cannot resolve them. A file at the workspace root pins the root.
+    - name: Pin the artifact root
+      if: always()
+      run: echo "${{ matrix.name }}" > coverage-artifact-root.txt
+
+    # The same globs the coverage upload reads, plus the shards' trx files (per-class timings for
+    # tools/test-shard.mjs --timings). Paths stay relative to the workspace root, so the coverage job can
+    # download every artifact into one checkout and see the layout a single job used to produce.
+    - name: Upload coverage reports
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage-${{ matrix.artifact }}
+        path: |
+          coverage-artifact-root.txt
+          tests/*/coverage/**/coverage.cobertura.xml
+          tests/*/coverage/*.trx
+          apps/CodeCoverage/*/coverage/**/coverage.cobertura.xml
+          libs/node_packages/*/coverage/cobertura-coverage.xml
+          apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml
+          coverage/@spark-apps/code-coverage/cobertura-coverage.xml
+          apps/CodeCoverage/action/coverage/cobertura-coverage.xml
+        if-no-files-found: ignore
+        retention-days: 7
