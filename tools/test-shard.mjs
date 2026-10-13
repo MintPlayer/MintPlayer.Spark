@@ -69,13 +69,20 @@ export function discover(projectDir) {
     .filter(Boolean);
 }
 
-/** Measured seconds per class replace the estimate; a class without a measurement keeps its estimate. */
+/**
+ * Measured seconds per class replace the estimate. A unit without a measurement (a class added since)
+ * keeps its estimate, converted to seconds at the rate the measured units show, so the scales don't mix.
+ */
 export function applyWeights(units, measured) {
   if (!measured) return units;
-  return units.map((u) => {
+  const seconds = (u) => {
     const known = u.classes.map((c) => measured[c]).filter((s) => typeof s === 'number');
-    return known.length ? { ...u, weight: known.reduce((a, b) => a + b, 0) } : u;
-  });
+    return known.length ? known.reduce((a, b) => a + b, 0) : null;
+  };
+  const measuredUnits = units.map((u) => ({ u, s: seconds(u) })).filter((x) => x.s !== null);
+  const estimated = measuredUnits.reduce((a, x) => a + x.u.weight, 0);
+  const rate = estimated > 0 ? measuredUnits.reduce((a, x) => a + x.s, 0) / estimated : 1;
+  return units.map((u) => ({ ...u, weight: seconds(u) ?? u.weight * rate }));
 }
 
 /** Longest-processing-time packing into `count` groups; deterministic for a given input. */

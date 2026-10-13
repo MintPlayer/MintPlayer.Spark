@@ -61,9 +61,10 @@ internal class Helper { }`);
   assert.equal(unit.weight, 4);
 });
 
-test('measured seconds replace the estimate', () => {
-  const units = [{ classes: ['A.X'], weight: 10 }, { classes: ['A.Y'], weight: 10 }];
-  assert.deepEqual(applyWeights(units, { 'A.X': 2.5 }).map((u) => u.weight), [2.5, 10]);
+test('measured seconds replace the estimate, and an unmeasured class is converted to seconds', () => {
+  const units = [{ classes: ['A.X'], weight: 10 }, { classes: ['A.Y'], weight: 20 }];
+  // A.X: 10 units took 2.5 s, so A.Y's 20 units count as 5 s.
+  assert.deepEqual(applyWeights(units, { 'A.X': 2.5 }).map((u) => u.weight), [2.5, 5]);
 });
 
 test('trx durations are summed per class', () => {
