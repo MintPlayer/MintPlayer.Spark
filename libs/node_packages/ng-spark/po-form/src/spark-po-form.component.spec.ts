@@ -16,7 +16,9 @@ import {
   LookupReferenceValue,
   PersistentObject,
   ShowedOn,
+  AS_DETAIL_ROW_KEY,
 } from '@mintplayer/ng-spark/models';
+import { AsDetailCellValuePipe } from '@mintplayer/ng-spark/pipes';
 
 function attr(partial: Partial<EntityAttributeDefinition>): EntityAttributeDefinition {
   return {
@@ -263,7 +265,7 @@ describe('SparkPoFormComponent', () => {
       expect(component.editingArrayIndex()).toBeNull();
     });
 
-    it('hands a single embedded object as loaded to the modal form, and no row of a collection', async () => {
+    it('hands a single embedded object as loaded to the modal form, and nothing for a keyless row', async () => {
       const { fixture, component } = createComponent();
       await setEntityType(fixture, personType);
       const nested = attr({ id: 'a-addr', name: 'Address', dataType: 'AsDetail' });
@@ -552,6 +554,87 @@ describe('SparkPoFormComponent', () => {
 
       expect(fixture.nativeElement.querySelector('spark-reference-picker')).toBeFalsy();
       expect(fixture.nativeElement.querySelector('tbody bs-select')).toBeTruthy();
+    });
+
+    describe('reference labels in collection rows (D10)', () => {
+      // Two rows were loaded, both pointing at companies/500, which lies outside the options page.
+      // Rows are matched to their loaded copy by row key, never by position.
+      const loadedRow = (key: string) => ({
+        id: key, name: 'RowChild', objectTypeId: 't-rowchild',
+        attributes: [{ name: 'CompanyId', dataType: 'Reference', value: 'companies/500', breadcrumb: 'Umbrella' }],
+      });
+      const loadedObject = {
+        id: 'parents/1', name: 'RowParent', objectTypeId: 't-rowparent',
+        attributes: [{ name: 'Rows', dataType: 'AsDetail', isArray: true, objects: [loadedRow('rows/a'), loadedRow('rows/b')] }],
+      } as any;
+      const formRows = () => [
+        { CompanyId: 'companies/500', [AS_DETAIL_ROW_KEY]: 'rows/a' },  // untouched
+        { CompanyId: 'companies/1', [AS_DETAIL_ROW_KEY]: 'rows/b' },    // edited
+        { CompanyId: 'companies/1', [AS_DETAIL_ROW_KEY]: 'rows/new' },  // added in this session
+        { CompanyId: 'companies/500', [AS_DETAIL_ROW_KEY]: 'rows/new2' }, // added, value outside the options
+      ];
+
+      async function mountRows(displayType?: EReferenceDisplayType) {
+        const rowChild: EntityType = {
+          id: 't-rowchild', name: 'RowChild', clrType: 'Test.RowChild',
+          attributes: [attr({ id: 'c-co', name: 'CompanyId', dataType: 'Reference', order: 1, query: 'CompanyQuery', referenceType: 'Test.Company', referenceDisplayType: displayType })],
+        };
+        const rowParent: EntityType = {
+          id: 't-rowparent', name: 'RowParent', clrType: 'Test.RowParent',
+          attributes: [attr({ id: 'a-rows', name: 'Rows', dataType: 'AsDetail', isArray: true, editMode: 'inline', asDetailType: 'Test.RowChild', order: 1 })],
+        };
+        const result = createComponent({
+          getEntityTypes: vi.fn().mockResolvedValue([rowParent, rowChild]),
+          executeQueryByName: vi.fn().mockResolvedValue({ columns: [], items: [{ id: 'companies/1', breadcrumb: 'Acme', values: [] }], totalItems: 1 }),
+        } as any);
+        result.fixture.componentRef.setInput('loadedObject', loadedObject);
+        result.component.formData.set({ Rows: formRows() });
+        await setEntityType(result.fixture, rowParent);
+        result.fixture.detectChanges();
+        return { ...result, rows: rowParent.attributes[0], col: rowChild.attributes[0] };
+      }
+
+      it('an in-row picker shows the server label for its loaded value, the option label once edited or new', async () => {
+        const { fixture } = await mountRows(EReferenceDisplayType.Modal);
+
+        const labels = fixture.debugElement.queryAll(By.directive(SparkReferencePickerComponent))
+          .map(d => (d.componentInstance as SparkReferencePickerComponent).displayValue());
+        expect(labels).toEqual(['Umbrella', 'Acme', 'Acme', 'companies/500']);
+      });
+
+      it('a read-only inline cell resolves the same way, from the labels kept beside the rows', async () => {
+        const { component, rows, col } = await mountRows();
+        const pipe = new AsDetailCellValuePipe();
+        const loadedRows = (component as any).loadedRowReferences()['Rows'];
+
+        expect(component.formData()['Rows'].map((row: any) =>
+          pipe.transform(row, rows, col, component.asDetailReferenceOptions(), loadedRows)))
+          .toEqual(['Umbrella', 'Acme', 'Acme', 'companies/500']);
+        // The labels stay out of the rows, which are the save payload.
+        expect(component.formData()['Rows']).toEqual(formRows());
+      });
+
+      it('an inline <select> offers the loaded value, labelled by the server, only to the row it was loaded with', async () => {
+        const { component, rows, col } = await mountRows();
+        const [untouched, edited, added] = component.formData()['Rows'];
+
+        expect(component.inlineRefSelectOptions(rows, untouched, col).map(o => [o.id, o.breadcrumb]))
+          .toEqual([['companies/500', 'Umbrella'], ['companies/1', 'Acme']]);
+        // Still offered after an edit, so the loaded value can be picked back.
+        expect(component.inlineRefSelectOptions(rows, edited, col).map(o => o.id)).toEqual(['companies/500', 'companies/1']);
+        expect(component.inlineRefSelectOptions(rows, added, col).map(o => o.id)).toEqual(['companies/1']);
+      });
+
+      it('the row modal gets the loaded row matched by key, and nothing for a new row', async () => {
+        const { component, rows } = await mountRows();
+
+        component.editArrayItem(rows, 1);
+        expect((component as any).editingAsDetailLoadedObject()?.id).toBe('rows/b');
+        component.closeAsDetailModal();
+
+        component.editArrayItem(rows, 2);
+        expect((component as any).editingAsDetailLoadedObject()).toBeNull();
+      });
     });
 
     it('B7: an inline lookup column with a Modal-display lookup renders the lookup picker', async () => {

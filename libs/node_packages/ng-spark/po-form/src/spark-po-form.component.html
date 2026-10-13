@@ -116,14 +116,14 @@
                      read-only column: still fully readable, just not editable. Hiding it would
                      hide the data, and the save path would silently restore any edit anyway. -->
                 @if (col.isReadOnly || !(attr | canEditDetailRow:asDetailPermissions())) {
-                  <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                  <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}</span>
                 } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
                   <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(editRenderer, row, col)"></ng-container>
                 } @else if (col.dataType === 'AsDetail') {
                   <!-- Nested AsDetail can't flatten into a row: escalate to the row modal,
                        where the recursive spark-po-form renders the nested structure. -->
                   <div class="d-flex align-items-center gap-1">
-                    <span class="text-truncate flex-grow-1">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
+                    <span class="text-truncate flex-grow-1">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary" (click)="editArrayItem(attr, rowIndex)">
                       <spark-icon name="pencil" />
                     </button>
@@ -140,6 +140,7 @@
                     <spark-reference-picker
                       [value]="row[col.name]"
                       [options]="(attr | inlineRefOptions:col:asDetailReferenceOptions())"
+                      [loaded]="loadedRowReferenceOf(attr, row, col)"
                       [referenceType]="col.referenceType"
                       [title]="col.label | resolveTranslation:col.name"
                       [isInvalid]="hasInlineError(attr, rowIndex, col)"
@@ -152,7 +153,7 @@
                       (ngModelChange)="onInlineCellChange(attr, rowIndex, col)"
                       [class.is-invalid]="hasInlineError(attr, rowIndex, col)">
                       <option [ngValue]="null">{{ 'common.selectPlaceholder' | t }}</option>
-                      @for (option of (attr | inlineRefOptions:col:asDetailReferenceOptions()); track option.id) {
+                      @for (option of inlineRefSelectOptions(attr, row, col); track option.id) {
                         <option [ngValue]="option.id">
                           {{ option.breadcrumb || option.id }}
                         </option>
@@ -308,7 +309,7 @@
                         @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
                           <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
                         } @else {
-                          {{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}
+                          {{ row | asDetailCellValue:attr:col:asDetailReferenceOptions():loadedRowReferences()[attr.name] }}
                         }
                         @if (firstCol && modalRowRenderer) {
                           <div class="spark-row-renderer">

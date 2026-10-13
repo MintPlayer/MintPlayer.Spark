@@ -34,7 +34,12 @@ import {
   InlineRefOptionsPipe,
   ErrorForAttributePipe,
   LoadedReference,
+  LoadedReferences,
+  LoadedRowReferences,
   loadedReferenceLabel,
+  loadedReferencesOf,
+  loadedRowReference,
+  loadedRowReferencesOf,
 } from '@mintplayer/ng-spark/pipes';
 import {
   AttributeGroup,
@@ -137,14 +142,41 @@ export class SparkPoFormComponent {
   loadedObject = input<PersistentObject | null | undefined>(undefined);
 
   /** Per Reference attribute, the id(s) it was loaded with and their server labels. */
-  protected readonly loadedReferences = computed<Record<string, LoadedReference>>(() => {
-    const result: Record<string, LoadedReference> = {};
-    for (const attr of this.loadedObject()?.attributes ?? []) {
-      if (attr.dataType !== 'Reference') continue;
-      result[attr.name] = { value: attr.value, breadcrumb: attr.breadcrumb, breadcrumbs: attr.breadcrumbs };
+  protected readonly loadedReferences = computed<LoadedReferences>(() => loadedReferencesOf(this.loadedObject()));
+
+  /**
+   * Per AsDetail collection, its rows' loaded references by row key, kept beside the rows so the save
+   * payload stays as it is (see `LoadedRowReferences`). Feeds the inline cells and in-row pickers.
+   */
+  protected readonly loadedRowReferences = computed<Record<string, LoadedRowReferences>>(() => {
+    const po = this.loadedObject();
+    const result: Record<string, LoadedRowReferences> = {};
+    for (const attr of po?.attributes ?? []) {
+      if (attr.dataType === 'AsDetail' && attr.isArray) result[attr.name] = loadedRowReferencesOf(po, attr.name);
     }
     return result;
   });
+
+  /** The loaded reference of an inline row's picker, matched by row key; undefined for a new or keyless row. */
+  loadedRowReferenceOf(attr: EntityAttributeDefinition, row: Record<string, any>, col: EntityAttributeDefinition): LoadedReference | undefined {
+    return loadedRowReference(row, col.name, this.loadedRowReferences()[attr.name]);
+  }
+
+  /**
+   * The options of an inline row's reference `<select>`. A select can only show a value it has an
+   * option for, so a loaded value outside the options page (one page of the query) would render as
+   * "nothing selected". The row's loaded value is offered first, labelled by the server (D10), and
+   * stays offered after an edit so the user can pick it back. A new or keyless row has no loaded
+   * value, so its select lists the options alone, as before.
+   */
+  inlineRefSelectOptions(attr: EntityAttributeDefinition, row: Record<string, any>, col: EntityAttributeDefinition): QueryResultItem[] {
+    const options = this.asDetailReferenceOptions()[attr.name]?.[col.name] ?? [];
+    const loaded = this.loadedRowReferenceOf(attr, row, col);
+    const id = loaded?.value;
+    if (typeof id !== 'string' || id === '' || options.some(o => o.id === id)) return options;
+    const label = loadedReferenceLabel(id, loaded);
+    return label ? [{ id, breadcrumb: label, values: [] }, ...options] : options;
+  }
 
   /**
    * Set when this form renders a single embedded AsDetail object inside a host form: the name of
@@ -197,13 +229,18 @@ export class SparkPoFormComponent {
   asDetailFormData = signal<Record<string, any>>({});
   /**
    * The embedded object the modal edits, as loaded, so its own Reference pickers show their server
-   * labels too (D10). Only for a single AsDetail: a collection row has no stable link to a loaded row
-   * once rows are added, removed or reordered, so a row's pickers resolve from their options.
+   * labels too (D10). A collection row is matched by its row key, never by position (rows are added,
+   * removed and reordered while the form is open). A new row's key is not among the loaded ones, and a
+   * row type without a value key has no key at all; both get null, so their pickers use the options.
    */
   protected readonly editingAsDetailLoadedObject = computed<PersistentObject | null>(() => {
     const attr = this.editingAsDetailAttr();
-    if (!attr || attr.isArray) return null;
-    return this.loadedObject()?.attributes.find(a => a.name === attr.name)?.object ?? null;
+    if (!attr) return null;
+    const loaded = this.loadedObject()?.attributes.find(a => a.name === attr.name);
+    if (!attr.isArray) return loaded?.object ?? null;
+    const key = this.asDetailFormData()[AS_DETAIL_ROW_KEY];
+    if (typeof key !== 'string' || key === '') return null;
+    return loaded?.objects?.find(row => row.id === key) ?? null;
   });
   showAsDetailModal = signal(false);
   editingArrayIndex = signal<number | null>(null);

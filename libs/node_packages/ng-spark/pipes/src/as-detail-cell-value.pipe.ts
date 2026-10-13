@@ -1,5 +1,6 @@
 import { Pipe, PipeTransform } from '@angular/core';
 import { AS_DETAIL_BREADCRUMBS_KEY, EntityAttributeDefinition, PersistentObject, QueryResultItem, selfBreadcrumb } from '@mintplayer/ng-spark/models';
+import { LoadedRowReferences, loadedRowReference, referenceLabel } from './reference-label';
 
 /** What a cell can resolve to: the column's own type, or `null` when it has no value. */
 export type AsDetailCellValue = string | number | boolean | Date | null;
@@ -45,6 +46,8 @@ export class AsDetailCellValuePipe implements PipeTransform {
     parentAttr: EntityAttributeDefinition,
     col: EntityAttributeDefinition,
     asDetailRefOptions: Record<string, Record<string, QueryResultItem[]>>,
+    /** The edit form's loaded references of this collection's rows, by row key (see `LoadedRowReferences`). */
+    loadedRows?: LoadedRowReferences | null,
   ): AsDetailCellValue {
     const value = row[col.name];
 
@@ -84,15 +87,14 @@ export class AsDetailCellValuePipe implements PipeTransform {
       const serverBreadcrumb = (row[AS_DETAIL_BREADCRUMBS_KEY] as Record<string, string> | undefined)?.[col.name];
       if (serverBreadcrumb) return serverBreadcrumb;
 
-      // Fallback: resolve against the loaded options page (legacy path).
-      const parentOptions = asDetailRefOptions[parentAttr.name];
-      if (parentOptions) {
-        const options = parentOptions[col.name];
-        if (options) {
-          const match = options.find(o => o.id === value);
-          if (match) return match.breadcrumb || String(value);
-        }
-      }
+      // The edit form's rows carry no breadcrumbs (they are the save payload), so there the labels
+      // come from beside them: the server's while the cell still holds the value its row was loaded
+      // with, the option row's after an edit, the id last (D10, see `referenceLabel`).
+      return referenceLabel(
+        String(value),
+        loadedRowReference(row, col.name, loadedRows),
+        asDetailRefOptions[parentAttr.name]?.[col.name],
+      );
     }
 
     // A nested-AsDetail column's value is an inner dict, so String(value) produced "[object

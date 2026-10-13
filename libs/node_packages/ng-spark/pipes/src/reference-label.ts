@@ -1,4 +1,4 @@
-import { PersistentObject, QueryResultItem } from '@mintplayer/ng-spark/models';
+import { AS_DETAIL_ROW_KEY, PersistentObject, QueryResultItem } from '@mintplayer/ng-spark/models';
 
 /**
  * The label of a Reference as it was loaded: the id the object held and the label the server resolved
@@ -17,6 +17,54 @@ export interface LoadedReference {
 export function loadedReferenceOf(po: PersistentObject | null | undefined, attributeName: string): LoadedReference | undefined {
   const attr = po?.attributes?.find(a => a.name === attributeName);
   return attr ? { value: attr.value, breadcrumb: attr.breadcrumb, breadcrumbs: attr.breadcrumbs } : undefined;
+}
+
+/** The loaded references of one object, by attribute name. Only Reference attributes are listed. */
+export type LoadedReferences = Record<string, LoadedReference>;
+
+/** Every Reference attribute of `po` as loaded, by attribute name. */
+export function loadedReferencesOf(po: PersistentObject | null | undefined): LoadedReferences {
+  const result: LoadedReferences = {};
+  for (const attr of po?.attributes ?? []) {
+    if (attr.dataType !== 'Reference') continue;
+    result[attr.name] = { value: attr.value, breadcrumb: attr.breadcrumb, breadcrumbs: attr.breadcrumbs };
+  }
+  return result;
+}
+
+/**
+ * The loaded references of an AsDetail collection's rows: row key → reference column → loaded value
+ * and server label.
+ *
+ * Kept BESIDE the form's rows rather than inside them: `nestedPoToDict` deliberately carries no
+ * breadcrumbs, and the labels have no business in the save payload. A row is matched by its key (the
+ * row type's `[ValueKey]`, which `nestedPoToDict` carries as `AS_DETAIL_ROW_KEY`), never by position,
+ * because rows are added, removed and reordered while the form is open.
+ *
+ * A row type without a value key gives its rows no key, so they are left out here and their cells keep
+ * resolving from the option rows alone — the behaviour before D10, and the best that can be done
+ * without a stable link from a form row back to the row it was loaded as.
+ */
+export type LoadedRowReferences = Record<string, LoadedReferences>;
+
+/** The {@link LoadedRowReferences} of the collection `attributeName` on `po`. */
+export function loadedRowReferencesOf(po: PersistentObject | null | undefined, attributeName: string): LoadedRowReferences {
+  const result: LoadedRowReferences = {};
+  const attr = po?.attributes?.find(a => a.name === attributeName);
+  for (const row of attr?.objects ?? []) {
+    if (typeof row.id === 'string' && row.id !== '') result[row.id] = loadedReferencesOf(row);
+  }
+  return result;
+}
+
+/** The loaded reference of `column` in a form row, matched by the row's key; undefined for a new or keyless row. */
+export function loadedRowReference(
+  row: Record<string, any> | null | undefined,
+  column: string,
+  loadedRows: LoadedRowReferences | null | undefined,
+): LoadedReference | undefined {
+  const key = row?.[AS_DETAIL_ROW_KEY];
+  return typeof key === 'string' && key !== '' ? loadedRows?.[key]?.[column] : undefined;
 }
 
 /**
