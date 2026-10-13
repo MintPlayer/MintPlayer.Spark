@@ -36,8 +36,8 @@ public partial class GeneratedIndexInfo
     public string? Description { get; set; }
 
     /// <summary>
-    /// Whether the index class carries <c>[DefaultIndex]</c> (the attribute's <c>IsDefault</c>, default
-    /// <c>true</c>) — electing its projection to shape the entity's model file.
+    /// Whether the index class carries <c>[DefaultIndex]</c>, electing its projection to shape the entity's
+    /// model file. <c>false</c> once a hand-written index claims the entity (D5).
     /// </summary>
     public bool IsDefault { get; set; } = true;
 

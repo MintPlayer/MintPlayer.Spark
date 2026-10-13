@@ -429,7 +429,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
             IndexName = indexName,
             IndexEntityName = indexEntityName,
             Description = GetNamedArgument(attribute, "Description"),
-            IsDefault = GetNamedBoolArgument(attribute, "IsDefault") ?? true,
+            // GenerateIndexAttribute.IsDefault is gone (docs/default_index_PRD.md, D5). Every generated
+            // index claims its entity until the generator learns to yield to a hand-written claim (M3).
+            IsDefault = true,
             CollectionVariable = IndexNaming.CollectionVariable(entity.Name),
             ItemVariable = itemVariable,
             Properties = properties,
@@ -820,17 +822,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
             if (argument.Key != name) continue;
             var value = argument.Value.Value as string;
             return string.IsNullOrWhiteSpace(value) ? null : value;
-        }
-
-        return null;
-    }
-
-    private static bool? GetNamedBoolArgument(AttributeData attribute, string name)
-    {
-        foreach (var argument in attribute.NamedArguments)
-        {
-            if (argument.Key != name) continue;
-            return argument.Value.Value as bool?;
         }
 
         return null;

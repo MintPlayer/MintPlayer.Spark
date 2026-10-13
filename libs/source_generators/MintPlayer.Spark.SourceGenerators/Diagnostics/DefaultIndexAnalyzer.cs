@@ -16,8 +16,8 @@ namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 /// so the author gets a squiggle instead of a startup failure.
 /// </para>
 /// <para>
-/// A <c>[GenerateIndex]</c> entity claims the default through its <em>generated</em> index (unless it
-/// opts out with <c>IsDefault = false</c>), so the entity itself counts as a claim here — the clash
+/// A <c>[GenerateIndex]</c> entity claims the default through its <em>generated</em> index (until M3 of
+/// <c>docs/default_index_plan.md</c> lets a hand-written claim win), so the entity itself counts as a claim here — the clash
 /// with a hand-written <c>[DefaultIndex]</c> must not depend on the generated tree being analyzed,
 /// which host settings can skip. When the generated index <em>is</em> analyzed, it deduplicates
 /// against the entity's claim by index name. Reports anchor only on hand-written declarations: the
@@ -36,7 +36,7 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
     internal static readonly DiagnosticDescriptor DuplicateDefaultIndexRule = new(
         id: "SPARK009",
         title: "Multiple [DefaultIndex] markers over one collection type",
-        messageFormat: "'{0}' and '{1}' both claim [DefaultIndex] for collection type '{2}'; exactly one index per entity can shape its model file. Remove one marker, or opt the generated index out with [GenerateIndex(IsDefault = false)] on the entity",
+        messageFormat: "'{0}' and '{1}' both claim [DefaultIndex] for collection type '{2}'; exactly one index per entity can shape its model file. Remove one marker",
         category: "Correctness",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -83,8 +83,7 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
                 }
 
                 if (type.GetAttributes().FirstOrDefault(a =>
-                        a.AttributeClass?.ToDisplayString() == GenerateIndexAttributeFullName) is { } generateIndex
-                    && IsDefaultOf(generateIndex))
+                        a.AttributeClass?.ToDisplayString() == GenerateIndexAttributeFullName) is { } generateIndex)
                 {
                     claims.Add(new DefaultClaim(
                         GeneratedIndexNameOf(generateIndex, type),
@@ -120,10 +119,6 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
             });
         });
     }
-
-    /// <summary>The attribute's <c>IsDefault</c> named argument, defaulting to <c>true</c> when absent.</summary>
-    private static bool IsDefaultOf(AttributeData generateIndex)
-        => generateIndex.NamedArguments.FirstOrDefault(a => a.Key == "IsDefault").Value.Value is not false;
 
     /// <summary>The generated index's name: the <c>IndexName</c> override, or the naming convention.</summary>
     private static string GeneratedIndexNameOf(AttributeData generateIndex, INamedTypeSymbol entity)

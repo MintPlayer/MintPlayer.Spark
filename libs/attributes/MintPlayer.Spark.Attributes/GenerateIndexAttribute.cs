@@ -25,8 +25,9 @@ namespace MintPlayer.Spark.Abstractions;
 /// <para>
 /// An entity may back any number of indexes; each Spark query declares the one it runs against via its
 /// <c>indexName</c>. The generated index carries <see cref="DefaultIndexAttribute"/> — electing its
-/// projection to shape the entity's model file — unless <see cref="IsDefault"/> is set to
-/// <c>false</c>, e.g. because a hand-written index alongside it is the intended default.
+/// projection to shape the entity's model file — unless a hand-written index already claims the entity
+/// with <c>[DefaultIndex]</c> (single-map) or <c>[DefaultIndex(typeof(Entity), …)]</c> (multi-map), in
+/// which case the hand-written claim wins and the generated index is an ordinary, explicitly bound one.
 /// </para>
 /// </summary>
 /// <example>
@@ -60,11 +61,4 @@ public sealed class GenerateIndexAttribute : Attribute
     /// Emitted as <c>[Description]</c> on the generated index class. Purely documentary.
     /// </summary>
     public string? Description { get; set; }
-
-    /// <summary>
-    /// Whether the generated index carries <see cref="DefaultIndexAttribute"/>, electing its projection
-    /// to shape the entity's model file. Defaults to <c>true</c>. Set <c>false</c> when another index
-    /// over the same entity is the intended default and carries the marker itself.
-    /// </summary>
-    public bool IsDefault { get; set; } = true;
 }
