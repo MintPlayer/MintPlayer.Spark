@@ -24,8 +24,11 @@ B or fallback A; SP3 settles D6's ambiguity rule.
   - an analyzer error for a marker on a JS index used as a multi-map default
   - check the `params` array's length, not the argument count
   - incremental tests via `MintPlayer.SourceGenerators.Testing`'s `RunGeneratorTwice`
-- **M4:** always emit `[assembly: SparkPlainRoot(typeof(Ctx), typeof(T), "Prop")]` for plain roots (the
-  classifier from SP3), including roots inherited from same-compilation bases.
+- **M4:**
+  - make every app context `partial` (DemoApp, HR, QnA, SeoTester, SparkId)
+  - the "context is not partial" diagnostic fires whenever the generator has anything to add
+  - emit `[SparkPlainRoot(typeof(T), nameof(Prop))]` on the context's generated partial for each plain root (the
+    classifier from SP3), including roots inherited from same-compilation bases
 - **M6:**
   - the synchronizer builds the reference map from `SparkPlainRoot`
   - D11 collision-free aliases

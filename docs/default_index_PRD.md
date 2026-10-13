@@ -97,9 +97,11 @@ A multi-map that is a default must derive from `SparkMultiMapIndexCreationTask`.
     executable surface.
 - **Ambiguity:** when T has several hand-written roots, the reference uses the one whose body is the plain
   `Session.Query<T>()` (owner-confirmed, 2026-10-13).
-  - The synchronizer reflects at runtime and can't read bodies, but the generator can. SP3 settled the mechanism: the
-    generator emits an assembly-level `[assembly: SparkPlainRoot(typeof(Ctx), typeof(T), "Prop")]` (most contexts
-    aren't `partial`), and the synchronizer reads that.
+  - The synchronizer reflects at runtime and can't read bodies, but the generator can. SP3 settled the mechanism, and
+    the owner's follow-up placed it (2026-10-13). Every app context is `partial`: view roots need that anyway, and
+    nothing prevents it. The generator emits `[SparkPlainRoot(typeof(T), nameof(Prop))]` (`AllowMultiple`) on the
+    context's generated partial. The synchronizer reads it off the context type, walking the base types; a base
+    context from a referenced assembly carries its own marker from its own generator run.
   - SP3 proves the mechanism. If no plain root can be identified, the analyzer requires the reference to name a query
     (M5).
 
@@ -212,8 +214,9 @@ All spikes ran as scratch code in isolated worktrees; nothing from them was comm
   `GeneratorHarness`.
 
 **SP3 — the plain root is identified by a generator marker; row parity holds; a new alias collision found.**
-- **Marker.** It is emitted as an **assembly-level** attribute, `[assembly: SparkPlainRoot(typeof(Ctx), typeof(T),
-  "Prop")]`, because five of the seven app contexts are not `partial`.
+- **Marker.** The spike proposed an assembly-level attribute, because five of the seven app contexts weren't
+  `partial`. **Superseded (owner, 2026-10-13):** contexts are made `partial` (view roots require it anyway), and the
+  marker sits on the context's generated partial (see D6).
   - Classifier: plain means a body that is a single `Query<T>()` call with no arguments. It handles all three body
     forms and inherited same-compilation roots.
   - A helper method counts as not plain, which is conservative: such a reference falls back to an explicit query.
@@ -253,6 +256,19 @@ All spikes ran as scratch code in isolated worktrees; nothing from them was comm
 - **`[IgnoreProperty]`** affects only the model: RavenDB still persists and reads it (round-trip test passed).
 - **Baseline sync with no code change:** no hash changes in any app. SeoTester has `$schema` churn and HR a key
   reorder, both unrelated and not committed.
+
+**Implementation notes (M1/M2, commits `a77e9175`, `63f240a1`).**
+- **Runtime refusals.** The catalog refuses at startup, not only in the analyzer:
+  - a single-map marker naming another type
+  - a bare multi-map marker, or one on a multi-map not deriving from `SparkMultiMapIndexCreationTask`
+  - any marker on a JS or opaque index (`IndexCatalog.ResolveClaims`)
+- **Not checked at startup:** that a multi-map's listed types are actually mapped. Only the M3 analyzer does that.
+- **Viewless multi-map default:** its query surface is the union of every map's emitted fields. A field another map
+  emits is indexed, so sorting on it is not an error.
+- **The dev gate is strict for a viewless default:** an existing attribute outside the emitted fields fails
+  `--spark-verify-model` until it is marked `canSort`/`canFilter` false.
+- **Test fixtures:** every Spark test host scans the whole test assembly, so each marked fixture index claims its
+  own entity types. Later fixtures must follow this.
 
 **D11. Minted query names and aliases never collide either.** (Follows D7's principle; autonomous decision
 recorded for owner review.)
