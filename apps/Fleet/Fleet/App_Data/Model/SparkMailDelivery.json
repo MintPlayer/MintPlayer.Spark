@@ -1,0 +1,106 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "1950fd1b-cbd6-4fcb-a637-62ea7d9d9a07",
+    "name": "SparkMailDelivery",
+    "clrType": "MintPlayer.Spark.MailManager.Deliveries.SparkMailDelivery",
+    "breadcrumb": "{Email}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "056233bd-00db-4426-b22d-88318755e740",
+        "name": "CampaignId",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "41ac5cd0-3ccf-4653-8057-d1a36fe62e61",
+        "name": "Detail",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "404bc70c-1de9-4543-852a-6c3c72502d79",
+        "name": "Email",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0a4d0c24-cc71-4127-b27b-99a62b4fb462",
+        "name": "Status",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2a222b15-5fa1-47dc-9e11-32b7354e236c",
+        "name": "Stream",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1f0eb3ae-8332-497e-924e-824ce05b4301",
+        "name": "Template",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "5cd28d1d-ceb6-46b5-ae36-a381d5d590d0",
+        "name": "UpdatedAtUtc",
+        "dataType": "datetime",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "bd26ea00-a979-4653-b211-b67dc564d167",
+      "name": "GetMailDeliveries",
+      "source": "Database.MailDeliveries",
+      "sortColumns": [
+        {
+          "property": "Email",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "SparkMailDelivery"
+    }
+  ]
+}

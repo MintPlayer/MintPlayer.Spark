@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../../../schemas/model.schema.json",
+  "persistentObject": {
+    "id": "0e17b1e5-4e59-4944-8bdb-7b3ab4da3618",
+    "name": "Motorcycle",
+    "clrType": "DemoApp.Library.Entities.Motorcycle",
+    "queryType": "DemoApp.Indexes.VTwoWheeler",
+    "indexName": "TwoWheelers_Overview",
+    "breadcrumb": "{Brand} {Model}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "009366aa-6ed6-4a20-993d-9dd49f9d85b9",
+        "name": "Brand",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9448a16b-07ff-4672-8e45-79f8e05c4e64",
+        "name": "Details",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
+        "id": "7c5b588d-4168-448b-8b81-dc2b616f8826",
+        "name": "EngineCapacity",
+        "dataType": "number",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3afebaa0-2c55-4edb-b0f0-42244170073c",
+        "name": "Model",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "33d20a20-2da4-4416-a7c8-24b418ee132e",
+      "name": "GetMotorcycles",
+      "source": "Database.Motorcycles",
+      "sortColumns": [
+        {
+          "property": "Brand",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "TwoWheelers_Overview",
+      "entityType": "Motorcycle"
+    }
+  ]
+}

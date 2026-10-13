@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "persistentObject": {
+    "name": "Organization",
+    "attributes": [
+      {
+        "id": "333a0610-12cc-4b97-9711-a1529680ee47",
+        "name": "CreatedBy",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "None",
+        "rules": []
+      }
+    ]
+  },
+  "queries": [
+    {
+      "id": "114077de-5fb7-4c39-ad61-9bd2ea177d7d",
+      "name": "GetOrganizations",
+      "source": "Database.Organizations",
+      "alias": "organizations-2",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Organization"
+    }
+  ]
+}

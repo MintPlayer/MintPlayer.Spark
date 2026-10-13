@@ -5,6 +5,8 @@
     "name": "Profession",
     "clrType": "HR.Entities.Profession",
     "agentPermissions": "Read",
+    "queryType": "HR.Indexes.VProfessionLookup",
+    "indexName": "Professions_Lookup",
     "breadcrumb": "{Description}",
     "tabs": [],
     "groups": [],
@@ -18,6 +20,18 @@
         "order": 1,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d40dc98d-28cd-484e-85b6-39c050a6b89e",
+        "name": "Label",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "inCollectionType": false,
+        "showedOn": "Query",
         "rules": []
       },
       {
@@ -46,6 +60,7 @@
         }
       ],
       "renderMode": "Pagination",
+      "indexName": "Professions_Lookup",
       "entityType": "Profession"
     }
   ]
