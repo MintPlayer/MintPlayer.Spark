@@ -27,17 +27,24 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     private readonly IEnumerable<GeneratedIndexInfo> entities;
     private readonly bool knowsSpark;
     private readonly List<string> languages;
+    private readonly HashSet<string> claimedEntities;
 
+    /// <param name="claimedEntities">
+    /// Entities (fully-qualified, <c>global::</c>-prefixed) that a hand-written index claims with
+    /// <c>[DefaultIndex]</c>; their generated index is emitted without the marker (D5).
+    /// </param>
     public GenerateIndexProducer(
         IEnumerable<GeneratedIndexInfo> entities,
         bool knowsSpark,
         List<string> languages,
+        HashSet<string> claimedEntities,
         string rootNamespace)
         : base(rootNamespace, "SparkGeneratedIndexes.g.cs")
     {
         this.entities = entities;
         this.knowsSpark = knowsSpark;
         this.languages = languages;
+        this.claimedEntities = claimedEntities;
     }
 
     /// <summary>
@@ -246,7 +253,10 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
         if (!string.IsNullOrEmpty(info.Description))
             writer.WriteLine($"[global::System.ComponentModel.Description({Quote(info.Description!)})]");
 
-        if (info.IsDefault)
+        // The generated index is its entity's default unless a hand-written index claims the entity already
+        // (docs/default_index_PRD.md, D5): then the hand-written one wins, and emitting the marker here too
+        // would be two claims for one type, which the catalog refuses at startup.
+        if (!claimedEntities.Contains(info.EntityFullName))
             writer.WriteLine($"[{SparkAbstractions}.DefaultIndexAttribute]");
 
         using (writer.OpenBlock($"public partial class {info.IndexName} : {RavenIndexes}.AbstractIndexCreationTask<{info.EntityFullName}>"))

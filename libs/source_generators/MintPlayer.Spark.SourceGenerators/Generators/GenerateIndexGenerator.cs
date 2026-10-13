@@ -43,6 +43,17 @@ public class GenerateIndexGenerator : IncrementalGenerator
     private static readonly SymbolDisplayFormat TypeFormat = SymbolDisplayFormat.FullyQualifiedFormat
         .AddMiscellaneousOptions(SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
+    /// <summary>
+    /// Step names for incremental-step tests (<c>RunGeneratorTwice</c>): a step reported "Cached" or "Unchanged"
+    /// on an edit it does not care about is what proves its model compares by value.
+    /// </summary>
+    public static class TrackingNames
+    {
+        public const string ReferencedScan = "GenerateIndex.ReferencedScan";
+        public const string SourceClaims = "GenerateIndex.SourceClaims";
+        public const string Claims = "GenerateIndex.Claims";
+    }
+
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
         IncrementalValueProvider<Settings> settingsProvider)
@@ -75,9 +86,33 @@ public class GenerateIndexGenerator : IncrementalGenerator
         // the RESULT. (ICompilationCache is not applicable -- it is constrained to IEqualityComparer values,
         // i.e. it caches comparers, not data.) Cost is bounded by only walking assemblies that reference
         // MintPlayer.Spark.Abstractions at all.
-        var referencedEntitiesProvider = context.CompilationProvider
-            .Select(static (compilation, ct) => DescribeReferenced(compilation, ct))
-            ;
+        var referencedScanProvider = context.CompilationProvider
+            .Select(static (compilation, ct) => ScanReferenced(compilation, ct))
+            .WithTrackingName(TrackingNames.ReferencedScan);
+
+        var referencedEntitiesProvider = referencedScanProvider
+            .Select(static (scan, ct) => scan.Entities);
+
+        // Hand-written [DefaultIndex] claims (docs/default_index_PRD.md, D5): an entity some index already claims
+        // gets its generated index WITHOUT the marker. Same-project claims through ForAttributeWithMetadataName;
+        // referenced ones come out of the same walk as the referenced entities.
+        var sourceClaimsProvider = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                DefaultIndexClaims.DefaultIndexAttributeFullName,
+                predicate: static (node, ct) => node is ClassDeclarationSyntax,
+                transform: static (ctx, ct) => DescribeClaim((INamedTypeSymbol)ctx.TargetSymbol, ctx.Attributes[0]))
+            .Where(static claim => claim is not null)
+            .Select(static (claim, ct) => claim!)
+            .WithTrackingName(TrackingNames.SourceClaims)
+            .Collect();
+
+        var claimsProvider = sourceClaimsProvider
+            .Combine(referencedScanProvider)
+            .Select(static (pair, ct) => new ClaimSet
+            {
+                Claims = pair.Left.Concat(pair.Right.Claims).ToList(),
+            })
+            .WithTrackingName(TrackingNames.Claims);
 
         // The supported language set, for fanning a TranslatedString out into one field per language. A
         // generator has no DI, so CultureLoader -- the singleton that reads this file at runtime -- is out of
@@ -104,7 +139,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
         // attribute) but not RavenDB.Client; emitting AbstractIndexCreationTask subclasses there
         // is a guaranteed CS0400. Such a library runs this generator whenever it takes the analyzer
         // for AttributeDescriptionsGenerator (#348); its indexes are compiled by the host, which
-        // scans referenced assemblies (DescribeReferenced) and does reference Raven.
+        // scans referenced assemblies (ScanReferenced) and does reference Raven.
         var knowsSparkProvider = context.CompilationProvider
             .Select(static (compilation, ct) =>
                 compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) != null &&
@@ -134,18 +169,21 @@ public class GenerateIndexGenerator : IncrementalGenerator
         var sourceProvider = allEntitiesProvider
             .Combine(emitsIndexesProvider)
             .Combine(languagesProvider)
+            .Combine(claimsProvider)
             .Combine(settingsProvider)
             .Select(static Producer (providers, ct) =>
             {
-                var entities = providers.Left.Left.Left;
-                var knowsSpark = providers.Left.Left.Right;
-                var languages = providers.Left.Right;
+                var entities = providers.Left.Left.Left.Left;
+                var knowsSpark = providers.Left.Left.Left.Right;
+                var languages = providers.Left.Left.Right;
+                var claims = providers.Left.Right;
                 var settings = providers.Right;
 
                 return new GenerateIndexProducer(
                     entities.ToList(),
                     knowsSpark,
                     languages,
+                    ClaimedEntities(claims, entities),
                     settings.RootNamespace ?? "GeneratedCode");
             });
 
@@ -429,9 +467,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
             IndexName = indexName,
             IndexEntityName = indexEntityName,
             Description = GetNamedArgument(attribute, "Description"),
-            // GenerateIndexAttribute.IsDefault is gone (docs/default_index_PRD.md, D5). Every generated
-            // index claims its entity until the generator learns to yield to a hand-written claim (M3).
-            IsDefault = true,
             CollectionVariable = IndexNaming.CollectionVariable(entity.Name),
             ItemVariable = itemVariable,
             Properties = properties,
@@ -491,13 +526,18 @@ public class GenerateIndexGenerator : IncrementalGenerator
     /// nothing but attributes stopped referencing it and was skipped without a diagnostic.
     /// </para>
     /// </summary>
-    private static ImmutableArray<GeneratedIndexInfo> DescribeReferenced(Compilation compilation, System.Threading.CancellationToken ct)
+    /// <remarks>
+    /// The same walk also collects the referenced assemblies' <c>[DefaultIndex]</c> claims (D5), read from the
+    /// attribute's <c>TypedConstant</c>s. A referenced index's base type is in metadata, so a bare single-map marker
+    /// still resolves to its mapped type.
+    /// </remarks>
+    private static ReferencedIndexScan ScanReferenced(Compilation compilation, System.Threading.CancellationToken ct)
     {
+        var scan = new ReferencedIndexScan();
+
         var attributeHost = ResolveAttributeHostAssembly(compilation);
         if (attributeHost is null)
-            return ImmutableArray<GeneratedIndexInfo>.Empty;
-
-        var builder = ImmutableArray.CreateBuilder<GeneratedIndexInfo>();
+            return scan;
 
         foreach (var reference in compilation.SourceModule.ReferencedAssemblySymbols)
         {
@@ -507,12 +547,56 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
             foreach (var type in AllTypes(reference.GlobalNamespace, ct))
             {
-                if (!type.HasGenerateIndex()) continue;
-                if (Describe(type, ct) is { } info) builder.Add(info);
+                if (type.HasGenerateIndex() && Describe(type, ct) is { } info)
+                    scan.Entities.Add(info);
+
+                if (DefaultIndexClaims.Marker(type) is { } marker && DescribeClaim(type, marker) is { } claim)
+                    scan.Claims.Add(claim);
             }
         }
 
-        return builder.ToImmutable();
+        return scan;
+    }
+
+    /// <summary>
+    /// The entity types <paramref name="index"/> claims through its <c>[DefaultIndex]</c> marker, or
+    /// <see langword="null"/> when it claims none (an abstract, JavaScript or opaque index, or a bare multi-map
+    /// marker, all of which <c>DefaultIndexAnalyzer</c> and the catalog report instead).
+    /// </summary>
+    private static DefaultIndexClaimInfo? DescribeClaim(INamedTypeSymbol index, AttributeData marker)
+    {
+        var claimed = DefaultIndexClaims.ClaimedTypes(index, marker);
+        if (claimed.Count == 0) return null;
+
+        return new DefaultIndexClaimInfo
+        {
+            IndexName = index.Name,
+            IndexFullName = index.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            EntityFullNames = claimed
+                .Select(t => t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+                .OrderBy(n => n, System.StringComparer.Ordinal)
+                .ToList(),
+        };
+    }
+
+    /// <summary>
+    /// The <c>[GenerateIndex]</c> entities a hand-written index already claims: their generated index yields and is
+    /// emitted without <c>[DefaultIndex]</c> (D5).
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Claims by an index named like one this generator emits are ignored. The generator never sees its own
+    /// output, so such a claim is another application's generated index reached through a reference (an app
+    /// referencing an app), and counting it would make every generated index yield to its twin.
+    /// </remarks>
+    private static HashSet<string> ClaimedEntities(ClaimSet claims, IEnumerable<GeneratedIndexInfo> entities)
+    {
+        var generatedIndexNames = new HashSet<string>(entities.Select(e => e.IndexName), System.StringComparer.Ordinal);
+
+        return new HashSet<string>(
+            claims.Claims
+                .Where(c => !generatedIndexNames.Contains(c.IndexName))
+                .SelectMany(c => c.EntityFullNames),
+            System.StringComparer.Ordinal);
     }
 
     /// <summary>

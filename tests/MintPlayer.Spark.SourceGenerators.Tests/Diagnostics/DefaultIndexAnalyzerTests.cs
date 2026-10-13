@@ -5,8 +5,9 @@ using Raven.Client.Documents.Indexes;
 namespace MintPlayer.Spark.SourceGenerators.Tests.Diagnostics;
 
 /// <summary>
-/// SPARK009: one <c>[DefaultIndex]</c> per collection type per compilation. The catalog's freeze-time
-/// validation stays authoritative across assemblies; this mirrors it at compile time.
+/// SPARK009: one <c>[DefaultIndex]</c> claim per entity type per compilation, and SPARK051–055: the shapes a
+/// marker may take (<c>docs/default_index_PRD.md</c>, D1, D4, D5). The catalog's freeze-time validation stays
+/// authoritative across assemblies; this mirrors it at compile time.
 /// </summary>
 public class DefaultIndexAnalyzerTests
 {
@@ -137,7 +138,8 @@ public class DefaultIndexAnalyzerTests
     }
 
     /// <summary>
-    /// A multi-map index claims no collection, so it cannot contend for one collection's default.
+    /// A multi-map's type argument is not a collection, so a bare marker on it claims nothing and cannot contend for
+    /// Car's default. (It is SPARK052 instead: a multi-map default must list its types, see below.)
     /// </summary>
     /// <remarks>
     /// ⚠️ This test used to assert the opposite — two SPARK009 diagnostics — and its fixture spelled
@@ -200,12 +202,11 @@ public class DefaultIndexAnalyzerTests
     }
 
     /// <summary>
-    /// A [GenerateIndex] entity claims the default through its generated index, so a hand-written
-    /// [DefaultIndex] over the same entity clashes with the entity itself — the analyzer must not
-    /// depend on the generated tree being analyzed (these fixtures never run the generator).
+    /// D5: a hand-written claim beats <c>[GenerateIndex]</c>. The generated index yields and is emitted without the
+    /// marker, so the entity is not a second claim and nothing clashes (it used to be SPARK009 on both).
     /// </summary>
     [Fact]
-    public async Task A_GenerateIndex_entity_clashes_with_a_hand_marked_index()
+    public async Task A_GenerateIndex_entity_yields_to_a_hand_marked_index()
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark.Abstractions;
@@ -214,27 +215,6 @@ public class DefaultIndexAnalyzerTests
             namespace TestApp;
 
             [GenerateIndex]
-            public class Car { public string? Model { get; set; } }
-
-            [DefaultIndex]
-            public class Cars_Search : AbstractIndexCreationTask<Car>
-            {
-            }
-            """);
-
-        diagnostics.Where(d => d.Id == "SPARK009").Should().HaveCount(2);
-    }
-
-    [Fact]
-    public async Task A_GenerateIndex_entity_opted_out_with_IsDefault_false_is_clean_beside_a_hand_marked_index()
-    {
-        var diagnostics = await RunAsync("""
-            using MintPlayer.Spark.Abstractions;
-            using Raven.Client.Documents.Indexes;
-
-            namespace TestApp;
-
-            [GenerateIndex(IsDefault = false)]
             public class Car { public string? Model { get; set; } }
 
             [DefaultIndex]
@@ -262,7 +242,7 @@ public class DefaultIndexAnalyzerTests
     }
 
     [Fact]
-    public async Task The_generated_index_name_override_is_used_in_the_clash_message()
+    public async Task The_clash_message_names_the_entity_type()
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark.Abstractions;
@@ -270,17 +250,212 @@ public class DefaultIndexAnalyzerTests
 
             namespace TestApp;
 
-            [GenerateIndex(IndexName = "Cars_Custom")]
             public class Car { public string? Model { get; set; } }
 
+            [DefaultIndex(typeof(Car))]
+            public class Cars_Overview : AbstractIndexCreationTask<Car> { }
+
             [DefaultIndex]
-            public class Cars_Search : AbstractIndexCreationTask<Car>
-            {
-            }
+            public class Cars_Search : AbstractIndexCreationTask<Car> { }
             """);
 
         diagnostics.Where(d => d.Id == "SPARK009").Should().HaveCount(2)
-            .And.Contain(d => d.GetMessage(null).Contains("Cars_Custom"));
+            .And.Contain(d => d.GetMessage(null).Contains("entity type 'TestApp.Car'"));
+    }
+
+    // ---- Multi-map claims (D1, D4) -------------------------------------------------------------------------
+
+    private const string Vehicles = """
+        namespace TestApp;
+
+        public class Car { public string? Name { get; set; } }
+        public class Bike { public string? Name { get; set; } }
+        public class Truck { public string? Name { get; set; } }
+        public class VehicleEntry { public string? Name { get; set; } }
+        """;
+
+    private static Task<IReadOnlyList<Microsoft.CodeAnalysis.Diagnostic>> RunWithVehiclesAsync(string source)
+        => GeneratorHarness.RunAnalyzerAsync(
+            AnalyzerName,
+            [Vehicles, source],
+            referenceTypes: [typeof(DefaultIndexAttribute), typeof(AbstractIndexCreationTask<>), typeof(MintPlayer.Spark.SparkMultiMapIndexCreationTask<>)]);
+
+    [Fact]
+    public async Task A_Spark_multi_map_listing_its_mapped_types_is_clean()
+    {
+        var diagnostics = await RunWithVehiclesAsync("""
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Abstractions;
+            using System.Collections.Generic;
+            using System.Linq;
+
+            namespace TestApp;
+
+            [DefaultIndex(typeof(Car), typeof(Bike))]
+            public class Vehicles : SparkMultiMapIndexCreationTask<VehicleEntry>
+            {
+                public Vehicles()
+                {
+                    AddMap<Car>(cars => from c in cars select new VehicleEntry { Name = c.Name });
+                    // The inferred form binds to the same generic AddMap<Bike>.
+                    AddMap((IEnumerable<Bike> bikes) => from b in bikes select new VehicleEntry { Name = b.Name });
+                }
+            }
+            """);
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_multi_map_claim_clashes_with_a_single_map_claim_for_the_same_type()
+    {
+        var diagnostics = await RunWithVehiclesAsync("""
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+            using System.Linq;
+
+            namespace TestApp;
+
+            [DefaultIndex(typeof(Car), typeof(Bike))]
+            public class Vehicles : SparkMultiMapIndexCreationTask<VehicleEntry>
+            {
+                public Vehicles()
+                {
+                    AddMap<Car>(cars => from c in cars select new VehicleEntry { Name = c.Name });
+                    AddMap<Bike>(bikes => from b in bikes select new VehicleEntry { Name = b.Name });
+                }
+            }
+
+            [DefaultIndex]
+            public class Bikes_Overview : AbstractIndexCreationTask<Bike> { }
+            """);
+
+        diagnostics.Where(d => d.Id == "SPARK009").Should().HaveCount(2)
+            .And.OnlyContain(d => d.GetMessage(null).Contains("'TestApp.Bike'"));
+    }
+
+    [Fact]
+    public async Task A_bare_marker_on_a_multi_map_is_an_error()
+    {
+        var diagnostics = await RunWithVehiclesAsync("""
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Abstractions;
+            using System.Linq;
+
+            namespace TestApp;
+
+            [DefaultIndex]
+            public class Vehicles : SparkMultiMapIndexCreationTask<VehicleEntry>
+            {
+                public Vehicles()
+                {
+                    AddMap<Car>(cars => from c in cars select new VehicleEntry { Name = c.Name });
+                }
+            }
+            """);
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK052");
+    }
+
+    [Fact]
+    public async Task A_listed_type_the_multi_map_does_not_map_is_an_error()
+    {
+        var diagnostics = await RunWithVehiclesAsync("""
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Abstractions;
+            using System.Linq;
+
+            namespace TestApp;
+
+            [DefaultIndex(typeof(Car), typeof(Truck))]
+            public class Vehicles : SparkMultiMapIndexCreationTask<VehicleEntry>
+            {
+                public Vehicles()
+                {
+                    AddMap<Car>(cars => from c in cars select new VehicleEntry { Name = c.Name });
+                }
+            }
+            """);
+
+        var diagnostic = diagnostics.Should().ContainSingle().Which;
+        diagnostic.Id.Should().Be("SPARK053");
+        diagnostic.GetMessage(null).Should().Contain("'TestApp.Truck'");
+    }
+
+    [Fact]
+    public async Task A_multi_map_default_not_deriving_from_the_Spark_base_is_an_error()
+    {
+        var diagnostics = await RunWithVehiclesAsync("""
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+            using System.Linq;
+
+            namespace TestApp;
+
+            [DefaultIndex(typeof(Car))]
+            public class Vehicles : AbstractMultiMapIndexCreationTask<VehicleEntry>
+            {
+                public Vehicles()
+                {
+                    AddMap<Car>(cars => from c in cars select new VehicleEntry { Name = c.Name });
+                }
+            }
+            """);
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK055");
+    }
+
+    // ---- Single-map arguments and JavaScript indexes (D1, SP1) ---------------------------------------------
+
+    [Fact]
+    public async Task A_single_map_naming_its_own_type_is_clean()
+    {
+        var diagnostics = await RunWithVehiclesAsync("""
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+
+            namespace TestApp;
+
+            [DefaultIndex(typeof(Car))]
+            public class Cars_Overview : AbstractIndexCreationTask<Car> { }
+            """);
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_single_map_naming_another_type_is_an_error()
+    {
+        var diagnostics = await RunWithVehiclesAsync("""
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+
+            namespace TestApp;
+
+            [DefaultIndex(typeof(Bike))]
+            public class Cars_Overview : AbstractIndexCreationTask<Car> { }
+            """);
+
+        var diagnostic = diagnostics.Should().ContainSingle().Which;
+        diagnostic.Id.Should().Be("SPARK051");
+        diagnostic.GetMessage(null).Should().Contain("'TestApp.Bike'");
+    }
+
+    [Fact]
+    public async Task A_marker_on_a_JavaScript_index_is_an_error()
+    {
+        var diagnostics = await RunWithVehiclesAsync("""
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+
+            namespace TestApp;
+
+            [DefaultIndex(typeof(Car))]
+            public class Cars_ByJs : AbstractJavaScriptIndexCreationTask { }
+            """);
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK054");
     }
 
     [Fact]

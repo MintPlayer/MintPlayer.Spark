@@ -35,11 +35,6 @@ public partial class GeneratedIndexInfo
     /// <summary>Emitted as <c>[Description]</c> on the index class when set.</summary>
     public string? Description { get; set; }
 
-    /// <summary>
-    /// Whether the index class carries <c>[DefaultIndex]</c>, electing its projection to shape the entity's
-    /// model file. <c>false</c> once a hand-written index claims the entity (D5).
-    /// </summary>
-    public bool IsDefault { get; set; } = true;
 
     /// <summary>Lambda parameter for the document collection in the map, e.g. <c>cars</c>.</summary>
     public string CollectionVariable { get; set; } = string.Empty;
