@@ -1239,9 +1239,17 @@ internal partial class EntityMapper : IEntityMapper
             {
                 convertedValue = value is DateTimeOffset dto ? dto : WireDateTimeOffset.Parse(value.ToString()!);
             }
+            // ng-spark's forms send a `date` attribute as local midnight with the browser's offset
+            // ("2026-04-03T00:00:00+02:00", fromDateInput in datetime-local.ts, #403), which DateOnly.Parse
+            // refuses. A DateOnly is the calendar day as written, so the offset is dropped, never applied:
+            // converting to UTC first would turn the 3rd into the 2nd east of Greenwich.
             else if (targetType == typeof(DateOnly))
             {
-                convertedValue = value is DateOnly d ? d : DateOnly.Parse(value.ToString()!, CultureInfo.InvariantCulture);
+                convertedValue = value is DateOnly d ? d
+                    : DateTimeOffset.TryParse(value.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var written)
+                        && value.ToString()!.Contains('T')
+                        ? DateOnly.FromDateTime(written.DateTime)
+                        : DateOnly.Parse(value.ToString()!, CultureInfo.InvariantCulture);
             }
             else if (targetType == typeof(Color))
             {

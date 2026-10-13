@@ -95,6 +95,20 @@ public class EntityMapperValueConversionTests
         Write(nameof(Sample.Level), Priority.High).Level.Should().Be(Priority.High);
     }
 
+    /// <summary>
+    /// ng-spark's edit and create forms send a <c>date</c> attribute as local midnight with the browser's offset
+    /// (<c>fromDateInput</c> in <c>datetime-local.ts</c>, #403). A DateOnly property is the calendar day as written,
+    /// so the offset is dropped, never applied: converting <c>2026-04-03T00:00:00+02:00</c> to UTC would give the 2nd.
+    /// Before the fix this refused every save of a Person with a date of birth ("is not a valid DateOnly value").
+    /// </summary>
+    [Theory]
+    [InlineData("2026-04-03T00:00:00+02:00")]
+    [InlineData("2026-04-03T00:00:00-05:00")]
+    [InlineData("2026-04-03T00:00:00Z")]
+    [InlineData("2026-04-03T00:00:00")]
+    public void A_date_attribute_sent_as_local_midnight_with_an_offset_is_the_day_as_written(string wire)
+        => Write(nameof(Sample.Day), wire).Day.Should().Be(new DateOnly(2026, 4, 3));
+
     [Fact]
     public void A_json_null_clears_a_nullable_property_and_leaves_a_value_type_alone()
     {
