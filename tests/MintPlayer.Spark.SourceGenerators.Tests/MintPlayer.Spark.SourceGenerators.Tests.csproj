@@ -32,6 +32,12 @@
     <PackageReference Include="MintPlayer.Assertions" Version="11.0.0-rc.6" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
+    <!--
+    Only for incremental-step tests (RunGeneratorTwice / RunKeystroke), per docs/default_index_PRD.md §7 SP2: two runs
+    on one driver are the only way to see a pipeline model compared by reference. The local GeneratorHarness stays
+    the entry point for everything else; the package's harness is used under an alias.
+    -->
+    <PackageReference Include="MintPlayer.SourceGenerators.Testing" Version="13.0.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
 
     <!--

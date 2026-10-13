@@ -52,7 +52,17 @@ public class GenerateIndexGenerator : IncrementalGenerator
         public const string ReferencedScan = "GenerateIndex.ReferencedScan";
         public const string SourceClaims = "GenerateIndex.SourceClaims";
         public const string Claims = "GenerateIndex.Claims";
+        public const string Contexts = "GenerateIndex.Contexts";
+        public const string SourceViews = "GenerateIndex.SourceViews";
+        public const string ContextPlans = "GenerateIndex.ContextPlans";
     }
+
+    private const string SparkPlainRootAttributeFullName = "MintPlayer.Spark.Abstractions.SparkPlainRootAttribute";
+    private const string RavenQueryableMetadataName = "Raven.Client.Documents.Linq.IRavenQueryable`1";
+    private const string RavenSessionNamespace = "Raven.Client.Documents.Session";
+
+    /// <summary>Marks a <see cref="SparkContextInfo.QueryableTypeFullNames"/> entry that names an unresolved (not yet generated) type.</summary>
+    private const string UnresolvedTypePrefix = "?";
 
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
@@ -235,8 +245,9 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     settings.RootNamespace ?? "GeneratedCode");
             });
 
-        // Query roots on the app's SparkContext, so a generated index is reachable the same way a
-        // hand-written one is.
+        // Query roots on the app's SparkContext (docs/default_index_PRD.md, D6): a typed root for every public
+        // [FromIndex] view -- generated pairs, hand-written views in this project and in referenced assemblies --
+        // and the plain-root marker for every entity root whose body is a bare Session.Query<T>().
         var contextsProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (node, ct) => node is ClassDeclarationSyntax { BaseList.Types.Count: > 0 },
@@ -248,28 +259,54 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     if (ctx.SemanticModel.GetDeclaredSymbol(classDeclaration, ct) is not INamedTypeSymbol contextType)
                         return default;
 
-                    return DescribeContext(contextType, ct);
+                    return DescribeContext(contextType, ctx.SemanticModel.Compilation, ct);
                 })
             .Where(static x => x != null)
+            .Select(static (x, ct) => x!)
+            .WithTrackingName(TrackingNames.Contexts)
             .Collect();
 
-        var contextSourceProvider = contextsProvider
-            .Combine(allEntitiesProvider)
-            .Combine(knowsSparkProvider)
-            .Combine(settingsProvider)
-            .Select(static Producer (providers, ct) =>
-            {
-                var contexts = providers.Left.Left.Left;
-                var entities = providers.Left.Left.Right;
-                var knowsSpark = providers.Left.Right;
-                var settings = providers.Right;
+        var sourceViewsProvider = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                FromIndexAttributeFullName,
+                predicate: static (node, ct) => node is ClassDeclarationSyntax,
+                transform: static (ctx, ct) => DescribeView((INamedTypeSymbol)ctx.TargetSymbol, ctx.Attributes[0]))
+            .Where(static x => x != null)
+            .Select(static (x, ct) => x!)
+            .WithTrackingName(TrackingNames.SourceViews)
+            .Collect();
 
-                return new SparkContextRootsProducer(
-                    contexts.Where(x => x != null).Cast<SparkContextInfo>().ToList(),
-                    entities,
-                    knowsSpark,
-                    settings.RootNamespace ?? "GeneratedCode");
-            });
+        var knowsPlainRootProvider = context.CompilationProvider
+            .Select(static (compilation, ct) => compilation.GetTypeByMetadataName(SparkPlainRootAttributeFullName) != null);
+
+        // D7: every name is resolved here, in the pipeline, as equatable data. The producer only writes.
+        var contextPlansProvider = contextsProvider
+            .Combine(sourceViewsProvider)
+            .Combine(referencedScanProvider)
+            .Combine(allEntitiesProvider)
+            .Combine(emitsIndexesProvider)
+            .Combine(settingsProvider)
+            .Select(static (providers, ct) => new ContextPlanSet
+            {
+                Plans = PlanContexts(
+                    contexts: providers.Left.Left.Left.Left.Left,
+                    sourceViews: providers.Left.Left.Left.Left.Right,
+                    referencedViews: providers.Left.Left.Left.Right.Views,
+                    generated: providers.Left.Left.Right,
+                    emitsIndexes: providers.Left.Right,
+                    rootNamespace: providers.Right.RootNamespace ?? "GeneratedCode"),
+            })
+            .WithTrackingName(TrackingNames.ContextPlans);
+
+        var contextSourceProvider = contextPlansProvider
+            .Combine(knowsSparkProvider)
+            .Combine(knowsPlainRootProvider)
+            .Combine(settingsProvider)
+            .Select(static Producer (providers, ct) => new SparkContextRootsProducer(
+                providers.Left.Left.Left.Plans,
+                providers.Left.Left.Right,
+                providers.Left.Right,
+                providers.Right.RootNamespace ?? "GeneratedCode"));
 
         context.ProduceCode(sourceProvider, handWrittenSourceProvider, contextSourceProvider);
 
@@ -483,7 +520,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
     /// <summary>
     /// Describes the app's <c>SparkContext</c>, or <c>null</c> when the class is not one.
     /// </summary>
-    private static SparkContextInfo? DescribeContext(INamedTypeSymbol contextType, System.Threading.CancellationToken ct)
+    private static SparkContextInfo? DescribeContext(
+        INamedTypeSymbol contextType, Compilation compilation, System.Threading.CancellationToken ct)
     {
         if (contextType.IsAbstract) return null;
 
@@ -499,19 +537,258 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
         if (!derivesFromSparkContext) return null;
 
-        var isPartial = contextType.DeclaringSyntaxReferences
-            .Select(r => r.GetSyntax(ct))
-            .OfType<ClassDeclarationSyntax>()
-            .Any(c => c.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword)));
+        // The generated half reopens every containing type too, so each of them must be partial as well, or the
+        // contribution is a CS0260 instead of a member.
+        var isPartial = true;
+        for (var current = contextType; current is not null; current = current.ContainingType)
+            isPartial &= IsDeclaredPartial(current, ct);
+
+        var ravenQueryable = compilation.GetTypeByMetadataName(RavenQueryableMetadataName);
+        var queryableTypes = new SortedSet<string>(System.StringComparer.Ordinal);
+        var plainRoots = new List<PlainRootInfo>();
+        var plainSeen = new HashSet<string>(System.StringComparer.Ordinal);
+
+        for (var current = contextType; current is not null; current = current.BaseType)
+        {
+            var isOwn = SymbolEqualityComparer.Default.Equals(current, contextType);
+
+            foreach (var property in current.GetMembers().OfType<IPropertySymbol>())
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (property.IsStatic) continue;
+                if (!isOwn && property.DeclaredAccessibility == Accessibility.Private) continue;
+                if (ravenQueryable is null
+                    || property.Type is not INamedTypeSymbol { TypeArguments.Length: 1 } queryable
+                    || !SymbolEqualityComparer.Default.Equals(queryable.OriginalDefinition, ravenQueryable))
+                    continue;
+
+                var exposed = queryable.TypeArguments[0];
+
+                // ⚠️ A hand-written root of a GENERATED view names a type this generator has not produced yet, so it
+                // binds to an error type with no namespace. Recorded by simple name, which PlanContexts matches
+                // against a generated view.
+                queryableTypes.Add(exposed.TypeKind == TypeKind.Error
+                    ? UnresolvedTypePrefix + exposed.Name
+                    : exposed.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+
+                // The synchronizer reads public roots only, and a root hidden by a derived one is not the root.
+                if (property.DeclaredAccessibility != Accessibility.Public) continue;
+                if (!plainSeen.Add(property.Name)) continue;
+                if (exposed is INamedTypeSymbol named && named.HasFromIndex()) continue;
+
+                // A base context from a referenced assembly has no syntax here: its markers come from its own
+                // generator run (D6), and the classifier answers "not plain" for it anyway.
+                if (IsPlainRoot(property, exposed, compilation, ct))
+                {
+                    plainRoots.Add(new PlainRootInfo
+                    {
+                        EntityFullName = exposed.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        PropertyName = property.Name,
+                    });
+                }
+            }
+        }
 
         return new SparkContextInfo
         {
             ClassName = contextType.Name,
+            FullName = contextType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             PathSpec = contextType.GetPathSpec(ct),
             IsPartial = isPartial,
-            ExistingMemberNames = contextType.GetMembers().Select(m => m.Name).Distinct().ToList(),
+            TakenMemberNames = MemberNamesIncludingBases(contextType),
+            QueryableTypeFullNames = queryableTypes.ToList(),
+            PlainRoots = plainRoots
+                .OrderBy(r => r.PropertyName, System.StringComparer.Ordinal)
+                .ToList(),
             Location = contextType.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
         };
+    }
+
+    /// <summary>
+    /// Every name a new member of <paramref name="type"/> would collide with or hide (D7): its own members (private
+    /// ones included), the non-private members of every base type, and its own name (CS0542). Private base members
+    /// neither collide nor hide.
+    /// </summary>
+    private static List<string> MemberNamesIncludingBases(INamedTypeSymbol type)
+    {
+        var names = new SortedSet<string>(System.StringComparer.Ordinal) { type.Name };
+
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            var isOwn = SymbolEqualityComparer.Default.Equals(current, type);
+            foreach (var member in current.GetMembers())
+            {
+                if (!member.CanBeReferencedByName) continue;
+                if (!isOwn && member.DeclaredAccessibility == Accessibility.Private) continue;
+                names.Add(member.Name);
+            }
+        }
+
+        foreach (var typeParameter in type.TypeParameters)
+            names.Add(typeParameter.Name);
+
+        return names.ToList();
+    }
+
+    /// <summary>
+    /// Whether <paramref name="property"/> is the plain entity root of <paramref name="entity"/> (PRD §7, SP3): its body,
+    /// in any of the three forms (<c>=&gt; e</c>, <c>get =&gt; e</c>, <c>get { return e; }</c>), is a single
+    /// <c>Query&lt;T&gt;()</c> call with no arguments on a RavenDB session (<c>Session.Query&lt;T&gt;()</c>,
+    /// <c>this.Session.Query&lt;T&gt;()</c>).
+    /// </summary>
+    /// <remarks>
+    /// Conservative by design: a filter, an index or collection argument, <c>.Customize(...)</c>, a local, or a helper
+    /// method (even one that only wraps <c>Session.Query&lt;T&gt;()</c>) is "not plain". A reference to such a type then
+    /// has to name its query, which is a visible, fixable answer; a wrong "plain" would silently route lookups through
+    /// a filtered root.
+    /// </remarks>
+    private static bool IsPlainRoot(
+        IPropertySymbol property, ITypeSymbol entity, Compilation compilation, System.Threading.CancellationToken ct)
+    {
+        var declaration = property.DeclaringSyntaxReferences
+            .Select(r => r.GetSyntax(ct))
+            .OfType<PropertyDeclarationSyntax>()
+            .FirstOrDefault();
+        if (declaration is null) return false;
+
+        var body = declaration.ExpressionBody?.Expression;
+        if (body is null)
+        {
+            var getter = declaration.AccessorList?.Accessors
+                .FirstOrDefault(a => a.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.GetAccessorDeclaration));
+            body = getter?.ExpressionBody?.Expression
+                ?? (getter?.Body?.Statements is { Count: 1 } statements
+                    && statements[0] is ReturnStatementSyntax { Expression: { } returned }
+                        ? returned
+                        : null);
+        }
+
+        while (body is ParenthesizedExpressionSyntax parenthesized)
+            body = parenthesized.Expression;
+
+        if (body is not InvocationExpressionSyntax invocation) return false;
+        if (invocation.ArgumentList.Arguments.Count > 0) return false;
+
+        var model = compilation.GetSemanticModel(declaration.SyntaxTree);
+        if (model.GetSymbolInfo(invocation, ct).Symbol is not IMethodSymbol method) return false;
+
+        return method.Name == "Query"
+            && method.TypeArguments.Length == 1
+            && SymbolEqualityComparer.Default.Equals(method.TypeArguments[0], entity)
+            && method.ContainingType?.ContainingNamespace?.ToDisplayString() == RavenSessionNamespace;
+    }
+
+    /// <summary>
+    /// A public <c>[FromIndex]</c> view, or <see langword="null"/> when it cannot get a root on the app's context: not
+    /// effectively public (the root is a public property, CS0053), or naming no usable index type.
+    /// </summary>
+    private static IndexViewInfo? DescribeView(INamedTypeSymbol view, AttributeData fromIndex)
+    {
+        if (!IsEffectivelyPublic(view) || view.IsGenericType) return null;
+        if (fromIndex.ConstructorArguments.FirstOrDefault().Value is not INamedTypeSymbol index) return null;
+        if (!IsEffectivelyPublic(index) || index.IsGenericType || index.IsAbstract) return null;
+
+        var mapped = RavenIndexHierarchy.MappedCollection(index);
+
+        return new IndexViewInfo
+        {
+            ViewFullName = view.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            IndexFullName = index.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            WantedMemberName = mapped is not null
+                ? IndexNaming.ContextRoot(mapped.Name, view.Name)
+                : IndexNaming.Pluralize(view.Name),
+        };
+    }
+
+    private static bool IsEffectivelyPublic(INamedTypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.ContainingType)
+            if (current.DeclaredAccessibility != Accessibility.Public) return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves every context's view roots (D6, D7). The sources are merged first — the generator's own
+    /// <c>[GenerateIndex]</c> pairs (it never sees its own output), then hand-written views in this project and in
+    /// referenced assemblies — and a view appears once, its generated pair first. A view the context already exposes
+    /// through an <c>IRavenQueryable&lt;V&gt;</c> member, own or inherited, gets no second root. Every other view takes
+    /// <c>IndexNaming</c>'s name, or the first free <c>{Name}2</c>, <c>{Name}3</c>, … against the context's members
+    /// including inherited ones and the roots already chosen in this pass.
+    /// </summary>
+    private static List<ContextRootsPlan> PlanContexts(
+        ImmutableArray<SparkContextInfo> contexts,
+        ImmutableArray<IndexViewInfo> sourceViews,
+        List<IndexViewInfo> referencedViews,
+        ImmutableArray<GeneratedIndexInfo> generated,
+        bool emitsIndexes,
+        string rootNamespace)
+    {
+        var indexNamespace = $"global::{rootNamespace}.Indexes";
+
+        // Generated pairs only where the generator emits them (the application): elsewhere the index would not exist.
+        var generatedViews = emitsIndexes
+            ? generated
+                .Where(e => e.Properties.Count > 0)
+                .GroupBy(e => e.IndexName, System.StringComparer.Ordinal)
+                .Select(g => g.OrderBy(e => e.EntityFullName, System.StringComparer.Ordinal).First())
+                .OrderBy(e => e.IndexEntityName, System.StringComparer.Ordinal)
+                .Select(e => new IndexViewInfo
+                {
+                    ViewFullName = $"{indexNamespace}.{e.IndexEntityName}",
+                    IndexFullName = $"{indexNamespace}.{e.IndexName}",
+                    WantedMemberName = IndexNaming.ContextRoot(e.EntityName, e.IndexEntityName),
+                })
+            : Enumerable.Empty<IndexViewInfo>();
+
+        var scannedViews = sourceViews
+            .Concat(referencedViews)
+            .OrderBy(v => v.ViewFullName, System.StringComparer.Ordinal);
+
+        var seen = new HashSet<string>(System.StringComparer.Ordinal);
+        var views = generatedViews
+            .Concat(scannedViews)
+            .Where(v => seen.Add(v.ViewFullName))
+            .ToList();
+
+        var plans = new List<ContextRootsPlan>();
+        var planned = new HashSet<string>(System.StringComparer.Ordinal);
+
+        // One plan per context, even when it is declared in several partial parts that each carry the base list.
+        foreach (var context in contexts.OrderBy(c => c.FullName, System.StringComparer.Ordinal))
+        {
+            if (!planned.Add(context.FullName)) continue;
+
+            var taken = new HashSet<string>(context.TakenMemberNames, System.StringComparer.Ordinal);
+            var exposed = new HashSet<string>(context.QueryableTypeFullNames, System.StringComparer.Ordinal);
+            var roots = new List<ResolvedViewRootInfo>();
+
+            foreach (var view in views)
+            {
+                if (exposed.Contains(view.ViewFullName)) continue;
+                if (exposed.Contains(UnresolvedTypePrefix + view.ViewFullName.Substring(view.ViewFullName.LastIndexOf('.') + 1))
+                    && view.ViewFullName.StartsWith(indexNamespace + ".", System.StringComparison.Ordinal))
+                    continue;
+
+                var chosen = view.WantedMemberName;
+                for (var suffix = 2; taken.Contains(chosen); suffix++)
+                    chosen = view.WantedMemberName + suffix;
+
+                taken.Add(chosen);
+                roots.Add(new ResolvedViewRootInfo
+                {
+                    ViewFullName = view.ViewFullName,
+                    IndexFullName = view.IndexFullName,
+                    MemberName = chosen,
+                    WantedMemberName = view.WantedMemberName,
+                });
+            }
+
+            plans.Add(new ContextRootsPlan { Context = context, ViewRoots = roots });
+        }
+
+        return plans;
     }
 
     /// <summary>
@@ -552,6 +829,10 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
                 if (DefaultIndexClaims.Marker(type) is { } marker && DescribeClaim(type, marker) is { } claim)
                     scan.Claims.Add(claim);
+
+                if (type.GetAttributes().FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == FromIndexAttributeFullName) is { } fromIndex
+                    && DescribeView(type, fromIndex) is { } view)
+                    scan.Views.Add(view);
             }
         }
 

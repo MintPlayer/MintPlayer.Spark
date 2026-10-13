@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using MintPlayer.Spark.SourceGenerators.Diagnostics;
 using MintPlayer.Spark.SourceGenerators.Models;
-using MintPlayer.Spark.SourceGenerators.Naming;
 using MintPlayer.SourceGenerators.Tools;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
@@ -11,72 +10,83 @@ using System.Threading;
 namespace MintPlayer.Spark.SourceGenerators.Generators;
 
 /// <summary>
-/// Contributes an index-backed query root to the application's <c>SparkContext</c> for each generated pair —
-/// the member Fleet and HR write by hand today, and DemoApp omits entirely.
+/// Contributes to the application's <c>SparkContext</c> (<c>docs/default_index_PRD.md</c>, D6):
+/// <list type="bullet">
+/// <item>a typed root for every public <c>[FromIndex]</c> view, generated or hand-written, from this project or a
+/// referenced one — <c>VPeople =&gt; Session.Query&lt;VPerson, People_Overview&gt;()</c>. A view root mints no query and
+/// has no model effect; it is a typed C# shortcut.</item>
+/// <item><c>[SparkPlainRoot(typeof(T), nameof(Context.Root))]</c> for every plain entity root, which the synchronizer
+/// reads to resolve a <c>[Reference(typeof(T))]</c> among several roots of <c>T</c>.</item>
+/// </list>
 /// <para>
-/// Root names come from the same <see cref="IndexNaming"/> functions as the index and companion names rather
-/// than a second derivation. The reference design computed names in two independent traversals, which is where
-/// "the index and the context disagree" bugs come from.
+/// Every name was resolved in the pipeline (<see cref="ContextRootsPlan"/>, D7); this producer only writes. Root
+/// names come from the same <c>IndexNaming</c> functions as the index and companion names rather than a second
+/// derivation. The reference design computed names in two independent traversals, which is where "the index and
+/// the context disagree" bugs come from.
 /// </para>
 /// </summary>
 public class SparkContextRootsProducer : Producer, IDiagnosticReporter
 {
     private const string RavenLinq = "global::Raven.Client.Documents.Linq";
+    private const string SparkAbstractions = "global::MintPlayer.Spark.Abstractions";
 
-    private readonly IEnumerable<SparkContextInfo> contexts;
-    private readonly IEnumerable<GeneratedIndexInfo> entities;
+    private readonly List<ContextRootsPlan> plans;
     private readonly bool knowsSpark;
+    private readonly bool knowsPlainRoot;
 
+    /// <param name="knowsPlainRoot">
+    /// Whether <c>SparkPlainRootAttribute</c> is in the compilation; without it the marker cannot be written.
+    /// </param>
     public SparkContextRootsProducer(
-        IEnumerable<SparkContextInfo> contexts,
-        IEnumerable<GeneratedIndexInfo> entities,
+        List<ContextRootsPlan> plans,
         bool knowsSpark,
+        bool knowsPlainRoot,
         string rootNamespace)
         : base(rootNamespace, "SparkContextIndexRoots.g.cs")
     {
-        this.contexts = contexts;
-        this.entities = entities;
+        this.plans = plans;
         this.knowsSpark = knowsSpark;
+        this.knowsPlainRoot = knowsPlainRoot;
     }
 
     /// <summary>
-    /// A non-partial context cannot be extended, so the roots would simply not appear. Said out loud instead.
+    /// A non-partial context cannot be extended, so the roots and markers would simply not appear: said out loud
+    /// whenever there is anything to add. A root that had to take another name is reported too (D7), so the
+    /// member a developer looks for is never silently somewhere else.
     /// </summary>
     public IEnumerable<Diagnostic> GetDiagnostics(Compilation compilation)
     {
-        if (!knowsSpark || !Roots().Any()) yield break;
+        if (!knowsSpark) yield break;
 
-        var roots = Roots();
-        foreach (var context in contexts
-            .Where(c => !c.IsPartial && RootsFor(c, roots).Count > 0)
-            .OrderBy(c => c.ClassName, System.StringComparer.Ordinal))
+        foreach (var plan in plans.Where(HasContribution).OrderBy(p => p.Context.FullName, System.StringComparer.Ordinal))
         {
-            yield return GenerateIndexDiagnostics.ContextNotPartial.Create(
-                context.Location.ToLocation(compilation), context.ClassName);
+            var location = plan.Context.Location.ToLocation(compilation);
+
+            if (!plan.Context.IsPartial)
+            {
+                yield return GenerateIndexDiagnostics.ContextNotPartial.Create(location, plan.Context.ClassName);
+                continue;
+            }
+
+            foreach (var root in plan.ViewRoots.Where(r => r.MemberName != r.WantedMemberName))
+            {
+                yield return GenerateIndexDiagnostics.ViewRootRenamed.Create(
+                    location, plan.Context.ClassName, root.ViewFullName, root.WantedMemberName, root.MemberName);
+            }
         }
     }
 
-    /// <summary>Index-entity name paired with the root member name it should be exposed as.</summary>
-    private List<(string IndexEntityName, string IndexName, string MemberName)> Roots()
-        => entities
-            .Where(e => e.Properties.Count > 0)
-            .GroupBy(e => e.IndexName, System.StringComparer.Ordinal)
-            .Select(g => g.OrderBy(e => e.EntityFullName, System.StringComparer.Ordinal).First())
-            .OrderBy(e => e.IndexEntityName, System.StringComparer.Ordinal)
-            .Select(e => (e.IndexEntityName, e.IndexName, IndexNaming.ContextRoot(e.EntityName, e.IndexEntityName)))
-            .ToList();
+    private bool HasContribution(ContextRootsPlan plan)
+        => plan.ViewRoots.Count > 0 || (knowsPlainRoot && plan.Context.PlainRoots.Count > 0);
 
     protected override void ProduceSource(IndentedTextWriter writer, CancellationToken cancellationToken)
     {
-        var roots = Roots();
-
-        // A context whose every root is already declared by hand contributes nothing. Emitting an empty
-        // partial for it would be harmless but pointless noise in the generated output.
-        var targets = contexts
-            .Where(c => c.IsPartial && RootsFor(c, roots).Count > 0)
+        // A context with nothing to add contributes nothing: an empty partial would be harmless but pointless noise.
+        var targets = plans
+            .Where(p => p.Context.IsPartial && HasContribution(p))
             .ToList();
 
-        if (!knowsSpark || roots.Count == 0 || targets.Count == 0)
+        if (!knowsSpark || targets.Count == 0)
             return;
 
         writer.WriteLine(Header);
@@ -85,69 +95,61 @@ public class SparkContextRootsProducer : Producer, IDiagnosticReporter
         writer.WriteLine();
 
         foreach (var group in targets
-            .GroupBy(c => c.PathSpec?.ContainingNamespace ?? string.Empty)
+            .GroupBy(p => p.Context.PathSpec?.ContainingNamespace ?? string.Empty)
             .OrderBy(g => g.Key, System.StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             if (string.IsNullOrEmpty(group.Key))
             {
-                foreach (var context in group.OrderBy(c => c.ClassName, System.StringComparer.Ordinal))
-                    WriteContext(writer, context, roots, cancellationToken);
+                foreach (var plan in group.OrderBy(p => p.Context.ClassName, System.StringComparer.Ordinal))
+                    WriteContext(writer, plan, cancellationToken);
                 continue;
             }
 
             using (writer.OpenBlock($"namespace {group.Key}"))
             {
                 var first = true;
-                foreach (var context in group.OrderBy(c => c.ClassName, System.StringComparer.Ordinal))
+                foreach (var plan in group.OrderBy(p => p.Context.ClassName, System.StringComparer.Ordinal))
                 {
                     if (!first) writer.WriteLine();
                     first = false;
-                    WriteContext(writer, context, roots, cancellationToken);
+                    WriteContext(writer, plan, cancellationToken);
                 }
             }
         }
     }
 
-    /// <summary>
-    /// Roots this context does not already declare. A hand-written root wins: emitting ours too would be a
-    /// duplicate-member error, and overriding is legitimate rather than a mistake worth reporting.
-    /// </summary>
-    private static List<(string IndexEntityName, string IndexName, string MemberName)> RootsFor(
-        SparkContextInfo context,
-        List<(string IndexEntityName, string IndexName, string MemberName)> roots)
+    private void WriteContext(IndentedTextWriter writer, ContextRootsPlan plan, CancellationToken cancellationToken)
     {
-        var existing = new HashSet<string>(context.ExistingMemberNames, System.StringComparer.Ordinal);
-        return roots.Where(r => !existing.Contains(r.MemberName)).ToList();
-    }
-
-    private void WriteContext(
-        IndentedTextWriter writer,
-        SparkContextInfo context,
-        List<(string IndexEntityName, string IndexName, string MemberName)> roots,
-        CancellationToken cancellationToken)
-    {
+        var context = plan.Context;
         using var parents = writer.OpenPathSpec(context.PathSpec);
+
+        if (knowsPlainRoot)
+        {
+            foreach (var root in context.PlainRoots)
+            {
+                writer.WriteLine(
+                    $"[{SparkAbstractions}.SparkPlainRootAttribute(typeof({root.EntityFullName}), nameof({context.FullName}.{root.PropertyName}))]");
+            }
+        }
 
         using (writer.OpenBlock($"public partial class {context.ClassName}"))
         {
             var first = true;
 
-            foreach (var (indexEntityName, indexName, memberName) in RootsFor(context, roots))
+            foreach (var root in plan.ViewRoots)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (!first) writer.WriteLine();
                 first = false;
 
-                writer.WriteLine($"/// <summary>Index-backed query root for <see cref=\"{IndexNamespace}.{indexEntityName}\"/>.</summary>");
+                writer.WriteLine($"/// <summary>Index-backed query root for <see cref=\"{root.ViewFullName}\"/>.</summary>");
                 writer.WriteLine(
-                    $"public {RavenLinq}.IRavenQueryable<{IndexNamespace}.{indexEntityName}> {memberName}"
-                    + $" => Session.Query<{IndexNamespace}.{indexEntityName}, {IndexNamespace}.{indexName}>();");
+                    $"public {RavenLinq}.IRavenQueryable<{root.ViewFullName}> {root.MemberName}"
+                    + $" => Session.Query<{root.ViewFullName}, {root.IndexFullName}>();");
             }
         }
     }
-
-    private string IndexNamespace => $"global::{RootNamespace}.Indexes";
 }

@@ -9,7 +9,7 @@ namespace SeoTester;
 /// packages' own documents. What each caller sees of sites, runs and pages is the organizations row policy; the
 /// catalogue is public to signed-in users and the audit log is the administrators'.
 /// </summary>
-public class SeoContext : SparkContext
+public partial class SeoContext : SparkContext
 {
     public IRavenQueryable<Site> Sites => Session.Query<Site>();
     public IRavenQueryable<AuditRun> AuditRuns => Session.Query<AuditRun>();

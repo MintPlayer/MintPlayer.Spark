@@ -94,9 +94,13 @@ the root `Directory.Build.targets`, which is not shipped in any package. It runs
 `ResolvePackageAssets` and checks both `FrameworkReference` and `TransitiveFrameworkReference`,
 because a framework reference inherited through a `ProjectReference` arrives as the latter.
 
-Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
+Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…013`
 (`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…006`
-(`TranslationsDiagnostics.cs`). The exception is `SPARK_TRANS_005` (two unrelated libraries translate
+(`TranslationsDiagnostics.cs`). Two of the index ids concern the app's `SparkContext`
+([PRD](default_index_PRD.md), D6, D7): `SPARK_INDEX_008` (Warning) fires when the context, or a type containing
+it, is not `partial` while the generator has anything to add to it, a view root or a `[SparkPlainRoot]` marker;
+`SPARK_INDEX_013` (Info, new) says a generated view root took the first free name (`VCars2`, …) because its own
+name is a member of the context or of a base type. The exception is `SPARK_TRANS_005` (two unrelated libraries translate
 a key into a language differently), which `LibraryTranslationsConflictAnalyzer` reports since
 composition M5, when the host aggregator generator was removed. `SPARK_TRANS_006` (one key stated
 twice, dotted and nested, error) is new in M5; the run time refuses such a file. `LibraryLayersGenerator`

@@ -185,4 +185,70 @@ public class SourceGeneratorSnapshots
 
         return Verifier.Verify(Render(result));
     }
+
+    /// <summary>
+    /// Pins what the generator adds to the app's context (<c>docs/default_index_PRD.md</c>, D6, D7): a root for the
+    /// generated pair and for a hand-written view, a root renamed because its name is taken, and the plain-root
+    /// marker for the plain entity root only.
+    /// </summary>
+    [Fact]
+    public Task GenerateIndexGenerator_emits_view_roots_and_plain_root_markers_on_the_context()
+    {
+        var entities = """
+            using MintPlayer.Spark.Abstractions;
+            using Raven.Client.Documents.Indexes;
+
+            namespace TestApp.Entities;
+
+            [GenerateIndex]
+            public class Car
+            {
+                public string? Id { get; set; }
+                public string LicensePlate { get; set; } = string.Empty;
+            }
+
+            public class Person { public string? Id { get; set; } public string? Name { get; set; } }
+
+            public class People_ByName : AbstractIndexCreationTask<Person> { }
+
+            [FromIndex(typeof(People_ByName))]
+            public class VPerson { public string? Name { get; set; } }
+            """;
+
+        var context = """
+            using System.Linq;
+            using MintPlayer.Spark;
+            using Raven.Client.Documents;
+            using Raven.Client.Documents.Linq;
+            using TestApp.Entities;
+
+            namespace MintPlayer.Spark
+            {
+                public abstract class SparkContext
+                {
+                    public Raven.Client.Documents.Session.IAsyncDocumentSession Session { get; set; } = null!;
+                }
+            }
+
+            namespace TestApp
+            {
+                public partial class AppContext : SparkContext
+                {
+                    public IRavenQueryable<Car> Cars => Session.Query<Car>();
+                    public IRavenQueryable<Person> People => Session.Query<Person>();
+                    public IRavenQueryable<Person> NamedPeople => Session.Query<Person>().Where(p => p.Name != null);
+                    public string VPeople => "taken";
+                }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(
+            "GenerateIndexGenerator",
+            [entities, context],
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            rootNamespace: "TestApp",
+            outputKind: OutputKind.ConsoleApplication);
+
+        return Verifier.Verify(Render(result));
+    }
 }

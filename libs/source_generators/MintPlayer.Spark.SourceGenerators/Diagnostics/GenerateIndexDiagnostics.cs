@@ -80,13 +80,15 @@ internal static class GenerateIndexDiagnostics
         isEnabledByDefault: true);
 
     /// <summary>
-    /// A non-partial SparkContext cannot be extended, so generated query roots would simply not appear. The
-    /// absence of a member is exactly the kind of silence this generator is built to avoid.
+    /// A non-partial SparkContext cannot be extended, so generated view roots and plain-root markers would simply
+    /// not appear. The absence of a member is exactly the kind of silence this generator is built to avoid.
+    /// Reported whenever the generator has anything to add (<c>docs/default_index_PRD.md</c>, D6): without the
+    /// markers, a reference to a type with several roots cannot resolve to the plain one.
     /// </summary>
     public static readonly DiagnosticDescriptor ContextNotPartial = new(
         id: "SPARK_INDEX_008",
         title: "SparkContext is not partial",
-        messageFormat: "Context '{0}' is not declared 'partial', so index-backed query roots cannot be added to it. Add the 'partial' keyword.",
+        messageFormat: "Context '{0}' is not declared 'partial' (nor is every type containing it), so its view roots and [SparkPlainRoot] markers cannot be added to it. Add the 'partial' keyword.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
@@ -145,6 +147,19 @@ internal static class GenerateIndexDiagnostics
         messageFormat: "Property '{0}': {1} The field is stored for projection but stays unsortable.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    /// <summary>
+    /// D7: a generated view root never collides with a member of the context or of its base types, and never
+    /// hides one. It takes the first free name instead, and says so, because the member a developer looks for is
+    /// otherwise somewhere they would not think to look. Info, not Warning: nothing is wrong, the name moved.
+    /// </summary>
+    public static readonly DiagnosticDescriptor ViewRootRenamed = new(
+        id: "SPARK_INDEX_013",
+        title: "Generated view root took another name",
+        messageFormat: "Context '{0}': the root for view '{1}' is named '{3}', because '{2}' is already a member of the context or of a base type.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
     // SPARK_INDEX_004 ("Entity already has a hand-written index") was removed in #272: it was

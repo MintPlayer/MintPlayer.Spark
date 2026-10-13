@@ -8,6 +8,6 @@ namespace SparkId;
 /// rights come from the MintPlayer.Spark.IdentityProvider library layer; this application only binds
 /// its slots (<c>App_Data/security.json</c>).
 /// </summary>
-public class SparkIdContext : SparkContext
+public partial class SparkIdContext : SparkContext
 {
 }
