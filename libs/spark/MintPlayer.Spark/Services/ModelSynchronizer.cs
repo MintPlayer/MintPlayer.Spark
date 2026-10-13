@@ -1089,7 +1089,8 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
 
             if (unresolvedReference)
-                referenceQueries!.WarnUnresolved(entityType, property, referenceAttr!.TargetType);
+                referenceQueries!.WarnUnresolved(entityType, property, referenceAttr!.TargetType,
+                    readOnlyInModel: newAttributes.LastOrDefault(a => a.Name == propertyName) is { } written && (written.IsReadOnly || written.ShowedOn == EShowedOn.None));
 
             order++;
         }
@@ -1336,11 +1337,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         /// It warns only for a writable reference, as the analyzer does (D8): a read-only one (no setter, or
         /// <c>[ReadOnly(true)]</c>, which the generated audit members carry) opens no picker, so a missing query costs
         /// it nothing, and some types (<c>SparkUser</c>) have no root on purpose. That holds whether T has no root at
-        /// all or roots none of which is plain; the message then names the roots it passed over.
+        /// all or roots none of which is plain; the message then names the roots it passed over. The model file counts
+        /// too, which the analyzer cannot see: an attribute an author made read-only or hidden (<c>isReadOnly</c>,
+        /// <c>showedOn: None</c>) opens no picker either. CodeCoverage's <c>ApiToken.CreatedByUserId</c> is that case:
+        /// a settable CLR property the server stamps, referencing <c>SparkUser</c>, which has no root on purpose.
         /// </remarks>
-        public void WarnUnresolved(Type entityType, PropertyInfo property, Type target)
+        public void WarnUnresolved(Type entityType, PropertyInfo property, Type target, bool readOnlyInModel = false)
         {
-            var writable = property.CanWrite
+            var writable = !readOnlyInModel
+                && property.CanWrite
                 && property.GetCustomAttribute<System.ComponentModel.ReadOnlyAttribute>()?.IsReadOnly != true;
             if (!writable) return;
 

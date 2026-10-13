@@ -291,7 +291,10 @@ still resolves to the minted root query (D6).
   but none is plain, it fires for every reference, read-only ones included.~~ **Superseded (M8):** it skips read-only
   references in that case too, as D8 says: a read-only reference opens no picker, so it loses nothing
   (`SynchronizeReferenceRootTests.A_read_only_reference_to_a_type_without_a_plain_root_does_not_warn`, red before the
-  change).
+  change). Read-only also counts from the model file (`isReadOnly`, or `showedOn: None`), which the analyzer cannot
+  see: the M8 resync warned on every CodeCoverage run for `ApiToken.CreatedByUserId`, a settable property the model
+  marks read-only that references `SparkUser`, which has no root on purpose
+  (`A_reference_read_only_in_the_model_file_does_not_warn`, red before the change).
 - **Satellite queries go through the D11 plan (M8).** A satellite's query (a contributions query) was minted outside
   the plan, so a root whose derived alias equalled it took the alias first and the satellite then duplicated it
   ("Two queries resolve to the alias 'rrsatnotes'", red before the change). Satellites are planned first, because

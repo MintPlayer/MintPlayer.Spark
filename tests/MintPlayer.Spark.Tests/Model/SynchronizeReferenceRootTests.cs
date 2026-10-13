@@ -163,6 +163,39 @@ public sealed class SynchronizeReferenceRootTests : IDisposable
         output.Should().NotContain("RrAuditedSite.OwnerId");
     }
 
+    /// <summary>
+    /// A reference the model file makes read-only opens no picker either, though its CLR property is settable: the
+    /// shape of CodeCoverage's <c>ApiToken.CreatedByUserId</c>, a server-stamped <c>SparkUser</c> reference (SparkUser has
+    /// no root on purpose). The synchronizer warned about it on every run.
+    /// </summary>
+    [Fact]
+    public void A_reference_read_only_in_the_model_file_does_not_warn()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ModelFile(nameof(RrSite)))!);
+        File.WriteAllText(ModelFile(nameof(RrSite)), new JsonObject
+        {
+            ["persistentObject"] = new JsonObject
+            {
+                ["id"] = "0d110000-0000-4000-8000-000000000030",
+                ["name"] = nameof(RrSite),
+                ["clrType"] = typeof(RrSite).FullName,
+                ["attributes"] = new JsonArray(new JsonObject
+                {
+                    ["id"] = "0d110000-0000-4000-8000-000000000031",
+                    ["name"] = nameof(RrSite.OrganizationId),
+                    ["dataType"] = "Reference",
+                    ["isReadOnly"] = true,
+                    ["order"] = 2,
+                }),
+            },
+        }.ToJsonString());
+
+        var output = Synchronize(typeof(RrUnrootedContext));
+
+        QueryOf(nameof(RrSite), nameof(RrSite.OrganizationId)).Should().BeNull();
+        output.Should().NotContain("RrSite.OrganizationId");
+    }
+
     // ---- D11: a minted root query never collides ------------------------------------------------------------
 
     /// <summary>
