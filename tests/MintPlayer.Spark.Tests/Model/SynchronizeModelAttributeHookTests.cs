@@ -165,6 +165,37 @@ public sealed class SynchronizeModelAttributeHookTests : IDisposable
             "its place in the property walk, 1, is the library's Name; the next free order is after them all");
     }
 
+    /// <summary>
+    /// An excluded complex property pulls nothing into the model: no attribute, and no embedded model file for its type
+    /// (or a collection's element type), which nothing would reference.
+    /// </summary>
+    [Fact]
+    public void An_excluded_complex_property_writes_no_model_file_for_its_type()
+    {
+        Synchronize(typeof(HkDocketContext), (type, property) =>
+            property.Name is nameof(HkDocket.Address) or nameof(HkDocket.Lines) ? ModelAttributeSeed.Exclude : ModelAttributeSeed.Default);
+
+        Attributes(nameof(HkDocket)).Select(a => a.Name).Should().NotContain(nameof(HkDocket.Address))
+            .And.NotContain(nameof(HkDocket.Lines));
+        File.Exists(ModelFile(nameof(HkAddress))).Should().BeFalse("the excluded Address is the only thing that would reference it");
+        File.Exists(ModelFile(nameof(HkLine))).Should().BeFalse("the excluded Lines is the only thing that would reference it");
+    }
+
+    /// <summary>
+    /// The other side: an attribute that already exists outlives the hook (#253), so its type stays in the model too.
+    /// </summary>
+    [Fact]
+    public void An_existing_complex_attribute_keeps_its_type_when_the_hook_later_excludes_it()
+    {
+        Synchronize(typeof(HkDocketContext));
+        File.Exists(ModelFile(nameof(HkAddress))).Should().BeTrue();
+
+        Synchronize(typeof(HkDocketContext), Seeding(nameof(HkDocket.Address), ModelAttributeSeed.Exclude));
+
+        Attributes(nameof(HkDocket)).Select(a => a.Name).Should().Contain(nameof(HkDocket.Address));
+        File.Exists(ModelFile(nameof(HkAddress))).Should().BeTrue("the existing Address attribute still references it");
+    }
+
     [Fact]
     public void A_new_attribute_on_a_fresh_type_keeps_its_place_in_the_walk()
     {
@@ -205,4 +236,27 @@ public sealed class HkLibOrganization
 public sealed class HkLibraryContext : SparkContext
 {
     public IRavenQueryable<HkLibOrganization> Organizations => Session.Query<HkLibOrganization>();
+}
+
+public sealed class HkDocket
+{
+    public string? Id { get; set; }
+    public string? Title { get; set; }
+    public HkAddress? Address { get; set; }
+    public List<HkLine> Lines { get; set; } = [];
+}
+
+public sealed class HkAddress
+{
+    public string? Street { get; set; }
+}
+
+public sealed class HkLine
+{
+    public string? Text { get; set; }
+}
+
+public sealed class HkDocketContext : SparkContext
+{
+    public IRavenQueryable<HkDocket> Dockets => Session.Query<HkDocket>();
 }

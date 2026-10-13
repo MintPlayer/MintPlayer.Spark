@@ -251,12 +251,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
 
             // Collect embedded types from this entity
-            CollectEmbeddedTypes(entityType, typesToProcess, processedTypes);
+            CollectEmbeddedTypes(entityType, entityTypeDef, typesToProcess, processedTypes);
 
             // Also collect embedded types from projection type (if any)
             if (projectionType != null)
             {
-                CollectEmbeddedTypes(projectionType, typesToProcess, processedTypes);
+                CollectEmbeddedTypes(projectionType, entityTypeDef, typesToProcess, processedTypes);
             }
         }
 
@@ -315,7 +315,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             processedTypes.Add(clrType);
             Console.WriteLine($"Synchronized model (satellite of {satellite.OwnerType.Name}): {satelliteType.Name} -> {fileName}");
 
-            CollectEmbeddedTypes(satelliteType, typesToProcess, processedTypes);
+            CollectEmbeddedTypes(satelliteType, entityTypeDef, typesToProcess, processedTypes);
         }
 
         // Process embedded types
@@ -349,7 +349,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             Console.WriteLine($"Synchronized model (embedded): {embeddedType.Name} -> {fileName}");
 
             // Recursively collect embedded types from this type
-            CollectEmbeddedTypes(embeddedType, typesToProcess, processedTypes);
+            CollectEmbeddedTypes(embeddedType, entityTypeDef, typesToProcess, processedTypes);
         }
 
         // Clean up model files left behind by an older version that gave projection types their own
@@ -581,7 +581,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         }
     }
 
-    private void CollectEmbeddedTypes(Type entityType, Queue<Type> typesToProcess, HashSet<string> processedTypes)
+    private void CollectEmbeddedTypes(Type entityType, EntityTypeDefinition definition, Queue<Type> typesToProcess, HashSet<string> processedTypes)
     {
         // Shares the model-property filter with CreateOrUpdateEntityTypeDefinition on purpose:
         // discovery and attribute generation must agree, or an ignored complex property would
@@ -590,6 +590,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
         foreach (var property in properties)
         {
+            // Only a property that has an attribute in the definition just written pulls its type in. The
+            // ModelAttribute hook's Exclude (D9) creates no attribute, so its type would be a model file nothing
+            // references. An attribute that already existed keeps its type, whatever the hook says now (#253).
+            if (!definition.Attributes.Any(a => a.Name == property.Name))
+                continue;
+
             var propType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
             // Unwrap array/collection element type
