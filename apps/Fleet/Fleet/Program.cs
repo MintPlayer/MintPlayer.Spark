@@ -80,11 +80,14 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // MailDeliveries root lists the mail package's SparkMailDelivery, whose model is derived from the CLR type, and
         // Fleet cannot put attributes on that class. Spark's default convention hides the audit names it knows
         // (CreatedBy, CreatedAt*, ModifiedBy, ModifiedAt*). The mail package spells its stamp UpdatedAtUtc, so this
-        // wraps the convention to treat UpdatedAt* as an audit stamp too: created hidden (showedOn None) and read-only.
+        // wraps the convention to treat SparkMailDelivery's UpdatedAt* as an audit stamp too: created hidden (showedOn
+        // None) and read-only. The rule is scoped to that one library type; every other type, Fleet's own included,
+        // keeps the default convention, so an UpdatedAt member Fleet declares itself stays an ordinary column.
         // Runs during --spark-synchronize-model only, and never changes an attribute that already exists (#253): an
         // administrator who wants the column after all sets its showedOn in App_Data/Model/SparkMailDelivery.json.
         spark.ModelAttributes((type, property) =>
-            property.Name.StartsWith("UpdatedAt", StringComparison.Ordinal)
+            type == typeof(MintPlayer.Spark.MailManager.Deliveries.SparkMailDelivery)
+            && property.Name.StartsWith("UpdatedAt", StringComparison.Ordinal)
                 ? MintPlayer.Spark.Configuration.ModelAttributeSeed.Hidden
                 : MintPlayer.Spark.Configuration.ModelAttributeConventions.AuditMembersHidden(type, property));
 
