@@ -155,6 +155,41 @@ public class McpEmbeddedAuthorizationServerTests(SparkSharedDatabase database)
             .Should().Be(HttpStatusCode.BadRequest, "only loopback redirects match loosely, never another host");
     }
 
+    /// <summary>
+    /// Parity PRD A2 / O17: an application a seeder, migration or test host stores holds its client id like any
+    /// registration's. Dynamic registration mints a random client id, so it cannot name a seeded one; a Client ID
+    /// Metadata Document is the registration that brings its own. Stored with a bare <c>StoreAsync</c>, the seeded
+    /// application left the id unreserved and the document was stored as a second application with the same client
+    /// id, of which the client lookup returns whichever it finds first.
+    /// </summary>
+    [Fact]
+    public async Task A_seeded_applications_client_id_cannot_be_claimed_by_a_metadata_document()
+    {
+        var clientId = DocumentUrl("seeded");
+        var documents = new McpEmbeddedHost.DocumentServer().Serve(clientId, McpEmbeddedHost.Document(clientId));
+        await using var factory = McpEmbeddedHost.Create(Store, documents);
+
+        using (var seeder = Store.OpenAsyncSession())
+        {
+            await OidcClientIdReservation.StoreNewAsync(seeder, new OidcApplication
+            {
+                ClientId = clientId,
+                DisplayName = "Seeded",
+                Enabled = true,
+                Mode = OidcApplicationModes.Live,
+            });
+            await seeder.SaveChangesAsync();
+        }
+
+        var (application, error) = await factory.GetService<OidcClientMetadataDocuments>().ResolveAsync(clientId, address: null, CancellationToken.None);
+
+        application.Should().BeNull("the seeded application holds the client id");
+        error.Should().Be("Unknown client.");
+        using var session = Store.OpenAsyncSession();
+        (await session.LoadAsync<OidcApplication>(OidcAgentClients.ApplicationId(clientId)))
+            .Should().BeNull("no second application with the seeded client id may be stored");
+    }
+
     [Theory]
     [InlineData("https://evil.example/callback")]
     [InlineData("http://evil.example/callback")]

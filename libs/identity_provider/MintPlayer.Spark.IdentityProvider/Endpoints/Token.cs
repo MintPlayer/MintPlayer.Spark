@@ -184,12 +184,14 @@ internal sealed partial class OidcTokenEndpoint<TUser> : IPostEndpoint<OidcToken
             return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
-        // Validate the code hasn't expired
+        // Validate the code hasn't expired. The same answer as a code that was never issued, replayed or another
+        // client's (O15, matrix T-O2): a message of its own told whoever holds a code that it once existed. The
+        // refresh grant already answers this way (T-O3).
         if (codeToken.ExpiresAt < DateTime.UtcNow)
         {
             codeToken.Status = "expired";
             await TrySaveAsync(session, ct);
-            return Results.Json(new { error = "invalid_grant", error_description = "Authorization code has expired." }, statusCode: 400);
+            return Results.Json(new { error = "invalid_grant", error_description = "Invalid or expired authorization code." }, statusCode: 400);
         }
 
         // Validate redirect_uri matches

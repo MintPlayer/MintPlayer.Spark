@@ -7,6 +7,7 @@ using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
+using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
@@ -48,7 +49,7 @@ public class OidcCorsScopeTests : SparkTestDriver
 
     private async Task SeedApplicationAsync(string clientId, bool enabled, params string[] origins)
     {
-        await SeedAsync(session => session.StoreAsync(new OidcApplication
+        await SeedAsync(session => OidcClientIdReservation.StoreNewAsync(session, new OidcApplication
         {
             ClientId = clientId,
             DisplayName = clientId,

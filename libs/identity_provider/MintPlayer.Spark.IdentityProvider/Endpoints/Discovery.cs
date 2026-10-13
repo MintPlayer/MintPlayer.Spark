@@ -54,7 +54,7 @@ internal sealed partial class OidcDiscovery : IGetEndpoint
         var document = new Dictionary<string, object?> { ["issuer"] = issuer };
         AddIf(document, authorize, "authorization_endpoint", $"{issuer}/connect/authorize");
         document["token_endpoint"] = $"{issuer}/connect/token";
-        AddIf(document, surface.UserInfo, "userinfo_endpoint", $"{issuer}/connect/userinfo");
+        AddIf(document, surface.UserInfo, "userinfo_endpoint", OidcTokenGenerator.UserInfoAudience(issuer));
         AddIf(document, surface.EndSession, "end_session_endpoint", $"{issuer}/connect/logout");
         AddIf(document, surface.Introspection, "introspection_endpoint", $"{issuer}/connect/introspect");
         AddIf(document, surface.Revocation, "revocation_endpoint", $"{issuer}/connect/revoke");

@@ -6,7 +6,7 @@ Companion to [PRD-CoverageHandoff.md](./PRD-CoverageHandoff.md) §8 and [coverag
 > - **Gap closed and tested:** L-T4, T-G3, T-G5, T-M4, L-G4, R-J5/R-J6 (N4), R-X2 (N2: inverted), T-O1 (O15: inverted).
 > - **Gap closed, partly tested:** T-G4 (offline_access half only), T-M5 (O20, unit test only).
 > - **Gap closed, no test:** A-R10 (O21), A-S7 (O26).
-> - **Still open:** T-O2 (expired-code message). L-L5 (O27) was fixed and written on 2026-10-13 (parity PRD A4).
+> - **Closed 2026-10-13 (parity PRD):** T-O2 (O15, inverted: an expired code now answers like a never-issued one, A3) and L-L5 (O27, unknown users run the dummy hash, A4). Both are written.
 > - **Already written, now marked:** A-C4.
 > - **Changed by the platform:** R-J4 (the JWKS now publishes several keys), R.8 (the key file is a legacy import), W "Not covered" (back-channel logout now exists), M-A6 and M-R2/M-R3 (renamed).
 
@@ -243,7 +243,7 @@ The JWT is minted from the scopes that resolve to a defined, **enabled** `OidcSc
 | # | Test | Compare | Pins |
 |---|---|---|---|
 | T-O1 | **[CHARACTERIZATION]** `Token_distinguishes_unknown_client_from_bad_secret` | unknown client → `{"error":"invalid_client"}` with **no** `error_description`; known client + wrong secret → the same error **with** a description. That difference binary-searches the whole `client_id` namespace with no secret needed. **Invert this assertion when O15 is fixed** | **O15**, client half closed. **Inverted and written:** `OidcClientAuthenticatorTests.A_wrong_secret_and_an_unknown_client_answer_the_same_invalid_client`, `OidcIntrospectionSecurityTests.Introspect_rejects_unknown_client_and_wrong_secret_alike` |
-| T-O2 | **[CHARACTERIZATION]** `Token_distinguishes_never_issued_code_from_expired_code` | different `error_description` text. Narrower (needs a captured code first), same bug class | **O15**, **still open** (`Endpoints/Token.cs:186` vs `:163`). **Not written.** `OidcTokenSecurityTests.Code_redemption_rejects_an_expired_code` checks the refusal, not the difference |
+| T-O2 | **[CHARACTERIZATION]** `Token_distinguishes_never_issued_code_from_expired_code` | different `error_description` text. Narrower (needs a captured code first), same bug class. **Invert this assertion when O15 is fixed** | **O15**, closed 2026-10-13 (parity PRD A3): the expired branch (`Endpoints/Token.cs:189-194`) answers "Invalid or expired authorization code.", the same text as a replayed, another client's or never-issued code (`:169`, `:174`, `:184`). **Inverted and written:** `OidcTokenSecurityTests.A_never_issued_code_and_an_expired_code_answer_the_same_invalid_grant` |
 | T-O3 | `Token_refresh_grant_has_no_such_oracle` | never-issued and expired both produce the identical message from one shared branch — **this grant is already right; use it as the model when fixing T-O1/T-O2** | contrast |
 | T-O4 | `Token_timing_unknown_vs_known_client` | unknown returns before any PBKDF2; known runs 100k iterations per unexpired secret. **Do not gate CI on HTTP wall-clock timing.** If asserted at all, wide margins over many reps, informational only; the durable form is a benchmark, not an e2e test | O15 (timing half). **2026-10-09:** closed in code: an unknown client runs a dummy PBKDF2 (`Services/OidcClientAuthenticator.cs:79,125,223`). **Not written**, deliberately, per the note in this row |
 

@@ -201,7 +201,7 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
         // usable the instant it returns.
         await SeedAsync(async session =>
         {
-            await session.StoreAsync(app);
+            await OidcClientIdReservation.StoreNewAsync(session, app);
 
             // Define every scope the client is allowed to ask for. A real deployment does this; a
             // fixture that skipped it produced tokens whose `scope` claim was silently empty, because
@@ -596,7 +596,8 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
         string email,
         string[]? scopes = null,
         string? codeChallenge = null,
-        string? redirectUri = null)
+        string? redirectUri = null,
+        string? resource = null)
     {
         var browser = await SignInAsync(email);
         var scope = string.Join(' ', scopes ?? ["openid"]);
@@ -605,7 +606,8 @@ public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
         var url = $"/connect/authorize?client_id={Uri.EscapeDataString(app.ClientId)}"
                 + $"&redirect_uri={Uri.EscapeDataString(target)}&response_type=code"
                 + $"&scope={Uri.EscapeDataString(scope)}"
-                + (codeChallenge is null ? "" : $"&code_challenge={Uri.EscapeDataString(codeChallenge)}&code_challenge_method=S256");
+                + (codeChallenge is null ? "" : $"&code_challenge={Uri.EscapeDataString(codeChallenge)}&code_challenge_method=S256")
+                + (resource is null ? "" : $"&resource={Uri.EscapeDataString(resource)}");
 
         var authorize = await browser.GetAsync(url);
         if (authorize.StatusCode != HttpStatusCode.Redirect)

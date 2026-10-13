@@ -24,21 +24,15 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
 
     private OidcInvitations Invitations => Factory.GetService<OidcInvitations>();
 
-    /// <summary>A user whose address the invitation lookup can already find (it rides an auto-index).</summary>
-    private async Task<SparkUser> SeedFindableUserAsync(string email, bool developer)
+    /// <summary>
+    /// A user at <paramref name="email"/>, an approved developer or not. No index to wait on: the invitation finds the
+    /// account through the user store's own lookup (see <see cref="An_account_registered_a_moment_ago_is_mailed_its_invitation"/>).
+    /// </summary>
+    private async Task<SparkUser> SeedInviteeAsync(string email, bool developer)
     {
         var user = await SeedUserAsync(email);
         if (developer)
             await SetDeveloperAsync(user.Id!, OidcDeveloperStatuses.Approved);
-
-        // The same auto-index the invitation's raw query uses (from SparkUsers where NormalizedEmail = $email),
-        // waited on so the account is findable: an index query is eventually consistent.
-        var normalized = email.Trim().ToUpperInvariant();
-        using var session = Store.OpenAsyncSession();
-        _ = await session.Query<SparkUser>()
-            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(30)))
-            .Where(u => u.NormalizedEmail == normalized)
-            .FirstOrDefaultAsync();
         return user;
     }
 
@@ -94,7 +88,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var app = await SeedApplicationAsync(ClientId("team"));
         var known = UserEmail("known");
         var unknown = UserEmail("nobody");
-        await SeedFindableUserAsync(known, developer: true);
+        await SeedInviteeAsync(known, developer: true);
 
         var knownToken = await InviteAsync(app, known);
         var unknownToken = await InviteAsync(app, unknown);
@@ -121,10 +115,34 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         var plain = UserEmail("plain");
-        await SeedFindableUserAsync(plain, developer: false);
+        await SeedInviteeAsync(plain, developer: false);
 
         (await InviteAsync(app, plain, OidcMemberRoles.Developer)).Should().BeNull();
         (await InviteAsync(app, plain, OidcMemberRoles.Tester)).Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// Parity PRD A8: an account registered a moment ago is mailed its invitation. The lookup was a query on
+    /// <c>NormalizedEmail</c>, so until the index caught up the address read as unknown and no mail went out, with
+    /// nothing to tell the inviter. Indexing is stopped for the case, so "not caught up yet" is certain, not a race.
+    /// </summary>
+    [Fact]
+    public async Task An_account_registered_a_moment_ago_is_mailed_its_invitation()
+    {
+        var app = await SeedApplicationAsync(ClientId("team"));
+        var email = UserEmail("fresh");
+
+        await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexingOperation());
+        try
+        {
+            await SeedInviteeAsync(email, developer: true);
+
+            (await InviteAsync(app, email)).Should().NotBeNull("the account exists, whatever the index says yet");
+        }
+        finally
+        {
+            await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StartIndexingOperation());
+        }
     }
 
     /// <summary>The token is single use: accepted once, then it opens nothing.</summary>
@@ -133,7 +151,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         var email = UserEmail("dev");
-        var user = await SeedFindableUserAsync(email, developer: true);
+        var user = await SeedInviteeAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
 
         var first = await AcceptAsync(app.Id!, token, user.Id!);
@@ -155,7 +173,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         var email = UserEmail("dev");
-        var user = await SeedFindableUserAsync(email, developer: true);
+        var user = await SeedInviteeAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
 
         using (var session = Store.OpenAsyncSession())
@@ -178,7 +196,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var app = await SeedApplicationAsync(ClientId("team"));
         var other = await SeedApplicationAsync(ClientId("other"));
         var email = UserEmail("dev");
-        var user = await SeedFindableUserAsync(email, developer: true);
+        var user = await SeedInviteeAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
 
         var wrong = await AcceptAsync(other.Id!, token, user.Id!);
@@ -195,8 +213,8 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         var email = UserEmail("dev");
-        await SeedFindableUserAsync(email, developer: true);
-        var intruder = await SeedFindableUserAsync(UserEmail("intruder"), developer: true);
+        await SeedInviteeAsync(email, developer: true);
+        var intruder = await SeedInviteeAsync(UserEmail("intruder"), developer: true);
         var token = (await InviteAsync(app, email))!;
 
         var outcome = await AcceptAsync(app.Id!, token, intruder.Id!);
@@ -215,8 +233,8 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
         var app = await SeedApplicationAsync(ClientId("team"));
         var other = await SeedApplicationAsync(ClientId("other"));
         var email = UserEmail("dev");
-        var user = await SeedFindableUserAsync(email, developer: true);
-        var intruder = await SeedFindableUserAsync(UserEmail("intruder"), developer: true);
+        var user = await SeedInviteeAsync(email, developer: true);
+        var intruder = await SeedInviteeAsync(UserEmail("intruder"), developer: true);
         var token = (await InviteAsync(app, email))!;
 
         var refusals = new[]
@@ -241,7 +259,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         var email = UserEmail("dev");
-        var user = await SeedFindableUserAsync(email, developer: true);
+        var user = await SeedInviteeAsync(email, developer: true);
         var firstToken = (await InviteAsync(app, email))!;
         var secondToken = (await InviteAsync(app, email))!;
 
@@ -255,7 +273,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         var email = UserEmail("dev");
-        var user = await SeedFindableUserAsync(email, developer: true);
+        var user = await SeedInviteeAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
         await SetDeveloperAsync(user.Id!, OidcDeveloperStatuses.Revoked);
 
@@ -273,7 +291,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         var email = UserEmail("dev");
-        var user = await SeedFindableUserAsync(email, developer: true);
+        var user = await SeedInviteeAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
 
         var portal = await OidcPortalClient.SignInAsync(Client, email, Password);
@@ -293,7 +311,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     {
         var app = await SeedApplicationAsync(ClientId("team"));
         var email = UserEmail("dev");
-        var user = await SeedFindableUserAsync(email, developer: true);
+        var user = await SeedInviteeAsync(email, developer: true);
         var token = (await InviteAsync(app, email))!;
 
         var anonymous = new OidcPortalClient(Client);
@@ -310,7 +328,7 @@ public class OidcInvitationTests(OidcSharedHost host) : OidcTestHost(host), ICla
     public async Task The_accept_endpoint_refuses_an_id_outside_the_applications_collection()
     {
         var email = UserEmail("dev");
-        await SeedFindableUserAsync(email, developer: true);
+        await SeedInviteeAsync(email, developer: true);
 
         var portal = await OidcPortalClient.SignInAsync(Client, email, Password);
         var response = await portal.PostJsonAsync("/spark/identity-provider/invitations/accept",
