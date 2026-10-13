@@ -10,6 +10,8 @@ unclear.
 | Step | State |
 |---|---|
 | Investigation of the current state (2026-10-09, §1) | ✅ |
+| Re-check against master after #505/#509 (2026-10-13, §1.5); branch rebased on `92c298be` | ✅ |
+| #54 closed, #53 closed (§1.2, §1.3) | ✅ checked 2026-10-13 |
 | Spikes S1–S8 (§4) | ⏳ not started |
 | Owner grilling of the open decisions (§6) | ✅ 2026-10-09, G1–G5 locked |
 | Milestones P1–P14 (§5) | ⏳ |
@@ -115,6 +117,48 @@ I checked all of the following:
 The only items left out were left out **for security** (§7 below). The real open items are the
 platform PRD's §0 item 6 and its conformance gaps. All of them are taken over into §3 here.
 
+### 1.5 Master since this PRD was written (re-checked 2026-10-13 on `92c298be`)
+
+Two merged PRs touched the identity provider. Every Tier A/B row in §3 still holds; the line numbers
+in §3 have been updated to `92c298be`. The MCP decisions live in `docs/spark_mcp_PRD.md`; this PRD
+must not contradict them.
+
+- **#509 (MCP server plugin, `31ab6ecb`):**
+  - **Grant surface.** `/connect/token`'s switch (`Endpoints/Token.cs:111-120`) now gates every
+    grant on `surface.*` (`Configuration/SparkIdentityProviderSurface.cs`, `Services/OidcSurface.cs`,
+    `AgentsOnly()`). Unoffered grants return `unsupported_grant_type`, and discovery lists only
+    mapped grants. B8/B9 build on `OidcSurface`: an extension grant must be surface-gated and
+    advertised the same way.
+  - **Refresh families.** `OidcRefreshFamilies` (`Models/OidcRefreshFamily.cs`,
+    `Services/OidcRefreshFamilies.cs`) does exact reuse detection per RFC 9700. It has no absolute
+    lifetime. B3's `ChainStartedAt` belongs on the family document, not on each token. MCP options
+    carry their own `AccessTokenLifetimeMinutes = 60` / `RefreshTokenLifetimeDays = 30`
+    (`SparkIdentityProviderMcpOptions.cs:70`); G3's two-layer model must cover them too.
+  - **Claims.** `OidcTokenGenerator.cs:145` forces `sub` to the local user id (never pairwise) for MCP
+    tokens. A named `resource` with no matching audience now throws. The B10 claims service keeps both
+    rules.
+  - **Open DCR for agents.** Anonymous RFC 7591 registration (`Mcp/OidcAgentDynamicRegistration.cs`,
+    loopback redirects only, rate-limited, cleaned up) and Client ID Metadata Documents
+    (`Mcp/OidcClientMetadataDocuments.cs`) both go through `OidcClientIdReservation`. C4 is
+    therefore reduced to a conformance/per-environment policy on top of this.
+  - **Opaque tokens, consumer side.** The resource server gained `UseIntrospection` and
+    `IntrospectionClientId/Secret/CacheDuration` (`ResourceServer/SparkResourceServerExtensions.cs`).
+    C1 now needs only the issuing side.
+  - **Personal access tokens** (`Authorization/Agents/PersonalAccessToken*.cs`) are a non-OIDC token
+    type in the Authorization package. They are outside this PRD, but B6's telemetry covers them.
+- **#505 (SeoTester, `5e576589`):** SparkId's seeders now share
+  `apps/SparkId/SparkId/Migrations/DevelopmentRelyingParties.cs` and add
+  `M_202610101200_SeoTesterRelyingParty`. Both still bypass the reservation, so they widen A2.
+- **Corrections to §3:**
+  - **A3:** the authorization code is already 256-bit (`Services/OpaqueHandle.cs:51-53`), so the
+    precondition is met.
+  - **A4:** the original citation was wrong. `Login.cs` has no dummy hash. An unknown user returns
+    `SignInResult.Failed` before PBKDF2 runs, in
+    `libs/authorization/.../Identity/SparkSignInManager.cs:110-115`. The only dummy hash is for
+    clients (`Services/OidcClientAuthenticator.cs:79`).
+- **Still absent on master:** telemetry anywhere (no `Meter`/`ActivitySource`), `tools/conformance/`,
+  and any OpenID conformance compose file.
+
 ## 2. Goals
 
 1. Feature coverage comparable to **Duende IdentityServer** (Community + Business + Enterprise
@@ -134,13 +178,13 @@ The "Now" column says what master does today.
 | # | Item | Now | Evidence |
 |---|---|---|---|
 | A1 | UserInfo must check the token's audience (N2 residual) | `ValidateAudience = false` | `Services/AccessTokens.cs:43` |
-| A2 | A seeder or migration that writes an application must go through the client-id reservation (O17) | bypassed | platform PRD §0 item 6 |
-| A3 | Expired code and never-issued code get different messages (O15, test row T-O2) | partly: `Token.cs:186` versus `:163/168/178` | needs the 256-bit code |
-| A4 | Login uses a dummy password hash, so an unknown user can't be told apart by timing (O27) | accepted risk | `Endpoints/Login.cs:252` |
+| A2 | A seeder or migration that writes an application must go through the client-id reservation (O17) | bypassed | `apps/SparkId/SparkId/Migrations/DevelopmentRelyingParties.cs:22-28` (callers `M_202610081200_RelyingParties.cs:59`, `M_202610101200_SeoTesterRelyingParty.cs:34`); test hosts `SparkIdTestHost.cs:154`, `OidcTestHost.cs:175`, `OidcCorsScopeTests.cs:51` |
+| A3 | Expired code and never-issued code get different messages (O15, test row T-O2) | partly: `Token.cs:192` versus `:169/174/184` | the code is already 256-bit (`Services/OpaqueHandle.cs:51-53`) |
+| A4 | Login runs a dummy password hash for an unknown user, so it can't be told apart by timing (O27) | absent: unknown user returns `Failed` before PBKDF2 (accepted risk, mitigated by the `/connect` rate limit) | `libs/authorization/.../Identity/SparkSignInManager.cs:110-115` (the earlier `Login.cs:252` citation was wrong) |
 | A5 | Write the "not written" rows of `docs/idp-e2e-test-matrix.md` (T-O2, L-L5) | open | matrix line 9 |
-| A6 | Resource-server DPoP replay cache works across instances | in memory | platform PRD:65 |
-| A7 | `SparkIntrospectionHandler` fetches discovery through `IHttpClientFactory`, not a static `ConfigurationManager` | static | platform PRD:97-100 |
-| A8 | An invitation to an account registered seconds earlier still sends its mail (index lag) | may send nothing | platform PRD:97-100 |
+| A6 | Resource-server DPoP replay cache works across instances | in memory | `ResourceServer/SparkProofOfPossession.cs:22-23, 96` (`IMemoryCache`) |
+| A7 | `SparkIntrospectionHandler` fetches discovery through `IHttpClientFactory`, not a static `ConfigurationManager` | static | `ResourceServer/SparkIntrospectionHandler.cs:47, 139-153` |
+| A8 | An invitation to an account registered seconds earlier still sends its mail (index lag) | may send nothing | `Services/OidcInvitations.cs:66, 109-117` (no non-stale wait) |
 | A9 | Run the OpenID conformance plans: logout (RP-initiated, front-channel, back-channel), dynamic OP, FAPI 2.0 | not verified / not run | platform PRD §0 item 5 |
 | A10 | Fix the stale links to `docs/PRD-IdentityProvider.md` and the false "not yet on master" claim | stale | `docs/prd/PRD-SecurityAudit.md:526`, `docs/prd/PRD-SparkClient-Followups.md:263` |
 
@@ -150,23 +194,23 @@ The "Now" column says what master does today.
 |---|---|---|---|
 | B1 | **DPoP nonces** (`DPoP-Nonce`, `use_dpop_nonce`) at the token endpoint and the resource server | absent | needed for FAPI 2.0 DPoP. See S2 |
 | B2 | **mTLS behind a reverse proxy**: trusted certificate forwarding, `mtls_endpoint_aliases` | auth works only with direct TLS | see S1 |
-| B3 | **Absolute refresh-token lifetime** next to the sliding one (Duende `AbsoluteRefreshTokenLifetime` / `SlidingRefreshTokenLifetime`) | sliding only: every rotation sets `UtcNow + RefreshTokenLifetimeDays` (`Token.cs:568`), so a chain never ends | `ChainStartedAt`; host-wide options plus a per-app override; defaults per G3 |
+| B3 | **Absolute refresh-token lifetime** next to the sliding one (Duende `AbsoluteRefreshTokenLifetime` / `SlidingRefreshTokenLifetime`) | sliding only: every rotation sets `UtcNow + RefreshTokenLifetimeDays` (`Token.cs:667`, also `:314` and `TokenGrants.cs:119`), so a chain never ends | `ChainStartedAt` on the `OidcRefreshFamily` (#509); host-wide options plus a per-app override; defaults per G3 |
 | B4 | **Server-side sessions**: ticket store, session query, admin "end session", inactivity timeout | session record (`sid` + clients) only | see S5 |
 | B5 | **FAPI 2.0 security profile switch** per client (forces PAR, PKCE, sender-constrained tokens, `iss`, short code lifetime, allowed algorithms) | building blocks only | depends on B1 and B2; certify with A9 |
 | B6 | **OpenTelemetry for every Spark library** (G4): `Meter` + `ActivitySource` per category | absent everywhere | see S7 and G4 |
 | B7 | **Pluggable event sink** (`IIdentityProviderEventSink`) next to the audit collection | audit collection only | Duende `IEventSink` |
-| B8 | **Pluggable extension grants** (`IExtensionGrant`, composed via `[Register]`) | closed switch, `Token.cs:115` | see S6 |
+| B8 | **Pluggable extension grants** (`IExtensionGrant`, composed via `[Register]`) | closed switch gated by `OidcSurface`, `Token.cs:111-120` | see S6 |
 | B9 | **JWT-bearer grant (RFC 7523)**, the first extension grant | client-assertion form only | depends on B8 |
-| B10 | **Profile / claims service**: configurable claim mapping for id_token, access token and userinfo, per resource, plus user claims from the Spark user | fixed list in `Services/OidcTokenGenerator.cs:254-277` | Duende `IProfileService` |
+| B10 | **Profile / claims service**: configurable claim mapping for id_token, access token and userinfo, per resource, plus user claims from the Spark user | fixed list in `Services/OidcTokenGenerator.cs:251-299`; keep the MCP `sub` rule at `:145` | Duende `IProfileService` |
 
 ### Tier C: valuable (should)
 
 | # | Feature | Notes |
 |---|---|---|
-| C1 | **Opaque reference access tokens**, chosen per application | today every token is a JWT whose `jti` is recorded. Introspection already exists, so this changes only the token format |
+| C1 | **Opaque reference access tokens**, chosen per application | today every token is a JWT whose `jti` is recorded. Introspection already exists, and the resource server can already introspect opaque tokens (#509), so only the issuing side is left |
 | C2 | **Dynamic providers**: external IdPs (OIDC/SAML-less) configured at runtime from RavenDB | today they come from configuration at startup (`SparkExternalProvidersConfigurationExtensions.cs:49`) |
 | C3 | **JAR by reference** (`request_uri` to an external URL), with SSRF guards | refused today (`Discovery.cs:79`) |
-| C4 | **Conformance mode for dynamic client registration**: open DCR, or a per-environment policy, so the dynamic plans can run | DCR needs an initial access token |
+| C4 | **Conformance mode for dynamic client registration**: open DCR, or a per-environment policy, so the dynamic plans can run | DCR needs an initial access token, except anonymous agent DCR (loopback only) from #509 |
 | C5 | **Single-use PAR `request_uri`** | today it can be reused until it expires (90 s) |
 | C6 | **Admin "sessions" and "tokens" screens**: list or kill a user's sessions and tokens | builds on B4 |
 | C7 | **CIBA readiness**: the user-notification channel decided in S4 | prerequisite for D1 |
