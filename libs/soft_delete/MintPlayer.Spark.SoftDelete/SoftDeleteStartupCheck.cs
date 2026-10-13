@@ -58,23 +58,31 @@ internal static class SoftDeleteStartupCheck
 
         if (services.GetService<IIndexCatalog>() is { } catalog)
         {
+            var documentStore = services.GetService<Raven.Client.Documents.IDocumentStore>();
+
+            // EntityTypes rather than CollectionType: a multi-map default names no collection of its own but
+            // serves every type its [DefaultIndex(...)] lists (docs/default_index_PRD.md, SP1), and skipping
+            // it hid exactly the short-page problem these warnings exist for.
             foreach (var entry in catalog.GetAllEntries())
+            foreach (var entityType in entry.EntityTypes)
             {
-                if (entry.CollectionType is null || !typeof(ISoftDeletable).IsAssignableFrom(entry.CollectionType))
+                if (!typeof(ISoftDeletable).IsAssignableFrom(entityType))
                     continue;
 
                 if (entry.ProjectionType is { } projection && projection.GetProperty(nameof(ISoftDeletable.IsDeleted)) is null)
                     logger.LogWarning(
                         "Projection {Projection} of index {Index} has no IsDeleted, so soft deletion of {EntityType} is " +
                         "applied after materialization for queries on it: add IsDeleted to the projection and the Map.",
-                        projection.Name, entry.IndexName, entry.CollectionType.Name);
+                        projection.Name, entry.IndexName, entityType.Name);
 
-                if (!MapMentionsIsDeleted(entry.IndexType))
+                // A single-map has one map; a multi-map is judged by the map over this type's collection.
+                var collection = entry.CollectionType is null ? documentStore?.Conventions.GetCollectionName(entityType) : null;
+                if (!MapMentionsIsDeleted(entry.IndexType, collection))
                     logger.LogWarning(
                         "Index {Index} over soft-deletable {EntityType} does not emit IsDeleted in its Map. A filter pushed " +
                         "down to it reads the field as absent, which 'IsDeleted != true' matches for every row: deleted rows " +
                         "are only dropped after the reload and pages come back short. Emit IsDeleted in the Map.",
-                        entry.IndexName, entry.CollectionType.Name);
+                        entry.IndexName, entityType.Name);
             }
         }
     }
@@ -93,14 +101,17 @@ internal static class SoftDeleteStartupCheck
         }
     }
 
-    private static bool MapMentionsIsDeleted(Type indexType)
+    /// <param name="collection">For a multi-map, the collection whose map is judged; <see langword="null"/> judges every map.</param>
+    private static bool MapMentionsIsDeleted(Type indexType, string? collection)
     {
         try
         {
             if (Activator.CreateInstance(indexType) is not IAbstractIndexCreationTask task)
                 return true;
             var definition = task.CreateIndexDefinition();
-            return definition.Maps.Any(map => map.Contains(nameof(ISoftDeletable.IsDeleted), StringComparison.Ordinal));
+            return definition.Maps
+                .Where(map => collection is null || string.Equals(SparkMapScanner.CollectionOf(map), collection, StringComparison.OrdinalIgnoreCase))
+                .Any(map => map.Contains(nameof(ISoftDeletable.IsDeleted), StringComparison.Ordinal));
         }
         catch
         {

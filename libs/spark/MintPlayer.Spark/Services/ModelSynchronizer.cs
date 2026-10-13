@@ -4,6 +4,7 @@ using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Layering;
 using MintPlayer.Spark.Services.Breadcrumb;
+using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Linq;
 using System.Reflection;
 using System.Text.Encodings.Web;
@@ -116,16 +117,21 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             var entityType = group.Key;
             var clrType = entityType.FullName ?? entityType.Name;
 
-            // The entity's model-shaping default: the [DefaultIndex]-elected (or sole)
-            // projection-bearing index. Null when no index over this entity has a projection —
-            // then the file carries no binding (that invariant is hash-relevant).
-            var defaultEntry = indexCatalog.GetDefaultForCollectionType(entityType);
+            // The entity's default index: the one claiming it with [DefaultIndex], else its sole
+            // index with a view (docs/default_index_PRD.md, D3). Null when it has neither — then the
+            // file carries no binding (that invariant is hash-relevant, see ModelShapeDiscovery).
+            var defaultEntry = indexCatalog.GetDefaultFor(entityType);
             Type? projectionType = defaultEntry?.ProjectionType;
             string? indexName = defaultEntry?.IndexName;
 
+            // A viewless default (SP4) is queried for entity documents, but RavenDB can only sort and
+            // filter on what its maps emit: anything else is "The field '…' is not indexed", a 500.
+            // Null for a viewed default or no default — the view is the surface then.
+            var querySurface = defaultEntry is { ProjectionType: null } ? ViewlessQuerySurface(defaultEntry) : null;
+
             // Find or create entity type definition (merging with projection type if present)
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, entityTypeToQueryName);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, entityTypeToQueryName, querySurface);
             ApplyRendererSeeds(entityTypeDef, entityType);
             rootTypes.Add(entityType);
 
@@ -194,7 +200,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     // Stamped at mint (#279): the query declares its index instead of relying on
                     // an ambient default. Null when the entity has no projection-bearing index.
                     IndexName = indexName,
-                    SortColumns = GetDefaultSortProperty(entityTypeDef) is string sortProp
+                    SortColumns = GetDefaultSortProperty(entityTypeDef, querySurface) is string sortProp
                         ? [new SortColumn { Property = sortProp, Direction = "asc" }]
                         : []
                 });
@@ -704,7 +710,11 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return true;
     }
 
-    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing, Dictionary<string, string>? entityTypeToQueryName = null)
+    /// <param name="querySurface">
+    /// For a viewless default index, the fields its maps emit: a new attribute outside it is minted with
+    /// <c>canSort</c>/<c>canFilter</c> false. Null when there is no such restriction.
+    /// </param>
+    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing, Dictionary<string, string>? entityTypeToQueryName = null, IReadOnlySet<string>? querySurface = null)
     {
         var entityTypeDef = existing ?? new EntityTypeDefinition
         {
@@ -742,7 +752,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         }
 
         entityTypeDef.QueryType = resolvedQueryType;
-        entityTypeDef.IndexName = projectionType != null ? indexName : null;
+        // The default index's name, view or not. It used to be cleared without a projection, which was
+        // right while only a viewed index could be a default; a marked viewless default (D3/SP4) is bound
+        // here like any other, and satellites/embedded types pass null.
+        entityTypeDef.IndexName = indexName;
 
         // Get existing attributes as a dictionary for quick lookup
         // Reported rather than left to ToDictionary, which throws "An item with the same key has
@@ -1008,6 +1021,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     ShowedOn = showedOn,
                     Rules = []
                 };
+
+                // A viewless default's maps do not emit this field, so RavenDB cannot sort or filter on it
+                // (SP4). Minted false, creation only: CanSort/CanFilter are the author's flags from then on
+                // (see the update branch), so an author who adds the field to the map can lift them.
+                if (querySurface is not null && !querySurface.Contains(propertyName))
+                {
+                    newAttr.CanSort = false;
+                    newAttr.CanFilter = false;
+                }
                 CollectDescriptionSeed(entityTypeDef.Name, newAttr, descriptionSeed);
                 newAttributes.Add(newAttr);
             }
@@ -1360,13 +1382,59 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         return lines;
     }
 
-    private string? GetDefaultSortProperty(EntityTypeDefinition entityType)
+    /// <param name="querySurface">
+    /// For a viewless default index, the fields its maps emit: only those can be sorted on (SP4), so the
+    /// default sort is chosen among them, and is absent when none qualifies.
+    /// </param>
+    private string? GetDefaultSortProperty(EntityTypeDefinition entityType, IReadOnlySet<string>? querySurface = null)
     {
+        var candidates = entityType.Attributes
+            .Where(a => querySurface is null || querySurface.Contains(a.Name))
+            .ToList();
+
         // Prefer Name, LastName, or first string attribute
-        var sortAttr = entityType.Attributes
-            .FirstOrDefault(a => a.Name is "Name" or "LastName")
-            ?? entityType.Attributes.FirstOrDefault(a => a.DataType == "string");
+        var sortAttr = candidates.FirstOrDefault(a => a.Name is "Name" or "LastName")
+            ?? candidates.FirstOrDefault(a => a.DataType == "string");
 
         return sortAttr?.Name;
+    }
+
+    /// <summary>
+    /// The fields a viewless default index's maps emit (<see cref="SparkMapScanner.EmittedFields"/>), or
+    /// <see langword="null"/> when they cannot be read — then nothing is restricted and the author sets
+    /// <c>canSort</c>/<c>canFilter</c> by hand.
+    /// </summary>
+    /// <remarks>
+    /// Every map's fields, not only the map over this type's collection: the synchronizer has no document
+    /// store to name collections with, and a field another map emits is indexed, so sorting on it is no
+    /// error (this type's entries simply have no value for it).
+    /// </remarks>
+    internal static IReadOnlySet<string>? ViewlessQuerySurface(IndexCatalogEntry entry)
+    {
+        IndexDefinition definition;
+        try
+        {
+            if (Activator.CreateInstance(entry.IndexType) is not IAbstractIndexCreationTask task) return null;
+            definition = task.CreateIndexDefinition();
+        }
+        catch (Exception ex) when (ex is MissingMethodException or NotSupportedException or TargetInvocationException or InvalidOperationException)
+        {
+            Console.WriteLine($"Warning: could not read the maps of viewless default index '{entry.IndexName}' ({ex.Message}); " +
+                              "its attributes keep the default sort and filter capabilities.");
+            return null;
+        }
+
+        var fields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var map in definition.Maps)
+        {
+            if (SparkMapScanner.EmittedFields(map) is not { } emitted)
+            {
+                Console.WriteLine($"Warning: could not read the fields emitted by a map of viewless default index '{entry.IndexName}'; " +
+                                  "its attributes keep the default sort and filter capabilities.");
+                return null;
+            }
+            fields.UnionWith(emitted);
+        }
+        return fields;
     }
 }
