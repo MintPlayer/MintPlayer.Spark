@@ -75,6 +75,19 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
         // filter in CarActions scopes users to the cars they created by that stamp.
         spark.AddHistory();
 
+        // What a context root's properties become when synchronize first creates their attributes
+        // (docs/default_index_PRD.md, D9). It matters for a root over a type Fleet does not own: FleetContext's
+        // MailDeliveries root lists the mail package's SparkMailDelivery, whose model is derived from the CLR type, and
+        // Fleet cannot put attributes on that class. Spark's default convention hides the audit names it knows
+        // (CreatedBy, CreatedAt*, ModifiedBy, ModifiedAt*). The mail package spells its stamp UpdatedAtUtc, so this
+        // wraps the convention to treat UpdatedAt* as an audit stamp too: created hidden (showedOn None) and read-only.
+        // Runs during --spark-synchronize-model only, and never changes an attribute that already exists (#253): an
+        // administrator who wants the column after all sets its showedOn in App_Data/Model/SparkMailDelivery.json.
+        spark.ModelAttributes((type, property) =>
+            property.Name.StartsWith("UpdatedAt", StringComparison.Ordinal)
+                ? MintPlayer.Spark.Configuration.ModelAttributeSeed.Hidden
+                : MintPlayer.Spark.Configuration.ModelAttributeConventions.AuditMembersHidden(type, property));
+
         // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
         // share Spark's pipeline — its authentication schemes, its antiforgery scope, and
         // [SparkAuthorize]. A bare MapControllers() is reported by SPARK010.

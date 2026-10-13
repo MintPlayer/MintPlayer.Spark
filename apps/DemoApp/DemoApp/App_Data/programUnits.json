@@ -68,6 +68,24 @@
           "queryId": "f7a1b2c3-d4e5-6789-abcd-ef0123456789",
           "alias": "stocks",
           "order": 4
+        },
+        {
+          "id": "990e8400-e29b-41d4-a716-446655440005",
+          "name": "programUnits.bicycles",
+          "icon": "bi-bicycle",
+          "type": "query",
+          "queryId": "515532bd-6524-4e89-a39a-aaaffa62aab6",
+          "alias": "bicycles",
+          "order": 5
+        },
+        {
+          "id": "990e8400-e29b-41d4-a716-446655440006",
+          "name": "programUnits.motorcycles",
+          "icon": "bi-speedometer2",
+          "type": "query",
+          "queryId": "33d20a20-2da4-4416-a7c8-24b418ee132e",
+          "alias": "motorcycles",
+          "order": 6
         }
       ]
     }

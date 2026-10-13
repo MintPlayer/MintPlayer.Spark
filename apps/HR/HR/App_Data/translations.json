@@ -523,6 +523,13 @@
             "fr": "Régime d'emploi sous lequel la profession est exercée, p. ex. salarié ou indépendant.",
             "nl": "Arbeidsregime waaronder het beroep wordt uitgeoefend, bv. werknemer of freelance."
           }
+        },
+        "Label": {
+          "label": {
+            "en": "Profession (regime)",
+            "fr": "Profession (régime)",
+            "nl": "Beroep (regime)"
+          }
         }
       }
     }

@@ -16,6 +16,7 @@ Anonymous visitors | grant | QueryRead/Company | 00000000-0000-0000-0000-0000000
 ## Rights
 Administrators | grant | CarCopy/Car | ca000001-0000-0000-0000-000000000001 | app
 Administrators | grant | Edit/LookupReferences | f0000009-0000-0000-0000-000000000002 | app
+Administrators | grant | QueryRead/SparkMailDelivery | f0000001-0000-0000-0000-000000000006 | app
 Administrators | grant | QueryReadEditNewDelete/Car | f0000001-0000-0000-0000-000000000001 | app
 Administrators | grant | QueryReadEditNewDelete/CarBrand | f0000001-0000-0000-0000-000000000002 | app
 Administrators | grant | QueryReadEditNewDelete/CarStatus | f0000001-0000-0000-0000-000000000003 | app

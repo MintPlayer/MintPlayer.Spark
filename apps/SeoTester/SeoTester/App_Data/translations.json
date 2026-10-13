@@ -1114,6 +1114,16 @@
           }
         }
       }
+    },
+    "Organization": {
+      "attributes": {
+        "CreatedBy": {
+          "label": {
+            "en": "Created by",
+            "nl": "Aangemaakt door"
+          }
+        }
+      }
     }
   },
   "queries": {
@@ -1151,6 +1161,12 @@
       "label": {
         "en": "Audit log",
         "nl": "Auditlog"
+      }
+    },
+    "GetOrganizations": {
+      "label": {
+        "en": "Organizations",
+        "nl": "Organisaties"
       }
     }
   },

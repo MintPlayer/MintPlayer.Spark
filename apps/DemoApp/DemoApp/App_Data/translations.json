@@ -366,6 +366,16 @@
               "nl": "Achternaam moet minstens 2 tekens bevatten."
             }
           }
+        },
+        "Bicycle": {
+          "description": {
+            "en": "The fleet bicycle this person commutes on."
+          },
+          "label": {
+            "en": "Bicycle",
+            "fr": "Vélo",
+            "nl": "Fiets"
+          }
         }
       }
     },
@@ -488,6 +498,98 @@
           }
         }
       }
+    },
+    "Bicycle": {
+      "attributes": {
+        "Brand": {
+          "description": {
+            "en": "Manufacturer of the bicycle, for example Gazelle."
+          },
+          "label": {
+            "en": "Brand",
+            "fr": "Marque",
+            "nl": "Merk"
+          }
+        },
+        "Model": {
+          "description": {
+            "en": "Model name of the bicycle."
+          },
+          "label": {
+            "en": "Model",
+            "fr": "Modèle",
+            "nl": "Model"
+          }
+        },
+        "FrameSize": {
+          "description": {
+            "en": "Frame size in centimetres."
+          },
+          "label": {
+            "en": "Frame size (cm)",
+            "fr": "Taille du cadre (cm)",
+            "nl": "Framemaat (cm)"
+          }
+        },
+        "Details": {
+          "label": {
+            "en": "Details",
+            "fr": "Détails",
+            "nl": "Details"
+          }
+        }
+      },
+      "label": {
+        "en": "Bicycle",
+        "fr": "Vélo",
+        "nl": "Fiets"
+      }
+    },
+    "Motorcycle": {
+      "attributes": {
+        "Brand": {
+          "description": {
+            "en": "Manufacturer of the motorcycle, for example Honda."
+          },
+          "label": {
+            "en": "Brand",
+            "fr": "Marque",
+            "nl": "Merk"
+          }
+        },
+        "Model": {
+          "description": {
+            "en": "Model name of the motorcycle."
+          },
+          "label": {
+            "en": "Model",
+            "fr": "Modèle",
+            "nl": "Model"
+          }
+        },
+        "EngineCapacity": {
+          "description": {
+            "en": "Engine displacement in cubic centimetres."
+          },
+          "label": {
+            "en": "Engine capacity (cc)",
+            "fr": "Cylindrée (cc)",
+            "nl": "Cilinderinhoud (cc)"
+          }
+        },
+        "Details": {
+          "label": {
+            "en": "Details",
+            "fr": "Détails",
+            "nl": "Details"
+          }
+        }
+      },
+      "label": {
+        "en": "Motorcycle",
+        "fr": "Moto",
+        "nl": "Motorfiets"
+      }
     }
   },
   "queries": {
@@ -539,6 +641,20 @@
         "fr": "Bourse (En direct)",
         "nl": "Beurs (Live)"
       }
+    },
+    "GetBicycles": {
+      "label": {
+        "en": "Bicycles",
+        "fr": "Vélos",
+        "nl": "Fietsen"
+      }
+    },
+    "GetMotorcycles": {
+      "label": {
+        "en": "Motorcycles",
+        "fr": "Motos",
+        "nl": "Motorfietsen"
+      }
     }
   },
   "programUnits": {
@@ -583,6 +699,16 @@
       "en": "Stock Market",
       "fr": "Bourse",
       "nl": "Beurs"
+    },
+    "bicycles": {
+      "en": "Bicycles",
+      "fr": "Vélos",
+      "nl": "Fietsen"
+    },
+    "motorcycles": {
+      "en": "Motorcycles",
+      "fr": "Motos",
+      "nl": "Motorfietsen"
     }
   },
   "security": {

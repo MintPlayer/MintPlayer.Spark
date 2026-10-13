@@ -1,4 +1,5 @@
 using MintPlayer.Spark;
+using MintPlayer.Spark.Organizations.Models;
 using Raven.Client.Documents.Linq;
 using SeoTester.Entities;
 
@@ -15,6 +16,16 @@ public partial class SeoContext : SparkContext
     public IRavenQueryable<AuditRun> AuditRuns => Session.Query<AuditRun>();
     public IRavenQueryable<CheckDefinition> CheckDefinitions => Session.Query<CheckDefinition>();
     public IRavenQueryable<AuditLogEntry> AuditLogEntries => Session.Query<AuditLogEntry>();
+
+    /// <summary>
+    /// The package's organizations, as a plain entity root (<c>docs/default_index_PRD.md</c>, D6): it mints the query
+    /// <c>Site.OrganizationId</c>'s query-less <c>[Reference(typeof(Organization))]</c> resolves to, so the site form's
+    /// picker lists the caller's organizations. Without it the reference had no query and the picker stayed empty
+    /// (SPARK056). Its rows are the package's row policy, the same the package's own <c>Custom.Organizations</c> lists
+    /// (SP3). The minted alias steps aside from that query's (<c>organizations-2</c>, D11), and the audit-named
+    /// <c>CreatedBy</c> is created hidden by the default <c>spark.ModelAttributes</c> convention (D9).
+    /// </summary>
+    public IRavenQueryable<Organization> Organizations => Session.Query<Organization>();
 }
 
 /// <summary>SeoTester's custom actions (<c>App_Data/actions.json</c>); their class is the name plus <c>Action</c>.</summary>

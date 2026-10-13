@@ -395,6 +395,64 @@
           }
         }
       }
+    },
+    "SparkMailDelivery": {
+      "label": {
+        "en": "Mail delivery",
+        "fr": "Envoi de courriel",
+        "nl": "Maillevering"
+      },
+      "attributes": {
+        "Email": {
+          "label": {
+            "en": "Recipient",
+            "fr": "Destinataire",
+            "nl": "Ontvanger"
+          }
+        },
+        "Template": {
+          "label": {
+            "en": "Template",
+            "fr": "Modèle",
+            "nl": "Sjabloon"
+          }
+        },
+        "Stream": {
+          "label": {
+            "en": "Stream",
+            "fr": "Flux",
+            "nl": "Stroom"
+          }
+        },
+        "CampaignId": {
+          "label": {
+            "en": "Campaign",
+            "fr": "Campagne",
+            "nl": "Campagne"
+          }
+        },
+        "Status": {
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
+          }
+        },
+        "Detail": {
+          "label": {
+            "en": "Detail",
+            "fr": "Détail",
+            "nl": "Detail"
+          }
+        },
+        "UpdatedAtUtc": {
+          "label": {
+            "en": "Updated at",
+            "fr": "Mis à jour le",
+            "nl": "Bijgewerkt op"
+          }
+        }
+      }
     }
   },
   "queries": {
@@ -446,6 +504,20 @@
         "fr": "Personnes",
         "nl": "Personen"
       }
+    },
+    "GetPeopleWithEmail": {
+      "label": {
+        "en": "People with e-mail",
+        "fr": "Personnes avec e-mail",
+        "nl": "Personen met e-mail"
+      }
+    },
+    "GetMailDeliveries": {
+      "label": {
+        "en": "Mail deliveries",
+        "fr": "Envois de courriels",
+        "nl": "Mailleveringen"
+      }
     }
   },
   "programUnits": {
@@ -485,6 +557,16 @@
       "en": "Registrations",
       "fr": "Immatriculations",
       "nl": "Inschrijvingen"
+    },
+    "peopleWithEmail": {
+      "en": "People with e-mail",
+      "fr": "Personnes avec e-mail",
+      "nl": "Personen met e-mail"
+    },
+    "mailDeliveries": {
+      "en": "Mail deliveries",
+      "fr": "Envois de courriels",
+      "nl": "Mailleveringen"
     }
   },
   "security": {
