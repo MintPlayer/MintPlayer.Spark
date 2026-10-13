@@ -14,6 +14,7 @@ namespace MintPlayer.Spark.Tests.Services;
 /// on the SparkContext and writes <c>App_Data/Model/{EntityName}.json</c> files. A regression
 /// breaks the dev workflow where edits to the C# entity classes auto-propagate to model files.
 /// </summary>
+[Collection(MintPlayer.Spark.Tests.Builder.ProcessExitCodeCollection.Name)]
 public sealed class ModelSynchronizerTests : IDisposable
 {
     private readonly string _tempDir;

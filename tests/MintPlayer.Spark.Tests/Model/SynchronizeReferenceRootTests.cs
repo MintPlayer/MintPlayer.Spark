@@ -16,6 +16,7 @@ namespace MintPlayer.Spark.Tests.Model;
 /// never takes a name or alias another query already holds. The test project does not run the Spark generator, so
 /// the fixture contexts carry the markers it would emit.
 /// </summary>
+[Collection(MintPlayer.Spark.Tests.Builder.ProcessExitCodeCollection.Name)]
 public sealed class SynchronizeReferenceRootTests : IDisposable
 {
     private readonly string contentRoot = Path.Combine(Path.GetTempPath(), "spark-refroot-" + Guid.NewGuid().ToString("N"));
