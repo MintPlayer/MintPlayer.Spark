@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Mcp</PackageId>
-		<Version>11.0.0-preview.104</Version>
+		<Version>11.0.0-preview.105</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>A Model Context Protocol server inside a MintPlayer.Spark application: AI agents (Claude Code, Codex, Gemini) read the application's data as the user who connected them, through the same rights, row security and attribute redaction as the web UI. Generic discover/describe/query/get tools, your own tools, bearer-only /mcp with Origin validation, per-agent permissions, call limits and audit events.</Description>
