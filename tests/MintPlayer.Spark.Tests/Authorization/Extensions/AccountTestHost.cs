@@ -38,7 +38,7 @@ internal sealed record CapturedMail(string Kind, string Email, string Content)
 }
 
 /// <remarks>
-/// <c>forgotPassword</c> and <c>resendConfirmationEmail</c> hand their mail to a background queue (A11),
+/// <c>forgotPassword</c>, <c>resendConfirmationEmail</c> (A11) and <c>register</c> (A13) hand their mail to a background queue,
 /// so after those a test waits with <see cref="WaitForAsync"/>. <see cref="Hold"/> keeps every send
 /// blocked until <see cref="Release"/>, to prove a request does not wait for its mail.
 /// </remarks>

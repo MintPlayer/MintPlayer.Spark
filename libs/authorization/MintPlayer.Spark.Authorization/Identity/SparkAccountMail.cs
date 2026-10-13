@@ -61,7 +61,7 @@ internal sealed class SparkAccountMail<TUser>(
     }
 
     /// <summary>
-    /// <c>resendConfirmationEmail</c>: queues the confirmation link for <paramref name="user"/>, or, when
+    /// <c>resendConfirmationEmail</c> and <c>register</c>: queues the confirmation link for <paramref name="user"/>, or, when
     /// it is <see langword="null"/> (no such account, or nothing to confirm), does the same token and
     /// link work for <see cref="Unknown"/> and sends nothing.
     /// </summary>
@@ -96,6 +96,32 @@ internal sealed class SparkAccountMail<TUser>(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Could not queue the password-reset mail for user {UserId}.", user?.Id);
+        }
+    }
+
+    /// <summary>
+    /// <c>register</c> with an address that is already <paramref name="user"/>'s (A13): queues a notice
+    /// to the owner with a password-reset link. One token and one queued mail, as the fresh registration's
+    /// <see cref="QueueConfirmationAsync"/> does, so the two cost the same.
+    /// </summary>
+    /// <remarks>
+    /// Identity's <see cref="IEmailSender{TUser}"/> has no such mail: Spark's MailManager sender sends
+    /// <see cref="SparkAuthMailTemplates.AccountExists"/>, and an app's own sender gets the password-reset
+    /// link, the one thing the owner may need from it.
+    /// </remarks>
+    public async Task QueueAccountExistsAsync(HttpContext context, TUser user, string email)
+    {
+        try
+        {
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var link = links.ResetPassword(context, email, Encode(token));
+            dispatcher.Enqueue("account-exists", user.Id, sender => sender is SparkMailEmailSender<TUser> mail
+                ? mail.SendAccountExistsAsync(user, email, link)
+                : sender.SendPasswordResetLinkAsync(user, email, HtmlEncoder.Default.Encode(link)));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Could not queue the account-exists mail for user {UserId}.", user.Id);
         }
     }
 

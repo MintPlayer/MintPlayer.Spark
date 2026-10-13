@@ -12,6 +12,8 @@ using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Testing;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 
@@ -32,7 +34,7 @@ public class AccountFlowTests : SparkTestDriver
         (await client.PostAsJsonAsync("/spark/auth/register", new { email = "new@example.com", password = AccountTestHost.Password, userName = "newcomer" }))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var confirmation = host.Mail.Sent.Should().ContainSingle().Which;
+        var confirmation = (await host.Mail.WaitForAsync(1)).Should().ContainSingle().Which;
         confirmation.Kind.Should().Be("confirm");
         confirmation.Link.Should().StartWith($"{AccountTestHost.BaseUrl}/confirm-email?userId=");
         confirmation.Query("code").Should().NotBeNullOrEmpty();
@@ -124,7 +126,7 @@ public class AccountFlowTests : SparkTestDriver
         await client.PostAsJsonAsync("/spark/auth/register", new { email = "gate@example.com", password = AccountTestHost.Password, userName = "gatekeeper" });
         var before = await client.PostAsJsonAsync("/spark/auth/login", new { email = "gate@example.com", password = AccountTestHost.Password, userName = "gatekeeper" });
 
-        var link = host.Mail.Sent.Single();
+        var link = (await host.Mail.WaitForAsync(1)).Single();
         var badCode = await client.PostAsJsonAsync("/spark/auth/confirm-email", new { userId = link.Query("userId"), code = "bm90LWEtdG9rZW4" });
         var confirm = await client.PostAsJsonAsync("/spark/auth/confirm-email", new { userId = link.Query("userId"), code = link.Query("code") });
         var after = await client.PostAsJsonAsync("/spark/auth/login", new { email = "gate@example.com", password = AccountTestHost.Password, userName = "gatekeeper" });
@@ -227,6 +229,144 @@ public class AccountFlowTests : SparkTestDriver
         badToken.Validated.Should().Be(1);
         unknown.Should().Be(badToken);
         (await host.CookieSignInAsync(client, "known@example.com")).Should().NotBeNullOrEmpty("the password is unchanged");
+    }
+
+    /// <summary>
+    /// A13: registering with an address that already has an account used to answer <c>DuplicateEmail</c>, which told
+    /// anyone the address was registered. Now a taken and a free address get the same answer after the same work (one
+    /// password hash, one token, no wait for the mail), the owner is mailed instead, and the account is untouched.
+    /// </summary>
+    [Fact]
+    public async Task A13_registering_a_taken_address_answers_like_a_free_one_and_tells_the_owner()
+    {
+        var tokens = new TokenWork();
+        var hashes = new HashWork();
+        await using var host = await AccountTestHost.StartAsync(Store, services: s =>
+        {
+            CountTokens(s, tokens);
+            s.AddSingleton<IPasswordHasher<SparkUser>>(new CountingPasswordHasher(hashes));
+        });
+        var owner = await host.CreateUserAsync("owner", "owner@example.com");
+        using var client = host.Client();
+        host.Mail.Hold();
+
+        async Task<(int Status, string Body, int Tokens, int Hashes)> RegisterAsync(string email, string userName)
+        {
+            var (tokensBefore, hashesBefore) = (tokens.Generated, hashes.Hashed);
+            // Bounded: a request that awaited its mail would hang here while the sender is held.
+            var response = await client.PostAsJsonAsync("/spark/auth/register", new { email, password = "Intruders-password-2", userName })
+                .WaitAsync(TimeSpan.FromSeconds(10));
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(), tokens.Generated - tokensBefore, hashes.Hashed - hashesBefore);
+        }
+
+        var free = await RegisterAsync("fresh@example.com", "fresh");
+        var taken = await RegisterAsync("OWNER@example.com", "intruder");
+
+        host.Mail.Sent.Should().BeEmpty("the sender is held, and both requests answered anyway");
+        free.Should().Be((200, "", 1, 1));
+        taken.Should().Be(free, "a taken address hashes the password and makes a token too");
+
+        host.Mail.Release();
+        var mails = await host.Mail.WaitForAsync(2);
+        mails.Should().HaveCount(2);
+        mails.Should().ContainSingle(m => m.Email == "fresh@example.com").Which.Kind.Should().Be("confirm");
+        // An app's own IEmailSender has no account-exists mail: the owner gets the reset link (MailManager's notice below).
+        // To the address the account holds, not as the registrant typed it.
+        var notice = mails.Should().ContainSingle(m => m.Email == "owner@example.com").Which;
+        notice.Kind.Should().Be("reset-link");
+        notice.Link.Should().StartWith($"{AccountTestHost.BaseUrl}/reset-password?email=");
+
+        var after = await host.FindByEmailAsync("owner@example.com");
+        after!.Id.Should().Be(owner.Id);
+        after.UserName.Should().Be("owner");
+        after.PasswordHash.Should().Be(owner.PasswordHash, "the registrant's password is not the owner's");
+        (await host.CookieSignInAsync(client, "owner@example.com")).Should().NotBeNullOrEmpty();
+        (await client.PostAsJsonAsync("/spark/auth/login", new { email = "owner@example.com", password = "Intruders-password-2" }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var session = Store.OpenAsyncSession();
+        var users = await session.Query<SparkUser>()
+            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(10)))
+            .Select(u => u.UserName)
+            .ToListAsync();
+        // No second user for the taken address.
+        users.Order().Should().Equal("fresh", "owner");
+    }
+
+    /// <summary>A13: with MailManager, the owner's notice is the <c>SparkAuth/AccountExists</c> template, naming the account.</summary>
+    [Fact]
+    public async Task A13_with_MailManager_the_owner_gets_the_AccountExists_notice()
+    {
+        var mailer = new RecordingMailer();
+        await using var host = await AccountTestHost.StartAsync(Store, services: s =>
+        {
+            s.AddSingleton<MintPlayer.Spark.MailManager.ISparkMailer>(mailer);
+            s.AddTransient<IEmailSender<SparkUser>, SparkMailEmailSender<SparkUser>>();
+        });
+        await host.CreateUserAsync("owner", "owner@example.com");
+        using var client = host.Client();
+
+        var free = await client.PostAsJsonAsync("/spark/auth/register", new { email = "fresh@example.com", password = AccountTestHost.Password, userName = "fresh" });
+        var taken = await client.PostAsJsonAsync("/spark/auth/register", new { email = "owner@example.com", password = AccountTestHost.Password, userName = "intruder" });
+
+        (await taken.Content.ReadAsStringAsync()).Should().Be(await free.Content.ReadAsStringAsync());
+        free.StatusCode.Should().Be(HttpStatusCode.OK);
+        taken.StatusCode.Should().Be(HttpStatusCode.OK);
+        var requests = await mailer.WaitForAsync(2);
+        requests.Should().ContainSingle(r => r.To == "fresh@example.com").Which.Template.Should().Be(SparkAuthMailTemplates.ConfirmEmail);
+        var notice = requests.Should().ContainSingle(r => r.To == "owner@example.com").Which;
+        notice.Template.Should().Be(SparkAuthMailTemplates.AccountExists);
+        notice.ToName.Should().Be("owner");
+        notice.Sensitive.Should().BeTrue("the mail carries a reset token");
+        var data = JsonSerializer.SerializeToElement(notice.Data);
+        data.GetProperty("user_name").GetString().Should().Be("owner");
+        data.GetProperty("link").GetString().Should().StartWith($"{AccountTestHost.BaseUrl}/reset-password?email=");
+    }
+
+    private sealed class HashWork
+    {
+        private int hashed;
+        public int Hashed => Volatile.Read(ref hashed);
+        public void Hash() => Interlocked.Increment(ref hashed);
+    }
+
+    /// <summary>Identity's password hasher, counting the hashes it makes.</summary>
+    private sealed class CountingPasswordHasher(HashWork hashes) : PasswordHasher<SparkUser>
+    {
+        public override string HashPassword(SparkUser user, string password)
+        {
+            hashes.Hash();
+            return base.HashPassword(user, password);
+        }
+    }
+
+    private sealed class RecordingMailer : MintPlayer.Spark.MailManager.ISparkMailer
+    {
+        private readonly List<MintPlayer.Spark.MailManager.SparkMailRequest> requests = [];
+
+        public Task<MintPlayer.Spark.MailManager.SparkMailReceipt> SendAsync(MintPlayer.Spark.MailManager.SparkMailRequest request, CancellationToken cancellationToken = default)
+        {
+            lock (requests)
+                requests.Add(request);
+            return Task.FromResult(new MintPlayer.Spark.MailManager.SparkMailReceipt("x", false));
+        }
+
+        public Task SendCampaignAsync(MintPlayer.Spark.MailManager.SparkMailCampaign campaign, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        /// <summary>Waits until <paramref name="count"/> mails were queued; 10 s is a failure bound, not a delay.</summary>
+        public async Task<List<MintPlayer.Spark.MailManager.SparkMailRequest>> WaitForAsync(int count)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (true)
+            {
+                lock (requests)
+                    if (requests.Count >= count)
+                        return [.. requests];
+                if (DateTime.UtcNow > deadline)
+                    throw new TimeoutException($"Expected {count} mail(s) within 10 s.");
+                await Task.Delay(20);
+            }
+        }
     }
 
     private static void CountTokens(IServiceCollection services, TokenWork tokens)
@@ -702,7 +842,9 @@ public class AccountFlowTests : SparkTestDriver
         calls.Should().Equal(user.Id!);
         (await host.FindByEmailAsync("leaver@example.com")).Should().BeNull();
         (await client.PostAsJsonAsync("/spark/auth/register", new { email = "leaver@example.com", password = AccountTestHost.Password, userName = "leaver-again" }))
-            .StatusCode.Should().Be(HttpStatusCode.OK, "the email reservation was released");
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        // A13: a taken address answers 200 too, so the new account is what shows the reservation was released.
+        (await host.FindByEmailAsync("leaver@example.com"))!.UserName.Should().Be("leaver-again", "the email reservation was released");
     }
 
     [Fact]
