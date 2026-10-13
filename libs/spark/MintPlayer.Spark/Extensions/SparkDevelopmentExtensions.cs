@@ -1,6 +1,7 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Abstractions.Model;
+using MintPlayer.Spark.Configuration;
 using MintPlayer.Spark.Services;
 using System.Reflection;
 
@@ -1338,7 +1339,13 @@ public static class SparkDevelopmentExtensions
         if (!TryBuildIndexCatalog(builder.Services, out var indexCatalog))
             return;
 
-        var synchronizer = new ModelSynchronizer(builder.Environment, indexCatalog);
+        // The application's ModelAttribute hook (docs/default_index_PRD.md, D9), read off the SparkOptions instance
+        // AddSpark registers, as the module registry is below (PRD §7, SP5). No AddSpark: Spark's default.
+        var options = builder.Services.LastOrDefault(d => d.ServiceType == typeof(SparkOptions))?.ImplementationInstance as SparkOptions;
+        var synchronizer = new ModelSynchronizer(builder.Environment, indexCatalog)
+        {
+            ModelAttribute = options?.ModelAttribute ?? ModelAttributeConventions.AuditMembersHidden,
+        };
         synchronizer.SynchronizeModels(contextType);
 
         Console.WriteLine("Model synchronization completed.");

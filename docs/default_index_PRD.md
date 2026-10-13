@@ -277,3 +277,25 @@ When a query minted for a context root would take a name or alias another query 
 model file, and reports it. Queries that already exist keep their name, alias and program-unit links. A reference
 still resolves to the minted root query (D6).
 
+**Implementation notes (M6 and the analyzer corrections).**
+- **D11 reproduced first.** `SynchronizeReferenceRootTests.A_minted_root_query_takes_the_first_free_alias` failed
+  before the change with SP3's exact error ("Two queries resolve to the alias 'rrliborganizations'",
+  `SparkQueryAliasIndex.cs:38`).
+- **Names collide too.** The client fetches a reference's options by query *name*
+  (`spark-po-form.component.ts:364`, `executeQueryByName`), and `QueryLoader.GetQueryByName` returns the first query
+  of that name. So a minted `Get{Prop}` taken by another query, in a library or on another type, steps aside to
+  `Get{Prop}2`, …, like the alias. Names and aliases are taken across the composed model.
+- **Fixed point.** A root's query is the query of its type named `Get{Prop}`, as before, or a stepped-aside
+  `Get{Prop}N` over `Database.{Prop}`. Otherwise the next run would mint again.
+- **The warning** fires for a writable reference to a type with no root, as SPARK056 does. When the type has roots but
+  none is plain, it fires for every reference, read-only ones included, because the reference lost the query the
+  old last-wins map gave it.
+- **Hook outcome `Hidden`** also creates the attribute not required: no form shows it, so nobody could supply a
+  value.
+- **Order:** a new attribute keeps its place in the property walk unless an existing attribute holds that order.
+  Then it takes `max + 1`. A fresh type is numbered exactly as before.
+- **SPARK056** now counts only plain roots: the generator's classifier (`Naming/PlainRootClassifier.cs`, shared rather
+  than copied) plus `[SparkPlainRoot]` markers.
+- **SPARK009, zero claims (D3):** several same-project single-map indexes of T with a `[FromIndex]` view and no claim.
+  A `[GenerateIndex]` T counts as claimed.
+

@@ -2,6 +2,8 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
+using MintPlayer.Spark.Configuration;
+using MintPlayer.Spark.Helpers;
 using MintPlayer.Spark.Layering;
 using MintPlayer.Spark.Services.Breadcrumb;
 using Raven.Client.Documents.Indexes;
@@ -40,6 +42,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// <summary>The libraries whose model layers the run composes; <see langword="null"/>: the process's (<see cref="SparkLayerCatalog"/>). Set by tests.</summary>
     internal IReadOnlyList<SparkLibrary>? Libraries { get; init; }
 
+    /// <summary>
+    /// <see cref="SparkOptions.ModelAttribute"/> (<c>docs/default_index_PRD.md</c>, D9): what a property becomes when its
+    /// attribute is first created. The synchronize command passes the application's; the default is Spark's.
+    /// </summary>
+    internal Func<Type, PropertyInfo, ModelAttributeSeed> ModelAttribute { get; init; } = ModelAttributeConventions.AuditMembersHidden;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -65,18 +73,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             .Where(p => IsRavenQueryable(p.PropertyType))
             .ToList();
 
-        // Build mapping from entity CLR type → query name for auto-resolving reference queries
-        // e.g. "HR.Entities.Company" → "GetCompanies"
-        var entityTypeToQueryName = new Dictionary<string, string>();
-        foreach (var prop in queryableProperties)
-        {
-            var et = GetQueryableEntityType(prop.PropertyType);
-            if (et == null) continue;
-            if (et.IsSparkProjection()) continue;
-            var clrTypeName = et.FullName ?? et.Name;
-            entityTypeToQueryName[clrTypeName] = $"Get{prop.Name}";
-        }
-
         // Track types to process (including embedded types)
         var processedTypes = new HashSet<string>();
         // Paths written during this run. The stale-projection cleanup below keys off it so it can
@@ -98,7 +94,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         //
         // One file, one write, one query per property.
         var rootsByEntityType = queryableProperties
-            .Select(property => new { Property = property, EntityType = GetQueryableEntityType(property.PropertyType) })
+            .Select(property => (Property: property, EntityType: GetQueryableEntityType(property.PropertyType)))
             .Where(x => x.EntityType is not null)
             .Where(x =>
             {
@@ -107,7 +103,29 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 Console.WriteLine($"Skipping projection type: {x.EntityType!.Name} (merged into collection type)");
                 return false;
             })
-            .GroupBy(x => x.EntityType!);
+            .GroupBy(x => x.EntityType!)
+            .ToList();
+
+        // Each entity type's queries, retargeted first (#276 pre-pass, see RetargetRenamedDatabaseQueries): a
+        // renamed context property otherwise leaves the old query behind with a dead "Database.OldName" source
+        // (silently returning no rows) AND mints a duplicate for the new name. Exactly one dead Database.* source
+        // plus exactly one unclaimed property is a rename with high confidence — retarget the existing query in
+        // place, preserving its Id (program units reference queries by id) and all authoring. Anything else is
+        // ambiguous: warn and keep, never guess, never delete. Custom.* queries are never touched.
+        // Done for every type before any query is planned, so the names and aliases the plan steps around are the
+        // ones that will be written.
+        var queriesByType = new Dictionary<Type, List<SparkQuery>>();
+        foreach (var group in rootsByEntityType)
+        {
+            var queriesForType = CollectQueriesFor(existingQueries, group.Key.Name);
+            RetargetRenamedDatabaseQueries(queriesForType, group.Select(x => x.Property.Name).ToList(), group.Key.Name);
+            queriesByType[group.Key] = queriesForType;
+        }
+
+        // Every root's query, existing or to be minted, named before any model file is built: a reference on a type
+        // processed early must name the query minted for a root processed late (D6, D11).
+        var rootQueries = PlanRootQueries(rootsByEntityType, queriesByType, existingQueries);
+        var referenceQueries = ResolveReferenceQueries(contextType, rootsByEntityType, rootQueries);
 
         // The context's entity types, in processing order: their satellites are written after them.
         var rootTypes = new List<Type>();
@@ -131,22 +149,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             // Find or create entity type definition (merging with projection type if present)
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, entityTypeToQueryName, querySurface);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, referenceQueries, querySurface);
             ApplyRendererSeeds(entityTypeDef, entityType);
             rootTypes.Add(entityType);
 
-            // Collect existing inline queries for this entity type, plus create default if missing
-            var queriesForType = CollectQueriesFor(existingQueries, entityType.Name);
-
-            // #276 pre-pass, before the mint loop: a renamed context property otherwise leaves the
-            // old query behind with a dead "Database.OldName" source (silently returning no rows)
-            // AND mints a duplicate for the new name. Exactly one dead Database.* source plus
-            // exactly one unclaimed property is a rename with high confidence — retarget the
-            // existing query in place, preserving its Id (program units reference queries by id)
-            // and all authoring. Anything else is ambiguous: warn and keep, never guess, never
-            // delete. Custom.* queries are never touched.
-            var propertyNames = group.Select(x => x.Property.Name).ToList();
-            RetargetRenamedDatabaseQueries(queriesForType, propertyNames, entityType.Name);
+            // Existing inline queries for this entity type (already retargeted above), plus a default if missing
+            var queriesForType = queriesByType[entityType];
 
             // Query indexName stamping + maintenance (#279). The field is load-bearing at runtime,
             // so every Database.* query gets an explicit binding. Provenance is stored==derived:
@@ -180,17 +188,21 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 // else: authored binding to a known non-default index — preserved verbatim.
             }
 
-            // One default query per context property exposing this type.
+            // One default query per context property exposing this type, under the name and alias planned for it.
             foreach (var property in group.Select(x => x.Property))
             {
-                var queryName = $"Get{property.Name}";
-                if (queriesForType.Any(q => q.Name == queryName))
+                var plan = rootQueries[property.Name];
+                if (plan.Existing is not null)
                     continue;
 
+                var queryName = plan.Name;
                 queriesForType.Add(new SparkQuery
                 {
                     Id = Guid.NewGuid(),
                     Name = queryName,
+                    // Null unless the derived alias was taken (D11): then the first free one, recorded so the
+                    // model file states the URL the query is reachable at.
+                    Alias = plan.Alias,
                     // Set eagerly, though LoadExistingEntityTypeFiles would derive the same value on
                     // the next read. Leaving it null made synchronization non-idempotent: the first
                     // run omitted the field, the second read it back, populated it and wrote it out,
@@ -205,6 +217,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                         : []
                 });
                 Console.WriteLine($"Created query: {queryName} (inline in {entityType.Name}.json)");
+                if (plan.Name != $"Get{property.Name}")
+                    Console.WriteLine($"  Named it '{plan.Name}': 'Get{property.Name}' is another query's name.");
+                if (plan.Alias is not null)
+                    Console.WriteLine($"  Gave it the alias '{plan.Alias}': '{SparkQueryAliases.Derive(plan.Name)}' is another query's alias.");
             }
 
             // Save the entity type file with inline queries
@@ -255,7 +271,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 continue;
 
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(satelliteType, projectionType: null, indexName: null, existingDef, entityTypeToQueryName);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(satelliteType, projectionType: null, indexName: null, existingDef, referenceQueries);
             ApplyRendererSeeds(entityTypeDef, satelliteType);
 
             var satelliteQueries = CollectQueriesFor(existingQueries, satelliteType.Name);
@@ -300,7 +316,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 continue;
 
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
-            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef, entityTypeToQueryName);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef, referenceQueries);
             ApplyRendererSeeds(entityTypeDef, embeddedType);
 
             // Preserve any existing inline queries for this embedded type
@@ -714,7 +730,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// For a viewless default index, the fields its maps emit: a new attribute outside it is minted with
     /// <c>canSort</c>/<c>canFilter</c> false. Null when there is no such restriction.
     /// </param>
-    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing, Dictionary<string, string>? entityTypeToQueryName = null, IReadOnlySet<string>? querySurface = null)
+    private EntityTypeDefinition CreateOrUpdateEntityTypeDefinition(Type entityType, Type? projectionType, string? indexName, EntityTypeDefinition? existing, ReferenceQueries? referenceQueries = null, IReadOnlySet<string>? querySurface = null)
     {
         var entityTypeDef = existing ?? new EntityTypeDefinition
         {
@@ -804,6 +820,12 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         var newAttributes = new List<EntityAttributeDefinition>();
         var order = 1;
 
+        // The orders already in use. A new attribute takes its position in the property walk, as it always has, but
+        // only when no existing attribute holds that order; otherwise the next free one after them all. Without
+        // this, a root over a library type minted CreatedBy at an order the library's own attributes already held
+        // (PRD §7, SP5), and the layout's tie-break decided where it appeared.
+        var takenOrders = entityTypeDef.Attributes.Where(a => a.Order > 0).Select(a => a.Order).ToHashSet();
+
         foreach (var propertyName in allPropertyNames)
         {
             var inCollectionType = collectionProperties.TryGetValue(propertyName, out var collectionProp);
@@ -869,13 +891,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             // non-sortable case keeps the flag absent from the model JSON.
             bool? isSortable = sortableAttr != null && dataType == "AsDetail" && isArray ? true : null;
 
-            // Auto-resolve query name for reference attributes when not explicitly specified
+            // A reference that names no query resolves to its target's plain root query (D6); an explicit
+            // [Reference(typeof(T), "Q")] wins (D2).
             string? resolvedQuery = referenceAttr?.Query;
-            if (resolvedQuery == null && referenceAttr != null && entityTypeToQueryName != null)
+            if (resolvedQuery == null && referenceAttr != null && referenceQueries != null)
             {
-                var targetClrType = referenceAttr.TargetType.FullName ?? referenceAttr.TargetType.Name;
-                entityTypeToQueryName.TryGetValue(targetClrType, out resolvedQuery);
+                resolvedQuery = referenceQueries.Resolve(referenceAttr.TargetType);
             }
+            var unresolvedReference = resolvedQuery is null && referenceAttr is not null && referenceQueries is not null;
 
             // Determine ShowedOn based on inQueryType/inCollectionType
             // If property doesn't exist in projection type (inQueryType=false), only show on PersistentObject pages
@@ -990,6 +1013,25 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 if (stampedByFramework && (showedOn & EShowedOn.PersistentObject) != 0)
                     showedOn = EShowedOn.PersistentObject;
 
+                // The application's hook (D9), here and only here: creation is the one moment the synchronizer
+                // decides what a property becomes, so an existing attribute is never changed by it and nothing is
+                // deleted (#253). Exclude creates nothing, deliberately without joining ignoredPropertyNames: that
+                // set also drops a carried-over attribute, which the hook must never do. [IgnoreProperty] has
+                // already vetoed its property above, whatever the hook would say.
+                var seed = ModelAttribute(entityType, property);
+                if (seed == ModelAttributeSeed.Exclude)
+                    continue;
+
+                // Hidden is Spark's "invisible" (showedOn None) plus read-only, so the server refuses a posted value.
+                // Not required either: no form shows it, so nobody could supply one.
+                var hidden = seed == ModelAttributeSeed.Hidden;
+                if (hidden)
+                    showedOn = EShowedOn.None;
+
+                // Its place in the property walk, unless an existing attribute holds that order (see takenOrders).
+                var newOrder = takenOrders.Contains(order) ? takenOrders.Max() + 1 : order;
+                takenOrders.Add(newOrder);
+
                 // Create new attribute
                 var newAttr = new EntityAttributeDefinition
                 {
@@ -1001,14 +1043,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     DataType = dataType,
                     // A get-only property cannot be required: nothing can supply a value for it.
                     // Nor can a stamped one: the framework supplies it, never the person filling in the form.
-                    IsRequired = property.CanWrite && !stampedByFramework
+                    IsRequired = property.CanWrite && !stampedByFramework && !hidden
                         && !IsNullable(property.PropertyType)
                         && property.PropertyType != typeof(string),
                     // Computed properties surface read-only rather than not at all. Only set on
                     // creation — the update branch never reassigns IsReadOnly, so a hand-set value
                     // survives re-synchronize.
-                    IsReadOnly = !property.CanWrite || stampedByFramework,
-                    Order = order,
+                    IsReadOnly = !property.CanWrite || stampedByFramework || hidden,
+                    Order = newOrder,
                     Query = resolvedQuery,
                     ReferenceType = referenceType,
                     AsDetailType = asDetailType,
@@ -1033,6 +1075,10 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 CollectDescriptionSeed(entityTypeDef.Name, newAttr, descriptionSeed);
                 newAttributes.Add(newAttr);
             }
+
+            if (unresolvedReference)
+                referenceQueries!.WarnUnresolved(entityType, property, referenceAttr!.TargetType);
+
             order++;
         }
 
@@ -1115,6 +1161,165 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         entityTypeDef.BreadcrumbProjectionSatisfiable = ComputeBreadcrumbProjectionSatisfiable(entityTypeDef, projectionType);
 
         return entityTypeDef;
+    }
+
+    /// <summary>The query a context root is served by: an existing one, or the name and alias to mint it under.</summary>
+    /// <param name="Alias">Set only when the minted query's derived alias was taken (D11).</param>
+    private sealed record RootQueryPlan(string Name, string? Alias, SparkQuery? Existing);
+
+    /// <summary>
+    /// Names every root's query (<c>docs/default_index_PRD.md</c>, D11): the query the root already has, else
+    /// <c>Get{Property}</c> — or, when another query holds that name or its alias, the first free one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A root's existing query is the one of its type named <c>Get{Property}</c>, as always, or one this rule named
+    /// before (<c>Get{Property}2</c>, … over <c>Database.{Property}</c>). The second keeps a stepped-aside query a fixed
+    /// point: without it the next run would look for <c>Get{Property}</c>, miss, and mint again.
+    /// </para>
+    /// <para>
+    /// Names and aliases are taken across the <b>composed</b> model, library queries included. SP3 found the collision:
+    /// <c>libs/organizations</c> ships <c>Custom.Organizations</c> under the alias <c>organizations</c>, so the
+    /// <c>GetOrganizations</c> minted for an application's <c>Organizations</c> root derived the same alias, and
+    /// <c>--spark-verify-model</c> exited 3 and startup threw (<c>SparkQueryAliasIndex</c>). A name matters as much: the
+    /// client fetches a reference's options by the query's name, and the first query of that name answers.
+    /// </para>
+    /// <para>
+    /// Existing queries are never renamed: program units and menus link to their ids and aliases. Only the query being
+    /// minted steps aside, and the model file records the alias it got.
+    /// </para>
+    /// </remarks>
+    private static Dictionary<string, RootQueryPlan> PlanRootQueries(
+        IReadOnlyList<IGrouping<Type, (PropertyInfo Property, Type? EntityType)>> rootsByEntityType,
+        IReadOnlyDictionary<Type, List<SparkQuery>> queriesByType,
+        IReadOnlyList<SparkQuery> existingQueries)
+    {
+        var takenNames = existingQueries.Select(q => q.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var takenAliases = existingQueries
+            .Select(q => q.Alias ?? SparkQueryAliases.Derive(q.Name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var plans = new Dictionary<string, RootQueryPlan>(StringComparer.Ordinal);
+        foreach (var group in rootsByEntityType)
+        {
+            var queriesForType = queriesByType[group.Key];
+            foreach (var (property, _) in group)
+            {
+                var conventional = $"Get{property.Name}";
+                var existing = queriesForType.FirstOrDefault(q => q.Name == conventional)
+                    ?? queriesForType.FirstOrDefault(q =>
+                        q.Source == $"Database.{property.Name}" && IsSteppedAside(q.Name, conventional));
+                if (existing is not null)
+                {
+                    plans[property.Name] = new RootQueryPlan(existing.Name, existing.Alias, existing);
+                    continue;
+                }
+
+                var name = FirstFree(conventional, takenNames, i => $"{conventional}{i}");
+                var derived = SparkQueryAliases.Derive(name);
+                var alias = takenAliases.Contains(derived) ? FirstFree(derived, takenAliases, i => $"{derived}-{i}") : null;
+
+                takenNames.Add(name);
+                takenAliases.Add(alias ?? derived);
+                plans[property.Name] = new RootQueryPlan(name, alias, null);
+            }
+        }
+
+        return plans;
+
+        static string FirstFree(string wanted, HashSet<string> taken, Func<int, string> candidate)
+        {
+            if (!taken.Contains(wanted)) return wanted;
+            for (var i = 2; ; i++)
+                if (!taken.Contains(candidate(i))) return candidate(i);
+        }
+
+        static bool IsSteppedAside(string name, string conventional)
+            => name.Length > conventional.Length
+               && name.StartsWith(conventional, StringComparison.Ordinal)
+               && name[conventional.Length..].All(char.IsAsciiDigit);
+    }
+
+    /// <summary>
+    /// Which query a query-less <c>[Reference(typeof(T))]</c> resolves to (D6): the query of T's <b>plain</b> root, the
+    /// one whose body is <c>Session.Query&lt;T&gt;()</c>.
+    /// </summary>
+    /// <remarks>
+    /// The synchronizer reflects at runtime and cannot read a getter's body, so the generator classifies the roots and
+    /// records the plain ones as <c>[SparkPlainRoot(typeof(T), nameof(Prop))]</c> on the context's generated partial.
+    /// The attribute is <c>Inherited = false</c>: a base context carries the markers of its own roots (from its own
+    /// generator run when it lives in another assembly), so the base types are walked here, the context's own markers
+    /// first. A root that is not plain — filtered, bound to an index, customized, or a helper call — is never a
+    /// reference's lookup by default, and a view root mints no query at all. This replaces a map from T to the
+    /// <em>last</em> root of T, which picked <c>ActiveCars</c> over <c>Cars</c> by declaration order.
+    /// </remarks>
+    private static ReferenceQueries ResolveReferenceQueries(
+        Type contextType,
+        IReadOnlyList<IGrouping<Type, (PropertyInfo Property, Type? EntityType)>> rootsByEntityType,
+        IReadOnlyDictionary<string, RootQueryPlan> rootQueries)
+    {
+        var rootsByType = rootsByEntityType.ToDictionary(
+            g => g.Key,
+            g => (IReadOnlyList<string>)[.. g.Select(x => x.Property.Name)]);
+
+        var plainQueries = new Dictionary<Type, string>();
+        for (var current = contextType; current is not null && current != typeof(object); current = current.BaseType)
+        {
+            foreach (var marker in current.GetCustomAttributes<SparkPlainRootAttribute>(inherit: false)
+                         .OrderBy(m => m.PropertyName, StringComparer.Ordinal))
+            {
+                // A marker names a root of its own type; one the synchronizer did not see as a root (a view, a
+                // property since removed by hand) mints nothing, so it resolves nothing either.
+                if (!rootsByType.TryGetValue(marker.EntityType, out var roots) || !roots.Contains(marker.PropertyName))
+                    continue;
+
+                plainQueries.TryAdd(marker.EntityType, rootQueries[marker.PropertyName].Name);
+            }
+        }
+
+        return new ReferenceQueries(plainQueries, rootsByType);
+    }
+
+    /// <summary>The reference lookups of one synchronize run, and the warning for a reference that has none (D8).</summary>
+    private sealed class ReferenceQueries(
+        IReadOnlyDictionary<Type, string> plainQueries,
+        IReadOnlyDictionary<Type, IReadOnlyList<string>> rootsByType)
+    {
+        public string? Resolve(Type target) => plainQueries.GetValueOrDefault(target);
+
+        /// <summary>
+        /// The synchronizer's side of SPARK056, which also covers what the analyzer cannot see (a model the JSON alone
+        /// declares, a context in another project). Without a query the edit page's picker has no options.
+        /// </summary>
+        /// <remarks>
+        /// When T has roots but none is plain, it warns for every reference, read-only ones included: the reference
+        /// lost the lookup an older synchronizer derived from the last root. Without any root it warns only for a
+        /// writable reference, as the analyzer does: a read-only one opens no picker, and some types (<c>SparkUser</c>)
+        /// have no root on purpose.
+        /// </remarks>
+        public void WarnUnresolved(Type entityType, PropertyInfo property, Type target)
+        {
+            var name = target.Name;
+            var fix = $"Add 'public IRavenQueryable<{name}> {new CollectionHelper().GetCollectionName(name)} => Session.Query<{name}>();' " +
+                      $"to the context, or name a query in [Reference(typeof({name}), \"…\")].";
+
+            if (rootsByType.TryGetValue(target, out var roots))
+            {
+                Console.WriteLine(
+                    $"Warning: '{entityType.Name}.{property.Name}' references '{name}' without naming a query, and none of the " +
+                    $"context's roots of '{name}' ({string.Join(", ", roots)}) is the plain 'Session.Query<{name}>()', so it gets " +
+                    $"no query and its picker no options. {fix}");
+                return;
+            }
+
+            var writable = property.CanWrite
+                && property.GetCustomAttribute<System.ComponentModel.ReadOnlyAttribute>()?.IsReadOnly != true;
+            if (!writable) return;
+
+            Console.WriteLine(
+                $"Warning: '{entityType.Name}.{property.Name}' references '{name}' without naming a query, and the context has " +
+                $"no entity root of '{name}', so it gets no query and its picker no options (SPARK056). {fix}");
+        }
     }
 
     /// <summary>

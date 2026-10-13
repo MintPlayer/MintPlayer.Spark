@@ -171,7 +171,12 @@ public static class SparkExtensions
         // runs later than any such factory would, and its registration would win GetRequiredService,
         // silently reducing the gate to a no-op.
         if (GetRegistrationTimeEnvironment(services)?.IsDevelopment() == true)
-            services.AddSingleton<IModelSynchronizer, ModelSynchronizer>();
+            services.AddSingleton<IModelSynchronizer>(sp => new ModelSynchronizer(
+                sp.GetRequiredService<IHostEnvironment>(), sp.GetRequiredService<IIndexCatalog>())
+            {
+                // Read when resolved, not now: configure() may still set the hook (D9).
+                ModelAttribute = options.ModelAttribute,
+            });
 
         // IAccessControl, its loader, the claims-based group provider and the posture reporter all
         // come from AddSparkServices() above, because they are ordinary [Register]ed core services

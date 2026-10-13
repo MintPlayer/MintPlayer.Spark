@@ -1524,6 +1524,8 @@ public class ProjectionOnlyContext : SparkContext
     public IRavenQueryable<MS_TestVehicle> Vehicles => Session.Query<MS_TestVehicle>();
 }
 
+// The marker the generator emits for a plain root (docs/default_index_PRD.md, D6); this project does not run it.
+[SparkPlainRoot(typeof(MS_TestTag), nameof(Tags))]
 public class TaggedContext : SparkContext
 {
     public IRavenQueryable<MS_TestTagged> Tagged => Session.Query<MS_TestTagged>();

@@ -76,7 +76,7 @@ internal sealed class SparkGenericTools(
     }
 
     [McpServerTool(Name = "describe", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("The attributes of one entity type this user can read: names, labels, descriptions, data types and references. Schema only, no data.")]
+    [Description("The attributes of one entity type this user can read: names, labels, descriptions, data types and references, each reference with the query its values come from. Schema only, no data.")]
     public async Task<CallToolResult> DescribeAsync(
         [Description("The type's name, as discover lists it.")] string type,
         CancellationToken cancellationToken = default)
@@ -100,6 +100,13 @@ internal sealed class SparkGenericTools(
                 isRequired = a.IsRequired,
                 isReadOnly = a.IsReadOnly,
                 referenceType = a.ReferenceType,
+                // The query a reference's values are picked from (docs/default_index_PRD.md, D6), by the name discover
+                // lists; null when it names none, or one this user may not list.
+                query = a.DataType == "Reference" && a.Query is { } referenceQuery
+                    ? queries.FirstOrDefault(q => q.ParentReference is null && q.Name == referenceQuery) is { } listed
+                        ? listed.Alias ?? listed.Name
+                        : null
+                    : null,
                 asDetailType = a.AsDetailType,
             }),
             queries = queries
