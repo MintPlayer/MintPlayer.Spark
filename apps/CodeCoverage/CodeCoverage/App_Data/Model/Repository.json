@@ -202,6 +202,19 @@
         "rules": []
       },
       {
+        "id": "06219f6f-6318-4308-92ea-02f29710c472",
+        "name": "MergeQueueBypassRole",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "lookupReferenceType": "MergeQueueBypassRolePolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "1c30bc4b-8a01-4b47-9e68-fdbbc17a5a8d",
         "name": "MergeQueueCheckExclusions",
         "dataType": "string",

@@ -178,6 +178,21 @@ public class MergeQueueYmlTests
     }
 
     [Fact]
+    public void The_bypass_role_defaults_to_nobody_and_a_repository_may_override_it()
+    {
+        Entities.Repository.ResolveMergeQueueBypassRole(new Entities.Repository(), new Account())
+            .Should().Be((EMergeQueueBypassRole.None, "organization"));
+        Entities.Repository.ResolveMergeQueueBypassRole(new Entities.Repository(), null)
+            .Should().Be((EMergeQueueBypassRole.None, "default"));
+        Entities.Repository.ResolveMergeQueueBypassRole(new Entities.Repository(), new Account { MergeQueueBypassRole = EMergeQueueBypassRole.Maintain })
+            .Should().Be((EMergeQueueBypassRole.Maintain, "organization"));
+        Entities.Repository.ResolveMergeQueueBypassRole(
+                new Entities.Repository { MergeQueueBypassRole = EMergeQueueBypassRolePolicy.None },
+                new Account { MergeQueueBypassRole = EMergeQueueBypassRole.Admin })
+            .Should().Be((EMergeQueueBypassRole.None, "repository"), "a repository may turn its account's bypass off");
+    }
+
+    [Fact]
     public void Check_exclusions_inherit_unless_the_repository_overrides_even_with_an_empty_list()
     {
         var account = new Account { MergeQueueCheckExclusions = [" scan ", "lint", "scan", ""] };

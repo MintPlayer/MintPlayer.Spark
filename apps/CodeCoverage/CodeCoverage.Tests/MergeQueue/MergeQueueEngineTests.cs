@@ -1134,6 +1134,140 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.EvictionMessage.Should().Contain("fork");
     }
 
+    // ── O22: the bypass role (§0 D64) ───────────────────────────────────────────────────────────────────
+
+    private static async Task SetBypassRoleAsync(MergeQueueHarness h, EMergeQueueBypassRole role)
+    {
+        using var session = h.Store.OpenAsyncSession();
+        var account = await session.LoadAsync<Account>(AccountId);
+        account.MergeQueueBypassRole = role;
+        await session.SaveChangesAsync();
+    }
+
+    /// <summary>A same-repository .github change that needs the regenerate workflow, queued by <paramref name="actor"/>; the
+    /// run succeeds with nothing to change, and the final commit's checks are <paramref name="finalChecks"/>.</summary>
+    private static void RegeneratedGitHubChange(MergeQueueHarness h, ForgeCheckState? finalChecks = null)
+    {
+        h.Writer.PrepareResults.Enqueue(TouchesWorkflows(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"), ".github/workflows/ci.yml"));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+        h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "completed", "success", Prepared, "mq/master/pr-7", null);
+        h.Queue.Artifacts[9001] = new ForgeArtifactDownload(EForgeArtifactOutcome.Ok, "patch.diff", [], null);
+        if (finalChecks is not null) h.Queue.CheckStates[Final] = finalChecks;
+    }
+
+    [Fact]
+    public async Task The_bypass_role_skips_the_approval_floor_for_its_holders_only()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        await SetBypassRoleAsync(h, EMergeQueueBypassRole.Maintain);
+        h.Forge.PullRequests[Number] = PullRequest(author: "contributor");
+        h.Queue.Roles["lead"] = EForgeRepositoryRole.Maintain;
+
+        await h.EnqueueAsync("maintainer");
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval", "write is below the bypass role");
+
+        await h.EnqueueAsync("lead");
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Merged);
+        entry.Config.Values.Should().Contain(v => v.Key == "bypassRole" && v.Value == "Maintain" && v.Source == "organization", "O15: the check run says where it came from");
+    }
+
+    [Fact]
+    public async Task The_bypass_role_lets_a_same_repository_github_change_through_the_dispatch()
+    {
+        var h = await HarnessAsync();
+        await SetBypassRoleAsync(h, EMergeQueueBypassRole.Admin);
+        h.Queue.Roles["owner"] = EForgeRepositoryRole.Admin;
+        RegeneratedGitHubChange(h);
+
+        await h.EnqueueAsync("owner");
+        await h.DrainAsync();
+        h.Queue.Dispatches.Should().ContainSingle("O22: the bypass role lets the regenerate workflow run");
+        await h.SignalAsync(EMergeQueueSignal.RunCompleted, runId: 9001);
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+    }
+
+    [Fact]
+    public async Task The_bypass_role_never_lets_the_regenerate_workflow_differ_from_the_default_branchs()
+    {
+        var h = await HarnessAsync();
+        await SetBypassRoleAsync(h, EMergeQueueBypassRole.Admin);
+        h.Queue.Roles["owner"] = EForgeRepositoryRole.Admin;
+        RegeneratedGitHubChange(h);
+        h.Queue.Blobs[$"{Prepared}:.github/workflows/regenerate.yml"] = "e7e7";
+
+        await h.EnqueueAsync("owner");
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("workflow-differs", "D12's identity is never bypassed");
+        h.Queue.Dispatches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task The_bypass_role_never_lets_a_forks_github_change_through()
+    {
+        var h = await HarnessAsync();
+        await SetBypassRoleAsync(h, EMergeQueueBypassRole.Maintain);
+        h.Queue.Roles["owner"] = EForgeRepositoryRole.Admin;
+        h.Forge.PullRequests[Number] = PullRequest(fork: true, maintainerCanModify: true);
+        h.Writer.PrepareResults.Enqueue(new GitWriterPrepareResult(GitWriterOutcomes.Evicted, "touches-workflows", BaseSha, Head, null, [],
+            [".github/workflows/ci.yml"], "The pull request changes .github/**.", 10));
+
+        await h.EnqueueAsync("owner");
+        await h.DrainAsync();
+
+        h.Writer.Prepares.Single().AllowWorkflowChanges.Should().BeFalse("T5: a fork's change is refused before any push, whoever queued it");
+        (await h.EntryAsync()).EvictionReason.Should().Be("touches-workflows");
+    }
+
+    [Fact]
+    public async Task A_bypass_role_lost_before_the_merge_evicts_the_change_it_let_through()
+    {
+        var h = await HarnessAsync();
+        await SetBypassRoleAsync(h, EMergeQueueBypassRole.Admin);
+        h.Queue.Roles["owner"] = EForgeRepositoryRole.Admin;
+        RegeneratedGitHubChange(h, Pending(Final));
+        await h.EnqueueAsync("owner");
+        await h.DrainAsync();
+        await h.SignalAsync(EMergeQueueSignal.RunCompleted, runId: 9001);
+        await h.DrainAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+
+        h.Queue.Roles["owner"] = EForgeRepositoryRole.Write;
+        h.Queue.CheckStates[Final] = Green(Final);
+        await h.SignalAsync(EMergeQueueSignal.ChecksChanged, sha: Final);
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.EvictionReason.Should().Be("bypass-revoked", "O22 is re-checked before the merge, like O9");
+        h.Queue.MergeRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_bypass_role_lost_before_the_merge_brings_the_approval_floor_back()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        await SetBypassRoleAsync(h, EMergeQueueBypassRole.Maintain);
+        h.Forge.PullRequests[Number] = PullRequest(author: "contributor");
+        h.Queue.Roles["lead"] = EForgeRepositoryRole.Maintain;
+        h.Queue.CheckStates[Head] = Pending(Head);
+        await h.EnqueueAsync("lead");
+        await h.DrainAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+
+        h.Queue.Roles["lead"] = EForgeRepositoryRole.Write;
+        h.Queue.CheckStates[Head] = Green(Head);
+        await h.SignalAsync(EMergeQueueSignal.ChecksChanged, sha: Head);
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("approval-withdrawn");
+        h.Queue.MergeRequests.Should().BeEmpty();
+    }
+
     // ── Co-authors (§0 D60) ─────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The pull request's commits as GitHub lists them: the author's, a pair's crediting a third person, a bot's,

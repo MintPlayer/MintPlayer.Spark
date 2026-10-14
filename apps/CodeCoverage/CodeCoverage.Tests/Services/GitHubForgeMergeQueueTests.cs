@@ -146,6 +146,31 @@ public class GitHubForgeMergeQueueTests
         rules.Rulesets[1].RuleTypes.Should().Equal(["pull_request", "required_status_checks"]);
     }
 
+    /// <summary>
+    /// O22, D16: people may bypass ruleset 2 (a repository role, a team, a user); only the App's own bypass matters, and
+    /// <c>current_user_can_bypass</c>, read with the App's token, is exactly that. The <c>bypass_actors</c> list is never
+    /// read, so a human bypass actor cannot make the queue refuse the setup. (A verification: green before and after.)
+    /// </summary>
+    [Fact]
+    public async Task Human_bypass_actors_on_the_reviews_ruleset_leave_the_Apps_own_bypass_at_never()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Get, $"{Repo}/rules/branches/main", HttpStatusCode.OK, TwoRulesets)
+            .On(HttpMethod.Get, $"{Repo}/rulesets/25066850", HttpStatusCode.OK, Ruleset(25066850, "mq-1-restrict-updates", "exempt"))
+            .On(HttpMethod.Get, $"{Repo}/rulesets/25066861", HttpStatusCode.OK, """
+                {"id":25066861,"name":"mq-2-reviews-checks","target":"branch","source_type":"Repository","source":"acme/widget",
+                 "enforcement":"active","current_user_can_bypass":"never",
+                 "bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"},
+                                  {"actor_id":null,"actor_type":"OrganizationAdmin","bypass_mode":"pull_request"}],
+                 "conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}}}
+                """)
+            .On(HttpMethod.Get, $"{Repo}/branches/main", HttpStatusCode.OK, UnprotectedBranch);
+
+        var rules = await Queue(github).GetBranchRulesAsync(Target(), "main");
+
+        rules.Rulesets[1].Bypass.Should().Be(EForgeRulesetBypass.Never);
+    }
+
     [Fact]
     public async Task A_native_merge_queue_rule_is_reported()
     {

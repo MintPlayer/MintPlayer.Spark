@@ -35,7 +35,8 @@ public interface IMergeQueueEngine
 /// </para>
 /// <para>
 /// <b>Decisions live here, facts in the forge.</b> <see cref="IForgeMergeQueue"/> answers roles, rules, checks and runs;
-/// O9's <c>write</c> floor, O11's approval floor, O12's gate, D8/D16's rules check and O18's warnings are this class's.
+/// O9's <c>write</c> floor, O11's approval floor, O12's gate, D8/D16's rules check, O18's warnings and O22's bypass role are
+/// this class's, and <see cref="MergeQueueWorkflowGuard"/> decides the dispatch (§0 D63).
 /// </para>
 /// <para>
 /// <b>Failures.</b> A forge or writer failure that may pass (5xx, rate limit, writer busy) re-runs the same step later,
@@ -310,6 +311,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.ResolvedPaths = [];
         entry.BaseChangedWorkflows = false;
         entry.WorkflowPaths = [];
+        entry.WorkflowGuardBypassed = false;
         entry.DispatchRunId = null;
         entry.DispatchRunUrl = null;
         entry.DispatchRunFinished = false;
@@ -355,6 +357,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var role = await context.Queue.GetActorRoleAsync(repository, actor, ct);
         if (role < EForgeRepositoryRole.Write)
             return new("role", $"@{actor} needs at least write access to queue a pull request (has {role.ToString().ToLowerInvariant()}).");
+        var bypass = Bypasses(role, entry.Config.BypassRole);
 
         // O3: the queue pushes the rebased commit to the fork through "Allow edits by maintainers".
         if (pull.IsFromFork && (pull.HeadRepositoryFullName is null || !pull.MaintainerCanModify))
@@ -362,7 +365,10 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 ? "The pull request's fork no longer exists."
                 : $"The queue pushes the rebased commit to {pull.HeadRepositoryFullName}, which needs \"Allow edits by maintainers\" ticked on the pull request (O3). Forks owned by an organization cannot tick it.");
 
-        if (await ApprovalFloorRefusalAsync(context, entry, ct) is { } floor)
+        // O22: the bypass role skips the queue's own approval floor (re-checked before the merge, like the role itself).
+        if (bypass)
+            entry.Note(Now, $"@{actor} has the {role.ToString().ToLowerInvariant()} role, which bypasses the approval floor (O22)");
+        else if (await ApprovalFloorRefusalAsync(context, entry, ct) is { } floor)
             return floor;
 
         // D8, D16, T7, O18: read the base branch's rules once, at enable time for this run.
@@ -549,11 +555,18 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.WorkflowPaths = result.TouchesWorkflows ? [.. result.Paths] : [];
                 Remember(entry, prepared);
                 var found = result.Reason == GitWriterReasons.AlreadyPushed ? " (found on the queue branch: an earlier attempt's push, §0 D52)" : string.Empty;
+                // O22: the bypass role matters here only for a same-repository change under .github/** (a fork's never
+                // gets this far, §0 D63); the enqueuer's role is read now, when it decides.
+                var bypass = result.TouchesWorkflows && !entry.IsFork
+                    && Bypasses(await context.Queue.GetActorRoleAsync(repository, entry.EnqueuedBy, ct), entry.Config.BypassRole);
                 // §0 D63: whether to dispatch is decided in one place, together with what a .github/** change may do.
-                switch (MergeQueueWorkflowGuard.AfterPrepare(entry.Config, entry.ResolvedPaths.Count, result.TouchesWorkflows, entry.IsFork, bypassesQueueRules: false))
+                var plan = MergeQueueWorkflowGuard.AfterPrepare(entry.Config, entry.ResolvedPaths.Count, result.TouchesWorkflows, entry.IsFork, bypass);
+                entry.WorkflowGuardBypassed = plan == EMergeQueuePlan.Dispatch && result.TouchesWorkflows;
+                switch (plan)
                 {
                     case EMergeQueuePlan.Dispatch:
-                        Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}{found}; regenerating {entry.ResolvedPaths.Count} resolved path(s)");
+                        Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}{found}; regenerating {entry.ResolvedPaths.Count} resolved path(s)"
+                            + (entry.WorkflowGuardBypassed ? $"; its .github/** change runs with them because @{entry.EnqueuedBy} has the bypass role (O22)" : string.Empty));
                         await ScheduleAsync(entry, EMergeQueueStep.Dispatch, null, ct);
                         break;
                     case EMergeQueuePlan.Publish:
@@ -924,9 +937,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
+        // O22, like O9: the bypass role is re-read here. What it let through the dispatch is evicted once the role no longer
+        // reaches it; without it, the approval floor applies again.
+        var bypass = Bypasses(role, entry.Config.BypassRole);
+        if (entry.WorkflowGuardBypassed && !bypass)
+        {
+            await EvictAsync(context, entry, "bypass-revoked",
+                $"@{entry.EnqueuedBy} no longer has the role that let this pull request's `.github/` change run with the regenerate workflow (O22). Queue it again.", ct: ct);
+            return;
+        }
+
         // O11 again (§0 D61), like O9's role: an approval withdrawn or dismissed since enqueue, or a writer's request for
         // changes, ends the run before anything is merged.
-        if (await ApprovalFloorRefusalAsync(context, entry, ct) is { } floor)
+        if (!bypass && await ApprovalFloorRefusalAsync(context, entry, ct) is { } floor)
         {
             await EvictAsync(context, entry, "approval-withdrawn", $"Checked again right before the merge: {floor.Message}", ct: ct);
             return;
@@ -1251,6 +1274,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     /// </summary>
     private static bool PublishPushesWorkflowChanges(MergeQueueEntry entry)
         => entry.IsFork ? entry.BaseChangedWorkflows : entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile);
+
+    /// <summary>
+    /// O22: whether <paramref name="role"/>, the enqueuer's as the forge reports it now, reaches the bypass role. Asked at
+    /// enqueue (the approval floor), when a prepare decides the dispatch (a same-repository <c>.github/**</c> change) and
+    /// right before the merge, like O9's role. The check gate, D12's workflow identity, T4's patch validation, T3's lease
+    /// and pinning, O9's own <c>write</c> minimum and a fork's <c>.github/**</c> change are never bypassed.
+    /// </summary>
+    private static bool Bypasses(EForgeRepositoryRole role, EMergeQueueBypassRole bypassRole) => bypassRole switch
+    {
+        EMergeQueueBypassRole.Maintain => role >= EForgeRepositoryRole.Maintain,
+        EMergeQueueBypassRole.Admin => role >= EForgeRepositoryRole.Admin,
+        _ => false,
+    };
 
     private static string PullHeadRef(MergeQueueEntry entry) => $"refs/pull/{entry.Number.ToString(CultureInfo.InvariantCulture)}/head";
 

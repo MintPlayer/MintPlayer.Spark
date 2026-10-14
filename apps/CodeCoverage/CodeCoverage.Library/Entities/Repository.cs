@@ -231,6 +231,15 @@ public class Repository : IForgeConnectable
     public List<string> MergeQueueCheckExclusions { get; set; } = [];
 
     /// <summary>
+    /// The lowest GitHub repository role whose holders bypass the merge queue's own rules when they queue a pull request in
+    /// this repository, or the account's setting.
+    /// </summary>
+    /// <remarks>Merge-queue PRD O22: what it skips and what it never skips, <see cref="EMergeQueueBypassRole"/>.</remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(MergeQueueBypassRolePolicy))]
+    public EMergeQueueBypassRolePolicy MergeQueueBypassRole { get; set; }
+
+    /// <summary>
     /// The effective approval floor and where it came from (<c>repository</c> or <c>organization</c>), the one place
     /// the two levels are combined (O11, O15). A missing account resolves to O11's default.
     /// </summary>
@@ -241,6 +250,19 @@ public class Repository : IForgeConnectable
             EMergeQueueApprovalFloorPolicy.RepositoryRules => (EMergeQueueApprovalFloor.RepositoryRules, "repository"),
             EMergeQueueApprovalFloorPolicy.Always => (EMergeQueueApprovalFloor.Always, "repository"),
             _ => (account?.MergeQueueApprovalFloor ?? EMergeQueueApprovalFloor.ExternalAuthors, account is null ? "default" : "organization"),
+        };
+
+    /// <summary>
+    /// The effective bypass role and where it came from (<c>repository</c>, <c>organization</c> or <c>default</c>), the one
+    /// place the two levels are combined (O22, O15). A missing account resolves to nobody.
+    /// </summary>
+    public static (EMergeQueueBypassRole Role, string Source) ResolveMergeQueueBypassRole(Repository? repository, Account? account)
+        => repository?.MergeQueueBypassRole switch
+        {
+            EMergeQueueBypassRolePolicy.None => (EMergeQueueBypassRole.None, "repository"),
+            EMergeQueueBypassRolePolicy.Maintain => (EMergeQueueBypassRole.Maintain, "repository"),
+            EMergeQueueBypassRolePolicy.Admin => (EMergeQueueBypassRole.Admin, "repository"),
+            _ => (account?.MergeQueueBypassRole ?? EMergeQueueBypassRole.None, account is null ? "default" : "organization"),
         };
 
     /// <summary>The effective check exclusions and where they came from (O12, O15); trimmed, distinct, ordinal-sorted.</summary>

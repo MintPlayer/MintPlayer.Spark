@@ -285,6 +285,7 @@ public sealed class MergeQueueSection
     {
         var (floor, floorSource) = Repository.ResolveMergeQueueApprovalFloor(repository, account);
         var (exclusions, exclusionsSource) = Repository.ResolveMergeQueueCheckExclusions(repository, account);
+        var (bypass, bypassSource) = Repository.ResolveMergeQueueBypassRole(repository, account);
         return new MergeQueueConfigSnapshot
         {
             ConfigRef = configRef,
@@ -299,11 +300,13 @@ public sealed class MergeQueueSection
             ChecksTimeoutMinutes = ChecksTimeoutMinutes,
             ApprovalFloor = floor,
             CheckExclusions = [.. exclusions],
+            BypassRole = bypass,
             Values =
             [
                 .. Values.Select(v => new MergeQueueConfigValue { Key = v.Key, Value = v.Value, Source = v.Source == MergeQueueYml.Source ? $"{MergeQueueYml.Source} @ {configRef}" : v.Source }),
                 new MergeQueueConfigValue { Key = "approvalFloor", Value = floor.ToString(), Source = floorSource },
                 new MergeQueueConfigValue { Key = "checkExclusions", Value = exclusions.Count == 0 ? "(none)" : string.Join(", ", exclusions), Source = exclusionsSource },
+                new MergeQueueConfigValue { Key = "bypassRole", Value = bypass.ToString(), Source = bypassSource },
             ],
         };
     }

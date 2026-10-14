@@ -361,6 +361,18 @@
             "nl": "Vereiste goedkeuringen voor de merge queue"
           }
         },
+        "MergeQueueBypassRole": {
+          "description": {
+            "en": "The lowest GitHub repository role whose holders bypass the merge queue's own rules when they queue a pull request, in every repository of this account that does not set its own.",
+            "fr": "Le rôle GitHub le plus bas dont les détenteurs contournent les règles propres de la file de fusion lorsqu'ils y placent une pull request, dans chaque dépôt de ce compte qui ne définit pas le sien.",
+            "nl": "De laagste GitHub-repositoryrol waarvan de houders de eigen regels van de merge queue omzeilen wanneer ze een pull request in de wachtrij zetten, in elke repository van dit account zonder eigen instelling."
+          },
+          "label": {
+            "en": "Merge queue bypass role",
+            "fr": "Rôle de contournement de la file de fusion",
+            "nl": "Bypassrol voor de merge queue"
+          }
+        },
         "MergeQueueCheckExclusions": {
           "description": {
             "en": "Check names the merge queue does not wait for, in every repository of this account that does not set its own list. A check a branch rule requires is always waited for.",
@@ -2162,6 +2174,18 @@
             "en": "Merge queue approval floor",
             "fr": "Approbations exigées par la file de fusion",
             "nl": "Vereiste goedkeuringen voor de merge queue"
+          }
+        },
+        "MergeQueueBypassRole": {
+          "description": {
+            "en": "The lowest GitHub repository role whose holders bypass the merge queue's own rules when they queue a pull request in this repository, or the account's setting.",
+            "fr": "Le rôle GitHub le plus bas dont les détenteurs contournent les règles propres de la file de fusion lorsqu'ils y placent une pull request de ce dépôt, ou le paramètre du compte.",
+            "nl": "De laagste GitHub-repositoryrol waarvan de houders de eigen regels van de merge queue omzeilen wanneer ze een pull request van deze repository in de wachtrij zetten, of de instelling van het account."
+          },
+          "label": {
+            "en": "Merge queue bypass role",
+            "fr": "Rôle de contournement de la file de fusion",
+            "nl": "Bypassrol voor de merge queue"
           }
         },
         "MergeQueueCheckExclusions": {

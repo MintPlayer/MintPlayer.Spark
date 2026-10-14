@@ -95,6 +95,12 @@ public class MergeQueueEntry
     /// </summary>
     public List<string> WorkflowPaths { get; set; } = [];
 
+    /// <summary>
+    /// The regenerate workflow was dispatched with a <c>.github/**</c> change because the enqueuer had the bypass role
+    /// (O22). Re-checked before the merge: if the role no longer reaches it, the entry is evicted.
+    /// </summary>
+    public bool WorkflowGuardBypassed { get; set; }
+
     /// <summary>The regenerate workflow run (D14).</summary>
     public long? DispatchRunId { get; set; }
 
@@ -297,6 +303,9 @@ public sealed class MergeQueueConfigSnapshot
     public EMergeQueueApprovalFloor ApprovalFloor { get; set; }
 
     public List<string> CheckExclusions { get; set; } = [];
+
+    /// <summary>The role from which the enqueuer bypasses the queue's own rules (O22); re-checked before the merge.</summary>
+    public EMergeQueueBypassRole BypassRole { get; set; }
 
     /// <summary>Every value above as displayed, with its source: <c>coverage.yml</c>, <c>default</c>, <c>organization</c>, <c>repository</c>.</summary>
     public List<MergeQueueConfigValue> Values { get; set; } = [];

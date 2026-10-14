@@ -116,6 +116,19 @@ public class Account : IForgeConnectable
     public List<string> MergeQueueCheckExclusions { get; set; } = [];
 
     /// <summary>
+    /// The lowest GitHub repository role whose holders bypass the merge queue's own rules when they queue a pull request,
+    /// in every repository of this account that does not set its own.
+    /// </summary>
+    /// <remarks>
+    /// Merge-queue PRD O22; a repository overrides it with <see cref="Repository.MergeQueueBypassRole"/>. What it skips and
+    /// what it never skips: <see cref="LookupReferences.EMergeQueueBypassRole"/>. Nobody by default.
+    /// [IgnoreForIndex]: see <see cref="MergeQueueApprovalFloor"/>.
+    /// </remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(LookupReferences.MergeQueueBypassRole))]
+    public LookupReferences.EMergeQueueBypassRole MergeQueueBypassRole { get; set; }
+
+    /// <summary>
     /// The forge that hosts this account. Set on every document by the M6 re-key.
     /// </summary>
     /// <remarks>

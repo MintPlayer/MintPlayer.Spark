@@ -50,6 +50,42 @@ public enum EMergeQueueCheckExclusionsPolicy
     Override,
 }
 
+/// <summary>
+/// The lowest GitHub repository role whose holders bypass the merge queue's own rules when they queue a pull request
+/// (merge-queue PRD O22): the approval floor (O11), and the <c>.github/**</c> eviction of a same-repository pull request
+/// that needs the regenerate workflow (O21 A). Re-checked right before the merge, like O9's role.
+/// </summary>
+/// <remarks>
+/// <para>Never bypassed: the check gate (O12), the regenerate workflow's identity (D12), the patch validation (T4), the
+/// lease and SHA pinning (T3), the enqueuer's own <c>write</c> minimum (O9), and anything for a fork's pull request.</para>
+/// <para>⚠️ <see cref="None"/> is the zero value on purpose: an account written before the field existed bypasses
+/// nothing, with no migration.</para>
+/// </remarks>
+public enum EMergeQueueBypassRole
+{
+    /// <summary>Nobody bypasses the queue's rules.</summary>
+    None,
+
+    /// <summary>Holders of the maintain or admin role.</summary>
+    Maintain,
+
+    /// <summary>Holders of the admin role.</summary>
+    Admin,
+}
+
+/// <summary>The same bypass role on a <c>Repository</c>, which may defer to its account (O22's per-repository override).</summary>
+public enum EMergeQueueBypassRolePolicy
+{
+    /// <summary>Use the account's bypass role. The default for every repository.</summary>
+    Inherit,
+
+    None,
+
+    Maintain,
+
+    Admin,
+}
+
 /// <summary>The selectable values of <see cref="EMergeQueueApprovalFloor"/>.</summary>
 public sealed class MergeQueueApprovalFloor : TransientLookupReference<EMergeQueueApprovalFloor>
 {
@@ -112,6 +148,72 @@ public sealed class MergeQueueApprovalFloorPolicy : TransientLookupReference<EMe
             Key = EMergeQueueApprovalFloorPolicy.Always,
             Description = "Every pull request needs an approval by a writer other than its author",
             Values = _TS("Always require an approval", "Toujours exiger une approbation", "Altijd een goedkeuring vereisen"),
+        },
+    ];
+}
+
+/// <summary>The selectable values of <see cref="EMergeQueueBypassRole"/>.</summary>
+public sealed class MergeQueueBypassRole : TransientLookupReference<EMergeQueueBypassRole>
+{
+    private MergeQueueBypassRole() { }
+
+    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
+
+    public static IReadOnlyCollection<MergeQueueBypassRole> Items { get; } =
+    [
+        new MergeQueueBypassRole
+        {
+            Key = EMergeQueueBypassRole.None,
+            Description = "Nobody bypasses the merge queue's own rules",
+            Values = _TS("Nobody", "Personne", "Niemand"),
+        },
+        new MergeQueueBypassRole
+        {
+            Key = EMergeQueueBypassRole.Maintain,
+            Description = "Whoever queues with the maintain or admin role bypasses the approval floor and the .github eviction of a same-repository pull request",
+            Values = _TS("Maintain or admin role", "Rôle maintain ou admin", "Rol maintain of admin"),
+        },
+        new MergeQueueBypassRole
+        {
+            Key = EMergeQueueBypassRole.Admin,
+            Description = "Whoever queues with the admin role bypasses the approval floor and the .github eviction of a same-repository pull request",
+            Values = _TS("Admin role only", "Rôle admin uniquement", "Alleen de rol admin"),
+        },
+    ];
+}
+
+/// <summary>The selectable values of <see cref="EMergeQueueBypassRolePolicy"/>.</summary>
+public sealed class MergeQueueBypassRolePolicy : TransientLookupReference<EMergeQueueBypassRolePolicy>
+{
+    private MergeQueueBypassRolePolicy() { }
+
+    public override ELookupDisplayType DisplayType => ELookupDisplayType.Dropdown;
+
+    public static IReadOnlyCollection<MergeQueueBypassRolePolicy> Items { get; } =
+    [
+        new MergeQueueBypassRolePolicy
+        {
+            Key = EMergeQueueBypassRolePolicy.Inherit,
+            Description = "Use the account's bypass role",
+            Values = _TS("Use account setting", "Utiliser le paramètre du compte", "Accountinstelling gebruiken"),
+        },
+        new MergeQueueBypassRolePolicy
+        {
+            Key = EMergeQueueBypassRolePolicy.None,
+            Description = "Nobody bypasses the merge queue's own rules",
+            Values = _TS("Nobody", "Personne", "Niemand"),
+        },
+        new MergeQueueBypassRolePolicy
+        {
+            Key = EMergeQueueBypassRolePolicy.Maintain,
+            Description = "Whoever queues with the maintain or admin role bypasses the approval floor and the .github eviction of a same-repository pull request",
+            Values = _TS("Maintain or admin role", "Rôle maintain ou admin", "Rol maintain of admin"),
+        },
+        new MergeQueueBypassRolePolicy
+        {
+            Key = EMergeQueueBypassRolePolicy.Admin,
+            Description = "Whoever queues with the admin role bypasses the approval floor and the .github eviction of a same-repository pull request",
+            Values = _TS("Admin role only", "Rôle admin uniquement", "Alleen de rol admin"),
         },
     ];
 }
