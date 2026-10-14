@@ -5,7 +5,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
-import { BsFormComponent } from '@mintplayer/ng-bootstrap/form';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark/auth/core';
 import {
@@ -40,7 +40,7 @@ interface GrantChoice {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    BsAlertComponent, BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, BsCheckboxComponent, BsFormComponent,
+    BsAlertComponent, BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, BsCheckboxComponent, BsFormComponent, BsFormControlDirective,
     BsSpinnerComponent, NgTemplateOutlet, TranslateKeyPipe,
   ],
   template: `
