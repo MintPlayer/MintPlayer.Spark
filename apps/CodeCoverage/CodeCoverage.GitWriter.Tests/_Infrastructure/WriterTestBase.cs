@@ -8,7 +8,7 @@ namespace CodeCoverage.GitWriter.Tests._Infrastructure;
 public abstract class WriterTestBase : IAsyncLifetime
 {
     /// <summary>A fixture value, not a real token; the tests assert it never leaves the job's environment.</summary>
-    protected static readonly string Token = "ghs_fixture" + Guid.NewGuid().ToString("N");
+    protected static readonly string Token = "fixture-token-" + Guid.NewGuid().ToString("N");
 
     protected const string Translations = "apps/DemoApp/DemoApp/App_Data/translations.json";
     protected const string QueueBranch = "mq/main/pr-1";

@@ -113,12 +113,13 @@ internal sealed class StubGitHub : IGitHubInstallationService
         if (Throws is not null) throw Throws;
         return Task.FromResult(new GraphQLConnection(
             new Octokit.GraphQL.ProductHeaderValue("coverage-tests"),
-            new Octokit.GraphQL.Internal.InMemoryCredentialStore("ghs_test"),
+            new Octokit.GraphQL.Internal.InMemoryCredentialStore(InstallationToken),
             new HttpClient(GraphQL, disposeHandler: false)));
     }
 
-    /// <summary>The raw token for a non-Octokit caller (the merge queue's REST calls over <see cref="Rest"/>).</summary>
-    public const string InstallationToken = "ghs_test";
+    /// <summary>The stub installation's token: the Octokit clients carry it, and a non-Octokit caller (the merge queue's REST
+    /// calls over <see cref="Rest"/>) gets it raw. A fixture value, not credential-shaped.</summary>
+    public const string InstallationToken = "stub-installation-token";
 
     public Task<string> GetInstallationTokenAsync(long installationId, CancellationToken cancellationToken = default)
         => GetInstallationTokenAsync(installationId, TimeSpan.FromSeconds(60), cancellationToken);
@@ -134,7 +135,7 @@ internal sealed class StubGitHub : IGitHubInstallationService
     public IGitHubClient Client() => new GitHubClient(new Connection(
         new Octokit.ProductHeaderValue("coverage-tests"),
         GitHubClient.GitHubApiUrl,
-        new InMemoryCredentialStore(new Credentials("ghs_test")),
+        new InMemoryCredentialStore(new Credentials(InstallationToken)),
         new HttpClientAdapter(() => new NonDisposingHandler(Rest)),
         new SimpleJsonSerializer()));
 

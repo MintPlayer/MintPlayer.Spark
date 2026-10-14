@@ -253,7 +253,7 @@ public class PrepareTests : WriterTestBase
         var origin = Seed();
         var head = RollUpConflict(origin);
 
-        var response = await Writer.PrepareAsync(PrepareRequest(origin, head, password: "ghs_wrong"));
+        var response = await Writer.PrepareAsync(PrepareRequest(origin, head, password: Token + "-wrong"));
 
         response.Outcome.Should().Be("failed");
         response.Reason.Should().Be("auth");

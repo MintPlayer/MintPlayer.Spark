@@ -315,7 +315,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         var harness = CreateService(session, LinkedUser(),
-            tokenScript: _ => new("ghu_test_ok", GitHubTokenState.Ok),
+            tokenScript: _ => new("user-token-ok", GitHubTokenState.Ok),
             responder: (request, _) => GitHub(request));
 
         var verified = await harness.Access.GetVerifiedLoginAsync();
@@ -332,7 +332,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         var harness = CreateService(session, NewUser(),
-            tokenScript: _ => new("ghu_test_ok", GitHubTokenState.Ok),
+            tokenScript: _ => new("user-token-ok", GitHubTokenState.Ok),
             responder: (request, _) => GitHub(request));
 
         (await harness.Access.GetVerifiedLoginAsync()).Should().Be(new GitHubVerifiedLogin(null, false, GitHubTokenState.Ok));
@@ -363,7 +363,7 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var user = LinkedUser();
         var harness = CreateService(session, user,
-            tokenScript: _ => new("ghu_test_ok", GitHubTokenState.Ok),
+            tokenScript: _ => new("user-token-ok", GitHubTokenState.Ok),
             responder: (request, _) => GitHub(request));
         await harness.Access.GetVisibilityAsync();
         harness.Cache.Remove($"github-identity/{user.Id}");

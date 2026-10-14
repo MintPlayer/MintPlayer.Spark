@@ -955,6 +955,9 @@ public class GitHubForgeMergeQueueTests
             MaintainerCanModify = maintainerCanModify,
         };
 
+    /// <summary>The token the stub mints for the <paramref name="n"/>th job. A fixture value, not credential-shaped.</summary>
+    private static string JobToken(int n) => $"minted-job-token-{n}";
+
     /// <summary>GitHub's 201 for <c>POST /app/installations/{id}/access_tokens</c>, numbering the tokens it mints; every
     /// request body is kept.</summary>
     private static StubGitHub Minting(List<string?> bodies, StubGitHub? github = null)
@@ -962,7 +965,7 @@ public class GitHubForgeMergeQueueTests
         {
             bodies.Add(body);
             return StubHttpMessageHandler.Json(HttpStatusCode.Created,
-                $$"""{"token":"ghs_job{{bodies.Count}}","expires_at":"2026-10-14T13:00:00Z","permissions":{"contents":"write","metadata":"read"},"repository_selection":"selected"}""");
+                $$"""{"token":"{{JobToken(bodies.Count)}}","expires_at":"2026-10-14T13:00:00Z","permissions":{"contents":"write","metadata":"read"},"repository_selection":"selected"}""");
         });
 
     private static string[] Permissions(string? body)
@@ -982,7 +985,7 @@ public class GitHubForgeMergeQueueTests
         push.Access!.CloneUrl.Should().Be("https://github.com/acme/widget.git");
         push.Access.PushUrl.Should().Be("https://github.com/acme/widget.git");
         push.Access.Username.Should().Be("x-access-token");
-        push.Access.Password.Should().Be("ghs_job1");
+        push.Access.Password.Should().Be(JobToken(1));
         github.InstallationClients.Should().BeEmpty("the shared installation token is never fetched for the writer");
     }
 
@@ -1001,8 +1004,8 @@ public class GitHubForgeMergeQueueTests
         var first = await queue.GetWriterAccessAsync(Target(), Pull(910040, "acme/widget", false), pushesWorkflowChanges: false);
         var second = await queue.GetWriterAccessAsync(Target(), pullRequest: null, pushesWorkflowChanges: false);
 
-        first.Access!.Password.Should().Be("ghs_job1");
-        second.Access!.Password.Should().Be("ghs_job2", "never cached across jobs");
+        first.Access!.Password.Should().Be(JobToken(1));
+        second.Access!.Password.Should().Be(JobToken(2), "never cached across jobs");
         minted.Should().HaveCount(2);
         using var request = JsonDocument.Parse(minted[0]!);
         request.RootElement.GetProperty("repository_ids").EnumerateArray().Select(id => id.GetInt64()).Should().Equal([910040L]);
@@ -1038,10 +1041,10 @@ public class GitHubForgeMergeQueueTests
     {
         var github = new StubGitHub()
             .On(HttpMethod.Delete, "/installation/token", (_, _) => new HttpResponseMessage(HttpStatusCode.NoContent));
-        var access = new ForgeWriterAccess("https://github.com/acme/widget.git", "https://github.com/acme/widget.git", "x-access-token", "ghs_job1");
+        var access = new ForgeWriterAccess("https://github.com/acme/widget.git", "https://github.com/acme/widget.git", "x-access-token", JobToken(1));
 
         (await Queue(github).RevokeWriterAccessAsync(Target(), access)).Should().BeTrue();
-        github.Rest.Requests.Should().ContainSingle().Which.AuthorizationParameter.Should().Be("ghs_job1", "a token revokes itself");
+        github.Rest.Requests.Should().ContainSingle().Which.AuthorizationParameter.Should().Be(JobToken(1), "a token revokes itself");
 
         var refused = new StubGitHub().On(HttpMethod.Delete, "/installation/token", HttpStatusCode.Unauthorized,
             """{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest","status":"401"}""");
@@ -1067,7 +1070,7 @@ public class GitHubForgeMergeQueueTests
         request.RootElement.EnumerateObject().Select(p => p.Name).Should().Equal(["repository_ids", "permissions"]);
         request.RootElement.GetProperty("repository_ids").EnumerateArray().Select(id => id.GetInt64()).Should().Equal([910040L], "S6: the base repository's write access is what the box honours");
         Permissions(minted.Single()).Should().Equal(pushesWorkflowChanges ? ["contents=write", "workflows=write"] : ["contents=write"]);
-        push.Access.ToString().Should().NotContain("ghs_job1");
+        push.Access.ToString().Should().NotContain(JobToken(1));
     }
 
     [Fact]
