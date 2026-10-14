@@ -4,10 +4,10 @@
     "id": "2a34a658-1768-4c82-8724-884b2f99f4e0",
     "name": "Person",
     "clrType": "HR.Entities.Person",
-    "agentPermissions": "Read, Write",
     "queryType": "HR.Indexes.VPerson",
     "indexName": "People_Overview",
     "breadcrumb": "{FullName} @ {Company}",
+    "agentPermissions": "Read, Write",
     "tabs": [
       {
         "id": "a1b2c3d4-0001-0001-0001-000000000001",
