@@ -813,7 +813,7 @@ public class GitHubForgeMergeQueueTests
         (await queue.PostCommentAsync(Target(), 1, "Queued.")).Should().Be(99);
     }
 
-    // ── The writer's credential (O3) ─────────────────────────────────────────────────────────────
+    // ── The writer's credential (O3, T9) ─────────────────────────────────────────────────────────
 
     private static ForgePullRequest Pull(long? headRepositoryId, string? headFullName, bool maintainerCanModify)
         => new(1, Head, "feature", headRepositoryId, "main", 910040, "main", true)
@@ -822,48 +822,133 @@ public class GitHubForgeMergeQueueTests
             MaintainerCanModify = maintainerCanModify,
         };
 
-    [Fact]
-    public async Task A_same_repository_pull_request_pushes_to_the_repository()
-    {
-        var github = new StubGitHub();
-        var push = await Queue(github).GetPushAccessAsync(Target(), Pull(910040, "acme/widget", false));
+    /// <summary>GitHub's 201 for <c>POST /app/installations/{id}/access_tokens</c>, numbering the tokens it mints; every
+    /// request body is kept.</summary>
+    private static StubGitHub Minting(List<string?> bodies, StubGitHub? github = null)
+        => (github ?? new StubGitHub()).On(HttpMethod.Post, $"/app/installations/{InstallationId}/access_tokens", (_, body) =>
+        {
+            bodies.Add(body);
+            return StubHttpMessageHandler.Json(HttpStatusCode.Created,
+                $$"""{"token":"ghs_job{{bodies.Count}}","expires_at":"2026-10-14T13:00:00Z","permissions":{"contents":"write","metadata":"read"},"repository_selection":"selected"}""");
+        });
 
-        push.RefusalReason.Should().BeNull();
-        push.Access!.CloneUrl.Should().Be("https://github.com/acme/widget.git");
-        push.Access.Username.Should().Be("x-access-token");
-        push.Access.Password.Should().Be(StubGitHub.InstallationToken);
-        github.InstallationClients.Should().Equal(InstallationId);
+    private static string[] Permissions(string? body)
+    {
+        using var request = JsonDocument.Parse(body!);
+        return [.. request.RootElement.GetProperty("permissions").EnumerateObject().Select(p => $"{p.Name}={p.Value.GetString()}")];
     }
 
     [Fact]
-    public async Task A_fork_that_allows_maintainer_edits_pushes_to_the_fork_with_the_base_installation()
+    public async Task A_same_repository_pull_request_pushes_to_the_repository()
     {
-        var push = await Queue(new StubGitHub()).GetPushAccessAsync(Target(), Pull(777, "contributor/widget", true));
+        var minted = new List<string?>();
+        var github = Minting(minted);
+        var push = await Queue(github).GetWriterAccessAsync(Target(), Pull(910040, "acme/widget", false), pushesWorkflowChanges: false);
 
-        push.Access!.CloneUrl.Should().Be("https://github.com/contributor/widget.git");
-        push.Access.InstallationKey.Should().Be($"github:{InstallationId}");
-        push.Access.ToString().Should().NotContain(StubGitHub.InstallationToken);
+        push.RefusalReason.Should().BeNull();
+        push.Access!.CloneUrl.Should().Be("https://github.com/acme/widget.git");
+        push.Access.PushUrl.Should().Be("https://github.com/acme/widget.git");
+        push.Access.Username.Should().Be("x-access-token");
+        push.Access.Password.Should().Be("ghs_job1");
+        github.InstallationClients.Should().BeEmpty("the shared installation token is never fetched for the writer");
+    }
+
+    /// <summary>
+    /// T9, §0 D59: every writer job gets a token of its own, minted for that job, for this one repository, with contents
+    /// write only. The shared installation-wide token (every repository, every permission, cached for its hour) is never
+    /// handed to the writer.
+    /// </summary>
+    [Fact]
+    public async Task A_writer_job_gets_a_token_minted_for_it_scoped_to_the_repository()
+    {
+        var minted = new List<string?>();
+        var github = Minting(minted);
+        var queue = Queue(github);
+
+        var first = await queue.GetWriterAccessAsync(Target(), Pull(910040, "acme/widget", false), pushesWorkflowChanges: false);
+        var second = await queue.GetWriterAccessAsync(Target(), pullRequest: null, pushesWorkflowChanges: false);
+
+        first.Access!.Password.Should().Be("ghs_job1");
+        second.Access!.Password.Should().Be("ghs_job2", "never cached across jobs");
+        minted.Should().HaveCount(2);
+        using var request = JsonDocument.Parse(minted[0]!);
+        request.RootElement.GetProperty("repository_ids").EnumerateArray().Select(id => id.GetInt64()).Should().Equal([910040L]);
+        Permissions(minted[0]).Should().Equal(["contents=write"]);
+        github.Calls.Should().NotContain(c => c.StartsWith("POST /app/installations") && !c.EndsWith("/access_tokens"));
+    }
+
+    [Fact]
+    public async Task A_job_that_pushes_workflow_changes_asks_for_the_workflows_permission_too()
+    {
+        var minted = new List<string?>();
+        await Queue(Minting(minted)).GetWriterAccessAsync(Target(), Pull(910040, "acme/widget", false), pushesWorkflowChanges: true);
+
+        Permissions(minted.Single()).Should().Equal(["contents=write", "workflows=write"]);
+    }
+
+    /// <summary>GitHub: "The installation access token cannot be granted permissions that the app was not granted" (422).
+    /// That is a permission the installation has not accepted, so the queue's check run links the acceptance page (O17).</summary>
+    [Fact]
+    public async Task A_token_the_installation_cannot_grant_is_an_access_failure_naming_the_permission()
+    {
+        var github = new StubGitHub().On(HttpMethod.Post, $"/app/installations/{InstallationId}/access_tokens", HttpStatusCode.UnprocessableEntity,
+            """{"message":"The permissions requested are not granted to this installation.","documentation_url":"https://docs.github.com/rest/apps/apps#create-an-installation-access-token-for-an-app","status":"422"}""");
+
+        var thrown = await Throws<ForgeAccessDeniedException>(() => Queue(github).GetWriterAccessAsync(Target(), Pull(910040, "acme/widget", false), pushesWorkflowChanges: true));
+
+        thrown.RequiredPermission.Should().Be("workflows=write");
+        thrown.Message.Should().Contain("contents=write, workflows=write");
+    }
+
+    [Fact]
+    public async Task A_job_token_is_revoked_with_itself_and_a_refusal_is_only_false()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Delete, "/installation/token", (_, _) => new HttpResponseMessage(HttpStatusCode.NoContent));
+        var access = new ForgeWriterAccess("https://github.com/acme/widget.git", "https://github.com/acme/widget.git", "x-access-token", "ghs_job1");
+
+        (await Queue(github).RevokeWriterAccessAsync(Target(), access)).Should().BeTrue();
+        github.Rest.Requests.Should().ContainSingle().Which.AuthorizationParameter.Should().Be("ghs_job1", "a token revokes itself");
+
+        var refused = new StubGitHub().On(HttpMethod.Delete, "/installation/token", HttpStatusCode.Unauthorized,
+            """{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest","status":"401"}""");
+        (await Queue(refused).RevokeWriterAccessAsync(Target(), access)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_fork_that_allows_maintainer_edits_pushes_to_the_fork_with_a_token_scoped_to_the_base()
+    {
+        var minted = new List<string?>();
+        var push = await Queue(Minting(minted)).GetWriterAccessAsync(Target(), Pull(777, "contributor/widget", true), pushesWorkflowChanges: false);
+
+        push.Access!.CloneUrl.Should().Be("https://github.com/acme/widget.git");
+        push.Access.PushUrl.Should().Be("https://github.com/contributor/widget.git");
+        using var request = JsonDocument.Parse(minted.Single()!);
+        request.RootElement.GetProperty("repository_ids").EnumerateArray().Select(id => id.GetInt64()).Should().Equal([910040L], "S6: the base repository's write access is what the box honours");
+        push.Access.ToString().Should().NotContain("ghs_job1");
     }
 
     [Fact]
     public async Task A_fork_that_does_not_allow_maintainer_edits_is_refused_without_a_token()
     {
-        var github = new StubGitHub();
-        var push = await Queue(github).GetPushAccessAsync(Target(), Pull(777, "contributor/widget", false));
+        var minted = new List<string?>();
+        var github = Minting(minted);
+        var push = await Queue(github).GetWriterAccessAsync(Target(), Pull(777, "contributor/widget", false), pushesWorkflowChanges: false);
 
         push.Access.Should().BeNull();
         push.RefusalReason.Should().Contain("Allow edits by maintainers");
-        github.InstallationClients.Should().BeEmpty();
+        minted.Should().BeEmpty();
+        github.AppClients.Should().Be(0);
     }
 
     [Fact]
     public async Task A_deleted_fork_is_refused()
-        => (await Queue(new StubGitHub()).GetPushAccessAsync(Target(), Pull(null, null, true)))
+        => (await Queue(new StubGitHub()).GetWriterAccessAsync(Target(), Pull(null, null, true), pushesWorkflowChanges: false))
             .RefusalReason.Should().Contain("no longer exists");
 
     [Fact]
     public async Task A_fork_name_github_cannot_have_is_refused()
-        => (await Queue(new StubGitHub()).GetPushAccessAsync(Target(), Pull(777, "evil.example.com/x/../y", true)))
+        => (await Queue(new StubGitHub()).GetWriterAccessAsync(Target(), Pull(777, "evil.example.com/x/../y", true), pushesWorkflowChanges: false))
             .Access.Should().BeNull();
 
     // ── No installation ──────────────────────────────────────────────────────────────────────────
@@ -877,7 +962,7 @@ public class GitHubForgeMergeQueueTests
         await Throws<ForgeAccessDeniedException>(() => queue.GetActorRoleAsync(Target(), "octocat"));
         await Throws<ForgeAccessDeniedException>(() => queue.RequestMergeAsync(Target(), 1, Head, EForgeMergeMethod.Squash, null, null));
         await Throws<ForgeAccessDeniedException>(() => queue.AddLabelAsync(Target(), 1, "merge-queue"));
-        (await queue.GetPushAccessAsync(Target(), Pull(910040, "acme/widget", false))).Access.Should().BeNull();
+        (await queue.GetWriterAccessAsync(Target(), Pull(910040, "acme/widget", false), pushesWorkflowChanges: false)).Access.Should().BeNull();
         github.Calls.Should().BeEmpty();
     }
 }

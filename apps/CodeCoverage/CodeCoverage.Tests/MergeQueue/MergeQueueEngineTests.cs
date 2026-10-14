@@ -1071,6 +1071,58 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Writer.Publishes.Should().BeEmpty();
     }
 
+    // ── T9: a credential per writer job (§0 D59) ───────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Every_writer_job_gets_a_credential_of_its_own_and_ends_it()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Queue.WriterAccesses.Should().Equal([((int?)null, false, "job-token-1"), (Number, false, "job-token-2"), (null, false, "job-token-3")]);
+        h.Writer.Prepares.Single().Credential.Password.Should().Be("job-token-1");
+        h.Writer.Publishes.Single().Credential.Password.Should().Be("job-token-2");
+        h.Writer.Deletes.Single().Credential.Password.Should().Be("job-token-3", "the queue branch's deletion gets its own too");
+        h.Queue.RevokedTokens.Should().Equal(["job-token-1", "job-token-2", "job-token-3"]);
+    }
+
+    [Fact]
+    public async Task A_credential_ends_with_its_job_even_when_the_job_fails()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishThrows = new HttpRequestException("The response ended prematurely.");
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).TransientFailures.Should().Be(1);
+        h.Queue.RevokedTokens.Should().Equal([.. h.Queue.WriterAccesses.Select(a => a.Token)]);
+    }
+
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    public async Task Only_a_forks_publish_after_the_base_changed_its_workflows_asks_for_the_workflow_permission(bool fork, bool baseChangedWorkflows, bool workflows)
+    {
+        var h = await HarnessAsync();
+        h.Forge.PullRequests[Number] = PullRequest(fork: fork, maintainerCanModify: true);
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared) with { BaseChangedWorkflows = baseChangedWorkflows });
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        h.Queue.WriterAccesses.Select(a => (a.Number, a.Workflows)).ToList().Should().Equal([((int?)null, false), (Number, workflows), (null, false)]);
+        h.Writer.Publishes.Single().PushUrl.Should().Be(fork ? "https://github.com/contributor/widget.git" : null);
+    }
+
     // ── Re-checked before the merge (O9, O11, §0 D61) ───────────────────────────────────────────────
 
     [Fact]

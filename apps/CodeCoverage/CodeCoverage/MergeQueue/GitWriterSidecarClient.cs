@@ -159,9 +159,18 @@ public sealed record GitWriterPublishRequest(
 /// <summary>The body of <c>DELETE /jobs/queue-branch</c>.</summary>
 public sealed record GitWriterDeleteQueueBranchRequest(string Provider, string RepoId, string CloneUrl, SidecarCredential Credential, string QueueBranch, string? ExpectedSha);
 
+/// <param name="Paths">Why, for <c>evicted</c>. For <c>prepared</c>: the <c>.github/**</c> paths of the net change.</param>
 public sealed record GitWriterPrepareResult(
     string Outcome, string? Reason, string? BaseSha, string? HeadSha, string? PreparedSha,
-    IReadOnlyList<string> ResolvedPaths, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
+    IReadOnlyList<string> ResolvedPaths, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
+{
+    /// <summary>The net change touches <c>.github/**</c> (D12); the saga decides what that stops (§0 D63).</summary>
+    public bool TouchesWorkflows { get; init; }
+
+    /// <summary>The base's <c>.github/workflows</c> differs from the pinned head's (§0 D59): a fork's publish needs the
+    /// forge's workflow permission.</summary>
+    public bool BaseChangedWorkflows { get; init; }
+}
 
 public sealed record GitWriterPublishResult(string Outcome, string? Reason, string? FinalSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
 

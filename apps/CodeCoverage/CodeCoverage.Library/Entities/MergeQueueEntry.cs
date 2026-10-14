@@ -77,6 +77,12 @@ public class MergeQueueEntry
     /// <summary>The paths the resolver took from the base side; non-empty means regeneration is due.</summary>
     public List<string> ResolvedPaths { get; set; } = [];
 
+    /// <summary>
+    /// The base's <c>.github/workflows</c> differs from the pinned head's, as the prepare saw it (§0 D59): publishing to a
+    /// fork then needs the forge's workflow permission, because the fork lacks the base's newer workflow files.
+    /// </summary>
+    public bool BaseChangedWorkflows { get; set; }
+
     /// <summary>The regenerate workflow run (D14).</summary>
     public long? DispatchRunId { get; set; }
 

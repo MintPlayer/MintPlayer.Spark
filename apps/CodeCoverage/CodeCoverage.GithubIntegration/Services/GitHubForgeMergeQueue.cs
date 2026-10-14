@@ -789,29 +789,32 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         }
     }
 
-    // ── The writer's credential ──────────────────────────────────────────────────────────────────
+    // ── The writer's credential (T9) ─────────────────────────────────────────────────────────────
 
     /// <remarks>
     /// <para>
-    /// The token is the <b>base</b> repository's installation token in both cases: GitHub's "Allow edits from
-    /// maintainers" lets anyone with push access to the base repository push to the fork's head branch, and an
-    /// installation token for a fork the App is not installed on cannot exist.
+    /// <b>One token per job (T9, §0 D59).</b> <c>POST /app/installations/{id}/access_tokens</c> as the App, with
+    /// <c>repository_ids</c> holding this repository alone and <c>permissions</c> holding <c>contents: write</c>, plus
+    /// <c>workflows: write</c> only when the job's push may carry workflow files. It is never cached: the shared
+    /// installation token (every repository of the installation, every permission it was granted, cached for its hour)
+    /// is never handed to the writer. GitHub fixes the lifetime at one hour; <see cref="RevokeWriterAccessAsync"/> ends it
+    /// sooner.
     /// </para>
     /// <para>
-    /// ⚠️ S6 never ran: whether GitHub counts an <b>App installation token</b> as such a maintainer is
-    /// unverified. If it does not, the writer's push answers <c>push-rejected</c>, and the queue check run must
-    /// say that fork PRs cannot be queued on this forge yet, rather than a generic failure. GitHub documents the
-    /// checkbox for user-owned forks only; an organization-owned fork reports <c>maintainer_can_modify: false</c>
-    /// and is refused here.
+    /// The token is scoped to the <b>base</b> repository for a fork's push too: GitHub's "Allow edits from maintainers"
+    /// lets those with push access to the base repository push to the fork's head branch, and the App has no token for a
+    /// fork it is not installed on. ⚠️ S6 never ran: whether GitHub counts an App's token as such a maintainer is
+    /// unverified. If it does not, the writer's push answers <c>push-rejected</c>, and the queue says fork pull requests
+    /// cannot be queued yet rather than a generic failure. GitHub documents the checkbox for user-owned forks only; an
+    /// organization-owned fork reports <c>maintainer_can_modify: false</c> and is refused here.
     /// </para>
     /// </remarks>
-    public async Task<ForgePushAccess> GetPushAccessAsync(Repository repository, ForgePullRequest pullRequest, CancellationToken cancellationToken = default)
+    public async Task<ForgePushAccess> GetWriterAccessAsync(Repository repository, ForgePullRequest? pullRequest, bool pushesWorkflowChanges, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(repository);
-        ArgumentNullException.ThrowIfNull(pullRequest);
 
         string target;
-        if (!pullRequest.IsFromFork)
+        if (pullRequest is null || !pullRequest.IsFromFork)
             target = repository.FullName;
         else if (pullRequest.HeadRepositoryFullName is not { } fork)
             return ForgePushAccess.Refused("The pull request's fork no longer exists, so there is no branch to push to.");
@@ -822,16 +825,80 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
         else
             target = fork;
 
-        if (!GitHubForgeClient.GitHubFullName().IsMatch(target))
+        if (!GitHubForgeClient.GitHubFullName().IsMatch(repository.FullName) || !GitHubForgeClient.GitHubFullName().IsMatch(target))
             return ForgePushAccess.Refused($"'{target}' is not a GitHub repository name.");
 
         var installationId = await ResolveInstallationAsync(repository, cancellationToken);
         if (installationId is null)
             return ForgePushAccess.Refused("No GitHub App installation for this repository.");
 
-        // The writer holds it for a whole prepare or publish job.
-        var token = await installationService.GetInstallationTokenAsync(installationId.Value, GitHubForgeClient.GitAccessMinLifetime, cancellationToken);
-        return new ForgePushAccess(new ForgeGitAccess($"https://github.com/{target}.git", "x-access-token", token, $"github:{installationId}"), null);
+        var token = await MintJobTokenAsync(repository, installationId.Value, pushesWorkflowChanges, cancellationToken);
+        return new ForgePushAccess(new ForgeWriterAccess($"https://github.com/{repository.FullName}.git", $"https://github.com/{target}.git", "x-access-token", token), null);
+    }
+
+    /// <summary>
+    /// The job's own token (T9, §0 D59). A 401, 403, 404 or 422 is the installation refusing what was asked, typically
+    /// <c>workflows: write</c> not accepted yet (GitHub: "cannot be granted permissions that the app was not granted"), so it
+    /// is a <see cref="ForgeAccessDeniedException"/> naming the permission, for O17's link.
+    /// </summary>
+    private async Task<string> MintJobTokenAsync(Repository repository, long installationId, bool workflows, CancellationToken cancellationToken)
+    {
+        var permissions = new SortedDictionary<string, string>(StringComparer.Ordinal) { ["contents"] = "write" };
+        if (workflows) permissions["workflows"] = "write";
+        var body = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["repository_ids"] = new[] { repository.GitHubId },
+            ["permissions"] = permissions,
+        });
+        var asked = string.Join(", ", permissions.Select(p => $"{p.Key}={p.Value}"));
+
+        var app = await installationService.CreateAppClientAsync();
+        try
+        {
+            var response = await app.Connection.Post<AccessToken>(
+                new Uri($"app/installations/{installationId.ToString(CultureInfo.InvariantCulture)}/access_tokens", UriKind.Relative),
+                body, "application/vnd.github+json", "application/json", parameters: null, cancellationToken);
+            return response.Body?.Token is { Length: > 0 } token
+                ? token
+                : throw new ForgeRequestException($"GitHub minted no token for {repository.FullName}.", (int)response.HttpResponse.StatusCode);
+        }
+        catch (ApiException ex) when (ex is RateLimitExceededException or SecondaryRateLimitExceededException)
+        {
+            throw new ForgeRequestException($"GitHub rate limit reached minting a token for {repository.FullName}.", 429);
+        }
+        catch (ApiException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity)
+        {
+            throw new ForgeAccessDeniedException($"GitHub refused a token for {repository.FullName} with {asked}: {ex.Message}", workflows ? "workflows=write" : "contents=write");
+        }
+        catch (ApiException ex)
+        {
+            throw new ForgeRequestException($"GitHub answered {(int)ex.StatusCode} minting a token for {repository.FullName}: {ex.Message}", (int)ex.StatusCode);
+        }
+    }
+
+    /// <summary>The bound on a revocation: it runs after every writer job, and a slow GitHub must not hold the step.</summary>
+    private static readonly TimeSpan RevokeTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary><c>DELETE /installation/token</c>, authenticated with the job's token itself: 204 means it is dead now.</summary>
+    public async Task<bool> RevokeWriterAccessAsync(Repository repository, ForgeWriterAccess access, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(access);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(RevokeTimeout);
+        try
+        {
+            var http = httpClientFactory.CreateClient(nameof(GitHubForgeMergeQueue));
+            using var request = NewRequest(HttpMethod.Delete, new Uri(ApiBase, "installation/token"), access.Password, DefaultApiVersion);
+            using var response = await http.SendAsync(request, timeout.Token);
+            if (response.StatusCode == HttpStatusCode.NoContent) return true;
+            logger.LogWarning("Revoking a merge-queue writer token for {FullName} answered {Status}; it expires within the hour.", repository.FullName, (int)response.StatusCode);
+            return false;
+        }
+        catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            logger.LogWarning(ex, "Could not revoke a merge-queue writer token for {FullName}; it expires within the hour.", repository.FullName);
+            return false;
+        }
     }
 
     // ── Plumbing ─────────────────────────────────────────────────────────────────────────────────

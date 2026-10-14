@@ -26,7 +26,16 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Queue<ForgeMergeRequest> MergeStatuses { get; } = new();
     public ForgeWorkflowDispatch NextDispatch { get; set; } = new(EForgeDispatchOutcome.Dispatched, 9001, "https://github.com/acme/widget/actions/runs/9001", null);
     public bool RerunResult { get; set; } = true;
-    public Func<ForgePullRequest, ForgePushAccess>? PushAccess { get; set; }
+
+    /// <summary>When set and it answers, its access is handed out instead of a minted one (e.g. a refusal).</summary>
+    public Func<ForgePullRequest?, ForgePushAccess?>? WriterAccess { get; set; }
+
+    /// <summary>Every writer credential minted (T9): the pull request it pushes (null: the queue branch only), whether it
+    /// carries the workflow permission, and its token, in order.</summary>
+    public List<(int? Number, bool Workflows, string Token)> WriterAccesses { get; } = [];
+
+    /// <summary>Every writer credential ended, by token, in order.</summary>
+    public List<string> RevokedTokens { get; } = [];
 
     public List<(string Workflow, string Branch, IReadOnlyDictionary<string, string> Inputs)> Dispatches { get; } = [];
     public List<(int Number, string Sha)> MergeRequests { get; } = [];
@@ -154,9 +163,22 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
         return Task.FromResult((long)Comments.Count);
     }
 
-    public Task<ForgePushAccess> GetPushAccessAsync(Repository repository, ForgePullRequest pullRequest, CancellationToken cancellationToken = default)
-        => Task.FromResult(PushAccess?.Invoke(pullRequest)
-            ?? new ForgePushAccess(new ForgeGitAccess($"https://github.com/{pullRequest.HeadRepositoryFullName ?? repository.FullName}.git", "x-access-token", "test-token", "github:1"), null));
+    public Task<ForgePushAccess> GetWriterAccessAsync(Repository repository, ForgePullRequest? pullRequest, bool pushesWorkflowChanges, CancellationToken cancellationToken = default)
+    {
+        if (WriterAccess?.Invoke(pullRequest) is { } scripted)
+            return Task.FromResult(scripted);
+        var token = $"job-token-{WriterAccesses.Count + 1}";
+        WriterAccesses.Add((pullRequest?.Number, pushesWorkflowChanges, token));
+        var push = pullRequest is { IsFromFork: true, HeadRepositoryFullName: { } fork } ? fork : repository.FullName;
+        return Task.FromResult(new ForgePushAccess(
+            new ForgeWriterAccess($"https://github.com/{repository.FullName}.git", $"https://github.com/{push}.git", "x-access-token", token), null));
+    }
+
+    public Task<bool> RevokeWriterAccessAsync(Repository repository, ForgeWriterAccess access, CancellationToken cancellationToken = default)
+    {
+        RevokedTokens.Add(access.Password);
+        return Task.FromResult(true);
+    }
 
     public ForgeQueueCheck LastCheck => QueueChecks[^1].Check;
 }

@@ -95,7 +95,8 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.AddLabelAsync), q => q.AddLabelAsync(SampleRepository, 1, "merge-queue")),
         (nameof(IForgeMergeQueue.RemoveLabelAsync), q => q.RemoveLabelAsync(SampleRepository, 1, "merge-queue")),
         (nameof(IForgeMergeQueue.PostCommentAsync), q => q.PostCommentAsync(SampleRepository, 1, "body")),
-        (nameof(IForgeMergeQueue.GetPushAccessAsync), q => q.GetPushAccessAsync(SampleRepository, new ForgePullRequest(1, SampleSha, "feature", 1, "main", 1, "main", true))),
+        (nameof(IForgeMergeQueue.GetWriterAccessAsync), q => q.GetWriterAccessAsync(SampleRepository, new ForgePullRequest(1, SampleSha, "feature", 1, "main", 1, "main", true), false)),
+        (nameof(IForgeMergeQueue.RevokeWriterAccessAsync), q => q.RevokeWriterAccessAsync(SampleRepository, new ForgeWriterAccess("https://example.invalid/a/b.git", "https://example.invalid/a/b.git", "x-access-token", "t"))),
     ];
 
     private const string SampleSha = "4a5b6c7d8e9f00112233445566778899aabbccdd";

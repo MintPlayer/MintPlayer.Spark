@@ -306,6 +306,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.BaseSha = null;
         entry.PreparedSha = null;
         entry.ResolvedPaths = [];
+        entry.BaseChangedWorkflows = false;
         entry.DispatchRunId = null;
         entry.DispatchRunUrl = null;
         entry.DispatchRunFinished = false;
@@ -504,13 +505,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 + "Rename the branch, or rebase it by hand and queue it again.", ct: ct);
             return;
         }
-        if (await GitAccessAsync(context, entry, pull, ct) is not { } git) return;
+        // T9 (§0 D59): the prepare pushes only to the base repository's queue branch, and a change under .github/** never
+        // gets that far (the writer refuses it, D12), so its token never needs the workflow permission.
+        if (await WriterAccessAsync(context, entry, pullRequest: null, pushesWorkflowChanges: false, ct) is not { } access) return;
 
-        var result = await writer.PrepareAsync(new GitWriterPrepareRequest(
+        var result = await WithAccessAsync(context, access, credential => writer.PrepareAsync(new GitWriterPrepareRequest(
             Provider: repository.Provider.ToCanonicalString(),
             RepoId: repository.GitHubId.ToString(CultureInfo.InvariantCulture),
-            CloneUrl: git.CloneUrl,
-            Credential: git.Credential,
+            CloneUrl: access.CloneUrl,
+            Credential: credential,
             BaseBranch: entry.BaseBranch,
             BaseSha: baseSha,
             HeadRef: PullHeadRef(entry),
@@ -522,7 +525,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 : new GitWriterAutoResolve(r.Path, r.Keys))],
             Author: new GitWriterIdentity(entry.AuthorLogin ?? "unknown", options.Value.AuthorEmailFormat.Replace("{login}", entry.AuthorLogin ?? "unknown", StringComparison.Ordinal)),
             Committer: Committer(),
-            Message: CommitTitle(entry)), ct);
+            Message: CommitTitle(entry)), ct));
 
         switch (result.Outcome)
         {
@@ -530,6 +533,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.BaseSha = result.BaseSha ?? baseSha;
                 entry.PreparedSha = prepared;
                 entry.ResolvedPaths = [.. result.ResolvedPaths];
+                entry.BaseChangedWorkflows = result.BaseChangedWorkflows;
                 Remember(entry, prepared);
                 var found = result.Reason == GitWriterReasons.AlreadyPushed ? " (found on the queue branch: an earlier attempt's push, §0 D52)" : string.Empty;
                 if (NeedsRegeneration(entry))
@@ -587,11 +591,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     {
         var pull = await ReadPullRequestAsync(context, entry, ct);
         if (pull is null) return;
-        if (await GitAccessAsync(context, entry, pull, ct) is not { } git) return;
+        // T9: the queue branch lives in the base repository; deleting it needs nothing but contents.
+        if (await WriterAccessAsync(context, entry, pullRequest: null, pushesWorkflowChanges: false, ct) is not { } access) return;
 
-        var result = await writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
+        var result = await WithAccessAsync(context, access, credential => writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
             context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture),
-            git.CloneUrl, git.Credential, entry.QueueBranch, ExpectedSha: null), ct);
+            access.CloneUrl, credential, entry.QueueBranch, ExpectedSha: null), ct));
         switch (result.Outcome)
         {
             case GitWriterOutcomes.Deleted:
@@ -766,14 +771,16 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await EvictAsync(context, entry, "writer-unavailable", "This server's git writer is not configured (MergeQueue:GitWriterUrl).", ct: ct);
             return;
         }
-        if (await GitAccessAsync(context, entry, pull, ct) is not { } git) return;
+        // T9 (§0 D59): a fork that holds only the head lacks the workflow files the base changed since, and GitHub refuses
+        // an App's push of workflow files the target has on no branch without the workflow permission.
+        if (await WriterAccessAsync(context, entry, pull, PublishPushesWorkflowChanges(entry), ct) is not { } access) return;
 
-        var result = await writer.PublishAsync(new GitWriterPublishRequest(
+        var result = await WithAccessAsync(context, access, credential => writer.PublishAsync(new GitWriterPublishRequest(
             Provider: repository.Provider.ToCanonicalString(),
             RepoId: repository.GitHubId.ToString(CultureInfo.InvariantCulture),
-            CloneUrl: git.CloneUrl,
-            PushUrl: entry.IsFork ? git.PushUrl : null,
-            Credential: git.Credential,
+            CloneUrl: access.CloneUrl,
+            PushUrl: entry.IsFork ? access.PushUrl : null,
+            Credential: credential,
             QueueBranch: entry.QueueBranch,
             PreparedSha: entry.PreparedSha!,
             HeadRef: PullHeadRef(entry),
@@ -781,7 +788,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             ExpectedPrHeadSha: entry.ExpectedHeadSha,
             Patch: patch,
             RegeneratedPaths: entry.Config.RegeneratedPaths,
-            Committer: Committer()), ct);
+            Committer: Committer()), ct));
 
         switch (result.Outcome)
         {
@@ -1055,16 +1062,21 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             logger.LogInformation("Merge queue: keeping {Branch} in {Repository}: run {Run} adopted it", step.QueueBranch, context.Repository.FullName, entry.Run);
             return;
         }
-        var git = await context.Forge.GetGitAccessAsync(context.Repository, ct);
-        if (git is not { Password: { } password }) return;
+        // T9: a token of its own, like every writer job; the entry has ended, so a refusal only leaves the branch behind.
+        var push = await context.Queue.GetWriterAccessAsync(context.Repository, pullRequest: null, pushesWorkflowChanges: false, ct);
+        if (push.Access is not { } access)
+        {
+            logger.LogWarning("Merge queue: no credential to delete {Branch} in {Repository}: {Reason}", step.QueueBranch, context.Repository.FullName, push.RefusalReason);
+            return;
+        }
 
         // Not gated on the entry: it may already run again. The lease keeps a newer queue branch safe.
         GitWriterDeleteResult result;
         try
         {
-            result = await writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
+            result = await WithAccessAsync(context, access, credential => writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
                 context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture),
-                git.CloneUrl, new SidecarCredential(git.Username ?? string.Empty, password), step.QueueBranch, step.ExpectedSha), ct);
+                access.CloneUrl, credential, step.QueueBranch, step.ExpectedSha), ct));
         }
         catch (GitWriterRefusedException ex)
         {
@@ -1184,21 +1196,42 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         return pull;
     }
 
-    private sealed record GitAccess(string CloneUrl, string? PushUrl, SidecarCredential Credential);
-
-    /// <summary>The base clone URL and the push credential (O3: the fork's for a fork's pull request). Null: evicted.</summary>
-    private async Task<GitAccess?> GitAccessAsync(Context context, MergeQueueEntry entry, ForgePullRequest pull, CancellationToken ct)
+    /// <summary>
+    /// One writer job's access (T9, §0 D59): the base clone URL, where to push (O3: a fork's pull request pushes to the
+    /// fork) and a token minted for this job alone. Null: evicted with the forge's reason.
+    /// </summary>
+    /// <param name="pullRequest">The pull request whose branch the job pushes; null for a job on the queue branch only.</param>
+    private async Task<ForgeWriterAccess?> WriterAccessAsync(Context context, MergeQueueEntry entry, ForgePullRequest? pullRequest, bool pushesWorkflowChanges, CancellationToken ct)
     {
-        var push = await context.Queue.GetPushAccessAsync(context.Repository, pull, ct);
-        if (push.Access is not { Password: { } password } access)
-        {
-            await EvictAsync(context, entry, "push-refused", push.RefusalReason ?? "The forge gave no credential to push the rebased commit.", ct: ct);
-            return null;
-        }
-        var clone = await context.Forge.GetGitAccessAsync(context.Repository, ct)
-            ?? throw new ForgeRequestException($"No clone URL for {context.Repository.FullName}.", null);
-        return new GitAccess(clone.CloneUrl, access.CloneUrl, new SidecarCredential(access.Username ?? string.Empty, password));
+        var push = await context.Queue.GetWriterAccessAsync(context.Repository, pullRequest, pushesWorkflowChanges, ct);
+        if (push.Access is { } access) return access;
+        await EvictAsync(context, entry, "push-refused", push.RefusalReason ?? "The forge gave no credential to push the rebased commit.", ct: ct);
+        return null;
     }
+
+    /// <summary>
+    /// Runs one writer job with its own credential, then ends the credential (T9): whatever the job answered or threw, the
+    /// token dies with it instead of living out its hour.
+    /// </summary>
+    private static async Task<T> WithAccessAsync<T>(Context context, ForgeWriterAccess access, Func<SidecarCredential, Task<T>> job)
+    {
+        try
+        {
+            return await job(new SidecarCredential(access.Username, access.Password));
+        }
+        finally
+        {
+            // Bounded inside, and never thrown from: the job's own outcome is what the step acts on.
+            await context.Queue.RevokeWriterAccessAsync(context.Repository, access, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// §0 D59: whether a publish may carry workflow files its target lacks. A fork that holds only the pinned head lacks
+    /// the base's when the base changed them since. A same-repository branch's push carries only workflow files the
+    /// repository has on a branch already, which GitHub allows without the permission.
+    /// </summary>
+    private static bool PublishPushesWorkflowChanges(MergeQueueEntry entry) => entry.IsFork && entry.BaseChangedWorkflows;
 
     private static string PullHeadRef(MergeQueueEntry entry) => $"refs/pull/{entry.Number.ToString(CultureInfo.InvariantCulture)}/head";
 

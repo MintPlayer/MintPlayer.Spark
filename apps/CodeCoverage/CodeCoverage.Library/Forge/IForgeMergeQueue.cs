@@ -17,7 +17,8 @@ namespace CodeCoverage.Forge;
 /// </para>
 /// <para>
 /// <b>No forge type appears in any signature</b>, and no credential either, except
-/// <see cref="GetPushAccessAsync"/>, which exists to hand one to the git-writer sidecar.
+/// <see cref="GetWriterAccessAsync"/> and <see cref="RevokeWriterAccessAsync"/>, which exist to hand one job's
+/// credential to the git-writer sidecar and to end it (T9).
 /// </para>
 /// <para>
 /// <b>Errors.</b> A read that finds nothing answers its documented empty value (null, <c>None</c>, an empty
@@ -162,15 +163,34 @@ public interface IForgeMergeQueue
     Task<long> PostCommentAsync(Repository repository, int number, string body, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// A credential for the git-writer sidecar to push the pull request's <b>head</b> branch: the base
-    /// repository for a same-repository pull request, the contributor's fork otherwise (O3).
+    /// What ONE git-writer job is handed (T9, merge-queue PRD §0 D59): the base repository's clone URL, where the job
+    /// pushes, and a credential minted for this job alone. It reaches <paramref name="repository"/> and nothing else, with
+    /// contents write, plus the forge's workflow permission only when <paramref name="pushesWorkflowChanges"/>. It is never
+    /// cached and never handed to another job; <see cref="RevokeWriterAccessAsync"/> ends it when the job is over.
     /// </summary>
+    /// <param name="pullRequest">
+    /// The pull request whose head branch the job pushes: in the base repository, or in the contributor's fork (O3). Null
+    /// for a job that pushes only to the base repository (the queue branch: prepare, its reset, its deletion).
+    /// </param>
+    /// <param name="pushesWorkflowChanges">
+    /// The job's push may carry <c>.github/workflows/**</c> content the target repository has on no branch, which GitHub
+    /// refuses an App without its <c>workflows</c> permission.
+    /// </param>
     /// <remarks>
-    /// A fork is refused unless the forge says its author allows edits from maintainers, and when the fork
-    /// is gone. ⚠️ Whether the forge honours that permission for an App credential is unverified (S6); a
-    /// refused push then surfaces from the writer as <c>push-rejected</c>, and the caller must say so.
+    /// A fork is refused unless the forge says its author allows edits from maintainers, and when the fork is gone. ⚠️ Even
+    /// for a fork's push the credential is scoped to the BASE repository: "Allow edits by maintainers" lets those with
+    /// push access to the base repository push to the fork's branch, and an App has no token for a fork it is not
+    /// installed on. Whether the forge honours that for an App's token is unverified (S6); a refused push then surfaces
+    /// from the writer as <c>push-rejected</c>, and the caller must say so.
     /// </remarks>
-    Task<ForgePushAccess> GetPushAccessAsync(Repository repository, ForgePullRequest pullRequest, CancellationToken cancellationToken = default);
+    Task<ForgePushAccess> GetWriterAccessAsync(Repository repository, ForgePullRequest? pullRequest, bool pushesWorkflowChanges, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ends a writer job's credential once the job is over (T9, §0 D59), instead of letting it live out the forge's own
+    /// lifetime (an hour on GitHub). Best effort and never throws: false when the forge refused or could not be reached,
+    /// and the credential then expires by itself.
+    /// </summary>
+    Task<bool> RevokeWriterAccessAsync(Repository repository, ForgeWriterAccess access, CancellationToken cancellationToken = default);
 }
 
 /// <summary>A repository role, in increasing order of power. Comparable: <c>role &gt;= Write</c>.</summary>
@@ -365,12 +385,23 @@ public enum EForgeQueueCheckState
     Cancelled,
 }
 
-/// <summary>A push credential for the writer sidecar, or why there is none.</summary>
-/// <param name="Access">The clone/push URL of the head repository and a minted credential.</param>
+/// <summary>One git-writer job's access, or why there is none (<see cref="IForgeMergeQueue.GetWriterAccessAsync"/>).</summary>
+/// <param name="Access">Where the job clones and pushes, and its credential.</param>
 /// <param name="RefusalReason">User-facing, when <paramref name="Access"/> is null.</param>
-public sealed record ForgePushAccess(ForgeGitAccess? Access, string? RefusalReason)
+public sealed record ForgePushAccess(ForgeWriterAccess? Access, string? RefusalReason)
 {
     public static ForgePushAccess Refused(string reason) => new(null, reason);
+}
+
+/// <summary>What one git-writer job reaches the forge with (T9, §0 D59).</summary>
+/// <param name="CloneUrl">The base repository's https clone URL. Every job clones it, and fetches the pull request's head from it.</param>
+/// <param name="PushUrl">Where the pull request's head branch lives: <paramref name="CloneUrl"/>, or the fork's (O3).</param>
+/// <param name="Username">The credential's user name (<c>x-access-token</c> on GitHub).</param>
+/// <param name="Password">⚠️ The job's own token. Never log or store it.</param>
+public sealed record ForgeWriterAccess(string CloneUrl, string PushUrl, string Username, string Password)
+{
+    /// <summary>Redacted: a record prints every member, and this one carries a credential.</summary>
+    public override string ToString() => $"ForgeWriterAccess {{ CloneUrl = {CloneUrl}, PushUrl = {PushUrl}, Username = {Username}, Password = *** }}";
 }
 
 /// <summary>
