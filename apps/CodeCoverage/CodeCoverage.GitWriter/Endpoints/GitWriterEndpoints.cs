@@ -28,7 +28,7 @@ internal sealed partial class GitWriterPrepareEndpoint : IPostEndpoint<PrepareRe
     [Inject] private readonly IOptions<GitWriterOptions> options;
 
     protected override async ValueTask<PrepareRequestWire?> BindRequestAsync(HttpContext context)
-        => await Body.ReadAsync<PrepareRequestWire>(context, Body.SmallBytes);
+        => await Body.ReadAsync<PrepareRequestWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
 
@@ -53,7 +53,7 @@ internal sealed partial class GitWriterQueueBranchPushEndpoint : IPostEndpoint<Q
     [Inject] private readonly IOptions<GitWriterOptions> options;
 
     protected override async ValueTask<QueueBranchPushWire?> BindRequestAsync(HttpContext context)
-        => await Body.ReadAsync<QueueBranchPushWire>(context, Body.SmallBytes);
+        => await Body.ReadAsync<QueueBranchPushWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
 
@@ -81,7 +81,8 @@ internal sealed partial class GitWriterPublishEndpoint : IPostEndpoint<PublishRe
     [Inject] private readonly IOptions<GitWriterOptions> options;
 
     protected override async ValueTask<PublishRequestWire?> BindRequestAsync(HttpContext context)
-        => await Body.ReadAsync<PublishRequestWire>(context, Body.PatchBytes(options.Value.MaxPatchBytes));
+        => await Body.ReadAsync<PublishRequestWire>(context.Request.Body, context.Request.ContentLength, Body.PatchBytes(options.Value.MaxPatchBytes),
+            context.RequestAborted);
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure)
         => new(Refusal.Body(Body.PatchBytes(options.Value.MaxPatchBytes)));
@@ -127,7 +128,7 @@ internal sealed partial class GitWriterDeleteQueueBranchEndpoint : IDeleteEndpoi
     [Inject] private readonly IOptions<GitWriterOptions> options;
 
     protected override async ValueTask<DeleteQueueBranchWire?> BindRequestAsync(HttpContext context)
-        => await Body.ReadAsync<DeleteQueueBranchWire>(context, Body.SmallBytes);
+        => await Body.ReadAsync<DeleteQueueBranchWire>(context.Request.Body, context.Request.ContentLength, Body.SmallBytes, context.RequestAborted);
 
     protected override ValueTask<IResult> OnBindFailedAsync(HttpContext context, EndpointBindingException? failure) => new(Refusal.Body(Body.SmallBytes));
 
@@ -211,7 +212,11 @@ internal sealed class Refusal
         => Results.Json(new RefusedResponse(JobOutcomes.Refused, field, rule), GitWriterHost.Json, statusCode: StatusCodes.Status400BadRequest);
 }
 
-/// <summary>Request bodies, read under a byte cap; anything too large, malformed or JSON <c>null</c> is null (a 400).</summary>
+/// <summary>
+/// Request bodies, read under a byte cap; anything too large, malformed or JSON <c>null</c> is null (a 400). Each endpoint's
+/// <c>BindRequestAsync</c> hands in its request's stream, like the mirror's and the SEO fetcher's endpoints: the request is
+/// read only in the typed-binding hook, and this helper never sees the <c>HttpContext</c> (§0 D80).
+/// </summary>
 internal static class Body
 {
     public const int SmallBytes = 256 * 1024;
@@ -219,14 +224,14 @@ internal static class Body
     /// <summary>A publish body: the base64 patch (4/3 of its bytes) plus the rest of the request.</summary>
     public static long PatchBytes(long maxPatchBytes) => maxPatchBytes / 3 * 4 + 8 + SmallBytes;
 
-    public static async Task<T?> ReadAsync<T>(HttpContext context, long maxBytes) where T : class
+    public static async Task<T?> ReadAsync<T>(Stream body, long? contentLength, long maxBytes, CancellationToken cancellationToken) where T : class
     {
-        if (context.Request.ContentLength > maxBytes)
+        if (contentLength > maxBytes)
             return null;
         using var buffer = new MemoryStream();
         var chunk = new byte[16 * 1024];
         int read;
-        while ((read = await context.Request.Body.ReadAsync(chunk, context.RequestAborted)) > 0)
+        while ((read = await body.ReadAsync(chunk, cancellationToken)) > 0)
         {
             if (buffer.Length + read > maxBytes)
                 return null;
