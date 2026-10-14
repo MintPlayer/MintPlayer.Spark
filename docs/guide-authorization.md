@@ -31,11 +31,19 @@ writes a starting file. It grants nothing, and it carries the whole grammar in c
     "a1b2c3d4-0000-0000-0000-000000000001": "Administrators"
   },
   "rights": [
-    { "key": "…", "resource": "QueryRead/Car", "groupId": "…000000f", "isDenied": false },
-    { "key": "…", "resource": "EditNewDelete/Car", "groupId": "…0000001", "isDenied": false }
+    { "key": "…", "resource": "EditNewDelete/Car", "groupId": "…0000001", "isDenied": false },
+    { "key": "…", "resource": "QueryRead/Car", "groupId": "…000000f", "isDenied": false }
   ]
 }
 ```
+
+**`rights` is kept in order:** by the target (`Car` in `QueryRead/Car`), then `groupId`, then the
+action part (`QueryRead`), then `key`, all ordinal. `--spark-synchronize-security` puts the array in
+that order and `--spark-verify-security` exits 3 when it is not (see [the two gates](#the-two-gates)).
+The rewrite only moves whole rights: each right's own text, one line with its column padding or an
+object over several lines, stays as written, and so does everything outside the array. A file already
+in order is left byte-identical. The point is merges: appended rights made any two pull requests that
+granted something conflict on the array's last line, while sorted ones insert in different places.
 
 A group's value is its **name**, untranslated, and the name is its identity: group claims and
 `[SparkAuthorize(Group = …)]` match it (case-insensitively), never a translation (#467, D24). The
@@ -412,11 +420,13 @@ that is nothing, because silence is indistinguishable from the check not running
 right (`group | effect | resource | key | layer`), with the anonymous surface in sections of its own,
 the rights of switched-off libraries marked inert, and one line per library that ships rights. A
 failure prints the changed lines and the layer that changed them, and an anonymous section that moved
-also gets a `::warning::` annotation. Exit 2 means `security.json` does not compose at all.
+also gets a `::warning::` annotation. Exit 2 means `security.json` does not compose at all, or cannot
+be read. Verify also exits 3 when `rights` is out of order ([the order](#the-shape-of-the-file)), which
+synchronize fixes by moving whole rights.
 
 ```bash
 dotnet run -- --spark-verify-security     # the gate
-dotnet run -- --spark-synchronize-security  # accept the change, then commit the file
+dotnet run -- --spark-synchronize-security  # sort rights, accept the change, then commit both files
 ```
 
 `security.json` is a data file: widening it is a one-line diff that reads no differently from

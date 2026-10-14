@@ -43,6 +43,12 @@ public static class SparkDevelopmentExtensions
         return true;
     }
 
+    /// <summary>
+    /// Exit code for a synchronization that stopped on an error, such as an unreadable model file, without
+    /// writing anything. The same code an unhandled throw is documented under (<c>docs/model-hash.md</c>).
+    /// </summary>
+    private const int ExitThrew = 1;
+
     /// <summary>Exit code for a Spark misconfiguration that prevented the command from running.</summary>
     private const int ExitMisconfigured = 2;
 
@@ -1346,7 +1352,16 @@ public static class SparkDevelopmentExtensions
         {
             ModelAttribute = options?.ModelAttribute ?? ModelAttributeConventions.AuditMembersHidden,
         };
-        synchronizer.SynchronizeModels(contextType);
+        try
+        {
+            synchronizer.SynchronizeModels(contextType);
+        }
+        catch (ModelFileUnreadableException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            Environment.ExitCode = ExitThrew;
+            return;
+        }
 
         Console.WriteLine("Model synchronization completed.");
     }

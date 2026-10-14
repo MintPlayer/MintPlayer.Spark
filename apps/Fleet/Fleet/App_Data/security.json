@@ -15,15 +15,9 @@
   },
   "rights": [
     {
-      "key": "00000000-0000-0000-0000-000000000001",
-      "resource": "QueryRead/Company",
-      "groupId": "00000000-0000-0000-0000-000000000000",
-      "isDenied": false
-    },
-    {
-      "key": "00000000-0000-0000-0000-00000000000f",
-      "resource": "QueryRead/Company",
-      "groupId": "a1b2c3d4-0000-0000-0000-00000000000f",
+      "key": "ca000001-0000-0000-0000-000000000001",
+      "resource": "CarCopy/Car",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
@@ -33,74 +27,8 @@
       "isDenied": false
     },
     {
-      "key": "f0000001-0000-0000-0000-000000000002",
-      "resource": "QueryReadEditNewDelete/CarBrand",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "f0000001-0000-0000-0000-000000000003",
-      "resource": "QueryReadEditNewDelete/CarStatus",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "f0000001-0000-0000-0000-000000000004",
-      "resource": "QueryReadEditNewDelete/Person",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
-      "key": "f0000002-0000-0000-0000-000000000001",
-      "resource": "QueryReadEditNew/Car",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
-      "isDenied": false
-    },
-    {
-      "key": "f0000002-0000-0000-0000-000000000002",
-      "resource": "QueryRead/CarBrand",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
-      "isDenied": false
-    },
-    {
-      "key": "f0000002-0000-0000-0000-000000000003",
-      "resource": "QueryRead/CarStatus",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
-      "isDenied": false
-    },
-    {
-      "key": "f0000002-0000-0000-0000-000000000004",
-      "resource": "QueryRead/Person",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
-      "isDenied": false
-    },
-    {
-      "key": "f0000003-0000-0000-0000-000000000001",
-      "resource": "QueryRead/Car",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
-      "isDenied": false
-    },
-    {
-      "key": "f0000003-0000-0000-0000-000000000002",
-      "resource": "QueryRead/CarBrand",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
-      "isDenied": false
-    },
-    {
-      "key": "f0000003-0000-0000-0000-000000000003",
-      "resource": "QueryRead/CarStatus",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
-      "isDenied": false
-    },
-    {
-      "key": "f0000003-0000-0000-0000-000000000004",
-      "resource": "QueryRead/Person",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
-      "isDenied": false
-    },
-    {
-      "key": "ca000001-0000-0000-0000-000000000001",
-      "resource": "CarCopy/Car",
+      "key": "ca000002-0000-0000-0000-000000000001",
+      "resource": "ScatterRegistrationOffsets/Car",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
@@ -111,9 +39,9 @@
       "isDenied": false
     },
     {
-      "key": "ca000002-0000-0000-0000-000000000001",
-      "resource": "ScatterRegistrationOffsets/Car",
-      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "key": "f0000002-0000-0000-0000-000000000001",
+      "resource": "QueryReadEditNew/Car",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
       "isDenied": false
     },
     {
@@ -123,9 +51,9 @@
       "isDenied": false
     },
     {
-      "key": "b0000001-0000-0000-0000-000000000011",
-      "resource": "Replicate/Cars",
-      "groupId": "b0000001-0000-0000-0000-000000000001",
+      "key": "f0000003-0000-0000-0000-000000000001",
+      "resource": "QueryRead/Car",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
       "isDenied": false
     },
     {
@@ -141,14 +69,92 @@
       "isDenied": false
     },
     {
-      "key": "f0000001-0000-0000-0000-000000000005",
-      "resource": "QueryReadEditNewDelete/ServiceEntry",
+      "key": "f0000001-0000-0000-0000-000000000002",
+      "resource": "QueryReadEditNewDelete/CarBrand",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
     {
-      "key": "f0000001-0000-0000-0000-000000000006",
-      "resource": "QueryRead/SparkMailDelivery",
+      "key": "f0000002-0000-0000-0000-000000000002",
+      "resource": "QueryRead/CarBrand",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
+      "key": "f0000003-0000-0000-0000-000000000002",
+      "resource": "QueryRead/CarBrand",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "f0000001-0000-0000-0000-000000000003",
+      "resource": "QueryReadEditNewDelete/CarStatus",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "f0000002-0000-0000-0000-000000000003",
+      "resource": "QueryRead/CarStatus",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
+      "key": "f0000003-0000-0000-0000-000000000003",
+      "resource": "QueryRead/CarStatus",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "b0000001-0000-0000-0000-000000000011",
+      "resource": "Replicate/Cars",
+      "groupId": "b0000001-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "00000000-0000-0000-0000-000000000001",
+      "resource": "QueryRead/Company",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "key": "00000000-0000-0000-0000-00000000000f",
+      "resource": "QueryRead/Company",
+      "groupId": "a1b2c3d4-0000-0000-0000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "key": "f0000009-0000-0000-0000-000000000002",
+      "resource": "Edit/LookupReferences",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "f0000009-0000-0000-0000-000000000001",
+      "resource": "Read/LookupReferences",
+      "groupId": "a1b2c3d4-0000-0000-0000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "key": "f0000001-0000-0000-0000-000000000004",
+      "resource": "QueryReadEditNewDelete/Person",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "key": "f0000002-0000-0000-0000-000000000004",
+      "resource": "QueryRead/Person",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000002",
+      "isDenied": false
+    },
+    {
+      "key": "f0000003-0000-0000-0000-000000000004",
+      "resource": "QueryRead/Person",
+      "groupId": "a1b2c3d4-0000-0000-0000-000000000003",
+      "isDenied": false
+    },
+    {
+      "key": "f0000001-0000-0000-0000-000000000005",
+      "resource": "QueryReadEditNewDelete/ServiceEntry",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     },
@@ -165,14 +171,8 @@
       "isDenied": false
     },
     {
-      "key": "f0000009-0000-0000-0000-000000000001",
-      "resource": "Read/LookupReferences",
-      "groupId": "a1b2c3d4-0000-0000-0000-00000000000f",
-      "isDenied": false
-    },
-    {
-      "key": "f0000009-0000-0000-0000-000000000002",
-      "resource": "Edit/LookupReferences",
+      "key": "f0000001-0000-0000-0000-000000000006",
+      "resource": "QueryRead/SparkMailDelivery",
       "groupId": "a1b2c3d4-0000-0000-0000-000000000001",
       "isDenied": false
     }

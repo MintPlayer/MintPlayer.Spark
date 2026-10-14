@@ -1,40 +1,47 @@
 {
   "$schema": "../../../../schemas/translations.schema.json",
+  "actions": {
+    "CopyCarsToCompany": {
+      "description": {
+        "en": "Duplicates the selected cars. Invoked from a company's Cars tab, the copies are assigned to that company."
+      },
+      "label": {
+        "en": "Copy to this company",
+        "fr": "Copier vers cette entreprise",
+        "nl": "Kopiëren naar dit bedrijf"
+      }
+    }
+  },
   "app": {
-    "welcomeTitle": {
-      "en": "Welcome to Spark",
-      "fr": "Bienvenue dans Spark",
-      "nl": "Welkom bij Spark"
+    "selectMenuItem": {
+      "en": "Select a menu item from the sidebar to get started.",
+      "fr": "Sélectionnez un élément du menu latéral pour commencer.",
+      "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
     },
     "welcomeSubtitle": {
       "en": "A low-code framework for building data-driven web applications.",
       "fr": "Un framework low-code pour créer des applications web pilotées par les données.",
       "nl": "Een low-code framework voor het bouwen van datagestuurde webapplicaties."
     },
-    "selectMenuItem": {
-      "en": "Select a menu item from the sidebar to get started.",
-      "fr": "Sélectionnez un élément du menu latéral pour commencer.",
-      "nl": "Selecteer een menu-item in de zijbalk om te beginnen."
+    "welcomeTitle": {
+      "en": "Welcome to Spark",
+      "fr": "Bienvenue dans Spark",
+      "nl": "Welkom bij Spark"
     }
   },
   "model": {
     "Address": {
-      "label": {
-        "en": "Address",
-        "fr": "Adresse",
-        "nl": "Adres"
-      },
       "attributes": {
         "City": {
-          "label": {
-            "en": "City",
-            "fr": "Ville",
-            "nl": "Stad"
-          },
           "description": {
             "en": "City or town the address is located in.",
             "fr": "Ville ou commune où se situe l'adresse.",
             "nl": "Stad of gemeente waar het adres ligt."
+          },
+          "label": {
+            "en": "City",
+            "fr": "Ville",
+            "nl": "Stad"
           },
           "rules": {
             "minLength": {
@@ -45,15 +52,15 @@
           }
         },
         "State": {
-          "label": {
-            "en": "State",
-            "fr": "État",
-            "nl": "Staat"
-          },
           "description": {
             "en": "State, province or region the city belongs to.",
             "fr": "État, province ou région dont dépend la ville.",
             "nl": "Staat, provincie of regio waartoe de stad behoort."
+          },
+          "label": {
+            "en": "State",
+            "fr": "État",
+            "nl": "Staat"
           },
           "rules": {
             "minLength": {
@@ -64,15 +71,15 @@
           }
         },
         "Street": {
-          "label": {
-            "en": "Street",
-            "fr": "Rue",
-            "nl": "Straat"
-          },
           "description": {
             "en": "Street name and house number, for example Main Street 12.",
             "fr": "Nom de rue et numéro de maison, par exemple Main Street 12.",
             "nl": "Straatnaam en huisnummer, bijvoorbeeld Main Street 12."
+          },
+          "label": {
+            "en": "Street",
+            "fr": "Rue",
+            "nl": "Straat"
           },
           "rules": {
             "minLength": {
@@ -82,49 +89,95 @@
             }
           }
         }
+      },
+      "label": {
+        "en": "Address",
+        "fr": "Adresse",
+        "nl": "Adres"
       }
     },
-    "Car": {
-      "label": {
-        "en": "Car",
-        "fr": "Voiture",
-        "nl": "Auto"
-      },
+    "Bicycle": {
       "attributes": {
         "Brand": {
+          "description": {
+            "en": "Manufacturer of the bicycle, for example Gazelle."
+          },
           "label": {
             "en": "Brand",
             "fr": "Marque",
             "nl": "Merk"
+          }
+        },
+        "Details": {
+          "label": {
+            "en": "Details",
+            "fr": "Détails",
+            "nl": "Details"
+          }
+        },
+        "FrameSize": {
+          "description": {
+            "en": "Frame size in centimetres."
           },
+          "label": {
+            "en": "Frame size (cm)",
+            "fr": "Taille du cadre (cm)",
+            "nl": "Framemaat (cm)"
+          }
+        },
+        "Model": {
+          "description": {
+            "en": "Model name of the bicycle."
+          },
+          "label": {
+            "en": "Model",
+            "fr": "Modèle",
+            "nl": "Model"
+          }
+        }
+      },
+      "label": {
+        "en": "Bicycle",
+        "fr": "Vélo",
+        "nl": "Fiets"
+      }
+    },
+    "Car": {
+      "attributes": {
+        "Brand": {
           "description": {
             "en": "Manufacturer of the car, picked from the list of known brands.",
             "fr": "Constructeur de la voiture, choisi dans la liste des marques connues.",
             "nl": "Fabrikant van de wagen, gekozen uit de lijst met bekende merken."
+          },
+          "label": {
+            "en": "Brand",
+            "fr": "Marque",
+            "nl": "Merk"
           }
         },
         "Color": {
-          "label": {
-            "en": "Color",
-            "fr": "Couleur",
-            "nl": "Kleur"
-          },
           "description": {
             "en": "Exterior paint colour of the car.",
             "fr": "Couleur de la peinture extérieure de la voiture.",
             "nl": "Kleur van de buitenlak van de wagen."
+          },
+          "label": {
+            "en": "Color",
+            "fr": "Couleur",
+            "nl": "Kleur"
           }
         },
         "LicensePlate": {
-          "label": {
-            "en": "License Plate",
-            "fr": "Plaque d'immatriculation",
-            "nl": "Nummerplaat"
-          },
           "description": {
             "en": "Registration number shown on the car's licence plate.",
             "fr": "Numéro d'immatriculation figurant sur la plaque de la voiture.",
             "nl": "Inschrijvingsnummer dat op de nummerplaat van de wagen staat."
+          },
+          "label": {
+            "en": "License Plate",
+            "fr": "Plaque d'immatriculation",
+            "nl": "Nummerplaat"
           },
           "rules": {
             "minLength": {
@@ -140,15 +193,15 @@
           }
         },
         "Model": {
-          "label": {
-            "en": "Model",
-            "fr": "Modèle",
-            "nl": "Model"
-          },
           "description": {
             "en": "Model name of the car, for example Golf or Model 3.",
             "fr": "Nom du modèle de la voiture, par exemple Golf ou Model 3.",
             "nl": "Modelnaam van de wagen, bijvoorbeeld Golf of Model 3."
+          },
+          "label": {
+            "en": "Model",
+            "fr": "Modèle",
+            "nl": "Model"
           },
           "rules": {
             "minLength": {
@@ -159,15 +212,15 @@
           }
         },
         "Owner": {
-          "label": {
-            "en": "Owner",
-            "fr": "Propriétaire",
-            "nl": "Eigenaar"
-          },
           "description": {
             "en": "Company that owns this car, picked from the companies list.",
             "fr": "Entreprise propriétaire de cette voiture, choisie dans la liste des entreprises.",
             "nl": "Bedrijf dat eigenaar is van deze wagen, gekozen uit de lijst met bedrijven."
+          },
+          "label": {
+            "en": "Owner",
+            "fr": "Propriétaire",
+            "nl": "Eigenaar"
           }
         },
         "OwnerFullName": {
@@ -178,60 +231,60 @@
           }
         },
         "Status": {
-          "label": {
-            "en": "Status",
-            "fr": "Statut",
-            "nl": "Status"
-          },
           "description": {
             "en": "Current state of the car: in use, on the parking lot, in maintenance or stolen.",
             "fr": "État actuel de la voiture : en service, au parking, en entretien ou volée.",
             "nl": "Huidige staat van de wagen: in gebruik, op de parking, in onderhoud of gestolen."
+          },
+          "label": {
+            "en": "Status",
+            "fr": "Statut",
+            "nl": "Status"
           }
         },
         "Year": {
-          "label": {
-            "en": "Year",
-            "fr": "Année",
-            "nl": "Jaar"
-          },
           "description": {
             "en": "Model year in which the car was built.",
             "fr": "Millésime de construction de la voiture.",
             "nl": "Modeljaar waarin de wagen gebouwd is."
+          },
+          "label": {
+            "en": "Year",
+            "fr": "Année",
+            "nl": "Jaar"
           }
         }
+      },
+      "label": {
+        "en": "Car",
+        "fr": "Voiture",
+        "nl": "Auto"
       }
     },
     "Company": {
-      "label": {
-        "en": "Company",
-        "fr": "Entreprise",
-        "nl": "Bedrijf"
-      },
       "attributes": {
         "EmployeeCount": {
-          "label": {
-            "en": "Number of Employees",
-            "fr": "Nombre d'employés",
-            "nl": "Aantal werknemers"
-          },
           "description": {
             "en": "Approximate number of people employed by the company; leave empty if unknown.",
             "fr": "Nombre approximatif de personnes employées par l'entreprise ; laissez vide si inconnu.",
             "nl": "Bij benadering het aantal mensen dat het bedrijf tewerkstelt; laat leeg indien onbekend."
+          },
+          "label": {
+            "en": "Number of Employees",
+            "fr": "Nombre d'employés",
+            "nl": "Aantal werknemers"
           }
         },
         "Name": {
-          "label": {
-            "en": "Company Name",
-            "fr": "Nom de l'entreprise",
-            "nl": "Bedrijfsnaam"
-          },
           "description": {
             "en": "Official name of the company as it should appear in lists and on people's records.",
             "fr": "Nom officiel de l'entreprise tel qu'il doit apparaître dans les listes et sur les fiches des personnes.",
             "nl": "Officiële naam van het bedrijf zoals die in lijsten en op persoonsfiches moet verschijnen."
+          },
+          "label": {
+            "en": "Company Name",
+            "fr": "Nom de l'entreprise",
+            "nl": "Bedrijfsnaam"
           },
           "rules": {
             "minLength": {
@@ -242,84 +295,140 @@
           }
         },
         "Website": {
-          "label": {
-            "en": "Website",
-            "fr": "Site web",
-            "nl": "Website"
-          },
           "description": {
             "en": "Public website address of the company, including https://.",
             "fr": "Adresse du site web public de l'entreprise, y compris https://.",
             "nl": "Adres van de publieke website van het bedrijf, inclusief https://."
+          },
+          "label": {
+            "en": "Website",
+            "fr": "Site web",
+            "nl": "Website"
           }
         }
+      },
+      "label": {
+        "en": "Company",
+        "fr": "Entreprise",
+        "nl": "Bedrijf"
+      }
+    },
+    "Motorcycle": {
+      "attributes": {
+        "Brand": {
+          "description": {
+            "en": "Manufacturer of the motorcycle, for example Honda."
+          },
+          "label": {
+            "en": "Brand",
+            "fr": "Marque",
+            "nl": "Merk"
+          }
+        },
+        "Details": {
+          "label": {
+            "en": "Details",
+            "fr": "Détails",
+            "nl": "Details"
+          }
+        },
+        "EngineCapacity": {
+          "description": {
+            "en": "Engine displacement in cubic centimetres."
+          },
+          "label": {
+            "en": "Engine capacity (cc)",
+            "fr": "Cylindrée (cc)",
+            "nl": "Cilinderinhoud (cc)"
+          }
+        },
+        "Model": {
+          "description": {
+            "en": "Model name of the motorcycle."
+          },
+          "label": {
+            "en": "Model",
+            "fr": "Modèle",
+            "nl": "Model"
+          }
+        }
+      },
+      "label": {
+        "en": "Motorcycle",
+        "fr": "Moto",
+        "nl": "Motorfiets"
       }
     },
     "Person": {
-      "label": {
-        "en": "Person",
-        "fr": "Personne",
-        "nl": "Persoon"
-      },
       "attributes": {
         "Address": {
-          "label": {
-            "en": "Address",
-            "fr": "Adresse",
-            "nl": "Adres"
-          },
           "description": {
             "en": "Home or postal address of the person, with street, city and state.",
             "fr": "Adresse du domicile ou adresse postale de la personne, avec rue, ville et région.",
             "nl": "Thuis- of postadres van de persoon, met straat, stad en provincie."
+          },
+          "label": {
+            "en": "Address",
+            "fr": "Adresse",
+            "nl": "Adres"
+          }
+        },
+        "Bicycle": {
+          "description": {
+            "en": "The fleet bicycle this person commutes on."
+          },
+          "label": {
+            "en": "Bicycle",
+            "fr": "Vélo",
+            "nl": "Fiets"
           }
         },
         "Company": {
-          "label": {
-            "en": "Company",
-            "fr": "Entreprise",
-            "nl": "Bedrijf"
-          },
           "description": {
             "en": "The Company this person works for. Pick from the companies list; leave empty for freelancers.",
             "fr": "L'entreprise pour laquelle cette personne travaille. Choisissez dans la liste des entreprises ; laissez vide pour les indépendants.",
             "nl": "Het bedrijf waarvoor deze persoon werkt. Kies uit de bedrijvenlijst; laat leeg voor freelancers."
+          },
+          "label": {
+            "en": "Company",
+            "fr": "Entreprise",
+            "nl": "Bedrijf"
           }
         },
         "DateOfBirth": {
-          "label": {
-            "en": "Date of Birth",
-            "fr": "Date de naissance",
-            "nl": "Geboortedatum"
-          },
           "description": {
             "en": "Date on which the person was born; leave empty if unknown.",
             "fr": "Date de naissance de la personne ; laissez vide si inconnue.",
             "nl": "Geboortedatum van de persoon; laat leeg indien onbekend."
+          },
+          "label": {
+            "en": "Date of Birth",
+            "fr": "Date de naissance",
+            "nl": "Geboortedatum"
           }
         },
         "Email": {
-          "label": {
-            "en": "Email Address",
-            "fr": "Adresse e-mail",
-            "nl": "E-mailadres"
-          },
           "description": {
             "en": "Email address used to contact the person.",
             "fr": "Adresse e-mail utilisée pour contacter la personne.",
             "nl": "E-mailadres waarop de persoon gecontacteerd wordt."
+          },
+          "label": {
+            "en": "Email Address",
+            "fr": "Adresse e-mail",
+            "nl": "E-mailadres"
           }
         },
         "FirstName": {
-          "label": {
-            "en": "First Name",
-            "fr": "Prénom",
-            "nl": "Voornaam"
-          },
           "description": {
             "en": "Given name, as it should appear on badges and in greetings.",
             "fr": "Prénom, tel qu'il doit figurer sur les badges et dans les salutations.",
             "nl": "Voornaam, zoals die op badges en in begroetingen moet verschijnen."
+          },
+          "label": {
+            "en": "First Name",
+            "fr": "Prénom",
+            "nl": "Voornaam"
           },
           "rules": {
             "minLength": {
@@ -337,27 +446,27 @@
           }
         },
         "IsActive": {
-          "label": {
-            "en": "Is Active",
-            "fr": "Actif",
-            "nl": "Actief"
-          },
           "description": {
             "en": "Whether this person can sign in and appears in the default people lists.",
             "fr": "Indique si cette personne peut se connecter et apparaît dans les listes de personnes par défaut.",
             "nl": "Of deze persoon zich kan aanmelden en in de standaardpersonenlijsten verschijnt."
+          },
+          "label": {
+            "en": "Is Active",
+            "fr": "Actif",
+            "nl": "Actief"
           }
         },
         "LastName": {
-          "label": {
-            "en": "Last Name",
-            "fr": "Nom de famille",
-            "nl": "Achternaam"
-          },
           "description": {
             "en": "Family name or surname of the person.",
             "fr": "Nom de famille ou patronyme de la personne.",
             "nl": "Familienaam of achternaam van de persoon."
+          },
+          "label": {
+            "en": "Last Name",
+            "fr": "Nom de famille",
+            "nl": "Achternaam"
           },
           "rules": {
             "minLength": {
@@ -366,47 +475,16 @@
               "nl": "Achternaam moet minstens 2 tekens bevatten."
             }
           }
-        },
-        "Bicycle": {
-          "description": {
-            "en": "The fleet bicycle this person commutes on."
-          },
-          "label": {
-            "en": "Bicycle",
-            "fr": "Vélo",
-            "nl": "Fiets"
-          }
         }
+      },
+      "label": {
+        "en": "Person",
+        "fr": "Personne",
+        "nl": "Persoon"
       }
     },
     "StartPage": {
-      "label": {
-        "en": "Composed landing page: the Start program unit opens this type with a fixed objectId, and StartPageActions.OnComposeAsync fills the values — no document backs it.",
-        "fr": "Page d'accueil composée par StartPageActions.OnComposeAsync — aucun document.",
-        "nl": "Samengestelde startpagina via StartPageActions.OnComposeAsync — geen document."
-      },
       "attributes": {
-        "Welcome": {
-          "label": {
-            "en": "Welcome",
-            "fr": "Bienvenue",
-            "nl": "Welkom"
-          }
-        },
-        "PeopleCount": {
-          "label": {
-            "en": "People",
-            "fr": "Personnes",
-            "nl": "Personen"
-          }
-        },
-        "CompanyCount": {
-          "label": {
-            "en": "Companies",
-            "fr": "Entreprises",
-            "nl": "Bedrijven"
-          }
-        },
         "CarCount": {
           "label": {
             "en": "Cars",
@@ -421,175 +499,163 @@
             "nl": "Collectie"
           }
         },
+        "CompanyCount": {
+          "label": {
+            "en": "Companies",
+            "fr": "Entreprises",
+            "nl": "Bedrijven"
+          }
+        },
+        "PeopleCount": {
+          "label": {
+            "en": "People",
+            "fr": "Personnes",
+            "nl": "Personen"
+          }
+        },
         "Records": {
           "label": {
             "en": "Records",
             "fr": "Enregistrements",
             "nl": "Records"
           }
+        },
+        "Welcome": {
+          "label": {
+            "en": "Welcome",
+            "fr": "Bienvenue",
+            "nl": "Welkom"
+          }
         }
+      },
+      "label": {
+        "en": "Composed landing page: the Start program unit opens this type with a fixed objectId, and StartPageActions.OnComposeAsync fills the values — no document backs it.",
+        "fr": "Page d'accueil composée par StartPageActions.OnComposeAsync — aucun document.",
+        "nl": "Samengestelde startpagina via StartPageActions.OnComposeAsync — geen document."
       }
     },
     "Stock": {
-      "label": {
-        "en": "Stock",
-        "fr": "Action",
-        "nl": "Aandeel"
-      },
       "attributes": {
         "Change": {
-          "label": {
-            "en": "Change",
-            "fr": "Variation",
-            "nl": "Wijziging"
-          },
           "description": {
             "en": "Difference between the current price and the base price, in currency units; negative when the price dropped.",
             "fr": "Différence entre le cours actuel et le cours de base, en unités monétaires ; négative lorsque le cours a baissé.",
             "nl": "Verschil tussen de huidige koers en de basiskoers, in munteenheden; negatief wanneer de koers gedaald is."
+          },
+          "label": {
+            "en": "Change",
+            "fr": "Variation",
+            "nl": "Wijziging"
           }
         },
         "ChangePercent": {
-          "label": {
-            "en": "Change %",
-            "fr": "Variation %",
-            "nl": "Wijziging %"
-          },
           "description": {
             "en": "Price change relative to the base price, expressed as a percentage.",
             "fr": "Variation du cours par rapport au cours de base, exprimée en pourcentage.",
             "nl": "Koerswijziging ten opzichte van de basiskoers, uitgedrukt in procent."
+          },
+          "label": {
+            "en": "Change %",
+            "fr": "Variation %",
+            "nl": "Wijziging %"
           }
         },
         "CompanyName": {
-          "label": {
-            "en": "Company",
-            "fr": "Entreprise",
-            "nl": "Bedrijf"
-          },
           "description": {
             "en": "Name of the company whose shares this stock represents.",
             "fr": "Nom de l'entreprise dont cette action représente les titres.",
             "nl": "Naam van het bedrijf waarvan dit aandeel de effecten vertegenwoordigt."
+          },
+          "label": {
+            "en": "Company",
+            "fr": "Entreprise",
+            "nl": "Bedrijf"
           }
         },
         "CurrentPrice": {
-          "label": {
-            "en": "Price",
-            "fr": "Prix",
-            "nl": "Prijs"
-          },
           "description": {
             "en": "Latest known price of one share.",
             "fr": "Dernier cours connu d'une action.",
             "nl": "Laatst bekende koers van één aandeel."
+          },
+          "label": {
+            "en": "Price",
+            "fr": "Prix",
+            "nl": "Prijs"
           }
         },
         "Symbol": {
-          "label": {
-            "en": "Symbol",
-            "fr": "Symbole",
-            "nl": "Symbool"
-          },
           "description": {
             "en": "Ticker symbol under which the stock trades, for example MSFT.",
             "fr": "Symbole boursier sous lequel l'action se négocie, par exemple MSFT.",
             "nl": "Tickersymbool waaronder het aandeel verhandeld wordt, bijvoorbeeld MSFT."
-          }
-        }
-      }
-    },
-    "Bicycle": {
-      "attributes": {
-        "Brand": {
-          "description": {
-            "en": "Manufacturer of the bicycle, for example Gazelle."
           },
           "label": {
-            "en": "Brand",
-            "fr": "Marque",
-            "nl": "Merk"
-          }
-        },
-        "Model": {
-          "description": {
-            "en": "Model name of the bicycle."
-          },
-          "label": {
-            "en": "Model",
-            "fr": "Modèle",
-            "nl": "Model"
-          }
-        },
-        "FrameSize": {
-          "description": {
-            "en": "Frame size in centimetres."
-          },
-          "label": {
-            "en": "Frame size (cm)",
-            "fr": "Taille du cadre (cm)",
-            "nl": "Framemaat (cm)"
-          }
-        },
-        "Details": {
-          "label": {
-            "en": "Details",
-            "fr": "Détails",
-            "nl": "Details"
+            "en": "Symbol",
+            "fr": "Symbole",
+            "nl": "Symbool"
           }
         }
       },
       "label": {
-        "en": "Bicycle",
-        "fr": "Vélo",
-        "nl": "Fiets"
+        "en": "Stock",
+        "fr": "Action",
+        "nl": "Aandeel"
+      }
+    }
+  },
+  "programUnits": {
+    "bicycles": {
+      "en": "Bicycles",
+      "fr": "Vélos",
+      "nl": "Fietsen"
+    },
+    "cars": {
+      "en": "Cars",
+      "fr": "Voitures",
+      "nl": "Auto's"
+    },
+    "companies": {
+      "en": "Companies",
+      "fr": "Entreprises",
+      "nl": "Bedrijven"
+    },
+    "groups": {
+      "gettingStarted": {
+        "en": "Getting started",
+        "fr": "Premiers pas",
+        "nl": "Aan de slag"
+      },
+      "masterData": {
+        "en": "Master Data",
+        "fr": "Données de base",
+        "nl": "Stamgegevens"
       }
     },
-    "Motorcycle": {
-      "attributes": {
-        "Brand": {
-          "description": {
-            "en": "Manufacturer of the motorcycle, for example Honda."
-          },
-          "label": {
-            "en": "Brand",
-            "fr": "Marque",
-            "nl": "Merk"
-          }
-        },
-        "Model": {
-          "description": {
-            "en": "Model name of the motorcycle."
-          },
-          "label": {
-            "en": "Model",
-            "fr": "Modèle",
-            "nl": "Model"
-          }
-        },
-        "EngineCapacity": {
-          "description": {
-            "en": "Engine displacement in cubic centimetres."
-          },
-          "label": {
-            "en": "Engine capacity (cc)",
-            "fr": "Cylindrée (cc)",
-            "nl": "Cilinderinhoud (cc)"
-          }
-        },
-        "Details": {
-          "label": {
-            "en": "Details",
-            "fr": "Détails",
-            "nl": "Details"
-          }
-        }
-      },
-      "label": {
-        "en": "Motorcycle",
-        "fr": "Moto",
-        "nl": "Motorfiets"
-      }
+    "motorcycles": {
+      "en": "Motorcycles",
+      "fr": "Motos",
+      "nl": "Motorfietsen"
+    },
+    "people": {
+      "en": "People",
+      "fr": "Personnes",
+      "nl": "Personen"
+    },
+    "sparkOnGitHub": {
+      "en": "Spark on GitHub",
+      "fr": "Spark sur GitHub",
+      "nl": "Spark op GitHub"
+    },
+    "startpage": {
+      "en": "Start",
+      "fr": "Accueil",
+      "nl": "Start"
+    },
+    "stocks": {
+      "en": "Stock Market",
+      "fr": "Bourse",
+      "nl": "Beurs"
     }
   },
   "queries": {
@@ -598,6 +664,20 @@
         "en": "Cars owned by this company. A sub-query: rendered on the Company detail page, filtered by that company through the Company_Cars index.",
         "fr": "Voitures de cette entreprise.",
         "nl": "Auto's van dit bedrijf."
+      }
+    },
+    "Company_People": {
+      "label": {
+        "en": "People in Company",
+        "fr": "Personnes dans l'entreprise",
+        "nl": "Personen in bedrijf"
+      }
+    },
+    "GetBicycles": {
+      "label": {
+        "en": "Bicycles",
+        "fr": "Vélos",
+        "nl": "Fietsen"
       }
     },
     "GetCars": {
@@ -614,11 +694,11 @@
         "nl": "Bedrijven"
       }
     },
-    "Company_People": {
+    "GetMotorcycles": {
       "label": {
-        "en": "People in Company",
-        "fr": "Personnes dans l'entreprise",
-        "nl": "Personen in bedrijf"
+        "en": "Motorcycles",
+        "fr": "Motos",
+        "nl": "Motorfietsen"
       }
     },
     "GetPeople": {
@@ -641,74 +721,6 @@
         "fr": "Bourse (En direct)",
         "nl": "Beurs (Live)"
       }
-    },
-    "GetBicycles": {
-      "label": {
-        "en": "Bicycles",
-        "fr": "Vélos",
-        "nl": "Fietsen"
-      }
-    },
-    "GetMotorcycles": {
-      "label": {
-        "en": "Motorcycles",
-        "fr": "Motos",
-        "nl": "Motorfietsen"
-      }
-    }
-  },
-  "programUnits": {
-    "groups": {
-      "gettingStarted": {
-        "en": "Getting started",
-        "fr": "Premiers pas",
-        "nl": "Aan de slag"
-      },
-      "masterData": {
-        "en": "Master Data",
-        "fr": "Données de base",
-        "nl": "Stamgegevens"
-      }
-    },
-    "startpage": {
-      "en": "Start",
-      "fr": "Accueil",
-      "nl": "Start"
-    },
-    "sparkOnGitHub": {
-      "en": "Spark on GitHub",
-      "fr": "Spark sur GitHub",
-      "nl": "Spark op GitHub"
-    },
-    "people": {
-      "en": "People",
-      "fr": "Personnes",
-      "nl": "Personen"
-    },
-    "companies": {
-      "en": "Companies",
-      "fr": "Entreprises",
-      "nl": "Bedrijven"
-    },
-    "cars": {
-      "en": "Cars",
-      "fr": "Voitures",
-      "nl": "Auto's"
-    },
-    "stocks": {
-      "en": "Stock Market",
-      "fr": "Bourse",
-      "nl": "Beurs"
-    },
-    "bicycles": {
-      "en": "Bicycles",
-      "fr": "Vélos",
-      "nl": "Fietsen"
-    },
-    "motorcycles": {
-      "en": "Motorcycles",
-      "fr": "Motos",
-      "nl": "Motorfietsen"
     }
   },
   "security": {
@@ -726,18 +738,6 @@
           "fr": "Utilisateurs connectés",
           "nl": "Aangemelde gebruikers"
         }
-      }
-    }
-  },
-  "actions": {
-    "CopyCarsToCompany": {
-      "label": {
-        "en": "Copy to this company",
-        "fr": "Copier vers cette entreprise",
-        "nl": "Kopiëren naar dit bedrijf"
-      },
-      "description": {
-        "en": "Duplicates the selected cars. Invoked from a company's Cars tab, the copies are assigned to that company."
       }
     }
   }

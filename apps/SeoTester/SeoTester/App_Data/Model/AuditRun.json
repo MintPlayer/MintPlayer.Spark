@@ -1,5 +1,5 @@
 {
-  "$schema": "https://schemas.spark.mintplayer.com/v2/model.schema.json",
+  "$schema": "https://schemas.spark.mintplayer.com/v4/model.schema.json",
   "persistentObject": {
     "id": "023f697e-698d-41ca-9f45-5003a937a50d",
     "name": "AuditRun",

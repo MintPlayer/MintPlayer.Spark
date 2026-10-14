@@ -67,6 +67,10 @@ public static class SparkSecurityVerificationExtensions
         if (!verifyOnly && !args.Contains(SynchronizeFlag))
             return false;
 
+        // Before the posture is described, so the baseline is computed from the file as it will be committed.
+        if (!OrderRights(SparkAppData.Path(builder.Environment.ContentRootPath, SecurityFileName), verifyOnly))
+            return true;
+
         // Only the reporter is resolved, so nothing that would need a database is ever constructed.
         using var provider = builder.Services.BuildServiceProvider();
         var reporter = provider.GetService<ISecurityPostureReporter>();
@@ -104,6 +108,51 @@ public static class SparkSecurityVerificationExtensions
 
         return true;
     }
+
+    /// <summary>
+    /// Keeps <c>rights[]</c> in the canonical order (<see cref="Services.SecurityRightsOrder"/>,
+    /// <c>docs/coverage_merge_queue_PRD.md</c> O5): synchronize rewrites the file when it is out of order,
+    /// verify exits 3 and goes on to check the posture, so one run reports both. A file that cannot be read
+    /// exits 2 with nothing written. Returns whether the command should go on.
+    /// </summary>
+    private static bool OrderRights(string path, bool verifyOnly)
+    {
+        if (!File.Exists(path))
+            return true; // Missing is the loader's to report, in its own words.
+
+        var text = File.ReadAllText(path);
+        string sorted;
+        try
+        {
+            sorted = Services.SecurityRightsOrder.Sort(text);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine($"Spark: {SecurityFile}: {ex.Message}");
+            Environment.ExitCode = ExitMisconfigured;
+            return false;
+        }
+
+        if (ReferenceEquals(sorted, text))
+            return true;
+
+        if (verifyOnly)
+        {
+            Console.Error.WriteLine(
+                $"Spark: {SecurityFile}: \"rights\" is not in order (target, then groupId, then the right, then key). "
+                + $"Run '{SynchronizeFlag}' and commit the file; it only moves whole rights.");
+            Environment.ExitCode = ExitDrift;
+            return true;
+        }
+
+        File.WriteAllText(path, sorted);
+        Console.WriteLine($"Spark: put the rights in {SecurityFile} in order.");
+        return true;
+    }
+
+    private static string SecurityFile => SparkAppData.Relative(SecurityFileName);
+
+    private const string SecurityFileName = "security.json";
 
     private static void Synchronize(string path, string current)
     {
