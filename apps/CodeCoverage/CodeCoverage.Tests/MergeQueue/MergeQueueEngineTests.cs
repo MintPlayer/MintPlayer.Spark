@@ -762,8 +762,10 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.EvictionMessage.Should().Contain("Allow edits by maintainers");
     }
 
+    /// <summary>§0 D69: S6 is settled (the App may push to a fork through "Allow edits by maintainers"), so a refusal is
+    /// GitHub's own reason, shown as it is. Before, the message called fork pull requests unverified (S6).</summary>
     [Fact]
-    public async Task A_fork_push_GitHub_refuses_names_the_open_question()
+    public async Task A_fork_push_GitHub_refuses_is_evicted_with_GitHubs_reason()
     {
         var h = await HarnessAsync();
         h.Forge.PullRequests[Number] = PullRequest(fork: true, maintainerCanModify: true);
@@ -775,8 +777,36 @@ public class MergeQueueEngineTests : CoverageRavenTest
 
         var entry = await h.EntryAsync();
         entry.EvictionReason.Should().Be("fork-push-rejected");
-        entry.EvictionMessage.Should().Contain("S6");
+        entry.EvictionMessage.Should().Be("GitHub refused the push to the fork's branch: ! [remote rejected] feature-7 (permission denied)");
         h.Writer.Publishes.Should().ContainSingle().Which.PushUrl.Should().Be("https://github.com/contributor/widget.git", "O3: the fork's branch");
+    }
+
+    /// <summary>
+    /// §0 D69, D71: GitHub never lets an App create or update a workflow file a fork has on no branch, whatever the token
+    /// asks for. A fork whose base changed its workflows therefore cannot be published by the queue until a person brings
+    /// those files into the branch, which is what the eviction says, with its own reason. Before, it ended as
+    /// <c>fork-push-rejected</c>, "unverified (S6)".
+    /// </summary>
+    [Fact]
+    public async Task A_fork_publish_GitHub_refuses_for_workflow_files_asks_for_the_branch_to_be_updated()
+    {
+        var h = await HarnessAsync();
+        h.Forge.PullRequests[Number] = PullRequest(fork: true, maintainerCanModify: true);
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared) with { BaseChangedWorkflows = true });
+        h.Writer.PublishResults.Enqueue(new GitWriterPublishResult(GitWriterOutcomes.PushRejected, null, null, [],
+            "!\t4444444444444444444444444444444444444444:refs/heads/feature-7\t[remote rejected] (refusing to allow a GitHub App to create or update "
+            + "workflow `.github/workflows/ci.yml` without `workflows` permission) error: failed to push some refs to 'https://github.com/contributor/widget.git'", 10));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("fork-workflow-update-needed");
+        entry.EvictionMessage.Should().Contain("does not let an App write workflow files into a fork")
+            .And.Contain("Update branch").And.Contain("queue it again");
+        h.Queue.Comments.Should().ContainSingle().Which.Body.Should().Contain("Update branch");
+        h.Queue.MergeRequests.Should().BeEmpty();
     }
 
     [Fact]
@@ -1185,8 +1215,8 @@ public class MergeQueueEngineTests : CoverageRavenTest
     /// O25: without a dispatch, a fork's change under .github/** goes through like a same-repository one (O21 A). Since §0
     /// D65 nothing of the pull request reaches this repository before the merge: the rebased commit goes to the fork's own
     /// branch, where this repository's pull_request workflows run it without secrets, as they would without the queue.
-    /// The publish's token asks for the workflow permission (§0 D59): its commit changes a workflow file against its
-    /// parent, the base. Before O25 the entry was evicted touches-workflows.
+    /// The publish's token does not ask for the workflow permission, which GitHub ignores for a fork's branch (§0 D69,
+    /// D71; it asked under D59 and D67). Before O25 the entry was evicted touches-workflows.
     /// </summary>
     [Fact]
     public async Task A_forks_change_under_github_that_needs_no_regeneration_is_published_to_the_fork_and_merged()
@@ -1206,7 +1236,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         h.Writer.QueueBranchPushes.Should().BeEmpty("nothing of the fork reaches a branch of this repository");
         h.Queue.Dispatches.Should().BeEmpty();
         h.Queue.WorkflowFileReads.Should().BeEmpty("without a dispatch there is no fork precondition to read");
-        h.Queue.WriterAccesses.Select(a => (a.Number, a.Workflows)).ToList().Should().Equal([((int?)null, false), (Number, true)]);
+        h.Queue.WriterAccesses.Select(a => (a.Number, a.Workflows)).ToList().Should().Equal([((int?)null, false), (Number, false)]);
     }
 
     /// <summary>
@@ -1508,20 +1538,20 @@ public class MergeQueueEngineTests : CoverageRavenTest
     }
 
     /// <summary>
-    /// §0 D59, O25: a publish's token asks for the workflow permission exactly when its commit brings workflow files the
-    /// target branch may lack. A same-repository publish: its own <c>.github/workflows/**</c> change (the base's workflow
-    /// files are on the base branch already). A fork's, whose branch holds the pinned head: what the base changed since
-    /// the head, or the fork's own change against the base, which O25 lets through when nothing is dispatched. A file
-    /// under <c>.github/</c> but outside <c>workflows/</c> needs nothing.
+    /// §0 D59, D69, D71: a same-repository publish's token asks for the workflow permission exactly when its own change
+    /// touches <c>.github/workflows/**</c> (the base's workflow files are on the base branch already). A fork's never does:
+    /// GitHub evaluates the permission against the fork, where the base's installation holds none, so it changes nothing
+    /// there (T9, least privilege). Before D69, a fork's asked when the base changed its workflows or its own change touched
+    /// them. A file under <c>.github/</c> but outside <c>workflows/</c> needs nothing.
     /// </summary>
     [Theory]
-    [InlineData(true, true, null, true)]
-    [InlineData(true, false, ".github/workflows/ci.yml", true)]
+    [InlineData(true, true, null, false)]
+    [InlineData(true, false, ".github/workflows/ci.yml", false)]
     [InlineData(true, false, ".github/dependabot.yml", false)]
     [InlineData(true, false, null, false)]
     [InlineData(false, true, null, false)]
     [InlineData(false, false, ".github/workflows/ci.yml", true)]
-    public async Task A_publish_asks_for_the_workflow_permission_exactly_when_its_commit_brings_workflow_files_its_branch_may_lack(
+    public async Task A_publish_asks_for_the_workflow_permission_only_for_a_same_repository_change_to_the_workflows(
         bool fork, bool baseChangedWorkflows, string? ownChange, bool workflows)
     {
         var h = await HarnessAsync();

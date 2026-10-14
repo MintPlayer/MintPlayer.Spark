@@ -928,8 +928,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await EvictAsync(context, entry, "writer-unavailable", "This server's git writer is not configured (MergeQueue:GitWriterUrl).", ct: ct);
             return;
         }
-        // T9 (§0 D59): a fork that holds only the head lacks the workflow files the base changed since, and GitHub refuses
-        // an App's push of workflow files the target has on no branch without the workflow permission.
+        // T9 (§0 D59, D71): the workflow permission only where it can matter, a same-repository change to the workflows.
         if (await WriterAccessAsync(context, entry, pull, PublishPushesWorkflowChanges(entry), ct) is not { } access) return;
 
         // §0 D65: the writer rebuilds the prepared commit from the prepare's own fields (the queue branch exists only when a
@@ -973,9 +972,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                     $"The regenerate patch was refused ({result.Reason}): it may only touch `regeneratedPaths`, as plain text files (T4). {result.Detail}", result.Paths, ct: ct);
                 break;
 
+            // §0 D69, D71: the App may push to a fork through "Allow edits by maintainers" (S6, measured live), but GitHub
+            // never lets it create or update a workflow file the fork has on no branch, whatever the token asks for. Only a
+            // person can bring those files into the branch, so that refusal gets its own reason and says how.
+            case GitWriterOutcomes.PushRejected when entry.IsFork && IsForkWorkflowRefusal(result.Detail):
+                await EvictAsync(context, entry, ForkWorkflowUpdateNeeded, ForkWorkflowUpdateNeededMessage(entry, result.Detail), ct: ct);
+                break;
+
             case GitWriterOutcomes.PushRejected when entry.IsFork:
-                await EvictAsync(context, entry, "fork-push-rejected",
-                    $"GitHub refused the push to the fork's branch. Fork pull requests cannot be queued yet: whether the App may push through \"Allow edits by maintainers\" is unverified (S6). {result.Detail}", ct: ct);
+                await EvictAsync(context, entry, "fork-push-rejected", $"GitHub refused the push to the fork's branch: {result.Detail}", ct: ct);
                 break;
 
             case GitWriterOutcomes.PushRejected:
@@ -986,6 +991,28 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 throw new GitWriterUnavailableException($"The git writer answered publish with {result.Outcome}: {result.Detail}");
         }
     }
+
+    /// <summary>§0 D71: a fork's publish GitHub refused because it would write workflow files the fork lacks (D69).</summary>
+    internal const string ForkWorkflowUpdateNeeded = "fork-workflow-update-needed";
+
+    /// <summary>
+    /// GitHub's refusal of an App's push that creates or updates a workflow file, as git prints the remote's reason in the
+    /// writer's push-rejected detail: "refusing to allow a GitHub App to create or update workflow `&lt;path&gt;` without
+    /// `workflows` permission" (§0 D69, measured live). For a fork it means a file the fork has on no branch, which no
+    /// token scoped to the base repository can write: GitHub evaluates the permission against the fork.
+    /// </summary>
+    internal static bool IsForkWorkflowRefusal(string? detail)
+        => detail?.Contains("refusing to allow a GitHub App to create or update workflow", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>What a person does about <see cref="ForkWorkflowUpdateNeeded"/>: GitHub's own "Update branch" (or merging the
+    /// base into the branch) brings the workflow files in as their push, and the next run publishes without writing any.</summary>
+    private static string ForkWorkflowUpdateNeededMessage(MergeQueueEntry entry, string? detail)
+        => (entry.BaseChangedWorkflows
+               ? $"`{entry.BaseBranch}` changed workflow files that the fork's branch does not have yet, "
+               : "The rebased commit carries workflow files that the fork's branch does not have yet, ")
+           + "and GitHub does not let an App write workflow files into a fork, whatever its permissions. "
+           + $"Click \"Update branch\" on the pull request (or merge `{entry.BaseBranch}` into the branch), then queue it again."
+           + (detail is { Length: > 0 } text ? $"\n\nGitHub: {text}" : string.Empty);
 
     // ═══ Step 4: checks (O12, D9, D41) ══════════════════════════════════════════════════════════════
 
@@ -1409,19 +1436,17 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     }
 
     /// <summary>
-    /// §0 D59, O25: whether a publish may carry workflow files its target branch lacks, so its token asks for the
-    /// workflow permission. The published commit is the prepared one (a patch never touches <c>.github</c>, T4).
-    /// A same-repository publish: when the pull request's own change touches <c>.github/workflows/**</c>, against the
-    /// base (O21 A lets it through when nothing is dispatched); the base's workflow files are on the base branch already.
-    /// A fork's publish replaces the fork's branch, which holds the pinned head: when the published commit's
-    /// <c>.github/workflows</c> differs from the head's (<see cref="MergeQueueEntry.BaseChangedWorkflows"/>, what the base
-    /// changed since) or from the base's (the fork's own change, which O25 lets through when nothing is dispatched).
+    /// §0 D59, D71: whether a publish's token asks for the workflow permission. The published commit is the prepared one (a
+    /// patch never touches <c>.github</c>, T4). A same-repository publish: when the pull request's own change touches
+    /// <c>.github/workflows/**</c>, against the base (O21 A lets it through when nothing is dispatched); the base's workflow
+    /// files are on the base branch already. A fork's publish never: GitHub evaluates the permission against the fork,
+    /// where the base's installation holds none, and refuses a workflow file the fork has on no branch whatever the token
+    /// asks for (§0 D69, measured live). Asking would only widen the token (T9). Before D69, a fork's asked when the base
+    /// changed its workflows (<see cref="MergeQueueEntry.BaseChangedWorkflows"/>) or its own change touched them; such a
+    /// refusal now ends the entry <see cref="ForkWorkflowUpdateNeeded"/>.
     /// </summary>
     private static bool PublishPushesWorkflowChanges(MergeQueueEntry entry)
-    {
-        var ownChange = entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile);
-        return entry.IsFork ? entry.BaseChangedWorkflows || ownChange : ownChange;
-    }
+        => !entry.IsFork && entry.WorkflowPaths.Any(MergeQueueWorkflowGuard.IsWorkflowFile);
 
     /// <summary>
     /// O22: whether <paramref name="role"/>, the enqueuer's as the forge reports it now, reaches the bypass role. Asked at

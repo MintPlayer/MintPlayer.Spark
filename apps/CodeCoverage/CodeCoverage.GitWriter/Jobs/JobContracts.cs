@@ -129,8 +129,9 @@ public sealed record PrepareResponse(
 
     /// <summary>
     /// The prepared commit's <c>.github/workflows</c> differs from the pinned head's (§0 D59, D67): the base changed workflow
-    /// files since. A fork's branch, which holds the head, lacks them, so publishing to it needs the forge's workflow
-    /// permission. The pull request's own workflow change is <see cref="TouchesWorkflows"/> instead.
+    /// files since. A fork's branch, which holds the head, lacks them, and GitHub refuses an App's push of a workflow file
+    /// the fork has on no branch whatever the token's permissions (§0 D69), so the saga names this when such a publish is
+    /// refused. The pull request's own workflow change is <see cref="TouchesWorkflows"/> instead.
     /// </summary>
     public bool BaseChangedWorkflows { get; init; }
 }

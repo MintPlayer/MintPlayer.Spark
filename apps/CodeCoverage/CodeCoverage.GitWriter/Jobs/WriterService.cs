@@ -266,7 +266,9 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         var workflows = await GithubChangesAsync(context, baseSha, tree);
 
         // §0 D59, D67: what the base changed under .github/workflows since the head, which a fork's branch (holding the head)
-        // lacks, so publishing there needs the forge's workflow permission. The pull request's own change is `workflows`.
+        // lacks. The pull request's own change is `workflows`. Since D69 no token permission helps there (GitHub refuses an
+        // App's write of a workflow file the fork has on no branch, whatever it asks for); the saga names it when GitHub
+        // refuses such a publish (D71).
         var baseChangedWorkflows = await WorkflowsTreeAsync(context, tree) != await WorkflowsTreeAsync(context, headSha);
 
         var commit = await resolver.CommitAsync(context.GitDirectory, tree, baseSha, job.Author, job.Committer, job.Message, context.Deadline);

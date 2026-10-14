@@ -212,7 +212,7 @@ public sealed record GitWriterPrepareResult(
     public bool TouchesWorkflows { get; init; }
 
     /// <summary>The commit's <c>.github/workflows</c> differs from the pinned head's (§0 D59, D67): the base changed
-    /// workflow files since, which a fork's branch lacks.</summary>
+    /// workflow files since, which a fork's branch lacks and no App may write there (§0 D69, D71).</summary>
     public bool BaseChangedWorkflows { get; init; }
 }
 

@@ -201,8 +201,9 @@ public interface IForgeMergeQueue
     /// A fork is refused unless the forge says its author allows edits from maintainers, and when the fork is gone. ⚠️ Even
     /// for a fork's push the credential is scoped to the BASE repository: "Allow edits by maintainers" lets those with
     /// push access to the base repository push to the fork's branch, and an App has no token for a fork it is not
-    /// installed on. Whether the forge honours that for an App's token is unverified (S6); a refused push then surfaces
-    /// from the writer as <c>push-rejected</c>, and the caller must say so.
+    /// installed on. GitHub honours that for an App's token (S6, measured live in §0 D69), but refuses its write of a
+    /// workflow file the fork has on no branch, whatever the credential carries; a refused push surfaces from the writer
+    /// as <c>push-rejected</c> with the forge's reason, and the caller must say so (§0 D71).
     /// </remarks>
     Task<ForgePushAccess> GetWriterAccessAsync(Repository repository, ForgePullRequest? pullRequest, bool pushesWorkflowChanges, CancellationToken cancellationToken = default);
 

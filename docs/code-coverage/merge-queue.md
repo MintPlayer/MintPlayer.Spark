@@ -103,9 +103,12 @@ settings are not. The queue then reports the branch as `ChecksOnly` and gives no
 
 **The git writer never holds the installation's token (T9, D59).** Each writer job (prepare, publish, the queue
 branch's reset and its deletion) gets a token minted for it alone: `POST /app/installations/{id}/access_tokens` with
-this repository's id and `contents: write`, plus `workflows: write` only when that job's push may carry workflow files.
-It is never cached and is revoked (`DELETE /installation/token`) when the job answers or fails. A fork's publish uses a
-token scoped to the base repository too: that is the write access "Allow edits by maintainers" honours (S6, §8). A
+this repository's id and `contents: write`, plus `workflows: write` only when that job's push may carry workflow files
+into this repository: the queue-branch push of a change the bypass role let through, and a same-repository publish
+whose own change touches `.github/workflows/**`. It is never cached and is revoked (`DELETE /installation/token`) when
+the job answers or fails. A fork's publish uses a token scoped to the base repository too: that is the write access
+"Allow edits by maintainers" honours (S6, verified live in D69). It never asks for `workflows`: GitHub evaluates that
+permission against the fork, where the base's installation holds none, so it would change nothing there (D69, D71). A
 mint GitHub refuses, typically a `workflows` permission the installation has not accepted, ends the entry `permission`
 with the acceptance link.
 
@@ -449,8 +452,13 @@ pins the head at enqueue and evicts on any push it did not make (T3), its own ch
   `.github/**` change never reaches `mq/` (O25, D67): it could delete that very filter.
 - **Fork pull requests need "Allow edits by maintainers" ticked (O3).** The queue pushes the rebased commit to the
   fork's branch; there is no bot-made fork. GitHub offers the box only on forks owned by a user, not by an organization.
-  The push uses a token scoped to the base repository (D59), whose write access is what the box honours. Whether GitHub
-  accepts an App's push through it is still unverified (S6, §8).
+  The push uses a token scoped to the base repository (D59), whose write access is what the box honours; GitHub accepts
+  it (S6, verified live in D69).
+- **A fork's branch must already hold the base's workflow files (D69).** GitHub never lets an App create or update a
+  workflow file that the fork has on no branch, whatever permission its token carries. When the base changed its
+  workflows since the fork branched, the publish is refused and the entry ends `fork-workflow-update-needed`. Someone
+  clicks **Update branch** on the pull request (or merges the base into the branch), which brings those files in as a
+  person's push, and queues it again.
 - **Private repositories on GitHub Free have no rulesets.** GitHub answers 403 "Upgrade to GitHub Pro…", which the
   queue reads as "no rules" (D15). The queue still waits for every check (O12), but nothing forces merges through it.
 
@@ -469,6 +477,9 @@ holds the admin to its reviews and checks, unless your policy listed them as its
 - a fork's pull request that needs the regenerate workflow while the repository's workflows could run its code on the
   queue branch (`fork-unsafe-workflows`, D65). Better: fix the workflows the message names, then queue it again;
 - a pull request from an organization-owned fork (`fork`), and a fork push GitHub refused (`fork-push-rejected`).
+
+A fork whose branch lacks the base's workflow files (`fork-workflow-update-needed`, D69) needs no admin: **Update
+branch** on the pull request, then queue it again.
 
 The admin's merge is GitHub's own: nothing is rebased or regenerated, and the queue's own checks (the approval floor,
 the check gate) do not run.
@@ -596,7 +607,8 @@ kebab-cased by the writer.
 | `patch-rejected` | The patch broke a T4 rule; the sub-reason and paths are shown (below). | Fix the generator, or `regeneratedPaths`. |
 | `push-rejected` | GitHub refused the push to `mq/…` before a dispatch or to the pull request's branch, or the deletion of `mq/…`; GitHub's message is shown. | Usually a rule covering `mq/**` or the pull request's branch (§3). |
 | `push-refused` | No credential to push with: the fork is gone or its box was unticked since enqueue, or there is no installation. | As the message says. |
-| `fork-push-rejected` | GitHub refused the push to the fork's branch (S6). | An admin merges it (§3.3). |
+| `fork-workflow-update-needed` | GitHub refused to write workflow files into the fork's branch: an App may not create or update a workflow file the fork has on no branch, whatever its permissions, and the base changed its workflows since the fork branched (D69). | Click **Update branch** on the pull request (or merge the base into the branch), then queue it again. |
+| `fork-push-rejected` | GitHub refused the push to the fork's branch for another reason; GitHub's message is shown. | Act on GitHub's message; an admin can merge it (§3.3). |
 | `writer-unavailable` | This server has no git writer (`MergeQueue:GitWriterUrl` unset); only case 1 can merge. | Operator: §7. |
 | `writer-refused` | The git writer refused the queue's own request: the field and the rule it broke are shown (D57). The parser and the enqueue checks hold everything to the same rules, so this points at a defect. | Report it with the message. |
 | `checks-failed` | A counted check failed, after `retryFlaky` re-runs of the failed check runs. A commit status cannot be re-run. | Fix and queue again, or exclude a check that must not gate (§2.4). |
@@ -636,7 +648,7 @@ power, or forged. It must never merge more than was approved or authorised (O10)
 | T6 | A pull request widening the configuration | `mergeQueue:` comes from the default branch only (O16); trust settings are in the database (O15). |
 | T7 | The bot skipping the repository's rules | The App is exempt only from ruleset 1. Enqueue refuses any ruleset holding reviews or checks that the App itself can bypass (`current_user_can_bypass` read with its own token, D16). People may bypass ruleset 2 (O22); that is the repository's policy, not the bot's. |
 | T8 | Hostile git content | Its own sidecar (D2), a bare blob-less clone, no checkout, worktree or hooks (an empty, read-only `core.hooksPath` and `--template=`). `attr.tree` is the empty tree, so no in-repo `.gitattributes` picks a merge driver (D21). `transfer.fsckObjects`, file/ext transports off, https only, the git floor (D29), job caps (D32). |
-| T9 | A leaked token | Each writer job gets a token minted for it alone (D59): this one repository, `contents: write`, plus `workflows: write` only when its push needs it. It is never cached, and is revoked when the job ends. It travels in the request body; git gets it only through `GIT_CONFIG_*` environment pairs, and stderr is scrubbed. The writer holds no App key and nothing at rest. |
+| T9 | A leaked token | Each writer job gets a token minted for it alone (D59): this one repository, `contents: write`, plus `workflows: write` only when its push needs it, and never for a fork's branch, where GitHub ignores it (D69). It is never cached, and is revoked when the job ends. It travels in the request body; git gets it only through `GIT_CONFIG_*` environment pairs, and stderr is scrubbed. The writer holds no App key and nothing at rest. |
 
 ## 7. Operations
 
@@ -744,9 +756,11 @@ Design choices, recorded so they can be revisited (D51):
 
 Not verified, or not supported:
 
-- **Fork pull requests are unverified (S6).** Whether GitHub counts an App installation token, scoped to the base
-  repository (D59), as a maintainer for "Allow edits by maintainers" was never measured. If not, every fork's PUBLISH
-  ends with `fork-push-rejected`.
+- **A fork's branch must already hold the base's workflow files (D69).** The App's push to a fork works through "Allow
+  edits by maintainers" (S6, measured live), but GitHub never lets an App create or update a workflow file the fork has
+  on no branch, whatever permission its token carries. The queue cannot bring such files into a fork, so the publish is
+  refused and the entry ends `fork-workflow-update-needed`, until a person clicks **Update branch** (or merges the base).
+  There is no pre-check: a file the fork has on another branch is accepted, so the attempt is the only reliable test.
 - **GitHub only (O7).** `IForgeMergeQueue` is forge-neutral; GitLab and Bitbucket follow under #422.
 - **Squash only**, and no signed commits. The queue pushes unsigned bot commits with git (O14), and a branch that
   requires signatures is untested.
@@ -760,6 +774,7 @@ Not verified, or not supported:
 - **Co-authors beyond GitHub's 250-commit listing** of a pull request are not credited (D60).
 - Unmeasured with the production App so far: Commit statuses: read (D40); that an Actions check run's id is its job's id
   for re-runs (D48); that the App's `workflows` permission follows the OAuth scope's "same file on another branch" rule
-  (D59); `require_extra_approval_for_unattributed_changes` on ruleset 2 together with the regenerate push (§3); the
+  for a same-repository push (D59; for a fork's branch the rule held without the permission, D69);
+  `require_extra_approval_for_unattributed_changes` on ruleset 2 together with the regenerate push (§3); the
   regenerate run's duration on CI (S4); the prepare step on the largest installed repository against the 180 s job
   clock (S8).

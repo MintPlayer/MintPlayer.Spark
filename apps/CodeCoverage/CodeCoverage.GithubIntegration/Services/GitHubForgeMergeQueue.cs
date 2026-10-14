@@ -889,9 +889,10 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
     /// <para>
     /// The token is scoped to the <b>base</b> repository for a fork's push too: GitHub's "Allow edits from maintainers"
     /// lets those with push access to the base repository push to the fork's head branch, and the App has no token for a
-    /// fork it is not installed on. ⚠️ S6 never ran: whether GitHub counts an App's token as such a maintainer is
-    /// unverified. If it does not, the writer's push answers <c>push-rejected</c>, and the queue says fork pull requests
-    /// cannot be queued yet rather than a generic failure. GitHub documents the checkbox for user-owned forks only; an
+    /// fork it is not installed on. GitHub counts the App's token as such a maintainer (S6, measured live in §0 D69), with
+    /// one exception: it never lets an App create or update a workflow file the fork has on no branch, and evaluates the
+    /// <c>workflows</c> permission against the fork, so the saga never asks for it on a fork's publish and evicts such a
+    /// refusal as <c>fork-workflow-update-needed</c> (§0 D71). GitHub documents the checkbox for user-owned forks only; an
     /// organization-owned fork reports <c>maintainer_can_modify: false</c> and is refused here.
     /// </para>
     /// </remarks>

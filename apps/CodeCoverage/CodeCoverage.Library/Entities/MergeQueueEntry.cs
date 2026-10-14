@@ -93,8 +93,9 @@ public class MergeQueueEntry
 
     /// <summary>
     /// The prepared commit's <c>.github/workflows</c> differs from the pinned head's, as the prepare saw it (§0 D59, D67):
-    /// the base changed workflow files since the head. Publishing to a fork then needs the forge's workflow permission,
-    /// because the fork's branch holds the head and lacks the base's newer workflow files.
+    /// the base changed workflow files since the head, which a fork's branch lacks. GitHub refuses an App's write of such
+    /// a file into a fork whatever the token asks for (§0 D69), so this no longer decides a token; it says which side
+    /// brought the workflow files when GitHub refuses such a publish (<c>fork-workflow-update-needed</c>, §0 D71).
     /// </summary>
     public bool BaseChangedWorkflows { get; set; }
 

@@ -267,6 +267,12 @@
               requests, and any whose fork refuses the queue's push (<code>fork-push-rejected</code>), are merged by a
               repository admin through ruleset 1's bypass (step 3).
             </p>
+            <p>
+              GitHub never lets an App add or change a workflow file in a fork, whatever its permissions. When the base
+              branch changed its workflow files after the fork branched, the queue cannot publish to the fork, and the
+              run ends with <code>fork-workflow-update-needed</code>. Click <strong>Update branch</strong> on the pull
+              request (or merge the base into the branch), then queue it again.
+            </p>
             <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.allowEdits }" />
           }
           @case ('settings') {
