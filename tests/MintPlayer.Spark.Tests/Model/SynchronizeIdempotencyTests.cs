@@ -498,9 +498,12 @@ public class SynchronizeCorrectnessTests : IDisposable
     {
         // The cleanup exists to migrate directories written before projections were merged into
         // their collection type's file. Narrowing it must not disable it.
+        // The file has an id, as every model file synchronization ever wrote does: a file without
+        // one cannot be read, and an unreadable model file stops the run before the cleanup
+        // (merge queue PRD S7, D82).
         Directory.CreateDirectory(ModelDir);
         var stale = Path.Combine(ModelDir, $"{nameof(IdemProbeProjection)}.json");
-        File.WriteAllText(stale, "{ \"persistentObject\": { \"name\": \"IdemProbeProjection\", \"clrType\": \"X\" }, \"queries\": [] }");
+        File.WriteAllText(stale, "{ \"persistentObject\": { \"id\": \"6f1c0d2e-4b7a-4e19-9c35-8a2d5e7b1f04\", \"name\": \"IdemProbeProjection\", \"clrType\": \"X\" }, \"queries\": [] }");
 
         var registry = Substitute.For<IIndexCatalog>();
         registry.GetAllEntries().Returns([new IndexCatalogEntry
@@ -514,6 +517,33 @@ public class SynchronizeCorrectnessTests : IDisposable
         Synchronize(registry, typeof(IdemContext));
 
         File.Exists(stale).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_unreadable_file_in_a_stale_projections_place_still_stops_the_run()
+    {
+        // The cleanup is no way around S7. The path can also be a live entity's (simple names
+        // collide, see above), and only the run's writes tell the two apart, after the point where
+        // S7 has to stop. So an unreadable file there stops the run like any other (D82).
+        Directory.CreateDirectory(ModelDir);
+        var file = Path.Combine(ModelDir, $"{nameof(IdemProbeProjection)}.json");
+        const string unreadable = "{ \"persistentObject\": { \"name\": \"IdemProbeProjection\", \"clrType\": \"X\" }, \"queries\": [] }";
+        File.WriteAllText(file, unreadable);
+
+        var registry = Substitute.For<IIndexCatalog>();
+        registry.GetAllEntries().Returns([new IndexCatalogEntry
+        {
+            IndexName = "Probes/Overview",
+            IndexType = typeof(IdemProbe),
+            CollectionType = typeof(IdemProbe),
+            ProjectionType = typeof(IdemProbeProjection),
+        }]);
+
+        var act = () => Synchronize(registry, typeof(IdemContext));
+
+        act.Should().Throw<ModelFileUnreadableException>().Which.Message.Should().Contain($"{nameof(IdemProbeProjection)}.json");
+        Directory.GetFiles(Path.Combine(_contentRoot, "App_Data"), "*", SearchOption.AllDirectories).Should().Equal(file);
+        File.ReadAllText(file).Should().Be(unreadable);
     }
 
     [Fact]
