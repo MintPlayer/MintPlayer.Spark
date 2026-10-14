@@ -72,8 +72,13 @@ visibility → Public* on GitHub (owner, 2026-10-12: public is fine; the image h
 
 **`coverage-git-writer`, `coverage-git-writer-egress`** (merge queue M3, `docs/coverage_merge_queue_PRD.md` D2). The
 writer is a second sidecar, so the read-only mirror's threat model stays intact: it is the only container with a push
-token in hand, and it holds that token for one job. Its API (`POST /jobs/prepare`, `POST /jobs/publish`,
-`DELETE /jobs/queue-branch`, `GET /healthz`) is unauthenticated, so its networks are the boundary:
+token in hand, and it holds that token for one job. Its API (`POST /jobs/prepare`, `POST /jobs/queue-branch`,
+`POST /jobs/publish`, `DELETE /jobs/queue-branch`, `GET /healthz`) is unauthenticated, so its networks are the
+boundary. The prepare pushes nothing; only `POST /jobs/queue-branch`, which the app calls right before a dispatch,
+writes to a `mq/…` branch, and for a fork's pull request only after the fork precondition (PRD D65,
+[merge-queue.md §2.3](merge-queue.md#23-the-regenerate-workflow-postrebaseactionname)). The app and the writer change
+this contract together: the writer refuses a commit request without the author's and committer's dates (a 400 naming
+the field), so deploy both images from the same commit.
 
 - `coverage-git-writer` is `internal: true` and holds **exactly** `coverage-app` and `coverage-git-writer`. ⚠️ Any other
   container added to it could have the writer push with the token the app hands it.
@@ -402,7 +407,7 @@ environment.
 | Repository | Checks | **Read & write** | The `coverage/project` and `coverage/patch` check-runs; `check_run` events. |
 | Repository | Issues | Read-only | `issues` and `issue_comment` events — board automation, and the merge queue's `/queue` and `/dequeue` comments. |
 | Repository | Actions | **Read & write** | Merge queue: dispatching the regenerate workflow (write), reading its run and downloading its `merge-queue-patch` artifact (read). `GitHubForgeMergeQueue`. |
-| Repository | Workflows | **Read & write** | Merge queue: GitHub refuses an App push that brings workflow files (`.github/workflows/**`) the target repository has on no branch. The queue's per-job token asks for it only then (PRD D59): a same-repository pull request whose own change touches `.github/workflows/**` and goes through because nothing is dispatched (O21 A, D63), and a fork's publish after the base changed its workflows (the fork lacks them). |
+| Repository | Workflows | **Read & write** | Merge queue: GitHub refuses an App push that brings workflow files (`.github/workflows/**`) the target repository has on no branch. The queue's per-job token asks for it only then (PRD D59): the publish of a same-repository pull request whose own change touches `.github/workflows/**` and goes through because nothing is dispatched (O21 A, D63), the queue-branch push of one the bypass role lets through a dispatch (O22), and a fork's publish after the base changed its workflows (the fork lacks them). The prepare pushes nothing and never asks for it (D65). |
 | Repository | Commit statuses | Read-only | Merge queue: the gate waits for every commit status as well as every check run (PRD O12; GitGuardian reports as one). |
 | Organization | Projects | Read & write | Moving cards on Projects V2 boards (GraphQL, `GitHubProjectCards.cs`) — board automation only. |
 | Organization | Members | Read-only | Required by GitHub to subscribe to the `organization` event (organization renames). |

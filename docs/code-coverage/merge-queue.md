@@ -29,19 +29,23 @@ START        the head already contains the latest base? ── yes ─► case 1
   ▼ no
 PREPARE      git writer, with a token minted for this job alone (T9, D59): bare blob-less clone, fetch
              refs/pull/N/head, assert head == the SHA pinned at enqueue (T3)
-             a fork's net change touches .github/** ─► EVICT touches-workflows before anything is pushed (D63)
              merge-tree base ⟵ head; a conflict only in autoResolve files ─► take the base side (O1, O19)
-             any other conflict ─► EVICT; commit-tree ONE commit on the base, crediting the other authors as
-             Co-authored-by (D60); lease-push to mq/<base>/pr-<n>
+             any other conflict ─► EVICT; a fork's commit that changes .github/** against the base ─► EVICT
+             touches-workflows (D63, D65); commit-tree ONE commit on the base, every date the run's (D65),
+             crediting the other authors as Co-authored-by (D60). It pushes NOTHING (D65).
   ▼          nothing resolved, and postRebaseWhen is not always ─► case 2: PUBLISH without a patch
              (a same-repository .github/** change goes through here: nothing is dispatched, O21 A)
 REGENERATE   case 3: a .github/** change ─► EVICT touches-workflows, unless the bypass role (O22) lets a
-             same-repository one through; the workflow's blob on mq/ must equal the default branch's (D12);
-             dispatch postRebaseActionName on mq/<base>/pr-<n>; a run of any other commit than the prepared one
-             evicts (regenerate-wrong-commit, D14); it must succeed and upload merge-queue-patch. It never pushes (D4).
+             same-repository one through; a fork's pull request: the fork precondition (D65) or EVICT
+             fork-unsafe-workflows; the writer rebuilds the prepared commit and lease-pushes it to
+             mq/<base>/pr-<n>, the only push to a queue branch (D65); the workflow's blob on mq/ must equal the
+             default branch's (D12); dispatch postRebaseActionName on mq/<base>/pr-<n>; a run of any other commit
+             than the prepared one evicts (regenerate-wrong-commit, D14); it must succeed and upload
+             merge-queue-patch. It never pushes (D4).
   ▼
-PUBLISH      git writer: validate the patch (T4); prepared tree + patch = ONE squashed commit;
-             lease-push to the pull request's branch (a fork's through "Allow edits by maintainers", O3)
+PUBLISH      git writer: validate the patch (T4); rebuild the prepared commit, which must be the one PREPARE
+             answered (D65); prepared tree + patch = ONE squashed commit; lease-push to the pull request's
+             branch (a fork's through "Allow edits by maintainers", O3)
   ▼
 CHECKS       every check run, commit status and check suite on that commit, minus exclusions (O12);
              a failed check run is re-run retryFlaky times (D9); the base moved ─► back to START
@@ -51,19 +55,25 @@ MERGE        the person who queued it still has write (O9), the approval floor s
              squash, sha = the final commit, merge_action = direct_merge, the co-authors as its message (D13, D60);
              poll until merged (D17)
   ▼
-MERGED       label removed, mq/ branch deleted under a lease, the lane's next pull request starts
+MERGED       label removed, the mq/ branch (only a dispatch pushed one) deleted under a lease, the lane's next
+             pull request starts
 
-Any step ─► EVICTED <reason> (§5): check run + comment, label removed, mq/ branch deleted, a regenerate run it
-             stopped waiting for cancelled (D53), the next one starts.
+Any step ─► EVICTED <reason> (§5): check run + comment, label removed, the mq/ branch deleted if one was pushed,
+             a regenerate run it stopped waiting for cancelled (D53), the next one starts.
 A push to the pull request that the queue did not make ─► EVICTED author-push, at any step (T3).
 ```
 
 - **Three cases (O20).** Case 1 merges the head as it is, on its own checks. Case 2 (the base moved, the merge is clean)
   and case 3 (resolved and regenerated) publish one new commit, and CI runs again on it. A clean textual merge is never
   trusted on its own, because it misses semantic conflicts.
-- **Why a queue branch (D5).** Steps PREPARE and REGENERATE run on `mq/<base>/pr-<n>`, not on the pull request. The
-  bare rebase has stale hashes, so it is known to fail `--spark-verify-model`; keeping it off the pull request means the
-  consumer's PR CI runs once, on the final commit. The queue branch is deleted when the entry ends.
+- **Why a queue branch (D5), and only for a dispatch (D65).** REGENERATE runs on `mq/<base>/pr-<n>`, not on the pull
+  request. The bare rebase has stale hashes, so it is known to fail `--spark-verify-model`; keeping it off the pull
+  request means the consumer's PR CI runs once, on the final commit. But a push to `mq/` is a push to a branch of the
+  base repository, which starts its `push` workflows on the pushed code, with its secrets (D14, D19). So the queue
+  pushes there only right before a dispatch, and for a fork's pull request only after the fork precondition (§2.3).
+  PREPARE pushes nothing: its commit is a function of its request (every date is the run's), so the queue-branch push
+  and PUBLISH rebuild exactly it and check it against the SHA PREPARE answered. The queue branch is deleted when the
+  entry ends.
 - **The queue knows its own pushes by SHA** (`KnownShas`, D46); any other new head on the pull request evicts it.
 
 The code: the saga `CodeCoverage/MergeQueue/MergeQueueEngine.cs` (messaging lane `coverage-merge-queue`); the git writer
@@ -204,6 +214,27 @@ run's own completion (the base moved, an author push, a dequeue, a close, a merg
 permission, or too many transient failures), the run is cancelled through the outbox, so it does not keep spending CI
 minutes. Before each dispatch, any run of the workflow still going on the entry's own queue branch is cancelled too,
 in case an earlier dispatch's answer was lost. A run that finished by itself is never cancelled.
+
+**A fork's pull request is dispatched only after the fork precondition (D65).** The dispatch needs the fork's code on
+`mq/<base>/pr-<n>`, a branch of your repository. Before it pushes there, the queue reads the workflows and refuses
+(`fork-unsafe-workflows`, naming the file, the line and the fix) unless:
+
+1. **no workflow of the pushed commit runs on that push.** These are the base branch's workflows, since the pushed
+   commit's `.github/` is the base's (a fork's commit that changes it is refused, D63). A `push:` trigger must leave
+   the branch out with `branches-ignore: ['mq/**']`, or a `branches:` list that does not match it (or ends with
+   `'!mq/**'`), or name tags only. `paths:` filters do not count: the fork chooses the pushed paths. No `create:`
+   trigger, which runs on every new branch.
+2. **the regenerate workflow (the default branch's) is read-only:** `permissions:` at the top or in every job, granting
+   at most `contents: read`; no `id-token`; no `secrets` anywhere (a `${{ secrets.* }}`, a `secrets:` key, an `if:`
+   reading it); no `environment:`; no reusable workflow (`uses:` at job level); and only GitHub-hosted runner labels
+   (`ubuntu-*`, `windows-*`, `macos-*`), no `self-hosted`, no runner group, no expression.
+3. **no default-branch workflow follows its runs on that branch:** a `workflow_run:` trigger that names the regenerate
+   workflow must have `branches-ignore: ['mq/**']` (or a `branches:` list that leaves `mq/` out).
+
+The guard is conservative: anything it cannot evaluate with certainty counts as unsafe, such as a file it cannot read
+or parse, an unknown filter key, or a pattern character outside GitHub's filter cheat sheet. A same-repository pull
+request needs none of this: its author has write access and their own push already ran those workflows. A fork's pull
+request that needs no regeneration never pushes to your repository at all.
 
 **For a Spark repository**, copy [`templates/regenerate.yml`](templates/regenerate.yml) to
 `.github/workflows/regenerate.yml` on the default branch, list the apps, and pin the action. The action is
@@ -397,11 +428,13 @@ pins the head at enqueue and evicts on any push it did not make (T3), its own ch
   when a ruleset requires it. The queue also passes `merge_action=direct_merge`, so it never ends up in GitHub's queue.
 - **Squash merging allowed** (Settings → General → Pull Requests).
 - **`branches-ignore: ['mq/**']`** on every `push:` trigger that would otherwise match the queue's branches (D14).
-  Pushes to `mq/` fire `push` workflows, never `pull_request`. Their check runs land on the prepared commit, which *is*
-  the final commit when nothing was regenerated (D31), so a push-only workflow there would gate the merge. A `push:`
-  limited to `branches: [master]` needs nothing; this repository's workflows are all like that (D37). Such a run uses
-  the pushed commit's own workflow files, which is why a fork's `.github/**` change never reaches `mq/` (D63): it could
-  delete that very filter.
+  Since D65 this is **enforced for forks**: a fork's pull request that needs the regenerate workflow is evicted
+  `fork-unsafe-workflows` while any `push:` (or `create:`) trigger would start on its queue branch (§2.3). Pushes to
+  `mq/` fire `push` workflows, never `pull_request`, and only a dispatch pushes there (D65). Their check runs land on
+  the prepared commit, which *is* the final commit when the regenerate run changed nothing (D31, D35), so a push-only
+  workflow there would gate the merge. A `push:` limited to `branches: [master]` needs nothing; this repository's
+  workflows are all like that (D37). Such a run uses the pushed commit's own workflow files, which is why a fork's
+  `.github/**` change never reaches `mq/` (D63): it could delete that very filter.
 - **Fork pull requests need "Allow edits by maintainers" ticked (O3).** The queue pushes the rebased commit to the
   fork's branch; there is no bot-made fork. GitHub offers the box only on forks owned by a user, not by an organization.
   The push uses a token scoped to the base repository (D59), whose write access is what the box honours. Whether GitHub
@@ -419,6 +452,8 @@ holds the admin to its reviews and checks, unless your policy listed them as its
   (§2.4). A workflow-only change, such as Dependabot's GitHub Actions updates, needs no regeneration and goes through the
   queue (O21 A);
 - a fork's change under `.github/**`, which the queue never pushes anywhere (D63), whatever the role;
+- a fork's pull request that needs the regenerate workflow while the repository's workflows could run its code on the
+  queue branch (`fork-unsafe-workflows`, D65). Better: fix the workflows the message names, then queue it again;
 - a pull request from an organization-owned fork (`fork`), and a fork push GitHub refused (`fork-push-rejected`).
 
 The admin's merge is GitHub's own: nothing is rebased or regenerated, and the queue's own checks (the approval floor,
@@ -471,7 +506,8 @@ the check gate) do not run.
   merge the new head.
 - **The merge** is GitHub's squash merge with the title `<title> (#<n>)` and the co-author trailers as its message,
   performed by the App.
-- **At the end**, whatever the outcome: the label is removed, the `mq/` branch is deleted under a lease, a regenerate
+- **At the end**, whatever the outcome: the label is removed, the `mq/` branch (if a dispatch pushed one, D65) is
+  deleted under a lease, a regenerate
   run the entry no longer waits for is cancelled (D53), and the next pull request in the lane starts. An eviction posts
   a comment with the reason and how to queue again; a merge posts nothing.
 
@@ -525,7 +561,9 @@ kebab-cased by the writer.
 | `retargeted` | The pull request's base was changed. | Queue it again. |
 | `base-missing` | The base branch no longer exists. | — |
 | `base-churn` | The base moved more than 5 times during one run. | Queue it again when the base is quieter. |
-| `touches-workflows` | The pull request's own change touches `.github/**` and either comes from a fork (refused before any push, D63) or needs the regenerate workflow without the bypass role (O21 A, O22). | An admin merges it (§3.3). |
+| `touches-workflows` | The rebased commit changes `.github/**` against its base (the pull request's own change, or one a rename on the base carries there, D65) and either comes from a fork (refused at PREPARE, D63) or needs the regenerate workflow without the bypass role (O21 A, O22). | An admin merges it (§3.3). |
+| `fork-unsafe-workflows` | A fork's pull request needs the regenerate workflow, and a workflow could run its code on the queue branch with this repository's secrets: a `push:` or `create:` trigger, a regenerate workflow that grants more than `contents: read`, reads a secret or may run self-hosted, or a `workflow_run:` that follows it there (D65, §2.3). Nothing was pushed. | Fix the workflows the message names (usually `branches-ignore: ['mq/**']`), then queue it again. |
+| `prepared-differs` | The git writer rebuilt the prepared commit for the queue-branch push or PUBLISH and got another one (D65): the writer's git, or the repository's history under the pinned commits, changed since PREPARE. | Queue it again. |
 | `branch-name` | It needs a rebase, and its branch name is one the git writer does not push to (D57). | Rename the branch, or rebase by hand. |
 | `conflict-outside-allow-list` | A conflict in a file no `autoResolve` rule covers (O1). | Rebase by hand, then queue again. |
 | `hunk-outside-allowed-keys` | A `keys:` rule met a conflict on another line (O2). | Rebase by hand; drop `keys:` for a wholly generated file (O19). |
@@ -541,7 +579,7 @@ kebab-cased by the writer.
 | `regenerate-timeout` | It did not finish within `postRebaseTimeout`. | Raise the timeout, or speed the workflow up. |
 | `regenerate-artifact` | `merge-queue-patch` is missing, expired, over 2 MiB, or not exactly one file. | Fix the upload step. |
 | `patch-rejected` | The patch broke a T4 rule; the sub-reason and paths are shown (below). | Fix the generator, or `regeneratedPaths`. |
-| `push-rejected` | GitHub refused a push to `mq/…` or to the pull request's branch, or the deletion of `mq/…`; GitHub's message is shown. | Usually a rule covering `mq/**` or the pull request's branch (§3). |
+| `push-rejected` | GitHub refused the push to `mq/…` before a dispatch or to the pull request's branch, or the deletion of `mq/…`; GitHub's message is shown. | Usually a rule covering `mq/**` or the pull request's branch (§3). |
 | `push-refused` | No credential to push with: the fork is gone or its box was unticked since enqueue, or there is no installation. | As the message says. |
 | `fork-push-rejected` | GitHub refused the push to the fork's branch (S6). | An admin merges it (§3.3). |
 | `writer-unavailable` | This server has no git writer (`MergeQueue:GitWriterUrl` unset); only case 1 can merge. | Operator: §7. |
@@ -579,7 +617,7 @@ power, or forged. It must never merge more than was approved or authorised (O10)
 | T2 | Too little role | `write` at enqueue and again before the merge. Dequeue needs the author or `write`. The bypass role (O22) is likewise read when it decides and again before the merge. |
 | T3 | A swap after approval | The head SHA is pinned at enqueue, and PREPARE fetches exactly it. Any push whose SHA the queue did not write evicts. Every push is a lease, and the merge carries `sha`. The approval floor counts only approvals of the pinned commit (or the queue's own commit from it), and is checked again right before the merge, where a writer's request for changes vetoes (D61). |
 | T4 | Content smuggled in the patch | Strict parser before any clone (D30): only `regeneratedPaths`, 100644 text, no mode change, symlink, submodule, binary, copy, `.github`, `.gitattributes` or `.gitmodules`; ≤ 500 files, ≤ 2 MiB. The trees are compared after applying. The verify checks run on the final commit. |
-| T5 | Secrets stolen through a workflow the pull request changed | **D12:** a dispatched run uses the workflow file of the dispatched `mq/` ref, not the default branch's (T5(a) was refuted live), and a push to `mq/` starts `push` workflows from the pushed commit's own files. So a fork's change under `.github/**` is refused before anything is pushed (D63). A same-repository one, whose author's own push already ran those workflows, goes through only when nothing is dispatched, or through the bypass role (O21 A, O22). Before every dispatch the workflow's blob on `mq/` must equal the default branch's, and nothing bypasses that. The main defence is §2.3: `contents: read`, no secrets, no `id-token`, GitHub-hosted runners, because the pull request's build code runs either way. A dispatch happens only after an authorised enqueue. |
+| T5 | Secrets stolen through a workflow the pull request changed, or through the base's own workflows running a fork's code | **D12:** a dispatched run uses the workflow file of the dispatched `mq/` ref, not the default branch's (T5(a) was refuted live), and a push to `mq/` starts `push` workflows from the pushed commit's own files, on that commit, with the repository's secrets. So the queue pushes to `mq/` only right before a dispatch (D65), never at PREPARE. A fork's commit that changes `.github/**` against its base is refused at PREPARE (D63; D65 reads the merged tree, so a rename on the base cannot carry a fork's edit into a workflow). A fork's commit is pushed to `mq/` only after the fork precondition (§2.3, D65): no `push`/`create` trigger runs on that branch, the regenerate workflow is read-only, and no `workflow_run` follows it there. A same-repository change, whose author's own push already ran those workflows, goes through only when nothing is dispatched, or through the bypass role (O21 A, O22). Before every dispatch the workflow's blob on `mq/` must equal the default branch's, and nothing bypasses that. The main defence stays §2.3: `contents: read`, no secrets, no `id-token`, GitHub-hosted runners, because the pull request's build code runs either way. A dispatch happens only after an authorised enqueue. |
 | T6 | A pull request widening the configuration | `mergeQueue:` comes from the default branch only (O16); trust settings are in the database (O15). |
 | T7 | The bot skipping the repository's rules | The App is exempt only from ruleset 1. Enqueue refuses any ruleset holding reviews or checks that the App itself can bypass (`current_user_can_bypass` read with its own token, D16). People may bypass ruleset 2 (O22); that is the repository's policy, not the bot's. |
 | T8 | Hostile git content | Its own sidecar (D2), a bare blob-less clone, no checkout, worktree or hooks (an empty, read-only `core.hooksPath` and `--template=`). `attr.tree` is the empty tree, so no in-repo `.gitattributes` picks a merge driver (D21). `transfer.fsckObjects`, file/ext transports off, https only, the git floor (D29), job caps (D32). |
@@ -591,9 +629,13 @@ power, or forged. It must never merge more than was approved or authorised (O10)
 
 `coverage-git-writer` (`CodeCoverage.GitWriter`, image `ghcr.io/mintplayer/codecoverage-git-writer:master`) is the only
 container that writes git; the commit-graph mirror stays read-only (D2). Its API has no authentication, so the network
-is the boundary. `POST /jobs/prepare` is PREPARE. `POST /jobs/publish` is PUBLISH: it applies the patch with
-`git apply --cached` on a throwaway index. `DELETE /jobs/queue-branch` removes `mq/…` under a lease, and `GET /healthz`
-answers `ok`. Every job starts from an empty directory, deleted when the job ends. Every answer is 200 with an outcome;
+is the boundary. `POST /jobs/prepare` is PREPARE; it pushes nothing and answers the commit's id, which is a function of
+the request: every author and committer date is the run's, and a request without one is refused (D65).
+`POST /jobs/queue-branch` rebuilds that commit, answers `prepared-differs` unless it is the one PREPARE answered, and
+pushes it to `mq/…` under a lease; the saga calls it only before a dispatch. `POST /jobs/publish` is PUBLISH: it
+rebuilds and checks the prepared commit the same way (it never reads `mq/`), then applies the patch with
+`git apply --cached` on a throwaway index. A retried push meets its own commit on the branch and answers
+`already-pushed` (D52). `DELETE /jobs/queue-branch` removes `mq/…` under a lease, and `GET /healthz` answers `ok`. Every job starts from an empty directory, deleted when the job ends. Every answer is 200 with an outcome;
 only a request that fails validation is a 400, whose body `{ "outcome": "refused", "field", "detail" }` names the
 first field and the rule it broke, never a value (D57). The limits (`CodeCoverage.GitWriter/GitWriterOptions.cs`, compose):
 
@@ -692,6 +734,10 @@ Not verified, or not supported:
   requires signatures is untested.
 - **A `.github/**` change goes through only when nothing is dispatched**, or with the bypass role for a same-repository
   pull request (O21 A, O22). A fork's never does (D63). The rest needs the admin path of §3.3.
+- **What the fork precondition does not read (D65).** Triggers that run the default branch's own code and see the queue
+  commit only as event data (`check_run`, `check_suite`, `status`) are not evaluated: they run a fork's code only if
+  their steps check it out on purpose, which no filter could rule out. Nor can the repository show a self-hosted runner
+  registered under a GitHub-hosted label's name.
 - **Co-authors beyond GitHub's 250-commit listing** of a pull request are not credited (D60).
 - Unmeasured with the production App so far: Commit statuses: read (D40); that an Actions check run's id is its job's id
   for re-runs (D48); that the App's `workflows` permission follows the OAuth scope's "same file on another branch" rule

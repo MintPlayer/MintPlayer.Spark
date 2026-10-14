@@ -71,8 +71,12 @@ to `.github/workflows/regenerate.yml` on the default branch, list the apps, and 
 SHA of this repository. This repository dogfoods it with the local path in
 [`.github/workflows/regenerate.yml`](../../workflows/regenerate.yml).
 
-Pushes to `mq/**` fire `push` workflows (D14). Add `branches-ignore: ['mq/**']` to any `push:` trigger that
-would otherwise match them; a `push:` limited to `branches: [master]` needs nothing.
+Pushes to `mq/**` fire `push` workflows (D14), and the queue pushes there only to dispatch this workflow (D65).
+Add `branches-ignore: ['mq/**']` to any `push:` trigger that would otherwise match them; a `push:` limited to
+`branches: [master]` needs nothing. For a fork's PR this is enforced: before it pushes the fork's code to `mq/`,
+the queue reads the repository's workflows and evicts the PR (`fork-unsafe-workflows`) while any `push:` or
+`create:` trigger would run on that branch, the regenerate workflow breaks the rules above, or a
+`workflow_run:` trigger follows it there.
 
 ## Running it locally
 
