@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Tests._Infrastructure;
 
 namespace CodeCoverage.GitMirror.Tests;
@@ -79,7 +79,7 @@ public class GitRunnerTests
         {
             var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
             var clock = Stopwatch.StartNew();
-            var insecure = new GitRunner(Microsoft.Extensions.Options.Options.Create(new GitMirrorOptions { AllowInsecureHttp = true }), Microsoft.Extensions.Logging.Abstractions.NullLogger<GitRunner>.Instance);
+            var insecure = new GitRunner(new GitMirrorOptions { AllowInsecureHttp = true }.ToRunnerOptions(), Microsoft.Extensions.Logging.Abstractions.NullLogger<GitRunner>.Instance);
             var result = await insecure.RunAsync(new GitInvocation { Arguments = ["ls-remote", $"http://127.0.0.1:{port}/r.git"], Timeout = TimeSpan.FromSeconds(1) }, CancellationToken.None);
 
             result.TimedOut.Should().BeTrue();
@@ -106,7 +106,7 @@ public class SidecarIsolationTests
            || name.StartsWith("GitHubJwt", StringComparison.OrdinalIgnoreCase)
            || name.Equals("MintPlayer.Spark", StringComparison.OrdinalIgnoreCase)
            || name.StartsWith("MintPlayer.Spark.", StringComparison.OrdinalIgnoreCase)
-           || name.StartsWith("CodeCoverage.", StringComparison.OrdinalIgnoreCase) && !name.Equals("CodeCoverage.GitMirror", StringComparison.OrdinalIgnoreCase);
+           || name.StartsWith("CodeCoverage.", StringComparison.OrdinalIgnoreCase) && !name.Equals("CodeCoverage.GitMirror", StringComparison.OrdinalIgnoreCase) && !name.Equals("CodeCoverage.Git", StringComparison.OrdinalIgnoreCase);
 
     [Fact]
     public void The_sidecars_compiled_references_hold_no_database_client_no_GitHub_App_and_no_Spark_runtime()

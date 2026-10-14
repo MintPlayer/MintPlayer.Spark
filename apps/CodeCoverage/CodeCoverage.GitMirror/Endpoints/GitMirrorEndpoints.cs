@@ -1,5 +1,5 @@
 using System.Text.Json;
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Graph;
 using CodeCoverage.GitMirror.Mirror;
 using Microsoft.Extensions.Options;

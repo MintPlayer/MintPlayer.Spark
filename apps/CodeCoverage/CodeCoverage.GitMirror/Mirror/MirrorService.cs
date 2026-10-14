@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Graph;
 
 namespace CodeCoverage.GitMirror.Mirror;

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  The hardened git CLI runner shared by CodeCoverage's git sidecars: the read-only coverage-git mirror
+	  (docs/coverage_commit_graph_PRD.md D5, D26) and the merge queue's git writer (docs/coverage_merge_queue_PRD.md D2, M2),
+	  plus the merge queue's merge-tree resolver (§5.3).
+	  ⚠️ Never reference MintPlayer.Spark, RavenDB.Client, Octokit or anything that brings them: both sidecars parse hostile
+	  repositories, and GitMirror's SidecarIsolationTests walks this assembly's references too.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>CodeCoverage.Git</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- ILogger only. Both consumers are ASP.NET Core hosts, so the shared framework is already there. -->
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="CodeCoverage.GitMirror.Tests" />
+		<InternalsVisibleTo Include="CodeCoverage.Git.Tests" />
+	</ItemGroup>
+
+</Project>

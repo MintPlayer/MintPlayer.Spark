@@ -1,6 +1,6 @@
 using System.Text.Json;
 using CodeCoverage.GitMirror.Endpoints;
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Graph;
 using CodeCoverage.GitMirror.Mirror;
 using Microsoft.Extensions.Options;
@@ -30,7 +30,7 @@ public static class GitMirrorHost
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.Configure<GitMirrorOptions>(builder.Configuration.GetSection(GitMirrorOptions.Section));
         builder.Services.AddSingleton(sp => new MirrorPaths(sp.GetRequiredService<IOptions<GitMirrorOptions>>().Value.Root));
-        builder.Services.AddSingleton<GitRunner>();
+        builder.Services.AddSingleton(sp => new GitRunner(sp.GetRequiredService<IOptions<GitMirrorOptions>>().Value.ToRunnerOptions(), sp.GetRequiredService<ILogger<GitRunner>>()));
         builder.Services.AddSingleton<DiskGuard>();
         builder.Services.AddSingleton<SnapshotCache>();
         builder.Services.AddSingleton<MirrorService>();

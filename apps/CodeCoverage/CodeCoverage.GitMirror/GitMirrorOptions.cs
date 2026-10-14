@@ -1,3 +1,5 @@
+using CodeCoverage.Git;
+
 namespace CodeCoverage.GitMirror;
 
 /// <summary>
@@ -30,4 +32,8 @@ public sealed class GitMirrorOptions
     /// <summary>Test seam only: accept <c>http://</c> clone URLs (the tests' local git server has no TLS). Production
     /// accepts https only.</summary>
     public bool AllowInsecureHttp { get; set; }
+
+    /// <summary>The shared runner's settings (CodeCoverage.Git). The mirror keeps <c>transfer.fsckObjects</c> off, as it
+    /// was before the runner moved: a treeless partial clone's promisor packs are its whole content.</summary>
+    public GitRunnerOptions ToRunnerOptions() => new() { HooksPath = HooksPath, AllowInsecureHttp = AllowInsecureHttp };
 }

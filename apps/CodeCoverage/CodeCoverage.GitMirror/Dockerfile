@@ -26,7 +26,8 @@ FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 # Selective csproj COPY for restore-layer caching: the sidecar's full transitive ProjectReference closure, which is just
-# itself (it references no Spark, RavenDB or GitHub App project; SidecarIsolationTests).
+# itself plus the shared git runner (it references no Spark, RavenDB or GitHub App project; SidecarIsolationTests).
+COPY ["apps/CodeCoverage/CodeCoverage.Git/CodeCoverage.Git.csproj", "apps/CodeCoverage/CodeCoverage.Git/"]
 COPY ["apps/CodeCoverage/CodeCoverage.GitMirror/CodeCoverage.GitMirror.csproj", "apps/CodeCoverage/CodeCoverage.GitMirror/"]
 RUN dotnet restore "./apps/CodeCoverage/CodeCoverage.GitMirror/CodeCoverage.GitMirror.csproj"
 COPY . .

@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using CodeCoverage.GitMirror.Git;
+using CodeCoverage.Git;
 using CodeCoverage.GitMirror.Mirror;
 
 namespace CodeCoverage.GitMirror.Graph;

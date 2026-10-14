@@ -62,7 +62,7 @@ public class MirrorSecurityTests : MirrorTestBase
     public void Stderr_is_scrubbed_of_the_credential_before_it_is_returned_or_logged()
     {
         var token = NewToken();
-        var credential = new CodeCoverage.GitMirror.Git.GitCredential(User, token);
+        var credential = new CodeCoverage.Git.GitCredential(User, token);
         var text = $"fatal: header Authorization: Basic {Basic(token)} and {token}";
 
         var scrubbed = Sidecar.Runner.Scrub(text, credential);

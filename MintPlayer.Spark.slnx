@@ -7,6 +7,8 @@
   <Folder Name="/apps/" />
   <Folder Name="/apps/CodeCoverage/">
     <Project Path="apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.Git.Tests/CodeCoverage.Git.Tests.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.Git/CodeCoverage.Git.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage.GitMirror.Tests/CodeCoverage.GitMirror.Tests.csproj" />

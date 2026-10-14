@@ -1,9 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using Microsoft.Extensions.Options;
+using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
-namespace CodeCoverage.GitMirror.Git;
+namespace CodeCoverage.Git;
 
 /// <summary>A forge credential for one git process. It travels only in that process's environment (D26) and is never
 /// written to disk, an argument or a log.</summary>
@@ -33,8 +34,53 @@ public sealed class GitInvocation
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(1);
 
+    /// <summary>Written to stdin as UTF-8 (no BOM), which is then closed: <c>update-index -z --index-info</c> and
+    /// <c>commit-tree -F -</c> read their input this way. Null closes stdin at once.</summary>
+    public string? StandardInput { get; init; }
+
+    /// <summary>A throwaway index (<c>GIT_INDEX_FILE</c>) for building a tree in a bare repository without touching
+    /// anything else (docs/coverage_merge_queue_PRD.md §5.3 step 5).</summary>
+    public string? IndexFile { get; init; }
+
+    /// <summary><c>GIT_AUTHOR_*</c> for <c>commit-tree</c>.</summary>
+    public GitIdentity? Author { get; init; }
+
+    /// <summary><c>GIT_COMMITTER_*</c> for <c>commit-tree</c>.</summary>
+    public GitIdentity? Committer { get; init; }
+
+    /// <summary>Extra <c>-c key=value</c> pairs for this command only, placed after the hardened ones (a later
+    /// <c>-c</c> wins, so these may not name a hardened key; <see cref="GitRunner"/> refuses that).</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> Config { get; init; } = [];
+
     /// <summary>The subcommand, the only part of a command that is logged.</summary>
     internal string Verb => Arguments.Count > 0 ? Arguments[0] : "";
+}
+
+/// <summary>A commit identity passed to git through <c>GIT_AUTHOR_*</c>/<c>GIT_COMMITTER_*</c>. Name and email come
+/// from forge data (a PR author), so anything git would mis-parse in an ident line is refused.</summary>
+public sealed record GitIdentity
+{
+    public GitIdentity(string name, string email, DateTimeOffset? when = null)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(['<', '>', '\n', '\r', '\0']) >= 0)
+            throw new ArgumentException("A git identity name may not be empty or contain '<', '>' or a line break.", nameof(name));
+        if (string.IsNullOrWhiteSpace(email) || email.IndexOfAny(['<', '>', '\n', '\r', '\0', ' ']) >= 0)
+            throw new ArgumentException("A git identity email may not be empty or contain '<', '>', a space or a line break.", nameof(email));
+        Name = name;
+        Email = email;
+        When = when;
+    }
+
+    public string Name { get; }
+    public string Email { get; }
+
+    /// <summary>The ident date; null lets git use the current time.</summary>
+    public DateTimeOffset? When { get; }
+
+    /// <summary>git's raw date format: <c>&lt;unix seconds&gt; +HHMM</c>.</summary>
+    internal string? GitDate => When is { } when
+        ? $"{when.ToUnixTimeSeconds()} {(when.Offset < TimeSpan.Zero ? '-' : '+')}{Math.Abs(when.Offset.Hours):00}{Math.Abs(when.Offset.Minutes):00}"
+        : null;
 }
 
 public sealed record GitResult(int ExitCode, string StandardOutput, string StandardError, bool TimedOut, bool Stopped = false)
@@ -43,14 +89,18 @@ public sealed record GitResult(int ExitCode, string StandardOutput, string Stand
 }
 
 /// <summary>
-/// The only class that starts <c>git</c> (PRD §4.1, D26). Every process:
+/// The only class that starts <c>git</c> (docs/coverage_commit_graph_PRD.md §4.1, D26; shared with the merge-queue
+/// writer, docs/coverage_merge_queue_PRD.md D2/M2). Every process:
 /// <list type="bullet">
 /// <item>gets its arguments as an argument list, never a shell string;</item>
 /// <item>runs with an environment cleared of every inherited <c>GIT_*</c> variable and then hardened:
 /// <c>GIT_TERMINAL_PROMPT=0</c>, empty <c>GIT_ASKPASS</c>, <c>GIT_CONFIG_NOSYSTEM=1</c>, <c>GIT_CONFIG_GLOBAL</c> pointing
 /// at an empty file, and <c>GIT_NO_LAZY_FETCH=1</c> on reads;</item>
 /// <item>gets the D26 per-command <c>-c</c> flags (protocol v2, file/ext transports off, an empty read-only hooks
-/// directory, no auto maintenance or gc, no submodule recursion, no credential helper);</item>
+/// directory, no auto maintenance or gc, no submodule recursion, no credential helper), plus the merge queue's
+/// (§4.3, T8): <c>attr.tree</c> set to the empty tree so no <c>.gitattributes</c> from repository content can pick a
+/// merge driver, <c>core.fsmonitor=false</c>, and <c>transfer.fsckObjects</c> when
+/// <see cref="GitRunnerOptions.CheckReceivedObjects"/> is on;</item>
 /// <item>receives a credential only through <c>GIT_CONFIG_COUNT</c>/<c>GIT_CONFIG_KEY_0</c>/<c>GIT_CONFIG_VALUE_0</c>
 /// as <c>http.extraHeader</c>, which git never persists (unlike <c>clone --config</c>);</item>
 /// <item>is killed with its whole tree when its timeout passes;</item>
@@ -61,15 +111,21 @@ public sealed class GitRunner
 {
     private const int MaxCapturedError = 64 * 1024;
 
+    /// <summary>The SHA-1 empty tree. git knows it without the object being stored, so it works in every SHA-1
+    /// repository; SHA-256 repositories are refused by the merge queue (forges serve SHA-1 only).</summary>
+    public const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
     private readonly ILogger<GitRunner> logger;
     private readonly bool allowInsecureHttp;
+    private readonly bool checkReceivedObjects;
     private readonly string globalConfigPath;
 
-    public GitRunner(IOptions<GitMirrorOptions> options, ILogger<GitRunner> logger)
+    public GitRunner(GitRunnerOptions options, ILogger<GitRunner> logger)
     {
         this.logger = logger;
-        allowInsecureHttp = options.Value.AllowInsecureHttp;
-        HooksPath = EnsureEmptyHooksDirectory(options.Value.HooksPath);
+        allowInsecureHttp = options.AllowInsecureHttp;
+        checkReceivedObjects = options.CheckReceivedObjects;
+        HooksPath = EnsureEmptyHooksDirectory(options.HooksPath);
         globalConfigPath = EmptyGlobalConfig();
     }
 
@@ -80,7 +136,7 @@ public sealed class GitRunner
     internal event Action<ProcessStartInfo>? ProcessStarting;
 
     /// <summary>The D26 configuration every command runs with, also written into each mirror's config.</summary>
-    internal IEnumerable<KeyValuePair<string, string>> HardenedConfig()
+    public IEnumerable<KeyValuePair<string, string>> HardenedConfig()
     {
         yield return new("protocol.version", "2");
         yield return new("protocol.allow", "never");
@@ -94,7 +150,16 @@ public sealed class GitRunner
         yield return new("gc.auto", "0");
         yield return new("submodule.recurse", "false");
         yield return new("log.mailmap", "false");
+        // Merge queue (§4.3, T8). Attributes are read from the empty tree only, so an in-repo `.gitattributes` with
+        // `merge=union`, `-merge` or a named driver cannot change how a merge resolves (S1: red with attr.tree set to the
+        // PR's tree, green with this). GIT_ATTR_SOURCE is cleared with every other inherited GIT_* variable.
+        yield return new("attr.tree", EmptyTree);
+        yield return new("core.fsmonitor", "false");
+        if (checkReceivedObjects)
+            yield return new("transfer.fsckObjects", "true");
     }
+
+    private static readonly Regex ConfigKey = new(@"^[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z0-9-]+)*\.[A-Za-z][A-Za-z0-9-]*$", RegexOptions.CultureInvariant);
 
     internal ProcessStartInfo CreateStartInfo(GitInvocation invocation)
     {
@@ -129,22 +194,47 @@ public sealed class GitRunner
             psi.Environment["GIT_CONFIG_KEY_0"] = "http.extraHeader";
             psi.Environment["GIT_CONFIG_VALUE_0"] = credential.Header;
         }
+        if (invocation.IndexFile is { } index)
+            psi.Environment["GIT_INDEX_FILE"] = Path.GetFullPath(index);
+        SetIdentity(psi, "AUTHOR", invocation.Author);
+        SetIdentity(psi, "COMMITTER", invocation.Committer);
 
         if (invocation.GitDirectory is { } dir)
         {
             psi.ArgumentList.Add("-C");
             psi.ArgumentList.Add(dir);
         }
+        var hardened = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "credential.helper" };
         foreach (var (key, value) in HardenedConfig())
         {
+            hardened.Add(key);
             psi.ArgumentList.Add("-c");
             psi.ArgumentList.Add($"{key}={value}");
         }
         psi.ArgumentList.Add("-c");
         psi.ArgumentList.Add("credential.helper=");
+        foreach (var (key, value) in invocation.Config)
+        {
+            if (!ConfigKey.IsMatch(key) || hardened.Contains(key) || key.StartsWith("protocol.", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException($"'{key}' is not an allowed per-command git config key.", nameof(invocation));
+            if (value.IndexOfAny(['\n', '\r', '\0']) >= 0)
+                throw new ArgumentException($"The value for '{key}' contains a line break.", nameof(invocation));
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add($"{key}={value}");
+        }
         foreach (var argument in invocation.Arguments)
             psi.ArgumentList.Add(argument);
         return psi;
+    }
+
+    private static void SetIdentity(ProcessStartInfo psi, string role, GitIdentity? identity)
+    {
+        if (identity is null)
+            return;
+        psi.Environment[$"GIT_{role}_NAME"] = identity.Name;
+        psi.Environment[$"GIT_{role}_EMAIL"] = identity.Email;
+        if (identity.GitDate is { } date)
+            psi.Environment[$"GIT_{role}_DATE"] = date;
     }
 
     /// <summary>Runs a command to completion with its stdout buffered.</summary>
@@ -219,7 +309,20 @@ public sealed class GitRunner
         var psi = CreateStartInfo(invocation);
         ProcessStarting?.Invoke(psi);
         var process = Process.Start(psi) ?? throw new InvalidOperationException("git did not start.");
-        // git never reads stdin here; closing it means nothing can ever block on a prompt.
+        // Stdin carries only the invocation's own input; closing it means nothing can ever block on a prompt. The input
+        // is small (an index-info list, a commit message), well below the pipe buffer, so writing before stdout is
+        // drained cannot deadlock.
+        if (invocation.StandardInput is { } input)
+        {
+            try
+            {
+                process.StandardInput.BaseStream.Write(new UTF8Encoding(false).GetBytes(input));
+            }
+            catch (IOException)
+            {
+                // git exited before reading all of it; its exit code and stderr say why.
+            }
+        }
         process.StandardInput.Close();
         return process;
     }
@@ -283,7 +386,7 @@ public sealed class GitRunner
     private static string EnsureEmptyHooksDirectory(string? configured)
     {
         var path = string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(Path.GetTempPath(), "codecoverage-gitmirror-hooks-empty")
+            ? Path.Combine(Path.GetTempPath(), "codecoverage-git-hooks-empty")
             : configured;
         Directory.CreateDirectory(path);
         if (Directory.EnumerateFileSystemEntries(path).Any())
@@ -299,7 +402,7 @@ public sealed class GitRunner
     {
         if (!OperatingSystem.IsWindows())
             return "/dev/null";
-        var path = Path.Combine(Path.GetTempPath(), "codecoverage-gitmirror-empty.gitconfig");
+        var path = Path.Combine(Path.GetTempPath(), "codecoverage-git-empty.gitconfig");
         if (!File.Exists(path))
         {
             try
