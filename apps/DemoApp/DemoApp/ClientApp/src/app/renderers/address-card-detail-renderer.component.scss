@@ -1,7 +1,6 @@
-// The card's own box. Plain `.card`/`.card-body` markup is unstyled here: the app's Bootstrap (ng-bootstrap's
-// _bootstrap.scss) has no card partial, and the 1rem sides came from a global sheet that @mintplayer/web-components 2.19
-// leaked into <head>, gone in 2.20.
+// ng-bootstrap's card, not plain `.card`/`.card-body` markup: the app's Bootstrap (ng-bootstrap's _bootstrap.scss) has
+// no card partial, so that markup was unstyled, and its 1rem sides came from a global sheet that
+// @mintplayer/web-components 2.19 leaked into <head>, gone in 2.20.
 .address-card {
   max-width: 24rem;
-  padding: 0.5rem 1rem;
 }

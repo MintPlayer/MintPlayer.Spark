@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { BsCardBodyComponent, BsCardComponent } from '@mintplayer/ng-bootstrap/card';
 import { PersistentObject } from '@mintplayer/ng-spark/models';
 import { SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 
@@ -10,13 +11,16 @@ import { SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 @Component({
   selector: 'app-address-card-detail-renderer',
   standalone: true,
+  imports: [BsCardComponent, BsCardBodyComponent],
   template: `
     @if (dict(); as a) {
-      <div class="address-card">
-        <div>{{ a['Street'] }}</div>
-        <div>{{ a['City'] }} {{ a['State'] }}</div>
-        <small class="text-muted">Address of {{ itemName() }}</small>
-      </div>
+      <bs-card class="d-block address-card">
+        <bs-card-body class="py-2">
+          <div>{{ a['Street'] }}</div>
+          <div>{{ a['City'] }} {{ a['State'] }}</div>
+          <small class="text-muted">Address of {{ itemName() }}</small>
+        </bs-card-body>
+      </bs-card>
     } @else {
       <span class="text-muted">-</span>
     }
