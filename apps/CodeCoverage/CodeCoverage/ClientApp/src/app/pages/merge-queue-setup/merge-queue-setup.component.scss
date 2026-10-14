@@ -7,8 +7,9 @@ bs-card[id] {
   scroll-margin-top: 4rem;
 }
 
-// Stand-in for a screenshot that is not there (yet): the image's box (the template's width="1280" height="720"), in
-// theme colours, so light and dark both keep their contrast and nothing shifts when the file arrives.
+// Stand-in for a screenshot without a URL yet, or whose image failed to load: the image's box (the template's
+// width="1280" height="720"), in theme colours, so light and dark both keep their contrast and nothing shifts when the
+// image arrives.
 .shot-pending {
   display: flex;
   flex-direction: column;

@@ -103,8 +103,10 @@
               With the App exempt, <em>Squash and merge</em> is blocked for everyone else, maintainers included; their
               <code>write</code> role still lets them queue. Repository admins can still merge by hand, through the pull
               request only and never by a direct push, for what the queue refuses by design: a pull request from an
-              organization-owned fork, a fork push GitHub refused (<code>fork-push-rejected</code>), or a change under
-              <code>.github/</code> that also needs regenerating. Ruleset 2 still holds them to its reviews and checks.
+              organization-owned fork, a fork push GitHub refused (<code>fork-push-rejected</code>), a change under
+              <code>.github/</code> from a fork, and one from the repository itself that also needs regenerating and
+              was queued without the merge queue bypass role (step 8). Ruleset 2 still holds them to its reviews and
+              checks, unless you list them as its bypass actors (step 4).
             </p>
             <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.ruleset1Bypass }" />
             <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.ruleset1Rules }" />
@@ -222,19 +224,32 @@
             </bs-alert>
             <p>
               Before every dispatch, the queue checks that the <code>mq/</code> branch's copy of the workflow equals the
-              default branch's, and a pull request that changes anything under <code>.github/</code> leaves the queue
-              (<code>touches-workflows</code>) when it would need this workflow. Keep <code>timeout-minutes</code> at or
-              below <code>postRebaseTimeout</code>.
+              default branch's; nothing bypasses that. A pull request that changes anything under <code>.github/</code>
+              leaves the queue (<code>touches-workflows</code>): from a fork always, before anything is pushed, and from
+              the repository itself when it would need this workflow, unless whoever queued it holds the
+              <strong>Merge queue bypass role</strong> (step 8). Keep <code>timeout-minutes</code> at or below
+              <code>postRebaseTimeout</code>.
             </p>
             <h3 class="h6 mt-4">Your other workflows</h3>
             <p class="mb-1">
-              Pushes to the queue's <code>mq/</code> branches start <code>push</code> workflows, never
-              <code>pull_request</code> ones, and their check runs land on the commit the queue is about to merge, so a
-              push-only workflow there would hold up the merge. Add <code>branches-ignore: ['mq/**']</code> to every
+              The queue pushes to its <code>mq/</code> branch only to dispatch this workflow; a pull request that needs no
+              regeneration never creates one. Pushes to <code>mq/</code> start <code>push</code> workflows, never
+              <code>pull_request</code> ones, and their check runs land on the commit the queue may merge, so a push-only
+              workflow there would hold up the merge. Add <code>branches-ignore: ['mq/**']</code> to every
               <code>push:</code> trigger that is not limited to named branches already; a <code>push:</code> with
               <code>branches: [master]</code> needs nothing.
             </p>
             <ng-container *ngTemplateOutlet="code; context: { $implicit: snippets.pushTrigger, language: 'yaml' }" />
+            <bs-alert [type]="infoColor" class="d-block mb-3" data-testid="mq-setup-fork-precondition">
+              <strong>For a pull request from a fork, this is enforced.</strong> The <code>mq/</code> commit holds the
+              fork's code, and a workflow started by that push runs it with your repository's secrets. So before it
+              pushes there, the queue reads your workflows and removes the pull request
+              (<code>fork-unsafe-workflows</code>, naming the file, the line and the fix) while a <code>push:</code> or
+              <code>create:</code> trigger would start on that branch (<code>paths:</code> filters do not count), this
+              workflow grants more than <code>contents: read</code>, reads a secret or may run on a self-hosted runner, or
+              a <code>workflow_run:</code> trigger follows this workflow there. Anything the queue cannot read counts
+              against it.
+            </bs-alert>
           }
           @case ('forks') {
             <p>
@@ -281,13 +296,15 @@
                 including every check that had reported on the pull request when it was queued: queue a pull request
                 once its CI has started.
               </dd>
-              <dt>Bypass role</dt>
+              <dt>Merge queue bypass role</dt>
               <dd>
                 The lowest GitHub role on the repository whose holders skip the queue's own rules:
-                <strong>None</strong> (the default), <strong>Maintain</strong> or <strong>Admin</strong>. When whoever
-                queued a pull request holds it, the approval floor is skipped, and so is the <code>.github/</code> rule
-                of step 6 for a pull request from the repository itself, never from a fork. The checks, the workflow
-                and patch checks, and the <code>write</code> role it takes to queue are never skipped.
+                <strong>Nobody</strong> (the default), <strong>Maintain or admin role</strong> or
+                <strong>Admin role only</strong>. A repository's page also offers <strong>Use account setting</strong>,
+                its default, and can turn the account's bypass off with <strong>Nobody</strong>. When whoever queued a
+                pull request holds the role, the approval floor is skipped, and so is the <code>.github/</code> rule of
+                step 6 for a pull request from the repository itself, never from a fork. The checks, the workflow and
+                patch checks, and the <code>write</code> role it takes to queue are never skipped.
               </dd>
             </dl>
             <ng-container *ngTemplateOutlet="shot; context: { $implicit: shots.accountSettings }" />
@@ -309,17 +326,19 @@
   </p>
 </div>
 
-<!-- A screenshot slot: lazy, with its size declared up front; a missing file becomes a box of the same size. -->
+<!-- A screenshot slot: lazy, with its size declared up front. Without a URL yet, nothing is requested and a box of the
+     same size stands in; an image that fails to load becomes the same box. -->
 <ng-template #shot let-s>
-  <figure class="figure d-block my-3" [attr.data-shot]="s.file">
-    @if (missing().has(s.file)) {
+  <figure class="figure d-block my-3" [attr.data-shot]="s.name">
+    @let url = urlOf(s);
+    @if (url && !missing().has(s.name)) {
+      <img class="figure-img img-fluid rounded border mb-0" loading="lazy" decoding="async" width="1280" height="720"
+           [src]="url" [alt]="s.alt" (error)="markMissing(s.name)">
+    } @else {
       <div class="shot-pending rounded" role="img" [attr.aria-label]="s.alt" data-shot-pending>
         <i class="bi bi-image fs-3" aria-hidden="true"></i>
         <span>Screenshot pending</span>
       </div>
-    } @else {
-      <img class="figure-img img-fluid rounded border mb-0" loading="lazy" decoding="async" width="1280" height="720"
-           [src]="'merge-queue-setup/' + s.file" [alt]="s.alt" (error)="markMissing(s.file)">
     }
     <figcaption class="figure-caption mt-1">{{ s.caption }}</figcaption>
   </figure>

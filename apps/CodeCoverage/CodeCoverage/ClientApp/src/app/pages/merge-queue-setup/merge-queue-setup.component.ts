@@ -8,6 +8,7 @@ import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mi
 import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { AccountPermissionsNoticeComponent } from '../../components/account-permissions-notice/account-permissions-notice.component';
+import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
 import { COVERAGE_YML, CREATE_LABEL, CREATE_RULESETS, PUSH_TRIGGER, REGENERATE_WORKFLOW, RULESET_1, RULESET_2 } from './merge-queue-setup.snippets';
 
 /** A step of the guide. The id is its anchor, kept stable so a message can link `/merge-queue/setup#<id>`. */
@@ -17,11 +18,11 @@ interface SetupStep {
 }
 
 /**
- * A screenshot slot: a file under `public/merge-queue-setup/`, whose README lists each one with what it shows and how
- * it is captured. Every capture is 1280×720, the size the template declares.
+ * A screenshot slot. Its URL, a GitHub attachment, is in MERGE_QUEUE_SETUP_SCREENSHOTS, whose file also says what each
+ * screenshot shows and how it is captured. Every capture is 1280×720, the size the template declares.
  */
 interface Screenshot {
-  file: string;
+  name: MergeQueueSetupScreenshot;
   alt: string;
   caption: string;
 }
@@ -38,8 +39,9 @@ interface Screenshot {
  *
  * The router has no anchor scrolling (app.config.ts), so the page scrolls to a `#<step>` fragment itself.
  *
- * Screenshots use native `loading="lazy"` with explicit `width`/`height` (O13). A file that is missing or fails to load
- * becomes a "Screenshot pending" box of the same size, never a broken image.
+ * Screenshots are GitHub attachments (O23) and use native `loading="lazy"` with explicit `width`/`height` (O13). One
+ * without a URL yet is a "Screenshot pending" box of the same size, and nothing is requested for it; one that fails to
+ * load becomes the same box, never a broken image.
  */
 @Component({
   selector: 'app-merge-queue-setup',
@@ -110,48 +112,48 @@ export default class MergeQueueSetupComponent {
 
   protected readonly shots = {
     acceptPermissions: {
-      file: 'accept-permissions.png',
+      name: 'accept-permissions',
       alt: 'GitHub asking an organization owner to accept the CodeCoverage App\'s new permissions: Actions and Workflows read and write, Commit statuses read-only',
       caption: 'GitHub: the installation\'s request for the new permissions.',
     },
     nativeQueueOff: {
-      file: 'native-merge-queue-off.png',
+      name: 'native-merge-queue-off',
       alt: 'A branch ruleset\'s rules on GitHub with Require merge queue unticked',
       caption: 'Settings → Rules → Rulesets: Require merge queue stays off.',
     },
     squashMerging: {
-      file: 'squash-merging.png',
+      name: 'squash-merging',
       alt: 'The Pull Requests section of a repository\'s general settings on GitHub with Allow squash merging ticked',
       caption: 'Settings → General → Pull Requests: Allow squash merging.',
     },
     ruleset1Bypass: {
-      file: 'ruleset-1-bypass.png',
+      name: 'ruleset-1-bypass',
       alt: 'Ruleset 1\'s bypass list on GitHub: the CodeCoverage App set to Exempt and the Repository admin role set to For pull requests only',
       caption: 'Ruleset 1: the bypass list.',
     },
     ruleset1Rules: {
-      file: 'ruleset-1-rules.png',
+      name: 'ruleset-1-rules',
       alt: 'Ruleset 1 on GitHub targeting the default branch, with Restrict updates as its only branch rule',
       caption: 'Ruleset 1: target branches and rules.',
     },
     ruleset2PullRequest: {
-      file: 'ruleset-2-pull-request.png',
+      name: 'ruleset-2-pull-request',
       alt: 'Ruleset 2\'s Require a pull request before merging rule on GitHub, with Dismiss stale pull request approvals and Require approval of the most recent reviewable push unticked',
       caption: 'Ruleset 2: required reviews, both approval settings off.',
     },
     ruleset2StatusChecks: {
-      file: 'ruleset-2-status-checks.png',
+      name: 'ruleset-2-status-checks',
       alt: 'Ruleset 2\'s Require status checks to pass rule on GitHub, listing the repository\'s CI checks and not the Merge queue check',
       caption: 'Ruleset 2: required status checks, without the "Merge queue" check.',
     },
     allowEdits: {
-      file: 'allow-edits-by-maintainers.png',
+      name: 'allow-edits-by-maintainers',
       alt: 'The sidebar of a pull request from a fork on GitHub with Allow edits by maintainers ticked',
       caption: 'A fork\'s pull request: Allow edits by maintainers.',
     },
     accountSettings: {
-      file: 'account-merge-queue-settings.png',
-      alt: 'The Merge queue group on a CodeCoverage organization page: the approval floor, the checks the queue ignores and the bypass role',
+      name: 'account-merge-queue-settings',
+      alt: 'The Merge queue group on a CodeCoverage organization page: Merge queue approval floor, Checks the merge queue ignores and Merge queue bypass role',
       caption: 'CodeCoverage: the organization page\'s Merge queue group.',
     },
   } satisfies Record<string, Screenshot>;
@@ -165,8 +167,8 @@ export default class MergeQueueSetupComponent {
     return provider && login ? { provider, login } : null;
   });
 
-  /** Screenshots whose file failed to load; each renders as a "Screenshot pending" box instead. */
-  protected readonly missing = signal<ReadonlySet<string>>(new Set());
+  /** Screenshots whose image failed to load; each renders as a "Screenshot pending" box instead. */
+  protected readonly missing = signal<ReadonlySet<MergeQueueSetupScreenshot>>(new Set());
 
   constructor() {
     afterNextRender(() => {
@@ -179,7 +181,12 @@ export default class MergeQueueSetupComponent {
     this.document.getElementById(id)?.scrollIntoView({ block: 'start' });
   }
 
-  protected markMissing(file: string): void {
-    this.missing.update(files => new Set(files).add(file));
+  /** A screenshot's URL, or none while it is pending. */
+  protected urlOf(shot: Screenshot): string | undefined {
+    return MERGE_QUEUE_SETUP_SCREENSHOTS[shot.name];
+  }
+
+  protected markMissing(name: MergeQueueSetupScreenshot): void {
+    this.missing.update(names => new Set(names).add(name));
   }
 }

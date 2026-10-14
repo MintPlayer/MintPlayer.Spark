@@ -2,10 +2,11 @@
  * The code blocks of the "Optimal GitHub setup" page (/merge-queue/setup), apart from the component so that each one
  * reads as the file it shows.
  *
- * ⚠️ Two are copies, so change them together with their source:
- * - REGENERATE_WORKFLOW is docs/code-coverage/templates/regenerate.yml, byte for byte.
+ * ⚠️ Two are copies, so change them together with their source. merge-queue-setup.snippets.spec.ts reads both sources
+ * from disk and fails when a copy falls behind:
+ * - REGENERATE_WORKFLOW is docs/code-coverage/templates/regenerate.yml, byte for byte, without its final newline.
  * - COVERAGE_YML is the `mergeQueue:` section of the repository's own coverage.yml, with the plan's decision numbers
- *   taken out of its comments (they mean nothing in someone else's repository).
+ *   taken out of its comments (they mean nothing in someone else's repository). Its keys and values are the same.
  */
 
 /** What a Spark repository needs in `coverage.yml` on its default branch. */
@@ -102,10 +103,13 @@ export const REGENERATE_WORKFLOW = `# Template: the merge queue's post-rebase wo
 # │  - Never add a secret, an environment, or \`\${{ secrets.* }}\` of any kind.                          │
 # │  - Never widen \`permissions:\`; never add \`id-token: write\`.                                        │
 # │  - Never run it on a self-hosted runner: the PR's build code would run on your machine.            │
-# │  - Keep \`persist-credentials: false\`, so the job token is not left in .git/config for the build.  │
-# │ The queue evicts any PR that changes this file or anything under .github/, and checks that the     │
-# │ mq/ branch's copy equals the default branch's before it dispatches, because a dispatched run uses  │
-# │ the workflow file from the dispatched branch.                                                      │
+# │  - Keep \`persist-credentials: false\`, so the job token is not left in .git/config for the build.   │
+# │ The queue never dispatches this workflow for a PR that changes anything under .github/, unless     │
+# │ the repository's bypass role lets a same-repository PR through (a fork's never). Before every      │
+# │ dispatch it checks that the mq/ branch's copy of this file equals the default branch's, because a  │
+# │ dispatched run uses the workflow file from the dispatched branch. That check is never bypassed.    │
+# │ For a fork's PR it pushes to mq/ only while this file keeps the rules above and no workflow runs   │
+# │ on a push to mq/: give every \`on: push\` a \`branches-ignore: ['mq/**']\`.                            │
 # └────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 name: regenerate

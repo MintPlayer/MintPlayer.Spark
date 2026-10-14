@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PendingInstallationPermissions } from '../../services/browse.service';
 import { BrowseServiceStub, createBrowseStub, provideBrowseStub, settle } from '../../../testing/test-utils';
 import MergeQueueSetupComponent from './merge-queue-setup.component';
+import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
 
 /* The code snippet is a Lit element jsdom cannot host; this stand-in keeps what the page passed it. */
 @Component({ selector: 'bs-code-snippet', template: '' })
@@ -80,39 +81,86 @@ describe('MergeQueueSetupComponent', () => {
     expect(scrolledTo).toEqual(['ruleset-2', 'regenerate']);
   });
 
-  it('declares every screenshot\'s size, loads it lazily and describes it', async () => {
-    await open('/merge-queue/setup');
+  describe('screenshots', () => {
+    // The page reads MERGE_QUEUE_SETUP_SCREENSHOTS when it renders, so each case sets the URLs it needs there and the
+    // committed ones come back afterwards: no case depends on which screenshots have been uploaded so far.
+    const names = Object.keys(MERGE_QUEUE_SETUP_SCREENSHOTS) as MergeQueueSetupScreenshot[];
+    const committed = { ...MERGE_QUEUE_SETUP_SCREENSHOTS };
+    afterEach(() => { Object.assign(MERGE_QUEUE_SETUP_SCREENSHOTS, committed); });
 
-    const images = all<HTMLImageElement>('figure img');
-    expect(images).toHaveLength(9);
-    for (const image of images) {
-      expect(image.getAttribute('loading')).toBe('lazy');
-      expect(image.getAttribute('width')).toBe('1280');
-      expect(image.getAttribute('height')).toBe('720');
-      expect(image.getAttribute('src')).toMatch(/^merge-queue-setup\/[a-z0-9-]+\.png$/);
-      expect(image.alt.length).toBeGreaterThan(40);
-    }
-    expect(new Set(images.map(image => image.alt)).size).toBe(images.length);
-    expect(new Set(images.map(image => image.getAttribute('src'))).size).toBe(images.length);
-  });
+    /** A stand-in for the address GitHub gives an uploaded image, one per screenshot. */
+    const attachmentUrl = (name: MergeQueueSetupScreenshot) =>
+      `https://github.com/user-attachments/assets/00000000-0000-4000-8000-${String(names.indexOf(name)).padStart(12, '0')}`;
+    const setUrls = (url: (name: MergeQueueSetupScreenshot) => string | undefined) =>
+      names.forEach(name => { MERGE_QUEUE_SETUP_SCREENSHOTS[name] = url(name); });
+    const figures = () => all<HTMLElement>('figure[data-shot]');
+    const shotName = (figure: Element) => figure.getAttribute('data-shot') as MergeQueueSetupScreenshot;
 
-  it('shows a "Screenshot pending" box with the same description for an image that fails to load', async () => {
-    await open('/merge-queue/setup');
-    const figure = el().querySelector('[data-shot="ruleset-1-bypass.png"]')!;
-    const alt = figure.querySelector('img')!.alt;
+    it('shows each one once, and a "Screenshot pending" box, without requesting anything, for those without a URL', async () => {
+      setUrls(() => undefined);
+      await open('/merge-queue/setup');
 
-    figure.querySelector('img')!.dispatchEvent(new Event('error'));
-    await settle(harness.fixture);
+      expect(figures().map(shotName).sort()).toEqual([...names].sort());
+      expect(all('img')).toHaveLength(0);
+      for (const figure of figures()) {
+        const pending = figure.querySelector('[data-shot-pending]')!;
+        expect(pending.classList).toContain('shot-pending');
+        expect(pending.getAttribute('role')).toBe('img');
+        expect(pending.getAttribute('aria-label')!.length).toBeGreaterThan(40);
+        expect(pending.textContent).toContain('Screenshot pending');
+        expect(figure.querySelector('figcaption')?.textContent?.trim()).not.toBe('');
+      }
+      const descriptions = figures().map(figure => figure.querySelector('[data-shot-pending]')!.getAttribute('aria-label'));
+      expect(new Set(descriptions).size).toBe(names.length);
+    });
 
-    const pending = figure.querySelector('[data-shot-pending]')!;
-    expect(figure.querySelector('img')).toBeNull();
-    expect(pending.classList).toContain('shot-pending');
-    expect(pending.getAttribute('role')).toBe('img');
-    expect(pending.getAttribute('aria-label')).toBe(alt);
-    expect(pending.textContent).toContain('Screenshot pending');
-    expect(figure.querySelector('figcaption')?.textContent).toContain('Ruleset 1');
-    // Only that one: the others still load.
-    expect(all('figure img')).toHaveLength(8);
+    it('loads one with a URL from that URL, lazily, at its declared size and with its description', async () => {
+      setUrls(attachmentUrl);
+      await open('/merge-queue/setup');
+
+      expect(figures()).toHaveLength(names.length);
+      for (const figure of figures()) {
+        const image = figure.querySelector('img')!;
+        expect(image.getAttribute('src')).toBe(attachmentUrl(shotName(figure)));
+        expect(image.getAttribute('loading')).toBe('lazy');
+        expect(image.getAttribute('width')).toBe('1280');
+        expect(image.getAttribute('height')).toBe('720');
+        expect(image.alt.length).toBeGreaterThan(40);
+        expect(figure.querySelector('[data-shot-pending]')).toBeNull();
+      }
+      expect(new Set(figures().map(figure => figure.querySelector('img')!.alt)).size).toBe(names.length);
+    });
+
+    it('shows the "Screenshot pending" box, with the same description, for an image that fails to load', async () => {
+      setUrls(attachmentUrl);
+      await open('/merge-queue/setup');
+      const figure = el().querySelector('[data-shot="ruleset-1-bypass"]')!;
+      const alt = figure.querySelector('img')!.alt;
+
+      figure.querySelector('img')!.dispatchEvent(new Event('error'));
+      await settle(harness.fixture);
+
+      const pending = figure.querySelector('[data-shot-pending]')!;
+      expect(figure.querySelector('img')).toBeNull();
+      expect(pending.classList).toContain('shot-pending');
+      expect(pending.getAttribute('role')).toBe('img');
+      expect(pending.getAttribute('aria-label')).toBe(alt);
+      expect(pending.textContent).toContain('Screenshot pending');
+      expect(figure.querySelector('figcaption')?.textContent).toContain('Ruleset 1');
+      // Only that one: the others still load.
+      expect(all('figure img')).toHaveLength(names.length - 1);
+    });
+
+    // The address a rendered attachment is served from can carry a token that expires; only this form lasts.
+    it('holds every committed URL to the form GitHub gives an attachment', () => {
+      const attachment = /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      expect(attachmentUrl('ruleset-1-bypass')).toMatch(attachment);
+      expect('https://private-user-images.githubusercontent.com/1/2-3.png?jwt=x').not.toMatch(attachment);
+
+      for (const name of names) {
+        if (committed[name] !== undefined) expect(committed[name], name).toMatch(attachment);
+      }
+    });
   });
 
   it('shows the coverage.yml section and a regenerate workflow that keeps the rules the queue relies on', async () => {
