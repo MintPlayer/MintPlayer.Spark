@@ -1,11 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
+import { ChipComponent } from '../components/chip/chip.component';
 
 /**
  * Spark column renderer "connected": whether the account has a working connection to its forge,
- * as the translated green/grey badge the hand-written list drew.
+ * as a translated green/grey chip, where the hand-written list drew a badge.
  *
  * ⚠ The question is deliberately "connected", not "is the GitHub App installed". Only GitHub
  * has an App to install; GitLab and Bitbucket answer the connection question differently. What
@@ -18,12 +18,12 @@ import type { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderer
  */
 @Component({
   selector: 'app-connected-renderer',
-  imports: [BsBadgeComponent, TranslateKeyPipe],
+  imports: [ChipComponent, TranslateKeyPipe],
   template: `
     @if (connected()) {
-      <bs-badge class="text-bg-success text-nowrap">{{ 'app.connected' | t }}</bs-badge>
+      <app-chip color="success">{{ 'app.connected' | t }}</app-chip>
     } @else {
-      <bs-badge class="text-bg-secondary text-nowrap">{{ 'app.notConnected' | t }}</bs-badge>
+      <app-chip color="secondary">{{ 'app.notConnected' | t }}</app-chip>
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush

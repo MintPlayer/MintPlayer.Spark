@@ -187,7 +187,7 @@ describe('RepoNameRendererComponent', () => {
     for (const item of [row({ IsPrivate: true }), row({ IsPrivate: false }), undefined]) {
       const fixture = render(RepoNameRendererComponent, { value: 'widgets', item });
       expect(el(fixture).textContent!.trim()).toBe('widgets');
-      expect(el(fixture).querySelector('bs-badge, i')).toBeNull();
+      expect(el(fixture).querySelector('app-chip, bs-badge, i')).toBeNull();
     }
   });
 });

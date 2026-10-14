@@ -8,6 +8,7 @@ import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mi
 import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { AccountPermissionsNoticeComponent } from '../../components/account-permissions-notice/account-permissions-notice.component';
+import { ChipComponent } from '../../components/chip/chip.component';
 import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupAttachment, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
 import { COVERAGE_YML, CREATE_LABEL, CREATE_RULESETS, PUSH_TRIGGER, REGENERATE_WORKFLOW, RULESET_1, RULESET_2 } from './merge-queue-setup.snippets';
 
@@ -47,7 +48,7 @@ interface Screenshot {
   selector: 'app-merge-queue-setup',
   imports: [
     NgTemplateOutlet, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent,
-    BsCodeSnippetComponent, BsTableComponent, AccountPermissionsNoticeComponent,
+    BsCodeSnippetComponent, BsTableComponent, AccountPermissionsNoticeComponent, ChipComponent,
   ],
   templateUrl: './merge-queue-setup.component.html',
   styleUrl: './merge-queue-setup.component.scss',

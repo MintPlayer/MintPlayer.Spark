@@ -317,7 +317,7 @@ describe('CommitFilesPanelComponent', () => {
       expect(summary.textContent).toContain('2 changed file(s) measured by nobody');
       expect(summary.textContent).toContain('2 builds');
       expect(summary.textContent).toContain('(affected)');
-      expect(summary.querySelector('.text-bg-warning')).not.toBeNull();
+      expect(summary.querySelector('app-chip')?.classList.contains('bg-warning-subtle')).toBe(true);
 
       (summary.querySelector('a') as HTMLElement).click();
       expect(navigate).toHaveBeenCalledWith(['/', 'github', 'r', 'acme', 'widgets', 'c', 'bbbbbbbbbb']);

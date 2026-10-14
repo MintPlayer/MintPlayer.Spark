@@ -7,6 +7,7 @@ import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mi
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import type cytoscape from 'cytoscape';
 import { BrowseService, DependencyEcosystem, DependencyGraph, DependencyGraphPackage } from '../../services/browse.service';
+import { ChipComponent } from '../chip/chip.component';
 import { ECOSYSTEM_COLORS, ECOSYSTEMS, edgeId, GraphElements, toElements } from './dependency-graph';
 
 type Cytoscape = typeof cytoscape;
@@ -144,7 +145,7 @@ interface SelectedEdge {
  */
 @Component({
   selector: 'app-account-dependency-graph-panel',
-  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsCheckboxComponent],
+  imports: [BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsCheckboxComponent, ChipComponent],
   template: `
     @if (state() === 'pending' || state() === 'empty') {
       <bs-card class="mt-3 d-block">
@@ -205,9 +206,11 @@ interface SelectedEdge {
               <ul class="list-unstyled mb-0">
                 @for (pkg of edge.packages; track $index) {
                   <li class="d-flex flex-wrap align-items-baseline gap-2 py-1 border-bottom">
-                    <span class="badge" [style.background-color]="colorOf(pkg.ecosystem)">{{ pkg.ecosystem }}</span>
+                    <app-chip color="secondary">
+                      <span class="swatch me-1 align-middle" [style.background]="colorOf(pkg.ecosystem)"></span>{{ pkg.ecosystem }}
+                    </app-chip>
                     <code>{{ pkg.name }}</code>
-                    @if (pkg.dev) { <span class="badge text-bg-secondary">dev</span> }
+                    @if (pkg.dev) { <app-chip color="secondary">dev</app-chip> }
                     <span class="small text-muted text-break">{{ pkg.manifestPath }}</span>
                   </li>
                 }
@@ -218,16 +221,7 @@ interface SelectedEdge {
       </bs-card>
     }
   `,
-  styles: `
-    .graph {
-      height: 420px;
-      width: 100%;
-      border: 1px solid var(--bs-border-color);
-      border-radius: var(--bs-border-radius);
-      background: var(--bs-body-bg);
-    }
-    .swatch { display: inline-block; width: 1.25rem; height: 3px; border-radius: 2px; }
-  `,
+  styleUrl: './account-dependency-graph-panel.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class AccountDependencyGraphPanelComponent {

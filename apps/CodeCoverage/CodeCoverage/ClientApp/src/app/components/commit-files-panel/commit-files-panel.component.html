@@ -6,7 +6,7 @@
          measures a subset; the rest is carried from the base when the file's
          git blob is unchanged, so the headline is still whole-workspace. -->
     <div class="px-3 pt-3 small" data-testid="assembly-summary">
-      <span class="badge me-2" [class.text-bg-success]="a.completeness === 'Complete'" [class.text-bg-warning]="a.completeness !== 'Complete'">{{ a.completeness }}</span>
+      <app-chip class="me-2" [color]="a.completeness === 'Complete' ? 'success' : 'warning'">{{ a.completeness }}</app-chip>
       <span>
         {{ a.measuredFiles }} file(s) measured on this commit
         @if (a.carriedFiles > 0) {

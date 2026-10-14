@@ -19,7 +19,7 @@
   @for (step of steps; track step.id; let n = $index) {
     <bs-card class="d-block mb-4" [attr.id]="step.id" [attr.data-step]="step.id">
       <bs-card-header>
-        <h2 class="h5 mb-0"><span class="badge text-bg-primary me-2">{{ n + 1 }}</span>{{ step.title }}</h2>
+        <h2 class="h5 mb-0"><app-chip class="me-2" color="primary">{{ n + 1 }}</app-chip>{{ step.title }}</h2>
       </bs-card-header>
       <bs-card-body>
         @switch (step.id) {
@@ -38,7 +38,7 @@
                   <tr>
                     <td class="text-nowrap">
                       {{ permission.name }}
-                      @if (permission.isNew) { <span class="badge text-bg-info ms-1">new</span> }
+                      @if (permission.isNew) { <app-chip class="ms-1" color="info">new</app-chip> }
                     </td>
                     <td class="text-nowrap">{{ permission.access }}</td>
                     <td>{{ permission.use }}</td>

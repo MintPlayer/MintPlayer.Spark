@@ -10,6 +10,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsHierarchyChartComponent, type HierarchyNodeEventDetail } from '@mintplayer/ng-bootstrap/charts/hierarchy';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BrowseService, CommitAssemblyInfo, CoverageHierarchyNode, CoverageSummary, TreeResponse } from '../../services/browse.service';
+import { ChipComponent } from '../chip/chip.component';
 import { CoverageBarComponent } from '../coverage-bar/coverage-bar.component';
 
 /**
@@ -19,7 +20,7 @@ import { CoverageBarComponent } from '../coverage-bar/coverage-bar.component';
  */
 @Component({
   selector: 'app-commit-files-panel',
-  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent, BsAlertComponent, BsBreadcrumbComponent, BsBreadcrumbItemComponent, BsHierarchyChartComponent, BsTableComponent, CoverageBarComponent],
+  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent, BsAlertComponent, BsBreadcrumbComponent, BsBreadcrumbItemComponent, BsHierarchyChartComponent, BsTableComponent, ChipComponent, CoverageBarComponent],
   templateUrl: './commit-files-panel.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })

@@ -92,22 +92,19 @@ describe('RepoMergeQueuePanelComponent', () => {
     expect(q('[data-testid="mq-hint"]')).toBeNull();
   });
 
-  // A state must read in both themes (merge-queue PRD §0 D75). ng-bootstrap's card injects its own .text-bg-* rules into
-  // <head>, written as RGBA(#0dcaf0, var(--bs-bg-opacity, 1)): no colour once var() resolves, and as the later rule it still
-  // wins, so the background computes to transparent and "publishing" was black text on the dark card in dark mode. The
-  // *-subtle backgrounds with *-emphasis text are Bootstrap's own pairs for both themes, and nothing redefines them.
-  it('shows each state as a subtle background with emphasis text, never a text-bg utility', async () => {
+  // A state must read in both themes (merge-queue PRD §0 D75, D84). Each is the app's chip: Bootstrap's subtle background
+  // with its emphasis text, at least 7.15:1 in both themes, where a solid text-bg-* badge with white text gets 4.5:1.
+  it('shows each state as a chip, a subtle background with emphasis text', async () => {
     const view = busy(anonymous);
     await create(() => Promise.resolve({ ...view, lanes: [{ ...view.lanes[0], paused: true }] }));
 
-    expect(el().querySelectorAll('[class*="text-bg-"]')).toHaveLength(0);
     const states = [...el().querySelectorAll('[data-testid="mq-state"]')]
-      .map(s => [s.textContent?.trim(), [...s.classList].filter(c => c !== 'mq-state' && c !== 'ms-1').sort().join(' ')]);
+      .map(s => [s.tagName, s.textContent?.trim(), [...s.classList].filter(c => c !== 'ms-1').sort().join(' ')]);
     expect(states).toEqual([
-      ['paused', 'bg-secondary-subtle border border-secondary-subtle text-secondary-emphasis'],
-      ['regenerating', 'bg-info-subtle border border-info-subtle text-info-emphasis'],
-      ['evicted', 'bg-danger-subtle border border-danger-subtle text-danger-emphasis'],
-      ['merged', 'bg-success-subtle border border-success-subtle text-success-emphasis'],
+      ['APP-CHIP', 'paused', 'bg-secondary-subtle border border-secondary-subtle text-secondary-emphasis'],
+      ['APP-CHIP', 'regenerating', 'bg-info-subtle border border-info-subtle text-info-emphasis'],
+      ['APP-CHIP', 'evicted', 'bg-danger-subtle border border-danger-subtle text-danger-emphasis'],
+      ['APP-CHIP', 'merged', 'bg-success-subtle border border-success-subtle text-success-emphasis'],
     ]);
   });
 
