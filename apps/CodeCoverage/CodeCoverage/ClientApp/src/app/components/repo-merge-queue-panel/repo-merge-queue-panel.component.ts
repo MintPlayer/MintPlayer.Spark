@@ -138,7 +138,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
                       <tr>
                         <td><strong>#{{ o.number }}</strong> {{ o.title }}</td>
                         <td><span [class]="badge(o.state)" data-testid="mq-state">{{ label(o.state) }}</span></td>
-                        <td class="small">
+                        <td class="small mq-why">
                           @if (o.reason) { <code>{{ o.reason }}</code> }
                           @if (o.message) { <div class="text-muted">{{ o.message }}</div> }
                         </td>
@@ -196,19 +196,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
       </bs-card>
     }
   `,
-  styles: [`
-    .mq-number { width: 9rem; }
-    .mq-state {
-      display: inline-block;
-      padding: 0.35em 0.65em;
-      font-size: 0.75em;
-      font-weight: 600;
-      line-height: 1;
-      white-space: nowrap;
-      vertical-align: baseline;
-      border-radius: var(--bs-border-radius-pill);
-    }
-  `],
+  styleUrl: './repo-merge-queue-panel.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class RepoMergeQueuePanelComponent {

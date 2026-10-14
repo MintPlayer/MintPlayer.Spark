@@ -525,7 +525,7 @@ the check gate) do not run.
 The panel shows each base branch's lane: the pull request the queue is working on and the waiting ones, then the latest
 outcomes and the configuration the run read (D55).
 
-![The merge-queue panel of a CodeCoverage repository page: the main branch's lane with the pull request being published and two waiting ones, each with Dequeue, the latest outcomes, the effective configuration and the Queue button](https://github.com/user-attachments/assets/d8ddd90f-209c-4079-b95f-f06ffc245552)
+![The merge-queue panel of a CodeCoverage repository page: the main branch's lane between runs ("Nothing is running on main"), the latest outcomes (merged pull requests, and one evicted for a conflict outside the allow-list with its reason), the effective configuration and the Queue button](https://github.com/user-attachments/assets/26145ce9-09a6-4b49-95e0-82423f83c0a3)
 
 ### 4.2 Who may
 

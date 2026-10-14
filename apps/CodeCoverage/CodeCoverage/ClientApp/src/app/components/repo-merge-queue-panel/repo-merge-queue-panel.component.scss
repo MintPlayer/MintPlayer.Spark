@@ -1,0 +1,22 @@
+.mq-number {
+  width: 9rem;
+}
+
+// An eviction's reason is a sentence or two: let it wrap so the "When" column stays in view, instead of inheriting the
+// responsive table's nowrap and scrolling the whole table sideways.
+.mq-why {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 14rem;
+}
+
+.mq-state {
+  display: inline-block;
+  padding: 0.35em 0.65em;
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: var(--bs-border-radius-pill);
+}
