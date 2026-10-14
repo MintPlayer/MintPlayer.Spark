@@ -96,6 +96,55 @@ public class MergeQueueYmlTests
     public void Invalid_values_are_errors_not_exceptions(string line)
         => MergeQueueYml.Parse($"mergeQueue:\n  enabled: true\n  {line}\n", "main").Errors.Should().NotBeEmpty();
 
+    /// <summary>
+    /// §0 D57: everything the parser lets through reaches the git writer, which refuses what breaks its rules. Each of these
+    /// passed the parser before and then failed every writer request of every pull request, retried as transient.
+    /// </summary>
+    public static TheoryData<string, string> ValuesTheWriterRefuses()
+    {
+        var many = string.Join(", ", Enumerable.Range(1, 65).Select(i => $"\"p{i}/*.json\""));
+        var manyRules = string.Concat(Enumerable.Range(1, 65).Select(i => $"\n    - path: \"p{i}/x.json\""));
+        var manyKeys = string.Join(", ", Enumerable.Range(1, 65).Select(i => $"k{i}"));
+        return new()
+        {
+            { "branches: [\"release candidate\"]", "branches" },
+            { "branches: [\"-delete\"]", "branches" },
+            { "branches: [\"a..b\"]", "branches" },
+            { "branches: [\"x.lock\"]", "branches" },
+            { "branches: [\"über\"]", "branches" },
+            { "branches: [\".hidden\"]", "branches" },
+            // Valid by itself, but its queue branch mq/<base>/pr-<n> would pass the writer's 200-character limit.
+            { $"branches: [\"{new string('b', 190)}\"]", "branches" },
+            { "regeneratedPaths: [\"/App_Data/x.json\"]", "regeneratedPaths" },
+            { "regeneratedPaths: [\"App_Data\\\\x.json\"]", "regeneratedPaths" },
+            { $"regeneratedPaths: [\"{new string('a', 257)}\"]", "regeneratedPaths" },
+            { $"regeneratedPaths: [{many}]", "regeneratedPaths" },
+            { $"autoResolve:{manyRules}", "autoResolve" },
+            { "autoResolve:\n    - path: \"/x.json\"", "autoResolve" },
+            { $"autoResolve:\n    - path: \"x.json\"\n      keys: [{manyKeys}]", "autoResolve" },
+            { $"autoResolve:\n    - path: \"x.json\"\n      keys: [{new string('k', 257)}]", "autoResolve" },
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(ValuesTheWriterRefuses))]
+    public void A_value_the_git_writer_would_refuse_is_a_configuration_error(string line, string key)
+    {
+        var paths = key == "regeneratedPaths" ? string.Empty : "regeneratedPaths: [\"**/modelHashes.json\"]";
+        var yml = $"""
+            mergeQueue:
+              enabled: true
+              postRebaseActionName: regenerate.yml
+              {paths}
+              {line}
+            """;
+
+        var parsed = MergeQueueYml.Parse(yml, "main");
+
+        parsed.Errors.Should().Contain(e => e.Contains($"mergeQueue.{key}"), yml);
+        parsed.IsUsable.Should().BeFalse();
+    }
+
     [Fact]
     public void Unreadable_yaml_is_an_error()
         => MergeQueueYml.Parse("mergeQueue: [unclosed", "main").Errors.Should().ContainSingle();

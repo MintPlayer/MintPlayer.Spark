@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CodeCoverage.Entities;
+using CodeCoverage.Git.MergeQueue;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -18,6 +19,10 @@ namespace CodeCoverage.MergeQueue;
 /// <b>Errors are returned, never thrown</b>, like <c>CoverageYml</c>'s gate (<c>PublishFeedbackRecipient</c>'s
 /// <c>ymlError</c>): a broken section refuses the enqueue and the queue's check run says why. Unknown keys are ignored,
 /// so a newer file does not break an older server; every documented key is validated.
+/// </para>
+/// <para>
+/// Values that reach the git writer (branches, <c>regeneratedPaths</c>, <c>autoResolve</c>) are held to the writer's own
+/// rules, <see cref="MergeQueueWireRules"/> (§0 D57): whatever parses here, the writer accepts.
 /// </para>
 /// <code>
 /// mergeQueue:
@@ -77,6 +82,12 @@ public static partial class MergeQueueYml
         if (branches.Any(b => b.Length == 0)) errors.Add("mergeQueue.branches holds an empty name.");
         section.Branches = file.Branches is null ? [defaultBranch] : [.. branches.Where(b => b.Length > 0).Distinct(StringComparer.Ordinal)];
         if (section.Branches.Count == 0) errors.Add("mergeQueue.branches is empty, so no pull request can be queued.");
+        // §0 D57: every value below reaches the git writer, so it is held to the writer's own rules here, where the error
+        // can be read, instead of being refused on every request of every pull request.
+        foreach (var branch in section.Branches.Where(b => !MergeQueueWireRules.IsQueueableBase(b)))
+            errors.Add(MergeQueueWireRules.IsBranch(branch)
+                ? $"mergeQueue.branches '{branch}' is too long: its queue branch mq/{branch}/pr-<number> must stay within {MergeQueueWireRules.MaxBranchLength} characters."
+                : $"mergeQueue.branches '{branch}' is not a branch name the queue's git writer accepts: {MergeQueueWireRules.BranchRule}.");
         Value("branches", string.Join(", ", section.Branches), file.Branches is not null);
 
         if (file.MergeMethod is not null && file.MergeMethod != "squash")
@@ -113,8 +124,14 @@ public static partial class MergeQueueYml
         section.RegeneratedPaths = [.. (file.RegeneratedPaths ?? []).Select(p => p?.Trim() ?? string.Empty)];
         if (section.RegeneratedPaths.Any(p => p.Length == 0)) errors.Add("mergeQueue.regeneratedPaths holds an empty pattern.");
         section.RegeneratedPaths.RemoveAll(p => p.Length == 0);
+        if (section.RegeneratedPaths.Count > MergeQueueWireRules.MaxGlobs)
+            errors.Add($"mergeQueue.regeneratedPaths holds {section.RegeneratedPaths.Count} patterns; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
+        foreach (var path in section.RegeneratedPaths.Where(p => !MergeQueueWireRules.IsGlob(p)))
+            errors.Add($"mergeQueue.regeneratedPaths '{path}' is not a path glob the queue's git writer accepts: {MergeQueueWireRules.GlobRule}.");
         Value("regeneratedPaths", section.RegeneratedPaths.Count == 0 ? "(none)" : string.Join(", ", section.RegeneratedPaths), file.RegeneratedPaths is not null);
 
+        if (file.AutoResolve is { Count: > MergeQueueWireRules.MaxGlobs } tooMany)
+            errors.Add($"mergeQueue.autoResolve holds {tooMany.Count} entries; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
         foreach (var rule in file.AutoResolve ?? [])
         {
             var path = rule?.Path?.Trim();
@@ -123,17 +140,23 @@ public static partial class MergeQueueYml
                 errors.Add("mergeQueue.autoResolve has an entry without a path.");
                 continue;
             }
+            if (!MergeQueueWireRules.IsGlob(path))
+            {
+                errors.Add($"mergeQueue.autoResolve '{path}' is not a path glob the queue's git writer accepts: {MergeQueueWireRules.GlobRule}.");
+                continue;
+            }
             // O1: json-union is dropped; anything a person writes is never merged by the bot.
             if (rule!.Strategy is not (null or "take-base"))
             {
                 errors.Add($"mergeQueue.autoResolve '{path}': strategy '{rule.Strategy}' is not supported; only take-base is (a conflict anywhere else evicts).");
                 continue;
             }
-            section.AutoResolve.Add(new MergeQueueAutoResolveRule
-            {
-                Path = path,
-                Keys = [.. (rule.Keys ?? []).Select(k => k?.Trim() ?? string.Empty).Where(k => k.Length > 0).Distinct(StringComparer.Ordinal)],
-            });
+            List<string> keys = [.. (rule.Keys ?? []).Select(k => k?.Trim() ?? string.Empty).Where(k => k.Length > 0).Distinct(StringComparer.Ordinal)];
+            if (keys.Count > MergeQueueWireRules.MaxGlobs)
+                errors.Add($"mergeQueue.autoResolve '{path}' lists {keys.Count} keys; the queue's git writer takes at most {MergeQueueWireRules.MaxGlobs}.");
+            else if (keys.Any(k => !MergeQueueWireRules.IsKey(k)))
+                errors.Add($"mergeQueue.autoResolve '{path}' has a key the queue's git writer does not accept: {MergeQueueWireRules.KeyRule}.");
+            section.AutoResolve.Add(new MergeQueueAutoResolveRule { Path = path, Keys = keys });
         }
         Value("autoResolve", section.AutoResolve.Count == 0
             ? "(none: every conflict evicts)"

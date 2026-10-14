@@ -90,7 +90,7 @@ public abstract class WriterTestBase : IAsyncLifetime
     protected static object Credential(string password) => new { username = "x-access-token", password };
 
     internal static object PrepareRequest(Origin origin, string headSha, string? expectedQueueSha = null, string? baseSha = null,
-        object? autoResolve = null, string? password = null)
+        object? autoResolve = null, string? password = null, bool allowWorkflowChanges = false)
         => new
         {
             provider = "github",
@@ -107,6 +107,7 @@ public abstract class WriterTestBase : IAsyncLifetime
             author = new { name = "Pull Request Author", email = "author@example.invalid", date = AuthorDate },
             committer = new { name = "coverage-bot", email = "bot@example.invalid" },
             message = "Add Order (#1)\n\nCo-authored-by: Someone <someone@example.invalid>\n",
+            allowWorkflowChanges,
         };
 
     internal static object PublishRequest(Origin origin, string preparedSha, string expectedPrHeadSha, string? patch = null, string[]? regeneratedPaths = null,

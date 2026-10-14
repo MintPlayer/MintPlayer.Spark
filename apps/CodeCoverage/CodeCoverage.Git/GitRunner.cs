@@ -62,9 +62,10 @@ public sealed record GitIdentity
 {
     public GitIdentity(string name, string email, DateTimeOffset? when = null)
     {
-        if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(['<', '>', '\n', '\r', '\0']) >= 0)
+        // The same rules the app holds a Co-authored-by trailer to (MergeQueueWireRules, merge-queue PRD §0 D57, D60).
+        if (!MergeQueue.MergeQueueWireRules.IsIdentityName(name))
             throw new ArgumentException("A git identity name may not be empty or contain '<', '>' or a line break.", nameof(name));
-        if (string.IsNullOrWhiteSpace(email) || email.IndexOfAny(['<', '>', '\n', '\r', '\0', ' ']) >= 0)
+        if (!MergeQueue.MergeQueueWireRules.IsIdentityEmail(email))
             throw new ArgumentException("A git identity email may not be empty or contain '<', '>', a space or a line break.", nameof(email));
         Name = name;
         Email = email;

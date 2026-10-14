@@ -9,7 +9,8 @@ namespace CodeCoverage.GitWriter.Jobs;
 /// <summary>A validated prepare request.</summary>
 public sealed record PrepareJob(
     string Repo, Uri CloneUrl, GitCredential Credential, string BaseBranch, string? BaseSha, string HeadRef, string HeadSha,
-    string QueueBranch, string? ExpectedQueueSha, IReadOnlyList<AutoResolveRule> Rules, GitIdentity Author, GitIdentity Committer, string Message);
+    string QueueBranch, string? ExpectedQueueSha, IReadOnlyList<AutoResolveRule> Rules, GitIdentity Author, GitIdentity Committer, string Message,
+    bool AllowWorkflowChanges = false);
 
 /// <summary>A validated publish request; <see cref="Patch"/> is empty when the regenerate step changed nothing.</summary>
 public sealed record PublishJob(
@@ -50,12 +51,23 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         if (headSha != job.HeadSha)
             return Answer(JobOutcomes.HeadMismatch, baseSha: baseSha, headSha: headSha, detail: $"{job.HeadRef} is at {headSha}, not the pinned {job.HeadSha} (T3).");
 
-        // D12: a dispatched run uses the workflow files of the mq/ ref, so a pull request that changes .github/** never
-        // reaches the regenerate step, whatever the conflict situation.
+        // D12, §0 D63: a change under .github/** stops here, before anything is pushed, unless the saga allowed it (a
+        // same-repository pull request). Pushing it to mq/ would already start the base repository's push workflows from
+        // the pull request's own workflow files; whether a dispatch would run them too is the saga's call (O21 A).
         var workflows = (await NetChangeAsync(context, baseSha, headSha)).Where(TouchesWorkflows).ToList();
-        if (workflows.Count > 0)
+        if (workflows.Count > 0 && !job.AllowWorkflowChanges)
             return Answer(JobOutcomes.Evicted, JobReasons.TouchesWorkflows, baseSha, headSha, paths: workflows,
-                detail: "The pull request changes .github/**; the queue never runs a workflow a pull request has changed (D12).");
+                detail: "The pull request changes .github/**, and the queue may not push that to a branch of this repository: the push would start "
+                        + "the repository's push workflows from the pull request's own workflow files, with its secrets (D12, §0 D63).");
+        // §0 D59: a fork that has only the head lacks the base's newer workflow files; publishing to it needs the
+        // forge's workflow permission then, and only then.
+        var baseChangedWorkflows = await WorkflowsTreeAsync(context, baseSha) != await WorkflowsTreeAsync(context, headSha);
+        PrepareResponse Prepared(string sha, IReadOnlyList<string> resolved, string? reason = null, string? detail = null)
+            => Answer(JobOutcomes.Prepared, reason, baseSha, headSha, sha, resolved, workflows, detail) with
+            {
+                TouchesWorkflows = workflows.Count > 0,
+                BaseChangedWorkflows = baseChangedWorkflows,
+            };
 
         var resolver = new MergeQueueResolver(git) { Timeout = context.Remaining, ScratchDirectory = context.Scratch, Config = JobContext.WriterConfig };
         var merged = await resolver.MergeAsync(context.GitDirectory, baseSha, headSha, job.Rules, context.Deadline, job.Credential);
@@ -73,13 +85,12 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         switch (await PushAsync(context, job.CloneUrl, job.Credential, commit, $"refs/heads/{job.QueueBranch}", job.ExpectedQueueSha))
         {
             case Push.Done:
-                return Answer(JobOutcomes.Prepared, baseSha: baseSha, headSha: headSha, prepared: commit, resolved: resolvedPaths);
+                return Prepared(commit, resolvedPaths);
             case Push.LeaseRejected:
                 // §0 D52: an earlier attempt's push may have landed without the saga learning of it.
                 if (await FetchTipAsync(context, "origin", job.Credential, job.QueueBranch) is { } tip
                     && await IsOwnCommitAsync(context, tip, commit, job.Author, job.Committer))
-                    return Answer(JobOutcomes.Prepared, JobReasons.AlreadyPushed, baseSha, headSha, tip, resolvedPaths,
-                        detail: $"{job.QueueBranch} already holds this job's commit {tip}, pushed by an earlier attempt.");
+                    return Prepared(tip, resolvedPaths, JobReasons.AlreadyPushed, $"{job.QueueBranch} already holds this job's commit {tip}, pushed by an earlier attempt.");
                 return Answer(JobOutcomes.QueueBranchMoved, baseSha: baseSha, headSha: headSha, detail: $"{job.QueueBranch} is not where the lease expected it.");
             case Push.Rejected rejected:
                 return Answer(JobOutcomes.PushRejected, baseSha: baseSha, headSha: headSha, detail: rejected.Detail);
@@ -279,6 +290,14 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
 
     /// <summary>D12, case-insensitively: a file system that folds case would treat <c>.GitHub</c> as <c>.github</c>.</summary>
     internal static bool TouchesWorkflows(string path) => path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The tree id of <c>.github/workflows</c> at <paramref name="commit"/>, or empty when it has none (§0 D59).
+    /// Trees are in the blob-less clone, so this fetches nothing.</summary>
+    private static async Task<string> WorkflowsTreeAsync(JobContext context, string commit)
+    {
+        var tree = await context.GitAsync(["rev-parse", "--verify", "--quiet", "--end-of-options", $"{commit}:.github/workflows"], null);
+        return tree.Succeeded ? tree.StandardOutput.Trim() : string.Empty;
+    }
 
     /// <summary>The validated patch applied to the prepared tree in a throwaway index (<c>git apply --cached</c> works in
     /// a bare repository; blobs the patch needs are fetched lazily). Returns the new tree's id, or the rejection.</summary>

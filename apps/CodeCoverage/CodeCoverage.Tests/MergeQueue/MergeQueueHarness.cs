@@ -125,8 +125,11 @@ internal sealed class MergeQueueHarness
 
     public List<IForgeInstallationPermissions> Permissions { get; } = [];
 
+    /// <summary>When set, the saga talks to this writer instead of <see cref="Writer"/> (e.g. the real client over a stub).</summary>
+    public IGitWriterSidecar? WriterOverride { get; set; }
+
     private MergeQueueEngine Engine(Raven.Client.Documents.Session.IAsyncDocumentSession session)
-        => new(session, Forge, [Queue], Permissions, Writer, Outbox, TimeProvider.System,
+        => new(session, Forge, [Queue], Permissions, WriterOverride ?? Writer, Outbox, TimeProvider.System,
             Options.Create(new MergeQueueOptions { GitWriterUrl = "http://writer" }),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example" }).Build(),
             NullLogger<MergeQueueEngine>.Instance);

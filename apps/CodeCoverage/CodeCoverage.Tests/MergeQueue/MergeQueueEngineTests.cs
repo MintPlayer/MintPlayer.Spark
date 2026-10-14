@@ -2,6 +2,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.MergeQueue;
+using CodeCoverage.Tests.Services;
 using Xunit;
 using static CodeCoverage.Tests.MergeQueue.MergeQueueHarness;
 
@@ -997,6 +998,165 @@ public class MergeQueueEngineTests : CoverageRavenTest
 
         await h.ReleaseAsync(EMergeQueueStep.Merge);
         (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+    }
+
+    /// <summary>
+    /// §0 D58: <c>MaxTransientRetries</c> retries follow the first failure, so the seventh failure in a row evicts, and the
+    /// message says seven. It said "after 6 failed attempts" on the seventh.
+    /// </summary>
+    [Fact]
+    public async Task Seven_transient_failures_in_a_row_evict_and_the_message_counts_them()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.MergeThrows = new ForgeRequestException("GitHub answered 502", 502);
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        for (var retry = 1; retry <= MergeQueueEngine.MaxTransientRetries; retry++)
+        {
+            (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merging, $"failure {retry} is retried");
+            h.Queue.MergeThrows = new ForgeRequestException("GitHub answered 502", 502);
+            await h.ReleaseAsync(EMergeQueueStep.Merge);
+        }
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("error");
+        entry.EvictionMessage.Should().Contain("7 failed attempts");
+        h.Queue.MergeRequests.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// §0 D57: a request the git writer refuses is refused again on every retry, so it ends the entry at once, with the
+    /// writer's reason. Before, the 400 was a transient <see cref="HttpRequestException"/>: six retries, then <c>error</c>.
+    /// </summary>
+    [Fact]
+    public async Task A_request_the_writer_refuses_evicts_at_once_with_its_reason()
+    {
+        var h = await HarnessAsync();
+        var writer = new StubHttpMessageHandler((_, _) => StubHttpMessageHandler.Json(System.Net.HttpStatusCode.BadRequest,
+            """{"outcome":"refused","field":"regeneratedPaths","detail":"0 to 64 globs, each 1 to 256 characters"}"""));
+        h.WriterOverride = new GitWriterSidecarClient(new HttpClient(writer) { BaseAddress = new Uri("http://writer/") },
+            Microsoft.Extensions.Options.Options.Create(new MergeQueueOptions()));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted, "the same request would be refused every time");
+        entry.EvictionReason.Should().Be("writer-refused");
+        entry.EvictionMessage.Should().Contain("regeneratedPaths");
+        writer.Requests.Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// §0 D57: GitHub allows branch names the git writer does not push to (a '+', for one). Publish would be refused on every
+    /// attempt, so a pull request that needs a rebase from such a branch is told so before the writer is asked anything.
+    /// </summary>
+    [Fact]
+    public async Task A_branch_name_the_writer_does_not_push_to_evicts_before_the_writer_is_asked()
+    {
+        var h = await HarnessAsync();
+        h.Forge.PullRequests[Number] = PullRequest() with { HeadRef = "feature+widgets" };
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final));
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("branch-name");
+        h.Writer.Prepares.Should().BeEmpty();
+        h.Writer.Publishes.Should().BeEmpty();
+    }
+
+    // ── Re-checked before the merge (O9, O11, §0 D61) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task An_approval_withdrawn_before_the_merge_evicts_without_merging()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Forge.PullRequests[Number] = PullRequest(author: "contributor");
+        h.Queue.Reviews.Add(new ForgeReview(1, "maintainer", EForgeReviewState.Approved, Head, null));
+        h.Queue.CheckStates[Head] = Pending(Head);
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+
+        // GitHub dismisses a review in place: the same review, now DISMISSED.
+        h.Queue.Reviews[0] = h.Queue.Reviews[0] with { State = EForgeReviewState.Dismissed };
+        h.Queue.CheckStates[Head] = Green(Head);
+        await h.SignalAsync(EMergeQueueSignal.ChecksChanged, sha: Head);
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("approval-withdrawn", "O11 is checked again right before the merge, like O9's role");
+        h.Queue.MergeRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_writers_change_request_since_enqueue_evicts_before_the_merge()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.Roles["reviewer"] = EForgeRepositoryRole.Write;
+        h.Queue.CheckStates[Head] = Pending(Head);
+        // The author has write, so the default floor needs no approval at enqueue.
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+
+        h.Queue.Reviews.Add(new ForgeReview(1, "reviewer", EForgeReviewState.ChangesRequested, Head, null));
+        h.Queue.CheckStates[Head] = Green(Head);
+        await h.SignalAsync(EMergeQueueSignal.ChecksChanged, sha: Head);
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("approval-withdrawn");
+        entry.EvictionMessage.Should().Contain("@reviewer");
+        h.Queue.MergeRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_standing_change_request_by_a_writer_refuses_the_enqueue_but_one_by_a_reader_does_not()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.Roles["reviewer"] = EForgeRepositoryRole.Write;
+        h.Queue.Roles["passer-by"] = EForgeRepositoryRole.Read;
+        h.Queue.Reviews.Add(new ForgeReview(1, "reviewer", EForgeReviewState.ChangesRequested, Head, null));
+
+        await h.EnqueueAsync();
+        var refused = await h.EntryAsync();
+        refused.State.Should().Be(EMergeQueueEntryState.Refused);
+        refused.EvictionReason.Should().Be("approval");
+        refused.EvictionMessage.Should().Contain("@reviewer");
+
+        // The reviewer approves; a reader's change request is no veto.
+        h.Queue.Reviews.Add(new ForgeReview(2, "reviewer", EForgeReviewState.Approved, Head, null));
+        h.Queue.Reviews.Add(new ForgeReview(3, "passer-by", EForgeReviewState.ChangesRequested, Head, null));
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+    }
+
+    /// <summary>§0 D62: the queue's own check is in progress while it merges, so a branch that requires it can never merge.</summary>
+    [Fact]
+    public async Task A_branch_that_requires_the_queues_own_check_is_refused()
+    {
+        var h = await HarnessAsync(mergeBase: BaseSha);
+        h.Queue.Rules = h.Queue.Rules with { RequiredChecks = ["build", CheckGate.QueueCheckName] };
+
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Refused);
+        entry.EvictionReason.Should().Be("self-required");
+        entry.EvictionMessage.Should().Contain($"\"{CheckGate.QueueCheckName}\"");
+        h.Queue.MergeRequests.Should().BeEmpty();
     }
 
     private sealed class FixedPermissions(string url) : IForgeInstallationPermissions

@@ -3,6 +3,7 @@ using CodeCoverage.CommitGraph;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using CodeCoverage.Forge;
+using CodeCoverage.Git.MergeQueue;
 using CodeCoverage.LookupReferences;
 using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
@@ -37,9 +38,9 @@ public interface IMergeQueueEngine
 /// </para>
 /// <para>
 /// <b>Failures.</b> A forge or writer failure that may pass (5xx, rate limit, writer busy) re-runs the same step later,
-/// with backoff, up to <see cref="MaxTransientFailures"/> times, then evicts. A refused permission evicts at once with the
-/// "accept the new permissions" link (O17). Everything the queue acts on (a conflict, a stale head, a failed run) is a
-/// typed outcome, never an exception.
+/// with backoff, up to <see cref="MaxTransientRetries"/> times, then evicts. A refused permission evicts at once with the
+/// "accept the new permissions" link (O17), and so does a request the git writer refuses (§0 D57), which would be refused
+/// again. Everything the queue acts on (a conflict, a stale head, a failed run) is a typed outcome, never an exception.
 /// </para>
 /// </remarks>
 [Register(typeof(IMergeQueueEngine), ServiceLifetime.Scoped)]
@@ -56,7 +57,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     [Inject] private readonly IConfiguration configuration;
     [Inject] private readonly ILogger<MergeQueueEngine> logger;
 
-    public const int MaxTransientFailures = 6;
+    /// <summary>Retries of a step after a transient failure; the failure after the last retry evicts (§0 D58).</summary>
+    public const int MaxTransientRetries = 6;
     public const int MaxPrepareAttempts = 5;
     public const int MaxMergePolls = 40;
     internal static readonly TimeSpan RunPollInterval = TimeSpan.FromMinutes(3);
@@ -356,13 +358,17 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 ? "The pull request's fork no longer exists."
                 : $"The queue pushes the rebased commit to {pull.HeadRepositoryFullName}, which needs \"Allow edits by maintainers\" ticked on the pull request (O3). Forks owned by an organization cannot tick it.");
 
-        if (await ApprovalFloorRefusalAsync(context, entry, pull, ct) is { } floor)
+        if (await ApprovalFloorRefusalAsync(context, entry, ct) is { } floor)
             return floor;
 
         // D8, D16, T7, O18: read the base branch's rules once, at enable time for this run.
         var rules = await context.Queue.GetBranchRulesAsync(repository, pull.BaseRef, ct);
         if (rules.HasNativeMergeQueue)
             return new("native-queue", $"`{pull.BaseRef}` requires GitHub's own merge queue. Turn that rule off: the two queues cannot share a branch (D8).");
+        // §0 D62: the queue's own check is in progress while the queue merges, so a branch that requires it never merges.
+        if (rules.RequiredChecks.Contains(CheckGate.QueueCheckName, StringComparer.Ordinal))
+            return new("self-required", $"`{pull.BaseRef}` requires the \"{CheckGate.QueueCheckName}\" check, which is the queue's own: it is still in progress while the queue merges, "
+                + "so GitHub would refuse every merge the queue asks for. Remove it from the branch's required checks (ruleset or branch protection).");
         foreach (var ruleset in rules.Rulesets.Where(r => r.RuleTypes.Any(t => t is "pull_request" or "required_status_checks")))
         {
             if (ruleset.Bypass != EForgeRulesetBypass.Never)
@@ -382,36 +388,44 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     }
 
     /// <summary>
-    /// O11, evaluated against the pinned head. An approval counts only when it is the reviewer's latest word, was given on
-    /// the pinned commit, comes from someone other than the author and from a <c>write</c> user (§0 D47).
+    /// O11, at enqueue and again right before the merge (§0 D61). An approval counts only when it is the reviewer's latest
+    /// word, was given on the pinned head (or on a commit the queue wrote from it), comes from someone other than the author
+    /// and from a <c>write</c> user (§0 D47). A <c>write</c> user whose latest word is "changes requested" vetoes the merge
+    /// under either floor, approvals or not (§0 D61). <see cref="EMergeQueueApprovalFloor.RepositoryRules"/> has no floor of
+    /// the queue's own, so neither applies there.
     /// </summary>
-    private async Task<Refusal?> ApprovalFloorRefusalAsync(Context context, MergeQueueEntry entry, ForgePullRequest pull, CancellationToken ct)
+    private async Task<Refusal?> ApprovalFloorRefusalAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
     {
         var floor = entry.Config.ApprovalFloor;
         if (floor == EMergeQueueApprovalFloor.RepositoryRules) return null;
 
-        var author = pull.AuthorLogin;
+        var author = entry.AuthorLogin;
+        bool IsAuthor(string login) => string.Equals(login, author, StringComparison.OrdinalIgnoreCase);
+        var latest = (await context.Queue.GetReviewsAsync(context.Repository, entry.Number, ct))
+            .Where(r => r.ReviewerLogin is not null && r.State is not (EForgeReviewState.Commented or EForgeReviewState.Pending or EForgeReviewState.Other))
+            .GroupBy(r => r.ReviewerLogin!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.Last())
+            .Where(r => !IsAuthor(r.ReviewerLogin!))
+            .ToList();
+
+        foreach (var objection in latest.Where(r => r.State == EForgeReviewState.ChangesRequested))
+            if (await context.Queue.GetActorRoleAsync(context.Repository, objection.ReviewerLogin!, ct) >= EForgeRepositoryRole.Write)
+                return new("approval", $"@{objection.ReviewerLogin} has write access and requested changes. The queue does not merge while a writer's latest review requests changes (D47, §0 D61).");
+
         if (floor == EMergeQueueApprovalFloor.ExternalAuthors && author is not null
             && await context.Queue.GetActorRoleAsync(context.Repository, author, ct) >= EForgeRepositoryRole.Write)
             return null;
 
-        var reviews = await context.Queue.GetReviewsAsync(context.Repository, pull.Number, ct);
-        var approvers = reviews
-            .Where(r => r.ReviewerLogin is not null && r.State is not (EForgeReviewState.Commented or EForgeReviewState.Pending or EForgeReviewState.Other))
-            .GroupBy(r => r.ReviewerLogin!, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.Last())
-            .Where(r => r.State == EForgeReviewState.Approved
-                && string.Equals(r.CommitSha, pull.HeadSha, StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(r.ReviewerLogin, author, StringComparison.OrdinalIgnoreCase))
-            .Select(r => r.ReviewerLogin!)
-            .ToList();
+        var approvers = latest
+            .Where(r => r.State == EForgeReviewState.Approved && r.CommitSha is { } sha && entry.KnownShas.Contains(sha, StringComparer.OrdinalIgnoreCase))
+            .Select(r => r.ReviewerLogin!);
         foreach (var approver in approvers)
             if (await context.Queue.GetActorRoleAsync(context.Repository, approver, ct) >= EForgeRepositoryRole.Write)
                 return null;
 
         return new("approval", floor == EMergeQueueApprovalFloor.Always
-            ? $"This repository's approval floor needs an approval of commit `{Short(pull.HeadSha)}` by someone with write access other than the author (O11)."
-            : $"@{author ?? "the author"} does not have write access, so an approval of commit `{Short(pull.HeadSha)}` by someone with write access is needed (O11).");
+            ? $"This repository's approval floor needs an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access other than the author (O11)."
+            : $"@{author ?? "the author"} does not have write access, so an approval of commit `{Short(entry.PinnedHeadSha)}` by someone with write access is needed (O11).");
     }
 
     private async Task RefuseAsync(Context context, MergeQueueEntry entry, string code, string message, EMergeQueueCommandSource source, string? label, CancellationToken ct, bool permissions = false)
@@ -479,6 +493,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (!writer.IsConfigured)
         {
             await EvictAsync(context, entry, "writer-unavailable", "The pull request needs a rebase, and this server's git writer is not configured (MergeQueue:GitWriterUrl).", ct: ct);
+            return;
+        }
+        // §0 D57: the rebased commit is published to the pull request's branch, and the git writer refuses a name outside
+        // its rules. GitHub allows more (a '+', for one), so this is checked here rather than refused by the writer later.
+        if (!MergeQueueWireRules.IsBranch(entry.HeadBranch))
+        {
+            await EvictAsync(context, entry, "branch-name",
+                $"The pull request needs a rebase, and the queue's git writer does not push to a branch named like this one ({MergeQueueWireRules.BranchRule}). "
+                + "Rename the branch, or rebase it by hand and queue it again.", ct: ct);
             return;
         }
         if (await GitAccessAsync(context, entry, pull, ct) is not { } git) return;
@@ -877,6 +900,14 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
+        // O11 again (§0 D61), like O9's role: an approval withdrawn or dismissed since enqueue, or a writer's request for
+        // changes, ends the run before anything is merged.
+        if (await ApprovalFloorRefusalAsync(context, entry, ct) is { } floor)
+        {
+            await EvictAsync(context, entry, "approval-withdrawn", $"Checked again right before the merge: {floor.Message}", ct: ct);
+            return;
+        }
+
         var pull = await ReadPullRequestAsync(context, entry, ct);
         if (pull is null) return;
 
@@ -1028,9 +1059,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (git is not { Password: { } password }) return;
 
         // Not gated on the entry: it may already run again. The lease keeps a newer queue branch safe.
-        var result = await writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
-            context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture),
-            git.CloneUrl, new SidecarCredential(git.Username ?? string.Empty, password), step.QueueBranch, step.ExpectedSha), ct);
+        GitWriterDeleteResult result;
+        try
+        {
+            result = await writer.DeleteQueueBranchAsync(new GitWriterDeleteQueueBranchRequest(
+                context.Repository.Provider.ToCanonicalString(), context.Repository.GitHubId.ToString(CultureInfo.InvariantCulture),
+                git.CloneUrl, new SidecarCredential(git.Username ?? string.Empty, password), step.QueueBranch, step.ExpectedSha), ct);
+        }
+        catch (GitWriterRefusedException ex)
+        {
+            // §0 D57: refused now, refused on every retry; the branch is left for a person (merge-queue.md §7.4).
+            logger.LogWarning(ex, "Merge queue: the git writer refused to delete {Branch} in {Repository}", step.QueueBranch, context.Repository.FullName);
+            return;
+        }
         if (result.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
             throw new GitWriterUnavailableException($"The git writer answered delete with {result.Outcome}: {result.Detail}");
         logger.LogInformation("Merge queue: {Branch} in {Repository}: {Outcome}", step.QueueBranch, context.Repository.FullName, result.Outcome);
@@ -1088,17 +1129,25 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await EvictAsync(context, entry, "permission",
                 $"The forge refused a call the queue needs{(ex.RequiredPermission is { } p ? $" (it asks for `{p}`)" : string.Empty)}: {ex.Message}", permissions: true, ct: ct);
         }
+        catch (GitWriterRefusedException ex)
+        {
+            // §0 D57: the writer refuses the same request every time; retrying would only delay this answer.
+            await EvictAsync(context, entry, "writer-refused",
+                $"The queue's git writer refused the {ex.Job} request: `{ex.Field}` must be {ex.Rule}. Sending it again cannot change that, so the run ends here.", ct: ct);
+        }
         catch (Exception ex) when (IsTransient(ex, ct))
         {
             entry.TransientFailures++;
             entry.LastError = ex.Message;
-            if (entry.TransientFailures > MaxTransientFailures)
+            // §0 D58: the first failure and MaxTransientRetries retries; the failure after the last retry evicts.
+            if (entry.TransientFailures > MaxTransientRetries)
             {
-                await EvictAsync(context, entry, "error", $"The queue gave up after {MaxTransientFailures} failed attempts: {ex.Message}", ct: ct);
+                await EvictAsync(context, entry, "error",
+                    $"The queue gave up after {entry.TransientFailures} failed attempts in a row (the first and {MaxTransientRetries} retries): {ex.Message}", ct: ct);
                 return;
             }
             var delay = TimeSpan.FromSeconds(Math.Min(600, 15 * Math.Pow(2, entry.TransientFailures - 1)));
-            logger.LogWarning(ex, "Merge queue: {Step} of {Entry} failed ({Failures}/{Max}); retrying in {Delay}", retryStep, entry.Id, entry.TransientFailures, MaxTransientFailures, delay);
+            logger.LogWarning(ex, "Merge queue: {Step} of {Entry} failed ({Failures}/{Max}); retrying in {Delay}", retryStep, entry.Id, entry.TransientFailures, MaxTransientRetries + 1, delay);
             await ScheduleAsync(entry, retryStep, delay, ct);
         }
     }

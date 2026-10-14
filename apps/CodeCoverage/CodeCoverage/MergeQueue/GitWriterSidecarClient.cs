@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using CodeCoverage.CommitGraph;
@@ -5,7 +6,8 @@ using Microsoft.Extensions.Options;
 
 namespace CodeCoverage.MergeQueue;
 
-/// <summary>The <c>MergeQueue</c> configuration section. M5 adds the saga's settings here.</summary>
+/// <summary>The <c>MergeQueue</c> configuration section: the git writer's URL and request bound, and the saga's settings
+/// (docs/code-coverage/merge-queue.md §7.3, hosting.md §4).</summary>
 public sealed class MergeQueueOptions
 {
     public const string Section = "MergeQueue";
@@ -45,8 +47,9 @@ public sealed class MergeQueueOptions
 /// <para><b>No authentication, by design.</b> The writer is reachable only on the internal two-host network
 /// <c>coverage-git-writer</c>; the network is the boundary. The app mints a short-lived, single-repository installation
 /// token per request and sends it in the body (<see cref="SidecarCredential"/>); the writer never holds the App key.</para>
-/// <para>Every job answers 200 with an outcome (<see cref="GitWriterOutcomes"/>); only a transport failure or a 400 (a
-/// request the writer refused to read) throws.</para>
+/// <para>Every job answers 200 with an outcome (<see cref="GitWriterOutcomes"/>); only a transport failure or a refusal
+/// throws. A refusal (a 400 naming the field and its rule) is <see cref="GitWriterRefusedException"/>: the same request is
+/// refused every time, so it is never retried (§0 D57).</para>
 /// </remarks>
 public interface IGitWriterSidecar
 {
@@ -87,10 +90,45 @@ public sealed class GitWriterSidecarClient(HttpClient http, IOptions<MergeQueueO
         cts.CancelAfter(TimeSpan.FromSeconds(options.Value.JobRequestTimeoutSeconds));
         using var message = new HttpRequestMessage(method, path) { Content = JsonContent.Create(body, body.GetType(), options: Json) };
         using var response = await http.SendAsync(message, cts.Token);
+        if (response.StatusCode == HttpStatusCode.BadRequest)
+            throw await RefusedAsync(path, response, cts.Token);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>(Json, cts.Token)
             ?? throw new InvalidOperationException($"The git writer answered {path} with an empty body.");
     }
+
+    /// <summary>The writer's refusal, read from its body; a writer older than §0 D57 sent none.</summary>
+    private static async Task<GitWriterRefusedException> RefusedAsync(string path, HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        GitWriterRefusal? refusal = null;
+        try
+        {
+            refusal = await response.Content.ReadFromJsonAsync<GitWriterRefusal>(Json, cancellationToken);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+        }
+        var job = path.StartsWith("jobs/", StringComparison.Ordinal) ? path["jobs/".Length..] : path;
+        return new GitWriterRefusedException(job, refusal?.Field ?? "request", refusal?.Detail ?? "valid (the writer gave no reason)");
+    }
+
+    private sealed record GitWriterRefusal(string? Outcome, string? Field, string? Detail);
+}
+
+/// <summary>
+/// The git writer refused a request: a value broke one of its rules (<c>MergeQueueWireRules</c>). Sending it again changes
+/// nothing, so the saga ends the entry with the writer's reason instead of retrying (§0 D57).
+/// </summary>
+public sealed class GitWriterRefusedException(string job, string field, string rule)
+    : Exception($"The git writer refused the {job} request: {field} must be {rule}.")
+{
+    /// <summary><c>prepare</c>, <c>publish</c> or <c>queue-branch</c>.</summary>
+    public string Job { get; } = job;
+
+    /// <summary>The first field that broke its rule, as the wire names it (<c>regeneratedPaths</c>, <c>prBranch</c>, …).</summary>
+    public string Field { get; } = field;
+
+    public string Rule { get; } = rule;
 }
 
 /// <summary>A commit identity; <paramref name="Date"/> null lets the writer use the current time.</summary>

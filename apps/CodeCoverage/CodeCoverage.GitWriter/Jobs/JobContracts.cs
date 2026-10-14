@@ -1,8 +1,8 @@
 namespace CodeCoverage.GitWriter.Jobs;
 
 // The writer's wire contract (camelCase JSON). Every request names the repository it works on and carries a short-lived,
-// single-repository forge token; nothing survives the job. Every answer is 200 with an outcome; a request that does not
-// validate is a bare 400.
+// single-repository forge token minted for that one job (T9); nothing survives the job. Every answer is 200 with an
+// outcome; a request that does not validate is a 400 with a RefusedResponse naming the field and its rule (§0 D57).
 
 /// <summary>A forge credential, used for this job only and never stored.</summary>
 public sealed class CredentialWire
@@ -53,6 +53,14 @@ public sealed class PrepareRequestWire
     public IdentityWire? Author { get; set; }
     public IdentityWire? Committer { get; set; }
     public string? Message { get; set; }
+
+    /// <summary>
+    /// Whether the pull request's net change may touch <c>.github/**</c> (§0 D63). False (the default, and a fork's
+    /// pull request): such a change is evicted <c>touches-workflows</c> before anything is pushed, because the push to the
+    /// queue branch alone would start the base repository's <c>push</c> workflows from the pull request's own workflow
+    /// files. True: it is prepared and reported (<see cref="PrepareResponse.TouchesWorkflows"/>), and the saga decides.
+    /// </summary>
+    public bool AllowWorkflowChanges { get; set; }
 }
 
 /// <summary><c>POST /jobs/publish</c> (§5.1 step 3).</summary>
@@ -73,7 +81,8 @@ public sealed class PublishRequestWire
     public string? ExpectedPrHeadSha { get; set; }
     /// <summary>The regenerate artifact's <c>git diff</c>, base64; null or empty publishes the prepared tree as is.</summary>
     public string? Patch { get; set; }
-    /// <summary>The globs the patch may touch (<c>coverage.yml</c> <c>regeneratedPaths</c>, read from the default branch, O16).</summary>
+    /// <summary>The globs the patch may touch (<c>coverage.yml</c> <c>regeneratedPaths</c>, read from the default branch,
+    /// O16). May be empty when there is no regenerate step (§0 D57); a patch against an empty list is refused (T4).</summary>
     public List<string>? RegeneratedPaths { get; set; }
     public IdentityWire? Committer { get; set; }
 }
@@ -90,13 +99,28 @@ public sealed class DeleteQueueBranchWire
     public string? ExpectedSha { get; set; }
 }
 
+/// <param name="Paths">Why, for <c>evicted</c>. For <c>prepared</c>: the <c>.github/**</c> paths of the net change when
+/// <see cref="TouchesWorkflows"/>.</param>
 public sealed record PrepareResponse(
     string Outcome, string? Reason, string? BaseSha, string? HeadSha, string? PreparedSha,
-    IReadOnlyList<string> ResolvedPaths, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
+    IReadOnlyList<string> ResolvedPaths, IReadOnlyList<string> Paths, string? Detail, long DurationMs)
+{
+    /// <summary>The pull request's net change touches <c>.github/**</c> (D12): the saga decides what that stops (§0 D63).</summary>
+    public bool TouchesWorkflows { get; init; }
+
+    /// <summary>
+    /// The base's <c>.github/workflows</c> differs from the pinned head's (§0 D59). A fork that holds only the head lacks
+    /// the base's workflow files, so publishing to it needs the forge's workflow permission.
+    /// </summary>
+    public bool BaseChangedWorkflows { get; init; }
+}
 
 public sealed record PublishResponse(string Outcome, string? Reason, string? FinalSha, IReadOnlyList<string> Paths, string? Detail, long DurationMs);
 
 public sealed record DeleteQueueBranchResponse(string Outcome, string? Reason, string? Detail, long DurationMs);
+
+/// <summary>The body of a 400 (§0 D57): the first field that broke its rule, and the rule. Never the value.</summary>
+public sealed record RefusedResponse(string Outcome, string Field, string Detail);
 
 /// <summary>The <c>outcome</c> values.</summary>
 public static class JobOutcomes
@@ -126,6 +150,9 @@ public static class JobOutcomes
     public const string Busy = "busy";
     /// <summary>An operational failure; <c>reason</c> is one of <see cref="JobReasons"/>.</summary>
     public const string Failed = "failed";
+    /// <summary>The 400's outcome: the request broke a rule, named in <see cref="RefusedResponse"/>. Sending it again
+    /// changes nothing, so the saga never retries it (§0 D57).</summary>
+    public const string Refused = "refused";
 }
 
 /// <summary>The <c>reason</c> of a failed job.</summary>
@@ -137,7 +164,8 @@ public static class JobReasons
     public const string Auth = "auth";
     public const string NotFound = "not-found";
     public const string Error = "error";
-    /// <summary>D12: the pull request's net change touches <c>.github/**</c>, whose workflows the dispatch would run.</summary>
+    /// <summary>D12, §0 D63: the pull request's net change touches <c>.github/**</c> and the request did not allow it
+    /// (<see cref="PrepareRequestWire.AllowWorkflowChanges"/>); nothing was pushed.</summary>
     public const string TouchesWorkflows = "touches-workflows";
     /// <summary>
     /// Not a failure: <c>prepared</c> or <c>published</c> with the commit an earlier attempt of the same job already pushed,

@@ -94,10 +94,15 @@ public class PrepareTests : WriterTestBase
         response.ResolvedPaths.Should().Equal([Translations]);
     }
 
+    /// <summary>
+    /// D12, §0 D63: unless the saga allows it (a same-repository pull request), a change under <c>.github/**</c> is refused
+    /// before anything is pushed. The push to <c>mq/</c> alone would start the base repository's <c>push</c> workflows from
+    /// the pushed commit's own workflow files, with the base repository's secrets.
+    /// </summary>
     [Theory]
     [InlineData(".github/workflows/regenerate.yml")]
     [InlineData(".GitHub/actions/x/action.yml")]
-    public async Task A_change_under_github_evicts_even_without_a_conflict(string path)
+    public async Task A_change_under_github_is_refused_before_any_push_unless_the_saga_allows_it(string path)
     {
         var origin = Seed();
         origin.Write(path, "on: push\n");
@@ -110,6 +115,59 @@ public class PrepareTests : WriterTestBase
         response.Reason.Should().Be("touches-workflows");
         response.Paths.Should().Equal([path]);
         origin.Ref($"refs/heads/{QueueBranch}").Should().BeNull();
+    }
+
+    /// <summary>
+    /// §0 D63 (O21 A): for a same-repository pull request the writer prepares the commit and reports the paths; whether
+    /// the entry may go on is the saga's call, because only it knows whether it will dispatch the regenerate workflow.
+    /// </summary>
+    [Theory]
+    [InlineData(".github/workflows/ci.yml")]
+    [InlineData(".GitHub/dependabot.yml")]
+    public async Task A_change_under_github_is_prepared_and_reported_when_the_saga_allows_it(string path)
+    {
+        var origin = Seed();
+        origin.Write(path, "on: push\n");
+        var head = origin.Commit("pr: touch workflows");
+        origin.Push("feature").PullRequest(1, "feature");
+
+        var response = await Writer.PrepareAsync(PrepareRequest(origin, head, allowWorkflowChanges: true));
+
+        response.Outcome.Should().Be("prepared", response.Detail);
+        response.TouchesWorkflows.Should().BeTrue();
+        response.Paths.Should().Equal([path]);
+        origin.Ref($"refs/heads/{QueueBranch}").Should().Be(response.PreparedSha);
+    }
+
+    /// <summary>
+    /// §0 D59: a fork that has only the pull request's head lacks the workflow files the base changed since, and GitHub
+    /// refuses an App push that brings workflow files the target repository has on no branch unless the token carries
+    /// <c>workflows: write</c>. The prepare says whether the base changed them, so the publish token asks for it only then.
+    /// </summary>
+    [Fact]
+    public async Task The_prepare_reports_whether_the_base_changed_its_workflows_since_the_head()
+    {
+        var origin = Seed();
+        AddEntity(origin, "Order", "with-order");
+        var head = origin.Commit("Add Order");
+        origin.Push("feature").PullRequest(1, "feature");
+        origin.Checkout("main").Write("README.md", "seed\nmain moved\n");
+        origin.Commit("main: readme");
+        origin.Push("main");
+
+        var unchanged = await Writer.PrepareAsync(PrepareRequest(origin, head));
+        unchanged.Outcome.Should().Be("prepared", unchanged.Detail);
+        unchanged.BaseChangedWorkflows.Should().BeFalse();
+        unchanged.TouchesWorkflows.Should().BeFalse();
+
+        origin.Write(".github/workflows/ci.yml", "on: push\n");
+        origin.Commit("main: a workflow");
+        origin.Push("main");
+
+        var changed = await Writer.PrepareAsync(PrepareRequest(origin, head, expectedQueueSha: unchanged.PreparedSha));
+        changed.Outcome.Should().Be("prepared", changed.Detail);
+        changed.BaseChangedWorkflows.Should().BeTrue();
+        changed.TouchesWorkflows.Should().BeFalse("the pull request's own change does not touch .github");
     }
 
     [Fact]

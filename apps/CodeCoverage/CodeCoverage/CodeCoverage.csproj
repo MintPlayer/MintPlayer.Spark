@@ -26,6 +26,12 @@
 		<ProjectReference Include="..\CodeCoverage.Library\CodeCoverage.Library.csproj" />
 		<ProjectReference Include="..\CodeCoverage.GithubIntegration\CodeCoverage.GithubIntegration.csproj" />
 		<!--
+		  For MergeQueueWireRules only: the merge queue's git writer and this app hold coverage.yml and their requests to the
+		  same rules (docs/coverage_merge_queue_PRD.md §0 D57). The reference points this way only; CodeCoverage.Git never
+		  references anything Spark.
+		-->
+		<ProjectReference Include="..\CodeCoverage.Git\CodeCoverage.Git.csproj" />
+		<!--
 		  Referenced but NOT registered: their AddXxxIntegration() is a no-op until there is
 		  something to register, and Program.cs calls only AddGithubIntegration(). Referencing them
 		  now means a port adds one line to the composition root rather than also discovering that

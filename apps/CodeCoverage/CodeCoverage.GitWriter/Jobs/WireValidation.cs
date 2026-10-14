@@ -6,13 +6,27 @@ namespace CodeCoverage.GitWriter.Jobs;
 
 /// <summary>
 /// Every value of a request is checked here before it reaches a path, an argument or the environment; null means "refuse
-/// with a bare 400". Branch names follow <c>git check-ref-format</c>'s rules, narrowed to a conservative character set, so
-/// no value can be read as an option, a refspec or a revision expression.
+/// with a 400 naming the field" (<see cref="Refusal"/>). The rules the app must also hold its configuration to (branch
+/// names, globs, keys, messages, identities) are <see cref="MergeQueueWireRules"/>, shared with it so the two cannot drift
+/// (§0 D57).
 /// </summary>
 internal static partial class WireValidation
 {
-    public const int MaxMessageLength = 64 * 1024;
-    public const int MaxGlobs = 64;
+    public const int MaxMessageLength = MergeQueueWireRules.MaxMessageLength;
+    public const int MaxGlobs = MergeQueueWireRules.MaxGlobs;
+
+    // The rule each field is refused under, as the 400 names it. Never a value: the credential is one of them.
+    public const string RepoRule = "provider: lowercase letters; repoId: 1 to 64 letters, digits, '_' or '-'";
+    public const string RemoteUrlRule = "an absolute https URL of at most 2048 characters with a host, no user info and no fragment";
+    public const string CredentialRule = "a user name without ':' and a password, each 1 to 4096 characters without a control character";
+    public const string ShaRule = "a commit id of 40 lowercase hex characters";
+    public const string HeadRefRule = "refs/pull/<n>/head or refs/heads/<branch>";
+    public const string QueueBranchRule = "a branch under mq/: " + MergeQueueWireRules.BranchRule;
+
+    public static readonly string AutoResolveEntriesRule =
+        $"at most {MaxGlobs} entries, each a path ({MergeQueueWireRules.GlobRule}) with 1 to {MaxGlobs} keys ({MergeQueueWireRules.KeyRule}), or anyLine and no keys";
+
+    public static readonly string RegeneratedPathsRule = $"at most {MaxGlobs} globs, each {MergeQueueWireRules.GlobRule}";
 
     [GeneratedRegex(@"\A[0-9a-f]{40}\z", RegexOptions.CultureInvariant)]
     private static partial Regex Sha();
@@ -23,9 +37,6 @@ internal static partial class WireValidation
     [GeneratedRegex(@"\A[0-9A-Za-z_-]{1,64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex RepoId();
 
-    [GeneratedRegex(@"\A[A-Za-z0-9._/-]{1,200}\z", RegexOptions.CultureInvariant)]
-    private static partial Regex BranchChars();
-
     [GeneratedRegex(@"\Arefs/pull/[0-9]{1,10}/head\z", RegexOptions.CultureInvariant)]
     private static partial Regex PullHead();
 
@@ -34,25 +45,12 @@ internal static partial class WireValidation
     public static bool IsRepo(string? provider, string? repoId)
         => provider is not null && Provider().IsMatch(provider) && repoId is not null && RepoId().IsMatch(repoId);
 
-    /// <summary>A branch name without <c>refs/heads/</c>: no leading <c>-</c>, <c>/</c> or <c>.</c>, no <c>..</c>,
-    /// <c>//</c>, <c>@{</c>, no component starting with <c>.</c> or ending in <c>.lock</c>, no trailing <c>/</c> or
-    /// <c>.</c>.</summary>
-    public static string? Branch(string? value)
-    {
-        if (value is null || !BranchChars().IsMatch(value) || value[0] is '-' or '/' or '.' || value[^1] is '/' or '.'
-            || value.Contains("..", StringComparison.Ordinal) || value.Contains("//", StringComparison.Ordinal) || value.Contains("@{", StringComparison.Ordinal))
-            return null;
-        foreach (var component in value.Split('/'))
-        {
-            if (component.StartsWith('.') || component.EndsWith(".lock", StringComparison.Ordinal))
-                return null;
-        }
-        return value;
-    }
+    /// <summary>A branch name without <c>refs/heads/</c> (<see cref="MergeQueueWireRules.IsBranch"/>).</summary>
+    public static string? Branch(string? value) => MergeQueueWireRules.IsBranch(value) ? value : null;
 
     /// <summary>A queue branch: a valid branch under <c>mq/</c> (D5). The writer never writes another name through the
     /// prepare or delete endpoints.</summary>
-    public static string? QueueBranch(string? value) => Branch(value) is { } branch && branch.StartsWith("mq/", StringComparison.Ordinal) && branch.Length > 3 ? branch : null;
+    public static string? QueueBranch(string? value) => MergeQueueWireRules.IsQueueBranch(value) ? value : null;
 
     /// <summary>The ref the pull request's head is fetched from: <c>refs/pull/N/head</c> or <c>refs/heads/&lt;branch&gt;</c>.</summary>
     public static string? HeadRef(string? value)
@@ -86,11 +84,11 @@ internal static partial class WireValidation
 
     public static GitIdentity? Identity(IdentityWire? wire)
     {
-        if (wire is null || wire.Name is not { Length: <= 256 } name || wire.Email is not { Length: <= 256 } email)
+        if (wire is null || !MergeQueueWireRules.IsIdentity(wire.Name, wire.Email))
             return null;
         try
         {
-            return new GitIdentity(name, email, wire.Date);
+            return new GitIdentity(wire.Name!, wire.Email!, wire.Date);
         }
         catch (ArgumentException)
         {
@@ -98,8 +96,7 @@ internal static partial class WireValidation
         }
     }
 
-    public static string? Message(string? value)
-        => value is { Length: > 0 and <= MaxMessageLength } && !value.Contains('\0') && !string.IsNullOrWhiteSpace(value) ? value : null;
+    public static string? Message(string? value) => MergeQueueWireRules.IsMessage(value) ? value : null;
 
     /// <summary>The auto-resolve list; an empty list is allowed (every conflict evicts).</summary>
     public static IReadOnlyList<AutoResolveRule>? Rules(List<AutoResolveWire>? wires)
@@ -111,38 +108,34 @@ internal static partial class WireValidation
         var rules = new List<AutoResolveRule>();
         foreach (var wire in wires)
         {
-            if (Glob(wire?.Path) is not { } glob)
+            if (wire is null || !MergeQueueWireRules.IsGlob(wire.Path))
                 return null;
-            if (wire!.AnyLine)
+            if (wire.AnyLine)
             {
                 if (wire.Keys is { Count: > 0 })
                     return null;
-                rules.Add(AutoResolveRule.WholeFile(glob));
+                rules.Add(AutoResolveRule.WholeFile(wire.Path!));
                 continue;
             }
-            if (wire.Keys is not { Count: > 0 and <= MaxGlobs } keys || keys.Any(k => string.IsNullOrEmpty(k) || k.Length > 256 || k.Any(char.IsControl)))
+            if (wire.Keys is not { Count: > 0 and <= MaxGlobs } keys || !keys.All(MergeQueueWireRules.IsKey))
                 return null;
-            rules.Add(new AutoResolveRule(glob, keys));
+            rules.Add(new AutoResolveRule(wire.Path!, keys));
         }
         return rules;
     }
 
+    /// <summary>
+    /// <c>regeneratedPaths</c>: at most <see cref="MaxGlobs"/>, and none is fine (§0 D57). A repository without a regenerate
+    /// step has none and publishes no patch; a patch against an empty list is refused as outside it (T4).
+    /// </summary>
     public static IReadOnlyList<PathGlob>? Globs(List<string>? values)
     {
-        if (values is not { Count: > 0 and <= MaxGlobs })
+        if (values is null)
+            return [];
+        if (values.Count > MaxGlobs || !values.All(MergeQueueWireRules.IsGlob))
             return null;
-        var globs = new List<PathGlob>();
-        foreach (var value in values)
-        {
-            if (Glob(value) is not { } glob)
-                return null;
-            globs.Add(new PathGlob(glob));
-        }
-        return globs;
+        return [.. values.Select(value => new PathGlob(value))];
     }
-
-    private static string? Glob(string? value)
-        => value is { Length: > 0 and <= 256 } && !value.Any(c => char.IsControl(c) || c == '\\') && !value.StartsWith('/') && !string.IsNullOrWhiteSpace(value) ? value : null;
 
     private static bool IsCredentialPart(string? value)
         => !string.IsNullOrEmpty(value) && value.Length <= 4096 && !value.Any(char.IsControl);

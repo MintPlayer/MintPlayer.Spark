@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using CodeCoverage.GitWriter.Tests._Infrastructure;
 
 namespace CodeCoverage.GitWriter.Tests;
@@ -36,23 +37,27 @@ public class HardeningTests : WriterTestBase
         Directory.GetFileSystemEntries(Writer.Root).Should().BeEmpty();
     }
 
-    public static TheoryData<string, object> BadRequests => new()
+    public static TheoryData<string, object, string> BadRequests => new()
     {
-        { "a queue branch outside mq/", new { queueBranch = "main" } },
-        { "an option-like base branch", new { baseBranch = "-uattacker" } },
-        { "a revision expression", new { baseBranch = "main@{1}" } },
-        { "a file remote", new { cloneUrl = "file:///etc" } },
-        { "a remote with user info", new { cloneUrl = "https://user:pass@example.invalid/x.git" } },
-        { "a short sha", new { headSha = "abc123" } },
-        { "an arbitrary head ref", new { headRef = "refs/remotes/origin/x" } },
-        { "no credential", new { credential = (object?)null } },
-        { "an ident with a newline", new { author = new { name = "a\nb", email = "a@example.invalid" } } },
-        { "a key-less rule", new { autoResolve = new object[] { new { path = "**/x.json", keys = Array.Empty<string>() } } } },
+        { "a queue branch outside mq/", new { queueBranch = "main" }, "queueBranch" },
+        { "an option-like base branch", new { baseBranch = "-uattacker" }, "baseBranch" },
+        { "a revision expression", new { baseBranch = "main@{1}" }, "baseBranch" },
+        { "a file remote", new { cloneUrl = "file:///etc" }, "cloneUrl" },
+        { "a remote with user info", new { cloneUrl = "https://user:pass@example.invalid/x.git" }, "cloneUrl" },
+        { "a short sha", new { headSha = "abc123" }, "headSha" },
+        { "an arbitrary head ref", new { headRef = "refs/remotes/origin/x" }, "headRef" },
+        { "no credential", new { credential = (object?)null }, "credential" },
+        { "an ident with a newline", new { author = new { name = "a\nb", email = "a@example.invalid" } }, "author" },
+        { "a key-less rule", new { autoResolve = new object[] { new { path = "**/x.json", keys = Array.Empty<string>() } } }, "autoResolve" },
     };
 
+    /// <summary>
+    /// §0 D57: a refusal names the field and its rule, so the saga can end the entry with that reason at once instead of
+    /// retrying a request that can never pass. It never echoes a value: the credential is one of them.
+    /// </summary>
     [Theory]
     [MemberData(nameof(BadRequests))]
-    public async Task A_request_that_does_not_validate_is_a_bare_400_and_starts_no_git(string because, object overrides)
+    public async Task A_request_that_does_not_validate_is_a_400_naming_the_field_and_starts_no_git(string because, object overrides, string field)
     {
         var origin = Seed();
         var body = Merge(PrepareRequest(origin, new string('a', 40)), overrides);
@@ -60,17 +65,31 @@ public class HardeningTests : WriterTestBase
         var response = await Writer.Client.PostAsJsonAsync("/jobs/prepare", body);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest, because);
+        var text = await response.Content.ReadAsStringAsync();
+        using var refusal = JsonDocument.Parse(text);
+        refusal.RootElement.GetProperty("outcome").GetString().Should().Be("refused");
+        refusal.RootElement.GetProperty("field").GetString().Should().Be(field, because);
+        refusal.RootElement.GetProperty("detail").GetString().Should().NotBeNullOrWhiteSpace();
+        text.Should().NotContain(Token);
         Writer.Started.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task An_oversized_or_malformed_body_is_a_bare_400()
+    public async Task An_oversized_or_malformed_body_is_a_400_naming_the_body()
     {
         var huge = new StringContent("{\"message\":\"" + new string('x', 300 * 1024) + "\"}", Encoding.UTF8, "application/json");
 
-        (await Writer.Client.PostAsync("/jobs/prepare", huge)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await Writer.Client.PostAsync("/jobs/prepare", new StringContent("null", Encoding.UTF8, "application/json"))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await Writer.Client.PostAsync("/jobs/publish", new StringContent("{", Encoding.UTF8, "application/json"))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        foreach (var response in new[]
+                 {
+                     await Writer.Client.PostAsync("/jobs/prepare", huge),
+                     await Writer.Client.PostAsync("/jobs/prepare", new StringContent("null", Encoding.UTF8, "application/json")),
+                     await Writer.Client.PostAsync("/jobs/publish", new StringContent("{", Encoding.UTF8, "application/json")),
+                 })
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            using var refusal = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            refusal.RootElement.GetProperty("field").GetString().Should().Be("body");
+        }
         (await Writer.Client.GetAsync("/healthz")).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 

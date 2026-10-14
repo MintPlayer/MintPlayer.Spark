@@ -60,6 +60,36 @@ public class PublishTests : WriterTestBase
         origin.Ref("refs/heads/feature").Should().Be(prepared);
     }
 
+    /// <summary>
+    /// §0 D57: a repository without a regenerate step has no <c>regeneratedPaths</c>, and its publishes carry no patch. The
+    /// writer refused such a request with a 400, so every case-2 pull request of such a repository ended as <c>error</c>.
+    /// </summary>
+    [Fact]
+    public async Task A_publish_without_a_patch_needs_no_regenerated_paths()
+    {
+        var origin = Seed();
+        var (prepared, head) = await PreparedAsync(origin);
+
+        var response = await Writer.PublishAsync(PublishRequest(origin, prepared, head, regeneratedPaths: []));
+
+        response.Outcome.Should().Be("published", $"{response.Detail}");
+        response.FinalSha.Should().Be(prepared);
+    }
+
+    [Fact]
+    public async Task A_patch_with_no_regenerated_paths_is_rejected_as_outside_them()
+    {
+        var origin = Seed();
+        var (prepared, head) = await PreparedAsync(origin);
+        var patch = $"diff --git a/{ModelHashes.Path} b/{ModelHashes.Path}\n--- a/{ModelHashes.Path}\n+++ b/{ModelHashes.Path}\n@@ -1 +1 @@\n-a\n+b\n";
+
+        var response = await Writer.PublishAsync(PublishRequest(origin, prepared, head, patch, regeneratedPaths: []));
+
+        response.Outcome.Should().Be("patch-rejected");
+        response.Reason.Should().Be("outside-regenerated-paths");
+        origin.Ref("refs/heads/feature").Should().Be(head);
+    }
+
     [Fact]
     public async Task A_patch_outside_the_regenerated_paths_is_rejected_before_any_git_runs()
     {
