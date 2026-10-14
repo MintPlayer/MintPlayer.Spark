@@ -92,19 +92,20 @@ describe('RepoMergeQueuePanelComponent', () => {
     expect(q('[data-testid="mq-hint"]')).toBeNull();
   });
 
-  // A state must read in both themes (merge-queue PRD §0 D75, D84). Each is the app's chip: Bootstrap's subtle background
-  // with its emphasis text, at least 7.15:1 in both themes, where a solid text-bg-* badge with white text gets 4.5:1.
+  // A state must read in both themes (merge-queue PRD §0 D75, D84). Bootstrap's *-subtle backgrounds with *-emphasis text
+  // are its own pairs for both themes: 7.15:1 or more, where <bs-badge>'s white text gets 1.96:1 on info and 1.63:1 on
+  // warning. The .mq-state class is the chip's shape, since .badge is styled only inside <bs-badge>.
   it('shows each state as a chip, a subtle background with emphasis text', async () => {
     const view = busy(anonymous);
     await create(() => Promise.resolve({ ...view, lanes: [{ ...view.lanes[0], paused: true }] }));
 
     const states = [...el().querySelectorAll('[data-testid="mq-state"]')]
-      .map(s => [s.tagName, s.textContent?.trim(), [...s.classList].filter(c => c !== 'ms-1').sort().join(' ')]);
+      .map(s => [s.textContent?.trim(), [...s.classList].filter(c => c !== 'ms-1').sort().join(' ')]);
     expect(states).toEqual([
-      ['APP-CHIP', 'paused', 'bg-secondary-subtle border border-secondary-subtle text-secondary-emphasis'],
-      ['APP-CHIP', 'regenerating', 'bg-info-subtle border border-info-subtle text-info-emphasis'],
-      ['APP-CHIP', 'evicted', 'bg-danger-subtle border border-danger-subtle text-danger-emphasis'],
-      ['APP-CHIP', 'merged', 'bg-success-subtle border border-success-subtle text-success-emphasis'],
+      ['paused', 'bg-secondary-subtle border border-secondary-subtle mq-state text-secondary-emphasis'],
+      ['regenerating', 'bg-info-subtle border border-info-subtle mq-state text-info-emphasis'],
+      ['evicted', 'bg-danger-subtle border border-danger-subtle mq-state text-danger-emphasis'],
+      ['merged', 'bg-success-subtle border border-success-subtle mq-state text-success-emphasis'],
     ]);
   });
 

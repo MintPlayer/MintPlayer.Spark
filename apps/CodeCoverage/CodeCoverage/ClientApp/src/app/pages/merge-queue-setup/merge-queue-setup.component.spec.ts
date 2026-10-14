@@ -64,7 +64,7 @@ describe('MergeQueueSetupComponent', () => {
 
     const cards = all<HTMLElement>('[data-step]');
     expect(cards.map(card => card.id)).toEqual(STEPS);
-    cards.forEach((card, i) => expect(card.querySelector('h2 app-chip')?.textContent?.trim()).toBe(String(i + 1)));
+    cards.forEach((card, i) => expect(card.querySelector('h2 .badge')?.textContent?.trim()).toBe(String(i + 1)));
 
     expect(stepLinks().map(a => a.getAttribute('href'))).toEqual(STEPS.map(id => `/merge-queue/setup#${id}`));
     expect(stepLinks().map(a => a.textContent?.trim()))

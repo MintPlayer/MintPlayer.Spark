@@ -8,13 +8,12 @@ import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mi
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BrowseService, MergeQueueCommandAccepted, MergeQueueEntry, MergeQueueView } from '../../services/browse.service';
-import { ChipColor, ChipComponent } from '../chip/chip.component';
 
 /** GitHub's repository roles, weakest first; queueing needs `write` (merge-queue PRD O9). */
 const ROLES = ['none', 'read', 'triage', 'write', 'maintain', 'admin'];
 
 /** The saga's states as a reader would say them, with the theme colour of their chip. */
-const STATES: Record<string, { label: string; color: ChipColor }> = {
+const STATES: Record<string, { label: string; color: string }> = {
   Queued: { label: 'waiting', color: 'secondary' },
   Preparing: { label: 'rebasing', color: 'info' },
   Regenerating: { label: 'regenerating', color: 'info' },
@@ -26,6 +25,16 @@ const STATES: Record<string, { label: string; color: ChipColor }> = {
   Dequeued: { label: 'dequeued', color: 'secondary' },
   Refused: { label: 'not queued', color: 'warning' },
 };
+
+/**
+ * A state chip's classes: Bootstrap's subtle background with its emphasis text and border, a pair made for both themes
+ * (merge-queue PRD §0 D75, D84). Every state reads at 7.15:1 or more in both themes. `<bs-badge>` keeps white text on its
+ * solid colour, 1.96:1 on info (rebasing, regenerating, publishing) and 1.63:1 on warning (not queued).
+ * Not a bare `.badge`: ng-bootstrap styles `.badge` only inside `<bs-badge>`, so `.mq-state` carries the shape itself.
+ */
+function chip(color: string): string {
+  return `mq-state bg-${color}-subtle text-${color}-emphasis border border-${color}-subtle`;
+}
 
 const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -48,7 +57,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
  */
 @Component({
   selector: 'app-repo-merge-queue-panel',
-  imports: [FormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsFormComponent, BsFormControlDirective, BsTableComponent, ChipComponent],
+  imports: [FormsModule, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent, BsFormComponent, BsFormControlDirective, BsTableComponent],
   template: `
     @if (visible()) {
       @let v = view()!;
@@ -78,7 +87,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
               <h6 class="mb-2">
                 <i class="bi bi-arrow-right-short"></i> {{ lane.baseBranch }}
                 @if (lane.paused) {
-                  <app-chip class="ms-1" color="secondary" data-testid="mq-state">paused</app-chip>
+                  <span class="mq-state bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle ms-1" data-testid="mq-state">paused</span>
                 }
               </h6>
 
@@ -86,7 +95,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
                 <div class="d-flex flex-wrap align-items-center gap-2" data-testid="mq-current">
                   <strong>#{{ c.number }}</strong>
                   <span>{{ c.title }}</span>
-                  <app-chip [color]="stateColor(c.state)" data-testid="mq-state">{{ label(c.state) }}</app-chip>
+                  <span [class]="badge(c.state)" data-testid="mq-state">{{ label(c.state) }}</span>
                   <span class="small text-muted">since {{ time(c.sinceUtc) }}</span>
                   @if (c.runUrl) {
                     <a class="small" [href]="c.runUrl" target="_blank" rel="noopener">regenerate run</a>
@@ -127,7 +136,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
                     @for (o of lane.recent; track o.number + '/' + o.run) {
                       <tr>
                         <td><strong>#{{ o.number }}</strong> {{ o.title }}</td>
-                        <td><app-chip [color]="stateColor(o.state)" data-testid="mq-state">{{ label(o.state) }}</app-chip></td>
+                        <td><span [class]="badge(o.state)" data-testid="mq-state">{{ label(o.state) }}</span></td>
                         <td class="small mq-why">
                           @if (o.reason) { <code>{{ o.reason }}</code> }
                           @if (o.message) { <div class="text-muted">{{ o.message }}</div> }
@@ -283,8 +292,8 @@ export class RepoMergeQueuePanelComponent {
     return STATES[state]?.label ?? state;
   }
 
-  stateColor(state: string): ChipColor {
-    return STATES[state]?.color ?? 'secondary';
+  badge(state: string): string {
+    return chip(STATES[state]?.color ?? 'secondary');
   }
 
   /** The server's times are UTC; one without a zone designator is read as UTC rather than as local time. */

@@ -4,11 +4,11 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCardBodyComponent, BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { AccountPermissionsNoticeComponent } from '../../components/account-permissions-notice/account-permissions-notice.component';
-import { ChipComponent } from '../../components/chip/chip.component';
 import { MERGE_QUEUE_SETUP_SCREENSHOTS, type MergeQueueSetupAttachment, type MergeQueueSetupScreenshot } from './merge-queue-setup.screenshots';
 import { COVERAGE_YML, CREATE_LABEL, CREATE_RULESETS, PUSH_TRIGGER, REGENERATE_WORKFLOW, RULESET_1, RULESET_2 } from './merge-queue-setup.snippets';
 
@@ -47,8 +47,8 @@ interface Screenshot {
 @Component({
   selector: 'app-merge-queue-setup',
   imports: [
-    NgTemplateOutlet, RouterLink, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent,
-    BsCodeSnippetComponent, BsTableComponent, AccountPermissionsNoticeComponent, ChipComponent,
+    NgTemplateOutlet, RouterLink, BsAlertComponent, BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent,
+    BsCodeSnippetComponent, BsTableComponent, AccountPermissionsNoticeComponent,
   ],
   templateUrl: './merge-queue-setup.component.html',
   styleUrl: './merge-queue-setup.component.scss',
@@ -58,6 +58,7 @@ export default class MergeQueueSetupComponent {
   private readonly document = inject(DOCUMENT);
   private readonly route = inject(ActivatedRoute);
 
+  protected readonly primaryColor = Color.primary;
   protected readonly infoColor = Color.info;
   protected readonly dangerColor = Color.danger;
 

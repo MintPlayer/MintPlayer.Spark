@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
@@ -17,7 +19,7 @@ import { SPARK_MODERATION_REVIEW_PATH } from './spark-moderation.tokens';
  */
 @Component({
   selector: 'spark-moderator-panel',
-  imports: [BsCardComponent, BsCardHeaderComponent, TranslateKeyPipe, RouterLink],
+  imports: [BsBadgeComponent, BsCardComponent, BsCardHeaderComponent, TranslateKeyPipe, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (status(); as s) {
@@ -26,7 +28,7 @@ import { SPARK_MODERATION_REVIEW_PATH } from './spark-moderation.tokens';
           <bs-card-header>{{ 'moderation.panel' | t }}</bs-card-header>
           <div class="p-3 d-flex flex-wrap gap-2 align-items-center">
             @if (s.locked) {
-              <span class="badge bg-secondary spark-moderation-locked">{{ 'moderation.locked' | t }}</span>
+              <bs-badge [type]="colors.secondary" class="spark-moderation-locked">{{ 'moderation.locked' | t }}</bs-badge>
               @if (s.lockReason) { <span class="small text-muted">{{ s.lockReason }}</span> }
             }
             @if (s.canLock) {
@@ -57,6 +59,7 @@ export class SparkModeratorPanelComponent {
   private readonly moderation = inject(SparkModerationService);
   private readonly lang = inject(SparkLanguageService);
   protected readonly reviewPath = inject(SPARK_MODERATION_REVIEW_PATH);
+  protected readonly colors = Color;
 
   context = input.required<SparkDetailContext>();
 

@@ -6,7 +6,7 @@
          measures a subset; the rest is carried from the base when the file's
          git blob is unchanged, so the headline is still whole-workspace. -->
     <div class="px-3 pt-3 small" data-testid="assembly-summary">
-      <app-chip class="me-2" [color]="a.completeness === 'Complete' ? 'success' : 'warning'">{{ a.completeness }}</app-chip>
+      <bs-badge class="me-2" [type]="a.completeness === 'Complete' ? successColor : warningColor">{{ a.completeness }}</bs-badge>
       <span>
         {{ a.measuredFiles }} file(s) measured on this commit
         @if (a.carriedFiles > 0) {
@@ -51,27 +51,30 @@
   }
 
   @if (hierarchy(); as h) {
-    <div class="row g-3 mb-2">
-      <div class="col-12 col-lg-5">
-        <!-- aspect-ratio 1 fills the column width; keep it bounded -->
-        <bs-hierarchy-chart
-          style="max-width: 420px; margin-inline: auto;"
-          [data]="h"
-          layout="sunburst"
-          [rootId]="chartRootId()"
-          (rootIdChange)="chartRootId.set($event)"
-          [maxDepth]="'auto'"
-          [colorMin]="60"
-          [colorMax]="80"
-          inputLabel="Coverage by folder"
-          valueUnitLabel="lines"
-          (zoom)="onChartZoom($event)"
-          (nodeSelect)="onChartSelect($event)" />
+    <!-- ng-bootstrap's grid: plain .row/.col-* classes are styled only inside <bs-grid>. -->
+    <bs-grid stopFullWidthAt="never" class="d-block mb-2">
+      <div bsRow class="g-3">
+        <div [xxs]="12" [lg]="5">
+          <!-- aspect-ratio 1 fills the column width; keep it bounded -->
+          <bs-hierarchy-chart
+            style="max-width: 420px; margin-inline: auto;"
+            [data]="h"
+            layout="sunburst"
+            [rootId]="chartRootId()"
+            (rootIdChange)="chartRootId.set($event)"
+            [maxDepth]="'auto'"
+            [colorMin]="60"
+            [colorMax]="80"
+            inputLabel="Coverage by folder"
+            valueUnitLabel="lines"
+            (zoom)="onChartZoom($event)"
+            (nodeSelect)="onChartSelect($event)" />
+        </div>
+        <div [xxs]="12" [lg]="7">
+          <ng-container *ngTemplateOutlet="folderList" />
+        </div>
       </div>
-      <div class="col-12 col-lg-7">
-        <ng-container *ngTemplateOutlet="folderList" />
-      </div>
-    </div>
+    </bs-grid>
   } @else {
     <ng-container *ngTemplateOutlet="folderList" />
   }

@@ -5,10 +5,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { combineLatest } from 'rxjs';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
 import type { CodeLineAnnotation } from '@mintplayer/web-components/code-snippet';
 import { canHighlight } from '@mintplayer/web-components/code-snippet';
-import { ChipComponent } from '../../components/chip/chip.component';
 import { BrowseService, FileDetail } from '../../services/browse.service';
 
 /**
@@ -73,7 +74,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
  */
 @Component({
   selector: 'app-file',
-  imports: [CommonModule, RouterModule, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent, BsCodeSnippetComponent, ChipComponent],
+  imports: [CommonModule, RouterModule, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent, BsBadgeComponent, BsCodeSnippetComponent],
   templateUrl: './file.component.html',
   styleUrl: './file.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -82,6 +83,8 @@ export default class FileComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly browse = inject(BrowseService);
+
+  protected readonly colors = Color;
 
   /**
    * The forge, from the route. It was already read here for the API call and simply never reached

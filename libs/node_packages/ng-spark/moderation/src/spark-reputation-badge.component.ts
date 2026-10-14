@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkModerationService } from './spark-moderation.service';
 import { ModerationReputation } from './spark-moderation.models';
@@ -13,22 +15,24 @@ import { ModerationReputation } from './spark-moderation.models';
  */
 @Component({
   selector: 'spark-reputation-badge',
-  imports: [TranslateKeyPipe],
+  imports: [BsBadgeComponent, TranslateKeyPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (reputation(); as r) {
-      <span class="badge bg-body-tertiary text-body border spark-reputation-badge" [attr.title]="'moderation.reputation' | t">
+      <bs-badge [type]="colors.secondary" class="spark-reputation-badge" [attr.title]="'moderation.reputation' | t">
         {{ r.total }}
         @if (!userId() && r.pending) {
           <!-- A received downvote makes the pending part negative: "(-2 pending)", never "(+-2 pending)". -->
-          <span class="text-muted spark-reputation-pending">({{ r.pending > 0 ? '+' : '' }}{{ r.pending }} {{ 'moderation.pending' | t }})</span>
+          <span class="fw-normal spark-reputation-pending">({{ r.pending > 0 ? '+' : '' }}{{ r.pending }} {{ 'moderation.pending' | t }})</span>
         }
-      </span>
+      </bs-badge>
     }
   `,
 })
 export class SparkReputationBadgeComponent {
   private readonly moderation = inject(SparkModerationService);
+
+  protected readonly colors = Color;
 
   userId = input<string | null | undefined>();
 

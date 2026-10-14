@@ -67,20 +67,22 @@ describe('DateTimeRendererComponent', () => {
   });
 });
 
+// A badge's colour is the inner `.badge` bs-badge paints, set by its [type] (merge-queue PRD §0 D84). A `text-bg-*` class
+// on the host never reached it: the inner `.badge` stayed `bg-primary`.
 describe('ConnectedRendererComponent', () => {
-  it('draws the green connected chip only for a literal true', () => {
+  it('draws the green connected badge only for a literal true', () => {
     const fixture = render(ConnectedRendererComponent, { value: true });
 
-    const chip = (fixture.nativeElement as HTMLElement).querySelector('app-chip')!;
-    expect(chip.classList.contains('bg-success-subtle')).toBe(true);
+    const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge .badge')!;
+    expect(badge.classList.contains('bg-success')).toBe(true);
     expect(text(fixture)).toBe('app.connected');
   });
 
-  it('draws the grey not-connected chip for false, null and truthy non-booleans', () => {
+  it('draws the grey not-connected badge for false, null and truthy non-booleans', () => {
     for (const value of [false, null, undefined, 'true', 1]) {
       const fixture = render(ConnectedRendererComponent, { value });
-      const chip = (fixture.nativeElement as HTMLElement).querySelector('app-chip')!;
-      expect(chip.classList.contains('bg-secondary-subtle')).toBe(true);
+      const badge = (fixture.nativeElement as HTMLElement).querySelector('bs-badge .badge')!;
+      expect(badge.classList.contains('bg-secondary')).toBe(true);
       expect(text(fixture)).toBe('app.notConnected');
     }
   });
@@ -195,8 +197,8 @@ describe('BuildSessionsRendererComponent', () => {
     return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('div.small'));
   }
 
-  function chips(line: HTMLElement): HTMLElement[] {
-    return Array.from(line.querySelectorAll('app-chip'));
+  function badges(line: HTMLElement): HTMLElement[] {
+    return Array.from(line.querySelectorAll('bs-badge .badge'));
   }
 
   it('draws one line per nested PersistentObject session with its flags and parse status', () => {
@@ -210,9 +212,9 @@ describe('BuildSessionsRendererComponent', () => {
     const [first, second] = lines(fixture);
     expect(lines(fixture)).toHaveLength(2);
     expect(first.textContent).toContain('unit');
-    expect(chips(first).map(b => b.textContent!.trim())).toEqual(['dotnet', 'linux', 'Parsed']);
-    expect(chips(first)[2].classList.contains('bg-success-subtle')).toBe(true);
-    expect(chips(second)[0].classList.contains('bg-warning-subtle')).toBe(true);
+    expect(badges(first).map(b => b.textContent!.trim())).toEqual(['dotnet', 'linux', 'Parsed']);
+    expect(badges(first)[2].classList.contains('bg-success')).toBe(true);
+    expect(badges(second)[0].classList.contains('bg-warning')).toBe(true);
     expect(first.querySelector('.text-danger')).toBeNull();
   });
 
@@ -223,8 +225,8 @@ describe('BuildSessionsRendererComponent', () => {
 
     const [line] = lines(fixture);
     expect(line.textContent).toContain('s9');
-    expect(chips(line)).toHaveLength(1);
-    expect(chips(line)[0].classList.contains('bg-danger-subtle')).toBe(true);
+    expect(badges(line)).toHaveLength(1);
+    expect(badges(line)[0].classList.contains('bg-danger')).toBe(true);
     expect(line.querySelector('span.text-danger')!.textContent).toBe('Malformed XML');
   });
 

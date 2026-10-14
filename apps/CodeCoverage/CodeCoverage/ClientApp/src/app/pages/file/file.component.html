@@ -11,9 +11,9 @@
   } @else if (detail(); as d) {
     @if (stats(); as s) {
       <div class="mb-2 d-flex align-items-center gap-2">
-        <app-chip [color]="s.coverable > 0 && s.covered / s.coverable >= 0.8 ? 'success' : 'warning'">
+        <bs-badge [type]="s.coverable > 0 && s.covered / s.coverable >= 0.8 ? colors.success : colors.warning">
           {{ s.covered }}/{{ s.coverable }} lines covered
-        </app-chip>
+        </bs-badge>
         @if (d.source === null) {
           <span class="small text-muted">Source unavailable (private repo without App access, or file missing at this commit) — showing coverage data only.</span>
         }

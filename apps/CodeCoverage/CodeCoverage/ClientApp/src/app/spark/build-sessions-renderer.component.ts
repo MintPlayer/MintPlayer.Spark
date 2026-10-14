@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { PersistentObject } from '@mintplayer/ng-spark/models';
 import type { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
-import { ChipComponent } from '../components/chip/chip.component';
+import { Color } from '@mintplayer/ng-bootstrap';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 
 interface SessionView {
   key: string;
@@ -13,24 +14,24 @@ interface SessionView {
 
 /**
  * Spark attribute renderer "build-sessions": the Build.Sessions AsDetail array
- * as master's compact per-session lines (job name, flag chips, parse-status
- * chip, error). The value arrives as nested PersistentObjects once Spark#241
+ * as master's compact per-session lines (job name, flag badges, parse-status
+ * badge, error). The value arrives as nested PersistentObjects once Spark#241
  * ships the AsDetail renderer value; until then it renders nothing.
  */
 @Component({
   selector: 'app-build-sessions-renderer',
-  imports: [ChipComponent],
+  imports: [BsBadgeComponent],
   template: `
     @for (session of sessions(); track session.key) {
       <div class="small">
         {{ session.name }}
         @for (flag of session.flags; track flag) {
-          <app-chip class="ms-1" color="secondary">{{ flag }}</app-chip>
+          <bs-badge class="ms-1" [type]="colors.secondary">{{ flag }}</bs-badge>
         }
-        <app-chip class="ms-1"
-                  [color]="session.parseStatus === 'Parsed' ? 'success' : session.parseStatus === 'Pending' ? 'warning' : 'danger'">
+        <bs-badge class="ms-1"
+                  [type]="session.parseStatus === 'Parsed' ? colors.success : session.parseStatus === 'Pending' ? colors.warning : colors.danger">
           {{ session.parseStatus }}
-        </app-chip>
+        </bs-badge>
         @if (session.error) {
           <span class="text-danger ms-1">{{ session.error }}</span>
         }
@@ -42,6 +43,8 @@ interface SessionView {
 export class BuildSessionsRendererComponent implements SparkAttributeColumnRenderer, SparkAttributeDetailRenderer {
   value = input<any>();
   options = input<Record<string, any> | undefined>();
+
+  protected readonly colors = Color;
 
   readonly sessions = computed<SessionView[]>(() => {
     const value = this.value();

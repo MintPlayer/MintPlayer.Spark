@@ -142,6 +142,11 @@ describe('CommitFilesPanelComponent', () => {
       expect(text()).toContain('measured');
       expect(chart().componentInstance.data()).toEqual(hierarchy);
       expect(chart().componentInstance.rootId()).toBe('/');
+      // Side by side from lg, in ng-bootstrap's grid: plain .row/.col-* classes are styled only inside <bs-grid>.
+      const columns = [...(fixture.nativeElement as HTMLElement).querySelectorAll('bs-grid .row > *')];
+      expect(columns.map(c => [...c.classList].sort().join(' '))).toEqual(['col-12 col-lg-5', 'col-12 col-lg-7']);
+      expect(columns[0].contains(chart().nativeElement)).toBe(true);
+      expect(columns[1].textContent).toContain('a.ts');
     });
 
     it('reloads from the root when the sha input changes', async () => {
@@ -317,7 +322,7 @@ describe('CommitFilesPanelComponent', () => {
       expect(summary.textContent).toContain('2 changed file(s) measured by nobody');
       expect(summary.textContent).toContain('2 builds');
       expect(summary.textContent).toContain('(affected)');
-      expect(summary.querySelector('app-chip')?.classList.contains('bg-warning-subtle')).toBe(true);
+      expect(summary.querySelector('bs-badge .badge')?.classList.contains('bg-warning')).toBe(true);
 
       (summary.querySelector('a') as HTMLElement).click();
       expect(navigate).toHaveBeenCalledWith(['/', 'github', 'r', 'acme', 'widgets', 'c', 'bbbbbbbbbb']);
