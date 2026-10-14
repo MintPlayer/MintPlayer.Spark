@@ -58,6 +58,14 @@ public sealed partial class MergeQueueResolver(GitRunner git)
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(2);
 
+    /// <summary>Where the throwaway index of §5.3 step 5 is written; the temp directory when null. The git writer points
+    /// it at the job's own directory, which is deleted with the job.</summary>
+    public string? ScratchDirectory { get; init; }
+
+    /// <summary>Extra per-command git config for every command the resolver runs (the writer's memory bounds); never a
+    /// hardened key, which <see cref="GitRunner"/> refuses.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> Config { get; init; } = [];
+
     [GeneratedRegex(@"\A[0-9a-f]{40}\z", RegexOptions.CultureInvariant)]
     private static partial Regex ObjectId();
 
@@ -79,7 +87,7 @@ public sealed partial class MergeQueueResolver(GitRunner git)
             GitDirectory = gitDirectory,
             Credential = credential,
             Timeout = Timeout,
-            Config = [new("merge.conflictStyle", "zdiff3")],
+            Config = [.. Config, new("merge.conflictStyle", "zdiff3")],
         }, cancellationToken);
         if (merge.TimedOut || merge.ExitCode is not (0 or 1))
             throw new GitCommandException("merge-tree", merge);
@@ -117,6 +125,18 @@ public sealed partial class MergeQueueResolver(GitRunner git)
             var entries = output.Stages.Where(s => s.Path == path).ToDictionary(s => s.Stage);
             if (!entries.TryGetValue(2, out var ours) || !entries.ContainsKey(3) || entries.Values.Any(e => e.Mode != "100644"))
                 return Evict(EvictionReason.UnsupportedEntry, [path], "Both sides must hold the file as a regular, non-executable file.");
+
+            if (rule.AnyLine)
+            {
+                // Q7's whole-file entry: no hunk check, no JSON; the size cap still holds (a side is never read whole).
+                foreach (var entry in entries.Values)
+                {
+                    if (await BlobSizeAsync(gitDirectory, entry.ObjectId, credential, cancellationToken) > MaxBlobBytes)
+                        return Evict(EvictionReason.TooLarge, [path], $"A side is over {MaxBlobBytes} bytes.");
+                }
+                resolutions.Add(ours);
+                continue;
+            }
 
             var sides = new Dictionary<int, string>();
             foreach (var (stage, entry) in entries)
@@ -165,6 +185,7 @@ public sealed partial class MergeQueueResolver(GitRunner git)
         var result = await git.RunAsync(new GitInvocation
         {
             Arguments = ["rev-parse", "--verify", "--quiet", "--end-of-options", reference + "^{commit}"],
+            Config = Config,
             GitDirectory = gitDirectory,
             Timeout = Timeout,
         }, cancellationToken);
@@ -177,19 +198,24 @@ public sealed partial class MergeQueueResolver(GitRunner git)
     /// read).</summary>
     private async Task<string?> ReadBlobAsync(string gitDirectory, string objectName, GitCredential? credential, CancellationToken cancellationToken)
     {
+        if (await BlobSizeAsync(gitDirectory, objectName, credential, cancellationToken) > MaxBlobBytes)
+            return null;
+        return (await RunAsync(gitDirectory, ["cat-file", "blob", objectName], cancellationToken, credential: credential)).StandardOutput;
+    }
+
+    private async Task<long> BlobSizeAsync(string gitDirectory, string objectName, GitCredential? credential, CancellationToken cancellationToken)
+    {
         var size = await RunAsync(gitDirectory, ["cat-file", "-s", objectName], cancellationToken, credential: credential);
         if (!long.TryParse(size.StandardOutput.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var bytes))
             throw new GitCommandException("cat-file", "the size does not parse.");
-        if (bytes > MaxBlobBytes)
-            return null;
-        return (await RunAsync(gitDirectory, ["cat-file", "blob", objectName], cancellationToken, credential: credential)).StandardOutput;
+        return bytes;
     }
 
     /// <summary>§5.3 step 5: the merged tree with the resolved paths replaced, built in a throwaway index so nothing
     /// else in the repository changes.</summary>
     private async Task<string> ReplaceAsync(string gitDirectory, string tree, IReadOnlyList<MergeTreeStage> entries, CancellationToken cancellationToken)
     {
-        var index = Path.Combine(Path.GetTempPath(), $"codecoverage-mq-{Guid.NewGuid():N}.index");
+        var index = Path.Combine(ScratchDirectory ?? Path.GetTempPath(), $"codecoverage-mq-{Guid.NewGuid():N}.index");
         try
         {
             await RunAsync(gitDirectory, ["read-tree", tree], cancellationToken, index: index);
@@ -197,7 +223,10 @@ public sealed partial class MergeQueueResolver(GitRunner git)
             foreach (var entry in entries)
                 info.Append(entry.Mode).Append(' ').Append(entry.ObjectId).Append('\t').Append(entry.Path).Append('\0');
             await RunAsync(gitDirectory, ["update-index", "-z", "--index-info"], cancellationToken, input: info.ToString(), index: index);
-            return Oid(await RunAsync(gitDirectory, ["write-tree"], cancellationToken, index: index), "write-tree");
+            // --missing-ok: in a blob-less partial clone the tree names blobs that were never fetched (they exist on the
+            // forge); without it write-tree would try to fetch every one of them (M3: "could not fetch … from promisor
+            // remote"). The only blobs the resolver adds are the stage-2 ones it already read.
+            return Oid(await RunAsync(gitDirectory, ["write-tree", "--missing-ok"], cancellationToken, index: index), "write-tree");
         }
         finally
         {
@@ -219,6 +248,7 @@ public sealed partial class MergeQueueResolver(GitRunner git)
             IndexFile = index,
             Author = author,
             Committer = committer,
+            Config = Config,
         }, cancellationToken);
         if (!result.Succeeded)
             throw new GitCommandException(arguments[0], result);

@@ -204,7 +204,8 @@ public sealed class MirrorService(GitRunner git, MirrorPaths paths, DiskGuard di
 
             var mirror = paths.Mirror(context.Key);
             MirrorPaths.DeleteTree(mirror);
-            Directory.Move(partial, mirror);
+            if (MirrorPaths.MoveTree(partial, mirror) is > 0 and var retries)
+                logger.LogInformation("Mirror {Repo}: moving the clone into place was refused {Retries} time(s) before it succeeded (a handle on a fresh file, D26)", context.Key, retries);
             return await DoneAsync(context, FetchOutcomes.Cloned, mirror);
         }
         finally

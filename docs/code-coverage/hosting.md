@@ -30,7 +30,8 @@ Source: [`apps/CodeCoverage/docker-compose.yml`](../../apps/CodeCoverage/docker-
 service publishes a host port. Traefik reaches the app over the external `web` network; behind it every network is
 pairwise and `internal: true` (SeoTester PRD D55): `coverage-db` (app, RavenDB, licence one-shot), `coverage-mail`
 (app, relay), `coverage-smtp-egress` (the relay alone, its only way out), `coverage-git` (app and the commit-graph
-sidecar, #504), `coverage-git-egress` (the sidecar alone, its way out to the forges), and the external `seo-raven` and
+sidecar, #504), `coverage-git-egress` (the sidecar alone, its way out to the forges), `coverage-git-writer` (app and the
+merge queue's git writer), `coverage-git-writer-egress` (the writer alone, its way out), and the external `seo-raven` and
 `seo-mail` shared with SeoTester's app (below; matrix in [raven-tls-migration.md](raven-tls-migration.md) §1). RavenDB runs **secured**, HTTPS with client certificates (D56). Traefik itself is a separate stack;
 what it must provide (Docker provider on `web`, `exposedbydefault=false`, entrypoints `web` →
 `websecure`, resolver `letsencrypt`) is sketched in the README's
@@ -42,9 +43,11 @@ what it must provide (Docker provider on `web`, `exposedbydefault=false`, entryp
 | `coverage-raven-license` | `curlimages/curl:8.11.1` | `coverage-db` | `./raven-license.json` → `/raven-license.json` (ro); the operator certificate and `ca.crt` (ro) | — | `"no"` (one-shot) | POSTs the licence to `https://coverage-raven:8080/admin/license/activate` with the operator certificate once Raven is healthy, with 10 retries 3 s apart, then exits. Runs on every `up`. Nothing depends on it. |
 | `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-mail`, `seo-mail`, `coverage-smtp-egress` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587` (under `bash`: `/dev/tcp` does not exist in the image's `sh`, which is dash); interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
 | `coverage-git` | `ghcr.io/mintplayer/codecoverage-git:master` (floating, pull-only) | `coverage-git`, `coverage-git-egress` | `codecoverage-git-data` → `/data/git` | — | `unless-stopped` | The commit-graph mirror sidecar (#504, [commit-graph.md](commit-graph.md)): the only container that runs `git`. `mem_limit: 1g` (D22). Holds no App key, no Raven certificate and no stored credential; the app sends a token per fetch. ⚠️ **Its API has no authentication**: the `coverage-git` network is the boundary (D4). |
-| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail`, `coverage-git` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` and `coverage-git` to be *started* (the graph answers `unavailable` without the sidecar). |
+| `coverage-git-writer` | `ghcr.io/mintplayer/codecoverage-git-writer:master` (floating, pull-only) | `coverage-git-writer`, `coverage-git-writer-egress` | `codecoverage-git-writer-jobs` → `/data/jobs` | — | `unless-stopped` | The merge queue's git writer (`docs/coverage_merge_queue_PRD.md` D2, M3): per job a bare, blob-less clone, the merge-tree resolver, `commit-tree` and a leased push. `mem_limit: 768m`, `pids_limit: 128`, `read_only: true` with a 64 MB `/tmp` tmpfs. Holds no App key, no Raven certificate and no stored credential; the app mints a short-lived token per request. ⚠️ **Its API has no authentication and pushes**: the `coverage-git-writer` network is the boundary. |
+| `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-db`, `coverage-mail`, `coverage-git`, `coverage-git-writer` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `./raven-certs/codecoverage.{crt,key}`, `ca.crt` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` and `coverage-git` to be *started* (the graph answers `unavailable` without the sidecar). |
 
-Named volumes: `raven-data`, `smtp-queue`, `dataprotection-keys`, `codecoverage-git-data`. Docker prefixes them with the
+Named volumes: `raven-data`, `smtp-queue`, `dataprotection-keys`, `codecoverage-git-data`, `codecoverage-git-writer-jobs`
+(the writer's job directories, empty between jobs; no backup). Docker prefixes them with the
 compose project name, which is the directory name (`code-coverage` for `/var/www/code-coverage`), so
 the database network is `code-coverage_coverage-db`. The backup commands in the README rely on
 that name. `codecoverage-git-data` (`code-coverage_codecoverage-git-data`) holds only mirrors, a cache of the forges:
@@ -67,6 +70,37 @@ scope), while the workflow assumes "the VPS pulls without credentials" (its comm
 publish, check *Package settings → Change
 visibility → Public* on GitHub (owner, 2026-10-12: public is fine; the image holds no secret).
 
+**`coverage-git-writer`, `coverage-git-writer-egress`** (merge queue M3, `docs/coverage_merge_queue_PRD.md` D2). The
+writer is a second sidecar, so the read-only mirror's threat model stays intact: it is the only container with a push
+token in hand, and it holds that token for one job. Its API (`POST /jobs/prepare`, `POST /jobs/publish`,
+`DELETE /jobs/queue-branch`, `GET /healthz`) is unauthenticated, so its networks are the boundary:
+
+- `coverage-git-writer` is `internal: true` and holds **exactly** `coverage-app` and `coverage-git-writer`. ⚠️ Any other
+  container added to it could have the writer push with the token the app hands it.
+- `coverage-git-writer-egress` is not internal and holds **only** `coverage-git-writer`.
+- The writer shares no network with `coverage-raven` or with the read-only `coverage-git`.
+  `tools/verify-backend-networks.test.mjs` asserts the members, the limits and the app's `MergeQueue__GitWriterUrl`.
+
+Job caps (spike S8: a prepare of this repository peaked at 100 MB and 15.7 MB on disk): **512 MB of memory, 64
+processes and 1 GB of disk per job**, one job at a time (`GitWriter__MaxConcurrentJobs=1`). Memory and processes are
+the container's limits (`mem_limit: 768m` = the job's 512 MB + 256 MB for the .NET host; `pids_limit: 128` = 64 + 64),
+which equal the job's because only one job runs; git itself runs with `pack.threads=1` and bounded pack caches. The
+disk cap and the wall clock are enforced in the process: a watchdog measures the job directory every second and after
+each clone/fetch/merge, and stops the job (`too-large`) as soon as it is over; a job past `JobTimeoutSeconds` (180 s,
+under the messaging ClaimTtl of 5 min) has its git process tree killed (`timeout`). Every job directory is deleted when
+the job ends. To run **2** jobs at once, raise `mem_limit` to `1280m` and `pids_limit` to `192` with it; the writer
+refuses any other value than 1 or 2 at startup.
+
+**The git floor.** The writer needs git ≥ 2.50.1 or a release carrying the July 2025 security batch (CVE-2025-48384,
+-48385, …; PRD §4.3, T8). The image takes git from the `aspnet:11.0` base image's Debian, and its Dockerfile **fails the
+build** unless `git --version` is 2.50.1+, one of upstream's patched maintenance releases (2.43.7, 2.44.4, 2.45.4,
+2.46.4, 2.47.3, 2.48.2, 2.49.1, or later in those lines), or Debian's package changelog names CVE-2025-48384 (Debian
+backports fixes into older version numbers). `code-coverage-image-check.yml` builds the Dockerfile on every pull request,
+so an unpatched base image is caught before merge. If it ever fails, install git from Debian backports or build 2.50.1+.
+
+The image `ghcr.io/mintplayer/codecoverage-git-writer` is a third GHCR package, with the same first-publish caveat as
+`codecoverage-git` above: check that it is public after the first deploy.
+
 **`seo-raven`, `seo-mail`** (since SeoTester, PRD `docs/seo_analyzer_PRD.md` D55; they replace D48's
 `mintplayer-backend`): external networks that no compose project owns, so neither CodeCoverage's nor SeoTester's `down`
 removes them. `coverage-raven` joins `seo-raven` and `coverage-smtp` joins `seo-mail`; SeoTester's app reaches them
@@ -84,7 +118,7 @@ Traefik labels on `coverage-app`:
 | `traefik.http.routers.coverage.entrypoints` | `websecure` | Traefik must have an entrypoint of exactly this name. |
 | `traefik.http.routers.coverage.tls.certresolver` | `letsencrypt` | Traefik must have a certificate resolver of exactly this name. |
 | `traefik.http.services.coverage.loadbalancer.server.port` | `8080` | Pinned so Traefik never guesses. The image exposes 8080 only, deliberately (Dockerfile). |
-| `traefik.docker.network` | `web` | ⚠️ The app is on four networks; without this Traefik may pick its `coverage-db`, `coverage-mail` or `coverage-git` address, which it cannot reach — random 504s. |
+| `traefik.docker.network` | `web` | ⚠️ The app is on five networks; without this Traefik may pick its `coverage-db`, `coverage-mail`, `coverage-git` or `coverage-git-writer` address, which it cannot reach — random 504s. |
 
 ## 2. Server `.env`
 
@@ -137,6 +171,8 @@ Set directly in `docker-compose.yml` (not overridable from `.env`):
 | `Spark__Auth__PublicBaseUrl` | `https://coverage.mintplayer.com` | Base for links in mail; never taken from the request `Host`. |
 | `GitHub__Production__PrivateKeyPath` | `/run/secrets/github-app.pem` | The bind-mounted App key. |
 | `CommitGraph__SidecarUrl` | `http://coverage-git:8080` | The commit-graph sidecar over the internal `coverage-git` network. Removing it turns the graph off (`unavailable`). |
+| `MergeQueue__GitWriterUrl` | `http://coverage-git-writer:8080` | The merge queue's git writer over the internal `coverage-git-writer` network. Removing it turns the queue's git steps off (`IGitWriterSidecar.IsConfigured` is false). |
+| writer `GitWriter__Root`, `GitWriter__MaxConcurrentJobs` | `/data/jobs`, `1` | On the `codecoverage-git-writer-jobs` volume; one job, which the container's limits are sized for. The image also sets `GitWriter__HooksPath=/opt/git-hooks-empty`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_TERMINAL_PROMPT=0` (`CodeCoverage.GitWriter/Dockerfile`). |
 | sidecar `GitMirror__Root` | `/data/git` | On the `codecoverage-git-data` volume. The image also sets `GitMirror__HooksPath=/opt/git-hooks-empty`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_TERMINAL_PROMPT=0` (`CodeCoverage.GitMirror/Dockerfile`). |
 | `Spark__Mail__Smtp__Security` | `None` | The relay is internal and advertises STARTTLS it has no certificate for; `None` never sends STARTTLS. |
 | relay `POSTFIX_inet_protocols` | `ipv4` | ⚠️ Mail leaves over IPv4 only; see the README's *Outgoing mail*. |
@@ -172,6 +208,8 @@ Keys the CodeCoverage assemblies read themselves. Environment-variable form repl
 | `Coverage:Administrators` | `[ "github:9629574" ]` (`appsettings.json`, the owner's GitHub user id) | No | `Services/CoverageAdministrators.cs` | Who is in the `Administrators` group: `{provider}:{forge user id}`, never a login. See "Administrators and the host metrics dashboard" below. Not mapped in compose; override with `Coverage__Administrators__0`, `__1`, …. |
 | `CommitGraph:*` | `SidecarUrl` unset (compose sets it); `BudgetBytes` 20 GB, `InstallationShare` 0.25, `EvictAfterDays` 60, `StaleAfterMinutes` 10, `RetryAfterMinutes` 60, `Installed` 2 GB / 50k refs / 600 s, `Anonymous` 500 MB / 10k refs / 180 s, `AvatarKeySecret` unset, `AvatarMaxBytes` 256 KB (`CommitGraph/CommitGraphOptions.cs`) | No | the commit graph (#504) | Mirror budget, quotas, eviction and avatars; full table in [commit-graph.md](commit-graph.md) §8. Only `SidecarUrl` is mapped in compose. `AvatarKeySecret` unset falls back to a key derived from `Coverage:BadgeSigningKey`; neither set means initials instead of avatars. |
 | `GitMirror:*` *(sidecar)* | `Root` `/data/git`, `MinFreeBytes` 15 GiB, `SnapshotCacheBytes` 256 MB, `ReaderIdleSeconds` 60, `HooksPath` `/opt/git-hooks-empty` (`CodeCoverage.GitMirror/appsettings.json`, `GitMirrorOptions.cs`, `Dockerfile`) | No | `coverage-git` | The sidecar's own configuration; quotas are not here, the app sends them with every fetch. [commit-graph.md](commit-graph.md) §8. |
+| `MergeQueue:*` | `GitWriterUrl` unset (compose sets it), `JobRequestTimeoutSeconds` 240 (`MergeQueue/GitWriterSidecarClient.cs`) | No | the merge queue | The writer's URL and the bound on one job request (the writer's 180 s job timeout plus its 30 s slot wait and a margin). M5 adds the saga's settings. |
+| `GitWriter:*` *(writer)* | `Root` `/data/jobs`, `MinFreeBytes` 2 GiB, `MaxJobBytes` 1 GiB, `JobTimeoutSeconds` 180, `MaxConcurrentJobs` 1, `SlotWaitSeconds` 30, `MaxPatchBytes` 2 MiB, `HooksPath` `/opt/git-hooks-empty` (`CodeCoverage.GitWriter/appsettings.json`, `GitWriterOptions.cs`, `Dockerfile`) | No | `coverage-git-writer` | The writer's job caps (S8) and limits. A request that waits `SlotWaitSeconds` for a slot is answered `busy`. |
 | `Coverage:Retention:ReportAttachmentDays` | `7` (`appsettings.json`; `DefaultRetentionDays = 7` in `Ingestion/ReapReportAttachmentsCronJob.cs`) | No | the reaper cron job | Days an uploaded raw report attachment is kept after parsing. Not mapped in compose. |
 | `GitHub:WebhookSecret` | `""` (`appsettings.json`) | Yes | `Program.cs` → Spark GitHub webhooks | Webhook signature secret. |
 | `GitHub:SmeeChannelUrl` | `""` (`appsettings.json`) | Development only | `Program.cs` | A smee.io channel relayed into the local webhook processor. |
@@ -454,7 +492,11 @@ scope `codecoverage-git` so the two images do not evict each other's layers. The
 `apps/CodeCoverage/`, so the path filter already covers it, and its Dockerfile copies only its own csproj (it has no
 `ProjectReference`). Its best-effort PATCH to public may fail on the first publish; see §1.
 
-**Job `deploy`** (needs **both** image jobs, because compose pulls `coverage-git` too and a missing tag fails `pull`;
+**Job `build-and-push-git-writer`** (merge queue M3; same permissions, timeout 30 min): the same steps for
+`apps/CodeCoverage/CodeCoverage.GitWriter/Dockerfile` → `ghcr.io/mintplayer/codecoverage-git-writer`, cache scope
+`codecoverage-git-writer`. The Dockerfile fails the build when the base image's git lacks the July 2025 fixes (§1).
+
+**Job `deploy`** (needs **all three** image jobs, because compose pulls `coverage-git` and `coverage-git-writer` too and a missing tag fails `pull`;
 permissions `contents: read`, `packages: read`; timeout 25 min), over SSH, with `set -e`:
 
 1. `mkdir -p /var/www/code-coverage && cd` there.
@@ -488,7 +530,8 @@ failed production deploy. It has `contents: read` only, never logs in to a regis
 (`push: false`) and never deploys. It reads the GHA layer cache the master deploy writes
 (`cache-from: type=gha`) but never writes to it, so nothing a pull request builds can be replayed
 into a production image. Timeout 30 min; concurrency cancels a superseded run on the same branch. A second job,
-`build-git-image`, builds the sidecar's Dockerfile the same way (no push, reading the `codecoverage-git` cache scope).
+`build-git-image`, builds the sidecar's Dockerfile the same way (no push, reading the `codecoverage-git` cache scope),
+and a third, `build-git-writer-image`, the merge queue writer's (cache scope `codecoverage-git-writer`).
 
 ## 8. The upload action
 

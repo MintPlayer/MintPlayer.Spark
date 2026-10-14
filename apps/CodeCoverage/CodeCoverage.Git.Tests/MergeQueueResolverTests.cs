@@ -151,20 +151,28 @@ public class MergeQueueResolverTests
     }
 
     [Fact]
-    public async Task Two_entities_inserted_into_the_same_gap_conflict_on_the_files_map_and_evict()
+    public async Task Two_entities_inserted_into_the_same_gap_resolve_under_the_O19_whole_file_rules()
     {
-        // Customer and Dog both sort between Address and Motorcycle: the insertions touch the same lines, which is a
-        // conflict outside the roll-ups (O2). Regeneration would fix it, but O2 resolves only roll-up conflicts.
+        // Customer and Dog both sort between Address and Motorcycle: the insertions touch the same lines of `files` and
+        // `entities`, a conflict outside the roll-ups. O2's key rule evicts it (the control); O19 makes the wholly generated
+        // hash file resolvable on any line, and the regenerate step rewrites it.
         using var repo = Seed();
         AddEntity(repo, "Customer", "with-customer");
         repo.Commit("A: Customer");
         repo.Checkout("pr");
         AddEntity(repo, "Dog", "with-dog");
         repo.Commit("B: Dog");
+        var bare = repo.Bare();
+        var resolver = new MergeQueueResolver(TestRepo.Runner());
 
-        var outcome = await MergeAsync(repo.Bare());
+        var keyed = await resolver.MergeAsync(bare, "main", "pr", Rules, CancellationToken.None);
+        var outcome = await resolver.MergeAsync(bare, "main", "pr", AutoResolveRule.SparkGeneratedFiles, CancellationToken.None);
 
-        outcome.Should().BeOfType<MergeOutcome.Evicted>().Which.Reason.Should().Be(EvictionReason.HunkOutsideAllowedKeys);
+        keyed.Should().BeOfType<MergeOutcome.Evicted>().Which.Reason.Should().Be(EvictionReason.HunkOutsideAllowedKeys);
+        var resolved = outcome.Should().BeOfType<MergeOutcome.Resolved>().Which;
+        resolved.Paths.Should().Equal([ModelHashes.Path]);
+        TestRepo.Git(bare, "rev-parse", $"{resolved.Tree}:{ModelHashes.Path}").Should().Be(TestRepo.Git(bare, "rev-parse", $"main:{ModelHashes.Path}"));
+        TestRepo.Git(bare, "ls-tree", "-r", "--name-only", resolved.Tree).Should().Contain("apps/DemoApp/DemoApp/App_Data/Model/Dog.json");
     }
 
     [Fact]
@@ -280,5 +288,52 @@ public class MergeQueueResolverTests
         clean.Messages.Select(m => (m.Type, m.Paths[0])).Should().Equal([("Auto-merging", "notes.txt")]);
 
         FluentActionsFor.Act(() => MergeTreeOutput.Parse("not a tree\0")).Should().Throw<FormatException>();
+    }
+
+    [Fact]
+    public async Task A_whole_file_rule_takes_the_base_side_of_any_conflicting_line()
+    {
+        using var repo = Seed();
+        repo.Write(Translations, "{\n  \"Address\": { \"en\": \"Address (main)\" }\n}\n");
+        repo.Commit("A: translation");
+        repo.Checkout("pr");
+        repo.Write(Translations, "{\n  \"Address\": { \"en\": \"Address (pr)\" }\n}\n");
+        repo.Commit("B: translation");
+        var bare = repo.Bare();
+        var resolver = new MergeQueueResolver(TestRepo.Runner());
+
+        // Control: under the O2 key rule (Rules has no rule for translations.json) the same conflict evicts.
+        (await resolver.MergeAsync(bare, "main", "pr", [AutoResolveRule.SparkModelHashes, new AutoResolveRule("**/translations.json", ["$schema"])], CancellationToken.None))
+            .Should().BeOfType<MergeOutcome.Evicted>().Which.Reason.Should().Be(EvictionReason.HunkOutsideAllowedKeys);
+
+        var outcome = await resolver.MergeAsync(bare, "main", "pr", [AutoResolveRule.WholeFile("**/translations.json")], CancellationToken.None);
+
+        var resolved = outcome.Should().BeOfType<MergeOutcome.Resolved>().Which;
+        resolved.Paths.Should().Equal([Translations]);
+        TestRepo.Git(bare, "rev-parse", $"{resolved.Tree}:{Translations}").Should().Be(TestRepo.Git(bare, "rev-parse", $"main:{Translations}"));
+    }
+
+    [Fact]
+    public async Task A_whole_file_rule_still_evicts_a_side_over_the_size_cap_and_needs_no_json()
+    {
+        using var repo = Seed();
+        repo.Write("data/blob.txt", "base\n");
+        repo.Commit("blob");
+        repo.InWork("branch", "-f", "pr");
+        repo.Write("data/blob.txt", new string('m', (int)MergeQueueResolver.MaxBlobBytes + 1));
+        repo.Commit("A: big");
+        repo.Checkout("pr");
+        repo.Write("data/blob.txt", "not json at all\n");
+        repo.Commit("B: small");
+        var bare = repo.Bare();
+        var resolver = new MergeQueueResolver(TestRepo.Runner());
+
+        var outcome = await resolver.MergeAsync(bare, "main", "pr", [AutoResolveRule.WholeFile("data/*.txt")], CancellationToken.None);
+
+        outcome.Should().BeOfType<MergeOutcome.Evicted>().Which.Reason.Should().Be(EvictionReason.TooLarge);
+        FluentActionsFor.Act(() => new AutoResolveRule("x.json", [])).Should().Throw<ArgumentException>();
+        var rule = AutoResolveRule.WholeFile("data/*.txt");
+        rule.AnyLine.Should().BeTrue();
+        rule.Keys.Should().BeEmpty();
     }
 }

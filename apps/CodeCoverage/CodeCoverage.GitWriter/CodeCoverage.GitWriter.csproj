@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<!--
+	  The merge queue's git writer, coverage-git-writer (docs/coverage_merge_queue_PRD.md D2, M3): the only process that
+	  builds commits from a pull request's content and pushes them. Each job clones into its own directory, merges with the
+	  shared resolver, commits with commit-tree and pushes with a lease; the directory is deleted when the job ends. It holds
+	  no GitHub App key, no RavenDB certificate and no database client: a short-lived token arrives per request and is never
+	  stored. The read-only coverage-git mirror stays read-only.
+	  ⚠️ Never reference MintPlayer.Spark, RavenDB.Client, Octokit or anything that brings them: SidecarIsolationTests reads
+	  this assembly's references and fails if one appears.
+	-->
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<RootNamespace>CodeCoverage.GitWriter</RootNamespace>
+		<!-- An Exe under this repository is a Spark application by default (Directory.Build.targets); this one is not. -->
+		<SparkApplication>false</SparkApplication>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.4.1-rc.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="13.0.0" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="13.0.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The hardened GitRunner and the merge-tree resolver (M2), shared with the read-only mirror. -->
+		<ProjectReference Include="..\CodeCoverage.Git\CodeCoverage.Git.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="CodeCoverage.GitWriter.Tests" />
+	</ItemGroup>
+
+</Project>

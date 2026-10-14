@@ -23,6 +23,7 @@
 	<ItemGroup>
 		<InternalsVisibleTo Include="CodeCoverage.GitMirror.Tests" />
 		<InternalsVisibleTo Include="CodeCoverage.Git.Tests" />
+		<InternalsVisibleTo Include="CodeCoverage.GitWriter.Tests" />
 	</ItemGroup>
 
 </Project>

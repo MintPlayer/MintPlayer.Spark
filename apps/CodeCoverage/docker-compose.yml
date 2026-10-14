@@ -204,6 +204,38 @@ services:
       - coverage-git-egress
     restart: unless-stopped
 
+  # The merge queue's git writer (docs/coverage_merge_queue_PRD.md D2, M3): per job a bare, blob-less clone, the merge-tree
+  # resolver, commit-tree and a leased push to mq/<base>/pr-<n> or the pull request's branch. It holds no GitHub App key, no
+  # RavenDB certificate and no stored credential; the app mints a short-lived, single-repository token per request.
+  #
+  # ⚠️ Its API has NO authentication and can PUSH: the network is the boundary. It must stay on exactly these two networks:
+  #   coverage-git-writer         (internal) shared with coverage-app ONLY.
+  #   coverage-git-writer-egress  its own way out to the forges, shared with NOTHING.
+  # Never on coverage-db, coverage-git, seo-raven or web: the read-only mirror keeps its own boundary (D2).
+  coverage-git-writer:
+    # Pull-only, like the app; built and pushed by code-coverage-deploy.yml.
+    image: ghcr.io/mintplayer/codecoverage-git-writer:master
+    environment:
+      - GitWriter__Root=/data/jobs
+      # One job at a time (S8): the memory and pids limits below are sized for one. Raising it to 2 needs
+      # mem_limit 1280m and pids_limit 192 as well (docs/code-coverage/hosting.md).
+      - GitWriter__MaxConcurrentJobs=1
+    volumes:
+      # Job directories only, each deleted when its job ends; mounted into this container only.
+      - codecoverage-git-writer-jobs:/data/jobs
+    # S8's job caps: 512 MB of memory and 64 processes for the job, plus 256 MB and 64 for the .NET host. The 1 GB disk cap
+    # per job and the wall clock are enforced in-process (GitWriter__MaxJobBytes, GitWriter__JobTimeoutSeconds).
+    mem_limit: 768m
+    pids_limit: 128
+    # Nothing but the jobs volume and a small /tmp is writable.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    networks:
+      - coverage-git-writer
+      - coverage-git-writer-egress
+    restart: unless-stopped
+
   coverage-app:
     # Pull-only: no build block, so `docker compose up -d` on the VPS can
     # never fall back to building from source — deploys are pull + restart.
@@ -225,6 +257,9 @@ services:
         condition: service_started
       # Started, not waited on, for the same reason: the commit graph answers "unavailable" without it.
       coverage-git:
+        condition: service_started
+      # Started, not waited on: only the merge queue uses it, and its jobs are retried.
+      coverage-git-writer:
         condition: service_started
     environment:
       # Explicit: Program.cs derives the GitHub__{env}__* config prefix from
@@ -283,6 +318,9 @@ services:
       # The commit-graph mirror sidecar (#504), reachable only over the internal coverage-git network. Unset turns the
       # graph off ("unavailable"). The rest of CommitGraph:* (budget, quotas, eviction) keeps its in-code placeholders.
       - CommitGraph__SidecarUrl=http://coverage-git:8080
+      # The merge queue's git writer (M3), reachable only over the internal coverage-git-writer network. Unset turns the
+      # merge queue's git steps off.
+      - MergeQueue__GitWriterUrl=http://coverage-git-writer:8080
     volumes:
       # GitHub App private key, downloaded from the App settings page; see
       # .env.example for the expected location.
@@ -308,8 +346,8 @@ services:
       - "traefik.http.routers.coverage.tls.certresolver=letsencrypt"
       # Pin the upstream port explicitly so Traefik never guesses.
       - "traefik.http.services.coverage.loadbalancer.server.port=8080"
-      # The app sits on four networks; without this Traefik may resolve the
-      # container's address on coverage-db, coverage-mail or coverage-git, which it can't reach (random 504s).
+      # The app sits on five networks; without this Traefik may resolve the
+      # container's address on coverage-db, coverage-mail, coverage-git or coverage-git-writer, which it can't reach (random 504s).
       - "traefik.docker.network=web"
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
@@ -333,6 +371,8 @@ services:
       - coverage-mail
       # ⚠️ Shared with coverage-git ONLY (D4): the sidecar's API is unauthenticated, and this network is its boundary.
       - coverage-git
+      # ⚠️ Shared with coverage-git-writer ONLY: the writer's API is unauthenticated and pushes, and this network is its boundary.
+      - coverage-git-writer
     restart: unless-stopped
 
 volumes:
@@ -341,12 +381,14 @@ volumes:
   dataprotection-keys:
   # Commit-graph mirrors (D8); mounted into coverage-git only. Deleting it costs re-clones on the next view, nothing else.
   codecoverage-git-data:
+  # The git writer's job directories (M3); mounted into coverage-git-writer only. Empty between jobs.
+  codecoverage-git-writer-jobs:
 
 networks:
   web:
     external: true
   # Pairwise and internal (SeoTester PRD D55): each backend service is reachable only by the app that uses it, and no
-  # network carries both RavenDB and the mail relay. internal: true = no route out; only coverage-smtp-egress and coverage-git-egress have one.
+  # network carries both RavenDB and the mail relay. internal: true = no route out; only coverage-smtp-egress, coverage-git-egress and coverage-git-writer-egress have one.
   # tools/verify-backend-networks.test.mjs checks the members of each network in both stacks.
   #
   #   coverage-db           coverage-app, coverage-raven, coverage-raven-license
@@ -354,6 +396,8 @@ networks:
   #   coverage-smtp-egress  coverage-smtp (its way to the recipients' MX)
   #   coverage-git          coverage-app, coverage-git (the commit-graph sidecar's unauthenticated API, #504 D4/D24)
   #   coverage-git-egress   coverage-git (its way to the forges, D18)
+  #   coverage-git-writer         coverage-app, coverage-git-writer (the merge queue's unauthenticated writer API, M3)
+  #   coverage-git-writer-egress  coverage-git-writer (its way to the forges)
   #   seo-raven  (external) coverage-raven + SeoTester's app
   #   seo-mail   (external) coverage-smtp  + SeoTester's app
   coverage-db:
@@ -372,6 +416,14 @@ networks:
   # ⚠️ coverage-git ALONE (D18): its outbound route for clones. Nothing else may join it, or that container could
   # reach the sidecar's API from a network that is not internal.
   coverage-git-egress:
+    driver: bridge
+  # ⚠️ EXACTLY coverage-app and coverage-git-writer (M3). The writer's API has no authentication and pushes with the token
+  # it is handed: any other container added here could have it push.
+  coverage-git-writer:
+    driver: bridge
+    internal: true
+  # ⚠️ coverage-git-writer ALONE: its outbound route for clones and pushes. Nothing else may join it.
+  coverage-git-writer-egress:
     driver: bridge
   # Shared with SeoTester. They belong to no compose project, so neither stack's `down` removes them; both deploy
   # workflows create them, internal, when missing (`docker network create --internal seo-raven`).
