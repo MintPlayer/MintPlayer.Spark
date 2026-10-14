@@ -349,6 +349,30 @@
             "nl": "Login"
           }
         },
+        "MergeQueueApprovalFloor": {
+          "description": {
+            "en": "What the merge queue requires in approvals before it queues a pull request, in every repository of this account that does not set its own.",
+            "fr": "Les approbations que la file de fusion exige avant d'accepter une pull request, dans chaque dépôt de ce compte qui ne définit pas les siennes.",
+            "nl": "Welke goedkeuringen de merge queue eist voordat ze een pull request opneemt, in elke repository van dit account die geen eigen instelling heeft."
+          },
+          "label": {
+            "en": "Merge queue approval floor",
+            "fr": "Approbations exigées par la file de fusion",
+            "nl": "Vereiste goedkeuringen voor de merge queue"
+          }
+        },
+        "MergeQueueCheckExclusions": {
+          "description": {
+            "en": "Check names the merge queue does not wait for, in every repository of this account that does not set its own list. A check a branch rule requires is always waited for.",
+            "fr": "Les vérifications que la file de fusion n'attend pas, dans chaque dépôt de ce compte qui n'a pas sa propre liste. Une vérification exigée par une règle de branche est toujours attendue.",
+            "nl": "Checks waarop de merge queue niet wacht, in elke repository van dit account zonder eigen lijst. Op een check die een branchregel vereist, wordt altijd gewacht."
+          },
+          "label": {
+            "en": "Checks the merge queue ignores",
+            "fr": "Vérifications ignorées par la file de fusion",
+            "nl": "Checks die de merge queue negeert"
+          }
+        },
         "OwnerKey": {
           "description": {
             "en": "Provider and Login as one comparable value, github:acme."
@@ -399,6 +423,13 @@
             "en": "Installation",
             "fr": "Installation",
             "nl": "Installatie"
+          }
+        },
+        "MergeQueue": {
+          "label": {
+            "en": "Merge queue",
+            "fr": "File de fusion",
+            "nl": "Merge queue"
           }
         }
       },
@@ -2119,6 +2150,42 @@
             "en": "Latest commit",
             "fr": "Dernier commit",
             "nl": "Laatste commit"
+          }
+        },
+        "MergeQueueApprovalFloor": {
+          "description": {
+            "en": "What the merge queue requires in approvals before it queues a pull request in this repository, or the account's setting.",
+            "fr": "Les approbations que la file de fusion exige avant d'accepter une pull request dans ce dépôt, ou le paramètre du compte.",
+            "nl": "Welke goedkeuringen de merge queue eist voordat ze een pull request in deze repository opneemt, of de instelling van het account."
+          },
+          "label": {
+            "en": "Merge queue approval floor",
+            "fr": "Approbations exigées par la file de fusion",
+            "nl": "Vereiste goedkeuringen voor de merge queue"
+          }
+        },
+        "MergeQueueCheckExclusions": {
+          "description": {
+            "en": "This repository's own list of checks the merge queue ignores, used instead of the account's when chosen. A check a branch rule requires is always waited for.",
+            "fr": "La liste propre à ce dépôt des vérifications ignorées par la file de fusion, utilisée à la place de celle du compte si elle est choisie. Une vérification exigée par une règle de branche est toujours attendue.",
+            "nl": "De eigen lijst van checks die de merge queue in deze repository negeert, gebruikt in plaats van die van het account wanneer gekozen. Op een check die een branchregel vereist, wordt altijd gewacht."
+          },
+          "label": {
+            "en": "Checks the merge queue ignores",
+            "fr": "Vérifications ignorées par la file de fusion",
+            "nl": "Checks die de merge queue negeert"
+          }
+        },
+        "MergeQueueCheckExclusionsPolicy": {
+          "description": {
+            "en": "Whether this repository uses the account's list of checks the merge queue ignores, or its own.",
+            "fr": "Si ce dépôt utilise la liste du compte des vérifications ignorées par la file de fusion, ou la sienne.",
+            "nl": "Of deze repository de lijst van het account met door de merge queue genegeerde checks gebruikt, of een eigen lijst."
+          },
+          "label": {
+            "en": "Ignored checks from",
+            "fr": "Vérifications ignorées selon",
+            "nl": "Genegeerde checks volgens"
           }
         },
         "Name": {

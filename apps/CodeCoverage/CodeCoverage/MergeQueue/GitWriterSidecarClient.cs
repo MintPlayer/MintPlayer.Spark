@@ -17,6 +17,25 @@ public sealed class MergeQueueOptions
     /// <summary>The bound on one job request: the writer's own job timeout (180 s) plus a slot wait (30 s) and a margin.
     /// Under the messaging ClaimTtl of 5 minutes (§5.5).</summary>
     public int JobRequestTimeoutSeconds { get; set; } = 240;
+
+    // ── The saga (M5) ────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The committer of every commit the queue writes.</summary>
+    public string CommitterName { get; set; } = "CodeCoverage merge queue";
+
+    public string CommitterEmail { get; set; } = "merge-queue@noreply.coverage.mintplayer.com";
+
+    /// <summary>
+    /// The author email of the rebased commit, from the pull request author's login (<c>{login}</c>). Cosmetic: the
+    /// forge's squash merge sets the merged commit's author itself; this only shows on the pull request's branch.
+    /// </summary>
+    public string AuthorEmailFormat { get; set; } = "{login}@users.noreply.github.com";
+
+    /// <summary>The artifact the regenerate workflow uploads (<c>.github/actions/spark-regenerate</c>, D35).</summary>
+    public string PatchArtifactName { get; set; } = "merge-queue-patch";
+
+    /// <summary>The largest regenerate patch accepted, the writer's own <c>MaxPatchBytes</c> (D30).</summary>
+    public long MaxPatchBytes { get; set; } = 2 * 1024 * 1024;
 }
 
 /// <summary>

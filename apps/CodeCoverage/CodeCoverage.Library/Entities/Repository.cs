@@ -205,6 +205,54 @@ public class Repository : IForgeConnectable
             _ => account?.DeleteBranchOnPrClose ?? false,
         };
 
+    /// <summary>
+    /// What the merge queue requires in approvals before it queues a pull request in this repository, or the account's
+    /// setting.
+    /// </summary>
+    /// <remarks>
+    /// Merge-queue PRD O11. Trust policy edited by the owner, never read from <c>coverage.yml</c> (O15). [IgnoreForIndex]: owner-facing
+    /// configuration stays out of the anonymous /spark grid, like <see cref="Gate"/>.
+    /// </remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(MergeQueueApprovalFloorPolicy))]
+    public EMergeQueueApprovalFloorPolicy MergeQueueApprovalFloor { get; set; }
+
+    /// <summary>Whether this repository uses the account's list of checks the merge queue ignores, or its own.</summary>
+    /// <remarks>Merge-queue PRD O12: <see cref="MergeQueueCheckExclusions"/> replaces the account's list when overridden.</remarks>
+    [IgnoreForIndex]
+    [LookupReference(typeof(MergeQueueCheckExclusionsPolicy))]
+    public EMergeQueueCheckExclusionsPolicy MergeQueueCheckExclusionsPolicy { get; set; }
+
+    /// <summary>
+    /// This repository's own list of checks the merge queue ignores, used instead of the account's when chosen. A check a
+    /// branch rule requires is always waited for.
+    /// </summary>
+    [IgnoreForIndex]
+    public List<string> MergeQueueCheckExclusions { get; set; } = [];
+
+    /// <summary>
+    /// The effective approval floor and where it came from (<c>repository</c> or <c>organization</c>), the one place
+    /// the two levels are combined (O11, O15). A missing account resolves to O11's default.
+    /// </summary>
+    public static (EMergeQueueApprovalFloor Floor, string Source) ResolveMergeQueueApprovalFloor(Repository? repository, Account? account)
+        => repository?.MergeQueueApprovalFloor switch
+        {
+            EMergeQueueApprovalFloorPolicy.ExternalAuthors => (EMergeQueueApprovalFloor.ExternalAuthors, "repository"),
+            EMergeQueueApprovalFloorPolicy.RepositoryRules => (EMergeQueueApprovalFloor.RepositoryRules, "repository"),
+            EMergeQueueApprovalFloorPolicy.Always => (EMergeQueueApprovalFloor.Always, "repository"),
+            _ => (account?.MergeQueueApprovalFloor ?? EMergeQueueApprovalFloor.ExternalAuthors, account is null ? "default" : "organization"),
+        };
+
+    /// <summary>The effective check exclusions and where they came from (O12, O15); trimmed, distinct, ordinal-sorted.</summary>
+    public static (IReadOnlyList<string> Exclusions, string Source) ResolveMergeQueueCheckExclusions(Repository? repository, Account? account)
+    {
+        var (list, source) = repository?.MergeQueueCheckExclusionsPolicy == EMergeQueueCheckExclusionsPolicy.Override
+            ? (repository.MergeQueueCheckExclusions, "repository")
+            : (account?.MergeQueueCheckExclusions ?? [], account is null ? "default" : "organization");
+        return ([.. (list ?? []).Select(name => name?.Trim() ?? string.Empty).Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)], source);
+    }
+
     /// <summary>Whether the GitHub App can still see this repository.</summary>
     /// <remarks>
     /// Disconnected repositories keep every document they have and keep answering on their badge

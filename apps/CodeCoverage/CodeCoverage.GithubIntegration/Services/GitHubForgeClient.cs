@@ -104,6 +104,7 @@ public partial class GitHubForgeClient : IForgeClient
                 IsDraft = pull.Draft,
                 AuthorLogin = pull.User?.Login,
                 MergeableState = pull.MergeableState?.StringValue,
+                Title = pull.Title,
             };
         }
         catch (Octokit.NotFoundException)

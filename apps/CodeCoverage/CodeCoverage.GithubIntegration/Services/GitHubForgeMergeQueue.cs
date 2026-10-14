@@ -308,6 +308,42 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             .Order(StringComparer.Ordinal)];
     }
 
+    /// <summary>
+    /// <c>GET /git/ref/heads/{branch}</c>, which answers the one ref only (<c>/git/refs/heads/x</c> would also list
+    /// <c>x-y</c> as a prefix match). A 404 is "no such branch".
+    /// </summary>
+    public async Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
+    {
+        using var reply = await SendAsync(repository, HttpMethod.Get, $"{RepoPath(repository)}/git/ref/heads/{BranchPath(branch)}", null, DefaultApiVersion, cancellationToken);
+        if (reply.Status == HttpStatusCode.NotFound) return null;
+        EnsureSuccess(reply);
+
+        var root = reply.Json?.RootElement ?? default;
+        var sha = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("object", out var target) ? Str(target, "sha") : null;
+        return sha is not null && CommitSha().IsMatch(sha) ? sha : null;
+    }
+
+    /// <summary>
+    /// A GitHub Actions check run is a job, and re-runs through <c>POST /actions/jobs/{id}/rerun</c> (its check-run id
+    /// is its job id); any other App's check run is asked again through <c>POST /check-runs/{id}/rerequest</c>, which
+    /// that App may honour or not. 403 is a missing permission (<c>actions: write</c>, O17); 404 and 422 (a run too old,
+    /// a check that cannot be re-requested) are "cannot".
+    /// </summary>
+    public async Task<bool> RerunCheckAsync(Repository repository, ForgeCheckRun checkRun, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(checkRun);
+        if (checkRun.Id <= 0) return false;
+
+        var id = checkRun.Id.ToString(CultureInfo.InvariantCulture);
+        var path = checkRun.AppSlug == "github-actions"
+            ? $"{RepoPath(repository)}/actions/jobs/{id}/rerun"
+            : $"{RepoPath(repository)}/check-runs/{id}/rerequest";
+        using var reply = await SendAsync(repository, HttpMethod.Post, path, null, DefaultApiVersion, cancellationToken);
+        if (reply.Status is HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity) return false;
+        EnsureSuccess(reply);
+        return true;
+    }
+
     // ── The regenerate workflow ──────────────────────────────────────────────────────────────────
 
     public async Task<ForgeWorkflowDispatch> DispatchWorkflowAsync(

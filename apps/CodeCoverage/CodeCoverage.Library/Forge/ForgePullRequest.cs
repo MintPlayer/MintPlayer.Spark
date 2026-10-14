@@ -94,4 +94,7 @@ public sealed record ForgePullRequest(
     /// itself is the authority (D17).
     /// </summary>
     public string? MergeableState { get; init; }
+
+    /// <summary>The pull request's title: the merge queue's squash commit subject.</summary>
+    public string? Title { get; init; }
 }

@@ -38,6 +38,12 @@
         "name": "Defaults",
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 4
+      },
+      {
+        "id": "a5167ad1-1322-4815-b415-ffa6934bb21e",
+        "name": "MergeQueue",
+        "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "order": 5
       }
     ],
     "attributes": [
@@ -112,6 +118,33 @@
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
+      },
+      {
+        "id": "08e045bc-66f5-4347-a5d2-d1667e584997",
+        "name": "MergeQueueApprovalFloor",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "lookupReferenceType": "MergeQueueApprovalFloor",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a5167ad1-1322-4815-b415-ffa6934bb21e"
+      },
+      {
+        "id": "17025e8a-dc2f-432e-a9f2-dfa8836f42e7",
+        "name": "MergeQueueCheckExclusions",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "group": "a5167ad1-1322-4815-b415-ffa6934bb21e"
       },
       {
         "id": "7e09b4a3-5b0c-4725-93d1-1b37bd44902a",

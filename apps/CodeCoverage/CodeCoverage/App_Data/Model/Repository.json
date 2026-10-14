@@ -189,6 +189,44 @@
         "renderer": "short-sha"
       },
       {
+        "id": "c7156743-92ed-4ad2-b7ee-2bd7da8f8b82",
+        "name": "MergeQueueApprovalFloor",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 22,
+        "isArray": false,
+        "lookupReferenceType": "MergeQueueApprovalFloorPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "1c30bc4b-8a01-4b47-9e68-fdbbc17a5a8d",
+        "name": "MergeQueueCheckExclusions",
+        "dataType": "string",
+        "isRequired": false,
+        "isReadOnly": false,
+        "order": 24,
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "39e84950-b6d3-4899-a82e-ac86fae1ea3d",
+        "name": "MergeQueueCheckExclusionsPolicy",
+        "dataType": "string",
+        "isRequired": true,
+        "isReadOnly": false,
+        "order": 23,
+        "isArray": false,
+        "lookupReferenceType": "MergeQueueCheckExclusionsPolicy",
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "6cca49ee-2ede-4502-8811-4de802d904b6",
         "name": "Name",
         "dataType": "string",

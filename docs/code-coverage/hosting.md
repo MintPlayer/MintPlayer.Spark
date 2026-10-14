@@ -446,8 +446,8 @@ no notice. Nothing shows in development unless a GitHub App is configured.
 | Push | `GitHubEventsRecipient` | branch tracking |
 | Pull request | `GitHubEventsRecipient`, project automation | authoritative PR ↔ branch labels, merged-PR cleanup, board rules |
 | Organization | `GitHubEventsRecipient` | organization renames (action `renamed`) |
-| Issues, Issue comment, Pull request review, Check run | `ProjectAutomationRouter` | board automation; Issue comment (`/queue`, `/dequeue`), Pull request review (approvals, dismissals) and Check run also feed the merge queue (PRD M5) |
-| Workflow run, Check suite | merge queue (PRD M5) | **New for the merge queue.** The regenerate run's completion (`workflow_run`) and "every suite on the final commit has completed" (`check_suite`, O12). Delivery to an App was measured live (PRD D19). |
+| Issues, Issue comment, Pull request review, Check run | `ProjectAutomationRouter`; `GitHubEventsRecipient` for the merge queue | board automation; Issue comment (`/queue`, `/dequeue`), Pull request review (approvals, dismissals) and Check run also feed the merge queue (PRD M5) |
+| Workflow run, Check suite, Status | `GitHubEventsRecipient` → merge queue (PRD M5) | **New for the merge queue.** The regenerate run's completion (`workflow_run`), "every suite on the final commit has completed" (`check_suite`, O12) and commit statuses, which O12 counts too (`status`; needs Commit statuses: read, D40). Delivery to an App was measured live for the first two (PRD D19). Raised onward only while the repository has something queued. |
 
 The merge queue's label (`merge-queue`) arrives as `pull_request` with action `labeled` / `unlabeled`; there is no
 separate label subscription to add.

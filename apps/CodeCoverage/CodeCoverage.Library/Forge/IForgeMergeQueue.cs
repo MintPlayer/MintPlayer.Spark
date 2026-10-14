@@ -46,8 +46,20 @@ public interface IForgeMergeQueue
     /// </summary>
     Task<ForgeBranchRules> GetBranchRulesAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The commit <paramref name="branch"/> points at now, or null when there is no such branch (M5: O20's "contains the
+    /// latest base", and the base commit whose checks are the expected minimum, O12).
+    /// </summary>
+    Task<string?> GetBranchHeadAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
+
     /// <summary>All check runs, commit statuses and check suites on <paramref name="sha"/> (O12; see <see cref="CheckGate"/>).</summary>
     Task<ForgeCheckState> GetCheckStateAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asks the forge to run a failed check again (D9's <c>retryFlaky</c>). False when the forge cannot re-run this one
+    /// (another App's check that does not support it, a run too old to re-run); the queue then evicts.
+    /// </summary>
+    Task<bool> RerunCheckAsync(Repository repository, ForgeCheckRun checkRun, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The names of every check run and commit status on <paramref name="sha"/>, ordinal-sorted and distinct:

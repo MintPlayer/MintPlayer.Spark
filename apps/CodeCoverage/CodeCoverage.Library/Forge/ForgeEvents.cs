@@ -190,3 +190,52 @@ public sealed record RepositoryConnectionChanged(
     bool Connected,
     string? Reason,
     string? ReportedByAccountId = null) : IForgeEvent;
+
+// ── The merge queue (merge-queue PRD M5) ──────────────────────────────────────────────────────────────
+//
+// Every forge can raise these: GitLab and Bitbucket have labels or comments, pipelines and commit statuses
+// too. Only the GitHub normaliser raises them today (O7: GitHub only in this PR; the others under #422).
+
+/// <summary>
+/// Somebody asked the merge queue to take a pull request, or to let it go (O8).
+/// </summary>
+/// <param name="ActorLogin">
+/// ⚠️ <b>The authenticated actor, never text from the request (T1).</b> For a label or a comment that is the signed
+/// webhook's sender; for the repository page's button, the signed-in user's linked forge login. A comment saying
+/// "/queue as @maintainer" is still the commenter's. A normaliser that cannot name the actor must raise nothing.
+/// </param>
+/// <param name="Label">The label added or removed, for <see cref="EMergeQueueCommandSource.Label"/>: the queue compares it
+/// with the configured one, which the normaliser does not know.</param>
+/// <remarks>
+/// A normaliser drops commands a bot sent, the App's own label removals included: the queue only ever acts for a
+/// person (§0 D46).
+/// </remarks>
+public sealed record MergeQueueCommandIssued(
+    string RepositoryId,
+    int Number,
+    EMergeQueueCommand Command,
+    string ActorLogin,
+    Entities.EMergeQueueCommandSource Source,
+    string? Label = null) : IForgeEvent;
+
+public enum EMergeQueueCommand
+{
+    Enqueue,
+    Dequeue,
+}
+
+/// <summary>A pull request was closed without being merged.</summary>
+/// <remarks>The merged close is <see cref="PullRequestMerged"/>; the two are never raised for the same close.</remarks>
+public sealed record PullRequestClosed(string RepositoryId, int Number) : IForgeEvent;
+
+/// <summary>A CI run (a GitHub Actions workflow run, a GitLab pipeline) finished.</summary>
+/// <param name="HeadSha">The commit the run built, which the queue compares with the commit it asked for (D14).</param>
+/// <param name="Conclusion">The forge's word; the queue re-reads the run before acting on it.</param>
+public sealed record CiRunCompleted(string RepositoryId, long RunId, string HeadSha, string? Conclusion) : IForgeEvent;
+
+/// <summary>A check or status on a commit was created or changed state.</summary>
+/// <remarks>Carries no verdict: the queue re-reads every check on the commit and decides with <see cref="CheckGate"/>.</remarks>
+public sealed record CommitChecksChanged(string RepositoryId, string Sha) : IForgeEvent;
+
+/// <summary>A review was submitted on, or dismissed from, a pull request.</summary>
+public sealed record PullRequestReviewed(string RepositoryId, int Number) : IForgeEvent;

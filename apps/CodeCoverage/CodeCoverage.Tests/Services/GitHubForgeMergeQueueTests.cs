@@ -412,6 +412,50 @@ public class GitHubForgeMergeQueueTests
     public async Task A_missing_run_is_null()
         => (await Queue(new StubGitHub()).GetWorkflowRunAsync(Target(), 1)).Should().BeNull();
 
+    // ── Branch heads and re-runs (M5) ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_branch_head_is_read_from_its_one_ref()
+    {
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/git/ref/heads/release/2.x", HttpStatusCode.OK, $$$"""
+            {"ref":"refs/heads/release/2.x","node_id":"REF_x","url":"https://api.github.com/repos/acme/widget/git/refs/heads/release/2.x",
+             "object":{"sha":"{{{Head}}}","type":"commit","url":"https://api.github.com/repos/acme/widget/git/commits/{{{Head}}}"}}
+            """);
+
+        (await Queue(github).GetBranchHeadAsync(Target(), "release/2.x")).Should().Be(Head);
+    }
+
+    [Fact]
+    public async Task A_missing_branch_has_no_head()
+        => (await Queue(new StubGitHub()).GetBranchHeadAsync(Target(), "gone")).Should().BeNull();
+
+    [Fact]
+    public async Task An_actions_check_reruns_its_job_and_another_apps_check_is_rerequested()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/actions/jobs/501/rerun", HttpStatusCode.Created, "{}")
+            .On(HttpMethod.Post, $"{Repo}/check-runs/502/rerequest", HttpStatusCode.Created, "{}");
+        var queue = Queue(github);
+
+        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(501, "build", "completed", "failure", 11, "github-actions", null))).Should().BeTrue();
+        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(502, "scan", "completed", "failure", 12, "scanner", null))).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_check_that_cannot_be_rerun_is_false_and_a_missing_permission_throws()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/actions/jobs/503/rerun", HttpStatusCode.UnprocessableEntity, """{"message":"This job is too old to re-run."}""")
+            .On(HttpMethod.Post, $"{Repo}/actions/jobs/504/rerun", (_, _) => WithHeader(
+                new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"Resource not accessible by integration"}""") },
+                "X-Accepted-GitHub-Permissions", "actions=write"));
+        var queue = Queue(github);
+
+        (await queue.RerunCheckAsync(Target(), new ForgeCheckRun(503, "build", "completed", "failure", 11, "github-actions", null))).Should().BeFalse();
+        (await Throws<ForgeAccessDeniedException>(() => queue.RerunCheckAsync(Target(), new ForgeCheckRun(504, "build", "completed", "failure", 11, "github-actions", null))))
+            .RequiredPermission.Should().Be("actions=write");
+    }
+
     // ── Artifacts ────────────────────────────────────────────────────────────────────────────────
 
     private static byte[] Zip(params (string Name, byte[] Content)[] entries)

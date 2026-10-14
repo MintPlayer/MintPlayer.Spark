@@ -169,6 +169,23 @@ public class RegistrationInventoryTests : CoverageRavenTest
         typeof(IRecipient<global::CodeCoverage.CommitGraph.DeleteCommitGraphMirrorMessage>));
 
     /// <summary>
+    /// The merge queue's saga (merge-queue PRD M5). Without its lane's recipient every step and signal would be consumed
+    /// with nothing done, and a queued pull request would sit in "Rebasing" forever; without the forward from the neutral
+    /// events, no label, comment, push or check would ever reach it.
+    /// </summary>
+    [Fact]
+    public void The_merge_queue_is_registered() => AssertRegistered(
+        typeof(global::CodeCoverage.MergeQueue.IGitWriterSidecar),
+        typeof(global::CodeCoverage.MergeQueue.IMergeQueueEngine),
+        typeof(IRecipient<global::CodeCoverage.MergeQueue.MergeQueueStepMessage>),
+        typeof(IRecipient<global::CodeCoverage.MergeQueue.MergeQueueSignalMessage>),
+        typeof(IRecipient<ForgeWebhookMessage<MergeQueueCommandIssued>>),
+        typeof(IRecipient<ForgeWebhookMessage<PullRequestClosed>>),
+        typeof(IRecipient<ForgeWebhookMessage<CiRunCompleted>>),
+        typeof(IRecipient<ForgeWebhookMessage<CommitChecksChanged>>),
+        typeof(IRecipient<ForgeWebhookMessage<PullRequestReviewed>>));
+
+    /// <summary>
     /// The Administrators group (#504, M5b). Without its membership provider the app still starts and the group still
     /// exists, but nobody is in it: the host metrics dashboard and the mirrors list go dark with no error.
     /// </summary>

@@ -394,6 +394,7 @@ public class GitHubRestAdapterTests : CoverageRavenTest
         pull.IsDraft.Should().BeTrue();
         pull.AuthorLogin.Should().Be("contributor");
         pull.MergeableState.Should().Be("behind");
+        pull.Title.Should().Be("A change");
         github.InstallationClients.Should().Equal(InstallationId);
     }
 

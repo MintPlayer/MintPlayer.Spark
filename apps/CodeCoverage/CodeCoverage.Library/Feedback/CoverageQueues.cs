@@ -54,4 +54,11 @@ public static class CoverageQueues
     /// keeps a deletion behind a fetch queued before it, never ahead of one.
     /// </summary>
     public const string CommitGraph = "coverage-commit-graph";
+
+    /// <summary>
+    /// The merge queue's saga (merge-queue PRD §5.5, M5): its steps, and the webhook signals that wake it. One lane, so
+    /// every change to a queue's state is serialised with every other, which is what keeps each base branch's queue
+    /// serial (D11) without a lock. A step runs at most one git-writer job (≤ 240 s), under the 5-minute claim.
+    /// </summary>
+    public const string MergeQueue = "coverage-merge-queue";
 }
