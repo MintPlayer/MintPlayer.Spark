@@ -1,6 +1,7 @@
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Messaging.Services;
 using MintPlayer.Spark.Testing;
+using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests.Messaging;
 
@@ -129,8 +130,8 @@ public class MessageClaimsTests : SparkTestDriver
 
         using var first = Store.OpenAsyncSession();
         using var second = Store.OpenAsyncSession();
-        first.Advanced.UseOptimisticConcurrency = true;
-        second.Advanced.UseOptimisticConcurrency = true;
+        first.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
+        second.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
         var a = await first.LoadAsync<SparkMessage>(id);
         var b = await second.LoadAsync<SparkMessage>(id);
 

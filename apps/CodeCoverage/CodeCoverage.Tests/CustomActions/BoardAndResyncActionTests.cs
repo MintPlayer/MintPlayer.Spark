@@ -330,7 +330,7 @@ public class BoardAndResyncActionTests : CoverageRavenTest
 
         using (var session = store.OpenAsyncSession())
         {
-            session.Advanced.UseOptimisticConcurrency = true;
+            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
             await new ResyncAction(new SingleForgeResolver(forge), MyAccounts(1), session, NullLogger<ResyncAction>.Instance, manager)
                 .ExecuteAsync(new CustomActionArgs { Parent = Home() });
         }

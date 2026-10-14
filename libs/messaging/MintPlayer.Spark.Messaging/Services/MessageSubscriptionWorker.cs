@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.SubscriptionWorker;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 using Raven.Client.Documents.Subscriptions;
 
 namespace MintPlayer.Spark.Messaging.Services;
@@ -85,7 +86,7 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                 continue;
 
             using var session = batch.OpenAsyncSession();
-            session.Advanced.UseOptimisticConcurrency = true;
+            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
 
             var message = await session.LoadAsync<SparkMessage>(item.Result.Id, cancellationToken);
             if (message is null)

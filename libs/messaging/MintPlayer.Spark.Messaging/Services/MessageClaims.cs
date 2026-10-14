@@ -37,7 +37,7 @@ internal static class MessageClaims
     /// </summary>
     /// <remarks>
     /// The caller must have opened <paramref name="session"/> with optimistic concurrency enabled
-    /// (<see cref="UseOptimisticConcurrency"/>). Without it RavenDB's default is last-write-wins, and
+    /// (<see cref="OptimisticConcurrencyMode.Writes"/>). Without it RavenDB's default is last-write-wins, and
     /// two feeders would both "successfully" claim the same message and both run its handlers.
     /// </remarks>
     public static async Task<bool> TryClaimAsync(
@@ -88,7 +88,7 @@ internal static class MessageClaims
         for (var attempt = 1; ; attempt++)
         {
             using var session = store.OpenAsyncSession();
-            session.Advanced.UseOptimisticConcurrency = true;
+            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
 
             var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
             if (message is null || message.OwnerId != ownerId || message.Status != EMessageStatus.Processing)

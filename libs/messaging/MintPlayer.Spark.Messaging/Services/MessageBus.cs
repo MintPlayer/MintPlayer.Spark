@@ -65,7 +65,7 @@ internal partial class MessageBus : IMessageBus, IMessageOutbox
         // stored the same key between the check above and this save, the save fails rather than
         // overwriting — which matters because the existing document may already be mid-flight, and
         // overwriting it would reset a message someone is processing back to Pending.
-        session.Advanced.UseOptimisticConcurrency = true;
+        session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
         await session.StoreAsync(sparkMessage, changeVector: string.Empty, id, cancellationToken);
 
         try

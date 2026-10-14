@@ -67,7 +67,7 @@ public partial class UserStore<TUser> :
             //
             // Identity models this outcome already: UpdateAsync answers ConcurrencyFailure, which
             // UserManager surfaces as a failed IdentityResult rather than an exception.
-            session.Advanced.UseOptimisticConcurrency = true;
+            session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
             return session;
         }
     }
