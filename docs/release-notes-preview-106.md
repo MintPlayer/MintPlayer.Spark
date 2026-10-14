@@ -74,6 +74,15 @@ resolved to a filtered root moves to the plain root's query, or loses its query 
 - **The reference picker labels from the server (D10).** The edit form shows the server's breadcrumb for the loaded
   value, then the chosen option's text, so a value outside the first 50 options no longer shows as a raw id. The list,
   the detail page and the edit page show the same text.
+- **The reference picker pages and searches on the server.** The "…" popup used to page and search only the 50
+  rows the form pre-loaded, so a candidate past the 50th could be neither found nor paged to. Every page, page size,
+  sort and (debounced) search is now one request to the reference query with `skip`/`take`/`search`, and the pager
+  follows `totalItems`; row security applies as before. A multi-reference's `<bs-tree-select>` does the same through
+  the new `ReferenceQueryTreeSelectProvider` ("load more" is the next server page). A picked row from a later page
+  joins the form's options, so the textbox, the AsDetail table and the conflict dialog label it. A refresh hook's
+  replacement option list is still searched in memory. `spark-reference-picker` gains `query`, `queryParent` and
+  `rowPicked`; `spark-po-form` gains `referencePicked`. An inline AsDetail `<select>` (non-modal reference column)
+  still lists one page: use `referenceDisplayType: "Modal"` for long lists.
 - MCP `describe` states each reference's query.
 
 ## Deploy notes

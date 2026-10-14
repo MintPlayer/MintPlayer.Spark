@@ -10,7 +10,7 @@ import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDi
 import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
 import { BsSelectComponent, BsSelectOption } from '@mintplayer/ng-bootstrap/select';
-import { BsTreeSelectComponent, InMemoryTreeSelectProvider, TreeNode } from '@mintplayer/ng-bootstrap/tree-select';
+import { BsTreeSelectComponent, InMemoryTreeSelectProvider, TreeNode, type TreeSelectProvider } from '@mintplayer/ng-bootstrap/tree-select';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
@@ -72,6 +72,7 @@ import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribu
 import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
+import { ReferenceQueryTreeSelectProvider, referenceTreeNode } from './reference-query-tree-select-provider';
 import { RefreshCoordinator, RefreshDispatch, effectiveTrigger, refreshDispatch } from './refresh-coordinator';
 
 /**
@@ -119,7 +120,7 @@ export class SparkPoFormComponent {
   referenceParentId = input<string | undefined>(undefined);
   referenceParentType = input<string | undefined>(undefined);
 
-  private readonly optionQueryParent = computed(() => this.referenceParentId() && this.referenceParentType()
+  protected readonly optionQueryParent = computed(() => this.referenceParentId() && this.referenceParentType()
     ? { parentId: this.referenceParentId(), parentType: this.referenceParentType() }
     : { parentId: this.parentId(), parentType: this.parentType() });
 
@@ -193,6 +194,12 @@ export class SparkPoFormComponent {
   nestedTriggerBlurred = output<string>();
 
   /**
+   * A Reference picker of this form picked a row: the attribute and the row. An embedded form's host
+   * keeps the row beside its own AsDetail options, so the host's table labels the picked value too.
+   */
+  referencePicked = output<{ attribute: string; item: QueryResultItem }>();
+
+  /**
    * What the last refresh changed about each attribute's presentation, keyed by attribute name.
    *
    * Deliberately NOT folded back into `entityType`. All option loading hangs off one effect keyed on
@@ -215,11 +222,15 @@ export class SparkPoFormComponent {
   colors = Color;
   referenceOptions = signal<Record<string, QueryResultItem[]>>({});
 
-  // Multi-reference (Reference && isArray) editor state. Built from the same query
-  // results as referenceOptions: a flat TreeNode list per attribute drives an
-  // InMemoryTreeSelectProvider (the <bs-tree-select> data port), and a node lookup
-  // resolves selected ids back to chip labels.
-  referenceProviders = signal<Record<string, InMemoryTreeSelectProvider>>({});
+  // Multi-reference (Reference && isArray) editor state. The <bs-tree-select> data port per
+  // attribute pages and searches the reference query on the server (a refresh hook's replacement
+  // list stays in memory), and a node lookup resolves selected ids back to chip labels.
+  referenceProviders = signal<Record<string, TreeSelectProvider>>({});
+  /**
+   * Reference attributes whose option list a refresh hook replaced. Their list is the whole candidate
+   * set the hook allows, so their pickers search and page it in memory instead of the query.
+   */
+  private readonly hookReplacedReferences = signal<ReadonlySet<string>>(new Set());
   referenceNodes = signal<Record<string, Record<string, TreeNode>>>({});
   asDetailTypes = signal<Record<string, EntityType>>({});
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
@@ -367,19 +378,22 @@ export class SparkPoFormComponent {
     );
     const optionsByAttr = this.toRecord(entries);
     this.referenceOptions.set(optionsByAttr);
+    this.hookReplacedReferences.set(new Set());
 
-    // For multi-reference attributes (Reference && isArray), turn each query result
-    // into a flat TreeNode list + an in-memory provider for <bs-tree-select>, and a
-    // by-id node map used to render chip labels for the current selection.
-    const providers: Record<string, InMemoryTreeSelectProvider> = {};
+    // For multi-reference attributes (Reference && isArray): a <bs-tree-select> provider over the
+    // query itself, so "load more" and search reach every row and not just this first page (the
+    // in-memory provider it replaced stopped at the 50 rows loaded here), and a by-id node map of
+    // this page for the chips of the current selection.
+    const providers: Record<string, TreeSelectProvider> = {};
     const nodesByAttr: Record<string, Record<string, TreeNode>> = {};
     for (const attr of refAttrs) {
       if (!attr.isArray) continue;
-      const pos = optionsByAttr[attr.name] || [];
-      const nodes: TreeNode[] = pos
-        .filter(po => !!po.id)
-        .map(po => ({ id: po.id!, label: po.breadcrumb || po.id! }));
-      providers[attr.name] = new InMemoryTreeSelectProvider(nodes);
+      const nodes = (optionsByAttr[attr.name] || [])
+        .map(referenceTreeNode)
+        .filter((n): n is TreeNode => n !== null);
+      const query = attr.query!;
+      providers[attr.name] = new ReferenceQueryTreeSelectProvider(page =>
+        this.sparkService.executeQueryByName(query, { ...this.optionQueryParent(), ...page }));
       nodesByAttr[attr.name] = this.toRecord(nodes.map(n => [n.id, n] as [string, TreeNode]));
     }
     this.referenceProviders.set(providers);
@@ -414,12 +428,22 @@ export class SparkPoFormComponent {
     return result;
   });
 
-  getReferenceProvider(attr: EntityAttributeDefinition): InMemoryTreeSelectProvider | undefined {
+  getReferenceProvider(attr: EntityAttributeDefinition): TreeSelectProvider | undefined {
     return this.referenceProviders()[attr.name];
   }
 
   onReferenceTreeChange(attr: EntityAttributeDefinition, value: TreeNode | TreeNode[] | null): void {
     const nodes = Array.isArray(value) ? value : value ? [value] : [];
+    // A node picked from a later server page is not in the first page's node map: keep it, so its
+    // chip keeps its label.
+    const known = this.referenceNodes()[attr.name] ?? {};
+    const added = nodes.filter(n => !known[n.id]);
+    if (added.length > 0) {
+      this.referenceNodes.update(prev => ({
+        ...prev,
+        [attr.name]: { ...(prev[attr.name] ?? {}), ...this.toRecord(added.map(n => [n.id, n] as [string, TreeNode])) },
+      }));
+    }
     const data = { ...this.formData() };
     data[attr.name] = nodes.map(n => n.id);
     this.formData.set(data);
@@ -508,6 +532,32 @@ export class SparkPoFormComponent {
     data[attr.name] = id;
     this.formData.set(data);
     this.noteChange(attr);
+  }
+
+  /**
+   * The query a Reference picker pages and searches on the server, or null when a refresh hook
+   * replaced the attribute's options: the hook's list is then the whole set, searched in memory.
+   */
+  referencePickerQuery(attr: EntityAttributeDefinition): string | null {
+    return this.hookReplacedReferences().has(attr.name) ? null : attr.query ?? null;
+  }
+
+  /**
+   * Keeps a picked row beside the attribute's options. The picker pages the query on the server, so
+   * the row may come from past the first page this form loaded; without it the value would be
+   * labelled by its id wherever the options label it (the conflict dialog's labels, for one).
+   */
+  rememberPickedReference(attr: EntityAttributeDefinition, item: QueryResultItem): void {
+    this.referenceOptions.update(prev => withOption(prev, attr.name, item));
+    this.referencePicked.emit({ attribute: attr.name, item });
+  }
+
+  /**
+   * The AsDetail counterpart of {@link rememberPickedReference}: a row picked in an inline cell, or in
+   * the row modal's embedded form, joins that column's options, which label the table's cells.
+   */
+  rememberPickedRowReference(attrName: string, column: string, item: QueryResultItem): void {
+    this.asDetailReferenceOptions.update(prev => ({ ...prev, [attrName]: withOption(prev[attrName] ?? {}, column, item) }));
   }
 
   onLookupValueChange(attr: EntityAttributeDefinition, key: string | null): void {
@@ -880,6 +930,12 @@ export class SparkPoFormComponent {
       return next;
     });
 
+    // The hook's list is now the whole candidate set, so the pickers stop querying for these.
+    const replacedReferences = replaced.filter(([name]) => byName.get(name)?.dataType === 'Reference').map(([name]) => name);
+    if (replacedReferences.length > 0) {
+      this.hookReplacedReferences.update(prev => new Set([...prev, ...replacedReferences]));
+    }
+
     // A multi-reference renders through <bs-tree-select>, which reads the provider and the by-id
     // node map rather than `referenceOptions` — so a refreshed list has to be rebuilt there too, or
     // the hook's options never reach the picker. The node map keeps the labels it already had: a
@@ -1131,4 +1187,11 @@ export class SparkPoFormComponent {
     data[attr.name] = arr;
     this.formData.set(data);
   }
+}
+
+/** `options` with `item` added to the list under `key`, unless a row with its id is already there. */
+function withOption<T extends Record<string, QueryResultItem[]>>(options: T, key: string, item: QueryResultItem): T {
+  const list = options[key] ?? [];
+  if (!item.id || list.some(o => o.id === item.id)) return options;
+  return { ...options, [key]: [...list, item] };
 }

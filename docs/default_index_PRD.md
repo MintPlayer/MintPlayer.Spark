@@ -143,6 +143,18 @@ Today a generated root whose name is taken is silently dropped, and member names
 - The edit form's picker shows the server's `attribute.breadcrumb` while the value is the loaded one, and the chosen
   option row's text after a change. Today it falls back to the raw id when the value isn't in the first 50 options.
 - The query only feeds the picker's options. Option rows render T's template too (`EntityMapper.cs:330`).
+- **2026-10-14, the picker popup could not reach past the first 50 (pre-existing, found while verifying D10).** The
+  label was fine, but the "…" popup paged and searched only the 50 rows `loadReferenceOptions` pre-loaded, so in HR
+  "Profession 058" was neither searchable nor reachable by paging. Regression test
+  `tests/MintPlayer.Spark.E2E.Tests/ReferencePicker/ReferencePickerPagingTests.cs` (HR, 100 professions seeded from
+  `ReferencePicker/Data/hr-reference-picker.json`), red before the fix: search "Profession 080" listed nothing; paging
+  stopped at page 5 (rows 041–050) "without Profession 090". The D10 label guard in the same class passed before and
+  after. Fix: the popup runs the datatable's `[fetch]` loop against the reference query (`skip`/`take`/`search`,
+  debounced through `spark-search-box`, pager from `totalItems`), the same mechanism as the query grid; a refresh
+  hook's replacement list stays in memory. A multi-reference's tree-select uses `ReferenceQueryTreeSelectProvider`
+  the same way, and a picked row joins the form's options so the table and the conflict dialog label it. Green: 3/3
+  in that class. Server search over `Professions_Lookup` needed no change. Still capped: an inline AsDetail
+  `<select>` (non-modal reference column) lists one page.
 
 ## 5. Scope
 

@@ -778,6 +778,64 @@ describe('SparkPoFormComponent', () => {
       component.onReferenceTreeChange(tagsAttr, null);
       expect(component.formData()['Tags']).toEqual([]);
     });
+
+    it('the provider pages and searches the query on the server, under the form parent', async () => {
+      const { fixture, component, service } = await mounted();
+      fixture.componentRef.setInput('parentId', 'tagged/1');
+      fixture.componentRef.setInput('parentType', 'Test.Tagged');
+      const signal = new AbortController().signal;
+      service.executeQueryByName.mockResolvedValueOnce({ columns: [], items: [{ id: 'tags/51', breadcrumb: 'Tag 51', values: [] }], totalItems: 120 });
+
+      const page = await component.getReferenceProvider(tagsAttr)!.search('tag 51', { offset: 50, signal });
+
+      expect(service.executeQueryByName).toHaveBeenLastCalledWith('TagQuery', expect.objectContaining({
+        skip: 50, take: 50, search: 'tag 51', parentId: 'tagged/1', parentType: 'Test.Tagged',
+      }));
+      expect(page).toEqual({ nodes: [{ id: 'tags/51', label: 'Tag 51' }], hasMore: true });
+    });
+
+    it('keeps the label of a node picked from a later page', async () => {
+      const { component } = await mounted();
+
+      component.onReferenceTreeChange(tagsAttr, [{ id: 'tags/117', label: 'Tag 117' }] as any);
+
+      expect(component.referenceTreeValues()['Tags']).toEqual([{ id: 'tags/117', label: 'Tag 117' }]);
+    });
+  });
+
+  describe('a row picked past the first options page', () => {
+    const picked = { id: 'companies/77', breadcrumb: 'Umbrella', values: [] } as any;
+
+    it('joins the attribute options and is reported to an embedding host', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const company = personType.attributes.find(a => a.name === 'Company')!;
+      const reported = vi.fn();
+      component.referencePicked.subscribe(reported);
+
+      component.rememberPickedReference(company, picked);
+      component.rememberPickedReference(company, picked);
+
+      expect(component.referenceOptions()['Company']).toEqual([...allCompanies, picked]);
+      expect(reported).toHaveBeenCalledWith({ attribute: 'Company', item: picked });
+    });
+
+    it('joins an AsDetail column options, which label the table cells', async () => {
+      const { component } = createComponent();
+      component.asDetailReferenceOptions.set({ Jobs: { ProfessionId: [] } });
+
+      component.rememberPickedRowReference('Jobs', 'ProfessionId', picked);
+
+      expect(component.asDetailReferenceOptions()['Jobs']['ProfessionId']).toEqual([picked]);
+    });
+
+    it('a picker queries the server unless a refresh hook replaced the options', async () => {
+      const { fixture, component } = createComponent();
+      await setEntityType(fixture, personType);
+      const company = personType.attributes.find(a => a.name === 'Company')!;
+
+      expect(component.referencePickerQuery(company)).toBe('CompanyQuery');
+    });
   });
 
   describe('renderer resolution', () => {
@@ -914,6 +972,8 @@ describe('SparkPoFormComponent', () => {
         { id: 'companies/8', breadcrumb: 'companies/8', values: [] },
       ]);
       expect(component.lookupReferenceOptions()['Roles']).toBe(rolesLookup);
+      // The hook's list is the whole set now: the picker searches it in memory, not the query.
+      expect(component.referencePickerQuery(company)).toBeNull();
     });
   });
 

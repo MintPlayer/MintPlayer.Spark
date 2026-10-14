@@ -21,46 +21,27 @@
     </div>
 
     <div bsModalBody>
-      <!-- bs-modal portals its content into a CDK overlay outside the host form, so the
-           modal needs its own <bs-form> context for inputs to pick up .form-control styles. -->
-      <bs-form>
       @if (entityType()) {
-        <!-- Search box -->
-        <bs-grid>
-          <div bsRow class="mb-3">
-            <div [md]="12">
-              <bs-input-group>
-                <span class="addon">
-                  <spark-icon name="search" />
-                </span>
-                <input
-                  type="text"
-                  [placeholder]="'common.search' | t"
-                  [(ngModel)]="searchTerm"
-                  (ngModelChange)="onSearchChange()">
-                @if (searchTerm) {
-                  <button
-                    type="button"
-                    class="btn btn-outline-secondary"
-                    (click)="clearSearch()">
-                    <spark-icon name="x-lg" />
-                  </button>
-                }
-              </bs-input-group>
+        <!-- The query search box (debounce, clear button). It brings its own <bs-form>: bs-modal
+             portals its content outside the host form, and the input needs that context for its
+             .form-control styles. -->
+        <div class="mb-3">
+          <spark-search-box [term]="searchTerm()" (termChange)="onSearchChange($event)" />
+          @if (searchTerm() && resultCount() !== null) {
+            <div class="text-end text-muted mt-1">
+              {{ resultCount() }} {{ resultCount() === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
             </div>
-            @if (searchTerm && pagination()) {
-              <div [md]="12" class="text-end mt-1">
-                <span class="text-muted">
-                  {{ pagination()!.totalRecords }} {{ pagination()!.totalRecords === 1 ? ('common.resultFound' | t) : ('common.resultsFound' | t) }}
-                </span>
-              </div>
-            }
-          </div>
-        </bs-grid>
+          }
+        </div>
+
+        @if (loadError()) {
+          <div class="text-danger mb-2">{{ loadError() }}</div>
+        }
 
         <bs-datatable
           [(settings)]="settings"
           [data]="rows()"
+          [fetch]="fetchFn()"
           [labels]="datatableLabels()"
           (rowClick)="select($event.row)">
           @for (attr of visibleAttributes(); track attr.id) {
@@ -81,7 +62,6 @@
           <bs-spinner />
         </div>
       }
-      </bs-form>
     </div>
 
     <div bsModalFooter>
