@@ -12,19 +12,30 @@ import { BrowseService, MergeQueueCommandAccepted, MergeQueueEntry, MergeQueueVi
 /** GitHub's repository roles, weakest first; queueing needs `write` (merge-queue PRD O9). */
 const ROLES = ['none', 'read', 'triage', 'write', 'maintain', 'admin'];
 
-/** The saga's states as a reader would say them, with a badge colour. */
-const STATES: Record<string, { label: string; badge: string }> = {
-  Queued: { label: 'waiting', badge: 'text-bg-secondary' },
-  Preparing: { label: 'rebasing', badge: 'text-bg-info' },
-  Regenerating: { label: 'regenerating', badge: 'text-bg-info' },
-  Publishing: { label: 'publishing', badge: 'text-bg-info' },
-  AwaitingChecks: { label: 'waiting for checks', badge: 'text-bg-primary' },
-  Merging: { label: 'merging', badge: 'text-bg-primary' },
-  Merged: { label: 'merged', badge: 'text-bg-success' },
-  Evicted: { label: 'evicted', badge: 'text-bg-danger' },
-  Dequeued: { label: 'dequeued', badge: 'text-bg-secondary' },
-  Refused: { label: 'not queued', badge: 'text-bg-warning' },
+/** The saga's states as a reader would say them, with the theme colour of their chip. */
+const STATES: Record<string, { label: string; color: string }> = {
+  Queued: { label: 'waiting', color: 'secondary' },
+  Preparing: { label: 'rebasing', color: 'info' },
+  Regenerating: { label: 'regenerating', color: 'info' },
+  Publishing: { label: 'publishing', color: 'info' },
+  AwaitingChecks: { label: 'waiting for checks', color: 'primary' },
+  Merging: { label: 'merging', color: 'primary' },
+  Merged: { label: 'merged', color: 'success' },
+  Evicted: { label: 'evicted', color: 'danger' },
+  Dequeued: { label: 'dequeued', color: 'secondary' },
+  Refused: { label: 'not queued', color: 'warning' },
 };
+
+/**
+ * A state chip's classes: Bootstrap's subtle background with its emphasis text and border, a pair made for both themes
+ * (merge-queue PRD §0 D75). Not `text-bg-*`: ng-bootstrap's card injects its own `.text-bg-*` rules into <head>, written as
+ * `RGBA(#0dcaf0, var(--bs-bg-opacity, 1))`, which is no colour once `var()` resolves. As the later rule it still wins the
+ * cascade, so the background computes to transparent, and "publishing" was black text on the dark card in dark mode.
+ * Not `.badge` either: ng-bootstrap styles `.badge` only inside `<bs-badge>`, so `.mq-state` carries the shape itself.
+ */
+function chip(color: string): string {
+  return `mq-state bg-${color}-subtle text-${color}-emphasis border border-${color}-subtle`;
+}
 
 const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -76,14 +87,16 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
             <section class="mb-3" [attr.data-lane]="lane.baseBranch">
               <h6 class="mb-2">
                 <i class="bi bi-arrow-right-short"></i> {{ lane.baseBranch }}
-                @if (lane.paused) { <span class="badge text-bg-secondary ms-1">paused</span> }
+                @if (lane.paused) {
+                  <span class="mq-state bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle ms-1" data-testid="mq-state">paused</span>
+                }
               </h6>
 
               @if (lane.current; as c) {
                 <div class="d-flex flex-wrap align-items-center gap-2" data-testid="mq-current">
                   <strong>#{{ c.number }}</strong>
                   <span>{{ c.title }}</span>
-                  <span class="badge" [class]="badge(c.state)">{{ label(c.state) }}</span>
+                  <span [class]="badge(c.state)" data-testid="mq-state">{{ label(c.state) }}</span>
                   <span class="small text-muted">since {{ time(c.sinceUtc) }}</span>
                   @if (c.runUrl) {
                     <a class="small" [href]="c.runUrl" target="_blank" rel="noopener">regenerate run</a>
@@ -124,7 +137,7 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
                     @for (o of lane.recent; track o.number + '/' + o.run) {
                       <tr>
                         <td><strong>#{{ o.number }}</strong> {{ o.title }}</td>
-                        <td><span class="badge" [class]="badge(o.state)">{{ label(o.state) }}</span></td>
+                        <td><span [class]="badge(o.state)" data-testid="mq-state">{{ label(o.state) }}</span></td>
                         <td class="small">
                           @if (o.reason) { <code>{{ o.reason }}</code> }
                           @if (o.message) { <div class="text-muted">{{ o.message }}</div> }
@@ -183,7 +196,19 @@ export const RELOAD_AFTER_COMMAND_MS = 2500;
       </bs-card>
     }
   `,
-  styles: [`.mq-number { width: 9rem; }`],
+  styles: [`
+    .mq-number { width: 9rem; }
+    .mq-state {
+      display: inline-block;
+      padding: 0.35em 0.65em;
+      font-size: 0.75em;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+      vertical-align: baseline;
+      border-radius: var(--bs-border-radius-pill);
+    }
+  `],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class RepoMergeQueuePanelComponent {
@@ -281,7 +306,7 @@ export class RepoMergeQueuePanelComponent {
   }
 
   badge(state: string): string {
-    return `badge ${STATES[state]?.badge ?? 'text-bg-light'}`;
+    return chip(STATES[state]?.color ?? 'secondary');
   }
 
   /** The server's times are UTC; one without a zone designator is read as UTC rather than as local time. */
