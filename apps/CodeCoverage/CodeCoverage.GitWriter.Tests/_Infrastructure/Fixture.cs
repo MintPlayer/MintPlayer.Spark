@@ -168,7 +168,51 @@ internal sealed class Origin : IDisposable
     /// <summary>git in the served repository.</summary>
     public string InBare(params string[] args) => FixtureGit.Run(Bare, args);
 
+    /// <summary>
+    /// Writes a copy of commit <paramref name="sha"/> into the served repository with its raw text changed by
+    /// <paramref name="edit"/> (a header line swapped, a date moved), and returns the copy's id. Nothing points at it.
+    /// </summary>
+    public string Rewrite(string sha, Func<string, string> edit)
+    {
+        var path = Path.Combine(Work, ".git", $"rewrite-{Guid.NewGuid():N}");
+        File.WriteAllBytes(path, new UTF8Encoding(false).GetBytes(edit(InBare("cat-file", "commit", sha))));
+        try
+        {
+            return InBare("hash-object", "-t", "commit", "-w", path).Trim();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>Points branch <paramref name="branch"/> of the served repository at <paramref name="sha"/>, as a push would.</summary>
+    public Origin SetBranch(string branch, string sha)
+    {
+        InBare("update-ref", $"refs/heads/{branch}", sha);
+        return this;
+    }
+
     public void Dispose() => work.Dispose();
+}
+
+/// <summary>Edits of a commit object's raw text, for <see cref="Origin.Rewrite"/>.</summary>
+internal static class CommitText
+{
+    /// <summary>The same commit, committed at another time: what an earlier attempt of the same job would have written.</summary>
+    public static string Redated(string raw)
+        => Header(raw, "committer", line => line[..(line.LastIndexOf('>') + 1)] + " 1767225600 +0000");
+
+    public static string Header(string raw, string name, Func<string, string> edit)
+    {
+        var split = raw.IndexOf("\n\n", StringComparison.Ordinal);
+        var lines = raw[..split].Split('\n');
+        var index = Array.FindIndex(lines, l => l.StartsWith(name + " ", StringComparison.Ordinal));
+        if (index < 0)
+            throw new InvalidOperationException($"The commit has no {name} header.");
+        lines[index] = edit(lines[index]);
+        return string.Join('\n', lines) + raw[split..];
+    }
 }
 
 /// <summary>Spark's <c>App_Data/modelHashes.json</c> layout (two-space indent, LF, roll-ups first). Fixture values.</summary>

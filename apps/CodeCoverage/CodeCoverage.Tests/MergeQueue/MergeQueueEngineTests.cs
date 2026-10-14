@@ -104,6 +104,7 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.State.Should().Be(EMergeQueueEntryState.Merged);
         entry.DispatchRunId.Should().Be(9001);
         h.Writer.Publishes.Should().ContainSingle().Which.Patch.Should().Be(Convert.ToBase64String("diff --git a/x b/x\n"u8.ToArray()));
+        h.Queue.CancelledRuns.Should().BeEmpty("the run ended the wait itself (§0 D53)");
     }
 
     [Fact]
@@ -174,6 +175,239 @@ public class MergeQueueEngineTests : CoverageRavenTest
         entry.State.Should().Be(EMergeQueueEntryState.Evicted);
         entry.EvictionReason.Should().Be("author-push");
         h.Queue.MergeRequests.Should().BeEmpty();
+    }
+
+    // ── §0 D52 (D51 (1)): a publish whose answer never reached the saga ──────────────────────────────
+
+    /// <summary>Prepared, then a publish that pushed but whose answer was lost (a dropped response; the app dying before it
+    /// saved leaves the saga in the same place): the entry is still Publishing, and the queue's own commit is unknown to it.</summary>
+    private async Task<MergeQueueHarness> PublishAnswerLostAsync()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishThrows = new HttpRequestException("The response ended prematurely.");
+        h.Queue.CheckStates[Final] = Pending(Final);
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var lost = await h.EntryAsync();
+        lost.State.Should().Be(EMergeQueueEntryState.Publishing);
+        lost.KnownShas.Should().NotContain(Final);
+        // GitHub now reports the queue's commit as the pull request's head.
+        h.Forge.PullRequests[Number] = PullRequest(head: Final);
+        return h;
+    }
+
+    [Fact]
+    public async Task The_echo_of_a_publish_whose_answer_was_lost_is_recognised_not_evicted()
+    {
+        var h = await PublishAnswerLostAsync();
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final) with { Reason = GitWriterReasons.AlreadyPushed });
+
+        // The synchronize for the queue's own push arrives before the publish is retried.
+        await h.SignalAsync(EMergeQueueSignal.HeadPushed, Number, Final);
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.AwaitingChecks, "the queue's own commit is not an author push");
+        entry.FinalSha.Should().Be(Final);
+        entry.KnownShas.Should().Contain(Final);
+        h.Writer.Publishes.Should().HaveCount(2, "the writer was asked whether the new head is the queue's own commit");
+
+        // The retry that was already scheduled now belongs to a state the entry has left.
+        await h.ReleaseAsync(EMergeQueueStep.Publish);
+        h.Writer.Publishes.Should().HaveCount(2);
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+    }
+
+    [Fact]
+    public async Task A_retried_publish_that_meets_the_queues_own_commit_carries_on()
+    {
+        var h = await PublishAnswerLostAsync();
+        h.Writer.PublishResults.Enqueue(FakeGitWriter.Published(Final) with { Reason = GitWriterReasons.AlreadyPushed });
+
+        // This time the retry runs first, and reads the queue's commit as the pull request's head.
+        await h.ReleaseAsync(EMergeQueueStep.Publish);
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.AwaitingChecks);
+        entry.History.Should().Contain(e => e.Text.Contains("an earlier attempt's push"));
+        h.Writer.Publishes[1].ExpectedPrHeadSha.Should().Be(Head, "the lease is still the pinned head: the writer, not the saga, recognises the commit");
+
+        await h.SignalAsync(EMergeQueueSignal.HeadPushed, Number, Final);
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.AwaitingChecks, "its echo is a known commit now");
+        h.Queue.CheckStates[Final] = Green(Final);
+        await h.SignalAsync(EMergeQueueSignal.ChecksChanged, sha: Final);
+        await h.DrainAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Merged);
+        h.Queue.MergeRequests.Should().Equal([(Number, Final)]);
+    }
+
+    [Fact]
+    public async Task An_author_push_while_publishing_evicts_once_the_writer_says_it_is_not_the_queues()
+    {
+        const string pushed = "9999999999999999999999999999999999999999";
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        h.Writer.PublishResults.Enqueue(new GitWriterPublishResult(GitWriterOutcomes.BranchMoved, null, null, [], $"refs/pull/7/head is at {pushed}, not {Head}.", 10));
+        await h.EnqueueAsync();
+        await h.StepOnceAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Publishing, "prepared; the publish step is queued");
+
+        h.Forge.PullRequests[Number] = PullRequest(head: pushed);
+        await h.SignalAsync(EMergeQueueSignal.HeadPushed, Number, pushed);
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Evicted);
+        entry.EvictionReason.Should().Be("author-push");
+        h.Writer.Publishes.Should().ContainSingle("the writer judged the new head before anything was evicted");
+        await h.DrainAsync();
+        h.Writer.Publishes.Should().ContainSingle("the queued publish step is stale");
+        h.Queue.MergeRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task An_earlier_runs_cleanup_spares_the_queue_branch_the_next_run_adopted()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared));
+        await h.EnqueueAsync();
+        await h.StepOnceAsync();
+        await h.DequeueAsync("author");
+        // Run 1's cleanup of mq/master/pr-7 (leased on Prepared) is held back, as a busy writer would delay it.
+        var cleanup = h.Outbox.Messages.Select(m => m.Message).OfType<MergeQueueStepMessage>().Single(s => s.Step == EMergeQueueStep.Cleanup);
+        cleanup.ExpectedSha.Should().Be(Prepared);
+        h.Outbox.Messages.Clear();
+
+        // Run 2 finds run 1's commit on the queue branch and adopts it.
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared) with { Reason = GitWriterReasons.AlreadyPushed });
+        await h.EnqueueAsync();
+        await h.StepOnceAsync();
+        var adopted = await h.EntryAsync();
+        adopted.Run.Should().Be(2);
+        adopted.PreparedSha.Should().Be(Prepared);
+
+        await h.StepAsync(cleanup);
+
+        h.Writer.Deletes.Should().BeEmpty("the branch belongs to run 2 now");
+    }
+
+    // ── §0 D53 (D51 (5)): a regenerate run the entry stops waiting for is cancelled ──────────────────
+
+    private async Task<MergeQueueHarness> RegeneratingAsync()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "in_progress", null, Prepared, "mq/master/pr-7", null);
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Regenerating);
+        return h;
+    }
+
+    [Theory]
+    [InlineData("base-moved")]
+    [InlineData("author-push")]
+    [InlineData("dequeued")]
+    [InlineData("closed")]
+    [InlineData("timeout")]
+    public async Task A_regenerate_run_the_entry_stops_waiting_for_is_cancelled(string why)
+    {
+        const string prepared2 = "7777777777777777777777777777777777777777";
+        var h = await RegeneratingAsync();
+
+        switch (why)
+        {
+            case "base-moved":
+                h.Queue.BranchHeads["master"] = NewBase;
+                h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(NewBase, Head, prepared2, "apps/A/App_Data/modelHashes.json"));
+                h.Queue.Blobs[$"{prepared2}:.github/workflows/regenerate.yml"] = "b10b";
+                h.Queue.Runs[9002] = new ForgeWorkflowRun(9002, "in_progress", null, prepared2, "mq/master/pr-7", null);
+                h.Queue.NextDispatch = new(EForgeDispatchOutcome.Dispatched, 9002, null, null);
+                await h.SignalAsync(EMergeQueueSignal.BranchPushed, sha: NewBase, branch: "master");
+                break;
+            case "author-push":
+                await h.SignalAsync(EMergeQueueSignal.HeadPushed, Number, "9999999999999999999999999999999999999999");
+                break;
+            case "dequeued":
+                await h.DequeueAsync("author");
+                break;
+            case "closed":
+                await h.SignalAsync(EMergeQueueSignal.Closed, Number);
+                break;
+            default:
+                await h.ReleaseAsync(EMergeQueueStep.Timeout);
+                break;
+        }
+        await h.DrainAsync();
+
+        h.Queue.CancelledRuns.Should().Equal([9001L], $"after {why} nothing waits for run 9001 any more");
+        var entry = await h.EntryAsync();
+        entry.History.Should().Contain(e => e.Text == "cancelled the abandoned regenerate run 9001");
+        if (why == "base-moved")
+        {
+            entry.State.Should().Be(EMergeQueueEntryState.Regenerating, "the rebase on the new base dispatched a run of its own");
+            entry.DispatchRunId.Should().Be(9002);
+        }
+    }
+
+    [Fact]
+    public async Task A_run_started_by_a_dispatch_whose_answer_was_lost_is_cancelled_before_the_next_dispatch()
+    {
+        var h = await HarnessAsync();
+        h.Writer.PrepareResults.Enqueue(FakeGitWriter.Prepared(BaseSha, Head, Prepared, "apps/A/App_Data/modelHashes.json"));
+        h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "in_progress", null, Prepared, "mq/master/pr-7", null);
+        h.Queue.Runs[9002] = new ForgeWorkflowRun(9002, "in_progress", null, Prepared, "mq/master/pr-7", null);
+        h.Queue.DispatchThrows = new HttpRequestException("The response ended prematurely.");
+        await h.EnqueueAsync();
+        await h.DrainAsync();
+
+        var lost = await h.EntryAsync();
+        lost.State.Should().Be(EMergeQueueEntryState.Preparing, "the dispatch is retried: its answer never arrived");
+        lost.DispatchRunId.HasValue.Should().BeFalse("run 9001 started, but the entry never learnt its id");
+
+        h.Queue.NextDispatch = new(EForgeDispatchOutcome.Dispatched, 9002, null, null);
+        await h.ReleaseAsync(EMergeQueueStep.Dispatch);
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Regenerating);
+        entry.DispatchRunId.Should().Be(9002);
+        h.Queue.CancelledRuns.Should().Equal([9001L], "the stray run is cancelled before another one is paid for");
+        entry.History.Should().Contain(e => e.Text.StartsWith("cancelled the stray regenerate run 9001", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_run_that_finished_by_itself_is_never_cancelled()
+    {
+        var h = await RegeneratingAsync();
+        h.Queue.Runs[9001] = new ForgeWorkflowRun(9001, "completed", "failure", Prepared, "mq/master/pr-7", null);
+
+        await h.SignalAsync(EMergeQueueSignal.RunCompleted, runId: 9001);
+        await h.DrainAsync();
+
+        (await h.EntryAsync()).EvictionReason.Should().Be("regenerate-failed");
+        h.Queue.CancelledRuns.Should().BeEmpty("its own completion ended the wait");
+    }
+
+    [Fact]
+    public async Task A_cancel_refused_for_a_permission_is_noted_and_a_forge_failure_is_retried()
+    {
+        var h = await RegeneratingAsync();
+        h.Queue.CancelThrows = new ForgeRequestException("GitHub answered 502 to POST …/cancel", 502);
+
+        await h.DequeueAsync("author");
+        var drain = () => h.DrainAsync();
+        await drain.Should().ThrowAsync<ForgeRequestException>("the messaging runtime retries a step that fails like this");
+        (await h.EntryAsync()).State.Should().Be(EMergeQueueEntryState.Dequeued, "the dequeue itself stands");
+
+        h.Queue.CancelThrows = new ForgeAccessDeniedException("GitHub answered 403 to POST …/cancel: Resource not accessible by integration", "actions=write");
+        await h.StepAsync(h.Handled[^1]);
+
+        var entry = await h.EntryAsync();
+        entry.State.Should().Be(EMergeQueueEntryState.Dequeued);
+        entry.History.Should().Contain(e => e.Text.StartsWith("could not cancel the abandoned regenerate run 9001", StringComparison.Ordinal));
+
+        await h.StepAsync(h.Handled[^1]);
+        h.Queue.CancelledRuns.Should().Equal([9001L], "a redelivered cancel step simply cancels");
     }
 
     [Fact]

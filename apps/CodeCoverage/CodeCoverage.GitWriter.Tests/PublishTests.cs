@@ -127,6 +127,111 @@ public class PublishTests : WriterTestBase
         response.Outcome.Should().Be("branch-moved");
         Pushes().Should().Be(pushesBefore, "nothing is pushed once the head is known to have moved");    }
 
+    // ── D51 (1): a publish whose answer never reached the saga ──────────────────────────────────────
+
+    /// <summary>
+    /// The publish landed, but the saga never saved it (the app died, or the response was lost), so it sends the same
+    /// request again. What the branch holds is the earlier attempt's commit, which differs from the one this attempt
+    /// builds only in its committer date. <paramref name="forgeCaughtUp"/>: whether GitHub already moved
+    /// <c>refs/pull/N/head</c> to it, so the writer meets it at its early check, or only as the lease's rejection.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task A_retried_publish_recognises_the_commit_an_earlier_attempt_pushed(bool withPatch, bool forgeCaughtUp)
+    {
+        var origin = Seed();
+        var (prepared, head) = await PreparedAsync(origin);
+        string? patch = null;
+        if (withPatch)
+        {
+            FixtureGit.Run(origin.Work, "fetch", "--quiet", "origin", QueueBranch);
+            patch = RegeneratePatch(origin, prepared);
+        }
+        var request = PublishRequest(origin, prepared, head, patch);
+        var first = await Writer.PublishAsync(request);
+        first.Outcome.Should().Be("published", first.Detail);
+        var earlier = origin.Rewrite(first.FinalSha!, CommitText.Redated);
+        origin.SetBranch("feature", earlier);
+        if (forgeCaughtUp)
+            origin.InBare("update-ref", "refs/pull/1/head", earlier);
+
+        var again = await Writer.PublishAsync(request);
+
+        again.Outcome.Should().Be("published", $"the branch holds the queue's own commit, not an author's push: {again.Detail}");
+        again.Reason.Should().Be("already-pushed");
+        again.FinalSha.Should().Be(earlier, "the commit already on the branch is the answer; a second one is never pushed over it");
+        origin.Ref("refs/heads/feature").Should().Be(earlier);
+    }
+
+    /// <summary>
+    /// The same for a fork's pull request (O3): the branch is in the fork, so the rejected lease's commit is fetched from
+    /// the fork's URL into the blob-less clone of the base, which is not the clone's promisor remote.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_retried_publish_to_a_forks_branch_recognises_the_commit_an_earlier_attempt_pushed(bool withPatch)
+    {
+        var origin = Seed();
+        var (prepared, head) = await PreparedAsync(origin);
+        var fork = Fork(origin, "feature");
+        string? patch = null;
+        if (withPatch)
+        {
+            FixtureGit.Run(origin.Work, "fetch", "--quiet", "origin", QueueBranch);
+            patch = RegeneratePatch(origin, prepared);
+        }
+        var request = PublishRequest(origin, prepared, head, patch, pushUrl: fork.Url);
+        var first = await Writer.PublishAsync(request);
+        first.Outcome.Should().Be("published", first.Detail);
+        fork.Ref("refs/heads/feature").Should().Be(first.FinalSha, "O3: the fork's branch is the one rewritten");
+        var earlier = fork.Rewrite(first.FinalSha!, CommitText.Redated);
+        fork.SetBranch("feature", earlier);
+
+        var again = await Writer.PublishAsync(request);
+
+        again.Outcome.Should().Be("published", again.Detail);
+        again.Reason.Should().Be("already-pushed");
+        again.FinalSha.Should().Be(earlier);
+        fork.Ref("refs/heads/feature").Should().Be(earlier);
+        fork.InBare("fsck", "--no-dangling", "--strict");
+    }
+
+    /// <summary>
+    /// Each criterion on its own: a commit that has the final tree but another committer, the bot's committer but another
+    /// tree, or both but another parent than the base is not the queue's, and stays an author push.
+    /// </summary>
+    [Theory]
+    [InlineData("committer")]
+    [InlineData("tree")]
+    [InlineData("parent")]
+    public async Task A_commit_that_misses_one_criterion_is_still_an_author_push(string differs)
+    {
+        var origin = Seed();
+        var (prepared, head) = await PreparedAsync(origin);
+        FixtureGit.Run(origin.Work, "fetch", "--quiet", "origin", QueueBranch);
+        var request = PublishRequest(origin, prepared, head, RegeneratePatch(origin, prepared));
+        var first = await Writer.PublishAsync(request);
+        first.Outcome.Should().Be("published", first.Detail);
+        var preparedTree = origin.InBare("rev-parse", $"{prepared}^{{tree}}").Trim();
+        var foreign = origin.Rewrite(first.FinalSha!, raw => CommitText.Redated(differs switch
+        {
+            "committer" => CommitText.Header(raw, "committer", _ => "committer Pull Request Author <author@example.invalid> 1767225600 +0000"),
+            "tree" => CommitText.Header(raw, "tree", _ => $"tree {preparedTree}"),
+            _ => CommitText.Header(raw, "parent", _ => $"parent {head}"),
+        }));
+        origin.SetBranch("feature", foreign);
+        origin.InBare("update-ref", "refs/pull/1/head", foreign);
+
+        var again = await Writer.PublishAsync(request);
+
+        again.Outcome.Should().Be("branch-moved");
+        origin.Ref("refs/heads/feature").Should().Be(foreign, "the author's commit is never overwritten");
+    }
+
     [Fact]
     public async Task A_queue_branch_that_is_not_at_the_prepared_commit_is_refused()
     {

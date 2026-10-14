@@ -30,6 +30,9 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
 {
     private const string HeadTracking = "refs/mq/head";
 
+    /// <summary>Where a branch's current commit is fetched to when a lease was rejected (§0 D52).</summary>
+    private const string TipTracking = "refs/mq/tip";
+
     /// <summary>Step [1]: squash and rebase the pull request onto its base and push the result to the queue branch.</summary>
     public Task<PrepareResponse> PrepareAsync(PrepareJob job) => jobs.RunAsync("prepare", job.Repo, async context =>
     {
@@ -67,13 +70,22 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
         };
 
         var commit = await resolver.CommitAsync(context.GitDirectory, tree, baseSha, job.Author, job.Committer, job.Message, context.Deadline);
-        return await PushAsync(context, job.CloneUrl, job.Credential, commit, $"refs/heads/{job.QueueBranch}", job.ExpectedQueueSha) switch
+        switch (await PushAsync(context, job.CloneUrl, job.Credential, commit, $"refs/heads/{job.QueueBranch}", job.ExpectedQueueSha))
         {
-            Push.Done => Answer(JobOutcomes.Prepared, baseSha: baseSha, headSha: headSha, prepared: commit, resolved: resolvedPaths),
-            Push.LeaseRejected => Answer(JobOutcomes.QueueBranchMoved, baseSha: baseSha, headSha: headSha, detail: $"{job.QueueBranch} is not where the lease expected it."),
-            Push.Rejected rejected => Answer(JobOutcomes.PushRejected, baseSha: baseSha, headSha: headSha, detail: rejected.Detail),
-            _ => throw new InvalidOperationException("Unknown push outcome."),
-        };
+            case Push.Done:
+                return Answer(JobOutcomes.Prepared, baseSha: baseSha, headSha: headSha, prepared: commit, resolved: resolvedPaths);
+            case Push.LeaseRejected:
+                // §0 D52: an earlier attempt's push may have landed without the saga learning of it.
+                if (await FetchTipAsync(context, "origin", job.Credential, job.QueueBranch) is { } tip
+                    && await IsOwnCommitAsync(context, tip, commit, job.Author, job.Committer))
+                    return Answer(JobOutcomes.Prepared, JobReasons.AlreadyPushed, baseSha, headSha, tip, resolvedPaths,
+                        detail: $"{job.QueueBranch} already holds this job's commit {tip}, pushed by an earlier attempt.");
+                return Answer(JobOutcomes.QueueBranchMoved, baseSha: baseSha, headSha: headSha, detail: $"{job.QueueBranch} is not where the lease expected it.");
+            case Push.Rejected rejected:
+                return Answer(JobOutcomes.PushRejected, baseSha: baseSha, headSha: headSha, detail: rejected.Detail);
+            default:
+                throw new InvalidOperationException("Unknown push outcome.");
+        }
     }, (outcome, reason, detail, ms) => new PrepareResponse(outcome, reason, null, null, null, [], [], detail, ms));
 
     /// <summary>Step [3]: validate the regenerate patch, apply it to the prepared tree without a worktree and publish ONE
@@ -101,40 +113,121 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
             if (prepared is null)
                 throw new JobAbortedException(JobReasons.Error, "The prepared commit does not have exactly one parent.");
 
-            // The author's branch is checked before anything is built; the lease checks it again at the push.
+            // The final commit, built at most once and only when needed: the prepared commit itself when nothing was
+            // regenerated, else one commit with the patch applied.
+            FinalCommit? memo = null;
+            async Task<FinalCommit> FinalAsync() => memo ??= await BuildFinalAsync(context, job, prepared, verdict.Paths);
+            string AlreadyThere(string sha) => $"{job.PrBranch} already holds this job's commit {sha}, pushed by an earlier attempt.";
+
+            // The author's branch is checked before anything is pushed; the lease checks it again at the push. A head
+            // that moved may be this job's own commit, pushed by an attempt whose answer never reached the saga (D52).
             await FetchHeadAsync(context, job.Credential, job.HeadRef);
             context.EnsureWithinDisk();
             var head = await RevParseAsync(context, HeadTracking);
             if (head != job.ExpectedPrHeadSha)
-                return Answer(JobOutcomes.BranchMoved, detail: $"{job.HeadRef} is at {head}, not {job.ExpectedPrHeadSha}.");
+                return await FinalAsync() is { Sha: { } ours } && await IsOwnCommitAsync(context, head, ours, prepared.Author, job.Committer)
+                    ? Answer(JobOutcomes.Published, JobReasons.AlreadyPushed, head, verdict.Paths, AlreadyThere(head))
+                    : Answer(JobOutcomes.BranchMoved, detail: $"{job.HeadRef} is at {head}, not {job.ExpectedPrHeadSha}.");
 
-            string final;
-            if (job.Patch.Length == 0)
-            {
-                // Nothing regenerated: the prepared commit already is base + the net change.
-                final = job.PreparedSha;
-            }
-            else
-            {
-                var preparedTree = await RevParseAsync(context, $"{job.PreparedSha}^{{tree}}");
-                var tree = await ApplyAsync(context, job, verdict.Paths);
-                if (tree is PatchVerdict rejected)
-                    return Answer(JobOutcomes.PatchRejected, rejected.Reason, paths: rejected.Paths, detail: rejected.Detail);
-                var newTree = (string)tree;
-                if (await CheckTreeAsync(context, preparedTree, newTree, verdict.Paths) is { } unexpected)
-                    return Answer(JobOutcomes.PatchRejected, unexpected.Reason, paths: unexpected.Paths, detail: unexpected.Detail);
-                final = Oid(await context.RequireAsync(["commit-tree", newTree, "-p", prepared.Parent, "-F", "-"],
-                    input: prepared.Message, author: prepared.Author, committer: job.Committer), "commit-tree");
-            }
+            var built = await FinalAsync();
+            if (built.Sha is not { } final)
+                return Answer(JobOutcomes.PatchRejected, built.Rejected!.Reason, paths: built.Rejected.Paths, detail: built.Rejected.Detail);
 
-            return await PushAsync(context, job.PushUrl, job.Credential, final, $"refs/heads/{job.PrBranch}", job.ExpectedPrHeadSha) switch
+            switch (await PushAsync(context, job.PushUrl, job.Credential, final, $"refs/heads/{job.PrBranch}", job.ExpectedPrHeadSha))
             {
-                Push.Done => Answer(JobOutcomes.Published, final: final, paths: verdict.Paths),
-                Push.LeaseRejected => Answer(JobOutcomes.BranchMoved, detail: $"{job.PrBranch} moved during the queue run (the lease on {job.ExpectedPrHeadSha} was rejected)."),
-                Push.Rejected rejected => Answer(JobOutcomes.PushRejected, detail: rejected.Detail),
-                _ => throw new InvalidOperationException("Unknown push outcome."),
-            };
+                case Push.Done:
+                    return Answer(JobOutcomes.Published, final: final, paths: verdict.Paths);
+                case Push.LeaseRejected:
+                    // GitHub moves refs/pull/N/head after the push, so the early check can miss an earlier attempt's commit.
+                    var remote = job.PushUrl == job.CloneUrl ? "origin" : job.PushUrl.AbsoluteUri;
+                    if (await FetchTipAsync(context, remote, job.Credential, job.PrBranch) is { } pushed
+                        && await IsOwnCommitAsync(context, pushed, final, prepared.Author, job.Committer))
+                        return Answer(JobOutcomes.Published, JobReasons.AlreadyPushed, pushed, verdict.Paths, AlreadyThere(pushed));
+                    return Answer(JobOutcomes.BranchMoved, detail: $"{job.PrBranch} moved during the queue run (the lease on {job.ExpectedPrHeadSha} was rejected).");
+                case Push.Rejected refused:
+                    return Answer(JobOutcomes.PushRejected, detail: refused.Detail);
+                default:
+                    throw new InvalidOperationException("Unknown push outcome.");
+            }
         }, (outcome, reason, detail, ms) => new PublishResponse(outcome, reason, null, [], detail, ms));
+    }
+
+    /// <summary>The final commit's id, or why the patch could not make one.</summary>
+    private sealed record FinalCommit(string? Sha, PatchVerdict? Rejected);
+
+    /// <summary>
+    /// The final commit (D31): the prepared commit itself when there is no patch, else <c>commit-tree</c> of the prepared
+    /// tree with the validated patch applied and checked again, on the prepared commit's only parent, with its author
+    /// (original date) and message.
+    /// </summary>
+    private static async Task<FinalCommit> BuildFinalAsync(JobContext context, PublishJob job, PreparedCommit prepared, IReadOnlyList<string> declared)
+    {
+        // Nothing regenerated: the prepared commit already is base + the net change.
+        if (job.Patch.Length == 0)
+            return new FinalCommit(job.PreparedSha, null);
+
+        var preparedTree = await RevParseAsync(context, $"{job.PreparedSha}^{{tree}}");
+        var tree = await ApplyAsync(context, job, declared);
+        if (tree is PatchVerdict rejected)
+            return new FinalCommit(null, rejected);
+        var newTree = (string)tree;
+        if (await CheckTreeAsync(context, preparedTree, newTree, declared) is { } unexpected)
+            return new FinalCommit(null, unexpected);
+        return new FinalCommit(Oid(await context.RequireAsync(["commit-tree", newTree, "-p", prepared.Parent, "-F", "-"],
+            input: prepared.Message, author: prepared.Author, committer: job.Committer), "commit-tree"), null);
+    }
+
+    /// <summary>
+    /// §0 D52: whether <paramref name="candidate"/> is a commit this job could have written, i.e. what an earlier attempt
+    /// pushed before its answer was lost (the app died before saving it, or the response never arrived). It must equal
+    /// <paramref name="ours"/>, the commit this attempt built, in everything the job sets: the tree, the one parent (the
+    /// base), the message, no other header, the author and the committer, whose dates only count where the job fixed
+    /// them. Only a date git stamped itself may differ. Recognising such a commit merges nothing the queue did not build:
+    /// its content is the tree this job computed (T3), and the merge is still pinned to its sha (D13).
+    /// </summary>
+    private static async Task<bool> IsOwnCommitAsync(JobContext context, string candidate, string ours, GitIdentity author, GitIdentity committer)
+    {
+        if (candidate == ours)
+            return true;
+        if (await ReadCommitAsync(context, candidate) is not { } theirs || await ReadCommitAsync(context, ours) is not { } mine)
+            return false;
+        return theirs.Tree == mine.Tree
+            && theirs.Parents.SequenceEqual(mine.Parents, StringComparer.Ordinal)
+            && theirs.OtherHeaders.SequenceEqual(mine.OtherHeaders, StringComparer.Ordinal)
+            && string.Equals(theirs.Message, mine.Message, StringComparison.Ordinal)
+            && Matches(theirs.Author, author)
+            && Matches(theirs.Committer, committer);
+
+        static bool Matches(GitIdentity? actual, GitIdentity expected)
+            => actual is not null && actual.Name == expected.Name && actual.Email == expected.Email
+               && (expected.When is not { } when
+                   || actual.When is { } stamped && stamped.ToUnixTimeSeconds() == when.ToUnixTimeSeconds() && stamped.Offset == when.Offset);
+    }
+
+    private static async Task<CommitObject?> ReadCommitAsync(JobContext context, string sha)
+    {
+        var raw = await context.GitAsync(["cat-file", "commit", sha], null);
+        return raw.Succeeded ? CommitObject.Parse(raw.StandardOutput) : null;
+    }
+
+    /// <summary>Where <paramref name="branch"/> of <paramref name="remote"/> is now, fetched into the job's repository; null
+    /// when the branch does not exist. Any other failure throws (the saga retries the job).</summary>
+    /// <remarks>
+    /// ⚠️ <c>--filter=blob:none</c> even for a fork's URL, which is not the clone's promisor remote. Without it, the fork
+    /// sends a pack that leans on everything reachable from the commits both sides have, blobs included, which a
+    /// blob-less clone does not hold: <c>index-pack</c> then fails with "did not receive expected object" (§0 D52).
+    /// </remarks>
+    private static async Task<string?> FetchTipAsync(JobContext context, string remote, GitCredential credential, string branch)
+    {
+        var fetch = await context.GitAsync(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--filter=blob:none", remote, $"+refs/heads/{branch}:{TipTracking}"], credential);
+        if (!fetch.Succeeded)
+        {
+            if (fetch.StandardError.Contains("couldn't find remote ref", StringComparison.OrdinalIgnoreCase))
+                return null;
+            throw new GitCommandException("fetch", fetch);
+        }
+        context.EnsureWithinDisk();
+        return await RevParseAsync(context, TipTracking);
     }
 
     /// <summary>Removes the queue branch once its entry ended (D5). A branch that is already gone counts as deleted.</summary>
@@ -275,16 +368,39 @@ public sealed class WriterService(GitRunner git, JobRunner jobs, IOptions<GitWri
 internal sealed record PreparedCommit(string Parent, GitIdentity Author, string Message)
 {
     public static PreparedCommit? Parse(string raw)
+        => CommitObject.Parse(raw) is { Parents: [var parent], Author: { } author } commit && WireValidation.ObjectId(parent) is not null
+            ? new PreparedCommit(parent, author, commit.Message)
+            : null;
+}
+
+/// <summary>
+/// A commit object as <c>cat-file commit</c> prints it: its headers (an identity that does not parse is null; every header
+/// other than tree, parent, author and committer is kept verbatim, continuation lines included) and its message.
+/// </summary>
+internal sealed record CommitObject(string Tree, IReadOnlyList<string> Parents, GitIdentity? Author, GitIdentity? Committer, IReadOnlyList<string> OtherHeaders, string Message)
+{
+    public static CommitObject? Parse(string raw)
     {
         var split = raw.IndexOf("\n\n", StringComparison.Ordinal);
         if (split < 0)
             return null;
-        var headers = raw[..split].Split('\n');
-        var parents = headers.Where(h => h.StartsWith("parent ", StringComparison.Ordinal)).Select(h => h["parent ".Length..]).ToList();
-        var author = headers.FirstOrDefault(h => h.StartsWith("author ", StringComparison.Ordinal));
-        if (parents.Count != 1 || WireValidation.ObjectId(parents[0]) is null || author is null || Identity(author["author ".Length..]) is not { } identity)
-            return null;
-        return new PreparedCommit(parents[0], identity, raw[(split + 2)..]);
+        string? tree = null;
+        GitIdentity? author = null, committer = null;
+        List<string> parents = [], other = [];
+        foreach (var header in raw[..split].Split('\n'))
+        {
+            if (header.StartsWith("tree ", StringComparison.Ordinal))
+                tree = header["tree ".Length..];
+            else if (header.StartsWith("parent ", StringComparison.Ordinal))
+                parents.Add(header["parent ".Length..]);
+            else if (header.StartsWith("author ", StringComparison.Ordinal))
+                author = Identity(header["author ".Length..]);
+            else if (header.StartsWith("committer ", StringComparison.Ordinal))
+                committer = Identity(header["committer ".Length..]);
+            else
+                other.Add(header);
+        }
+        return WireValidation.ObjectId(tree) is { } id ? new CommitObject(id, parents, author, committer, other, raw[(split + 2)..]) : null;
     }
 
     /// <summary><c>Name &lt;email&gt; 1767225600 +0200</c>.</summary>

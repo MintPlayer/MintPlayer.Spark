@@ -147,16 +147,42 @@ public class PrepareTests : WriterTestBase
     {
         var origin = Seed();
         var head = RollUpConflict(origin);
-        var first = await Writer.PrepareAsync(PrepareRequest(origin, head));
-        first.Outcome.Should().Be("prepared", first.Detail);
+        // Something that is not this job's commit holds the branch: the base itself.
+        var foreign = origin.Ref("refs/heads/main")!;
+        origin.SetBranch(QueueBranch, foreign);
 
         // "Must not exist" fails now that it exists; the right expectation overwrites it.
         var again = await Writer.PrepareAsync(PrepareRequest(origin, head));
-        var leased = await Writer.PrepareAsync(PrepareRequest(origin, head, expectedQueueSha: first.PreparedSha));
-
         again.Outcome.Should().Be("queue-branch-moved");
+        origin.Ref($"refs/heads/{QueueBranch}").Should().Be(foreign, "a rejected lease writes nothing");
+
+        var leased = await Writer.PrepareAsync(PrepareRequest(origin, head, expectedQueueSha: foreign));
         leased.Outcome.Should().Be("prepared", leased.Detail);
         origin.Ref($"refs/heads/{QueueBranch}").Should().Be(leased.PreparedSha);
+    }
+
+    /// <summary>
+    /// D51 (1) for prepare: the push landed but the saga never saved it, so it asks again with the old lease. The queue
+    /// branch holds the earlier attempt's commit (same tree, same parent, the bot's committer, another committer date),
+    /// which is the answer, instead of a reset of the branch and a second prepare.
+    /// </summary>
+    [Fact]
+    public async Task A_retried_prepare_recognises_the_commit_an_earlier_attempt_pushed()
+    {
+        var origin = Seed();
+        var head = RollUpConflict(origin);
+        var first = await Writer.PrepareAsync(PrepareRequest(origin, head));
+        first.Outcome.Should().Be("prepared", first.Detail);
+        var earlier = origin.Rewrite(first.PreparedSha!, CommitText.Redated);
+        origin.SetBranch(QueueBranch, earlier);
+
+        var again = await Writer.PrepareAsync(PrepareRequest(origin, head));
+
+        again.Outcome.Should().Be("prepared", again.Detail);
+        again.Reason.Should().Be("already-pushed");
+        again.PreparedSha.Should().Be(earlier);
+        again.ResolvedPaths.Should().Equal([ModelHashes.Path], "the saga still learns what was resolved");
+        origin.Ref($"refs/heads/{QueueBranch}").Should().Be(earlier);
     }
 
     [Fact]

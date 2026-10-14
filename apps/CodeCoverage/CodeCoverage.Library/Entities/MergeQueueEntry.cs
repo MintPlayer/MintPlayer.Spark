@@ -82,6 +82,13 @@ public class MergeQueueEntry
 
     public string? DispatchRunUrl { get; set; }
 
+    /// <summary>
+    /// The regenerate run reported its completion, vanished, or its cancellation was queued. While false, an entry that
+    /// leaves <see cref="EMergeQueueEntryState.Regenerating"/> for any other reason cancels the run, which would otherwise
+    /// keep spending the repository's CI minutes (merge-queue PRD §0 D53).
+    /// </summary>
+    public bool DispatchRunFinished { get; set; }
+
     /// <summary>The commit whose checks the queue waits for and that it merges.</summary>
     public string? FinalSha { get; set; }
 

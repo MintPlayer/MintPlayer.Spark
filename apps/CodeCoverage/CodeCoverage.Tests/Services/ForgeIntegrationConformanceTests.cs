@@ -84,6 +84,8 @@ public class ForgeIntegrationConformanceTests
         (nameof(IForgeMergeQueue.GetCheckNamesOnCommitAsync), q => q.GetCheckNamesOnCommitAsync(SampleRepository, SampleSha)),
         (nameof(IForgeMergeQueue.DispatchWorkflowAsync), q => q.DispatchWorkflowAsync(SampleRepository, "regenerate.yml", "mq/main/pr-1", new Dictionary<string, string>())),
         (nameof(IForgeMergeQueue.GetWorkflowRunAsync), q => q.GetWorkflowRunAsync(SampleRepository, 1)),
+        (nameof(IForgeMergeQueue.CancelWorkflowRunAsync), q => q.CancelWorkflowRunAsync(SampleRepository, 1)),
+        (nameof(IForgeMergeQueue.ListWorkflowRunsAsync), q => q.ListWorkflowRunsAsync(SampleRepository, "regenerate.yml", "mq/main/pr-1")),
         (nameof(IForgeMergeQueue.DownloadArtifactAsync), q => q.DownloadArtifactAsync(SampleRepository, 1, "merge-queue-patch", 1024)),
         (nameof(IForgeMergeQueue.GetFileBlobShaAsync), q => q.GetFileBlobShaAsync(SampleRepository, "main", ".github/workflows/regenerate.yml")),
         (nameof(IForgeMergeQueue.RequestMergeAsync), q => q.RequestMergeAsync(SampleRepository, 1, SampleSha, EForgeMergeMethod.Squash, null, null)),

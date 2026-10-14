@@ -92,9 +92,19 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         switch (signal.Kind)
         {
             case EMergeQueueSignal.HeadPushed when signal.Number is { } number && signal.Sha is { } sha:
-                if (await LoadActiveAsync(signal.RepositoryId, number, ct) is { } pushed && !pushed.KnownShas.Contains(sha, StringComparer.OrdinalIgnoreCase))
-                    await EvictAsync(context, pushed, "author-push",
-                        $"The pull request's branch moved to `{sha}`, a commit the queue did not write. The queue merges only the commit that was queued (T3): queue it again to merge the new one.", ct: ct);
+                if (await LoadActiveAsync(signal.RepositoryId, number, ct) is not { } pushed || pushed.KnownShas.Contains(sha, StringComparer.OrdinalIgnoreCase))
+                    break;
+                if (pushed.State == EMergeQueueEntryState.Publishing)
+                {
+                    // §0 D52: while publishing, a head the queue does not know may still be its own commit, pushed by a
+                    // publish whose answer never arrived (the app died before saving it, or the response was lost). The
+                    // writer can tell, by the same criteria as its retried publish; only its "branch moved" evicts.
+                    pushed.Note(Now, $"the branch moved to {Short(sha)} while publishing; asking the writer whether that is the queue's own commit");
+                    await GuardedAsync(context, pushed, EMergeQueueStep.Publish, () => PublishAsync(context, pushed, ct), ct);
+                    break;
+                }
+                await EvictAsync(context, pushed, "author-push",
+                    $"The pull request's branch moved to `{sha}`, a commit the queue did not write. The queue merges only the commit that was queued (T3): queue it again to merge the new one.", ct: ct);
                 break;
 
             case EMergeQueueSignal.Closed when signal.Number is { } number:
@@ -156,7 +166,13 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         if (step.Step == EMergeQueueStep.Cleanup)
         {
-            await CleanupAsync(context, step, ct);
+            await CleanupAsync(context, entry, step, ct);
+            await session.SaveChangesAsync(ct);
+            return;
+        }
+        if (step.Step == EMergeQueueStep.CancelRun)
+        {
+            await CancelRunAsync(context, entry, step, ct);
             await session.SaveChangesAsync(ct);
             return;
         }
@@ -290,6 +306,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         entry.ResolvedPaths = [];
         entry.DispatchRunId = null;
         entry.DispatchRunUrl = null;
+        entry.DispatchRunFinished = false;
         entry.FinalSha = null;
         entry.DirectMerge = false;
         entry.RequiredChecks = [];
@@ -490,14 +507,15 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.PreparedSha = prepared;
                 entry.ResolvedPaths = [.. result.ResolvedPaths];
                 Remember(entry, prepared);
+                var found = result.Reason == GitWriterReasons.AlreadyPushed ? " (found on the queue branch: an earlier attempt's push, §0 D52)" : string.Empty;
                 if (NeedsRegeneration(entry))
                 {
-                    Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}; regenerating {entry.ResolvedPaths.Count} resolved path(s)");
+                    Transition(entry, EMergeQueueEntryState.Preparing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}{found}; regenerating {entry.ResolvedPaths.Count} resolved path(s)");
                     await ScheduleAsync(entry, EMergeQueueStep.Dispatch, null, ct);
                 }
                 else
                 {
-                    Transition(entry, EMergeQueueEntryState.Publishing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}; nothing to regenerate");
+                    Transition(entry, EMergeQueueEntryState.Publishing, $"prepared {Short(prepared)} on {Short(entry.BaseSha)}{found}; nothing to regenerate");
                     await ScheduleAsync(entry, EMergeQueueStep.Publish, null, ct);
                 }
                 await PublishCheckAsync(context, entry, ct);
@@ -573,10 +591,12 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await EvictAsync(context, entry, "base-churn", $"The base moved {MaxPrepareAttempts} times during this run; queue it again when `{entry.BaseBranch}` is quieter.", ct: ct);
             return;
         }
+        await AbandonRunAsync(entry, ct);
         entry.FinalSha = null;
         entry.DirectMerge = false;
         entry.DispatchRunId = null;
         entry.DispatchRunUrl = null;
+        entry.DispatchRunFinished = false;
         entry.MergeRequestId = null;
         entry.CheckRetries = 0;
         entry.HeadModifiedRetries = 0;
@@ -609,6 +629,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             return;
         }
 
+        await CancelStrayRunsAsync(context, entry, file, ct);
+
         var dispatch = await context.Queue.DispatchWorkflowAsync(repository, file, entry.QueueBranch, new Dictionary<string, string>
         {
             ["expected_sha"] = entry.PreparedSha!,
@@ -629,10 +651,32 @@ public partial class MergeQueueEngine : IMergeQueueEngine
 
         entry.DispatchRunId = runId;
         entry.DispatchRunUrl = dispatch.HtmlUrl;
+        entry.DispatchRunFinished = false;
         Transition(entry, EMergeQueueEntryState.Regenerating, $"dispatched {file} run {runId}");
         await ScheduleAsync(entry, EMergeQueueStep.PollRun, RunPollInterval, ct);
         await ScheduleAsync(entry, EMergeQueueStep.Timeout, TimeSpan.FromMinutes(entry.Config.PostRebaseTimeoutMinutes), ct);
         await PublishCheckAsync(context, entry, ct);
+    }
+
+    /// <summary>
+    /// §0 D53: a dispatch whose answer never arrived (the app died, or the response was lost) may have started a run the
+    /// entry never learnt the id of, which nothing would cancel. Right before a dispatch the entry waits for no run, so any
+    /// run of the workflow still going on the entry's own queue branch is such a stray (or an abandoned run whose
+    /// cancellation is still on its way): it is cancelled rather than paid for twice. Best effort: a failure here never
+    /// holds the dispatch back.
+    /// </summary>
+    private async Task CancelStrayRunsAsync(Context context, MergeQueueEntry entry, string file, CancellationToken ct)
+    {
+        try
+        {
+            foreach (var run in await context.Queue.ListWorkflowRunsAsync(context.Repository, file, entry.QueueBranch, ct))
+                if (!run.IsCompleted && await context.Queue.CancelWorkflowRunAsync(context.Repository, run.Id, ct))
+                    entry.Note(Now, $"cancelled the stray regenerate run {run.Id}, started by a dispatch whose answer never arrived");
+        }
+        catch (Exception ex) when (ex is ForgeAccessDeniedException || IsTransient(ex, ct))
+        {
+            logger.LogWarning(ex, "Merge queue: could not look for stray runs of {Workflow} on {Branch} in {Repository}", file, entry.QueueBranch, context.Repository.FullName);
+        }
     }
 
     private async Task OnRunAsync(Context context, MergeQueueEntry entry, bool fromPoll, CancellationToken ct)
@@ -640,6 +684,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         var run = await context.Queue.GetWorkflowRunAsync(context.Repository, entry.DispatchRunId!.Value, ct);
         if (run is null)
         {
+            entry.DispatchRunFinished = true;
             await EvictAsync(context, entry, "regenerate-missing", $"The regenerate run {entry.DispatchRunId} no longer exists.", ct: ct);
             return;
         }
@@ -648,6 +693,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             if (fromPoll) await ScheduleAsync(entry, EMergeQueueStep.PollRun, RunPollInterval, ct);
             return;
         }
+        // Its own completion: whatever follows, there is nothing left to cancel (§0 D53).
+        entry.DispatchRunFinished = true;
 
         // D14: the run built the branch head as of the dispatch; a run of any other commit proves nothing about ours.
         if (!string.Equals(run.HeadSha, entry.PreparedSha, StringComparison.OrdinalIgnoreCase))
@@ -671,7 +718,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task PublishAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
     {
         var repository = context.Repository;
-        var pull = await ReadPullRequestAsync(context, entry, ct);
+        // An unknown head is the writer's call here (§0 D52): it may be the commit an earlier attempt published.
+        var pull = await ReadPullRequestAsync(context, entry, ct, headJudgedByWriter: true);
         if (pull is null) return;
 
         // The contract of .github/actions/spark-regenerate (D35): a green run with an empty patch means nothing to
@@ -717,7 +765,8 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 entry.FinalSha = final;
                 entry.ExpectedHeadSha = final;
                 Remember(entry, final);
-                await EnterAwaitingChecksAsync(context, entry, $"published {Short(final)}{(patch is null ? string.Empty : " with the regenerated files")}", ct);
+                await EnterAwaitingChecksAsync(context, entry, $"published {Short(final)}{(patch is null ? string.Empty : " with the regenerated files")}"
+                    + (result.Reason == GitWriterReasons.AlreadyPushed ? " (found on the branch: an earlier attempt's push, §0 D52)" : string.Empty), ct);
                 break;
 
             case GitWriterOutcomes.BranchMoved:
@@ -915,6 +964,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
     private async Task EndAsync(Context context, MergeQueueEntry entry, EMergeQueueEntryState state, string? message, CancellationToken ct)
     {
         if (message is not null) entry.EvictionMessage = message;
+        await AbandonRunAsync(entry, ct);
         Transition(entry, state, message ?? state.ToString());
         entry.FinishedAtUtc = Now;
 
@@ -962,9 +1012,16 @@ public partial class MergeQueueEngine : IMergeQueueEngine
                 await PublishCheckAsync(context, waiting, ct);
     }
 
-    private async Task CleanupAsync(Context context, MergeQueueStepMessage step, CancellationToken ct)
+    private async Task CleanupAsync(Context context, MergeQueueEntry entry, MergeQueueStepMessage step, CancellationToken ct)
     {
         if (!writer.IsConfigured || step.QueueBranch is null) return;
+        // §0 D52: a later run of this pull request may have adopted the very commit this run left there (a prepare that
+        // finds its own commit on the queue branch answers it); the branch is that run's now.
+        if (!entry.State.IsTerminal() && string.Equals(entry.PreparedSha, step.ExpectedSha, StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogInformation("Merge queue: keeping {Branch} in {Repository}: run {Run} adopted it", step.QueueBranch, context.Repository.FullName, entry.Run);
+            return;
+        }
         var git = await context.Forge.GetGitAccessAsync(context.Repository, ct);
         if (git is not { Password: { } password }) return;
 
@@ -975,6 +1032,41 @@ public partial class MergeQueueEngine : IMergeQueueEngine
         if (result.Outcome is GitWriterOutcomes.Busy or GitWriterOutcomes.Failed)
             throw new GitWriterUnavailableException($"The git writer answered delete with {result.Outcome}: {result.Detail}");
         logger.LogInformation("Merge queue: {Branch} in {Repository}: {Outcome}", step.QueueBranch, context.Repository.FullName, result.Outcome);
+    }
+
+    /// <summary>
+    /// §0 D53: queues the cancellation of the regenerate run when the entry stops waiting for it for any reason but the
+    /// run's own completion (a moved base, an eviction, a dequeue, a close, the timeout). Through the outbox, so the run is
+    /// only cancelled when the state change that abandons it commits.
+    /// </summary>
+    private async Task AbandonRunAsync(MergeQueueEntry entry, CancellationToken ct)
+    {
+        if (entry.State != EMergeQueueEntryState.Regenerating || entry.DispatchRunId is not { } runId || entry.DispatchRunFinished) return;
+        entry.DispatchRunFinished = true;
+        await outbox.EnqueueAsync(session, new MergeQueueStepMessage
+        {
+            EntryId = entry.Id!, Run = entry.Run, Generation = entry.Generation, Step = EMergeQueueStep.CancelRun, RunId = runId,
+        }, null, ct);
+    }
+
+    /// <summary>
+    /// Cancels an abandoned regenerate run. Not gated on the entry, like <see cref="CleanupAsync"/>: the entry has moved on
+    /// by design. A forge failure that may pass throws, so the messaging runtime retries the step; a refused permission is
+    /// noted and dropped, since the entry no longer depends on the run.
+    /// </summary>
+    private async Task CancelRunAsync(Context context, MergeQueueEntry entry, MergeQueueStepMessage step, CancellationToken ct)
+    {
+        if (step.RunId is not { } runId) return;
+        try
+        {
+            var cancelled = await context.Queue.CancelWorkflowRunAsync(context.Repository, runId, ct);
+            entry.Note(Now, cancelled ? $"cancelled the abandoned regenerate run {runId}" : $"the abandoned regenerate run {runId} had already finished");
+        }
+        catch (ForgeAccessDeniedException ex)
+        {
+            entry.Note(Now, $"could not cancel the abandoned regenerate run {runId}: {ex.Message}");
+            logger.LogWarning(ex, "Merge queue: could not cancel run {RunId} in {Repository}", runId, context.Repository.FullName);
+        }
     }
 
     // ═══ Helpers ════════════════════════════════════════════════════════════════════════════════════
@@ -1014,7 +1106,11 @@ public partial class MergeQueueEngine : IMergeQueueEngine
            || (ex is OperationCanceledException && !ct.IsCancellationRequested);
 
     /// <summary>Reads the pull request and ends the run when it is no longer the one that was queued. Null: ended.</summary>
-    private async Task<ForgePullRequest?> ReadPullRequestAsync(Context context, MergeQueueEntry entry, CancellationToken ct)
+    /// <param name="headJudgedByWriter">
+    /// Publish only (§0 D52): a head the queue does not know is left to the writer, which recognises the commit an
+    /// earlier attempt of the same publish pushed and answers "branch moved" for anything else.
+    /// </param>
+    private async Task<ForgePullRequest?> ReadPullRequestAsync(Context context, MergeQueueEntry entry, CancellationToken ct, bool headJudgedByWriter = false)
     {
         var pull = await context.Forge.GetPullRequestAsync(context.Repository, entry.Number, ct)
             ?? throw new ForgeRequestException($"Pull request #{entry.Number} of {context.Repository.FullName} could not be read.", null);
@@ -1023,7 +1119,7 @@ public partial class MergeQueueEngine : IMergeQueueEngine
             await EndAsync(context, entry, EMergeQueueEntryState.Dequeued, "The pull request was closed.", ct);
             return null;
         }
-        if (!string.Equals(pull.HeadSha, entry.ExpectedHeadSha, StringComparison.OrdinalIgnoreCase) && !entry.KnownShas.Contains(pull.HeadSha, StringComparer.OrdinalIgnoreCase))
+        if (!headJudgedByWriter && !string.Equals(pull.HeadSha, entry.ExpectedHeadSha, StringComparison.OrdinalIgnoreCase) && !entry.KnownShas.Contains(pull.HeadSha, StringComparer.OrdinalIgnoreCase))
         {
             await EvictAsync(context, entry, "author-push",
                 $"The pull request's branch moved to `{Short(pull.HeadSha)}`, a commit the queue did not write. The queue merges only the commit that was queued (T3): queue it again to merge the new one.", ct: ct);

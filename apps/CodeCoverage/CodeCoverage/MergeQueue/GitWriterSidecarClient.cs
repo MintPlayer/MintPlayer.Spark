@@ -145,3 +145,10 @@ public static class GitWriterOutcomes
     public const string Busy = "busy";
     public const string Failed = "failed";
 }
+
+/// <summary>The writer's <c>reason</c> values the saga acts on (CodeCoverage.GitWriter's <c>JobReasons</c>).</summary>
+public static class GitWriterReasons
+{
+    /// <summary><c>prepared</c>/<c>published</c> with the commit an earlier attempt of the same job pushed (§0 D52).</summary>
+    public const string AlreadyPushed = "already-pushed";
+}

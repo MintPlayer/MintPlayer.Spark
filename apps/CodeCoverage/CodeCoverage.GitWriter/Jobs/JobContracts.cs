@@ -139,4 +139,9 @@ public static class JobReasons
     public const string Error = "error";
     /// <summary>D12: the pull request's net change touches <c>.github/**</c>, whose workflows the dispatch would run.</summary>
     public const string TouchesWorkflows = "touches-workflows";
+    /// <summary>
+    /// Not a failure: <c>prepared</c> or <c>published</c> with the commit an earlier attempt of the same job already pushed,
+    /// whose answer never reached the saga (merge-queue PRD D51 (1), D52). The branch was left as it was.
+    /// </summary>
+    public const string AlreadyPushed = "already-pushed";
 }

@@ -25,6 +25,9 @@ public sealed record MergeQueueStepMessage
     public string? QueueBranch { get; init; }
 
     public string? ExpectedSha { get; init; }
+
+    /// <summary>For <see cref="EMergeQueueStep.CancelRun"/>: the abandoned regenerate run.</summary>
+    public long? RunId { get; init; }
 }
 
 public enum EMergeQueueStep
@@ -58,6 +61,12 @@ public enum EMergeQueueStep
 
     /// <summary>Delete the queue branch of a finished run (D5). Not gated: the entry may already run again.</summary>
     Cleanup,
+
+    /// <summary>
+    /// Cancel a regenerate run the entry stopped waiting for (§0 D53). Not gated either: the entry has moved on, which is
+    /// why the run is cancelled.
+    /// </summary>
+    CancelRun,
 }
 
 /// <summary>

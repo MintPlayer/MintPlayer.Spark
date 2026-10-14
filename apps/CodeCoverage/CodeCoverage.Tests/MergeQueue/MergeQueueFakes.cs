@@ -65,14 +65,51 @@ internal sealed class FakeForgeMergeQueue : IForgeMergeQueue
     public Task<IReadOnlyList<string>> GetCheckNamesOnCommitAsync(Repository repository, string sha, CancellationToken cancellationToken = default)
         => Task.FromResult(CheckNames.TryGetValue(sha, out var names) ? names : (IReadOnlyList<string>)[]);
 
+    /// <summary>The runs a dispatch started, so far: only these exist for <see cref="ListWorkflowRunsAsync"/>.</summary>
+    private readonly HashSet<long> started = [];
+
+    /// <summary>
+    /// When set, the next dispatch starts its run and then throws it: the forge created the run, but the answer that names
+    /// it never reached the saga.
+    /// </summary>
+    public Exception? DispatchThrows { get; set; }
+
     public Task<ForgeWorkflowDispatch> DispatchWorkflowAsync(Repository repository, string workflowFile, string branch, IReadOnlyDictionary<string, string> inputs, CancellationToken cancellationToken = default)
     {
         Dispatches.Add((workflowFile, branch, inputs));
+        if (NextDispatch.RunId is { } runId) started.Add(runId);
+        if (DispatchThrows is { } thrown)
+        {
+            DispatchThrows = null;
+            throw thrown;
+        }
         return Task.FromResult(NextDispatch);
     }
 
+    public Task<IReadOnlyList<ForgeWorkflowRun>> ListWorkflowRunsAsync(Repository repository, string workflowFile, string branch, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<ForgeWorkflowRun>>([.. Runs.Values.Where(r => started.Contains(r.Id) && r.HeadBranch == branch).OrderByDescending(r => r.Id)]);
+
     public Task<ForgeWorkflowRun?> GetWorkflowRunAsync(Repository repository, long runId, CancellationToken cancellationToken = default)
         => Task.FromResult(Runs.TryGetValue(runId, out var run) ? run : null);
+
+    /// <summary>Every run the saga asked to cancel, in order.</summary>
+    public List<long> CancelledRuns { get; } = [];
+
+    /// <summary>When set, the next cancellation throws it (a missing permission, a 5xx).</summary>
+    public Exception? CancelThrows { get; set; }
+
+    public Task<bool> CancelWorkflowRunAsync(Repository repository, long runId, CancellationToken cancellationToken = default)
+    {
+        if (CancelThrows is { } thrown)
+        {
+            CancelThrows = null;
+            throw thrown;
+        }
+        CancelledRuns.Add(runId);
+        if (!Runs.TryGetValue(runId, out var run) || run.IsCompleted) return Task.FromResult(false);
+        Runs[runId] = run with { Status = "completed", Conclusion = "cancelled" };
+        return Task.FromResult(true);
+    }
 
     public Task<ForgeArtifactDownload> DownloadArtifactAsync(Repository repository, long runId, string artifactName, long maxBytes, CancellationToken cancellationToken = default)
         => Task.FromResult(Artifacts.TryGetValue(runId, out var artifact) ? artifact : new ForgeArtifactDownload(EForgeArtifactOutcome.NotFound, null, null, "no artifact"));
@@ -141,9 +178,20 @@ internal sealed class FakeGitWriter : IGitWriterSidecar
         return Task.FromResult(PrepareResults.Dequeue());
     }
 
+    /// <summary>
+    /// When set, the next publish is recorded and then throws it: the writer pushed, but its answer never reached the saga
+    /// (a lost response; to the saga it is the same as the app dying before it saved).
+    /// </summary>
+    public Exception? PublishThrows { get; set; }
+
     public Task<GitWriterPublishResult> PublishAsync(GitWriterPublishRequest request, CancellationToken cancellationToken = default)
     {
         Publishes.Add(request);
+        if (PublishThrows is { } thrown)
+        {
+            PublishThrows = null;
+            throw thrown;
+        }
         return Task.FromResult(PublishResults.Dequeue());
     }
 

@@ -397,6 +397,48 @@ public partial class GitHubForgeMergeQueue : IForgeMergeQueue
             Str(root, "html_url"));
     }
 
+    /// <summary>
+    /// <c>POST /actions/runs/{id}/cancel</c>: 202 when GitHub accepted it. 409 means the run already completed and 404 that
+    /// it is gone, both "nothing to cancel". A 403 is the missing <c>actions: write</c> (O17).
+    /// </summary>
+    public async Task<bool> CancelWorkflowRunAsync(Repository repository, long runId, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(runId);
+        using var reply = await SendAsync(repository, HttpMethod.Post,
+            $"{RepoPath(repository)}/actions/runs/{runId.ToString(CultureInfo.InvariantCulture)}/cancel", null, DefaultApiVersion, cancellationToken);
+        if (reply.Status is HttpStatusCode.Conflict or HttpStatusCode.NotFound) return false;
+        EnsureSuccess(reply);
+        return true;
+    }
+
+    /// <summary>
+    /// <c>GET /actions/workflows/{file}/runs?branch=…</c>, the first page only (newest first, which is all the stray-run
+    /// sweep needs: the queue dispatches a handful of runs per entry at most). A workflow GitHub does not know is no runs.
+    /// </summary>
+    public async Task<IReadOnlyList<ForgeWorkflowRun>> ListWorkflowRunsAsync(Repository repository, string workflowFile, string branch, CancellationToken cancellationToken = default)
+    {
+        if (!WorkflowFileName().IsMatch(workflowFile))
+            throw new ArgumentException($"'{workflowFile}' is not a workflow file name.", nameof(workflowFile));
+        ArgumentException.ThrowIfNullOrEmpty(branch);
+
+        using var reply = await SendAsync(repository, HttpMethod.Get,
+            $"{RepoPath(repository)}/actions/workflows/{Uri.EscapeDataString(workflowFile)}/runs?branch={Uri.EscapeDataString(branch)}&per_page={RunsPageSize.ToString(CultureInfo.InvariantCulture)}",
+            null, DefaultApiVersion, cancellationToken);
+        if (reply.Status == HttpStatusCode.NotFound) return [];
+        EnsureSuccess(reply);
+
+        var root = reply.Json?.RootElement ?? default;
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("workflow_runs", out var runs) || runs.ValueKind != JsonValueKind.Array)
+            throw new ForgeRequestException($"GitHub's answer to the runs of {workflowFile} is not a listing.", (int)reply.Status);
+        return [.. runs.EnumerateArray()
+            .Where(run => Num(run, "id") is not null)
+            .Select(run => new ForgeWorkflowRun(Num(run, "id")!.Value, Str(run, "status") ?? "queued", Str(run, "conclusion"),
+                Str(run, "head_sha") ?? string.Empty, Str(run, "head_branch"), Str(run, "html_url")))];
+    }
+
+    /// <summary>The runs read by <see cref="ListWorkflowRunsAsync"/>.</summary>
+    private const int RunsPageSize = 20;
+
     /// <remarks>
     /// <para>
     /// Three caps, because none of the sizes is ours to trust: the listing's <c>size_in_bytes</c>, the

@@ -55,6 +55,18 @@ public abstract class WriterTestBase : IAsyncLifetime
         return origin;
     }
 
+    /// <summary>
+    /// A contributor's fork on the same forge holding <paramref name="branch"/> as it is in <paramref name="origin"/>'s work
+    /// tree (O3: a fork's pull request lives there; the base only mirrors its head as <c>refs/pull/N/head</c>).
+    /// </summary>
+    internal Origin Fork(Origin origin, string branch, string name = "fork")
+    {
+        var fork = new Origin(Server, name);
+        created.Add(fork);
+        FixtureGit.Run(origin.Work, "push", "--quiet", fork.Bare, $"{branch}:refs/heads/{branch}");
+        return fork;
+    }
+
     /// <summary>One side adds an entity the way synchronize does: a model file, two map lines and new roll-ups.</summary>
     internal static void AddEntity(Origin origin, string entity, string rollUp, IEnumerable<string>? existing = null)
     {
@@ -97,12 +109,14 @@ public abstract class WriterTestBase : IAsyncLifetime
             message = "Add Order (#1)\n\nCo-authored-by: Someone <someone@example.invalid>\n",
         };
 
-    internal static object PublishRequest(Origin origin, string preparedSha, string expectedPrHeadSha, string? patch = null, string[]? regeneratedPaths = null)
+    internal static object PublishRequest(Origin origin, string preparedSha, string expectedPrHeadSha, string? patch = null, string[]? regeneratedPaths = null,
+        Uri? pushUrl = null)
         => new
         {
             provider = "github",
             repoId = "1001",
             cloneUrl = origin.Url.AbsoluteUri,
+            pushUrl = pushUrl?.AbsoluteUri,
             credential = Credential(Token),
             queueBranch = QueueBranch,
             preparedSha,

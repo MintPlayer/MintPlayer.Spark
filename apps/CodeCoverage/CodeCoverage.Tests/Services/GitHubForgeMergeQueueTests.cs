@@ -412,6 +412,56 @@ public class GitHubForgeMergeQueueTests
     public async Task A_missing_run_is_null()
         => (await Queue(new StubGitHub()).GetWorkflowRunAsync(Target(), 1)).Should().BeNull();
 
+    [Fact]
+    public async Task A_run_is_cancelled_and_one_that_already_finished_or_is_gone_is_nothing_to_cancel()
+    {
+        // docs.github.com/rest/actions/workflow-runs#cancel-a-workflow-run: 202 accepted, 409 when it can no longer be.
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/38538867631/cancel", HttpStatusCode.Accepted, "{}")
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/38538867632/cancel", HttpStatusCode.Conflict, """{"message":"Cannot cancel a workflow run that is completed.","status":"409"}""");
+        var queue = Queue(github);
+
+        (await queue.CancelWorkflowRunAsync(Target(), 38538867631)).Should().BeTrue();
+        (await queue.CancelWorkflowRunAsync(Target(), 38538867632)).Should().BeFalse("409: the run already completed");
+        (await queue.CancelWorkflowRunAsync(Target(), 38538867633)).Should().BeFalse("404: there is no such run");
+    }
+
+    [Fact]
+    public async Task The_runs_of_a_workflow_on_a_branch_are_listed_newest_first()
+    {
+        // docs.github.com/rest/actions/workflow-runs#list-workflow-runs-for-a-workflow
+        var github = new StubGitHub().On(HttpMethod.Get, $"{Repo}/actions/workflows/regenerate.yml/runs?branch=mq%2Fmain%2Fpr-1&per_page=20", HttpStatusCode.OK, """
+            {"total_count":2,"workflow_runs":[
+              {"id":38538867632,"name":"regenerate","head_branch":"mq/main/pr-1","head_sha":"f4fe1f2c0ffee0000000000000000000000000ab",
+               "event":"workflow_dispatch","status":"in_progress","conclusion":null,"html_url":"https://github.com/acme/widget/actions/runs/38538867632"},
+              {"id":38538867631,"name":"regenerate","head_branch":"mq/main/pr-1","head_sha":"f4fe1f2c0ffee0000000000000000000000000aa",
+               "event":"workflow_dispatch","status":"completed","conclusion":"cancelled","html_url":"https://github.com/acme/widget/actions/runs/38538867631"}]}
+            """);
+
+        var runs = await Queue(github).ListWorkflowRunsAsync(Target(), "regenerate.yml", "mq/main/pr-1");
+
+        runs.Should().Equal([
+            new ForgeWorkflowRun(38538867632, "in_progress", null, "f4fe1f2c0ffee0000000000000000000000000ab", "mq/main/pr-1", "https://github.com/acme/widget/actions/runs/38538867632"),
+            new ForgeWorkflowRun(38538867631, "completed", "cancelled", "f4fe1f2c0ffee0000000000000000000000000aa", "mq/main/pr-1", "https://github.com/acme/widget/actions/runs/38538867631"),
+        ]);
+        (await Queue(new StubGitHub()).ListWorkflowRunsAsync(Target(), "regenerate.yml", "mq/main/pr-1")).Should().BeEmpty("a workflow GitHub does not know has no runs");
+        await Throws<ArgumentException>(() => Queue(new StubGitHub()).ListWorkflowRunsAsync(Target(), "../ci.yml", "mq/main/pr-1"));
+    }
+
+    [Fact]
+    public async Task A_cancel_refused_for_a_permission_names_it_and_a_server_error_is_retryable()
+    {
+        var github = new StubGitHub()
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/1/cancel", (_, _) => WithHeader(
+                new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("""{"message":"Resource not accessible by integration"}""") },
+                "X-Accepted-GitHub-Permissions", "actions=write"))
+            .On(HttpMethod.Post, $"{Repo}/actions/runs/2/cancel", HttpStatusCode.InternalServerError, """{"message":"Server Error"}""");
+        var queue = Queue(github);
+
+        (await Throws<ForgeAccessDeniedException>(() => queue.CancelWorkflowRunAsync(Target(), 1))).RequiredPermission.Should().Be("actions=write");
+        (await Throws<ForgeRequestException>(() => queue.CancelWorkflowRunAsync(Target(), 2))).StatusCode.Should().Be(500);
+    }
+
     // ── Branch heads and re-runs (M5) ────────────────────────────────────────────────────────────
 
     [Fact]

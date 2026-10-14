@@ -86,6 +86,20 @@ public interface IForgeMergeQueue
     Task<ForgeWorkflowRun?> GetWorkflowRunAsync(Repository repository, long runId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Asks the forge to cancel workflow run <paramref name="runId"/>: a regenerate run the queue no longer waits for
+    /// would otherwise keep spending the repository's CI minutes (merge-queue PRD D51 (5), D53). True when the forge
+    /// accepted the cancellation; false when the run had already finished or does not exist, which leaves the caller
+    /// with nothing to do either way.
+    /// </summary>
+    Task<bool> CancelWorkflowRunAsync(Repository repository, long runId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The most recent runs of <paramref name="workflowFile"/> on <paramref name="branch"/>, newest first (one page). The
+    /// queue reads it before dispatching, to find a run an earlier dispatch started whose answer never arrived (§0 D53).
+    /// </summary>
+    Task<IReadOnlyList<ForgeWorkflowRun>> ListWorkflowRunsAsync(Repository repository, string workflowFile, string branch, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The single file inside the run's artifact <paramref name="artifactName"/>, refused beyond
     /// <paramref name="maxBytes"/> (compressed or uncompressed) and when the archive holds anything but one file.
     /// </summary>
