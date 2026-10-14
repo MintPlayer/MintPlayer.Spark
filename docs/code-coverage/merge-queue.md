@@ -431,10 +431,9 @@ Notes on the two rulesets:
 - `strict_required_status_checks_policy: true` costs nothing: the queue only merges a commit built on the base as it is
   at merge time, and goes back to PREPARE when the base moves.
 - GitHub adds defaults on creation, among them `allowed_merge_methods` (keep `squash` in it) and
-  `require_extra_approval_for_unattributed_changes: true` on ruleset 2. The spikes ran with that default, but never
-  together with O18's settings and a regenerate push: **untested with the regenerate commit**, so whether it asks for a
-  fresh approval after PUBLISH is open until the live end-to-end run (M10) settles it. If it does, the merge ends
-  `merge-refused` with GitHub's message, and turning it off on ruleset 2 is the remedy.
+  `require_extra_approval_for_unattributed_changes: true` on ruleset 2. GitHub's ruleset page names that one
+  "Require an additional approval for unattributed **Copilot** pull requests": it applies only when Copilot opens a pull
+  request without a human collaborator, so it never touches the queue's regenerate push and can stay as it is (PRD O24).
 - **The queue checks the App's bypass itself** at every enqueue, with its own token. It refuses (`bypass`) when a ruleset
   holding a `pull_request` or `required_status_checks` rule shows `current_user_can_bypass` other than `never`, or
   cannot be read (T7). That field is the App's own. People listed as bypass actors on ruleset 2 do not change it, so
@@ -800,7 +799,6 @@ Not verified, or not supported:
 - **Co-authors beyond GitHub's 250-commit listing** of a pull request are not credited (D60).
 - Unmeasured with the production App so far: Commit statuses: read (D40); that an Actions check run's id is its job's id
   for re-runs (D48); that the App's `workflows` permission follows the OAuth scope's "same file on another branch" rule
-  for a same-repository push (D59; for a fork's branch the rule held without the permission, D69);
-  `require_extra_approval_for_unattributed_changes` on ruleset 2 together with the regenerate push (§3); the
+  for a same-repository push (D59; for a fork's branch the rule held without the permission, D69); the
   regenerate run's duration on CI (S4); the prepare step on the largest installed repository against the 180 s job
   clock (S8).
